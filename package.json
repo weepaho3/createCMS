@@ -1,21 +1,26 @@
 {
   "name": "createcms",
   "private": true,
-  "type": "module",
   "workspaces": [
     "packages/*",
     "apps/*",
     "examples/*"
   ],
+  "type": "module",
   "scripts": {
     "build": "turbo build",
+    "changeset": "changeset",
     "check-types": "turbo check-types",
-    "lint": "oxlint",
+    "clean": "turbo clean",
     "format": "oxfmt --write",
+    "lint": "oxlint",
+    "release": "changeset publish",
     "test": "turbo test",
-    "clean": "turbo clean"
+    "version-packages": "changeset version"
   },
   "devDependencies": {
+    "@changesets/changelog-github": "^0.5.1",
+    "@changesets/cli": "^2.29.7",
     "@types/node": "^22.13.11",
     "oxfmt": "^0.35.0",
     "oxlint": "^1.50.0",

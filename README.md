@@ -1,0 +1,65 @@
+# createCMS
+
+A composable, block-based, **Git-like** headless CMS for TypeScript — powered by
+Drizzle ORM (Postgres) with a fully type-safe API.
+
+- 🌿 **Database-native versioning** — branches, copy-on-write drafts, visual diffs, merges
+- 🧱 **Composable blocks** — nested pages, reusable blocks, type-safe block trees
+- 🔌 **Plugins** — multi-tenant, i18n, A/B testing, consent, media optimization
+- ⚡️ **Type-safe end to end** — collections → API → client, fully inferred
+- 🧰 **`createcms` CLI** — scaffold config + generate the Drizzle schema
+
+```bash
+bun add @createcms/core
+# or: npm install @createcms/core
+```
+
+> **Status:** pre-1.0. APIs may change before `1.0`. Pin a version.
+
+## Quickstart
+
+```ts
+import { createCMS } from '@createcms/core';
+
+export const cms = createCMS({
+  db,                        // your Drizzle client
+  collections: { pages },    // your collection definitions
+});
+```
+
+Generate the database schema, then run your migrations:
+
+```bash
+bunx createcms generate
+```
+
+See the **[docs](./apps/docs)** for collections, branches, publishing, plugins,
+and the Next.js integration guide.
+
+## Repository
+
+This is a bun + turbo monorepo:
+
+- **`packages/cms`** — [`@createcms/core`](./packages/cms), the published package
+- **`apps/docs`** — the documentation site + landing page (Fumadocs)
+- **`examples/`** — runnable example apps
+
+## Development
+
+```bash
+bun install
+bun run build        # turbo build (bunchee)
+bun run check-types  # tsc --noEmit
+bun run test         # vitest (PGlite-backed)
+```
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+## Origin
+
+createCMS was extracted from the private **toerbo** monorepo, where it was
+developed and dogfooded. See [CONTRIBUTORS.md](./CONTRIBUTORS.md).
+
+## License
+
+[MIT](./LICENSE)
