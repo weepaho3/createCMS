@@ -16,7 +16,7 @@
     "lint": "oxlint",
     "release": "changeset publish",
     "test": "turbo test",
-    "version-packages": "changeset version"
+    "version-packages": "changeset version && node scripts/sync-changelog.mjs"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.5.1",
