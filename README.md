@@ -55,11 +55,6 @@ bun run test         # vitest (PGlite-backed)
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-## Origin
-
-createCMS was extracted from the private **toerbo** monorepo, where it was
-developed and dogfooded. See [CONTRIBUTORS.md](./CONTRIBUTORS.md).
-
 ## License
 
 [MIT](./LICENSE)
