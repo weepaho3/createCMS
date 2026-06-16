@@ -1,0 +1,24 @@
+---
+title: Notifications
+description: The per-user inbox, via cms.api.notifications.
+---
+
+Notifications are the per-user inbox. The CMS raises them on @mentions in comments, approval decisions, merge-request activity, and publishing. Methods live under `cms.api.notifications`.
+
+## Methods
+
+### `listNotifications`
+
+`GET`. Query: `type?`, `unreadOnly?`, `collection?`, `limit?` (default 20), `offset?`. Returns `{ notifications, total, hasMore, unreadCount }`. Each notification has `id`, `actorId`, `type`, `title`, `body`, `resourceType`, `resourceId`, `collection`, `meta`, `readAt`, and `createdAt`.
+
+### `markNotificationsRead` / `markNotificationsUnread`
+
+`POST`, `body: { notificationId? }`. With an id, marks that one; without, marks all of the user's. Returns `{ markedCount }`.
+
+### `archiveNotification`
+
+`POST`, `body: { notificationId }`. Removes a notification from the inbox. Returns `{ notificationId }`.
+
+## Types
+
+`type` is one of: `mention`, `comment`, `threadResolved`, `approvalRequested`, `approvalApproved`, `approvalRejected`, `mergeRequestOpened`, `mergeRequestMerged`, `mergeRequestClosed`, `mergeRequestReopened`, `published`, `custom`.

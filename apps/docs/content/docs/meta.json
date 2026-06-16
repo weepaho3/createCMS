@@ -1,0 +1,14 @@
+{
+  "title": "CMS",
+  "icon": "Boxes",
+  "pages": [
+    "index",
+    "installation",
+    "quickstart",
+    "concepts",
+    "guides",
+    "plugins",
+    "reference",
+    "resources"
+  ]
+}

@@ -1,0 +1,28 @@
+---
+title: Variables
+description: Reusable values substituted into content on read.
+---
+
+A variable is a named value you set once and reference from many places in your content. You write `{{key}}` in any string property, and the CMS substitutes the variable's current value when content is read.
+
+## How substitution works
+
+Variables are resolved on read, not on write. `getBlockTree` and `getPublishedContent` replace every `{{key}}` in string properties with the variable's value; pass `raw: true` to skip substitution and see the literal template. An unknown key is left as-is.
+
+```ts
+// stored:    { title: 'Welcome to {{siteName}}' }
+// variable:  siteName = 'Acme'
+// read:      { title: 'Welcome to Acme' }
+```
+
+## Editing safely
+
+Because a value is shared, changing it updates every entry that uses it. Updating a variable's value automatically revalidates the published entries that reference it. A variable that is still in use cannot be deleted (`VARIABLE_IN_USE`); `getVariableUsages` shows where it is used.
+
+## Relationship to templates
+
+[Templates](/docs/concepts/templates) are default property values that can themselves contain `{{variables}}`, so a new block can start with a value like `© {{companyName}}` already filled in.
+
+<Callout type="info">
+  For the CRUD methods, see the [Variables reference](/docs/reference/variables).
+</Callout>

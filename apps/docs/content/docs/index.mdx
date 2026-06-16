@@ -1,0 +1,50 @@
+---
+title: Introduction
+description: A composable, block-based headless CMS with Git-like versioning and an end-to-end type-safe API.
+icon: BookOpen
+---
+
+`@createcms/core` is a headless CMS you define in code. You declare your content as typed collections of blocks, generate a database schema from those definitions, and get a fully type-safe server API and client in return. It is built on [better-call](https://github.com/bekacru/better-call) and [Drizzle ORM](https://orm.drizzle.team/) (PostgreSQL).
+
+<Callout type="warn">
+  Pre-release (`0.0.1`). The API is still stabilizing and may change between versions.
+</Callout>
+
+## Why it exists
+
+Building apps and sites with Next.js, every CMS got in the way: some missing features, some bloated, most painful to customize, and there was the constant split between an app and its marketing site (pay a headless CMS for traffic, or run a separate one somewhere). But your app already owns its data and has a database, so why not put the CMS inside it? `@createcms/core` is a CMS you install from npm and integrate natively, shaped to exactly what a project needs, instead of squeezing your app into someone else's CMS.
+
+The requirements were specific, and most came from real agency work: instant rollbacks, full history, approval flows, and several versions of a page live at once (A/B testing had long been an unsatisfying patchwork of separate systems, privacy headaches, and performance hits). Those needs look a lot like version control, so the model is Git, implemented in PostgreSQL.
+
+## What makes it different
+
+Your collection definitions are the single source of truth. They drive the database schema, the write API, the shape of read responses, and the client, so there are no hand-written types to keep in sync. Content is stored with Git-like versioning: every entry is a root with branches and commits, so editors can draft on a branch, open a merge request, diff, and publish. The core is framework-agnostic, with first-class helpers for Next.js and React.
+
+## Features
+
+<Cards>
+  <Card title="Block-based content" href="/docs/concepts/blocks">
+    Define collections as a typed root plus child blocks. Content is a tree of blocks.
+  </Card>
+  <Card title="End-to-end type safety" href="/docs/concepts/type-safety">
+    Definitions drive the write API and the read responses. Autocomplete on properties everywhere.
+  </Card>
+  <Card title="Git-like versioning" href="/docs/concepts">
+    Branches, commits, merge requests, and publishing for every content entry.
+  </Card>
+  <Card title="Plugins" href="/docs/plugins">
+    Multi-tenant, i18n, A/B testing, consent, and media optimization ship in the box.
+  </Card>
+</Cards>
+
+## When to use it
+
+- You want content modeling in TypeScript with no separate schema language, and a type-safe API derived from it.
+- You need editorial workflows (drafts, review, publishing) backed by your own PostgreSQL database.
+- You are building on Next.js or another React framework and want to render structured content yourself.
+
+It is not a turnkey hosted CMS with a prebuilt admin UI: you bring the database, the auth, and the rendering.
+
+<Callout type="info">
+  Ready to build? Start with the [Quickstart](/docs/quickstart).
+</Callout>

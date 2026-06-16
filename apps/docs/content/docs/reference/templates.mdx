@@ -1,0 +1,18 @@
+---
+title: Templates
+description: Per-property default values, via cms.api.templates.
+---
+
+A template is a default value for a block property in a given collection and block type. Template strings can contain `{{key}}` [variables](/docs/reference/variables), resolved when applied. Templates are keyed by `(collection, blockType, propertyKey)`. Methods live under `cms.api.templates`.
+
+| Method | HTTP | Input | Returns |
+| --- | --- | --- | --- |
+| `listTemplates` | GET | `query: { collection?, blockType? }` | `{ templates }` |
+| `getTemplate` | GET | `query: { id }` | `{ template }` |
+| `createTemplate` | POST | `body: { collection, blockType, propertyKey, template, description? }` | `{ template }` |
+| `updateTemplate` | POST | `body: { id, template?, description? }` | `{ template }` |
+| `deleteTemplate` | POST | `body: { id }` | `{ deleted }` |
+| `resolveTemplate` | POST | `body: { template }` | `{ resolved }` |
+| `getTemplateDefaults` | GET | `query: { collection, blockType }` | `{ defaults }` |
+
+Creating a duplicate `(collection, blockType, propertyKey)` throws `TEMPLATE_KEY_EXISTS`.

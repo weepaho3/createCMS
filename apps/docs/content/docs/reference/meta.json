@@ -1,0 +1,5 @@
+{
+  "title": "Reference",
+  "icon": "Code",
+  "pages": ["configuration", "define", "server-api", "client-api", "react", "media", "variables", "templates", "search", "notifications", "cli", "edge", "errors", "..."]
+}

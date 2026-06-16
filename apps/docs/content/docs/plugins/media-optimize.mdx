@@ -1,0 +1,73 @@
+---
+title: Media optimize
+description: Client-side resize, compress, and WebP conversion before upload.
+---
+
+The media optimize plugin processes images in the browser before they are uploaded: it resizes, compresses, and optionally converts to WebP. This cuts bandwidth and storage with no server-side processing. It is a client-only plugin.
+
+## Installation
+
+### Add the client plugin
+
+```ts title="lib/cms-client.ts"
+import { createCMSClient } from '@createcms/core/react';
+import { mediaOptimizeClient } from '@createcms/core/plugins/media-optimize';
+import type { cms } from './cms';
+
+export const cmsClient = createCMSClient<typeof cms>()({
+  baseURL: '/api/cms',
+  plugins: [
+    mediaOptimizeClient({
+      compress: { quality: 90 },
+      resize: { maxSize: 2000 },
+      convert: { format: 'webp', storeOriginal: true },
+    }),
+  ],
+});
+```
+
+For WebP in browsers without native encoding (for example older Safari), also install the optional fallback:
+
+```bash
+npm install @jsquash/webp
+```
+
+## Usage
+
+The plugin adds an `optimize` namespace. Optimize files first, then hand the results to the upload hook:
+
+```tsx
+function Uploader({ file }: { file: File }) {
+  const { results } = cmsClient.optimize.useOptimize(file);
+  const upload = cmsClient.media.useUploadAssets();
+
+  // `results` is OptimizeResult[]; flatten to the File[] that upload expects.
+  const files = (results ?? []).flatMap((r) =>
+    r.originalVariant ? [r.file, r.originalVariant] : [r.file],
+  );
+  // upload.upload(files)
+}
+```
+
+Pass a second argument to `useOptimize` to override the config for a single call. For a one-off outside React, use the standalone `optimizeImage(file, config)`.
+
+## Options
+
+All options are optional; omit a section to skip that step.
+
+| Section | Field | Type | Default | Description |
+| --- | --- | --- | --- | --- |
+| `compress` | `quality` | `number` | `80` | JPEG/PNG quality, 1 to 100. |
+| `resize` | `maxSize` | `number` | `2000` | Max width or height in pixels (aspect ratio preserved). |
+| `convert` | `format` | `'webp'` | | Target format (only WebP is supported). |
+| `convert` | `storeOriginal` | `boolean` | `false` | Also keep a resized, compressed copy in the original format. |
+
+## Failures
+
+This plugin runs entirely in the browser, so there are no HTTP errors. When optimization fails, `useOptimize` surfaces it as an `error` string (and `optimizeImage` throws). The plugin declares these codes as metadata in the client's `$ERROR_CODES`:
+
+| Code | When |
+| --- | --- |
+| `OPTIMIZATION_FAILED` | Image optimization failed. |
+| `WEBP_NOT_SUPPORTED` | WebP encoding unavailable and `@jsquash/webp` is not installed. |
+| `CANVAS_CONTEXT_FAILED` | Could not acquire a canvas 2D context. |

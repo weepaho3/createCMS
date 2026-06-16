@@ -1,0 +1,79 @@
+---
+title: Blocks
+description: Block properties, the eight field types, and functional blocks.
+---
+
+Blocks are the pieces a content tree is built from. A block definition declares a `label` and a set of typed `properties`. The same property shape is used by the root and by every child block.
+
+```ts
+import { defineBlock } from '@createcms/core';
+
+const hero = defineBlock({
+  label: 'Hero',
+  properties: {
+    headline: { type: 'string', required: true, label: 'Headline' },
+    align: {
+      type: 'select',
+      label: 'Alignment',
+      options: [
+        { label: 'Left', value: 'left' },
+        { label: 'Right', value: 'right' },
+      ],
+    },
+  },
+});
+```
+
+## Property field types
+
+Every property has a `type` and a `label`, plus optional `required`, `defaultValue`, `description`, and `placeholder`. There are eight field types:
+
+| Type | Stored value | Notes |
+| --- | --- | --- |
+| `string` | `string` | Single-line text. |
+| `number` | `number` | Numeric value. |
+| `boolean` | `boolean` | True or false. |
+| `date` | `string` | ISO date string. |
+| `richText` | `string` | HTML or rich-text markup. |
+| `image` | `string` | Asset reference (object key). |
+| `select` | `string` | One of a fixed set; requires `options`. |
+| `reference` | `string` | The target entry's `rootId`; requires `collection`. |
+
+Two types carry extra config. `select` requires an `options` array of `{ label, value }`, and the stored value is one of those values. `reference` requires a `collection` name, and the stored value is the referenced entry's `rootId`. On the published read path, a reference is inlined to its resolved target.
+
+## Nesting
+
+By default a block holds no children. Set `allowChildren: true` to let a block contain others, optionally constraining which with `allowedChildBlocks`:
+
+```ts
+const section = defineBlock({
+  label: 'Section',
+  properties: {},
+  allowChildren: true,
+  allowedChildBlocks: ['hero', 'richText'],
+});
+```
+
+## Functional blocks and events
+
+A block can declare the `events` it emits (for example a form's `submitSuccess`). Declaring `events` requires a stable `trackingId` property, added with the `trackingId()` helper. Events live on the block definition, which makes them the single source of truth for analytics and A/B goal tracking.
+
+```ts
+import { defineBlock, trackingId } from '@createcms/core';
+
+const signupForm = defineBlock({
+  label: 'Signup Form',
+  properties: {
+    ...trackingId(),
+    cta: { type: 'string', required: true, label: 'CTA' },
+  },
+  events: {
+    submit: {},
+    submitSuccess: { name: 'generate_lead' },
+  },
+});
+```
+
+<Callout type="info">
+  Event tracking is wired up by the [A/B testing plugin](/docs/plugins/ab-test). For exact signatures, see [`defineBlock`](/docs/reference/define).
+</Callout>

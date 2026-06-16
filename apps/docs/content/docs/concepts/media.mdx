@@ -1,0 +1,52 @@
+---
+title: Media
+description: How assets, folders, uploads, and serving work.
+---
+
+Media (images, video, PDFs) lives in object storage (S3, Cloudflare R2, DigitalOcean Spaces, or any S3-compatible bucket), with a row per asset in the CMS database. The CMS handles uploads, access control, folders, and variants; serving happens from your bucket or a CDN.
+
+## The asset model
+
+Each upload creates a row in `assets`:
+
+| Field | Meaning |
+| --- | --- |
+| `slug` | Unique, URL-friendly id. Equal to the `objectKey`. |
+| `objectKey` | The key in your bucket. |
+| `status` | `'private'` (default) or `'public'`. |
+| `folderId` | The folder it lives in, if any. |
+| `variantOf` | If set, this asset is a variant (a resized or reformatted copy) of another. |
+| `mimeType`, `size` | Content type and byte size. |
+| `archivedAt` | Soft-delete marker for pruning. |
+
+Folders are a nested tree (`asset_folders`, each with a `parentId`). `createFolder`, `moveFolder`, and `deleteFolder` manage them; a folder that still holds assets or subfolders cannot be deleted (`FOLDER_HAS_CONTENT`).
+
+## Private vs public
+
+Assets are created **private**. A private asset is not served by the public endpoint; requesting it returns `ASSET_ACCESS_DENIED`. You have two ways to expose one:
+
+- Flip it to `public` with `updateAssetStatus`, then serve it from your CDN.
+- Keep it private and mint a short-lived signed URL with `getAssetUrlAuthenticated` (default TTL 3600s for public assets, 300s for private).
+
+## Uploading: signed URL vs server
+
+There are two upload paths:
+
+- **`createSignedUpload` (default).** The CMS creates the asset rows and returns presigned PUT URLs; the browser uploads each file straight to the bucket. No file bytes pass through your server, so there are no serverless body-size limits and less egress. Use this for browser uploads.
+- **`uploadAssets`.** You send the file bytes (a `buffer: Blob | ArrayBuffer` per file) to the CMS, which PUTs them to the bucket. Use this for server-side sources.
+
+Both validate against the limits (defaults: `maxFiles` 10, `maxFileSize` 4 MB, `allowedMimeTypes` `['image/*', 'video/*', 'application/pdf']`), and signed URLs expire after 120s by default. The browser hook is in [Upload and serve media](/docs/guides/media-uploads).
+
+## Serving and the public URL
+
+A public asset's URL is `${publicUrl}/${objectKey}`. The raw bucket URL returns the original bytes and ignores any query string.
+
+For transformed delivery, the CMS exposes `GET /media/asset/{slug}`, which honors `?format=webp|jpeg|png` and `?w=<width>` by resolving a **pre-uploaded variant** (an asset whose `variantOf` points at the original), falling back to the original. It sends immutable, year-long cache headers. There is no on-the-fly transform: create variants ahead of time, for example with the [media optimize plugin](/docs/plugins/media-optimize), which optimizes in the browser before upload.
+
+## Images in content
+
+An `image` block property stores a reference to an uploaded asset. To render it, resolve the asset to a URL: serve a public asset from `${publicUrl}/${objectKey}`, or a private one through a signed URL. `getAssetUsages` reports which entries reference an asset, and archiving is blocked while an asset is used by live content.
+
+<Callout type="info">
+  For uploading and serving step by step, see [Upload and serve media](/docs/guides/media-uploads).
+</Callout>

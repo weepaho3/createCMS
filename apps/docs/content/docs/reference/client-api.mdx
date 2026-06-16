@@ -1,0 +1,82 @@
+---
+title: Client API
+description: createCMSClient and the type-safe client surface.
+---
+
+`createCMSClient<typeof cms>` builds a client whose methods mirror the server `api`. Because it infers from `typeof cms`, `client.<collection>.<method>` has the same input and output types as `cms.api.<collection>.<method>`.
+
+## Vanilla client
+
+Import from the package root and pass `baseURL`:
+
+```ts title="lib/cms-client.ts"
+import { createCMSClient } from '@createcms/core';
+import type { cms } from '@/lib/cms';
+
+export const cmsClient = createCMSClient<typeof cms>({ baseURL: '/api/cms' });
+
+const { roots } = await cmsClient.pages.listRoots();
+roots[0]?.properties.title; // typed `string`
+```
+
+## React client
+
+Import from `@createcms/core/react` for the hook-based client (its `media.useUploadAssets()` and other React hooks):
+
+```ts title="lib/cms-client.ts"
+import { createCMSClient } from '@createcms/core/react';
+import { abTestClient } from '@createcms/core/plugins/ab-test/client';
+import type { cms } from './cms';
+
+export const cmsClient = createCMSClient<typeof cms>()({
+  baseURL: '/api/cms',
+  plugins: [abTestClient()],
+});
+```
+
+## The curried form
+
+`createCMSClient` has two call styles. Use the direct form when you pass no plugins, and the curried form (an empty `()` first) when you both pin `<typeof cms>` and pass `plugins`, so the plugin action types infer. This applies to both the vanilla and React entrypoints:
+
+```ts
+createCMSClient<typeof cms>({ baseURL });            // no plugins
+createCMSClient<typeof cms>()({ baseURL, plugins });  // with plugins
+```
+
+## `CMSClientOptions`
+
+| Option | Type | Required | Description |
+| --- | --- | --- | --- |
+| `baseURL` | `string` | yes | Base URL of the mounted CMS router. |
+| `plugins` | `CMSClientPlugin[]` | no | Client plugins (for example `abTestClient`, `consentClient`). |
+
+## Calling methods
+
+Method inputs and outputs match the [Server API](/docs/reference/server-api) exactly: read methods take `{ query }`, write methods take `{ body }`. The client also exposes a few namespaces of its own:
+
+- `client.$fetch` for raw requests.
+- `client.$store` for the reactive store.
+- `client.media.useUploadAssets()` for uploads (React client only; the vanilla client exposes the underlying nanostores atom).
+
+## Error handling
+
+The browser client throws a `CMSClientError`, a plain `Error` (not the server's `APIError`). Read its code via `.cmsCode` (or the raw `.code`). The server helpers `isCMSError` / `getCMSErrorCode` do not detect it. See [Error codes](/docs/reference/errors).
+
+## `createCMSQuery`
+
+Builds a reactive query atom (nanostores) that refetches when its signal atoms change.
+
+```ts
+function createCMSQuery<T>(
+  signals: WritableAtom<boolean> | WritableAtom<boolean>[],
+  path: string,
+  $fetch: CMSFetch,
+  options?: { method?: 'GET' | 'POST'; query?: Record<string, unknown> },
+): WritableAtom<QueryState<T>>;
+```
+
+`QueryState<T>` is `{ data, error, isPending, isRefetching, refetch }`.
+
+<Callout type="info">
+  For per-method inputs and return shapes, see the [Server API](/docs/reference/server-api).
+</Callout>

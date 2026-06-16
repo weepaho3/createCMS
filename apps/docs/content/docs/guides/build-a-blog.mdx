@@ -1,0 +1,148 @@
+---
+title: Build a blog
+description: A complete walkthrough building a blog with collections and blocks.
+---
+
+In this tutorial you build a small blog with `@createcms/core`: a `posts` collection, a couple of content blocks, and a Next.js page that renders a published post. It assumes you have finished the [Quickstart](/docs/quickstart) and have a Drizzle database and an S3 configuration ready.
+
+## What you'll build
+
+- A `posts` collection with a typed root (`title`, `excerpt`) and two blocks (`richText`, `quote`).
+- A generated database schema.
+- A route that reads and renders a published post by its path.
+
+### 1. Model the blog
+
+The root holds post-level fields; blocks are the body content:
+
+```ts title="lib/collections.ts"
+import { defineCollection, defineCollections } from '@createcms/core';
+
+const posts = defineCollection({
+  label: 'Posts',
+  slug: { enabled: true, root: '/blog', nested: false },
+  root: {
+    properties: {
+      title: { type: 'string', required: true, label: 'Title' },
+      excerpt: { type: 'string', label: 'Excerpt' },
+    },
+  },
+  blocks: {
+    richText: {
+      label: 'Rich text',
+      properties: { content: { type: 'richText', required: true, label: 'Body' } },
+    },
+    quote: {
+      label: 'Quote',
+      properties: {
+        text: { type: 'string', required: true, label: 'Quote' },
+        cite: { type: 'string', label: 'Attribution' },
+      },
+    },
+  },
+});
+
+export const collections = defineCollections({ posts });
+```
+
+### 2. Create the CMS and mount it
+
+Create the instance, then bind its router to a catch-all route:
+
+```ts title="lib/cms.ts"
+import { createCMS } from '@createcms/core';
+import { db } from './db';
+import { collections } from './collections';
+
+export const cms = createCMS({
+  db,
+  collections,
+  media: {
+    /* your S3 config */
+  },
+  authMiddleware: async () => ({ userId: 'system' }),
+});
+```
+
+```ts title="app/api/cms/[[...rest]]/route.ts"
+import { cms } from '@/lib/cms';
+
+const { handler } = cms.router;
+export const GET = handler;
+export const POST = handler;
+```
+
+### 3. Generate and apply the schema
+
+The CLI discovers `lib/cms.ts`, writes the schema (core plus plugins, content-agnostic), and you apply it with your migration workflow:
+
+```bash
+npx createcms generate
+npx drizzle-kit generate && npx drizzle-kit migrate
+```
+
+### 4. Create and publish a post
+
+Create the entry, add a block under its root, then publish:
+
+```ts
+const post = await cms.api.posts.createRoot({
+  body: {
+    slug: 'hello-world',
+    properties: { title: 'Hello World', excerpt: 'My first post.' },
+  },
+});
+
+await cms.api.posts.createBlock({
+  body: {
+    rootId: post.rootId,
+    branchId: post.branchId,
+    parentBlockId: post.rootId,
+    type: 'richText',
+    properties: { content: '<p>Welcome to my blog.</p>' },
+  },
+});
+
+await cms.api.posts.publishBranch({
+  body: { rootId: post.rootId, branchId: post.branchId },
+});
+```
+
+### 5. Render the post
+
+Map the blocks to components and render the published tree, read by its full path:
+
+```tsx title="app/blog/[slug]/page.tsx"
+import { BlocksRenderer, createBlocksMap } from '@createcms/core/react';
+import { collections } from '@/lib/collections';
+import { cms } from '@/lib/cms';
+
+const postBlocks = createBlocksMap(collections.posts, {
+  richText: ({ properties }) => (
+    <div dangerouslySetInnerHTML={{ __html: properties.content }} />
+  ),
+  quote: ({ properties }) => (
+    <blockquote>
+      {properties.text}
+      {properties.cite ? <cite>{properties.cite}</cite> : null}
+    </blockquote>
+  ),
+});
+
+export default async function PostPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const { variants } = await cms.api.posts.getPublishedContent({
+    query: { path: `/blog/${slug}` },
+  });
+  return <BlocksRenderer blocks={postBlocks} tree={variants[0].tree} />;
+}
+```
+
+## You're done
+
+You modeled a blog, generated its schema, created and published a post, and rendered it by path. From here:
+
+<Cards>
+  <Card title="Add images" href="/docs/guides/media-uploads">Upload and use image assets.</Card>
+  <Card title="Draft and review" href="/docs/guides/content-workflow">Edit on branches with merge requests.</Card>
+</Cards>

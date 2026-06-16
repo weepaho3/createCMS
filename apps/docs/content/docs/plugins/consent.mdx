@@ -1,0 +1,87 @@
+---
+title: Consent
+description: Google Consent Mode v2 gating for analytics and embeds.
+---
+
+The consent plugin manages Google Consent Mode v2 signals on the client. It exposes the four consent signals, gates analytics on them, and provides a `ConsentGate` to gate embeds (a YouTube iframe, a map) behind a purpose. Until the visitor decides, analytics stay default-denied.
+
+## Installation
+
+### Add the server marker
+
+The server plugin is a marker with no schema or endpoints; it registers consent as available:
+
+```ts title="lib/cms.ts"
+import { consent } from '@createcms/core/plugins/consent';
+
+export const cms = createCMS({
+  db,
+  collections,
+  media,
+  plugins: [consent()],
+});
+```
+
+### Add the client plugin
+
+All consent logic runs on the client:
+
+```ts title="lib/cms-client.ts"
+import { createCMSClient } from '@createcms/core/react';
+import { consentClient } from '@createcms/core/plugins/consent/client';
+import type { cms } from './cms';
+
+export const cmsClient = createCMSClient<typeof cms>()({
+  baseURL: '/api/cms',
+  plugins: [consentClient()],
+});
+```
+
+## Usage
+
+Set and read consent through the `consent` namespace. The four signals follow Consent Mode v2:
+
+```ts
+cmsClient.consent.setConsent({ analytics_storage: 'granted', ad_storage: 'denied' });
+
+cmsClient.consent.isGranted('analytics_storage'); // boolean
+```
+
+| Action | Signature | Purpose |
+| --- | --- | --- |
+| `setConsent` | `(consent: Partial<ConsentState>) => void` | Update one or more signals. |
+| `getConsent` | `() => ConsentState` | Read the current state. |
+| `isGranted` | `(purpose) => boolean` | Check one purpose. |
+| `isResolved` | `() => boolean` | Whether consent has resolved (a real decision, or the default-deny timeout). |
+| `onChange` | `(listener) => () => void` | Subscribe to changes; returns an unsubscribe. |
+| `useConsentState` | React hook | Returns `{ state, resolved, isGranted }`. |
+| `reset` | `() => void` | Revoke in-session: reset all signals to denied. The gate stays resolved; nothing is persisted. |
+
+### Gate an embed
+
+`ConsentGate` renders its children only when the given purpose is granted, with an optional fallback:
+
+```tsx
+const { ConsentGate } = cmsClient.consent;
+
+<ConsentGate purpose="ad_storage" fallback={<p>Accept cookies to view this.</p>}>
+  <iframe src="https://www.youtube.com/embed/..." />
+</ConsentGate>;
+```
+
+## State
+
+`ConsentState` has four signals, each `'granted'` or `'denied'`:
+
+| Signal | Purpose |
+| --- | --- |
+| `analytics_storage` | Analytics cookies and storage. |
+| `ad_storage` | Advertising storage. |
+| `ad_user_data` | Sending user data for ads. |
+| `ad_personalization` | Ad personalization. |
+
+The consent plugin adds no database schema.
+
+## Why client-only
+
+Consent originates in the browser, where the consent banner runs and where device storage is gated. The signals must be set before any analytics or storage access, so the gate lives on the client. Server-side tracking (the A/B plugin's GA4 forwarding) is gated independently.

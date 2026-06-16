@@ -1,0 +1,19 @@
+---
+title: Variables
+description: Reusable values substituted into content, via cms.api.variables.
+---
+
+Variables are reusable values referenced in content as `{{key}}` and substituted on read (in `getBlockTree` and `getPublishedContent`, unless `raw: true`). Methods live under `cms.api.variables`.
+
+| Method | HTTP | Input | Returns |
+| --- | --- | --- | --- |
+| `listVariables` | GET | | `{ variables }` |
+| `getVariable` | GET | `query: { key }` | `{ variable, inUse }` |
+| `createVariable` | POST | `body: { key, value, description? }` | `{ variable }` |
+| `updateVariable` | POST | `body: { key, value?, description? }` | `{ variable }` |
+| `deleteVariable` | POST | `body: { key }` | `{ deleted }` |
+| `getVariableUsages` | GET | `query: { key }` | usage counts and sites |
+
+A `key` is alphanumeric plus underscores. Updating a variable's `value` revalidates the published roots that use it. Deleting one that is in use throws `VARIABLE_IN_USE`.
+
+Reference a variable in any string property, for example `{ title: 'Hello {{siteName}}' }`. An unknown key is left literal.

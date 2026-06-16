@@ -1,0 +1,51 @@
+---
+title: Review with comments
+description: Discuss changes on a merge request with comment threads, mentions, and notifications.
+---
+
+When you open a [merge request](/docs/concepts/merges), reviewers can discuss it before it is approved. Comment threads attach to a merge request or to a specific block, hold a conversation of messages, and can mention other users.
+
+### Start a thread
+
+`createCommentThread` opens a thread with its first message. Attach it to a merge request, or to a block for an inline note:
+
+```ts
+const { thread } = await cms.api.pages.createCommentThread({
+  body: {
+    targetType: 'mergeRequest',
+    mergeRequestId: mr.mergeRequestId,
+    body: 'The hero copy reads a bit long. @editor-2 thoughts?',
+    mentions: ['editor-2'],
+  },
+});
+```
+
+For a block-level note, use `targetType: 'block'` with a `blockId`.
+
+### Reply
+
+Add messages to a thread with `createCommentMessage` (optionally replying to a specific message via `parentMessageId`):
+
+```ts
+await cms.api.pages.createCommentMessage({
+  body: { threadId: thread.id, body: 'Shortened it, take another look.' },
+});
+```
+
+### Mentions and notifications
+
+A `mentions: [userId]` array, on a thread or a message, notifies those users. Mentions, replies, and thread resolution raise [notifications](/docs/reference/notifications) in the recipient's inbox; `listMentions` lists a user's mentions directly.
+
+### Resolve
+
+When a discussion is settled, resolve the thread (and `reopenCommentThread` if it comes back):
+
+```ts
+await cms.api.pages.resolveCommentThread({ body: { threadId: thread.id } });
+```
+
+Resolved threads drop out of the default `listCommentThreads` view.
+
+<Callout type="info">
+  Comments sit inside the [content workflow](/docs/guides/content-workflow): open a merge request, discuss, approve, merge. For every comment method, see the [Server API](/docs/reference/server-api).
+</Callout>

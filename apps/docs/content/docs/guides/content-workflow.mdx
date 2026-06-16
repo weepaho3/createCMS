@@ -1,0 +1,88 @@
+---
+title: Draft, review, and publish
+description: Edit on a branch, open a merge request, get approval, merge, and publish.
+---
+
+This guide walks the editorial workflow for one entry: create a draft branch, edit it, open a merge request, approve it, merge, and publish. It assumes a `pages` collection (see [Quickstart](/docs/quickstart)) and uses the server API; the same methods exist on the client.
+
+### Create an entry and a draft branch
+
+A new root starts on `main`. Branch off it to draft changes safely:
+
+```ts
+const root = await cms.api.pages.createRoot({
+  body: { slug: 'about', properties: { title: 'About' } },
+});
+
+const draft = await cms.api.pages.createBranch({
+  body: { rootId: root.rootId, name: 'draft', sourceBranchId: root.branchId },
+});
+```
+
+### Edit on the draft
+
+Add and update blocks on the draft branch. Each change is a commit:
+
+```ts
+await cms.api.pages.createBlock({
+  body: {
+    rootId: root.rootId,
+    branchId: draft.branchId,
+    parentBlockId: root.rootId,
+    type: 'hero',
+    properties: { headline: 'Welcome' },
+  },
+});
+```
+
+### Open a merge request
+
+Request to integrate the draft into `main`. The response reports any conflicts:
+
+```ts
+const mr = await cms.api.pages.createMergeRequest({
+  body: {
+    sourceBranchId: draft.branchId,
+    targetBranchId: root.branchId,
+    title: 'Add hero',
+  },
+});
+```
+
+If `mr.hasConflicts` is true, resolve the conflicts before merging: each conflict is settled as `source`, `target`, or a `manual` version through `resolveConflicts`. See [Merges](/docs/concepts/merges) for the model.
+
+### Approve and merge
+
+Every merge requires an approval. Request sign-off, have a reviewer approve, then execute the merge:
+
+```ts
+const { approvals } = await cms.api.pages.requestApproval({
+  body: {
+    mergeRequestId: mr.mergeRequestId,
+    requestedBy: 'editor-1',
+    requestedReviewers: ['reviewer-1'],
+  },
+});
+
+await cms.api.pages.approve({
+  body: { approvalId: approvals[0].id, reviewedBy: 'reviewer-1' },
+});
+
+await cms.api.pages.executeMerge({
+  body: { mergeRequestId: mr.mergeRequestId },
+});
+```
+
+### Publish
+
+Publish the target branch to make it live. `getPublishedContent` then returns it:
+
+```ts
+await cms.api.pages.publishBranch({
+  body: { rootId: root.rootId, branchId: root.branchId },
+});
+```
+
+<Callout type="info">
+  Background on the model is in [Branches](/docs/concepts/branches) and [Merges](/docs/concepts/merges). Exact signatures are in the [Server API](/docs/reference/server-api).
+</Callout>

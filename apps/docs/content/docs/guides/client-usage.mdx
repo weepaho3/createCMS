@@ -1,0 +1,53 @@
+---
+title: Use the type-safe client
+description: Read and write content from the browser with createCMSClient.
+---
+
+This guide uses the client to read and write content from the browser. It assumes the CMS router is mounted (see [Use with Next.js](/docs/guides/nextjs)).
+
+### Create the client
+
+Import the React client from `@createcms/core/react` and type it with `typeof cms` so every method mirrors the server. Use the curried form `()(...)`; the empty `()` is what lets plugin action types infer:
+
+```ts title="lib/cms-client.ts"
+import { createCMSClient } from '@createcms/core/react';
+import type { cms } from '@/lib/cms';
+
+export const cmsClient = createCMSClient<typeof cms>()({ baseURL: '/api/cms' });
+```
+
+Outside React (a script, a server task), import the vanilla client from `@createcms/core` and call it directly: `createCMSClient<typeof cms>({ baseURL })`.
+
+### Read
+
+Read methods take a `query` (often optional) and return typed data:
+
+```ts
+const { roots } = await cmsClient.pages.listRoots({ query: { limit: 10 } });
+roots[0]?.properties.title; // typed `string`
+```
+
+### Write
+
+Write methods take a `body`. The properties are checked against your block definitions. A root's `slug` is a single path segment:
+
+```ts
+const { rootId } = await cmsClient.pages.createRoot({
+  body: { slug: 'about', properties: { title: 'About' } },
+});
+```
+
+### Upload assets
+
+The React client exposes a media upload hook. Combine it with the [media optimize plugin](/docs/plugins/media-optimize) to resize and convert images before upload:
+
+```tsx
+function Uploader() {
+  const { upload, isUploading } = cmsClient.media.useUploadAssets();
+  // upload(files) where files is File[]
+}
+```
+
+<Callout type="info">
+  For the full client surface and `createCMSQuery`, see the [Client API reference](/docs/reference/client-api). For the asset model, see [Media](/docs/concepts/media).
+</Callout>

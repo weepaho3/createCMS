@@ -1,0 +1,65 @@
+---
+title: CLI
+description: The createcms command-line interface.
+---
+
+`@createcms/core` ships one CLI binary, `createcms`, with two subcommands: `init` (scaffold a project) and `generate` (write the Drizzle schema). Run them with `npx` (or your runner of choice):
+
+```bash
+npx createcms --help
+```
+
+## `createcms init`
+
+Scaffolds a CMS config, a collection preset, and a Next.js route handler into your project, and adds a `cms:generate` script to `package.json`.
+
+```bash
+npx createcms init [--cwd <dir>] [--preset <name>]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--cwd` | path | current directory | Project root to scaffold into. |
+| `--preset` | name | | Collection preset to scaffold. |
+
+## `createcms generate`
+
+Generates a Drizzle schema from your CMS config (core tables plus any plugin schema). The schema is content-agnostic, so you re-run it only when you add or change a plugin that ships schema, not when you edit a collection.
+
+```bash
+npx createcms generate [config] [--output <path>]
+```
+
+| Argument / flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `config` | path | auto-discovered | Path to your CMS config file. |
+| `--output` | path | `./cms-schema.ts` | Where to write the generated schema. |
+
+When `config` is omitted, the CLI searches these paths in order and uses the first that exists:
+
+```
+cms.ts, cms.js, src/cms.ts, src/cms.js, src/lib/cms.ts, src/lib/cms.js, lib/cms.ts, lib/cms.js
+```
+
+The output path falls back to the config's `schema.output` when set, otherwise `./cms-schema.ts`. If the output file already exists, the CLI asks before overwriting. Loading your config does not open a database connection or contact S3: the CLI stubs every installed package, so a run only confirms the config file loads and the schema emits.
+
+```bash
+npx createcms generate
+#   config   /app/src/lib/cms.ts
+#   output   /app/cms-schema.ts
+#   plugins  abTest, multi-tenant
+#   ✓ Schema generated
+#   file     /app/cms-schema.ts
+#   tables   18
+#   enums    4
+```
+
+After generating, apply the schema with your Drizzle migration workflow:
+
+```bash
+npx drizzle-kit generate && npx drizzle-kit migrate
+```
+
+<Callout type="info">
+  Re-run `createcms generate` after adding or changing a plugin that contributes schema, not when you edit a collection.
+</Callout>

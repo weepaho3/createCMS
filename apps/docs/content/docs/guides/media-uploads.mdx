@@ -1,0 +1,93 @@
+---
+title: Upload and serve media
+description: Configure S3 storage, upload assets from the browser, and serve them.
+---
+
+This guide uploads and serves assets. It assumes a CMS instance (see [Quickstart](/docs/quickstart)) and an S3-compatible bucket. For the model behind it, see [Media](/docs/concepts/media).
+
+### Configure storage
+
+`createCMS` requires a `media` config: your bucket plus a public base URL (a CDN domain). The full shape is in the [configuration reference](/docs/reference/configuration):
+
+```ts title="lib/cms.ts"
+media: {
+  provider: 'cloudflare',
+  accountId: process.env.R2_ACCOUNT_ID!,
+  bucketName: process.env.R2_BUCKET!,
+  accessKeyId: process.env.R2_KEY!,
+  secretAccessKey: process.env.R2_SECRET!,
+  publicUrl: process.env.R2_PUBLIC_URL!,
+},
+```
+
+### Upload from the browser
+
+The React client's `media.useUploadAssets()` returns an `upload` function plus progress state. Under the hood it requests signed URLs and PUTs each file straight to your bucket:
+
+```tsx title="components/uploader.tsx"
+'use client';
+import { cmsClient } from '@/lib/cms-client';
+
+export function Uploader() {
+  const { upload, isUploading, totalProgress } = cmsClient.media.useUploadAssets();
+
+  return (
+    <>
+      <input
+        type="file"
+        multiple
+        onChange={(e) => upload(Array.from(e.target.files ?? []))}
+      />
+      {isUploading ? <p>Uploading {totalProgress}%</p> : null}
+    </>
+  );
+}
+```
+
+`upload(files, options?)` takes a `File[]` and an optional `{ folderId }`. Uploads are validated server-side against the limits (defaults: `maxFiles` 10, `maxFileSize` 4 MB, `allowedMimeTypes` `['image/*', 'video/*', 'application/pdf']`); a rejected file surfaces as `FILE_TOO_LARGE`, `TOO_MANY_FILES`, or `INVALID_FILE_TYPE`. New assets are created **private**.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `upload` | `(files: File[], options?: { folderId?: string }) => Promise<void>` | Start an upload. |
+| `isUploading` | `boolean` | Whether an upload is in progress. |
+| `totalProgress` | `number` | Overall progress, 0 to 100. |
+| `files` | `MediaUploadFileState[]` | Per-file `name`, `progress`, `status`, and `result` (`{ id, slug, objectKey }`). |
+| `abort` / `reset` | `() => void` | Cancel or clear. |
+
+### Optimize before upload
+
+Add the [media optimize plugin](/docs/plugins/media-optimize) to resize and convert in the browser first. `useOptimize` returns `OptimizeResult[]` (`{ file, originalVariant?, optimized }`); flatten it to the `File[]` that `upload` expects:
+
+```tsx
+const { results } = cmsClient.optimize.useOptimize(file);
+const files = (results ?? []).flatMap((r) =>
+  r.originalVariant ? [r.file, r.originalVariant] : [r.file],
+);
+// cmsClient.media.useUploadAssets().upload(files)
+```
+
+### Serve an asset
+
+A stored asset has an `objectKey` (equal to its `slug`). A **public** asset's URL is your `publicUrl` joined with that key:
+
+```ts
+const url = `${publicUrl}/${asset.objectKey}`;
+// e.g. https://cdn.example.com/welcome-hero
+```
+
+The raw bucket URL serves the original bytes and **ignores query strings**. To request a transformed variant, go through the CMS endpoint `GET /media/asset/{slug}`, which honors `?format=` and `?w=` by resolving a **pre-uploaded** variant asset (falling back to the original). There is no on-the-fly transform: produce variants ahead of time (for example with the optimize plugin). Private assets are not served there (`ASSET_ACCESS_DENIED`); get a temporary URL with `getAssetUrlAuthenticated`.
+
+### Upload from the server
+
+For server-initiated uploads, call the API directly. `createSignedUpload` returns presigned PUT URLs (you then PUT the bytes with the returned headers); `uploadAssets` sends the bytes through the server (each file needs a `buffer: Blob | ArrayBuffer`):
+
+```ts
+const { assets } = await cms.api.media.createSignedUpload({
+  body: { files: [{ name: 'hero.jpg', size: file.size, type: 'image/jpeg' }] },
+});
+// PUT the file to assets[0].signedUrl using assets[0].headers
+```
+
+<Callout type="info">
+  For the asset model, folders, and private vs public, see [Media](/docs/concepts/media).
+</Callout>

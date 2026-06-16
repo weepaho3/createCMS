@@ -1,0 +1,80 @@
+---
+title: Events & Tracking
+description: How blocks declare events, and how those events become typed analytics.
+---
+
+Functional blocks (a signup form, a CTA) can emit **events**. A functional block is any block that declares a non-empty `events` map. Events live on the block definition, which makes the definition the single source of truth for the typed `fire(...)` API, the analytics wire name, and A/B test goals.
+
+## Declaring events
+
+A block that declares `events` must also carry a stable `trackingId` property, spread in with the `trackingId()` helper. The `trackingId` is the per-instance anchor a test goal points at.
+
+```ts
+import { defineBlock, trackingId } from '@createcms/core';
+
+const signupForm = defineBlock({
+  label: 'Signup Form',
+  properties: {
+    ...trackingId(),
+    cta: { type: 'string', required: true, label: 'CTA' },
+  },
+  events: {
+    submit: {},
+    submitSuccess: {
+      name: 'generate_lead',
+      params: { plan: { type: 'string', label: 'Plan' } },
+    },
+  },
+});
+```
+
+Each event can set a `name` (the analytics wire name, defaulting to `cms_<blockType>_<eventKey>`), typed `params`, and a `label` for the goal picker.
+
+## Wiring up the runtime
+
+Tracking needs a runtime that decides where events go. Build a `TrackingRuntime` from your client's `abTest.dispatchEvent` and mount it high in the tree with `TrackingRuntimeProvider`. Everything below it can then fire events. These come from `@createcms/core/react/tracking` (not the `@createcms/core/react` barrel).
+
+```tsx title="app/providers.tsx"
+'use client';
+import { TrackingRuntimeProvider } from '@createcms/core/react/tracking';
+import { cmsClient } from '@/lib/cms-client';
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  return (
+    <TrackingRuntimeProvider runtime={{ dispatch: cmsClient.abTest.dispatchEvent }}>
+      {children}
+    </TrackingRuntimeProvider>
+  );
+}
+```
+
+## Firing events, typed
+
+Build a typed firer for the collection that contains your block with `createTrackedBlocks`, then select the block with `useTrackedBlock`. The returned `fire` is narrowed to that block's declared events, so an unknown event name or a wrong-typed param is a compile error.
+
+```tsx
+import { createTrackedBlocks } from '@createcms/core/react/tracking';
+import { collections } from '@/lib/collections';
+
+const tracked = createTrackedBlocks(collections.pages);
+
+function SignupForm({ properties }) {
+  const { fire } = tracked.useTrackedBlock('signupForm');
+
+  return (
+    <button onClick={() => fire('submitSuccess', { plan: 'pro' })}>
+      {properties.cta}
+    </button>
+  );
+}
+```
+
+For untyped firing (string event names), `useBlockTrackerRaw()` returns `fire` and `fireInteraction` (the latter groups events into a funnel by an interaction id). The `TrackedForm` component fires an attempt event and a success event around a form action.
+
+## From events to measurement
+
+Events are transport-agnostic. On their own they are just declarations and dispatches. The [A/B testing plugin](/docs/plugins/ab-test) consumes them: it records impressions and conversions, decides which event counts as a test goal, and forwards to analytics (GA4 or a custom adapter).
+
+<Callout type="info">
+  For the React tracking API, see the [React reference](/docs/reference/react). For measurement, see the [A/B testing plugin](/docs/plugins/ab-test).
+</Callout>

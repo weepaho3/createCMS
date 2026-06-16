@@ -1,0 +1,51 @@
+---
+title: Merges
+description: Merge requests, three-way conflict detection, and how a merge is committed.
+---
+
+A merge request integrates a source branch into a target branch. It is the review unit: you open it, inspect the diff and any conflicts, get it approved, and then execute the merge. Its status is `open`, `merged`, or `closed`, and there can be only one open merge request per source-target pair.
+
+## The three-way comparison
+
+A merge compares three snapshots: the **base** (the common ancestor of the two branches), the **source**, and the **target**. For each block, the CMS looks at which version is active in each:
+
+- Changed on only one side relative to the base: take that side automatically.
+- Unchanged on both, or identical on both: nothing to do.
+- Changed differently on both sides: a **conflict**.
+
+`getDiff` classifies the per-block changes of source against base (a two-way diff). `checkConflicts` is the three-way detector: it returns the conflicting blocks, each with its source, target, and base version ids.
+
+## Resolving conflicts
+
+Each conflict is resolved by choosing one of three resolutions, after which the merge can proceed:
+
+| Resolution | Result |
+| --- | --- |
+| `source` | Keep the source branch's version. |
+| `target` | Keep the target branch's version. |
+| `manual` | Use any existing block version id, whether preexisting or created with `createMergeBlockVersion`. |
+
+`resolveConflicts` records the choices; `executeMerge` refuses to run while any conflict is unresolved (`UNRESOLVED_CONFLICTS`).
+
+## Fast-forward vs merge commit
+
+How the merge is committed depends on whether the target moved:
+
+- **Fast-forward.** If the target's head is still the merge base, the target simply advances to the source head. No new commit is created (the `executeMerge` result's `mergeCommitId` is `null`, though the stored merge request records the source head as its merge commit).
+- **Merge commit.** Otherwise the CMS builds a merged snapshot and writes a new commit whose `parentCommitId` is the target head and whose `mergeSourceCommitId` is the source head. That second parent records the merge in history.
+
+```mermaid
+graph RL
+  M[merge commit] --> T1[target]
+  M -. mergeSource .-> S1[source]
+  T1 --> Base[base]
+  S1 --> Base
+```
+
+## Approvals
+
+Every merge requires sign-off. You request approval from reviewers with `requestApproval`; each reviewer calls `approve` or `reject`. `executeMerge` throws `MERGE_APPROVAL_REQUIRED` when no approval was ever requested, and `APPROVALS_NOT_FULLY_APPROVED` while any requested approval is still pending. The merge runs only once every requested approval is granted.
+
+<Callout type="info">
+  To run the full flow, see [Draft, review, and publish](/docs/guides/content-workflow). For signatures, see the [Server API](/docs/reference/server-api).
+</Callout>

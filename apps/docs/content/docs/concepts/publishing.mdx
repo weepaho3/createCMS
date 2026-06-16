@@ -1,0 +1,45 @@
+---
+title: Publishing
+description: Making a branch live, running several live branches, and how published reads differ.
+---
+
+Publishing marks a branch as live. A row in `publications`, keyed by `(rootId, branchId)`, records that a branch is published: the commit at publish time, who published it, and when. The published read renders the branch's current head, so later commits to a published branch go live on the next read, with no re-publish needed.
+
+## Publish and unpublish
+
+`publishBranch` publishes a branch; `unpublishBranch` removes a publication. Publishing can require approval, in which case it is blocked until granted (`PUBLICATION_APPROVAL_REQUIRED`):
+
+```ts
+await cms.api.pages.publishBranch({
+  body: { rootId, branchId },
+});
+```
+
+## One entry, many live branches
+
+Publishing is per branch, not per entry, so a single root can have several branches live at once. `getPublishedContent` returns them all in `variants`, one per published branch (the stable default first). This is the foundation for:
+
+- **A/B tests**: the [A/B testing plugin](/docs/plugins/ab-test) publishes a control branch and one or more variant branches; the client picks which a visitor sees.
+- **Gradual rollout** or **previewing a candidate** alongside the current live version.
+
+With no A/B test there is exactly one published branch, so `variants[0]` is simply the page. The consumer decides which variant to render (see [Render content](/docs/guides/rendering-content)).
+
+## Which read do I use?
+
+| You are | Use | Why |
+| --- | --- | --- |
+| Rendering for visitors | `getPublishedContent` | Published-only, references resolved, variables substituted, returns variants. |
+| Building an editor or preview | `getBlockTree` | Any branch and commit, including drafts; raw references; no variant logic. |
+
+The two differ in what they assemble:
+
+- `getBlockTree` returns a branch's tree as stored. A `reference` property stays a raw `rootId` string, and there are no variants.
+- `getPublishedContent` returns the live tree with embedded references **resolved inline** and **variables substituted**. Calling it on an entry with no publication throws `PUBLISHED_CONTENT_NOT_FOUND`; read an unpublished draft with `getBlockTree` instead.
+
+## Revalidation
+
+When content changes, the CMS can tell your framework to revalidate. Pass `onRevalidate` to `createCMS` to receive an event (with the affected paths and cache tags), or mount `createRevalidateHandler` to accept a revalidation webhook. See [Use with Next.js](/docs/guides/nextjs).
+
+<Callout type="info">
+  For `publishBranch`, `unpublishBranch`, `getPublishedContent`, and `listPublications`, see the [Server API](/docs/reference/server-api).
+</Callout>

@@ -1,0 +1,16 @@
+---
+title: Search
+description: Full-text search across CMS entities.
+---
+
+The CMS maintains a full-text search index so you can find content and collaboration objects by keyword. It spans seven entity types: roots, comments, merge requests, variables, templates, assets, and notifications.
+
+## How it works
+
+The index is built on PostgreSQL full-text search. A `search.search` query ranks results by relevance and returns a highlighted snippet (`<mark>` around the matched terms) for each hit, with optional filters by entity type, collection, or entry.
+
+The index is kept up to date as content changes. If it ever drifts (after a bulk import or a schema change), `admin.reindexSearch` rebuilds it from scratch.
+
+<Callout type="info">
+  For the query parameters and result shape, see the [Search reference](/docs/reference/search).
+</Callout>

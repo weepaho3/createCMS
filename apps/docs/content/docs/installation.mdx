@@ -1,0 +1,81 @@
+---
+title: Installation
+description: Install @createcms/core and wire it into your project.
+---
+
+## Prerequisites
+
+- **Node.js 18+** (or Bun) and a package manager.
+- **PostgreSQL**, accessed through [Drizzle ORM](https://orm.drizzle.team/).
+- **S3-compatible storage** for media (AWS S3, Cloudflare R2, DigitalOcean Spaces, or any S3-compatible provider).
+
+## Install
+
+Install the package and its required peer dependency, `drizzle-orm`:
+
+```bash
+npm install @createcms/core drizzle-orm
+```
+
+The same works with your package manager of choice (`pnpm add`, `yarn add`, or `bun add`).
+
+## Create your CMS
+
+Pass your Drizzle database instance to `createCMS` along with your collections and a media configuration. This is the smallest working setup:
+
+```ts title="lib/cms.ts"
+import { createCMS, defineCollection, defineCollections } from '@createcms/core';
+import { db } from './db';
+
+const pages = defineCollection({
+  label: 'Pages',
+  root: {
+    properties: {
+      title: { type: 'string', required: true, label: 'Title' },
+    },
+  },
+});
+
+export const cms = createCMS({
+  db,
+  collections: defineCollections({ pages }),
+  media: {
+    provider: 'digitalOcean',
+    region: 'fra1',
+    bucketName: process.env.S3_BUCKET!,
+    accessKeyId: process.env.S3_KEY!,
+    secretAccessKey: process.env.S3_SECRET!,
+    publicUrl: process.env.S3_PUBLIC_URL!,
+  },
+  authMiddleware: async () => {
+    // Resolve the current user and permissions for the request.
+    return { userId: 'system' };
+  },
+});
+```
+
+## Environment variables
+
+`@createcms/core` reads no environment variables itself. The values above are yours: the database connection used by your Drizzle `db` instance, and your S3 credentials. A typical `.env`:
+
+```bash title=".env"
+DATABASE_URL="postgres://user:password@localhost:5432/app"
+S3_BUCKET="my-bucket"
+S3_KEY="..."
+S3_SECRET="..."
+S3_PUBLIC_URL="https://cdn.example.com/"
+```
+
+## Verify
+
+Generate the Drizzle schema from your config to confirm everything is wired:
+
+```bash
+npx createcms generate
+```
+
+You should see the resolved config path, the output file, and a table and enum count.
+
+<Callout type="info">
+  Installed. The [Quickstart](/docs/quickstart) takes you from here to your first type-safe call.
+</Callout>

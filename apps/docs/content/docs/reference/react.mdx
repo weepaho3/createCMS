@@ -1,0 +1,134 @@
+---
+title: React
+description: Block rendering, variant, and tracking exports for React.
+---
+
+These exports turn published content into React UI and wire up event tracking. The rendering and variant helpers come from the `@createcms/core/react` barrel; the tracking helpers come from the `@createcms/core/react/tracking` subpath (they are not re-exported by the barrel).
+
+## Rendering
+
+### `createBlocksMap`
+
+Builds a typed map from block type to component. Each component's `properties` are typed from the collection definition.
+
+```ts
+function createBlocksMap(collection, components): BlocksMap;
+```
+
+```tsx
+const pageBlocks = createBlocksMap(collections.pages, {
+  hero: ({ properties }) => <h1>{properties.headline}</h1>,
+});
+```
+
+### `BlocksRenderer`
+
+Renders a block `tree` with a block map.
+
+```ts
+function BlocksRenderer(props: { blocks: BlocksMap; tree: BlockTreeNode }): ReactNode;
+```
+
+### `createBlocksRenderer`
+
+Shorthand that combines `createBlocksMap` and `BlocksRenderer` into one component.
+
+```ts
+function createBlocksRenderer(collection, components): (props: { tree: BlockTreeNode }) => ReactNode;
+```
+
+### `createContentRenderer`
+
+Like `BlocksRenderer`, but accepts a **partial** component map (provide components only for the block types you render). Both renderers resolve inline references; this one differs by the partial map.
+
+```ts
+function createContentRenderer(collection, components): (props: { tree: BlockTreeNode }) => ReactNode;
+```
+
+### `pickVariant`
+
+Server-side variant picker. Returns the tree of the variant matching `branchId` (or the control), with A/B metadata stripped.
+
+```ts
+function pickVariant(
+  variants: readonly { branchId: string; tree: BlockTreeNode }[],
+  branchId: string | null,
+  controlBranchId?: string,
+): BlockTreeNode | null;
+```
+
+### `extractBlockEvents`
+
+Extracts per-block-type event declarations from a collection's blocks.
+
+```ts
+function extractBlockEvents(
+  blocks: Record<string, AnyBlockDefinition> | undefined,
+): Record<string, Record<string, EventDeclaration>>;
+```
+
+### `useStore`
+
+Subscribes a component to a nanostores atom.
+
+```ts
+function useStore<T>(store: ReadableAtom<T>): T;
+```
+
+## Tracking
+
+Imported from `@createcms/core/react/tracking` (not the `@createcms/core/react` barrel). See [Events & tracking](/docs/concepts/events-tracking) for the model.
+
+### `createTrackedBlocks`
+
+Builds a typed event firer for a collection. `useTrackedBlock(blockType)` returns a `fire` narrowed to that block's declared events, so an unknown event name or wrong-typed param is a compile error.
+
+```ts
+function createTrackedBlocks(collection): {
+  useTrackedBlock(blockType): { fire: BlockEventFire };
+};
+```
+
+### `TrackingRuntimeProvider`
+
+Supplies the dispatch function and ambient A/B context to every `BlockTracker` below it.
+
+```ts
+function TrackingRuntimeProvider(props: { runtime: TrackingRuntime; children: ReactNode }): ReactNode;
+```
+
+### `BlockTracker`
+
+Scopes a block's tracking identity (type, id, trackingId, events) to its children. The renderer adds this around functional blocks automatically.
+
+```ts
+function BlockTracker(props: BlockTrackingCtx & { children: ReactNode }): ReactNode;
+```
+
+### `useBlockTrackerRaw`
+
+The untyped escape hatch. Returns `fire` and `fireInteraction` to dispatch events from inside a tracked block (`expectedBlockType` is a dev-time label, not a type-narrowing selector). Prefer `createTrackedBlocks` for compile-time checking.
+
+```ts
+function useBlockTrackerRaw(expectedBlockType?: string): {
+  fire: (name: string, params?: Record<string, string | number | boolean>) => void;
+  fireInteraction: (
+    name: string,
+    interactionId: string,
+    params?: Record<string, string | number | boolean>,
+  ) => void;
+};
+```
+
+### `TrackedForm`
+
+A `<form>` wrapper that fires an attempt event and a success event around a form action.
+
+```ts
+function TrackedForm(props: {
+  attempt: string;
+  success: string;
+  action: (formData: FormData) => void | Promise<void>;
+  children: ReactNode;
+}): ReactNode;
+```

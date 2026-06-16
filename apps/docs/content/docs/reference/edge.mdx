@@ -1,0 +1,60 @@
+---
+title: Edge A/B
+description: Framework-agnostic edge primitives and the Next.js A/B middleware.
+---
+
+These primitives run A/B variant assignment at the edge, before your page renders, so the right variant is served without a client round trip. They are consent-free and deterministic. Source is in `packages/cms/src/ab-edge` and `packages/cms/src/next`.
+
+## `abTestMiddleware`
+
+Next.js middleware that rewrites a request to the variant-coded route for a collection.
+
+```ts title="middleware.ts"
+import { abTestMiddleware } from '@createcms/core/next/middleware';
+
+export const middleware = abTestMiddleware({
+  collection: 'pages',
+  cmsBaseUrl: process.env.CMS_BASE_URL,
+});
+```
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `collection` | `string` | The collection to resolve tests for (required). |
+| `cmsBaseUrl` | `string` | Base URL of the CMS API. |
+| `controlCode` | `string` | Code used for the control variant (default `control`). |
+| `variantPrefix` | `string` | Route prefix for variant rewrites (default `/ab`). |
+| `variantCookiePrefix` | `string` | Prefix for the variant cookie. |
+| `variantCookieMaxAge` | `number` | Variant cookie lifetime in seconds. |
+| `resolve` | `(request, path) => Promise<AbResolveResult>` | Custom resolver for running tests. |
+
+## `createRevalidateHandler`
+
+Next.js route handler for revalidation webhooks. It reads the secret from the `x-revalidate-secret` request header (constant-time compare, `401` on mismatch), then revalidates the event body's `paths` and `tags`.
+
+```ts
+import { createRevalidateHandler } from '@createcms/core/next';
+
+export const POST = createRevalidateHandler({ secret: process.env.CMS_REVALIDATE_SECRET! });
+```
+
+The webhook caller must send the secret in the `x-revalidate-secret` header. See [Use with Next.js](/docs/guides/nextjs) for a caller example.
+
+## Edge primitives
+
+Framework-agnostic building blocks from `@createcms/core/ab-edge`, for any edge runtime.
+
+| Export | Signature | Purpose |
+| --- | --- | --- |
+| `CONTROL_CODE` | `'control'` | Sentinel code for the control variant. |
+| `DEFAULT_VARIANT_PREFIX` | `'/ab'` | Default variant route prefix. |
+| `variantRewritePath` | `(prefix, code, pathname) => string` | Build the variant-coded rewrite path. |
+| `pickEdgeVariant` | `({ key, resolve }) => { branchId: string \| null }` | Pure bucketing: the branch to render, or null for control. |
+| `generateEdgeVisitorId` | `() => string` | Edge-safe random visitor id. |
+| `parseConsentCookie` | `(value) => boolean` | Whether analytics storage is granted. |
+| `resolveVariant` | `(contextKey, testId, trafficPercentage, variants) => AssignmentResult` | Deterministic weighted variant assignment. |
+| `decideEdgeVariant` | `({ pathname, resolve, assignedCode, controlCode?, variantPrefix? }) => { rewritePath, assignCode, testId }` | The full edge decision (the Next.js middleware is a thin adapter over it). |
+
+<Callout type="info">
+  For the higher-level experiment plugin, see [A/B testing](/docs/plugins/ab-test).
+</Callout>

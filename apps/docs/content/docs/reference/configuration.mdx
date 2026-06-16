@@ -1,0 +1,119 @@
+---
+title: Configuration
+description: Every option accepted by createCMS, and what it returns.
+---
+
+`createCMS(definition)` builds a configured CMS instance. The definition is typed as `CMSDefinition` (see `packages/cms/src/core/types/definitions.ts`).
+
+```ts
+import { createCMS } from '@createcms/core';
+
+export const cms = createCMS({
+  db,
+  collections,
+  media,
+  authMiddleware,
+});
+```
+
+## Options
+
+| Option | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `db` | `DrizzleInstance` | yes | | Your Drizzle (PostgreSQL) database instance. |
+| `collections` | `Record<string, CollectionDefinition>` | yes | | The collections, usually grouped with `defineCollections`. |
+| `media` | `MediaConfig` | yes | | S3-compatible storage config (see below). |
+| `authMiddleware` | `CMSMiddleware` | no | | Resolves the user and permissions per request. |
+| `middleware` | `CMSMiddleware` | no | | Alias for `authMiddleware`. |
+| `plugins` | `CMSPlugin[]` | no | `[]` | Server plugins. |
+| `basePath` | `string` | no | `'/api/cms'` | Base path the router mounts under. |
+| `dataRetention` | `DataRetentionConfig` | no | | Pruning policy for old commits and archived roots. |
+| `user` | `CMSUserConfig` | no | | Links a user table so reads can enrich with author data. |
+| `hooks` | `{ before?, after? }` | no | | Inline before/after hooks on CMS actions. |
+| `schema` | `{ output?: string }` | no | | CLI-only: the `output` path for `createcms generate` (default `./cms-schema.ts`). Not read at runtime. |
+| `onRevalidate` | `RevalidateHandler \| RevalidateConfig` | no | | Called after content changes, for cache revalidation. |
+| `onNotification` | `OnNotificationHandler` | no | | Called when the CMS emits a notification. |
+
+## `media`
+
+`MediaConfig` is a discriminated union on `provider`. These base fields apply to every provider:
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `accessKeyId` | `string` | | Access key ID. |
+| `secretAccessKey` | `string` | | Secret access key. |
+| `sessionToken` | `string` | | Optional token for temporary credentials. |
+| `bucketName` | `string` | | Bucket for stored assets. |
+| `publicUrl` | `string` | | Public base URL assets are served from. |
+| `maxFileSize` | `number` | `4194304` (4 MB) | Maximum upload size in bytes. |
+| `maxFiles` | `number` | `10` | Maximum files per upload batch. |
+| `allowedMimeTypes` | `string[]` | `['image/*', 'video/*', 'application/pdf']` | Allowed MIME patterns. |
+| `signedUrlExpiresIn` | `number` | `120` | Signed URL lifetime in seconds. |
+
+Each provider adds its own fields:
+
+- **`provider: 'aws'`**: `region` (required), `forcePathStyle` (default `false`).
+- **`provider: 'digitalOcean'`**: `region` (required), `forcePathStyle` (default `true`).
+- **`provider: 'cloudflare'`**: `accountId` (required), `jurisdiction`, `forcePathStyle` (default `true`).
+- **`provider: 'custom'`**: `hostname` (required), `region` (required), `secure` (default `true`), `forcePathStyle` (default `true`).
+
+```ts
+const media = {
+  provider: 'cloudflare',
+  accountId: process.env.R2_ACCOUNT_ID!,
+  bucketName: process.env.R2_BUCKET!,
+  accessKeyId: process.env.R2_KEY!,
+  secretAccessKey: process.env.R2_SECRET!,
+  publicUrl: process.env.R2_PUBLIC_URL!,
+};
+```
+
+## `authMiddleware`
+
+A function that receives the request context and returns a result object. `userId` is optional (anonymous requests omit it); any extra fields you return extend the context available to scoping and hooks.
+
+```ts
+import { defineAuthMiddleware } from '@createcms/core';
+
+const authMiddleware = defineAuthMiddleware(async (ctx) => {
+  // ctx.operation, ctx.request (a curated request; the raw Request is at
+  // ctx.request?.request), and ctx.collection (collection-scoped calls only).
+  return { userId: await resolveUser(ctx) };
+});
+```
+
+## `dataRetention`
+
+The whole object is optional, but when you provide it, `keepDays` and `keepMinCommits` are required.
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `keepDays` | `number` | yes | | How long to keep old commits. |
+| `keepMinCommits` | `number` | yes | | Minimum commits to keep per branch regardless of age. |
+| `archiveKeepDays` | `number` | no | `keepDays` | Grace period before an archived root is hard-deleted. |
+
+## `user`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `table` | `AnyPgTable` | Your Drizzle user table. |
+| `idColumn` | `AnyColumn` | The user id column referenced by content. |
+| `exposeColumns` | `(keyof TTable['$inferSelect'] & string)[]` | Allowlist of user-table columns (camelCase keys) that may be returned via the `withUser` query flag. |
+
+## Return value
+
+`createCMS` returns:
+
+| Property | Description |
+| --- | --- |
+| `router` | HTTP router; destructure `handler` to mount it. |
+| `api` | Type-safe server-side callers, namespaced by collection (and `admin`). |
+| `collections` | Your collections, each augmented with its `name`. |
+| `notify` | Send a notification through the CMS. |
+| `notificationService` | The underlying notification service. |
+| `revalidate` | Manual revalidation trigger. Always present; its value is `undefined` unless `onRevalidate` is set. |
+| `$ERROR_CODES` | Merged error-code map (core plus plugins). |
+
+<Callout type="info">
+  Define collections with [`defineCollection`](/docs/reference/define). Call the API at [Server API](/docs/reference/server-api).
+</Callout>

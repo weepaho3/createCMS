@@ -1,0 +1,26 @@
+---
+title: Notifications
+description: The per-user inbox for collaboration and publishing events.
+---
+
+Notifications are a per-user inbox. The CMS raises them when something happens that a user should know about, so reviewers and editors keep up without polling.
+
+## What triggers a notification
+
+The CMS notifies users on:
+
+- **Mentions**: being `@`-mentioned in a [comment](/docs/guides/review-comments).
+- **Comments**: new messages and resolved threads on a thread you are part of.
+- **Approvals**: an approval requested from you, or your request being approved or rejected.
+- **Merge requests**: opened, merged, closed, or reopened.
+- **Publishing**: content published.
+
+Each notification carries a `type`, a `title` and `body`, the `resourceType` and `resourceId` it points at, and a `readAt` (null while unread).
+
+## Delivery
+
+Notifications are written after the triggering action commits, fire-and-forget: a notification failure never rolls back the action. Read them with `listNotifications` (which also returns an `unreadCount`), and mark them read, unread, or archived.
+
+<Callout type="info">
+  For the inbox methods and the full type list, see the [Notifications reference](/docs/reference/notifications).
+</Callout>

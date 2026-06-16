@@ -1,0 +1,172 @@
+---
+title: Quickstart
+description: Go from install to your first published, rendered page in a few minutes.
+icon: Rocket
+---
+
+By the end of this guide you will have a `pages` collection, a generated database schema, a mounted HTTP router, and one published page that you read back and render. This is the loop you repeat for any collection: define, create the CMS, generate the schema, mount, create and publish content, then read it.
+
+<Callout type="info">
+  This is the guided happy path. For options and the full API, follow the links to Concepts and Reference instead of detouring here.
+</Callout>
+
+### 1. Define collections
+
+A collection is a typed `root` plus a set of child `blocks`. Define one and group it with `defineCollections`:
+
+```ts title="lib/collections.ts"
+import { defineCollection, defineCollections } from '@createcms/core';
+
+const pages = defineCollection({
+  label: 'Pages',
+  slug: { enabled: true, root: '/', nested: true },
+  root: {
+    properties: {
+      title: { type: 'string', required: true, label: 'Title' },
+    },
+  },
+  blocks: {
+    hero: {
+      label: 'Hero',
+      properties: {
+        headline: { type: 'string', required: true, label: 'Headline' },
+      },
+    },
+    richText: {
+      label: 'Rich text',
+      properties: {
+        content: { type: 'richText', required: true, label: 'Content' },
+      },
+    },
+  },
+});
+
+export const collections = defineCollections({ pages });
+```
+
+### 2. Create the CMS
+
+Pass your Drizzle `db`, the `collections`, and a `media` configuration to `createCMS`. The CLI in the next step discovers this file, so create it first:
+
+```ts title="lib/cms.ts"
+import { createCMS } from '@createcms/core';
+import { db } from './db';
+import { collections } from './collections';
+
+export const cms = createCMS({
+  db,
+  collections,
+  media: {
+    provider: 'digitalOcean',
+    region: 'fra1',
+    bucketName: process.env.S3_BUCKET!,
+    accessKeyId: process.env.S3_KEY!,
+    secretAccessKey: process.env.S3_SECRET!,
+    publicUrl: process.env.S3_PUBLIC_URL!,
+  },
+  authMiddleware: async () => {
+    return { userId: 'system' };
+  },
+});
+```
+
+<Callout type="warn">
+  `authMiddleware` decides who may call the API. The `{ userId: 'system' }` stub authorizes every request, including authoring calls from the browser. Replace it with real auth before production.
+</Callout>
+
+### 3. Generate and apply the schema
+
+Generate the Drizzle schema, then apply it with your migration workflow:
+
+```bash
+npx createcms generate
+npx drizzle-kit generate && npx drizzle-kit migrate
+```
+
+The schema is **content-agnostic**: it is the core versioning tables (`roots`, `commits`, `block_versions`, and more) plus any plugin schema. Your collections never appear in it, so you re-run `generate` only when you add or change a plugin that ships schema, not when you edit a collection.
+
+### 4. Mount the HTTP router (Next.js)
+
+`cms.router` exposes a `handler` you wire into a catch-all route:
+
+```ts title="app/api/cms/[[...rest]]/route.ts"
+import { cms } from '@/lib/cms';
+
+const { handler } = cms.router;
+export const GET = handler;
+export const POST = handler;
+```
+
+### 5. Create and publish a page
+
+Content does not exist until you create and publish it. Create a root, add a block on its `main` branch, then publish:
+
+```ts
+const page = await cms.api.pages.createRoot({
+  body: { slug: 'welcome', properties: { title: 'Welcome' } },
+});
+
+await cms.api.pages.createBlock({
+  body: {
+    rootId: page.rootId,
+    branchId: page.branchId,
+    parentBlockId: page.rootId,
+    type: 'hero',
+    properties: { headline: 'Hello from @createcms/core' },
+  },
+});
+
+await cms.api.pages.publishBranch({
+  body: { rootId: page.rootId, branchId: page.branchId },
+});
+```
+
+### 6. Read and render
+
+Server-side, read the published page and render its block `tree` with `BlocksRenderer`. `getPublishedContent` returns one entry per published branch in `variants`; with no A/B test there is exactly one, so `variants[0]` is the page:
+
+```tsx title="app/page.tsx"
+import { cms } from '@/lib/cms';
+import { BlocksRenderer, createBlocksMap } from '@createcms/core/react';
+import { collections } from '@/lib/collections';
+
+const pageBlocks = createBlocksMap(collections.pages, {
+  hero: ({ properties }) => <h1>{properties.headline}</h1>,
+  richText: ({ properties }) => (
+    // `richText` stores markup; render it as HTML (sanitize if untrusted).
+    <div dangerouslySetInnerHTML={{ __html: properties.content }} />
+  ),
+});
+
+export default async function Page() {
+  const { variants } = await cms.api.pages.getPublishedContent({
+    query: { path: '/welcome' },
+  });
+  return <BlocksRenderer blocks={pageBlocks} tree={variants[0].tree} />;
+}
+```
+
+### 7. Use the type-safe client
+
+On the client, `createCMSClient<typeof cms>` mirrors the server API. Every field is typed from your collection definition:
+
+```ts title="lib/cms-client.ts"
+import { createCMSClient } from '@createcms/core';
+import type { cms } from '@/lib/cms';
+
+export const cmsClient = createCMSClient<typeof cms>({ baseURL: '/api/cms' });
+
+const { roots } = await cmsClient.pages.listRoots();
+roots[0]?.properties.title; // typed as `string`
+```
+
+## What's next
+
+<Cards>
+  <Card title="Core concepts" href="/docs/concepts">
+    How collections, blocks, and versioning fit together.
+  </Card>
+  <Card title="Reference" href="/docs/reference/configuration">
+    Exact configuration, API, and CLI signatures.
+  </Card>
+</Cards>

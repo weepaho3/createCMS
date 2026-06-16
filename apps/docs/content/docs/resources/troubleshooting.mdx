@@ -1,0 +1,76 @@
+---
+title: Troubleshooting
+description: Fixes for common problems with @createcms/core.
+---
+
+## No cms.ts found
+
+**Cause.** `createcms generate` could not locate your config. It searches `cms.ts`, `src/cms.ts`, and `src/lib/cms.ts`.
+
+**Fix.** Pass the path explicitly:
+
+```bash
+npx createcms generate ./path/to/cms.ts
+```
+
+## Schema changes are not applied
+
+**Cause.** You added or changed a plugin that ships schema but did not regenerate and migrate. (Editing a collection never needs this: the schema is content-agnostic.)
+
+**Fix.** Regenerate the schema, then apply it with Drizzle:
+
+```bash
+npx createcms generate
+npx drizzle-kit generate && npx drizzle-kit migrate
+```
+
+## `DATA_RETENTION_NOT_CONFIGURED`
+
+**Cause.** You called `admin.runPruning` without configuring retention.
+
+**Fix.** Set `dataRetention` on `createCMS`:
+
+```ts
+createCMS({
+  db,
+  collections,
+  media,
+  dataRetention: { keepDays: 30, keepMinCommits: 10 },
+});
+```
+
+## `TENANT_SLUG_REQUIRED`
+
+**Cause.** The multi-tenant plugin is installed, but your `authMiddleware` did not return a `tenantSlug`.
+
+**Fix.** Return it (and type the result as `MultiTenantMiddlewareResult`):
+
+```ts
+authMiddleware: async (ctx) => ({ userId, tenantSlug });
+```
+
+## `AMBIGUOUS_SLUG`
+
+**Cause.** More than one root matches the slug you looked up.
+
+**Fix.** Look up by `rootId` or full `path` instead of `slug`:
+
+```ts
+await cms.api.pages.getPublishedContent({ query: { rootId } });
+```
+
+## `PUBLISHED_CONTENT_NOT_FOUND`
+
+**Cause.** The entry has no published branch. `getPublishedContent` only returns published content.
+
+**Fix.** Publish a branch first with `publishBranch`, or read the editing view with `getBlockTree`.
+
+## `WEBP_NOT_SUPPORTED`
+
+**Cause.** The media optimize plugin tried to encode WebP in a browser without native support, and `@jsquash/webp` is not installed.
+
+**Fix.** Install the optional fallback:
+
+```bash
+npm install @jsquash/webp
+```

@@ -1,0 +1,59 @@
+---
+title: Plugins
+description: Extend the CMS server, client, schema, and request scope with plugins.
+icon: Puzzle
+---
+
+Plugins extend the CMS without forking it. A server plugin can add endpoints, hooks, database schema, request-scoped query conditions, and error codes; a client plugin adds actions to `createCMSClient`. `@createcms/core` ships with five.
+
+## Install a server plugin
+
+Add a plugin to the `plugins` array of `createCMS`. If a plugin contributes schema, re-run `createcms generate` and apply the migration afterwards:
+
+```ts title="lib/cms.ts"
+import { createCMS } from '@createcms/core';
+import { multiTenant } from '@createcms/core/plugins/multi-tenant';
+import { abTest } from '@createcms/core/plugins/ab-test';
+
+export const cms = createCMS({
+  db,
+  collections,
+  media,
+  plugins: [multiTenant(), abTest()],
+});
+```
+
+## Install a client plugin
+
+Client plugins are passed to `createCMSClient`. The React client uses the curried form:
+
+```ts title="lib/cms-client.ts"
+import { createCMSClient } from '@createcms/core/react';
+import { abTestClient } from '@createcms/core/plugins/ab-test/client';
+import { mediaOptimizeClient } from '@createcms/core/plugins/media-optimize';
+import type { cms } from './cms';
+
+export const cmsClient = createCMSClient<typeof cms>()({
+  baseURL: '/api/cms',
+  plugins: [
+    mediaOptimizeClient({ convert: { format: 'webp', storeOriginal: true } }),
+    abTestClient(),
+  ],
+});
+```
+
+## Bundled plugins
+
+| Plugin | Import | What it adds |
+| --- | --- | --- |
+| [Multi-tenant](/docs/plugins/multi-tenant) | `@createcms/core/plugins/multi-tenant` | Per-tenant data isolation via request-scoped query conditions. |
+| [i18n](/docs/plugins/i18n) | `@createcms/core/plugins/i18n` | Per-language content scoping with fallback chains. |
+| [A/B testing](/docs/plugins/ab-test) | `@createcms/core/plugins/ab-test` | Deterministic variant assignment, event tracking, pluggable analytics. |
+| [Consent](/docs/plugins/consent) | `@createcms/core/plugins/consent` | Google Consent Mode v2 gating, with a `ConsentGate` for embeds. |
+| [Media optimize](/docs/plugins/media-optimize) | `@createcms/core/plugins/media-optimize` | Client-side resize, compress, and WebP conversion before upload. |
+
+The A/B testing and consent plugins have a server entry and a separate client entry (`/plugins/ab-test/client` and `/plugins/consent/client`); media optimize is client-side only.
+
+## Authoring a plugin
+
+A plugin is an object with an `id` and any of the optional extension points: `endpoints`, `collectionEndpoints`, `hooks`, `schema`, `init`, `$ERROR_CODES`, and more. The full shape is the `CMSPlugin` type in `packages/cms/src/core/types/plugin.ts`.

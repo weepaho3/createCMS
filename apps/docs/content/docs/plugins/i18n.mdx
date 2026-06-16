@@ -1,0 +1,81 @@
+---
+title: i18n
+description: Per-language content scoping with fallback chains.
+---
+
+The i18n plugin scopes content by language. Each root belongs to one language, sibling-language versions of an entry are tied together by a translation group, and reads fall back along a chain you configure.
+
+## Installation
+
+### Add it to your config
+
+Pass the static set of `languages` (as a `const` tuple, so they become a typed union) and a `defaultLanguage`:
+
+```ts title="lib/cms.ts"
+import { createCMS } from '@createcms/core';
+import { i18n } from '@createcms/core/plugins/i18n';
+
+export const cms = createCMS({
+  db,
+  collections,
+  media,
+  plugins: [
+    i18n({
+      languages: ['en', 'de', 'fr'],
+      defaultLanguage: 'en',
+      fallback: { de: ['en'], fr: ['en'] },
+    }),
+  ],
+});
+```
+
+### Update the database
+
+The plugin adds language columns. Regenerate the schema file, then apply it to your database with your Drizzle migration workflow:
+
+```bash
+npx createcms generate
+npx drizzle-kit generate && npx drizzle-kit migrate
+```
+
+## Usage
+
+The active language is resolved per request from your middleware and applied to every query. To create a translation of an existing entry, call `createTranslation`:
+
+```ts
+await cms.api.pages.createTranslation({
+  body: {
+    sourceRootId: root.rootId,
+    targetLanguage: 'de',
+    seed: 'copy',
+  },
+});
+```
+
+`listTranslations` returns the sibling-language versions of an entry (the existing translations). To find untranslated languages, diff them against your configured `languages`.
+
+### Options for `createTranslation`
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `sourceRootId` | `string` | yes | The entry to translate from. |
+| `targetLanguage` | `string` | yes | A language from your `languages` list. |
+| `targetSlug` | `string` | no | Slug for the new translation. |
+| `seed` | `'copy' \| 'blank'` | no | Start from a copy of the source or an empty entry. |
+| `message` | `string` | no | Commit message. |
+
+## Schema
+
+| Table | Column | Purpose |
+| --- | --- | --- |
+| `roots` | `language` | The entry's language. |
+| `roots` | `translationKey` | Stable group id tying sibling-language entries together. |
+| `redirects` | `language` | Per-language redirect routing. |
+
+## Options
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `languages` | `readonly string[]` | The supported languages (a `const` tuple). |
+| `defaultLanguage` | one of `languages` | Seed language and default fallback target. |
+| `fallback` | `Partial<Record<language \| 'default', language[]>>` | Per-language fallback chains. Absent means fall back to `defaultLanguage`. |

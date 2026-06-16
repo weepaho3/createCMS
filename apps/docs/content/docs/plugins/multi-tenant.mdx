@@ -1,0 +1,68 @@
+---
+title: Multi-tenant
+description: Per-tenant data isolation via request-scoped query conditions.
+---
+
+The multi-tenant plugin isolates data per tenant. Your `authMiddleware` returns a `tenantSlug`, and the plugin scopes every query and stamps every insert with it. The core routes stay tenant-agnostic.
+
+## Installation
+
+### Add it to your config
+
+```ts title="lib/cms.ts"
+import { createCMS } from '@createcms/core';
+import { multiTenant, type MultiTenantMiddlewareResult } from '@createcms/core/plugins/multi-tenant';
+
+export const cms = createCMS({
+  db,
+  collections,
+  media,
+  plugins: [multiTenant()],
+  authMiddleware: async (ctx): Promise<MultiTenantMiddlewareResult> => {
+    const session = await getSession(ctx);
+    return { userId: session.userId, tenantSlug: session.organizationSlug };
+  },
+});
+```
+
+Type your `authMiddleware` return as `MultiTenantMiddlewareResult` so the compiler enforces the `tenantSlug` field.
+
+### Update the database
+
+The plugin adds a `tenantSlug` column (NOT NULL) to several tables. Regenerate the schema file, then apply it to your database with your Drizzle migration workflow:
+
+```bash
+npx createcms generate
+npx drizzle-kit generate && npx drizzle-kit migrate
+```
+
+`createcms generate` only writes the schema file; the `drizzle-kit` step applies it. Skipping the migration leaves the new columns absent and tenant queries failing.
+
+## Usage
+
+Tenant isolation is automatic once installed. Reads and inserts on the base tables (`roots`, `assets`, `asset_folders`, `redirects`) are filtered and stamped by the `tenantSlug` your `authMiddleware` returns; child tables (branches, commits, merge requests, publications) are isolated transitively through their tenant-scoped root. There is no client-side tenant state.
+
+To resolve the tenant from the request yourself, use `resolveTenantSlug`, which reads `tenantSlug` from the request body or query (with an optional fallback):
+
+```ts
+import { resolveTenantSlug } from '@createcms/core/plugins/multi-tenant';
+
+const tenant = resolveTenantSlug(ctx, 'default');
+```
+
+## Schema
+
+The plugin adds a `tenantSlug` column (text, not null) and tenant-scoped indexes to these core tables:
+
+| Table | Column | Notable indexes |
+| --- | --- | --- |
+| `roots` | `tenantSlug` | `(tenantSlug, collection)`, unique `(tenantSlug, collection, parentRootId, slug)` |
+| `assets` | `tenantSlug` | `(tenantSlug)`, unique `(tenantSlug, slug)` |
+| `asset_folders` | `tenantSlug` | unique `(tenantSlug, parentId, name)` |
+| `redirects` | `tenantSlug` | `(tenantSlug, collection)` |
+
+## Error codes
+
+| Code | Status | When |
+| --- | --- | --- |
+| `TENANT_SLUG_REQUIRED` | 400 | `authMiddleware` did not return a `tenantSlug`. |

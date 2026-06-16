@@ -1,0 +1,25 @@
+---
+title: Templates
+description: Default property values per collection, block, and property.
+---
+
+A template is a default value for a single block property, scoped to a collection and a block type. When an editor adds that block, the property starts from the template instead of empty.
+
+## How templates are keyed
+
+A template is identified by the triple `(collection, blockType, propertyKey)`, so there is at most one default per property. Creating a second for the same triple fails with `TEMPLATE_KEY_EXISTS`.
+
+```
+collection: posts
+blockType:  quote
+property:   cite
+template:   "© {{companyName}}"
+```
+
+## Templates use variables
+
+A template string can contain `{{key}}` [variables](/docs/concepts/variables), resolved when the default is applied. `resolveTemplate` resolves a string on demand, and `getTemplateDefaults` returns the resolved defaults for every property of a collection and block type.
+
+<Callout type="info">
+  For the CRUD methods, see the [Templates reference](/docs/reference/templates).
+</Callout>

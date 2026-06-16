@@ -1,0 +1,53 @@
+---
+title: Handle redirects
+description: Create redirects, rely on auto-redirects, and resolve them in routing.
+---
+
+Redirects map an old location to a new one, per collection. A redirect's source and target are each either a **page** (a `rootId`) or a **path** (a string), and it carries an HTTP status code.
+
+### Create a redirect
+
+`createRedirect` is a per-collection method. Provide the source and target as a page or a path:
+
+```ts
+await cms.api.pages.createRedirect({
+  body: {
+    sourceType: 'path',
+    sourcePath: '/old-home',
+    targetType: 'page',
+    targetRootId: home.rootId,
+    statusCode: 301,
+  },
+});
+```
+
+`statusCode` is one of `301`, `302`, `307`, or `308` (default `301`).
+
+### Automatic redirects
+
+The CMS creates redirects for you when a slug-enabled entry's URL changes: renaming an entry's slug, moving it under a new parent, or archiving it records a redirect from the old path. Auto-created redirects never overwrite one you made by hand.
+
+### Resolve in routing
+
+Redirects are not applied automatically; your app resolves them. Call `resolveRedirect` with an incoming path and act on the result. In Next.js middleware:
+
+```ts title="middleware.ts"
+import { NextResponse, type NextRequest } from 'next/server';
+import { cmsClient } from '@/lib/cms-client';
+
+export async function middleware(request: NextRequest) {
+  const { redirect } = await cmsClient.pages.resolveRedirect({
+    query: { path: request.nextUrl.pathname },
+  });
+  if (redirect) {
+    return NextResponse.redirect(new URL(redirect.location, request.url), redirect.status);
+  }
+  return NextResponse.next();
+}
+```
+
+`resolveRedirect` follows redirect chains (up to ten hops) and returns the first status plus the final `location`, or `null` if there is no redirect.
+
+<Callout type="info">
+  `listRedirects`, `updateRedirect`, and `archiveRedirect` round out the management API. See the [Server API](/docs/reference/server-api).
+</Callout>

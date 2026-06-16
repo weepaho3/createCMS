@@ -1,0 +1,22 @@
+---
+title: Collaboration
+description: Comment threads, mentions, and approvals for reviewing changes.
+---
+
+Editing in the CMS is collaborative: changes are discussed and signed off before they go live. The review layer has three pieces, all built on the [merge request](/docs/concepts/merges).
+
+## Comment threads
+
+A comment thread attaches a conversation to a merge request or to a specific block. Each thread holds messages (with replies), can mention users, and can be resolved once the discussion is settled. Threads keep the review discussion next to the change it is about, with full history.
+
+## Mentions and notifications
+
+Mentioning a user with `@` in a comment, requesting their approval, or activity on a thread they are part of raises a [notification](/docs/concepts/notifications) in their inbox, so reviewers do not have to poll.
+
+## Approvals
+
+An approval is a required sign-off. A reviewer is asked to approve, and the gated action is blocked until they do. Approvals gate both merges (every merge needs one) and, optionally, publishing.
+
+<Callout type="info">
+  To run the flow, see [Review with comments](/docs/guides/review-comments) and [Draft, review, and publish](/docs/guides/content-workflow).
+</Callout>

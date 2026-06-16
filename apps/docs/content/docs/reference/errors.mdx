@@ -1,0 +1,168 @@
+---
+title: Error codes
+description: The CMS error codes, and how to detect them.
+---
+
+The CMS throws typed errors (`CMSError`, which extends better-call's `APIError`). Each has a stable code, an HTTP `status`, and a default `message`. Codes are defined in `CMS_ERRORS` (see `packages/cms/src/core/errors.ts`). Plugins add their own codes, merged into `cms.$ERROR_CODES`.
+
+## Detecting errors
+
+```ts
+import { isCMSError, getCMSErrorCode } from '@createcms/core';
+
+try {
+  await cms.api.pages.publishBranch({ body: { rootId, branchId } });
+} catch (err) {
+  if (isCMSError(err, 'PUBLICATION_APPROVAL_REQUIRED')) {
+    // handle this specific case
+  }
+  const code = getCMSErrorCode(err); // CMSErrorCode | undefined
+}
+```
+
+| Function | Signature | Purpose |
+| --- | --- | --- |
+| `isCMSError` | `(error, code?) => error is CMSAPIError` | Narrow an unknown error, optionally to one code. |
+| `getCMSErrorCode` | `(error) => CMSErrorCode \| undefined` | Read the code off an error. |
+| `CMSError` | `new CMSError(code, overrides?)` | Construct or throw a CMS error by code. |
+
+These helpers work server-side, where errors are `APIError` / `CMSError`. The browser **client** throws a `CMSClientError` (a plain `Error`, not `APIError`), which `isCMSError` / `getCMSErrorCode` do not recognize. Detect it by its `cmsCode`:
+
+```ts
+import { CMSClientError } from '@createcms/core';
+
+try {
+  await cmsClient.pages.publishBranch({ body: { rootId, branchId } });
+} catch (err) {
+  if (err instanceof CMSClientError && err.cmsCode === 'PUBLICATION_APPROVAL_REQUIRED') {
+    // handle this specific case
+  }
+}
+```
+
+## Blocks and roots
+
+| Code | Status | Message |
+| --- | --- | --- |
+| `ROOT_NOT_FOUND` | 404 | Root block not found in snapshot |
+| `BLOCK_NOT_FOUND` | 404 | Block not found in snapshot |
+| `PARENT_NOT_FOUND` | 404 | Parent block not found |
+| `COMMIT_NOT_FOUND` | 404 | Commit not found |
+| `EMPTY_SNAPSHOT` | 400 | Empty snapshot — no versions found |
+| `BLOCK_ALREADY_DELETED` | 400 | Block is already deleted |
+| `TYPE_MISMATCH` | 400 | Block type does not match the expected type |
+| `ROOT_HAS_CHILDREN` | 400 | Cannot delete a page that has child pages; archive or move the children first |
+| `ROOT_IN_USE` | 409 | Cannot delete: this root is embedded as a reusable block on live pages; remove those references first |
+| `CANNOT_MOVE_ROOT` | 400 | Cannot move the root block |
+| `CANNOT_MOVE_INTO_SELF` | 400 | Cannot move an item into itself |
+| `CANNOT_MOVE_INTO_DESCENDANT` | 400 | Cannot move an item into its own descendant |
+| `CIRCULAR_REFERENCE` | 400 | Cannot move a page under itself or one of its descendants |
+| `PARENT_ROOT_NOT_FOUND` | 404 | Parent root not found in this collection |
+| `REFERENCE_DEPTH_EXCEEDED` | 422 | Reference nesting is too deep (a reusable block embeds others past the limit) |
+| `MISSING_TARGET_PROPERTIES` | 400 | targetProperties is required when duplicating a root |
+
+## Branches
+
+| Code | Status | Message |
+| --- | --- | --- |
+| `BRANCH_NOT_FOUND` | 404 | Branch not found |
+| `BRANCH_NAME_ALREADY_EXISTS` | 400 | A branch with this name already exists for this root |
+| `CANNOT_RENAME_MAIN_BRANCH` | 400 | The main branch cannot be renamed |
+| `CANNOT_DELETE_MAIN_BRANCH` | 400 | The main branch cannot be deleted |
+| `BRANCH_HAS_PUBLICATIONS` | 400 | Cannot delete a branch that has active publications |
+| `BRANCH_HAS_OPEN_MERGE_REQUESTS` | 400 | Cannot delete a branch that is part of open merge requests |
+| `BRANCHES_NOT_SAME_ROOT` | 400 | Source and target branches must belong to the same root |
+| `NO_COMMON_ANCESTOR` | 400 | The two branches share no common ancestor |
+
+## Merge requests
+
+| Code | Status | Message |
+| --- | --- | --- |
+| `MERGE_REQUEST_NOT_FOUND` | 404 | Merge request not found |
+| `MERGE_REQUEST_NOT_OPEN` | 400 | Merge request is not open |
+| `MERGE_REQUEST_NOT_CLOSED` | 400 | Merge request is not closed |
+| `MERGE_REQUEST_ALREADY_MERGED` | 400 | Merge request has already been merged and cannot be reopened |
+| `MERGE_REQUEST_ALREADY_EXISTS` | 400 | An open merge request already exists for this source and target branch |
+| `MERGE_REQUEST_OUTDATED` | 400 | Merge request is outdated because the source branch changed after it was opened |
+| `UNRESOLVED_CONFLICTS` | 400 | Cannot merge: there are unresolved conflicts |
+| `CONFLICT_NOT_FOUND` | 404 | Merge conflict not found |
+| `RESOLVED_VERSION_NOT_FOUND` | 404 | The provided resolvedVersionId does not reference an existing block version |
+
+## Approvals
+
+| Code | Status | Message |
+| --- | --- | --- |
+| `APPROVAL_NOT_FOUND` | 404 | Approval not found |
+| `APPROVAL_ALREADY_REQUESTED` | 400 | An approval has already been requested from this reviewer |
+| `APPROVAL_NOT_PENDING` | 400 | Approval is not pending |
+| `APPROVAL_REVIEWER_MISMATCH` | 403 | Only the requested reviewer can approve or reject this request |
+| `APPROVAL_STALE` | 400 | Approval is stale: the branch has advanced past the approved commit |
+| `MERGE_APPROVAL_REQUIRED` | 400 | Cannot merge: approval is required before execution |
+| `PUBLICATION_APPROVAL_REQUIRED` | 400 | Cannot publish: approval is required before publication |
+| `APPROVALS_NOT_FULLY_APPROVED` | 400 | Cannot proceed: not all requested approvals are approved |
+
+## Publications, slugs, and redirects
+
+| Code | Status | Message |
+| --- | --- | --- |
+| `PUBLICATION_NOT_FOUND` | 404 | Publication not found for this branch |
+| `PUBLISHED_CONTENT_NOT_FOUND` | 404 | No published content found |
+| `AMBIGUOUS_SLUG` | 400 | Multiple roots match this slug — use rootId for an unambiguous lookup |
+| `SLUG_ALREADY_EXISTS` | 409 | A root with this slug on this collection with this parentRootId already exists |
+| `SLUG_NOT_ENABLED` | 400 | This collection does not have slugs enabled |
+| `SLUG_EMPTY_NOT_ALLOWED` | 400 | Empty slug is not allowed for this collection (allowRoot is false) |
+| `SLUG_GENERATION_FAILED` | 500 | Failed to generate a unique slug after maximum attempts |
+| `NESTING_NOT_ENABLED` | 400 | parentRootId is not allowed — this collection does not have nested pages enabled |
+| `REDIRECT_NOT_FOUND` | 404 | Redirect not found |
+| `REDIRECT_INVALID` | 400 | A redirect endpoint must be a page (rootId) or a path, matching its type |
+| `REDIRECT_SOURCE_EXISTS` | 409 | An active redirect already exists for this source |
+
+## Media and assets
+
+| Code | Status | Message |
+| --- | --- | --- |
+| `ASSET_NOT_FOUND` | 404 | Asset not found |
+| `ASSET_ACCESS_DENIED` | 403 | This asset is private and requires authentication |
+| `FOLDER_NOT_FOUND` | 404 | Folder not found |
+| `FOLDER_HAS_CONTENT` | 400 | Cannot delete folder that contains assets or subfolders |
+| `TOO_MANY_FILES` | 400 | Too many files in upload batch |
+| `FILE_TOO_LARGE` | 400 | One or more files exceed the maximum allowed size |
+| `INVALID_FILE_TYPE` | 400 | One or more files have a disallowed MIME type |
+| `UPLOAD_FAILED` | 500 | Server-side upload to S3 failed |
+| `MISSING_REQUIRED_S3_PARAMETERS` | 400 | Missing required S3 parameters: hostname, accessKeyId, or secretAccessKey |
+| `UNKNOWN_S3_PROVIDER` | 400 | Unknown S3 provider specified |
+
+## Variables and templates
+
+| Code | Status | Message |
+| --- | --- | --- |
+| `VARIABLE_NOT_FOUND` | 404 | Variable not found |
+| `VARIABLE_KEY_EXISTS` | 409 | A variable with this key already exists |
+| `VARIABLE_IN_USE` | 409 | Cannot delete variable: it is still in use |
+| `TEMPLATE_NOT_FOUND` | 404 | Template not found |
+| `TEMPLATE_KEY_EXISTS` | 409 | A template for this collection/block/property combination already exists |
+
+## Comments
+
+| Code | Status | Message |
+| --- | --- | --- |
+| `COMMENT_THREAD_NOT_FOUND` | 404 | Comment thread not found |
+| `COMMENT_THREAD_ALREADY_RESOLVED` | 400 | Comment thread is already resolved |
+| `COMMENT_THREAD_NOT_RESOLVED` | 400 | Comment thread is not resolved |
+| `COMMENT_MESSAGE_NOT_FOUND` | 404 | Comment message not found |
+| `COMMENT_MESSAGE_DELETED` | 400 | Comment message has been deleted |
+| `COMMENT_BODY_REQUIRED` | 400 | Body is required for comment messages |
+| `COMMENT_AUTHOR_MISMATCH` | 403 | Only the author can edit or delete this message |
+
+## Notifications and system
+
+| Code | Status | Message |
+| --- | --- | --- |
+| `NOTIFICATION_NOT_FOUND` | 404 | Notification not found |
+| `NOTIFICATION_RECIPIENT_MISMATCH` | 403 | You can only access your own notifications |
+| `USER_ID_REQUIRED` | 400 | userId is required for this route when neither the request nor middleware provides one |
+| `DATA_RETENTION_NOT_CONFIGURED` | 400 | dataRetention is not configured for this CMS instance |
+
+<Callout type="info">
+  Plugins add their own codes (for example `TENANT_SLUG_REQUIRED`, `OPTIMIZATION_FAILED`). See each [plugin page](/docs/plugins).
+</Callout>

@@ -1,0 +1,117 @@
+---
+title: Define API
+description: defineCollection, defineBlock, and the helpers that build your content model.
+---
+
+These helpers are identity functions that give your definitions full type inference. They are exported from the package root (see `packages/cms/src/core/define.ts`).
+
+## `defineCollection`
+
+Defines one collection: a `root`, optional child `blocks`, and optional slug behavior.
+
+```ts
+function defineCollection<TProps, TBlocks>(
+  collection: CollectionDefinition<TProps, TBlocks>,
+): CollectionDefinition<TProps, TBlocks>;
+```
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `label` | `string` | yes | Human label for the collection. |
+| `root` | `{ properties }` | yes | The root block definition and its typed properties. |
+| `blocks` | `Record<string, BlockDefinition>` | no | Child block definitions. |
+| `slug` | `SlugConfig` | no | URL path behavior (see below). |
+| `description` | `string` | no | Optional description. |
+| `reusableBlock` | `boolean` | no | Editor hint that this collection's roots are meant to be embedded via a `reference` property. Any collection can be a reference target regardless. |
+
+## `defineCollections`
+
+Groups collections into one record and validates `reference` targets at compile time: a `reference` property whose `collection` is not a key in the record is a type error.
+
+```ts
+const collections = defineCollections({ pages, posts });
+```
+
+## `defineBlock`
+
+Defines a block with typed `properties`. A block that declares `events` must include a `trackingId` property (enforced at compile time).
+
+```ts
+function defineBlock<TProps, TEvents>(
+  block: BlockDefinition<TProps, TEvents>,
+): BlockDefinition<TProps, TEvents>;
+```
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `label` | `string` | yes | Human label for the block. |
+| `properties` | `Record<string, BlockProperty>` | yes | The block's typed fields. |
+| `events` | `Record<string, EventDeclaration>` | no | Events a functional block can emit. |
+| `description` | `string` | no | Optional description. |
+| `previewImageUrl` | `string` | no | Optional preview image. |
+| `allowChildren` | `boolean` | no | Whether the block can contain children. |
+| `allowedChildBlocks` | `string[]` | no | Restricts child block types (with `allowChildren: true`). |
+
+## `defineRoot`
+
+Defines a root block on its own.
+
+```ts
+const pageRoot = defineRoot({
+  properties: {
+    title: { type: 'string', required: true, label: 'Page Title' },
+  },
+});
+```
+
+## `trackingId`
+
+Returns the reserved `trackingId` property to spread into a functional block's `properties`.
+
+```ts
+function trackingId(label?: string): { trackingId: { type: 'string'; label: string } };
+```
+
+## `defineAuthMiddleware`
+
+Identity helper for the auth middleware, for full inference. The middleware receives the request context and returns a result object; `userId` is optional (anonymous requests omit it).
+
+## Block properties
+
+Every property is one of eight field types. The common shape:
+
+```ts
+{
+  type: BlockPropertyType;
+  label: string;
+  required?: boolean;
+  defaultValue?: unknown; // matches the field's type
+  description?: string;
+  placeholder?: string;
+}
+```
+
+| `type` | Value | Extra config |
+| --- | --- | --- |
+| `string` | `string` | |
+| `number` | `number` | |
+| `boolean` | `boolean` | |
+| `date` | `string` (ISO) | |
+| `richText` | `string` (HTML) | |
+| `image` | `string` (asset reference) | |
+| `select` | one of `options[].value` | `options: { label, value }[]` |
+| `reference` | target `rootId` string | `collection: string` |
+
+## Slug config
+
+```ts
+type SlugConfig =
+  | { enabled: false }
+  | {
+      enabled: true;
+      root: string;
+      allowRoot?: boolean;
+      normalize?: boolean;
+      nested?: boolean;
+    };
+```

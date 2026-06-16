@@ -1,0 +1,57 @@
+---
+title: Media
+description: Upload, serve, and manage assets via cms.api.media.
+---
+
+Media methods live under `cms.api.media`. For the model behind them, see the [Media concept](/docs/concepts/media).
+
+## Uploads
+
+### `createSignedUpload`
+
+Returns presigned PUT URLs; the browser uploads each file straight to the bucket. `POST`, input via `body`.
+
+| Body field | Type | Description |
+| --- | --- | --- |
+| `files` | `{ name, size, type, variantOf? }[]` | Files to upload (at least one). |
+| `folderId` | `string` | Target folder (optional). |
+
+Returns `{ assets: { id, slug, objectKey, signedUrl, headers }[], expiresAt }`. New assets are created `private`. PUT each file to its `signedUrl` with the returned `headers` (`Content-Type`, `x-amz-acl: public-read`).
+
+### `uploadAssets`
+
+Uploads file bytes through the server. `POST`, input via `body`. Same shape as `createSignedUpload`, but each file carries a `buffer: Blob | ArrayBuffer`. Returns `{ assets: { id, slug, objectKey }[] }`.
+
+## Assets
+
+### `listAssets`
+
+`GET`. Query: `folderId?`, `status?` (`'private' | 'public'`), `search?`, `limit?` (default 20), `offset?`, `sortBy?` (`'createdAt' | 'slug' | 'size'`), `sortOrder?`. Returns `{ assets, total, hasMore }`.
+
+### `getAssetUrlAuthenticated`
+
+Mints a signed GET URL for an asset. `POST`, `body: { assetSlug, expiresIn? }`. Returns `{ url, status, expiresAt }`. Default TTL: 3600s for public assets, 300s for private.
+
+### `updateAssetStatus`
+
+`POST`, `body: { assetIds: string[], status: 'private' | 'public' }`. Returns `{ updated }`.
+
+### `archiveAsset`
+
+Soft-deletes assets (and their variants). `POST`, `body: { assetIds: string[] }`. Returns `{ archived, archivedIds, skipped }`. Assets used by live content are skipped, not failed.
+
+### `getAssetUsages`
+
+`GET`, `query: { assetId }`. Returns `{ pageCount, pages: { rootId, collection, slug, occurrences }[] }`.
+
+## Folders
+
+| Method | Input | Returns |
+| --- | --- | --- |
+| `createFolder` | `body: { name, parentFolderId? }` | `{ folder }` |
+| `moveFolder` | `body: { folderId, newParentFolderId? }` | `{ folder }` |
+| `deleteFolder` | `body: { folderId }` | `{ folderId }` (fails with `FOLDER_HAS_CONTENT`) |
+
+## Public delivery
+
+`GET /media/asset/{slug}` is a public redirect to the asset's object URL. It honors `?format=webp|jpeg|png`, `?w=<width>` (resolving a pre-uploaded variant, falling back to the original), and `?download`. Private assets return `ASSET_ACCESS_DENIED`.

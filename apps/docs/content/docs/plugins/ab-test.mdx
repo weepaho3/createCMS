@@ -1,0 +1,97 @@
+---
+title: A/B testing
+description: Deterministic variant assignment, event tracking, and pluggable analytics.
+---
+
+The A/B testing plugin runs experiments on content. It assigns visitors to variants deterministically, records impressions and conversions from block [events](/docs/concepts/events-tracking), and forwards results to analytics. It has a server half and a client half.
+
+## Installation
+
+### Add the server plugin
+
+```ts title="lib/cms.ts"
+import { createCMS } from '@createcms/core';
+import { abTest } from '@createcms/core/plugins/ab-test';
+
+export const cms = createCMS({
+  db,
+  collections,
+  media,
+  plugins: [abTest()],
+});
+```
+
+### Update the database
+
+The plugin adds tables for tests, variants, and events. Regenerate the schema file, then apply it to your database with your Drizzle migration workflow:
+
+```bash
+npx createcms generate
+npx drizzle-kit generate && npx drizzle-kit migrate
+```
+
+### Add the client plugin
+
+```ts title="lib/cms-client.ts"
+import { createCMSClient } from '@createcms/core/react';
+import { abTestClient } from '@createcms/core/plugins/ab-test/client';
+import type { cms } from './cms';
+
+export const cmsClient = createCMSClient<typeof cms>()({
+  baseURL: '/api/cms',
+  plugins: [abTestClient()],
+});
+```
+
+## Usage
+
+The client exposes an `abTest` namespace. Record an impression for the variant a visitor sees, read their assignment, and manage consent:
+
+```ts
+cmsClient.abTest.recordImpression(testId, branchId);
+
+const { variantId, branchId, assignedAt } = await cmsClient.abTest.getVariant(testId);
+
+cmsClient.abTest.setConsent({ analytics_storage: 'granted' });
+```
+
+| Action | Signature | Purpose |
+| --- | --- | --- |
+| `recordImpression` | `(testId, branchId) => void` | Record that a variant was shown. |
+| `useImpression` | `(testId, branchId) => void` | React hook form of `recordImpression`. |
+| `getVariant` | `(testId) => Promise<{ variantId, branchId, assignedAt }>` | Read the visitor's assignment. |
+| `setConsent` / `getConsent` | Consent Mode v2 signals | Gate analytics on consent. |
+| `dispatchEvent` | `(event) => void` | Dispatch a client event. |
+| `identify` / `reset` | visitor context | Set or clear the visitor key. |
+
+## Schema
+
+| Table | Purpose |
+| --- | --- |
+| `ab_tests` | One row per test: target root, goal, status (`draft`, `running`, `paused`, `completed`), traffic percentage. |
+| `ab_test_variants` | The variants of a test, each tied to a branch, with a weight and a control flag. |
+| `ab_test_events` | The analytics event store. `eventType` is free-form (impression, conversion, form_submit, page_view, and more); `testId` and `variantId` are nullable. |
+
+## Options
+
+### Server, `abTest(options)`
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `analytics` | `ABTestAnalyticsAdapter` | `postgresAnalytics()` | Where events are stored or forwarded. |
+| `ga4` | `GA4ServerConfig` | | Server-side GA4 Measurement Protocol forwarding. |
+| `rateLimit` | `ABTestRateLimitOptions` | | Rate-limit the anonymous event ingest. |
+
+### Client, `abTestClient(options)`
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `disableDataLayerSink` | `boolean` | `false` | Stop forwarding to the browser dataLayer (use when server-side GA4 is configured). |
+
+### Client-side vs server-side measurement
+
+By default the client forwards events to the browser `dataLayer` (for GTM/GA4). If you instead configure server-side forwarding with the `ga4` option, set `disableDataLayerSink: true` on the client so the same event is not counted twice.
+
+<Callout type="info">
+  For edge variant assignment in middleware, use the Next.js A/B primitives from `@createcms/core/next/middleware` and `@createcms/core/ab-edge` (see [Edge A/B](/docs/reference/edge)).
+</Callout>

@@ -1,0 +1,41 @@
+---
+title: Branches
+description: Named pointers to commits, and how branches diverge.
+---
+
+A branch is a named pointer to a commit. A row in `branches` holds a `name`, the `rootId` it belongs to, and a `headCommitId`. Editing a branch advances its head: each new commit sets `headCommitId` to the new commit.
+
+## The main branch
+
+Every entry is created with a `main` branch. It is protected: it cannot be renamed or deleted. Any other branch can be deleted, unless it has active publications or open merge requests.
+
+## Creating a branch
+
+A new branch starts from an existing one. `createBranch` copies the source branch's head commit, so the new branch begins with identical content and then diverges as you edit it:
+
+```ts
+const draft = await cms.api.pages.createBranch({
+  body: { rootId, name: 'draft', sourceBranchId: mainBranchId },
+});
+```
+
+## Divergence
+
+Because branches share history, two branches of the same root always have a common ancestor commit. `checkDivergence` reports how far each has moved past that ancestor:
+
+| Field | Meaning |
+| --- | --- |
+| `commonAncestorCommitId` | The shared ancestor (the merge base). |
+| `sourceAhead` | Commits on the source since the ancestor. |
+| `targetAhead` | Commits on the target since the ancestor. |
+| `canFastForward` | Whether the target can be moved forward without a merge commit. |
+
+When `targetAhead` is `0`, the target has not moved, so a merge can fast-forward. Otherwise the target has advanced past the common ancestor (the source may or may not have advanced too) and a merge has to reconcile them.
+
+## Branches can be published independently
+
+A branch does not have to be merged into `main` to go live. Any branch can be [published](/docs/concepts/publishing) on its own, which is how one entry serves several branches at once (a control and an A/B variant). It is also why a branch with an active publication cannot be deleted.
+
+<Callout type="info">
+  See [Merges](/docs/concepts/merges) for combining branches, and the [Server API](/docs/reference/server-api) for `createBranch`, `listBranches`, `renameBranch`, and `deleteBranch`.
+</Callout>

@@ -1,0 +1,60 @@
+---
+title: Use with Next.js
+description: Mount the CMS router, read content in Server Components, and revalidate on publish.
+---
+
+This guide wires `@createcms/core` into a Next.js App Router project. It assumes you have created a CMS instance (see [Quickstart](/docs/quickstart)).
+
+### Mount the router
+
+`cms.router` exposes a `handler` you bind to a catch-all route. The CMS serves every endpoint under `basePath` (default `/api/cms`):
+
+```ts title="app/api/cms/[[...rest]]/route.ts"
+import { cms } from '@/lib/cms';
+
+const { handler } = cms.router;
+export const GET = handler;
+export const POST = handler;
+```
+
+### Read content in a Server Component
+
+Call the typed API directly on the server. No client fetch is needed for published content:
+
+```tsx title="app/[slug]/page.tsx"
+import { cms } from '@/lib/cms';
+
+export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const { variants } = await cms.api.pages.getPublishedContent({
+    query: { slug: `/${slug}` },
+  });
+  // render variants[0].tree (see Render content)
+}
+```
+
+### Revalidate on publish
+
+Pass `onRevalidate` to `createCMS` to receive an event whenever content changes, then revalidate paths or tags. For revalidation triggered from outside the app (a webhook), mount `createRevalidateHandler`:
+
+```ts title="app/api/revalidate/route.ts"
+import { createRevalidateHandler } from '@createcms/core/next';
+
+export const POST = createRevalidateHandler({
+  secret: process.env.CMS_REVALIDATE_SECRET!,
+});
+```
+
+The handler reads the secret from the `x-revalidate-secret` request header, compares it in constant time, and returns `401` on a mismatch. On success it calls `revalidatePath` for each path and `revalidateTag` for each tag in the event body. The caller must send the header:
+
+```ts
+await fetch('https://your-app.com/api/revalidate', {
+  method: 'POST',
+  headers: { 'x-revalidate-secret': process.env.CMS_REVALIDATE_SECRET! },
+  body: JSON.stringify({ paths: ['/'], tags: [] }),
+});
+```
+
+<Callout type="info">
+  To turn `variants[0].tree` into UI, see [Render content](/docs/guides/rendering-content).
+</Callout>

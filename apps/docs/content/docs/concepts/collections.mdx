@@ -1,0 +1,67 @@
+---
+title: Collections
+description: How collections, roots, slugs, and references work.
+---
+
+A collection is a content type you define once and reuse for every entry of that type. It declares a `label`, a `root`, an optional set of child `blocks`, and optional slug behavior.
+
+```ts
+import { defineCollection } from '@createcms/core';
+
+const posts = defineCollection({
+  label: 'Posts',
+  slug: { enabled: true, root: '/blog', nested: false },
+  root: {
+    properties: {
+      title: { type: 'string', required: true, label: 'Title' },
+      excerpt: { type: 'string', label: 'Excerpt' },
+    },
+  },
+  blocks: {
+    richText: {
+      label: 'Rich text',
+      properties: {
+        content: { type: 'richText', required: true, label: 'Body' },
+      },
+    },
+  },
+});
+```
+
+## Roots are entries
+
+Each entry in a collection is a **root**. The root carries the collection's top-level `properties` (here, a post's `title` and `excerpt`) and anchors the tree of blocks beneath it. `listRoots` returns the entries of a collection, and `createRoot` adds one.
+
+## Slugs
+
+The optional `slug` config gives entries a URL path. When `enabled`, you set the `root` prefix and choose how paths behave:
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `enabled` | `boolean` | | Turns slug handling on or off. |
+| `root` | `string` | | Path prefix for the collection (for example `/blog`). |
+| `nested` | `boolean` | `false` | Whether entries can nest under one another to form paths. |
+| `allowRoot` | `boolean` | `true` | Whether an entry may occupy the collection root path. |
+| `normalize` | `boolean` | `true` | Whether slugs are slugified on write. |
+
+### Slugs vs paths
+
+A root's `slug` is a single segment (for example `hello-world`), not a full URL. The collection's `root` prefix and any ancestors are joined into the **path**:
+
+```
+slug:  hello-world
+root:  /blog
+path:  /blog/hello-world
+```
+
+`listRoots` returns both `slug` (the segment) and `path` (the resolved full URL). `getPublishedContent` always accepts a `rootId`; with slugs enabled, you can additionally look up by `slug` or `path`.
+
+## Reusable blocks and references
+
+A `reference` property points one entry at another by `rootId`. On the published read, the referenced entry's content is inlined, so a page that embeds a shared block renders in one read.
+
+**Reuse vs duplicate**: embed a `reference` when several entries should share content that is edited in one place (a change propagates to every embedder on the next read). Duplicate instead when each copy should diverge independently. Setting `reusableBlock: true` on a collection is only an editor hint that its roots are meant to be embedded; any collection can be a reference target.
+
+<Callout type="info">
+  For exact signatures, see [`defineCollection`](/docs/reference/define). To model the building blocks, see [Blocks](/docs/concepts/blocks).
+</Callout>

@@ -1,0 +1,18 @@
+---
+title: Redirects
+description: Mapping old URLs to new ones, with automatic redirects on URL changes.
+---
+
+A redirect maps an old location to a new one within a collection. Each side, source and target, is either a **page** (a `rootId`) or a **path** (a string), and the redirect carries an HTTP status code (`301`, `302`, `307`, or `308`).
+
+## Automatic redirects
+
+When a slug-enabled entry's URL changes, the CMS records a redirect for you: renaming an entry's slug, moving it under a new parent, or archiving it captures the old path and points it at the entry (or its parent). Auto-created redirects never overwrite one you made by hand, so your manual redirects always win.
+
+## Redirects are resolved, not applied
+
+The CMS stores redirects but does not serve them; your app resolves them in routing. `resolveRedirect` takes an incoming path, follows the redirect chain (up to ten hops), and returns the final status and location, or nothing.
+
+<Callout type="info">
+  For a Next.js middleware example and the management methods, see [Handle redirects](/docs/guides/redirects).
+</Callout>

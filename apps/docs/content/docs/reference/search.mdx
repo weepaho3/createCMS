@@ -1,0 +1,25 @@
+---
+title: Search
+description: Full-text search across CMS entities, via cms.api.search.
+---
+
+Full-text search runs over a maintained index spanning seven entity types: `root`, `comment`, `mergeRequest`, `variable`, `template`, `asset`, and `notification`.
+
+## `search.search`
+
+`GET`.
+
+| Query field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `q` | `string` | | Search term (required). |
+| `entityTypes` | `string[] \| string` | all | Restrict to entity types (array or comma-separated). |
+| `collection` | `string` | | Restrict to a collection. |
+| `rootId` | `string` | | Restrict to one entry. |
+| `limit` | `number` | `20` | Page size (1 to 100). |
+| `offset` | `number` | `0` | Rows to skip. |
+
+Returns `{ results, total, hasMore }`. Each result has `entityType`, `entityId`, optional `collection` / `rootId` / `title` / `snippet` / `meta`, a `rank` (relevance), and a `highlight` string with `<mark>` around the matched terms.
+
+## Rebuilding the index
+
+`cms.api.admin.reindexSearch` rebuilds the whole index. See the [Server API](/docs/reference/server-api).

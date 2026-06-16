@@ -1,0 +1,71 @@
+---
+title: Render content
+description: Turn a published block tree into React UI with a typed block map.
+---
+
+This guide renders a published block `tree` in React. It assumes you can fetch content with `getPublishedContent` (see [Use with Next.js](/docs/guides/nextjs)).
+
+### Map every block type to a component
+
+`createBlocksMap` takes a collection definition and a component for **every** block type in it. Each component's `properties` are typed from that block's definition:
+
+```tsx title="lib/blocks.tsx"
+import { createBlocksMap } from '@createcms/core/react';
+import { collections } from '@/lib/collections';
+
+export const pageBlocks = createBlocksMap(collections.pages, {
+  hero: ({ properties }) => <h1>{properties.headline}</h1>,
+  richText: ({ properties }) => (
+    // `richText` stores markup; render it as HTML (sanitize if untrusted).
+    <div dangerouslySetInnerHTML={{ __html: properties.content }} />
+  ),
+});
+```
+
+### Render the tree
+
+Pass the map and a tree to `BlocksRenderer`:
+
+```tsx title="app/[slug]/page.tsx"
+import { BlocksRenderer } from '@createcms/core/react';
+import { pageBlocks } from '@/lib/blocks';
+import { cms } from '@/lib/cms';
+
+export default async function Page() {
+  const { variants } = await cms.api.pages.getPublishedContent({
+    query: { path: '/welcome' },
+  });
+  return <BlocksRenderer blocks={pageBlocks} tree={variants[0].tree} />;
+}
+```
+
+### Render only some block types
+
+`createBlocksMap` and `BlocksRenderer` need a component for every block type. To render only a subset (or to embed references with their own components), use `createContentRenderer`, which accepts a **partial** map and returns a ready-made component:
+
+```tsx
+import { createContentRenderer } from '@createcms/core/react';
+import { collections } from '@/lib/collections';
+
+const Content = createContentRenderer(collections.pages, {
+  hero: ({ properties }) => <h1>{properties.headline}</h1>,
+});
+
+// <Content tree={variants[0].tree} />
+```
+
+Both renderers resolve embedded references the same way; `createContentRenderer` differs only by accepting a partial map.
+
+### Choosing a variant
+
+`getPublishedContent` returns one entry per published branch in `variants` (see [Publishing](/docs/concepts/publishing)). With no A/B test there is exactly one, so `variants[0]` is the page. With the A/B testing plugin, resolve the visitor's branch and select it with `pickVariant`:
+
+```tsx
+import { pickVariant } from '@createcms/core/react';
+
+const tree = pickVariant(variants, branchId) ?? variants[0].tree;
+```
+
+<Callout type="info">
+  For every React export and its props, see the [React reference](/docs/reference/react).
+</Callout>

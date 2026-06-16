@@ -1,0 +1,21 @@
+---
+title: Data retention
+description: How old history and archived content are pruned.
+---
+
+Versioning keeps full history, which grows without bound. Data retention is the policy that reclaims it: a bounded, resumable pruning pass deletes old commits and hard-deletes archived content, on a schedule you run.
+
+## What gets pruned
+
+Two things accumulate and are reclaimed:
+
+- **Old commits.** Beyond your `keepDays` window (and `keepMinCommits` per branch), superseded commits and their block versions are deleted. A commit that loses its materialized snapshot is then reconstructed on read (see [Commits](/docs/concepts/commits)).
+- **Archived content.** Deleting an entry archives it (sets `archivedAt`) rather than removing it immediately. After `archiveKeepDays`, a trash window, it is hard-deleted along with its history and any unreferenced assets.
+
+## Running pruning
+
+Pruning does not run on its own. Configure `dataRetention` on `createCMS`, then call `admin.runPruning` on a schedule (a cron or a queue). Each pass does a bounded amount of work and reports `done`; re-run until it is `true` to drain a backlog.
+
+<Callout type="info">
+  For the retention options, see [Configuration](/docs/reference/configuration); for the pass itself, see `admin.runPruning` in the [Server API](/docs/reference/server-api).
+</Callout>
