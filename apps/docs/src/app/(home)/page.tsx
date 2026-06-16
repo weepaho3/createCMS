@@ -39,7 +39,7 @@ export default function HomePage() {
             Read the docs
           </Link>
           <a
-            href="https://github.com/createcms/createcms"
+            href="https://github.com/weepaho3/createCMS"
             className="rounded-lg border border-fd-border px-5 py-2.5 text-sm font-medium"
           >
             GitHub

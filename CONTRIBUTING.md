@@ -7,7 +7,7 @@ Thanks for your interest in contributing! 🎉
 createCMS is a [bun](https://bun.sh) + [turbo](https://turbo.build) monorepo.
 
 ```bash
-git clone https://github.com/createcms/createcms.git
+git clone https://github.com/weepaho3/createCMS.git
 cd createcms
 bun install
 ```

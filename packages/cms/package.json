@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "description": "Composable, block-based headless CMS powered by better-call and Drizzle ORM (Postgres). Database-native versioning with Git-like branches, copy-on-write drafts, visual diffs, merges, reusable blocks, nested pages, and a fully type-safe API.",
   "license": "MIT",
-  "homepage": "https://github.com/createcms/createcms#readme",
+  "homepage": "https://github.com/weepaho3/createCMS#readme",
   "bugs": {
-    "url": "https://github.com/createcms/createcms/issues"
+    "url": "https://github.com/weepaho3/createCMS/issues"
   },
   "author": {
     "name": "weepaho3",
@@ -13,7 +13,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/createcms/createcms.git",
+    "url": "git+https://github.com/weepaho3/createCMS.git",
     "directory": "packages/cms"
   },
   "keywords": [
