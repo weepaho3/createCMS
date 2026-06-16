@@ -49,5 +49,6 @@ jobs:
           title: 'chore: version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # No NODE_AUTH_TOKEN: publishing uses OIDC trusted publishing
+          # (configured on npmjs.com). The package is set to "disallow tokens".
           NPM_CONFIG_PROVENANCE: true
