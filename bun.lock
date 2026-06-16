@@ -44,6 +44,44 @@
         "typescript": "^5.9.3",
       },
     },
+    "examples/blog": {
+      "name": "@createcms/example-blog",
+      "version": "0.0.0",
+      "dependencies": {
+        "@createcms/core": "workspace:*",
+        "@electric-sql/pglite": "^0.3.15",
+        "drizzle-orm": "^0.45.0",
+        "next": "^16.2.0",
+        "react": "^19.2.4",
+        "react-dom": "^19.2.4",
+      },
+      "devDependencies": {
+        "@types/node": "^22.13.11",
+        "@types/react": "^19.2.2",
+        "@types/react-dom": "^19.2.2",
+        "drizzle-kit": "^0.31.9",
+        "typescript": "^5.7.2",
+      },
+    },
+    "examples/minimal": {
+      "name": "@createcms/example-minimal",
+      "version": "0.0.0",
+      "dependencies": {
+        "@createcms/core": "workspace:*",
+        "@electric-sql/pglite": "^0.3.15",
+        "drizzle-orm": "^0.45.0",
+        "next": "^16.2.0",
+        "react": "^19.2.4",
+        "react-dom": "^19.2.4",
+      },
+      "devDependencies": {
+        "@types/node": "^22.13.11",
+        "@types/react": "^19.2.2",
+        "@types/react-dom": "^19.2.2",
+        "drizzle-kit": "^0.31.9",
+        "typescript": "^5.7.2",
+      },
+    },
     "packages/cms": {
       "name": "@createcms/core",
       "version": "0.1.0",
@@ -152,6 +190,10 @@
     "@colors/colors": ["@colors/colors@1.6.0", "", {}, "sha512-Ir+AOibqzrIsL6ajt3Rz3LskB7OiMVHqltZmspbW/TJuTVuyOMirVqAkjfY6JISiLHgyNqicAC8AyHHGzNd/dA=="],
 
     "@createcms/core": ["@createcms/core@workspace:packages/cms"],
+
+    "@createcms/example-blog": ["@createcms/example-blog@workspace:examples/blog"],
+
+    "@createcms/example-minimal": ["@createcms/example-minimal@workspace:examples/minimal"],
 
     "@dabh/diagnostics": ["@dabh/diagnostics@2.0.8", "", { "dependencies": { "@so-ric/colorspace": "^1.1.6", "enabled": "2.0.x", "kuler": "^2.0.0" } }, "sha512-R4MSXTVnuMzGD7bzHdW2ZhhdPC/igELENcq5IjEverBvq5hn1SXCWcsi6eSsdWP0/Ur+SItRRjAktmdoX/8R/Q=="],
 

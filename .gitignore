@@ -8,6 +8,7 @@ dist
 build
 .next
 .source
+next-env.d.ts
 *.tsbuildinfo
 
 # Environment variables + credentials

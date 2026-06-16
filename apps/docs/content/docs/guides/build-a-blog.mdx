@@ -113,7 +113,7 @@ await cms.api.posts.publishBranch({
 Map the blocks to components and render the published tree, read by its full path:
 
 ```tsx title="app/blog/[slug]/page.tsx"
-import { BlocksRenderer, createBlocksMap } from '@createcms/core/react';
+import { BlocksRenderer, createBlocksMap } from '@createcms/core/react/blocks';
 import { collections } from '@/lib/collections';
 import { cms } from '@/lib/cms';
 

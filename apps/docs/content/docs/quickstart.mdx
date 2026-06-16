@@ -127,7 +127,7 @@ Server-side, read the published page and render its block `tree` with `BlocksRen
 
 ```tsx title="app/page.tsx"
 import { cms } from '@/lib/cms';
-import { BlocksRenderer, createBlocksMap } from '@createcms/core/react';
+import { BlocksRenderer, createBlocksMap } from '@createcms/core/react/blocks';
 import { collections } from '@/lib/collections';
 
 const pageBlocks = createBlocksMap(collections.pages, {

@@ -29,7 +29,14 @@ export const createCMS = (definition) => ({
   $plugins: definition.plugins || [],
   $schema: definition.schema,
 });
-export default { createCMS };
+// Config authoring helpers are pure identity functions at runtime (see
+// core/define.ts). The shim re-implements them so a config that imports the
+// idiomatic \`defineCollection\` / \`defineCollections\` / \`defineAuthMiddleware\`
+// API loads during \`createcms generate\` without pulling in the real package.
+export const defineCollection = (collection) => collection;
+export const defineCollections = (collections) => collections;
+export const defineAuthMiddleware = (middleware) => middleware;
+export default { createCMS, defineCollection, defineCollections, defineAuthMiddleware };
 `;
 
 function ensureFile(dir: string, name: string, code: string): string {
