@@ -1,7 +1,4 @@
----
-title: Changelog
-description: Release notes for @createcms/core, generated from Changesets.
----
+# @createcms/core
 
 ## 0.1.1
 
