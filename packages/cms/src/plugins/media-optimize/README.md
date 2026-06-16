@@ -2,6 +2,8 @@
 
 Client-side image optimization for `@createcms/core`. Resizes, compresses, and converts images to WebP **before** uploading — reducing bandwidth and storage costs without any server-side processing.
 
+> ⚠️ **Work in progress — not production-ready.** Part of [createCMS](https://github.com/weepaho3/createCMS), which is pre-1.0 and has **not been tested in production**. APIs may change.
+
 ## Installation
 
 Included in `@createcms/core`, available from the `@createcms/core/plugins/media-optimize` export. No additional packages are required unless you need WebP support in browsers that lack native encoding (e.g. older Safari):

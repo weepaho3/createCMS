@@ -23,6 +23,9 @@ export default function HomePage() {
   return (
     <main className="flex flex-1 flex-col items-center px-4 py-20">
       <section className="flex max-w-2xl flex-col items-center text-center">
+        <span className="mb-5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+          ⚠️ Pre-1.0 · work in progress · not production-ready
+        </span>
         <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
           The CMS that lives in your database
         </h1>

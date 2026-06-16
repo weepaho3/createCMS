@@ -3,6 +3,11 @@
 A composable, block-based, **Git-like** headless CMS for TypeScript — powered by
 Drizzle ORM (Postgres) with a fully type-safe API.
 
+> ⚠️ **Work in progress — not production-ready.** createCMS is **pre-1.0**, under
+> active development, and has **not been tested in production**. Expect breaking
+> changes, rough edges, and bugs (including possible data-loss edge cases). Use it
+> for prototyping and exploration — **not** for production workloads. Pin an exact version.
+
 - 🌿 **Database-native versioning** — branches, copy-on-write drafts, visual diffs, merges
 - 🧱 **Composable blocks** — nested pages, reusable blocks, type-safe block trees
 - 🔌 **Plugins** — multi-tenant, i18n, A/B testing, consent, media optimization
@@ -13,8 +18,6 @@ Drizzle ORM (Postgres) with a fully type-safe API.
 bun add @createcms/core
 # or: npm install @createcms/core
 ```
-
-> **Status:** pre-1.0. APIs may change before `1.0`. Pin a version.
 
 ## Quickstart
 

@@ -2,7 +2,10 @@
 
 A composable, block-based **headless CMS** powered by [better-call](https://github.com/bekacru/better-call) and [Drizzle ORM](https://orm.drizzle.team/) (PostgreSQL). Database-native, Git-like versioning with branches, copy-on-write drafts, visual diffs, merges, reusable blocks, nested pages, and a fully type-safe API.
 
-> ⚠️ **Pre-release (`0.0.1`).** The API is still stabilizing and may change between versions.
+> ⚠️ **Work in progress — not production-ready.** This package is **pre-1.0**, under
+> active development, and has **not been tested in production**. Expect breaking
+> changes, rough edges, and bugs (including possible data-loss edge cases). Use it for
+> prototyping and exploration — **not** for production workloads. Pin an exact version.
 
 ## Features
 

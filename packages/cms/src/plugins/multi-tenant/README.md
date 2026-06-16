@@ -2,6 +2,8 @@
 
 Server-only plugin that enables tenant-scoped data isolation in the CMS. Each request is associated with a tenant via the user's `authMiddleware`.
 
+> ⚠️ **Work in progress — not production-ready.** Part of [createCMS](https://github.com/weepaho3/createCMS), which is pre-1.0 and has **not been tested in production**. APIs may change.
+
 ## Installation
 
 ```typescript
