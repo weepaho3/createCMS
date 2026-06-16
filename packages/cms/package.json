@@ -1,0 +1,303 @@
+{
+  "name": "@createcms/core",
+  "version": "0.1.0",
+  "description": "Composable, block-based headless CMS powered by better-call and Drizzle ORM (Postgres). Database-native versioning with Git-like branches, copy-on-write drafts, visual diffs, merges, reusable blocks, nested pages, and a fully type-safe API.",
+  "license": "MIT",
+  "homepage": "https://github.com/createcms/createcms#readme",
+  "bugs": {
+    "url": "https://github.com/createcms/createcms/issues"
+  },
+  "author": {
+    "name": "weepaho3",
+    "url": "https://github.com/weepaho3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/createcms/createcms.git",
+    "directory": "packages/cms"
+  },
+  "keywords": [
+    "cms",
+    "headless-cms",
+    "drizzle",
+    "postgres",
+    "composable",
+    "blocks",
+    "git-like",
+    "versioning",
+    "typescript"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "createcms": "./dist/bin/createcms.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./react": {
+      "import": {
+        "types": "./dist/react/index.d.ts",
+        "default": "./dist/react/index.js"
+      },
+      "require": {
+        "types": "./dist/react/index.d.cts",
+        "default": "./dist/react/index.cjs"
+      }
+    },
+    "./react/blocks": {
+      "import": {
+        "types": "./dist/react/blocks.d.ts",
+        "default": "./dist/react/blocks.js"
+      },
+      "require": {
+        "types": "./dist/react/blocks.d.cts",
+        "default": "./dist/react/blocks.cjs"
+      }
+    },
+    "./react/variant": {
+      "import": {
+        "types": "./dist/react/variant.d.ts",
+        "default": "./dist/react/variant.js"
+      },
+      "require": {
+        "types": "./dist/react/variant.d.cts",
+        "default": "./dist/react/variant.cjs"
+      }
+    },
+    "./react/tracking": {
+      "import": {
+        "types": "./dist/react/tracking.d.ts",
+        "default": "./dist/react/tracking.js"
+      },
+      "require": {
+        "types": "./dist/react/tracking.d.cts",
+        "default": "./dist/react/tracking.cjs"
+      }
+    },
+    "./db": {
+      "import": {
+        "types": "./dist/db.d.ts",
+        "default": "./dist/db.js"
+      },
+      "require": {
+        "types": "./dist/db.d.cts",
+        "default": "./dist/db.cjs"
+      }
+    },
+    "./nanoid": {
+      "import": {
+        "types": "./dist/nanoid.d.ts",
+        "default": "./dist/nanoid.js"
+      },
+      "require": {
+        "types": "./dist/nanoid.d.cts",
+        "default": "./dist/nanoid.cjs"
+      }
+    },
+    "./plugins/server": {
+      "import": {
+        "types": "./dist/plugins/server.d.ts",
+        "default": "./dist/plugins/server.js"
+      },
+      "require": {
+        "types": "./dist/plugins/server.d.cts",
+        "default": "./dist/plugins/server.cjs"
+      }
+    },
+    "./plugins/client": {
+      "import": {
+        "types": "./dist/plugins/client.d.ts",
+        "default": "./dist/plugins/client.js"
+      },
+      "require": {
+        "types": "./dist/plugins/client.d.cts",
+        "default": "./dist/plugins/client.cjs"
+      }
+    },
+    "./plugins/multi-tenant": {
+      "import": {
+        "types": "./dist/plugins/multi-tenant/index.d.ts",
+        "default": "./dist/plugins/multi-tenant/index.js"
+      },
+      "require": {
+        "types": "./dist/plugins/multi-tenant/index.d.cts",
+        "default": "./dist/plugins/multi-tenant/index.cjs"
+      }
+    },
+    "./plugins/i18n": {
+      "import": {
+        "types": "./dist/plugins/i18n/index.d.ts",
+        "default": "./dist/plugins/i18n/index.js"
+      },
+      "require": {
+        "types": "./dist/plugins/i18n/index.d.cts",
+        "default": "./dist/plugins/i18n/index.cjs"
+      }
+    },
+    "./plugins/ab-test": {
+      "import": {
+        "types": "./dist/plugins/ab-test/index.d.ts",
+        "default": "./dist/plugins/ab-test/index.js"
+      },
+      "require": {
+        "types": "./dist/plugins/ab-test/index.d.cts",
+        "default": "./dist/plugins/ab-test/index.cjs"
+      }
+    },
+    "./plugins/ab-test/client": {
+      "import": {
+        "types": "./dist/plugins/ab-test/client.d.ts",
+        "default": "./dist/plugins/ab-test/client.js"
+      },
+      "require": {
+        "types": "./dist/plugins/ab-test/client.d.cts",
+        "default": "./dist/plugins/ab-test/client.cjs"
+      }
+    },
+    "./plugins/ab-test/analytics/upstash": {
+      "import": {
+        "types": "./dist/plugins/ab-test/analytics/upstash.d.ts",
+        "default": "./dist/plugins/ab-test/analytics/upstash.js"
+      },
+      "require": {
+        "types": "./dist/plugins/ab-test/analytics/upstash.d.cts",
+        "default": "./dist/plugins/ab-test/analytics/upstash.cjs"
+      }
+    },
+    "./plugins/media-optimize": {
+      "import": {
+        "types": "./dist/plugins/media-optimize/index.d.ts",
+        "default": "./dist/plugins/media-optimize/index.js"
+      },
+      "require": {
+        "types": "./dist/plugins/media-optimize/index.d.cts",
+        "default": "./dist/plugins/media-optimize/index.cjs"
+      }
+    },
+    "./plugins/consent": {
+      "import": {
+        "types": "./dist/plugins/consent/index.d.ts",
+        "default": "./dist/plugins/consent/index.js"
+      },
+      "require": {
+        "types": "./dist/plugins/consent/index.d.cts",
+        "default": "./dist/plugins/consent/index.cjs"
+      }
+    },
+    "./plugins/consent/client": {
+      "import": {
+        "types": "./dist/plugins/consent/client.d.ts",
+        "default": "./dist/plugins/consent/client.js"
+      },
+      "require": {
+        "types": "./dist/plugins/consent/client.d.cts",
+        "default": "./dist/plugins/consent/client.cjs"
+      }
+    },
+    "./next": {
+      "import": {
+        "types": "./dist/next/index.d.ts",
+        "default": "./dist/next/index.js"
+      },
+      "require": {
+        "types": "./dist/next/index.d.cts",
+        "default": "./dist/next/index.cjs"
+      }
+    },
+    "./next/middleware": {
+      "import": {
+        "types": "./dist/next/middleware.d.ts",
+        "default": "./dist/next/middleware.js"
+      },
+      "require": {
+        "types": "./dist/next/middleware.d.cts",
+        "default": "./dist/next/middleware.cjs"
+      }
+    },
+    "./ab-edge": {
+      "import": {
+        "types": "./dist/ab-edge/index.d.ts",
+        "default": "./dist/ab-edge/index.js"
+      },
+      "require": {
+        "types": "./dist/ab-edge/index.d.cts",
+        "default": "./dist/ab-edge/index.cjs"
+      }
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bunchee && bun scripts/inject-endpoint-docs.mjs",
+    "clean": "rm -rf dist .turbo",
+    "generate:schema": "bun run scripts/generate-schema.ts",
+    "lint": "oxlint",
+    "test": "vitest",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "aws4fetch": "^1.0.20",
+    "better-call": "^2.0.2",
+    "cac": "^7.0.0",
+    "fast-xml-parser": "^5.4.2",
+    "jiti": "^2.6.1",
+    "kleur": "^4.1.5",
+    "nanoid": "^5.1.6",
+    "nanostores": "^1.1.0",
+    "ora": "^9.3.0",
+    "prompts": "^2.4.2",
+    "slugify": "^1.6.8",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.15",
+    "@jsquash/webp": "^1.5.0",
+    "@types/node": "^22.10.2",
+    "@types/prompts": "^2.4.9",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@types/s3rver": "^3.7.4",
+    "bunchee": "^6.9.3",
+    "drizzle-kit": "^0.31.9",
+    "drizzle-orm": "^0.45.0",
+    "next": "^16.2.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "s3rver": "^3.7.1",
+    "typescript": "^5.7.2",
+    "vitest": "^4.0.18"
+  },
+  "peerDependencies": {
+    "@jsquash/webp": "^1.5.0",
+    "drizzle-orm": "^0.45.0",
+    "next": ">=16",
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "@jsquash/webp": {
+      "optional": true
+    },
+    "next": {
+      "optional": true
+    }
+  }
+}

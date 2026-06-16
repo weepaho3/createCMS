@@ -1,0 +1,48 @@
+import { and, eq, isNull } from 'drizzle-orm';
+
+import type { TableScope } from '../types/definitions';
+import type { DrizzleInstance } from '../types/drizzle';
+
+import { roots } from '../db/schema.generated';
+import { CMSError, type CMSErrorCode } from '../errors';
+
+/**
+ * Loads a root by id, scoped to the collection AND the active plugin scope
+ * (e.g. multi-tenant's `tenant_slug` predicate). Throws when the root does not
+ * exist or lies outside the caller's scope.
+ *
+ * This is the single choke point that closes IDOR on by-id endpoints: a caller in one scope
+ * cannot read or mutate a root in another scope by guessing its id, because the
+ * scope predicate is ANDed into the existence check. Pass the active
+ * transaction (or `db`) as `exec` so the guard participates in the same tx.
+ *
+ * Soft-archived roots (`archivedAt` set) are treated as gone: they are excluded
+ * here, so every by-id read/mutation 404s on an archived root. Physical removal
+ * is the pruning layer's job; deleteRoot and pruning query roots directly.
+ */
+export async function requireRootInScope(
+  exec: DrizzleInstance,
+  rootId: string,
+  collection: string,
+  rootScope?: TableScope,
+  // A core error code (default ROOT_NOT_FOUND) OR a factory returning the error
+  // to throw — the latter lets a plugin raise its OWN error (e.g. the i18n
+  // plugin's TRANSLATION_SOURCE_NOT_FOUND) without core naming a plugin code.
+  notFound: CMSErrorCode | (() => Error) = 'ROOT_NOT_FOUND',
+): Promise<void> {
+  const [row] = await exec
+    .select({ id: roots.id })
+    .from(roots)
+    .where(
+      and(
+        eq(roots.id, rootId),
+        eq(roots.collection, collection),
+        isNull(roots.archivedAt),
+        rootScope?.where,
+      ),
+    )
+    .limit(1);
+  if (!row) {
+    throw typeof notFound === 'function' ? notFound() : new CMSError(notFound);
+  }
+}

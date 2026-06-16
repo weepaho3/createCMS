@@ -1,0 +1,25 @@
+{
+  "name": "createcms",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "examples/*"
+  ],
+  "scripts": {
+    "build": "turbo build",
+    "check-types": "turbo check-types",
+    "lint": "oxlint",
+    "format": "oxfmt --write",
+    "test": "turbo test",
+    "clean": "turbo clean"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.11",
+    "oxfmt": "^0.35.0",
+    "oxlint": "^1.50.0",
+    "turbo": "^2.8.20"
+  },
+  "packageManager": "bun@1.2.23"
+}
