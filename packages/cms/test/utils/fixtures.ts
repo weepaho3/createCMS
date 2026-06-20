@@ -1,5 +1,11 @@
 import type { CustomMediaConfig } from '../../src/core/types/s3';
 
+import {
+  defineCollection,
+  defineCollections,
+  defineBlock,
+} from '../../src/index';
+
 export const DUMMY_MEDIA_CONFIG: CustomMediaConfig = {
   provider: 'custom',
   hostname: '127.0.0.1:0',
@@ -12,75 +18,90 @@ export const DUMMY_MEDIA_CONFIG: CustomMediaConfig = {
   forcePathStyle: true,
 };
 
-export const TEST_COLLECTIONS = {
-  pages: {
-    label: 'Pages',
-    description: 'Website pages',
-    slug: { enabled: true, root: '/pages' },
-    root: {
+const hero = defineBlock({
+  label: 'Hero',
+  description: 'A hero section with background image and text',
+  properties: {
+    title: {
+      type: 'string',
+      label: 'Title',
+      required: true,
+    },
+    backgroundImage: {
+      type: 'image',
+      label: 'Background Image',
+    },
+  },
+});
+
+export const pages = defineCollection({
+  label: 'Pages',
+  description: 'Website pages',
+  slug: { enabled: true, root: '/pages' },
+  root: {
+    properties: {
+      title: {
+        type: 'string',
+        label: 'Title',
+        required: true,
+      },
+      description: {
+        type: 'string',
+        label: 'Description',
+      },
+    },
+  },
+  blocks: {
+    hero,
+    paragraph: {
+      label: 'Paragraph',
+      description: 'A block of text',
       properties: {
-        title: {
-          type: 'string',
-          label: 'Title',
+        text: {
+          type: 'richText',
+          label: 'Text',
           required: true,
         },
-        description: {
+      },
+      allowChildren: true,
+    },
+    image: {
+      label: 'Image',
+      description: 'An image with optional caption',
+      properties: {
+        src: {
+          type: 'image',
+          label: 'Source',
+          required: true,
+        },
+        alt: {
           type: 'string',
-          label: 'Description',
+          label: 'Alt text',
         },
       },
     },
-    blocks: {
-      paragraph: {
-        label: 'Paragraph',
-        description: 'A block of text',
-        properties: {
-          text: {
-            type: 'richText',
-            label: 'Text',
-            required: true,
-          },
+    signupForm: {
+      label: 'Signup Form',
+      description: 'A functional form block',
+      properties: {
+        trackingId: {
+          type: 'string',
+          label: 'Tracking ID',
+        },
+        cta: {
+          type: 'string',
+          label: 'CTA',
+          required: true,
         },
       },
-      image: {
-        label: 'Image',
-        description: 'An image with optional caption',
-        properties: {
-          src: {
-            type: 'image',
-            label: 'Source',
-            required: true,
-          },
-          alt: {
-            type: 'string',
-            label: 'Alt text',
-          },
-        },
-      },
-      // A FUNCTIONAL block (declares events) — exercises the tracking-id guard.
-      // `trackingId` is an ordinary (optional) string property here; its VALUE is
-      // enforced at publish by the guard, not at create.
-      signupForm: {
-        label: 'Signup Form',
-        description: 'A functional form block',
-        properties: {
-          trackingId: {
-            type: 'string',
-            label: 'Tracking ID',
-          },
-          cta: {
-            type: 'string',
-            label: 'CTA',
-            required: true,
-          },
-        },
-        events: {
-          submit: {},
-          submitSuccess: {
-            name: 'generate_lead',
-          },
+      events: {
+        submit: {},
+        submitSuccess: {
+          name: 'generate_lead',
         },
       },
     },
   },
-} as const;
+});
+
+export const TEST_COLLECTIONS = defineCollections({ pages });

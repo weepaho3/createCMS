@@ -47,6 +47,7 @@ try {
 | `ROOT_NOT_FOUND` | 404 | Root block not found in snapshot |
 | `BLOCK_NOT_FOUND` | 404 | Block not found in snapshot |
 | `PARENT_NOT_FOUND` | 404 | Parent block not found |
+| `BLOCK_NOT_ALLOWED_IN_PARENT` | 400 | Block type is not allowed inside the target parent (violates the collection's `structure` rules or the parent's `allowChildren`) |
 | `COMMIT_NOT_FOUND` | 404 | Commit not found |
 | `EMPTY_SNAPSHOT` | 400 | Empty snapshot — no versions found |
 | `BLOCK_ALREADY_DELETED` | 400 | Block is already deleted |

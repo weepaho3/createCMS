@@ -88,6 +88,15 @@ export function defineRoot<const TProps extends Record<string, BlockProperty>>(
 /**
  * Defines a content collection with a root block and a set of child blocks.
  *
+ * Blocks may be referenced (`blocks: { hero }`) or written inline
+ * (`blocks: { hero: { label, properties } }`). For the inline form the `blocks`
+ * parameter is shaped as `{ [K in keyof TBlocks]: AnyBlockDefinition } & TBlocks`
+ * — the mapped half gives each block value the concrete `BlockDefinition`
+ * contextual type so editors autocomplete its fields (`label`, `properties`,
+ * `events`, …) instead of falling back to globals, while the `& TBlocks` half
+ * keeps inferring each block's specific shape (so the typed create/update API
+ * and `structure` autocomplete still see the exact block keys and properties).
+ *
  * @example
  * ```ts
  * const pages = defineCollection({
@@ -104,9 +113,11 @@ export function defineCollection<
     never
   >,
 >(
-  collection: CollectionDefinition<TProps, TBlocks>,
+  collection: Omit<CollectionDefinition<TProps, TBlocks>, 'blocks'> & {
+    blocks?: { [K in keyof TBlocks]: AnyBlockDefinition } & TBlocks;
+  },
 ): CollectionDefinition<TProps, TBlocks> {
-  return collection;
+  return collection as CollectionDefinition<TProps, TBlocks>;
 }
 
 // ============================================================================

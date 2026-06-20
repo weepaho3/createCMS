@@ -421,10 +421,7 @@ export type BlockDefinition<
   previewImageUrl?: string;
   /** Events this (functional) block can emit — see {@link EventDeclaration}. */
   events?: TEvents;
-} & (
-  | { allowChildren?: false }
-  | { allowChildren: true; allowedChildBlocks?: string[] }
-);
+} & ({ allowChildren?: false } | { allowChildren: true });
 
 export type AnyBlockDefinition = BlockDefinition<
   Record<string, BlockProperty>,
@@ -654,6 +651,57 @@ export type RootDefinition<
   properties: TProps;
 };
 
+/**
+ * One PARENT's placement rule inside a collection's {@link CollectionStructure}
+ * — declares which child block types that parent (or the literal `'root'`) may
+ * contain. There are three mutually-exclusive modes, enforced by the type:
+ *
+ * - **open** — `{}` or `{ accepts: '*' }`: holds any block. (Same as having no
+ *   entry at all; `'*'` is just an explicit, readable form.)
+ * - **whitelist** — `{ accepts: ['a', 'b'] }`: holds ONLY `a`/`b`. Fail-closed —
+ *   a block added to the collection later is rejected until listed. `excludes`
+ *   is forbidden here (a concrete `accepts` already says exactly what's allowed).
+ * - **blacklist** — `{ excludes: ['z'] }` (or `{ accepts: '*', excludes: ['z'] }`):
+ *   holds anything EXCEPT `z`. Fail-open — a block added later is accepted.
+ *
+ * Whether a parent accepts children AT ALL is the separate, coarser
+ * `allowChildren` gate on the block (the root always accepts children); these
+ * rules only refine WHICH children an accepting parent may hold.
+ */
+export type BlockStructureEntry<TBlockName extends string> =
+  | {
+      /** `'*'` = open base (optional, for readability). */
+      accepts?: '*';
+      /** Holds anything except these. */
+      excludes?: readonly TBlockName[];
+    }
+  | {
+      /** Holds ONLY these block types. */
+      accepts: readonly TBlockName[];
+      /**
+       * Forbidden alongside a concrete `accepts` list — the list already names
+       * exactly what is allowed, so `excludes` would be ignored.
+       */
+      excludes?: "Remove 'excludes': a concrete 'accepts' list already defines exactly which blocks are allowed. Use accepts: '*' with excludes for an all-except list.";
+    };
+
+/**
+ * Placement rules for a collection, keyed by PARENT block name (or the literal
+ * `'root'` for the top level). Open by default: a parent with no entry holds any
+ * block. The keys and the `accepts` / `excludes` block names autocomplete against
+ * the collection's block names and are checked at compile time by
+ * {@link defineCollection} (the field type alone enforces this — no extra step).
+ *
+ * This is the single source of truth that the visual editor (drop-zone gating)
+ * and the server guard (createBlock / moveBlock / duplicateBlock) both read,
+ * alongside each block's `allowChildren` flag, so they can never diverge.
+ */
+export type CollectionStructure<
+  TBlocks extends Record<string, AnyBlockDefinition>,
+> = {
+  [K in keyof TBlocks | 'root']?: BlockStructureEntry<keyof TBlocks & string>;
+};
+
 type SlugConfig =
   | { enabled: false }
   | {
@@ -694,6 +742,15 @@ export type CollectionDefinition<
    * regardless of this flag). Any collection can still be a reference target.
    */
   reusableBlock?: boolean;
+  /**
+   * Placement rules keyed by PARENT block name (or `'root'`) — which children
+   * each container may hold, via `accepts` (whitelist) / `excludes` (blacklist)
+   * (see {@link CollectionStructure}). Read by the editor and the server guard
+   * together with each block's `allowChildren` flag. Open by default; block
+   * names are checked at compile time by the field type itself, so a typo is a
+   * compile error at the `defineCollection` call site.
+   */
+  structure?: CollectionStructure<TBlocks>;
 };
 
 export type AnyCollectionDefinition = CollectionDefinition<
