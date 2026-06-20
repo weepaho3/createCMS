@@ -1,5 +1,15 @@
 # @createcms/core
 
+## 0.2.1
+
+### Patch Changes
+
+- [#5](https://github.com/weepaho3/createCMS/pull/5) [`d9f6988`](https://github.com/weepaho3/createCMS/commit/d9f6988dadc930c51ebdda9bd611ce2ea4857e69) Thanks [@weepaho3](https://github.com/weepaho3)! - Add an optional `group` string to block definitions — an editor hint for the block-picker category a block appears under (e.g. `group: 'Forms'`). Presentational only; the package does not act on it. Free-form by design; reference a shared `as const` object for consistent, autocompleted group names across blocks.
+
+- [#5](https://github.com/weepaho3/createCMS/pull/5) [`ff46dc7`](https://github.com/weepaho3/createCMS/commit/ff46dc72107b7dd2f270456e348a61c747e16edf) Thanks [@weepaho3](https://github.com/weepaho3)! - Fix `BlockProps<typeof collection, 'blockType'>` failing to compile. The helper required a non-optional `blocks` field, but `blocks` is optional on `CollectionDefinition`, so passing a collection definition errored with "Type 'undefined' is not assignable to type 'Record<string, AnyBlockDefinition>'". The constraint now accepts the optional shape and resolves it via `NonNullable`, so `BlockProps<typeof myCollection, 'myBlock'>` works and the block name still autocompletes.
+
+- [#5](https://github.com/weepaho3/createCMS/pull/5) [`060e6ae`](https://github.com/weepaho3/createCMS/commit/060e6ae16719d030f8f8e92cd432571d83b17ffa) Thanks [@weepaho3](https://github.com/weepaho3)! - `createBlocksMap` now bundles the collection definition on the returned `BlocksMap` (a typed `_collection`), so a single object can drive both rendering and an editor — components, events, and the collection's schema/placement/grouping in one handoff, with no separate `collection` prop. `BlocksMap` gained an optional type parameter that defaults to the erased collection type, so existing `BlocksMap` annotations and `BlocksRenderer` are unaffected.
+
 ## 0.2.0
 
 ### Minor Changes
