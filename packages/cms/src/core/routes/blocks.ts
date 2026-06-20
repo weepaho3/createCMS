@@ -22,6 +22,10 @@ import { deepCopySubtree, type BlockVersionRow } from '../blocks/copy-subtree';
 import { diffTree } from '../blocks/diff-tree';
 import { requireRootInScope } from '../blocks/guards';
 import {
+  assertPlacementAllowed,
+  buildPlacementIndex,
+} from '../blocks/placement';
+import {
   assembleBlockTree,
   loadBlocksAtCommit,
   type BlockTreeNode,
@@ -119,6 +123,10 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
 ) {
   const { db } = cmsCtx;
   const collectionName = def.name;
+  // Derived once per collection: the placement rules the create/move/duplicate
+  // routes enforce — `accepts`/`excludes` from `structure` plus the
+  // `allowChildren` container gate from the block defs.
+  const placementIndex = buildPlacementIndex(def.structure, def.blocks);
 
   return {
     /**
@@ -615,6 +623,15 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
               message: errorMessages.blockAlreadyDeleted(parentBlockId),
             });
 
+          // Enforce the collection's placement rules. The root block's id equals
+          // the rootId and is stored with `type === collectionName`, so normalize
+          // it to the literal 'root' the structure map keys on.
+          assertPlacementAllowed(
+            placementIndex,
+            type,
+            parentBlockId === rootId ? 'root' : parentVersion.type,
+          );
+
           const childBlockId = newId('block');
           const blockProps = (properties as Record<string, unknown>) ?? {};
 
@@ -918,6 +935,12 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
                   input.newParentBlockId,
                 ),
               });
+
+            assertPlacementAllowed(
+              placementIndex,
+              movedBlock.type,
+              input.newParentBlockId === input.rootId ? 'root' : newParent.type,
+            );
 
             const oldChildren = (oldParent.children ?? []).filter(
               (id) => id !== input.blockId,
@@ -1336,6 +1359,14 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
                 input.targetParentBlockId!,
               ),
             });
+
+          assertPlacementAllowed(
+            placementIndex,
+            sourceVersion.type,
+            input.targetParentBlockId === input.rootId
+              ? 'root'
+              : parentVersion.type,
+          );
 
           const topLevelCopyId = copies[0].newBlockId;
 

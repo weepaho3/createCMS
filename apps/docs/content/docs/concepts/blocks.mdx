@@ -43,16 +43,49 @@ Two types carry extra config. `select` requires an `options` array of `{ label, 
 
 ## Nesting
 
-By default a block holds no children. Set `allowChildren: true` to let a block contain others, optionally constraining which with `allowedChildBlocks`:
+A block is a **leaf** by default — it holds no children. Set `allowChildren: true` to make it a **container**:
 
 ```ts
 const section = defineBlock({
   label: 'Section',
   properties: {},
   allowChildren: true,
-  allowedChildBlocks: ['hero', 'richText'],
 });
 ```
+
+`allowChildren` is the coarse gate (*can this block contain anything at all?*). *Which* children a container may hold is declared separately, on the collection, in its `structure` map. Block types are named by their keys in `defineCollection`, so that map is the only place those names can be type-checked and autocompleted.
+
+### Placement rules: `structure`
+
+`structure` is keyed by **parent** block name — or the literal `'root'` for the top level. Each entry is one of three mutually exclusive modes:
+
+| Entry | Mode | Meaning |
+| --- | --- | --- |
+| `{}` or `{ accepts: '*' }` | open | Holds any block (same as no entry). |
+| `{ accepts: ['a', 'b'] }` | whitelist | Holds **only** `a` and `b`. Fail-closed: a block added later is rejected until listed. |
+| `{ excludes: ['z'] }` | blacklist | Holds anything **except** `z`. Fail-open: a block added later is allowed. |
+
+```ts
+const pages = defineCollection({
+  label: 'Pages',
+  root: pageRoot,
+  blocks: { hero, section, featureItem },
+  structure: {
+    root: { excludes: ['featureItem'] }, // top level: anything except feature items
+    section: { accepts: ['featureItem'] }, // a section holds only feature items
+  },
+});
+```
+
+A concrete `accepts` list and `excludes` are mutually exclusive — setting both is a compile error, because the list already says exactly what is allowed. Write `accepts: '*'` together with `excludes` only if you want the open base stated explicitly.
+
+To keep a block off the **top level**, exclude it from the `root` entry — either `root: { excludes: ['featureItem'] }` or a whitelist that omits it, `root: { accepts: ['hero', 'section'] }`.
+
+Block names in `structure` autocomplete, and a typo is a compile error. The rules come from one source and are enforced in three places: the type checker, the visual editor's drop zones, and the server on `createBlock` / `moveBlock` / `duplicateBlock` (which throws [`BLOCK_NOT_ALLOWED_IN_PARENT`](/docs/reference/errors)).
+
+<Callout type="info">
+  Placement is **parent-anchored**: a container declares what it accepts. "This block may only live inside that one" follows from the containers' accept-lists plus a `root` rule — there is no per-child *allowed parents* field.
+</Callout>
 
 ## Functional blocks and events
 

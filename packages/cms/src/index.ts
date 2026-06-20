@@ -78,6 +78,8 @@ export type {
   CollectionWithName,
   BlockDefinition,
   RootDefinition,
+  BlockStructureEntry,
+  CollectionStructure,
   BlockProperty,
   BlockPropertyType,
   AnyBlockDefinition,

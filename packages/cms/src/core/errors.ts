@@ -7,6 +7,10 @@ export const CMS_ERRORS = {
     message: 'Block not found in snapshot',
   },
   PARENT_NOT_FOUND: { status: 404 as const, message: 'Parent block not found' },
+  BLOCK_NOT_ALLOWED_IN_PARENT: {
+    status: 400 as const,
+    message: 'This block type is not allowed inside the target parent',
+  },
   ROOT_NOT_FOUND: {
     status: 404 as const,
     message: 'Root block not found in snapshot',

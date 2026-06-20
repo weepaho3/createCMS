@@ -20,9 +20,22 @@ function defineCollection<TProps, TBlocks>(
 | `label` | `string` | yes | Human label for the collection. |
 | `root` | `{ properties }` | yes | The root block definition and its typed properties. |
 | `blocks` | `Record<string, BlockDefinition>` | no | Child block definitions. |
+| `structure` | `CollectionStructure` | no | Placement rules keyed by parent block name (or `'root'`). See [Placement rules](#placement-rules-structure). |
 | `slug` | `SlugConfig` | no | URL path behavior (see below). |
 | `description` | `string` | no | Optional description. |
 | `reusableBlock` | `boolean` | no | Editor hint that this collection's roots are meant to be embedded via a `reference` property. Any collection can be a reference target regardless. |
+
+### Placement rules: `structure`
+
+`structure` declares which children each container may hold. It is keyed by **parent** block name — or the literal `'root'` for the top level — and each entry is one of three mutually exclusive modes:
+
+| Entry | Mode | Meaning |
+| --- | --- | --- |
+| `{}` or `{ accepts: '*' }` | open | Holds any block. |
+| `{ accepts: ['a', 'b'] }` | whitelist | Holds only the listed blocks (fail-closed). `excludes` is forbidden here. |
+| `{ excludes: ['z'] }` | blacklist | Holds anything except the listed blocks (fail-open). |
+
+Block names autocomplete against the collection's blocks and a typo is a compile error. Whether a block can contain children **at all** is the separate `allowChildren` flag on the block (the root always accepts children). Rules are enforced by the type checker, the editor's drop zones, and the server (`BLOCK_NOT_ALLOWED_IN_PARENT`). See [Blocks → Nesting](/docs/concepts/blocks#nesting) for the full explanation.
 
 ## `defineCollections`
 
@@ -49,8 +62,7 @@ function defineBlock<TProps, TEvents>(
 | `events` | `Record<string, EventDeclaration>` | no | Events a functional block can emit. |
 | `description` | `string` | no | Optional description. |
 | `previewImageUrl` | `string` | no | Optional preview image. |
-| `allowChildren` | `boolean` | no | Whether the block can contain children. |
-| `allowedChildBlocks` | `string[]` | no | Restricts child block types (with `allowChildren: true`). |
+| `allowChildren` | `boolean` | no | Whether the block can contain children at all. *Which* children it accepts is set on the collection's [`structure`](#placement-rules-structure) map. |
 
 ## `defineRoot`
 
