@@ -87,6 +87,23 @@ Block names in `structure` autocomplete, and a typo is a compile error. The rule
   Placement is **parent-anchored**: a container declares what it accepts. "This block may only live inside that one" follows from the containers' accept-lists plus a `root` rule — there is no per-child *allowed parents* field.
 </Callout>
 
+## Editor grouping
+
+Set an optional `group` on a block to control which category it appears under in the editor's block picker. It is purely presentational — the editor groups blocks by this label; the package never acts on it.
+
+```ts
+const signupForm = defineBlock({ label: 'Signup Form', group: 'Forms', properties: { /* … */ } });
+const hero = defineBlock({ label: 'Hero', group: 'Layout', properties: { /* … */ } });
+```
+
+`group` is a free-form string. For consistent, autocompleted group names across many blocks, reference a shared `as const` object:
+
+```ts
+export const BLOCK_GROUPS = { forms: 'Forms', layout: 'Layout', content: 'Content' } as const;
+
+defineBlock({ label: 'Signup Form', group: BLOCK_GROUPS.forms, properties: { /* … */ } });
+```
+
 ## Functional blocks and events
 
 A block can declare the `events` it emits (for example a form's `submitSuccess`). Declaring `events` requires a stable `trackingId` property, added with the `trackingId()` helper. Events live on the block definition, which makes them the single source of truth for analytics and A/B goal tracking.

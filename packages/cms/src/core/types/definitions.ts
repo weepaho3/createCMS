@@ -419,6 +419,14 @@ export type BlockDefinition<
   label: string;
   description?: string;
   previewImageUrl?: string;
+  /**
+   * Editor hint: the block-picker category this block is shown under (e.g.
+   * `'Forms'`, `'Layout'`). Purely presentational — the editor groups blocks by
+   * this label; the package never acts on it. Free-form by design; for
+   * consistent, autocompleted group names across blocks, reference a shared
+   * `as const` object (e.g. `group: BLOCK_GROUPS.forms`).
+   */
+  group?: string;
   /** Events this (functional) block can emit — see {@link EventDeclaration}. */
   events?: TEvents;
 } & ({ allowChildren?: false } | { allowChildren: true });

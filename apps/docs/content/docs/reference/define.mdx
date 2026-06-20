@@ -62,6 +62,7 @@ function defineBlock<TProps, TEvents>(
 | `events` | `Record<string, EventDeclaration>` | no | Events a functional block can emit. |
 | `description` | `string` | no | Optional description. |
 | `previewImageUrl` | `string` | no | Optional preview image. |
+| `group` | `string` | no | Editor hint: the block-picker category this block is grouped under (e.g. `'Forms'`). Presentational only. |
 | `allowChildren` | `boolean` | no | Whether the block can contain children at all. *Which* children it accepts is set on the collection's [`structure`](#placement-rules-structure) map. |
 
 ## `defineRoot`
