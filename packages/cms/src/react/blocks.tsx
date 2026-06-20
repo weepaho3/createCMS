@@ -28,11 +28,16 @@ export type BlockComponentProps<
   node: BlockTreeNode;
 };
 
-/** Shorthand to derive block component props from a collection definition. */
+/** Shorthand to derive block component props from a collection definition.
+ *  `blocks` is optional on `CollectionDefinition`, so the constraint accepts the
+ *  optional shape and `NonNullable` resolves it — passing `typeof myCollection`
+ *  directly works, and `TBlock` autocompletes the collection's block names. */
 export type BlockProps<
-  TCollection extends { blocks: Record<string, AnyBlockDefinition> },
-  TBlock extends keyof TCollection['blocks'] & string,
-> = BlockComponentProps<TCollection['blocks'][TBlock]['properties']>;
+  TCollection extends { blocks?: Record<string, AnyBlockDefinition> },
+  TBlock extends keyof NonNullable<TCollection['blocks']> & string,
+> = BlockComponentProps<
+  NonNullable<TCollection['blocks']>[TBlock]['properties']
+>;
 
 type BlockComponentMap<TBlocks extends Record<string, AnyBlockDefinition>> = {
   [K in keyof TBlocks & string]: (
