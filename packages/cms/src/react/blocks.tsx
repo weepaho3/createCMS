@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { BlockTreeNode } from '../core/blocks/reconstruct-snapshot';
 import type {
   AnyBlockDefinition,
+  AnyCollectionDefinition,
   BlockProperty,
   CollectionDefinition,
   EventDeclaration,
@@ -28,11 +29,16 @@ export type BlockComponentProps<
   node: BlockTreeNode;
 };
 
-/** Shorthand to derive block component props from a collection definition. */
+/** Shorthand to derive block component props from a collection definition.
+ *  `blocks` is optional on `CollectionDefinition`, so the constraint accepts the
+ *  optional shape and `NonNullable` resolves it — passing `typeof myCollection`
+ *  directly works, and `TBlock` autocompletes the collection's block names. */
 export type BlockProps<
-  TCollection extends { blocks: Record<string, AnyBlockDefinition> },
-  TBlock extends keyof TCollection['blocks'] & string,
-> = BlockComponentProps<TCollection['blocks'][TBlock]['properties']>;
+  TCollection extends { blocks?: Record<string, AnyBlockDefinition> },
+  TBlock extends keyof NonNullable<TCollection['blocks']> & string,
+> = BlockComponentProps<
+  NonNullable<TCollection['blocks']>[TBlock]['properties']
+>;
 
 type BlockComponentMap<TBlocks extends Record<string, AnyBlockDefinition>> = {
   [K in keyof TBlocks & string]: (
@@ -59,14 +65,20 @@ export function isResolvedReference(
 
 /**
  * Opaque handle returned by `createBlocksMap`. Pass it to `<BlocksRenderer>`.
- * Carries the React component map AND the per-block-type event declarations
- * (the runtime half of the M2a typed-events seam) so the renderer can tell a
- * functional block (one that declared `events`) from a presentational one.
+ * Carries the React component map, the per-block-type event declarations (the
+ * runtime half of the M2a typed-events seam, so the renderer can tell a
+ * functional block from a presentational one), AND the collection definition
+ * itself. Bundling the collection means an editor can consume a single object
+ * for both rendering (`_components`) and schema/placement/grouping
+ * (`_collection`) — no separate `collection` handoff. The type parameter is
+ * preserved so that consumption stays typed; it defaults to the erased
+ * `AnyCollectionDefinition` for plain `BlocksMap` annotations.
  */
-export type BlocksMap = {
+export type BlocksMap<TCollection = AnyCollectionDefinition> = {
   readonly __brand: 'BlocksMap';
   readonly _components: Record<string, (props: any) => ReactNode>;
   readonly _events: Record<string, Record<string, EventDeclaration>>;
+  readonly _collection: TCollection;
 };
 
 /**
@@ -120,11 +132,12 @@ export function createBlocksMap<
 >(
   collection: CollectionDefinition<TProps, TBlocks>,
   components: BlockComponentMap<TBlocks>,
-): BlocksMap {
+): BlocksMap<CollectionDefinition<TProps, TBlocks>> {
   return {
     __brand: 'BlocksMap' as const,
     _components: components as Record<string, (props: any) => ReactNode>,
     _events: extractBlockEvents(collection.blocks),
+    _collection: collection,
   };
 }
 
