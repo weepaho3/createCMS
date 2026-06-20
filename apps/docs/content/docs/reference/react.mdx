@@ -21,6 +21,8 @@ const pageBlocks = createBlocksMap(collections.pages, {
 });
 ```
 
+The returned `BlocksMap` also carries the collection definition it was built from (typed), so a single object can drive both rendering and an editor (components + schema/placement/grouping) — no separate collection handoff. `BlocksRenderer` only reads the component map; the bundled collection is there for editor tooling.
+
 ### `BlocksRenderer`
 
 Renders a block `tree` with a block map.
