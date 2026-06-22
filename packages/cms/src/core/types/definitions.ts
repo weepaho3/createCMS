@@ -253,6 +253,14 @@ type BlockPropertySpec<T extends BlockPropertyType> = {
   label: string;
   description?: string;
   placeholder?: string;
+  /**
+   * Editor hint: the field-group (fieldset/section) this property is shown under
+   * in the property panel (e.g. `'SEO'`, `'Layout'`). Purely presentational —
+   * the editor groups fields by this label; the package never acts on it.
+   * Free-form by design; for consistent, autocompleted group names across
+   * fields, reference a shared `as const` object (e.g. `group: FIELD_GROUPS.seo`).
+   */
+  group?: string;
 } & (T extends 'select' ? { options: readonly SelectOption[] } : {}) &
   (T extends 'reference' ? { collection: string } : {});
 

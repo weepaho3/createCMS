@@ -10,7 +10,10 @@
  * called inside a Capitalized function so react-hooks lint treats it as a
  * component; it is never rendered.
  */
-import type { CollectionDefinition } from '../core/types/definitions';
+import type {
+  BlockDefinition,
+  CollectionDefinition,
+} from '../core/types/definitions';
 
 import { createTrackedBlocks } from './tracking';
 
@@ -71,3 +74,38 @@ function TrackingTypeCheck() {
 }
 
 void TrackingTypeCheck;
+
+// ---------------------------------------------------------------------------
+// Regression guard: the DECLARED collection form (e.g. `typeof myCollection`,
+// where `events?` is optional, so `TBlocks[K]['events']` is `TEvents | undefined`).
+// FunctionalBlocks must `NonNullable` the key-filter access too — otherwise
+// `(TEvents | undefined) extends Record<…>` is false for every block and the
+// facade resolves to no functional blocks. The `as const satisfies` form above
+// keeps `events` present, so it can't catch this; this section can.
+// ---------------------------------------------------------------------------
+type DeclaredEvents = { submit: {}; click: {} };
+type DeclaredBlocks = {
+  hero: BlockDefinition<{ headline: { type: 'string'; label: 'H' } }, {}>;
+  signupForm: BlockDefinition<
+    { cta: { type: 'string'; label: 'CTA' } },
+    DeclaredEvents
+  >;
+};
+declare const declaredCol: CollectionDefinition<
+  { title: { type: 'string'; label: 'T'; required: true } },
+  DeclaredBlocks
+>;
+const declaredTracked = createTrackedBlocks(declaredCol);
+
+function DeclaredFormTrackingTypeCheck() {
+  // signupForm declared `events` → it MUST be a selectable functional block:
+  const { fire } = declaredTracked.useTrackedBlock('signupForm');
+  fire('submit');
+  // @ts-expect-error unknown event name
+  fire('typo');
+  // @ts-expect-error 'hero' has no events → not a functional block
+  declaredTracked.useTrackedBlock('hero');
+  return null;
+}
+
+void DeclaredFormTrackingTypeCheck;

@@ -219,13 +219,17 @@ export function useBlockTrackerRaw(expectedBlockType?: string): {
 // Typed facade — fire narrowed to a block's declared events
 // ============================================================================
 
-/** The functional blocks of a collection (those that declared a non-empty `events`). */
+/** The functional blocks of a collection (those that declared a non-empty `events`).
+ *  `events` is optional on `BlockDefinition`, so the key-filter must `NonNullable`
+ *  the access too — otherwise `(TEvents | undefined) extends Record<…>` is false for
+ *  every block and the facade resolves to no functional blocks. (The value side
+ *  already strips it.) */
 type FunctionalBlocks<TBlocks extends Record<string, AnyBlockDefinition>> = {
-  [K in keyof TBlocks as TBlocks[K]['events'] extends Record<
+  [K in keyof TBlocks as NonNullable<TBlocks[K]['events']> extends Record<
     string,
     EventDeclaration
   >
-    ? [keyof TBlocks[K]['events']] extends [never]
+    ? [keyof NonNullable<TBlocks[K]['events']>] extends [never]
       ? never
       : K
     : never]: NonNullable<TBlocks[K]['events']>;
