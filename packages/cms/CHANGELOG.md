@@ -1,5 +1,13 @@
 # @createcms/core
 
+## 0.2.2
+
+### Patch Changes
+
+- [#7](https://github.com/weepaho3/createCMS/pull/7) [`1cc595f`](https://github.com/weepaho3/createCMS/commit/1cc595fb6f6c6702322eb7425efa1a36c1b77788) Thanks [@weepaho3](https://github.com/weepaho3)! - Fix `createTrackedBlocks(...).useTrackedBlock('myBlock')` rejecting a block that declared `events` when the collection is used in its declared form (e.g. `typeof myCollection`). `events` is optional on `BlockDefinition`, so the `FunctionalBlocks` key-filter saw `TEvents | undefined` and filtered out every block (`(X | undefined) extends Record<…>` is false). The key-filter now `NonNullable`s the `events` access, matching the value side — functional blocks are detected again and `fire` stays narrowed.
+
+- [#7](https://github.com/weepaho3/createCMS/pull/7) [`9009209`](https://github.com/weepaho3/createCMS/commit/9009209774ee3f0861b15ba4e5983754b99a75f2) Thanks [@weepaho3](https://github.com/weepaho3)! - Add an optional `group` string to block property definitions — an editor hint for the field-group (fieldset/section) a field is shown under in the property panel (e.g. `group: 'SEO'`). Presentational only; free-form, use a shared `as const` for consistent, autocompleted group names. Mirrors the block-level `group`.
+
 ## 0.2.1
 
 ### Patch Changes
