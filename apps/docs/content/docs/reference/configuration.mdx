@@ -28,6 +28,7 @@ export const cms = createCMS({
 | `plugins` | `CMSPlugin[]` | no | `[]` | Server plugins. |
 | `basePath` | `string` | no | `'/api/cms'` | Base path the router mounts under. |
 | `dataRetention` | `DataRetentionConfig` | no | | Pruning policy for old commits and archived roots. |
+| `forceCommitMessage` | `boolean` | no | `false` | Require a non-empty `message` on every content mutation (create/update/delete/move/duplicate of roots and blocks). An empty or whitespace-only message is rejected with `COMMIT_MESSAGE_REQUIRED` instead of auto-generating one. |
 | `defaultBranchName` | `string` | no | `'main'` | Name of the default branch every root is seeded with. |
 | `branchProtection` | `BranchProtectionConfig` | no | | Branch-protection and approval gates (see below). |
 | `user` | `CMSUserConfig` | no | | Links a user table so reads can enrich with author data. |

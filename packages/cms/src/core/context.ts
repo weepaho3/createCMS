@@ -65,6 +65,7 @@ export function createCMSContext(input: {
   db: DrizzleInstance;
   collections: Record<string, CollectionWithName>;
   dataRetention?: DataRetentionConfig;
+  forceCommitMessage?: boolean;
   defaultBranchName?: string;
   branchProtection?: BranchProtectionConfig;
 }): CMSProcedureCtx {

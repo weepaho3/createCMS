@@ -403,6 +403,7 @@ export const createCMS = <
     db: definition.db,
     collections: collections as Record<string, CollectionWithName>,
     dataRetention: definition.dataRetention,
+    forceCommitMessage: definition.forceCommitMessage,
     defaultBranchName: definition.defaultBranchName,
     branchProtection: definition.branchProtection,
   });

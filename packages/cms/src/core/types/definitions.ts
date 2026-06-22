@@ -952,6 +952,14 @@ export type CMSDefinition<
   media: MediaConfig;
   collections: TCollections;
   dataRetention?: DataRetentionConfig;
+  /**
+   * When `true`, every content-mutating operation (createRoot / createBlock /
+   * updateBlock / deleteBlock / moveBlock / duplicateBlock / updateBlocks /
+   * updateRoot) requires a non-empty `message` — an empty or whitespace-only
+   * message is rejected with `COMMIT_MESSAGE_REQUIRED` instead of falling back
+   * to an auto-generated default. Off by default.
+   */
+  forceCommitMessage?: boolean;
   /** Name of the default branch every root is seeded with. Default `'main'`. */
   defaultBranchName?: string;
   /** Branch-protection and approval gates — see {@link BranchProtectionConfig}. */
@@ -981,6 +989,8 @@ export type CMSProcedureCtx = {
   db: DrizzleInstance;
   collections: Record<string, CollectionWithName>;
   dataRetention?: DataRetentionConfig;
+  /** When `true`, commit-producing routes reject an empty `message`. */
+  forceCommitMessage?: boolean;
   /** Name of the default branch (resolved; see {@link CMSDefinition.defaultBranchName}). */
   defaultBranchName?: string;
   /** Branch-protection and approval gates — see {@link BranchProtectionConfig}. */

@@ -16,6 +16,10 @@ export const CMS_ERRORS = {
     message:
       'Direct edits to the protected default branch are not allowed; work on a branch and merge',
   },
+  COMMIT_MESSAGE_REQUIRED: {
+    status: 400 as const,
+    message: 'A commit message is required for this operation',
+  },
   ROOT_NOT_FOUND: {
     status: 404 as const,
     message: 'Root block not found in snapshot',

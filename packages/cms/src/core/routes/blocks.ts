@@ -140,6 +140,18 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
       throw new CMSError('PROTECTED_BRANCH');
   }
 
+  // When `forceCommitMessage` is on, a commit-producing route must be given a
+  // non-empty `message`; otherwise it falls back to an auto-generated default.
+  const forceCommitMessage = cmsCtx.forceCommitMessage === true;
+  function commitMessage(
+    message: string | undefined,
+    fallback: string,
+  ): string {
+    if (forceCommitMessage && (message === undefined || message.trim() === ''))
+      throw new CMSError('COMMIT_MESSAGE_REQUIRED');
+    return message ?? fallback;
+  }
+
   return {
     /**
      * Creates a new root (page/entry) with initial draft branch and commit.
@@ -252,7 +264,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           const { commitId, branchId } = await createInitialCommit(tx, def, {
             rootId: root.id,
             branchName: branchPolicy.defaultBranchName,
-            message: message ?? 'Initial commit',
+            message: commitMessage(message, 'Initial commit'),
             createdBy: actor,
             versions: [
               {
@@ -661,7 +673,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             rootId,
             branchId,
             parentCommitId: oldHeadId,
-            message: message ?? `Add ${type} block`,
+            message: commitMessage(message, `Add ${type} block`),
             createdBy: userId,
             changed: [
               {
@@ -992,7 +1004,10 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             rootId: input.rootId,
             branchId: input.branchId,
             parentCommitId: oldHeadId,
-            message: input.message ?? `Move block ${input.blockId}`,
+            message: commitMessage(
+              input.message,
+              `Move block ${input.blockId}`,
+            ),
             createdBy: userId,
             changed,
           });
@@ -1172,7 +1187,10 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             rootId: input.rootId,
             branchId: input.branchId,
             parentCommitId: oldHeadId,
-            message: input.message ?? `Delete block ${input.blockId}`,
+            message: commitMessage(
+              input.message,
+              `Delete block ${input.blockId}`,
+            ),
             createdBy: userId,
             changed,
           });
@@ -1367,7 +1385,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             const { commitId, branchId } = await createInitialCommit(tx, def, {
               rootId: newRoot.id,
               branchName: branchPolicy.defaultBranchName,
-              message: input.message ?? 'Duplicated root',
+              message: commitMessage(input.message, 'Duplicated root'),
               createdBy: userId,
               versions,
             });
@@ -1430,7 +1448,10 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             rootId: input.rootId,
             branchId: input.branchId,
             parentCommitId: oldHeadId,
-            message: input.message ?? `Duplicate block ${input.blockId}`,
+            message: commitMessage(
+              input.message,
+              `Duplicate block ${input.blockId}`,
+            ),
             createdBy: userId,
             changed,
           });
@@ -1543,7 +1564,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             rootId,
             branchId,
             parentCommitId: oldHeadId,
-            message: message ?? `Update ${type} block ${blockId}`,
+            message: commitMessage(message, `Update ${type} block ${blockId}`),
             createdBy: userId,
             changed: [
               {
@@ -1678,7 +1699,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             rootId,
             branchId,
             parentCommitId: oldHeadId,
-            message: message ?? `Update root block ${blockId}`,
+            message: commitMessage(message, `Update root block ${blockId}`),
             createdBy: userId,
             changed: [
               {
@@ -1865,7 +1886,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             rootId,
             branchId,
             parentCommitId: oldHeadId,
-            message: message ?? 'Batch update',
+            message: commitMessage(message, 'Batch update'),
             createdBy: userId,
             changed,
           });

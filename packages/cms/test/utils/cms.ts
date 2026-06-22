@@ -26,6 +26,7 @@ export const setupTestCMS = async (options?: {
   plugins?: CMSPlugin<any>[];
   withS3?: boolean;
   user?: CMSUserConfig;
+  forceCommitMessage?: boolean;
   defaultBranchName?: string;
   branchProtection?: BranchProtectionConfig;
 }) => {
@@ -52,6 +53,7 @@ export const setupTestCMS = async (options?: {
     authMiddleware: options?.authMiddleware,
     middleware: options?.middleware,
     plugins,
+    forceCommitMessage: options?.forceCommitMessage,
     defaultBranchName: options?.defaultBranchName,
     branchProtection: options?.branchProtection,
     ...(options?.user ? { user: options.user } : {}),
