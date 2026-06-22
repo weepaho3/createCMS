@@ -26,7 +26,7 @@ const hero = defineBlock({
 
 ## Property field types
 
-Every property has a `type` and a `label`, plus optional `required`, `defaultValue`, `description`, and `placeholder`. There are eight field types:
+Every property has a `type` and a `label`, plus optional `required`, `defaultValue`, `description`, `placeholder`, and `group`. There are eight field types:
 
 | Type | Stored value | Notes |
 | --- | --- | --- |
@@ -102,6 +102,19 @@ const hero = defineBlock({ label: 'Hero', group: 'Layout', properties: { /* … 
 export const BLOCK_GROUPS = { forms: 'Forms', layout: 'Layout', content: 'Content' } as const;
 
 defineBlock({ label: 'Signup Form', group: BLOCK_GROUPS.forms, properties: { /* … */ } });
+```
+
+The same `group` hint exists on individual **properties** — the field-group (fieldset/section) a field is shown under in the property panel. Same rules: free-form string, use a shared `as const` for consistency.
+
+```ts
+defineBlock({
+  label: 'Page',
+  properties: {
+    title: { type: 'string', label: 'Title', group: 'Content' },
+    metaDescription: { type: 'string', label: 'Meta description', group: 'SEO' },
+    canonicalUrl: { type: 'string', label: 'Canonical URL', group: 'SEO' },
+  },
+});
 ```
 
 ## Functional blocks and events
