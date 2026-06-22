@@ -3,6 +3,7 @@ import { eq, sql } from 'drizzle-orm';
 import type { CollectionWithName } from '../types';
 import type { DrizzleInstance } from '../types/drizzle';
 
+import { DEFAULT_BRANCH_NAME } from '../branch-policy';
 import { indexVersionContent } from '../content-index';
 import {
   blockVersions,
@@ -180,7 +181,7 @@ export async function createInitialCommit(
     .insert(branches)
     .values({
       rootId: args.rootId,
-      name: args.branchName ?? 'main',
+      name: args.branchName ?? DEFAULT_BRANCH_NAME,
       headCommitId: commit.id,
       createdBy: args.createdBy,
     })

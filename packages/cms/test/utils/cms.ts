@@ -1,5 +1,6 @@
 import type { CustomMediaConfig } from '../../src/core/types/s3';
 import type {
+  BranchProtectionConfig,
   CMSMiddleware,
   CMSPlugin,
   CMSUserConfig,
@@ -25,6 +26,8 @@ export const setupTestCMS = async (options?: {
   plugins?: CMSPlugin<any>[];
   withS3?: boolean;
   user?: CMSUserConfig;
+  defaultBranchName?: string;
+  branchProtection?: BranchProtectionConfig;
 }) => {
   const { db } = await setupTestDB();
 
@@ -49,6 +52,8 @@ export const setupTestCMS = async (options?: {
     authMiddleware: options?.authMiddleware,
     middleware: options?.middleware,
     plugins,
+    defaultBranchName: options?.defaultBranchName,
+    branchProtection: options?.branchProtection,
     ...(options?.user ? { user: options.user } : {}),
   });
 

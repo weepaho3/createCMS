@@ -10,6 +10,7 @@ import type { DrizzleInstance } from '../types/drizzle';
 
 import { requireRootInScope } from '../blocks/guards';
 import { loadBlocksAtCommit } from '../blocks/reconstruct-snapshot';
+import { resolveBranchPolicy } from '../branch-policy';
 import {
   branches,
   commitSnapshots,
@@ -88,10 +89,12 @@ async function checkDeletable(
 function withIsDeletable(
   branch: Branch,
   nonDeletable: Set<string>,
+  defaultBranchName: string,
 ): Branch & { isDeletable: boolean } {
   return {
     ...branch,
-    isDeletable: branch.name !== 'main' && !nonDeletable.has(branch.id),
+    isDeletable:
+      branch.name !== defaultBranchName && !nonDeletable.has(branch.id),
   };
 }
 
@@ -101,6 +104,7 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
 ) {
   const { db } = cmsCtx;
   const collectionName = def.name;
+  const branchPolicy = resolveBranchPolicy(cmsCtx);
 
   return {
     /**
@@ -168,7 +172,11 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
         };
 
         const result: Record<string, unknown> = {
-          ...withIsDeletable(branch, await checkDeletable(db, [branch.id])),
+          ...withIsDeletable(
+            branch,
+            await checkDeletable(db, [branch.id]),
+            branchPolicy.defaultBranchName,
+          ),
         };
 
         enrich.apply(result, row);
@@ -266,12 +274,14 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
         }
 
         if (input.isDeletable === true) {
-          conditions.push(sql`${branches.name} != 'main'`);
+          conditions.push(
+            sql`${branches.name} != ${branchPolicy.defaultBranchName}`,
+          );
           conditions.push(sql`NOT ${hasPubSubquery}`);
           conditions.push(sql`NOT ${hasOpenMrSubquery}`);
         } else if (input.isDeletable === false) {
           conditions.push(sql`(
-            ${branches.name} = 'main'
+            ${branches.name} = ${branchPolicy.defaultBranchName}
             OR ${hasPubSubquery}
             OR ${hasOpenMrSubquery}
           )`);
@@ -325,7 +335,7 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
             createdAt: new Date(b.created_at as string),
             updatedAt: new Date(b.updated_at as string),
             isDeletable:
-              (b.name as string) !== 'main' &&
+              (b.name as string) !== branchPolicy.defaultBranchName &&
               !nonDeletable.has(b.id as string),
           };
 
@@ -484,7 +494,7 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
             .for('update');
 
           if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
-          if (branch.name === 'main') {
+          if (branch.name === branchPolicy.defaultBranchName) {
             throw new CMSError('CANNOT_RENAME_MAIN_BRANCH');
           }
 
@@ -506,7 +516,11 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
             .returning();
 
           const nonDeletable = await checkDeletable(tx, [updated.id]);
-          return withIsDeletable(updated, nonDeletable);
+          return withIsDeletable(
+            updated,
+            nonDeletable,
+            branchPolicy.defaultBranchName,
+          );
         });
       },
     ),
@@ -565,7 +579,7 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
             .for('update');
 
           if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
-          if (branch.name === 'main') {
+          if (branch.name === branchPolicy.defaultBranchName) {
             throw new CMSError('CANNOT_DELETE_MAIN_BRANCH');
           }
 

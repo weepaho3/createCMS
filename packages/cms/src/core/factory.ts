@@ -26,6 +26,7 @@ import type {
   InferPluginNamespaces,
 } from './types/plugin';
 
+import { DEFAULT_BRANCH_NAME } from './branch-policy';
 import {
   createCMSContext,
   processCollections,
@@ -402,6 +403,8 @@ export const createCMS = <
     db: definition.db,
     collections: collections as Record<string, CollectionWithName>,
     dataRetention: definition.dataRetention,
+    defaultBranchName: definition.defaultBranchName,
+    branchProtection: definition.branchProtection,
   });
 
   if (definition.user) {
@@ -446,7 +449,9 @@ export const createCMS = <
   checkEndpointConflicts(plugins);
 
   // Merge config hooks + plugin hooks + search hooks (config hooks run first)
-  const searchHooks = createSearchHooks();
+  const searchHooks = createSearchHooks(
+    definition.defaultBranchName ?? DEFAULT_BRANCH_NAME,
+  );
   const beforeHooks = [
     ...(definition.hooks?.before ?? []),
     ...plugins.flatMap((p) => p.hooks?.before ?? []),

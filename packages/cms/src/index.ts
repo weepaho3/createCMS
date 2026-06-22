@@ -103,6 +103,7 @@ export type {
   ListBranchesResult,
   CMSUserConfig,
   DataRetentionConfig,
+  BranchProtectionConfig,
   MiddlewareResult,
   RevalidateEvent,
   RevalidateHandler,

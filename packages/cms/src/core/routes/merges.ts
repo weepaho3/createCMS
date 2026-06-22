@@ -14,6 +14,7 @@ import {
   loadBlocksAtCommit,
   type ReconstructedBlock,
 } from '../blocks/reconstruct-snapshot';
+import { approvalGatePasses, resolveBranchPolicy } from '../branch-policy';
 import { indexVersionContent } from '../content-index';
 import {
   blockVersions,
@@ -349,6 +350,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
 ) {
   const { db } = cmsCtx;
   const collectionName = def.name;
+  const branchPolicy = resolveBranchPolicy(cmsCtx);
 
   return {
     /**
@@ -849,7 +851,11 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
 
         if (ctx.context.withRoot) {
           const rootIds = [...new Set(items.map((i) => i.rootId as string))];
-          const rootMap = await batchFetchRoots(db, rootIds);
+          const rootMap = await batchFetchRoots(
+            db,
+            rootIds,
+            branchPolicy.defaultBranchName,
+          );
           for (const item of items) {
             item.root = rootMap.get(item.rootId as string) ?? null;
           }
@@ -1216,11 +1222,18 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
             if (!ancestor) throw new CMSError('NO_COMMON_ANCESTOR');
             const baseCommitId = ancestor.commonAncestorCommitId;
 
-            if (!approvalState.hasRequests) {
-              throw new CMSError('MERGE_APPROVAL_REQUIRED');
-            }
-            if (!approvalState.allApproved) {
-              throw new CMSError('APPROVALS_NOT_FULLY_APPROVED');
+            if (branchPolicy.requireApprovalToMerge) {
+              if (!approvalState.hasRequests) {
+                throw new CMSError('MERGE_APPROVAL_REQUIRED');
+              }
+              if (
+                !approvalGatePasses(
+                  approvalState,
+                  branchPolicy.requiredReviewers,
+                )
+              ) {
+                throw new CMSError('APPROVALS_NOT_FULLY_APPROVED');
+              }
             }
 
             if (targetBranch.headCommitId === baseCommitId) {

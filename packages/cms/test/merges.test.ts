@@ -1729,7 +1729,9 @@ describe('executeMerge', () => {
   });
 
   it('rejects when no merge approval exists for the merge request commit', async () => {
-    const { cms } = await setupTestCMS();
+    const { cms } = await setupTestCMS({
+      branchProtection: { requireApprovalToMerge: true },
+    });
 
     const root = await cms.api.pages.createRoot({
       body: { slug: '/needs-approval', properties: { title: 'Page' } },
@@ -1772,7 +1774,9 @@ describe('executeMerge', () => {
   });
 
   it('rejects while any requested merge approval is pending or rejected', async () => {
-    const { cms } = await setupTestCMS();
+    const { cms } = await setupTestCMS({
+      branchProtection: { requireApprovalToMerge: true },
+    });
 
     const root = await cms.api.pages.createRoot({
       body: { slug: '/incomplete-approval', properties: { title: 'Page' } },

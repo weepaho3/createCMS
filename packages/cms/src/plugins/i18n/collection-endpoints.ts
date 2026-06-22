@@ -16,6 +16,7 @@ import {
   type BlockVersionRow,
 } from '../../core/blocks/copy-subtree';
 import { requireRootInScope } from '../../core/blocks/guards';
+import { DEFAULT_BRANCH_NAME } from '../../core/branch-policy';
 import {
   blockVersions,
   branches,
@@ -297,6 +298,7 @@ export function createI18nCollectionEndpoints(
 
           const { commitId, branchId } = await createInitialCommit(tx, def, {
             rootId: newRoot.id,
+            branchName: pluginCtx.defaultBranchName ?? DEFAULT_BRANCH_NAME,
             message: message ?? `Translation (${targetLanguage})`,
             createdBy: actor,
             versions,

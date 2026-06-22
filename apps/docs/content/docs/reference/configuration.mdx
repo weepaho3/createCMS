@@ -28,6 +28,8 @@ export const cms = createCMS({
 | `plugins` | `CMSPlugin[]` | no | `[]` | Server plugins. |
 | `basePath` | `string` | no | `'/api/cms'` | Base path the router mounts under. |
 | `dataRetention` | `DataRetentionConfig` | no | | Pruning policy for old commits and archived roots. |
+| `defaultBranchName` | `string` | no | `'main'` | Name of the default branch every root is seeded with. |
+| `branchProtection` | `BranchProtectionConfig` | no | | Branch-protection and approval gates (see below). |
 | `user` | `CMSUserConfig` | no | | Links a user table so reads can enrich with author data. |
 | `hooks` | `{ before?, after? }` | no | | Inline before/after hooks on CMS actions. |
 | `schema` | `{ output?: string }` | no | | CLI-only: the `output` path for `createcms generate` (default `./cms-schema.ts`). Not read at runtime. |
@@ -91,6 +93,17 @@ The whole object is optional, but when you provide it, `keepDays` and `keepMinCo
 | `keepDays` | `number` | yes | | How long to keep old commits. |
 | `keepMinCommits` | `number` | yes | | Minimum commits to keep per branch regardless of age. |
 | `archiveKeepDays` | `number` | no | `keepDays` | Grace period before an archived root is hard-deleted. |
+
+## `branchProtection`
+
+Governance for the default branch and the merge/publish approval gates. Every field is opt-in; an empty config preserves current behavior.
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `protectMain` | `boolean` | `false` | Reject direct content mutations on the default branch (create/update/delete/move/duplicate of blocks, and `updateRoot`). Edits must happen on another branch and reach the default branch via a merge. `createRoot` is exempt. Throws `PROTECTED_BRANCH`. |
+| `requireApprovalToMerge` | `boolean` | `false` | Require approvals before `executeMerge`. **Note:** previously merges always required approval — this now defaults to off; set `true` to keep the gate. |
+| `requireApprovalBeforePublish` | `boolean` | `false` | Require approvals before `publishBranch`, even when none were explicitly requested. `false` keeps the existing conditional behavior (gate only when approvals exist). |
+| `requiredReviewers` | `number` | `1` | Minimum distinct approved reviewers for the merge / publish gates, on top of "all requested reviewers approved". |
 
 ## `user`
 

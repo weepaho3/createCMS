@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 
 import type { DrizzleInstance } from '../types/drizzle';
 
+import { DEFAULT_BRANCH_NAME } from '../branch-policy';
 import {
   assets,
   blockVersions,
@@ -128,6 +129,7 @@ async function deleteSearchIndex(
 export async function indexRoot(
   db: DrizzleInstance,
   rootId: string,
+  defaultBranchName: string = DEFAULT_BRANCH_NAME,
 ): Promise<void> {
   const rootRow = await db.execute(sql`
     SELECT ${roots.id}, ${roots.collection}, ${roots.slug}
@@ -148,7 +150,7 @@ export async function indexRoot(
     SELECT ${branches.headCommitId}
     FROM ${branches}
     WHERE ${branches.rootId} = ${rootId}
-      AND ${branches.name} = 'main'
+      AND ${branches.name} = ${defaultBranchName}
     LIMIT 1
   `);
 
@@ -505,7 +507,10 @@ export { deleteSearchIndex };
 // Reindex all — for backfill / admin rebuild
 // ============================================================================
 
-export async function reindexAll(db: DrizzleInstance): Promise<{
+export async function reindexAll(
+  db: DrizzleInstance,
+  defaultBranchName: string = DEFAULT_BRANCH_NAME,
+): Promise<{
   indexed: Record<string, number>;
 }> {
   const counts: Record<string, number> = {
@@ -526,7 +531,7 @@ export async function reindexAll(db: DrizzleInstance): Promise<{
     SELECT ${roots.id} FROM ${roots}
   `);
   for (const row of rootRows.rows as Array<{ id: string }>) {
-    await indexRoot(db, row.id);
+    await indexRoot(db, row.id, defaultBranchName);
     counts.root++;
   }
 

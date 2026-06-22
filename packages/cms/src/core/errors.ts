@@ -11,6 +11,11 @@ export const CMS_ERRORS = {
     status: 400 as const,
     message: 'This block type is not allowed inside the target parent',
   },
+  PROTECTED_BRANCH: {
+    status: 403 as const,
+    message:
+      'Direct edits to the protected default branch are not allowed; work on a branch and merge',
+  },
   ROOT_NOT_FOUND: {
     status: 404 as const,
     message: 'Root block not found in snapshot',

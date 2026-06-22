@@ -1,5 +1,6 @@
 import type {
   AnyCollectionDefinition,
+  BranchProtectionConfig,
   CMSMiddleware,
   CMSProcedureCtx,
   CollectionDefinition,
@@ -64,6 +65,8 @@ export function createCMSContext(input: {
   db: DrizzleInstance;
   collections: Record<string, CollectionWithName>;
   dataRetention?: DataRetentionConfig;
+  defaultBranchName?: string;
+  branchProtection?: BranchProtectionConfig;
 }): CMSProcedureCtx {
   return input;
 }

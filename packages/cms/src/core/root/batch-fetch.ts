@@ -2,6 +2,7 @@ import { inArray, sql } from 'drizzle-orm';
 
 import type { DrizzleInstance } from '../types/drizzle';
 
+import { DEFAULT_BRANCH_NAME } from '../branch-policy';
 import {
   blockVersions,
   branches,
@@ -30,6 +31,7 @@ export type RootEnrichment = {
 export async function batchFetchRoots(
   db: DrizzleInstance,
   rootIds: string[],
+  defaultBranchName: string = DEFAULT_BRANCH_NAME,
 ): Promise<Map<string, RootEnrichment>> {
   if (rootIds.length === 0) return new Map();
 
@@ -44,7 +46,7 @@ export async function batchFetchRoots(
     FROM ${roots}
     JOIN ${branches}
       ON ${branches.rootId} = ${roots.id}
-     AND ${branches.name} = 'main'
+     AND ${branches.name} = ${defaultBranchName}
     JOIN ${commitSnapshots}
       ON ${commitSnapshots.commitId} = ${branches.headCommitId}
      AND ${commitSnapshots.blockId} = ${roots.id}

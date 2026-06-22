@@ -69,19 +69,22 @@ const inputRootId = (input: Record<string, unknown>) =>
  * with content mutations. Hooks fire asynchronously (fire-and-forget)
  * to avoid adding latency to the mutation response.
  */
-export function createSearchHooks(): CMSAfterHook[] {
+export function createSearchHooks(defaultBranchName: string): CMSAfterHook[] {
+  // `indexRoot` resolves the default-branch head, so it needs the configured
+  // branch name; the other index fns don't.
+  const indexRootFn: IndexFn = (db, id) => indexRoot(db, id, defaultBranchName);
   return [
     // ---- Root / Block content changes => re-index root block tree ----
-    createSearchAfterHook('createRoot', resultRootId, indexRoot),
-    createSearchAfterHook('updateRoot', inputRootId, indexRoot),
-    createSearchAfterHook('updateBlock', inputRootId, indexRoot),
-    createSearchAfterHook('updateBlocks', inputRootId, indexRoot),
-    createSearchAfterHook('createBlock', inputRootId, indexRoot),
-    createSearchAfterHook('deleteBlock', inputRootId, indexRoot),
-    createSearchAfterHook('moveBlock', inputRootId, indexRoot),
-    createSearchAfterHook('duplicateBlock', inputRootId, indexRoot),
-    createSearchAfterHook('moveRoot', inputRootId, indexRoot),
-    createSearchAfterHook('executeMerge', inputRootId, indexRoot),
+    createSearchAfterHook('createRoot', resultRootId, indexRootFn),
+    createSearchAfterHook('updateRoot', inputRootId, indexRootFn),
+    createSearchAfterHook('updateBlock', inputRootId, indexRootFn),
+    createSearchAfterHook('updateBlocks', inputRootId, indexRootFn),
+    createSearchAfterHook('createBlock', inputRootId, indexRootFn),
+    createSearchAfterHook('deleteBlock', inputRootId, indexRootFn),
+    createSearchAfterHook('moveBlock', inputRootId, indexRootFn),
+    createSearchAfterHook('duplicateBlock', inputRootId, indexRootFn),
+    createSearchAfterHook('moveRoot', inputRootId, indexRootFn),
+    createSearchAfterHook('executeMerge', inputRootId, indexRootFn),
     // Archiving a root removes it from the working set -> drop its search entry.
     createDeleteAfterHook('deleteRoot', 'root', inputRootId),
 
