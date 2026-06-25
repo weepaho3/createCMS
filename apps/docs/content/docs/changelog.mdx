@@ -3,6 +3,30 @@ title: Changelog
 description: Release notes for @createcms/core, generated from Changesets.
 ---
 
+## 0.2.3
+
+### Patch Changes
+
+- [#9](https://github.com/weepaho3/createCMS/pull/9) [`be8c643`](https://github.com/weepaho3/createCMS/commit/be8c64337574fc780bf9714fe2acc8ab2402dbd0) Thanks [@weepaho3](https://github.com/weepaho3)! - Add branch-protection and approval governance to the CMS config, plus a configurable default branch name.
+
+  - **`branchProtection.protectMain`** — reject direct content mutations on the default branch (create/update/delete/move/duplicate of blocks, and `updateRoot`); edits must go via a branch + merge. `createRoot` is exempt. Throws the new `PROTECTED_BRANCH` (403) error.
+  - **`branchProtection.requireApprovalBeforePublish`** — make `publishBranch` always require approvals, not just when one was explicitly requested. Default `false` (existing conditional behavior).
+  - **`branchProtection.requiredReviewers`** — minimum distinct approved reviewers for the merge / publish gates (default `1`).
+  - **`defaultBranchName`** — the branch every root is seeded with, replacing the hard-coded `'main'` throughout (rename/delete guards, read/search resolution, and i18n translation copy-seeding).
+
+  **Breaking:** `branchProtection.requireApprovalToMerge` defaults to `false`. Previously `executeMerge` ALWAYS required approvals; merges now succeed without approval unless you set `requireApprovalToMerge: true`. Set it explicitly to keep the prior gate.
+
+- [#9](https://github.com/weepaho3/createCMS/pull/9) [`1d9bf1f`](https://github.com/weepaho3/createCMS/commit/1d9bf1fcf211112ad707c661a72a3d85333627c9) Thanks [@weepaho3](https://github.com/weepaho3)! - Add a `forceCommitMessage` option to the CMS config. When `true`, every content mutation (createRoot / createBlock / updateBlock / deleteBlock / moveBlock / duplicateBlock / updateBlocks / updateRoot) requires a non-empty `message` — an empty or whitespace-only message is rejected with the new `COMMIT_MESSAGE_REQUIRED` error instead of falling back to an auto-generated default. Off by default, so existing behavior is unchanged.
+
+- [#9](https://github.com/weepaho3/createCMS/pull/9) [`a45021a`](https://github.com/weepaho3/createCMS/commit/a45021a28245d0063e8e2c0aa9fc5bd6ffd17411) Thanks [@weepaho3](https://github.com/weepaho3)! - `getRootHistory` now attributes each commit to the branch it was **created on**, deterministically — fixing wrong branch labels for shared ancestors.
+
+  Previously the branch label was inferred with a recursive "nearest branch tip wins (`MIN(depth)`)" heuristic, which mis-attributed commits that lie on more than one branch's first-parent chain (a feature branch with fewer post-fork commits could "claim" main's shared history). The originating branch is now stored on each commit and read directly.
+
+  - `commits` gains `branchId` (links to the live branch — follows renames; no FK) and `originBranchName` (a deletion-proof name snapshot). Both are set at commit-write time.
+  - `getRootHistory` resolves `branch = COALESCE(live branch name, originBranchName)` via a simple join — the recursive CTE is gone (O(n), deterministic).
+
+  **Schema change, no backfill (beta):** the new `origin_branch_name` column is `NOT NULL`; recreate the database. There is no migration of existing commit rows.
+
 ## 0.2.2
 
 ### Patch Changes
