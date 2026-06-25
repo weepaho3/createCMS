@@ -31,6 +31,7 @@ export const setupI18nTestCMS = async <
   defaultLanguage?: string;
   collections?: C;
   fallback?: Record<string, readonly string[]>;
+  defaultBranchName?: string;
 }) => {
   const { db, cleanup: cleanupSchema } = await setupTestDB({
     plugins: [{ name: 'i18n', schema: i18nSchema }],
@@ -45,6 +46,7 @@ export const setupI18nTestCMS = async <
   const cms = createCMS({
     db,
     media: { ...DUMMY_MEDIA_CONFIG },
+    defaultBranchName: options?.defaultBranchName,
     // The fallback only runs when no override is passed (default C =
     // typeof TEST_COLLECTIONS), so the cast is sound and keeps cms.api typed.
     collections: (options?.collections ?? TEST_COLLECTIONS) as C,

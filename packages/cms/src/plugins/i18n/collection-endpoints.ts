@@ -235,25 +235,27 @@ export function createI18nCollectionEndpoints(
             targetScope,
           );
 
-          // Seed the initial commit: copy the source's `main` tree as the starting
-          // draft, or start blank.
+          // Seed the initial commit: copy the source's default-branch tree as the
+          // starting draft, or start blank.
+          const defaultBranchName =
+            pluginCtx.defaultBranchName ?? DEFAULT_BRANCH_NAME;
           let versions: ChangedVersion[] | undefined;
           if (seed === 'copy') {
-            const [mainBranch] = await tx
+            const [sourceBranch] = await tx
               .select({ headCommitId: branches.headCommitId })
               .from(branches)
               .where(
                 and(
                   eq(branches.rootId, sourceRootId),
-                  eq(branches.name, 'main'),
+                  eq(branches.name, defaultBranchName),
                 ),
               )
               .limit(1);
-            if (mainBranch) {
+            if (sourceBranch) {
               const snaps = await tx
                 .select({ blockVersionId: commitSnapshots.blockVersionId })
                 .from(commitSnapshots)
-                .where(eq(commitSnapshots.commitId, mainBranch.headCommitId));
+                .where(eq(commitSnapshots.commitId, sourceBranch.headCommitId));
               const ids = snaps.map((s) => s.blockVersionId);
               if (ids.length > 0) {
                 const allV = await tx
@@ -298,7 +300,7 @@ export function createI18nCollectionEndpoints(
 
           const { commitId, branchId } = await createInitialCommit(tx, def, {
             rootId: newRoot.id,
-            branchName: pluginCtx.defaultBranchName ?? DEFAULT_BRANCH_NAME,
+            branchName: defaultBranchName,
             message: message ?? `Translation (${targetLanguage})`,
             createdBy: actor,
             versions,

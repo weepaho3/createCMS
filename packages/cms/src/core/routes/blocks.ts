@@ -35,7 +35,6 @@ import {
   blockVersions,
   branches,
   commitSnapshots,
-  commits,
   mergeRequests,
   publications,
   roots,

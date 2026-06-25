@@ -1535,6 +1535,57 @@ describe('updateMergeRequest', () => {
 // ============================================================================
 
 describe('executeMerge', () => {
+  it('merges without approval by default (requireApprovalToMerge defaults false)', async () => {
+    // The default config does NOT require approval — this is the documented
+    // pre-1.0 behavior change. Execute a merge with no approval at all and
+    // expect it to succeed. (Set requireApprovalToMerge: true to gate it.)
+    const { cms, db } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/no-approval', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'New content' },
+      },
+    });
+
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        title: 'Test MR',
+        sourceBranchId: draft.branchId,
+        targetBranchId: root.branchId,
+        createdBy: 'user-1',
+      },
+    });
+
+    // No requestApproval / approve calls.
+    const result = await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequestId },
+    });
+
+    expect(result.fastForward).toBe(true);
+
+    const [mergedMR] = await db
+      .select()
+      .from(mergeRequests)
+      .where(eq(mergeRequests.id, mr.mergeRequestId));
+    expect(mergedMR.status).toBe('merged');
+  });
+
   it('performs a fast-forward merge when target has not diverged', async () => {
     const { cms, db } = await setupTestCMS();
 
