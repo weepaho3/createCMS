@@ -287,6 +287,45 @@ describe('i18n — createTranslation', () => {
     );
   });
 
+  it('copy seed honors a custom defaultBranchName (not hard-coded "main")', async () => {
+    const { cms, setLanguage } = await setupI18nTestCMS({
+      collections: NESTED_I18N,
+      defaultBranchName: 'production',
+    });
+    setLanguage('en');
+    const en = await cms.api.pages.createRoot({
+      body: { slug: 'guide', properties: { title: 'Guide' } },
+    });
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: en.rootId,
+        branchId: en.branchId,
+        parentBlockId: en.rootId,
+        type: 'paragraph',
+        properties: { text: 'Hello' },
+      },
+    });
+
+    const de = await cms.api.pages.createTranslation({
+      body: {
+        sourceRootId: en.rootId,
+        targetLanguage: 'de',
+        targetSlug: 'anleitung',
+      },
+    });
+    // The source's default branch is named 'production', not 'main'. Before the
+    // fix the copy-seed looked up a branch literally named 'main', found none,
+    // and silently produced a blank translation.
+    setLanguage('de');
+    const tree = await cms.api.pages.getBlockTree({
+      query: { rootId: de.rootId, branchId: de.branchId },
+    });
+    expect(tree.tree.children).toHaveLength(1);
+    expect((tree.tree.children[0].properties as { text: string }).text).toBe(
+      'Hello',
+    );
+  });
+
   it('blank seed starts empty', async () => {
     const { cms, setLanguage } = await setupI18nTestCMS({
       collections: NESTED_I18N,

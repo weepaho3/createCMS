@@ -4,6 +4,7 @@ import type { CMSProcedureCtx, MediaConfig } from '../types';
 import type { CMSPlugin } from '../types/plugin';
 
 import { runPruningPass } from '../admin/pruning';
+import { DEFAULT_BRANCH_NAME } from '../branch-policy';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
 import { reindexAll } from '../search/index-builder';
@@ -100,7 +101,10 @@ export function createAdminEndpoints(
         ),
       },
       async () => {
-        const result = await reindexAll(db);
+        const result = await reindexAll(
+          db,
+          cmsCtx.defaultBranchName ?? DEFAULT_BRANCH_NAME,
+        );
         return result;
       },
     ),

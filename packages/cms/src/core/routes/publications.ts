@@ -20,6 +20,7 @@ import {
   loadBlocksAtCommit,
   type BlockTreeNode,
 } from '../blocks/reconstruct-snapshot';
+import { approvalGatePasses, resolveBranchPolicy } from '../branch-policy';
 import {
   blockVersions,
   branches,
@@ -389,6 +390,7 @@ export function createPublicationEndpoints<
 >(def: TDef, cmsCtx: CMSProcedureCtx) {
   const { db } = cmsCtx;
   const collectionName = def.name;
+  const branchPolicy = resolveBranchPolicy(cmsCtx);
 
   return {
     /**
@@ -471,7 +473,18 @@ export function createPublicationEndpoints<
             branchId,
             branch.headCommitId,
           );
-          if (approvalState.hasRequests && !approvalState.allApproved) {
+          if (branchPolicy.requireApprovalBeforePublish) {
+            // Approval is mandatory, even when none was explicitly requested.
+            if (
+              !approvalGatePasses(approvalState, branchPolicy.requiredReviewers)
+            ) {
+              throw new CMSError('PUBLICATION_APPROVAL_REQUIRED');
+            }
+          } else if (
+            approvalState.hasRequests &&
+            !approvalGatePasses(approvalState, branchPolicy.requiredReviewers)
+          ) {
+            // Conditional (existing) behavior: only gate when approvals exist.
             throw new CMSError('PUBLICATION_APPROVAL_REQUIRED');
           }
 

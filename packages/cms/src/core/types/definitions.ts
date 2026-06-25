@@ -912,6 +912,35 @@ export type CMSUserConfig<TTable extends AnyPgTable = AnyPgTable> = {
   exposeColumns: (keyof TTable['$inferSelect'] & string)[];
 };
 
+/**
+ * Governance for the default ("main") branch and the merge/publish gates.
+ * Every field is opt-in; an empty/absent config preserves today's behavior.
+ */
+export type BranchProtectionConfig = {
+  /**
+   * Reject direct content mutations on the default branch — edits must happen on
+   * a non-default branch and reach the default branch via a merge. `createRoot`
+   * (which seeds the default branch) is exempt. Default `false`.
+   */
+  protectMain?: boolean;
+  /**
+   * Whether `executeMerge` requires approvals. Default `false` — a merge needs
+   * no approval unless you opt in. (Set `true` to gate merges on approvals.)
+   */
+  requireApprovalToMerge?: boolean;
+  /**
+   * Whether `publishBranch` ALWAYS requires approvals — not just when an approval
+   * was explicitly requested. Default `false` (the existing conditional behavior:
+   * if approvals were requested they must pass, otherwise publish proceeds).
+   */
+  requireApprovalBeforePublish?: boolean;
+  /**
+   * Minimum distinct approved reviewers required by the merge / publish gates,
+   * on top of "all requested reviewers approved". Default `1`.
+   */
+  requiredReviewers?: number;
+};
+
 export type CMSDefinition<
   TCollections extends Record<string, AnyCollectionDefinition> = Record<
     string,
@@ -923,6 +952,18 @@ export type CMSDefinition<
   media: MediaConfig;
   collections: TCollections;
   dataRetention?: DataRetentionConfig;
+  /**
+   * When `true`, every content-mutating operation (createRoot / createBlock /
+   * updateBlock / deleteBlock / moveBlock / duplicateBlock / updateBlocks /
+   * updateRoot) requires a non-empty `message` — an empty or whitespace-only
+   * message is rejected with `COMMIT_MESSAGE_REQUIRED` instead of falling back
+   * to an auto-generated default. Off by default.
+   */
+  forceCommitMessage?: boolean;
+  /** Name of the default branch every root is seeded with. Default `'main'`. */
+  defaultBranchName?: string;
+  /** Branch-protection and approval gates — see {@link BranchProtectionConfig}. */
+  branchProtection?: BranchProtectionConfig;
   authMiddleware?: CMSMiddleware;
   middleware?: CMSMiddleware;
   basePath?: string;
@@ -948,6 +989,12 @@ export type CMSProcedureCtx = {
   db: DrizzleInstance;
   collections: Record<string, CollectionWithName>;
   dataRetention?: DataRetentionConfig;
+  /** When `true`, commit-producing routes reject an empty `message`. */
+  forceCommitMessage?: boolean;
+  /** Name of the default branch (resolved; see {@link CMSDefinition.defaultBranchName}). */
+  defaultBranchName?: string;
+  /** Branch-protection and approval gates — see {@link BranchProtectionConfig}. */
+  branchProtection?: BranchProtectionConfig;
   scopeConditions?: ScopeConditionFactory[];
   notificationService?: import('../notifications/service').NotificationService;
   resolvedUser?: ResolvedUserConfig;

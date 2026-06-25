@@ -3,6 +3,8 @@ import { eq, sql } from 'drizzle-orm';
 import type { CollectionWithName } from '../types';
 import type { DrizzleInstance } from '../types/drizzle';
 
+import { newId } from '../../utils/nanoid';
+import { DEFAULT_BRANCH_NAME } from '../branch-policy';
 import { indexVersionContent } from '../content-index';
 import {
   blockVersions,
@@ -60,6 +62,14 @@ export async function writeCommit(
     changed: ChangedVersion[];
   },
 ): Promise<{ commitId: string; versionIdByBlockId: Map<string, string> }> {
+  // Record the branch this commit is created on (history attribution). The
+  // branch is the one whose head this commit advances; look up its name for the
+  // deletion-proof snapshot.
+  const [branchRow] = await tx
+    .select({ name: branches.name })
+    .from(branches)
+    .where(eq(branches.id, args.branchId));
+
   const [newCommit] = await tx
     .insert(commits)
     .values({
@@ -67,6 +77,8 @@ export async function writeCommit(
       parentCommitId: args.parentCommitId,
       message: args.message,
       createdBy: args.createdBy,
+      branchId: args.branchId,
+      originBranchName: branchRow?.name ?? DEFAULT_BRANCH_NAME,
     })
     .returning();
 
@@ -167,20 +179,29 @@ export async function createInitialCommit(
   branchId: string;
   versionIdByBlockId: Map<string, string>;
 }> {
+  // Pre-generate the branch id so the genesis commit can record its origin
+  // branch up front. `commits.branchId` has no FK, so referencing the branch
+  // before it is inserted is fine (the branch is created right below).
+  const branchId = newId('branch');
+  const branchName = args.branchName ?? DEFAULT_BRANCH_NAME;
+
   const [commit] = await tx
     .insert(commits)
     .values({
       rootId: args.rootId,
       message: args.message,
       createdBy: args.createdBy,
+      branchId,
+      originBranchName: branchName,
     })
     .returning();
 
   const [branch] = await tx
     .insert(branches)
     .values({
+      id: branchId,
       rootId: args.rootId,
-      name: args.branchName ?? 'main',
+      name: branchName,
       headCommitId: commit.id,
       createdBy: args.createdBy,
     })
