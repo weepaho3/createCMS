@@ -233,6 +233,8 @@ export const commits = cms.table(
     message: text("message"),
     createdBy: text("created_by"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
+    branchId: text("branch_id"),
+    originBranchName: text("origin_branch_name").notNull(),
   },
   (table) => [
     foreignKey({
@@ -248,6 +250,7 @@ export const commits = cms.table(
     index("commits_parent_idx").on(table.parentCommitId),
     index("commits_merge_source_idx").on(table.mergeSourceCommitId),
     index("commits_root_created_idx").on(table.rootId, table.createdAt),
+    index("commits_branch_idx").on(table.branchId),
   ],
 );
 

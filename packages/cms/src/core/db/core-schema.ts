@@ -143,6 +143,13 @@ export const coreSchema = defineCoreSchema({
         message: { type: 'text' },
         createdBy: { type: 'text' },
         createdAt: { type: 'timestamp', notNull: true, defaultNow: true },
+        // Branch this commit was CREATED on — the source of truth for history
+        // attribution. `branchId` links to the live branch (follows renames); no
+        // FK, to avoid the circular dependency with branches.headCommitId — a
+        // dangling id after a hard branch-delete simply falls back to the name
+        // snapshot. `originBranchName` is the deletion-proof name snapshot.
+        branchId: { type: 'text' },
+        originBranchName: { type: 'text', notNull: true },
       },
       foreignKeys: [
         {
@@ -162,6 +169,7 @@ export const coreSchema = defineCoreSchema({
         parentIdx: { columns: ['parentCommitId'] },
         mergeSourceIdx: { columns: ['mergeSourceCommitId'] },
         rootCreatedIdx: { columns: ['rootId', 'createdAt'] },
+        branchIdx: { columns: ['branchId'] },
       },
     },
 

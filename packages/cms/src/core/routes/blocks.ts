@@ -2374,28 +2374,12 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           outputKey: 'createdByUser',
         });
 
+        // Branch attribution is STORED on each commit (commits.branch_id /
+        // origin_branch_name), set at write time — deterministic, no heuristic.
+        // Join the live branch for its current name (follows renames) and fall
+        // back to the deletion-proof snapshot if the branch was removed.
         const result = await db.execute(sql`
-          WITH RECURSIVE branch_walk AS (
-            SELECT b.head_commit_id AS commit_id, b.name AS branch_name, 0 AS depth
-            FROM cms.branches b
-            WHERE b.root_id = ${rootId}
-            UNION ALL
-            SELECT c.parent_commit_id, bw.branch_name, bw.depth + 1
-            FROM cms.commits c
-            JOIN branch_walk bw ON c.id = bw.commit_id
-            WHERE c.parent_commit_id IS NOT NULL AND bw.depth < 10000
-          ),
-          branch_labels AS (
-            SELECT commit_id, branch_name, MIN(depth) AS depth
-            FROM branch_walk
-            GROUP BY commit_id, branch_name
-          ),
-          best_branch AS (
-            SELECT DISTINCT ON (commit_id) commit_id, branch_name, depth
-            FROM branch_labels
-            ORDER BY commit_id, depth, (branch_name = ${branchPolicy.defaultBranchName}) DESC
-          ),
-          total AS (
+          WITH total AS (
             SELECT COUNT(*)::int AS cnt FROM cms.commits WHERE root_id = ${rootId}
           )
           SELECT
@@ -2406,18 +2390,17 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             c.created_by,
             c.created_at,
             EXISTS (SELECT 1 FROM cms.publications p WHERE p.commit_id = c.id) AS is_published,
-            bb.branch_name,
-            bb.depth AS branch_depth,
+            COALESCE(b.name, c.origin_branch_name) AS branch_name,
             t.cnt AS total
             ${enrich.select}
           FROM cms.commits c
           CROSS JOIN total t
-          LEFT JOIN best_branch bb ON bb.commit_id = c.id
+          LEFT JOIN cms.branches b ON b.id = c.branch_id
           ${enrich.join}
           WHERE c.root_id = ${rootId}
           GROUP BY c.id, c.parent_commit_id, c.merge_source_commit_id,
                    c.message, c.created_by, c.created_at,
-                   bb.branch_name, bb.depth, t.cnt
+                   b.name, c.origin_branch_name, t.cnt
                    ${enrich.groupBy}
           ORDER BY c.created_at DESC
           LIMIT ${limit} OFFSET ${offset}
@@ -2443,7 +2426,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             message: r.message,
             createdBy: r.created_by,
             createdAt: new Date(r.created_at as string).toISOString(),
-            branch: (r.branch_name as string) ?? branchPolicy.defaultBranchName,
+            branch: r.branch_name as string,
             parents,
             type,
             isPublished: r.is_published,

@@ -705,6 +705,9 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
               message:
                 message ?? `Revert ${branch.name} to commit ${targetCommitId}`,
               createdBy: actor,
+              // The revert commit is created on the branch being reverted.
+              branchId: branch.id,
+              originBranchName: branch.name,
             })
             .returning();
 

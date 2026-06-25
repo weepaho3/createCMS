@@ -1360,6 +1360,9 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
                   message ??
                   `Merge ${sourceBranch.name} into ${targetBranch.name}`,
                 createdBy: actor,
+                // The merge commit is created on the target branch.
+                branchId: mr.targetBranchId,
+                originBranchName: targetBranch.name,
               })
               .returning();
 
@@ -1490,7 +1493,10 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
           if (!conflict) throw new CMSError('CONFLICT_NOT_FOUND');
 
           const [sourceBranch] = await tx
-            .select({ headCommitId: branches.headCommitId })
+            .select({
+              headCommitId: branches.headCommitId,
+              name: branches.name,
+            })
             .from(branches)
             .where(eq(branches.id, mr.sourceBranchId));
           if (!sourceBranch) throw new CMSError('BRANCH_NOT_FOUND');
@@ -1502,6 +1508,9 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
               parentCommitId: sourceBranch.headCommitId,
               message: `Manual merge resolution for block ${blockId}`,
               createdBy: actor,
+              // The resolution commit is created on the source branch.
+              branchId: mr.sourceBranchId,
+              originBranchName: sourceBranch.name,
             })
             .returning();
 
