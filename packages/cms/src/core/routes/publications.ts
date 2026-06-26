@@ -30,6 +30,7 @@ import {
 } from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
+import { resolveLinkPaths } from '../links';
 import { syncAssetsOnPublish, syncAssetsOnUnpublish } from '../media/discovery';
 import {
   coreReferenceResolver,
@@ -422,6 +423,16 @@ export async function buildReferencePreviews(
         abTestResolver,
       );
       substituteVariables(data.tree, vars);
+      // Resolve links in the preview to their current paths, exactly like
+      // getPublishedContent renders the same tree.
+      await resolveLinkPaths(
+        db,
+        data.tree,
+        targetDef,
+        allCollections,
+        resolver,
+        scopeColumns,
+      );
       previews[storedValue] = data.tree;
     }
   }
@@ -909,8 +920,18 @@ export function createPublicationEndpoints<
 
         if (!raw) {
           const vars = await loadVariables(db, ctx.context.scope);
+          const scope = ctx.context.scope;
           for (const variant of variants) {
             substituteVariables(variant.tree, vars);
+            // Resolve link properties to their current language-aware href.
+            await resolveLinkPaths(
+              db,
+              variant.tree,
+              def,
+              cmsCtx.collections,
+              scope.referenceResolver ?? coreReferenceResolver,
+              crossScopeColumns(scope.roots),
+            );
           }
         }
 

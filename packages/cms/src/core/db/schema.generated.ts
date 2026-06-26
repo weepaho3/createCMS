@@ -29,7 +29,7 @@ export const commentThreadTargetEnum = cms.enum("comment_thread_target", ["merge
 
 export const conflictResolutionEnum = cms.enum("conflict_resolution", ["source", "target", "manual"]);
 
-export const contentUsageTargetEnum = cms.enum("content_usage_target", ["asset", "variable", "reference"]);
+export const contentUsageTargetEnum = cms.enum("content_usage_target", ["asset", "variable", "reference", "link"]);
 
 export const mergeRequestStatusEnum = cms.enum("merge_request_status", ["open", "merged", "closed"]);
 

@@ -110,6 +110,9 @@ export type {
   RevalidateHandler,
   RevalidateConfig,
   ResolvedReference,
+  LinkKind,
+  LinkValue,
+  ResolvedLink,
 } from './core/types/definitions';
 
 export type { DrizzleInstance } from './core/types/drizzle';

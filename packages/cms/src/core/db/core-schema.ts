@@ -65,7 +65,9 @@ export const coreSchema = defineCoreSchema({
     // populated from RB1 on; the enum carries it now so RB1 needs no enum change.
     contentUsageTarget: {
       enumName: 'content_usage_target',
-      values: ['asset', 'variable', 'reference'],
+      // 'link' is the language-aware link property's INTERNAL target (a rootId),
+      // tracked for the usage UI / soft delete-warning (links never hard-block).
+      values: ['asset', 'variable', 'reference', 'link'],
     },
   },
 

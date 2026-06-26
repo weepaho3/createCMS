@@ -31,6 +31,7 @@ import {
   type BlockTreeNode,
 } from '../blocks/reconstruct-snapshot';
 import { resolveBranchPolicy } from '../branch-policy';
+import { resolveLinkPaths } from '../links';
 import {
   blockVersions,
   branches,
@@ -801,6 +802,18 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             ? await loadVariables(db, scope)
             : null;
         if (!raw && vars) substituteVariables(tree, vars);
+        // Resolve link properties to their current language-aware href (unless
+        // raw — the editor keeps the stored target for re-picking).
+        if (!raw) {
+          await resolveLinkPaths(
+            db,
+            tree,
+            def,
+            cmsCtx.collections,
+            scope.referenceResolver ?? coreReferenceResolver,
+            crossScopeColumns(scope.roots),
+          );
+        }
 
         // Opt-in sidecar: the PUBLISHED preview of every reference embedded in the
         // tree, keyed by the stored reference value — one call instead of N
