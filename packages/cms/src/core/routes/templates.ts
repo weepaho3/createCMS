@@ -52,7 +52,7 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
      * @example await cmsClient.templates.listTemplates({ collection: 'pages', blockType: 'hero' })
      */
     listTemplates: createCMSEndpoint(
-      '/templates',
+      '/templates/listTemplates',
       {
         method: 'GET',
         query: z
@@ -104,7 +104,7 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
      * @example await cmsClient.templates.getTemplate({ id: 'tpl_abc123' })
      */
     getTemplate: createCMSEndpoint(
-      '/templates/get',
+      '/templates/getTemplate',
       {
         method: 'GET',
         query: z.object({ id: z.string() }),
@@ -135,7 +135,7 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
      * @example await cmsClient.templates.createTemplate({ collection: 'pages', blockType: 'hero', propertyKey: 'title', template: 'Welcome to {{siteName}}' })
      */
     createTemplate: createCMSEndpoint(
-      '/templates/create',
+      '/templates/createTemplate',
       {
         method: 'POST',
         body: z.object({
@@ -208,7 +208,7 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
      * @example await cmsClient.templates.updateTemplate({ id: 'tpl_abc123', template: 'Updated {{siteName}} content' })
      */
     updateTemplate: createCMSEndpoint(
-      '/templates/update',
+      '/templates/updateTemplate',
       {
         method: 'POST',
         body: z.object({
@@ -270,7 +270,7 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
      * @example await cmsClient.templates.deleteTemplate({ id: 'tpl_abc123' })
      */
     deleteTemplate: createCMSEndpoint(
-      '/templates/delete',
+      '/templates/deleteTemplate',
       {
         method: 'POST',
         body: z.object({ id: z.string() }),
@@ -298,7 +298,7 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
      * @example await cmsClient.templates.resolveTemplate({ template: 'Hello {{userName}}, welcome to {{siteName}}' })
      */
     resolveTemplate: createCMSEndpoint(
-      '/templates/resolve',
+      '/templates/resolveTemplate',
       {
         method: 'POST',
         body: z.object({ template: z.string() }),
@@ -322,7 +322,7 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
      * @example await cmsClient.templates.getTemplateDefaults({ collection: 'pages', blockType: 'hero' })
      */
     getTemplateDefaults: createCMSEndpoint(
-      '/templates/defaults',
+      '/templates/getTemplateDefaults',
       {
         method: 'GET',
         query: z.object({

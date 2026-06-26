@@ -43,7 +43,7 @@ export function createSearchEndpoints(cmsCtx: CMSProcedureCtx) {
      * });
      */
     search: createCMSEndpoint(
-      '/search',
+      '/search/search',
       {
         method: 'GET',
         query: z.object({
