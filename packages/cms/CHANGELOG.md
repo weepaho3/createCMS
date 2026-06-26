@@ -1,5 +1,35 @@
 # @createcms/core
 
+## 0.2.5
+
+### Patch Changes
+
+- [#13](https://github.com/weepaho3/createCMS/pull/13) [`341195c`](https://github.com/weepaho3/createCMS/commit/341195c356d8f8ad1271d1c725bd88bb08f7769d) Thanks [@weepaho3](https://github.com/weepaho3)! - Add an opt-in `getBlockTree({ includeReferencePreviews: true })` flag that returns a `references` sidecar alongside the tree.
+
+  The sidecar is a `Record<storedReferenceValue, tree>` of the **published** render tree of every reference embedded in the entry (its own nested references resolved and `{{variables}}` substituted, through the active tenant/language scope). This lets a page editor fetch the raw editable tree **and** all embedded reusable-block previews in a single call instead of one `getPublishedContent` per reference (the N+1). Combine with `raw: true` to keep the main tree editable while still getting rendered previews. References that are not published (or out of scope) are omitted. Opt-in because the resolution is more expensive; existing `getBlockTree` callers are unaffected. Reuses the same resolution machinery as `getPublishedContent` (no duplication).
+
+- [#13](https://github.com/weepaho3/createCMS/pull/13) [`341195c`](https://github.com/weepaho3/createCMS/commit/341195c356d8f8ad1271d1c725bd88bb08f7769d) Thanks [@weepaho3](https://github.com/weepaho3)! - `listBranches` now returns `hasPublications` (a boolean) per branch, so callers can tell which branches are currently published without a separate query — analogous to `hasPublications` on `listRoots`. The value was already computed internally (it drives `isDeletable`); it is now exposed on each `BranchListItem`.
+
+- [#13](https://github.com/weepaho3/createCMS/pull/13) [`341195c`](https://github.com/weepaho3/createCMS/commit/341195c356d8f8ad1271d1c725bd88bb08f7769d) Thanks [@weepaho3](https://github.com/weepaho3)! - `branchProtection` can now be overridden **per collection**. A collection definition accepts its own `branchProtection` (a `Partial<BranchProtectionConfig>`): each field set there wins over the global config for that collection only, and unset fields inherit the global value (then the default).
+
+  This makes governance flexible per content type — e.g. a `reusableBlock` collection can set `branchProtection: { protectPublishedBranches: false }` to stay directly editable, while pages keep the global protection. The same applies to `requireApprovalToMerge`, `requireApprovalBeforePublish`, and `requiredReviewers`. Backward compatible: collections without an override behave exactly as before. (`defaultBranchName` and `mergeStrategy` remain global.)
+
+- [#13](https://github.com/weepaho3/createCMS/pull/13) [`341195c`](https://github.com/weepaho3/createCMS/commit/341195c356d8f8ad1271d1c725bd88bb08f7769d) Thanks [@weepaho3](https://github.com/weepaho3)! - Templates now participate in i18n / multi-tenant scoping and are applied server-side on `createBlock`.
+
+  - **Scoped templates.** With the `i18n` plugin a template is per **language**; with `multi-tenant` it is per **tenant**. All template CRUD is scope-filtered, and the `(collection, blockType, propertyKey)` uniqueness is enforced **within** the active scope — so the same key can have a different default per language and per tenant. (The core DB unique was demoted to a lookup index; per-scope uniqueness is the app-level authority, mirroring redirects.)
+  - **Server-side application.** `createBlock` now seeds any **optional** property the caller leaves unset from its template — no client wiring needed. Required properties must still be provided (input is validated before defaults apply); `duplicateBlock` and `updateBlocks` do not re-apply templates (they copy / apply a client-authoritative tree). Caller-provided values always win. The raw template string is stored, so embedded `{{variables}}` stay live (resolved at read time), not frozen at creation.
+  - **Validated targets.** `createTemplate` now rejects a template whose `propertyKey` does not exist on the block type, or is not a text property (`string` / `richText`), with the new `TEMPLATE_PROPERTY_INVALID` error — a string template can no longer be seeded into a number/select/image/reference field.
+
+  **Schema change, no backfill (beta):** the `templates` unique index is demoted to non-unique, and the `i18n` / `multi-tenant` plugins add a `language` / `tenant_slug` column to `templates`. Recreate the database.
+
+- [#13](https://github.com/weepaho3/createCMS/pull/13) [`341195c`](https://github.com/weepaho3/createCMS/commit/341195c356d8f8ad1271d1c725bd88bb08f7769d) Thanks [@weepaho3](https://github.com/weepaho3)! - Variables now participate in multi-tenant and i18n scoping.
+
+  - **multi-tenant** — variables are partitioned per tenant. The same key is independent across tenants, and content resolves the active tenant's value.
+  - **i18n** — variables are per-language **with fallback**, exactly like a translated entry: a value is resolved in the active language, falling back through the configured chain to the default language when it has no value there. Define shared values once (in the default language) and override only the few that need translating. Content rendering (`getBlockTree` / `getPublishedContent`) and template-embedded variables both resolve through this. Implemented via a plugin-provided `VariableResolver` on the resolved scope (mirrors the reference resolver).
+  - **Management** (create/list/update/delete) targets the exact active cell (tenant + language) — no fallback when editing. Uniqueness is per `(tenant, language, key)`, enforced at the app level (the core `key` unique index is demoted to a lookup, since the compound key can't be expressed by either plugin alone). The delete guard and revalidation are tenant-scoped (language-spanning, since a base value can be rendered via fallback in any language).
+
+  **Schema change, no backfill (beta):** the `variables` unique index is demoted to non-unique, and the `i18n` / `multi-tenant` plugins add a `language` / `tenant_slug` column to `variables`. Recreate the database.
+
 ## 0.2.4
 
 ### Patch Changes
