@@ -34,6 +34,12 @@ How the merge is committed depends on whether the target moved:
 - **Fast-forward.** If the target's head is still the merge base, the target simply advances to the source head. No new commit is created (the `executeMerge` result's `mergeCommitId` is `null`, though the stored merge request records the source head as its merge commit).
 - **Merge commit.** Otherwise the CMS builds a merged snapshot and writes a new commit whose `parentCommitId` is the target head and whose `mergeSourceCommitId` is the source head. That second parent records the merge in history.
 
+### Forcing a merge commit
+
+When the target has **not** diverged, a fast-forward is *possible* but not mandatory. Set `mergeStrategy: 'merge-commit'` in the [config](/docs/reference/configuration#mergestrategy) to always record an explicit merge commit instead — git's `--no-ff` — so every integration is visible in history. The default is `'fast-forward'`.
+
+Override the configured strategy on a single call with `executeMerge({ mergeRequestId, noFastForward })`: `noFastForward: true` forces a merge commit, `noFastForward: false` forces a fast-forward. A diverged target always produces a merge commit regardless of the strategy, and a merge with nothing to integrate (the heads are already equal) is always a no-op fast-forward.
+
 ```mermaid
 graph RL
   M[merge commit] --> T1[target]

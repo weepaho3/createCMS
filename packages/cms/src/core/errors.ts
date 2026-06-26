@@ -14,7 +14,7 @@ export const CMS_ERRORS = {
   PROTECTED_BRANCH: {
     status: 403 as const,
     message:
-      'Direct edits to the protected default branch are not allowed; work on a branch and merge',
+      'Direct edits to a published branch are not allowed; work on a separate branch and merge, or unpublish first',
   },
   COMMIT_MESSAGE_REQUIRED: {
     status: 400 as const,

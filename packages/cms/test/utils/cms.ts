@@ -5,6 +5,7 @@ import type {
   CMSPlugin,
   CMSUserConfig,
   DataRetentionConfig,
+  MergeStrategy,
 } from '../../src/index';
 
 import { createCMS } from '../../src/index';
@@ -29,6 +30,7 @@ export const setupTestCMS = async (options?: {
   forceCommitMessage?: boolean;
   defaultBranchName?: string;
   branchProtection?: BranchProtectionConfig;
+  mergeStrategy?: MergeStrategy;
 }) => {
   const { db } = await setupTestDB();
 
@@ -56,6 +58,7 @@ export const setupTestCMS = async (options?: {
     forceCommitMessage: options?.forceCommitMessage,
     defaultBranchName: options?.defaultBranchName,
     branchProtection: options?.branchProtection,
+    mergeStrategy: options?.mergeStrategy,
     ...(options?.user ? { user: options.user } : {}),
   });
 

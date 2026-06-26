@@ -1127,12 +1127,18 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
 
     /**
      * Executes a merge request, integrating all resolved conflicts into the target branch.
-     * Creates a merge commit if target has diverged since the MR was created; otherwise fast-forwards.
-     * Requires all approvals to be granted and all conflicts resolved.
+     * Creates a merge commit if the target has diverged since the MR was created. If the target
+     * has NOT diverged, the integration depends on the merge strategy: by default it fast-forwards
+     * (no merge commit), but `mergeStrategy: 'merge-commit'` (config) or `noFastForward: true`
+     * (per call) force an explicit merge commit (git's `--no-ff`). A merge with nothing to integrate
+     * (heads already equal) is always a no-op fast-forward. Requires all approvals granted and all
+     * conflicts resolved.
      *
      * @param mergeRequestId - The merge request id.
      * @param mergedBy - Optional user id; defaults to ctx.context.userId.
      * @param message - Optional custom commit message (auto-generated if omitted).
+     * @param noFastForward - Force a merge commit even when a fast-forward is possible; overrides the
+     *   configured `mergeStrategy`. `false` forces a fast-forward.
      * @returns The merge commit id, fastForward flag, target branch id, and root id.
      * @throws MERGE_REQUEST_NOT_FOUND if the merge request does not exist.
      * @throws MERGE_REQUEST_NOT_OPEN if the merge request is not open.
@@ -1151,6 +1157,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
           mergeRequestId: z.string(),
           mergedBy: z.string().optional(),
           message: z.string().optional(),
+          noFastForward: z.boolean().optional(),
         }),
         metadata: cmsMeta(
           {
@@ -1159,6 +1166,9 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
                 mergeRequestId: string;
                 mergedBy?: string;
                 message?: string;
+                // Force a merge commit even when a fast-forward is possible
+                // (git's `--no-ff`). Overrides the configured `mergeStrategy`.
+                noFastForward?: boolean;
               },
             },
           },
@@ -1171,7 +1181,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
         ),
       },
       async (ctx) => {
-        const { mergeRequestId, mergedBy, message } = ctx.body;
+        const { mergeRequestId, mergedBy, message, noFastForward } = ctx.body;
         const actor = ctx.context.userId ?? mergedBy;
 
         const pending: NotificationInput[] = [];
@@ -1208,6 +1218,12 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
               .for('update');
             if (!targetBranch) throw new CMSError('BRANCH_NOT_FOUND');
 
+            // Note: a merge is deliberately NOT gated by `protectPublishedBranches`
+            // even when the target branch is published — merging is the sanctioned
+            // path for updating live content (branch → edit → merge → re-publish).
+            // Only DIRECT edits to a published branch are blocked (see
+            // `assertBranchWritable`).
+
             const liveSourceCommitId = sourceBranch.headCommitId;
 
             const [ancestor, approvalState] = await Promise.all([
@@ -1221,6 +1237,20 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
 
             if (!ancestor) throw new CMSError('NO_COMMON_ANCESTOR');
             const baseCommitId = ancestor.commonAncestorCommitId;
+
+            // A fast-forward is *possible* only when the target has not diverged
+            // from the common ancestor. `noFastForward` (per call) overrides the
+            // configured `mergeStrategy`; either forces an explicit merge commit
+            // (git's `--no-ff`). When there is nothing to merge (heads already
+            // equal) we never fabricate an empty merge commit — that path stays a
+            // no-op fast-forward regardless ("already up to date").
+            const canFastForward = targetBranch.headCommitId === baseCommitId;
+            const nothingToMerge =
+              liveSourceCommitId === targetBranch.headCommitId;
+            const forceMergeCommit =
+              noFastForward ?? branchPolicy.mergeStrategy === 'merge-commit';
+            const doFastForward =
+              canFastForward && (!forceMergeCommit || nothingToMerge);
 
             if (branchPolicy.requireApprovalToMerge) {
               if (!approvalState.hasRequests) {
@@ -1236,7 +1266,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
               }
             }
 
-            if (targetBranch.headCommitId === baseCommitId) {
+            if (doFastForward) {
               await Promise.all([
                 tx
                   .update(branches)
@@ -1281,74 +1311,98 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
               };
             }
 
-            const [baseSnapshot, sourceSnapshot, targetSnapshot] =
-              await Promise.all([
-                loadBlocksAtCommit(tx, baseCommitId, sourceBranch.rootId),
-                loadBlocksAtCommit(tx, liveSourceCommitId, sourceBranch.rootId),
-                loadBlocksAtCommit(
-                  tx,
-                  targetBranch.headCommitId,
-                  targetBranch.rootId,
-                ),
-              ]);
+            // Build the merge commit's snapshot. When the target has NOT diverged
+            // (we only reach here because a merge commit was forced), the result
+            // is exactly the source tree — take it directly. The three-way
+            // `buildMergedSnapshot` must NOT run here: its "block absent on the
+            // target means deleted" heuristic would drop blocks the source added,
+            // since an un-diverged target legitimately lacks them.
+            let mergedVersionMap: Map<string, string>;
+            if (canFastForward) {
+              const sourceSnapshot = await loadBlocksAtCommit(
+                tx,
+                liveSourceCommitId,
+                sourceBranch.rootId,
+              );
+              mergedVersionMap = new Map(
+                Array.from(sourceSnapshot.blocks.entries())
+                  .filter(([, block]) => !block.deleted)
+                  .map(([blockId, block]) => [blockId, block.blockVersionId]),
+              );
+            } else {
+              const [baseSnapshot, sourceSnapshot, targetSnapshot] =
+                await Promise.all([
+                  loadBlocksAtCommit(tx, baseCommitId, sourceBranch.rootId),
+                  loadBlocksAtCommit(
+                    tx,
+                    liveSourceCommitId,
+                    sourceBranch.rootId,
+                  ),
+                  loadBlocksAtCommit(
+                    tx,
+                    targetBranch.headCommitId,
+                    targetBranch.rootId,
+                  ),
+                ]);
 
-            const freshConflicts = detectConflicts(
-              baseSnapshot.blocks,
-              sourceSnapshot.blocks,
-              targetSnapshot.blocks,
-            );
+              const freshConflicts = detectConflicts(
+                baseSnapshot.blocks,
+                sourceSnapshot.blocks,
+                targetSnapshot.blocks,
+              );
 
-            const existingResolutions = await tx
-              .select({
-                blockId: mergeConflicts.blockId,
-                resolution: mergeConflicts.resolution,
-                resolvedVersionId: mergeConflicts.resolvedVersionId,
-              })
-              .from(mergeConflicts)
-              .where(eq(mergeConflicts.mergeRequestId, mergeRequestId));
+              const existingResolutions = await tx
+                .select({
+                  blockId: mergeConflicts.blockId,
+                  resolution: mergeConflicts.resolution,
+                  resolvedVersionId: mergeConflicts.resolvedVersionId,
+                })
+                .from(mergeConflicts)
+                .where(eq(mergeConflicts.mergeRequestId, mergeRequestId));
 
-            const resolutionMap = new Map<
-              string,
-              (typeof existingResolutions)[0]
-            >();
-            for (const r of existingResolutions) {
-              resolutionMap.set(r.blockId, r);
-            }
-
-            for (const conflict of freshConflicts) {
-              const resolution = resolutionMap.get(conflict.blockId);
-              if (!resolution || !resolution.resolution) {
-                throw new CMSError('UNRESOLVED_CONFLICTS');
+              const resolutionMap = new Map<
+                string,
+                (typeof existingResolutions)[0]
+              >();
+              for (const r of existingResolutions) {
+                resolutionMap.set(r.blockId, r);
               }
-            }
 
-            const resolutions: MergeResolution[] = [];
-            for (const conflict of freshConflicts) {
-              const resolution = resolutionMap.get(conflict.blockId)!;
-              let resolvedVersionId: string | null;
-
-              if (resolution.resolution === 'source') {
-                resolvedVersionId = conflict.sourceVersionId;
-              } else if (resolution.resolution === 'target') {
-                resolvedVersionId = conflict.targetVersionId;
-              } else {
-                resolvedVersionId = resolution.resolvedVersionId!;
+              for (const conflict of freshConflicts) {
+                const resolution = resolutionMap.get(conflict.blockId);
+                if (!resolution || !resolution.resolution) {
+                  throw new CMSError('UNRESOLVED_CONFLICTS');
+                }
               }
 
-              if (resolvedVersionId) {
-                resolutions.push({
-                  blockId: conflict.blockId,
-                  resolvedVersionId,
-                });
-              }
-            }
+              const resolutions: MergeResolution[] = [];
+              for (const conflict of freshConflicts) {
+                const resolution = resolutionMap.get(conflict.blockId)!;
+                let resolvedVersionId: string | null;
 
-            const mergedVersionMap = buildMergedSnapshot(
-              baseSnapshot.blocks,
-              sourceSnapshot.blocks,
-              targetSnapshot.blocks,
-              resolutions,
-            );
+                if (resolution.resolution === 'source') {
+                  resolvedVersionId = conflict.sourceVersionId;
+                } else if (resolution.resolution === 'target') {
+                  resolvedVersionId = conflict.targetVersionId;
+                } else {
+                  resolvedVersionId = resolution.resolvedVersionId!;
+                }
+
+                if (resolvedVersionId) {
+                  resolutions.push({
+                    blockId: conflict.blockId,
+                    resolvedVersionId,
+                  });
+                }
+              }
+
+              mergedVersionMap = buildMergedSnapshot(
+                baseSnapshot.blocks,
+                sourceSnapshot.blocks,
+                targetSnapshot.blocks,
+                resolutions,
+              );
+            }
 
             const [mergeCommit] = await tx
               .insert(commits)

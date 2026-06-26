@@ -2219,6 +2219,136 @@ describe('executeMerge', () => {
 });
 
 // ============================================================================
+// Merge strategy: fast-forward vs merge-commit
+// ============================================================================
+
+describe('executeMerge — merge strategy (fast-forward vs merge-commit)', () => {
+  // A draft branch strictly ahead of the default branch → a fast-forward IS
+  // possible (the target has not diverged), plus an open merge request.
+  async function setupFastForwardable(
+    cms: Awaited<ReturnType<typeof setupTestCMS>>['cms'],
+  ) {
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'New content' },
+      },
+    });
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        title: 'MR',
+        sourceBranchId: draft.branchId,
+        targetBranchId: root.branchId,
+        createdBy: 'user-1',
+      },
+    });
+    return { root, draft, mr };
+  }
+
+  it('default config fast-forwards (no merge commit)', async () => {
+    const { cms } = await setupTestCMS();
+    const { mr } = await setupFastForwardable(cms);
+    const result = await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequestId },
+    });
+    expect(result.fastForward).toBe(true);
+    expect(result.mergeCommitId).toBeNull();
+  });
+
+  it("mergeStrategy: 'merge-commit' forces a merge commit even when fast-forward is possible", async () => {
+    const { cms, db } = await setupTestCMS({ mergeStrategy: 'merge-commit' });
+    const { root, mr } = await setupFastForwardable(cms);
+    const result = await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequestId },
+    });
+    expect(result.fastForward).toBe(false);
+    expect(result.mergeCommitId).not.toBeNull();
+
+    // The target head advances to the merge commit, which records the source as
+    // its merge parent — and the merged tree still carries the source's content.
+    const [target] = await db
+      .select()
+      .from(branches)
+      .where(eq(branches.id, root.branchId));
+    expect(target.headCommitId).toBe(result.mergeCommitId);
+    const [mergeCommit] = await db
+      .select()
+      .from(commits)
+      .where(eq(commits.id, result.mergeCommitId!));
+    expect(mergeCommit.mergeSourceCommitId).toBeTruthy();
+
+    const tree = await cms.api.pages.getBlockTree({
+      query: { rootId: root.rootId, branchId: root.branchId },
+    });
+    expect(tree.tree.children).toHaveLength(1);
+  });
+
+  it('per-call noFastForward: true forces a merge commit under the default strategy', async () => {
+    const { cms } = await setupTestCMS();
+    const { mr } = await setupFastForwardable(cms);
+    const result = await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequestId, noFastForward: true },
+    });
+    expect(result.fastForward).toBe(false);
+    expect(result.mergeCommitId).not.toBeNull();
+  });
+
+  it('per-call noFastForward: false overrides mergeStrategy: merge-commit (forces fast-forward)', async () => {
+    const { cms } = await setupTestCMS({ mergeStrategy: 'merge-commit' });
+    const { mr } = await setupFastForwardable(cms);
+    const result = await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequestId, noFastForward: false },
+    });
+    expect(result.fastForward).toBe(true);
+    expect(result.mergeCommitId).toBeNull();
+  });
+
+  it('nothing to merge stays a no-op fast-forward under merge-commit strategy (no empty commit)', async () => {
+    const { cms } = await setupTestCMS({ mergeStrategy: 'merge-commit' });
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+    // A draft forked from the default branch with NO changes → both heads equal.
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        title: 'MR',
+        sourceBranchId: draft.branchId,
+        targetBranchId: root.branchId,
+        createdBy: 'user-1',
+      },
+    });
+
+    // Even with merge-commit strategy AND noFastForward, an empty merge must not
+    // fabricate a commit — heads are already equal.
+    const result = await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequestId, noFastForward: true },
+    });
+    expect(result.fastForward).toBe(true);
+    expect(result.mergeCommitId).toBeNull();
+  });
+});
+
+// ============================================================================
 // Cross-root validation
 // ============================================================================
 

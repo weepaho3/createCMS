@@ -1,7 +1,10 @@
-import type { CMSProcedureCtx } from './types';
+import type { CMSProcedureCtx, MergeStrategy } from './types';
 
 /** The default branch name when none is configured. */
 export const DEFAULT_BRANCH_NAME = 'main';
+
+/** The default merge strategy when none is configured. */
+export const DEFAULT_MERGE_STRATEGY: MergeStrategy = 'fast-forward';
 
 /**
  * The resolved branch-governance policy for a request, with all defaults
@@ -9,10 +12,11 @@ export const DEFAULT_BRANCH_NAME = 'main';
  */
 export type ResolvedBranchPolicy = {
   defaultBranchName: string;
-  protectMain: boolean;
+  protectPublishedBranches: boolean;
   requireApprovalToMerge: boolean;
   requireApprovalBeforePublish: boolean;
   requiredReviewers: number;
+  mergeStrategy: MergeStrategy;
 };
 
 /** Resolves {@link CMSProcedureCtx} branch settings into a policy with defaults. */
@@ -22,12 +26,15 @@ export function resolveBranchPolicy(
   const bp = ctx.branchProtection ?? {};
   return {
     defaultBranchName: ctx.defaultBranchName ?? DEFAULT_BRANCH_NAME,
-    protectMain: bp.protectMain === true,
+    // Default false: a published branch stays editable in place unless opted in.
+    protectPublishedBranches: bp.protectPublishedBranches === true,
     // Default false: a merge needs no approval unless explicitly opted in.
     requireApprovalToMerge: bp.requireApprovalToMerge === true,
     // Default false: keep the existing conditional publish behavior.
     requireApprovalBeforePublish: bp.requireApprovalBeforePublish === true,
     requiredReviewers: Math.max(1, bp.requiredReviewers ?? 1),
+    // Default 'fast-forward': keep the leanest history unless opted into merge commits.
+    mergeStrategy: ctx.mergeStrategy ?? DEFAULT_MERGE_STRATEGY,
   };
 }
 

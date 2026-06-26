@@ -104,6 +104,7 @@ export type {
   CMSUserConfig,
   DataRetentionConfig,
   BranchProtectionConfig,
+  MergeStrategy,
   MiddlewareResult,
   RevalidateEvent,
   RevalidateHandler,

@@ -1,9 +1,10 @@
 import { and, eq, isNull } from 'drizzle-orm';
 
+import type { ResolvedBranchPolicy } from '../branch-policy';
 import type { TableScope } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
 
-import { roots } from '../db/schema.generated';
+import { publications, roots } from '../db/schema.generated';
 import { CMSError, type CMSErrorCode } from '../errors';
 
 /**
@@ -45,4 +46,35 @@ export async function requireRootInScope(
   if (!row) {
     throw typeof notFound === 'function' ? notFound() : new CMSError(notFound);
   }
+}
+
+/**
+ * Enforces `branchProtection.protectPublishedBranches`: a branch is read-only for
+ * direct content mutations exactly while it is published. A publication is one
+ * row in `publications` keyed by `(rootId, branchId)`, so this is a single
+ * indexed existence check. No-op when the policy is off or the branch has no
+ * publication; throws `PROTECTED_BRANCH` otherwise.
+ *
+ * This is the single choke point every content-mutation route calls (createBlock
+ * / updateBlock / deleteBlock / moveBlock / duplicateBlock / updateBlocks /
+ * updateRoot in blocks.ts, and revertBranch in branches.ts). Merge into a
+ * published branch is intentionally NOT gated here — it is the sanctioned path
+ * for updating live content. Pass the active tx so the check shares the row lock
+ * and sees uncommitted state.
+ */
+export async function assertBranchWritable(
+  exec: DrizzleInstance,
+  policy: ResolvedBranchPolicy,
+  rootId: string,
+  branchId: string,
+): Promise<void> {
+  if (!policy.protectPublishedBranches) return;
+  const [pub] = await exec
+    .select({ rootId: publications.rootId })
+    .from(publications)
+    .where(
+      and(eq(publications.rootId, rootId), eq(publications.branchId, branchId)),
+    )
+    .limit(1);
+  if (pub) throw new CMSError('PROTECTED_BRANCH');
 }

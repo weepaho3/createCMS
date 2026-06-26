@@ -2,35 +2,56 @@ import { describe, expect, it } from 'vitest';
 
 import { setupTestCMS } from './utils/cms';
 
-describe('branch protection — protectMain', () => {
-  it('exempts createRoot but rejects direct edits on the default branch', async () => {
-    const { cms } = await setupTestCMS({
-      branchProtection: { protectMain: true },
+describe('branch protection — protectPublishedBranches', () => {
+  const createParagraph = (
+    cms: Awaited<ReturnType<typeof setupTestCMS>>['cms'],
+    rootId: string,
+    branchId: string,
+    text: string,
+  ) =>
+    cms.api.pages.createBlock({
+      body: {
+        rootId,
+        branchId,
+        parentBlockId: rootId,
+        type: 'paragraph',
+        properties: { text },
+      },
     });
 
-    // createRoot seeds the default branch — it is exempt.
+  it('locks a branch only while it is published (editable → publish → locked → unpublish → editable)', async () => {
+    const { cms } = await setupTestCMS({
+      branchProtection: { protectPublishedBranches: true },
+    });
+
     const root = await cms.api.pages.createRoot({
       body: { slug: '/', properties: { title: 'Home' } },
     });
-    expect(root.rootId).toBeTruthy();
 
-    // A direct content mutation on the default branch is rejected.
+    // Not published yet → the default branch is freely editable. This is the UX
+    // fix: building out a fresh page needs no branch ceremony.
+    const block = await createParagraph(cms, root.rootId, root.branchId, 'a');
+    expect(block.blockId).toBeTruthy();
+
+    // Going live locks the branch for direct edits.
+    await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId },
+    });
     await expect(
-      cms.api.pages.createBlock({
-        body: {
-          rootId: root.rootId,
-          branchId: root.branchId,
-          parentBlockId: root.rootId,
-          type: 'paragraph',
-          properties: { text: 'x' },
-        },
-      }),
-    ).rejects.toThrow(/protected/i);
+      createParagraph(cms, root.rootId, root.branchId, 'b'),
+    ).rejects.toThrow(/published/i);
+
+    // Taking it offline again makes it directly editable (reversible).
+    await cms.api.pages.unpublishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId },
+    });
+    const after = await createParagraph(cms, root.rootId, root.branchId, 'c');
+    expect(after.blockId).toBeTruthy();
   });
 
-  it('allows edits on a non-default branch', async () => {
+  it('locks ANY published branch, not just the default one', async () => {
     const { cms } = await setupTestCMS({
-      branchProtection: { protectMain: true },
+      branchProtection: { protectPublishedBranches: true },
     });
     const root = await cms.api.pages.createRoot({
       body: { slug: '/', properties: { title: 'Home' } },
@@ -43,15 +64,64 @@ describe('branch protection — protectMain', () => {
       },
     });
 
-    const block = await cms.api.pages.createBlock({
-      body: {
-        rootId: root.rootId,
-        branchId: draft.branchId,
-        parentBlockId: root.rootId,
-        type: 'paragraph',
-        properties: { text: 'x' },
-      },
+    // Publish the NON-default branch (e.g. an A/B variant) → it locks…
+    await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: draft.branchId },
     });
+    await expect(
+      createParagraph(cms, root.rootId, draft.branchId, 'x'),
+    ).rejects.toThrow(/published/i);
+
+    // …while the unpublished default branch stays freely editable.
+    const onDefault = await createParagraph(
+      cms,
+      root.rootId,
+      root.branchId,
+      'y',
+    );
+    expect(onDefault.blockId).toBeTruthy();
+  });
+
+  it('blocks revertBranch on a published branch (no direct-mutation side-channel)', async () => {
+    const { cms } = await setupTestCMS({
+      branchProtection: { protectPublishedBranches: true },
+    });
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/', properties: { title: 'Home' } },
+    });
+    const block = await createParagraph(cms, root.rootId, root.branchId, 'a');
+
+    // Publish at the block commit, then a revert to the initial commit must be
+    // blocked just like a direct edit — revert rewrites the branch head.
+    await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId },
+    });
+    await expect(
+      cms.api.pages.revertBranch({
+        body: { branchId: root.branchId, targetCommitId: root.commitId },
+      }),
+    ).rejects.toThrow(/published/i);
+
+    // Unpublish → revert is allowed again.
+    await cms.api.pages.unpublishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId },
+    });
+    const reverted = await cms.api.pages.revertBranch({
+      body: { branchId: root.branchId, targetCommitId: root.commitId },
+    });
+    expect(reverted.newCommitId).toBeTruthy();
+    expect(block.commitId).toBeTruthy();
+  });
+
+  it('off by default: a published branch stays editable', async () => {
+    const { cms } = await setupTestCMS();
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/', properties: { title: 'Home' } },
+    });
+    await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId },
+    });
+    const block = await createParagraph(cms, root.rootId, root.branchId, 'a');
     expect(block.blockId).toBeTruthy();
   });
 });
