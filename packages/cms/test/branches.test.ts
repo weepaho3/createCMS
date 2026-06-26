@@ -553,6 +553,36 @@ describe('listBranches', () => {
     expect(result.branches[0].id).toBe(draft.branchId);
   });
 
+  it('returns hasPublications per branch', async () => {
+    const { cms, db } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await db.insert(publications).values({
+      rootId: root.rootId,
+      branchId: draft.branchId,
+      commitId: draft.headCommitId,
+      publishedBy: 'user-1',
+    });
+
+    const result = await cms.api.pages.listBranches({
+      query: { rootId: root.rootId },
+    });
+
+    const byId = new Map(result.branches.map((b) => [b.id, b.hasPublications]));
+    expect(byId.get(draft.branchId)).toBe(true);
+    expect(byId.get(root.branchId)).toBe(false);
+  });
+
   it('filters by hasOpenMergeRequests', async () => {
     const { cms, db } = await setupTestCMS();
 

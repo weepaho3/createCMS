@@ -17,3 +17,16 @@ export const i18nRoots = cms.table('roots', {
   language: text('language').notNull(),
   translationKey: text('translation_key').notNull(),
 });
+
+/**
+ * Typed view for the variable resolver: `cms.variables` plus the plugin-owned
+ * `language` column. Used to load `(key, value)` across a language fallback
+ * chain so the active language wins and missing values fall back. See
+ * {@link i18nRoots} for why this is a separate typed handle, not a schema source.
+ */
+export const i18nVariables = cms.table('variables', {
+  id: text('id').primaryKey(),
+  key: text('key').notNull(),
+  value: text('value').notNull(),
+  language: text('language').notNull(),
+});

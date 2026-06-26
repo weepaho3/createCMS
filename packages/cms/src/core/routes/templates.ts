@@ -7,6 +7,8 @@ import { newId } from '../../utils/nanoid';
 import { templates, templateVariableUsages } from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
+import { scopedInsert } from '../scope';
+import { resolveTemplateDefaults } from '../templates';
 import {
   extractVariableKeys,
   loadVariables,
@@ -75,10 +77,12 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
       },
       async (ctx) => {
         const { collection, blockType } = ctx.query ?? {};
+        const scopeWhere = ctx.context.scope?.templates?.where;
 
         const conditions = [];
         if (collection) conditions.push(eq(templates.collection, collection));
         if (blockType) conditions.push(eq(templates.blockType, blockType));
+        if (scopeWhere) conditions.push(scopeWhere);
 
         const rows =
           conditions.length > 0
@@ -117,7 +121,12 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
         const [template] = await db
           .select()
           .from(templates)
-          .where(eq(templates.id, ctx.query.id));
+          .where(
+            and(
+              eq(templates.id, ctx.query.id),
+              ctx.context.scope?.templates?.where,
+            ),
+          );
         if (!template) throw new CMSError('TEMPLATE_NOT_FOUND');
         return { template };
       },
@@ -164,7 +173,22 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
         const { collection, blockType, propertyKey, template, description } =
           ctx.body;
         const userId = ctx.context.userId;
+        const scope = ctx.context.scope?.templates;
 
+        // A template seeds a string into a property, so it must target an
+        // existing text property (`string` / `richText`) — never a number,
+        // boolean, select, image or reference (which expect typed/id values).
+        const propType =
+          cmsCtx.collections[collection]?.blocks?.[blockType]?.properties?.[
+            propertyKey
+          ]?.type;
+        if (propType !== 'string' && propType !== 'richText') {
+          throw new CMSError('TEMPLATE_PROPERTY_INVALID');
+        }
+
+        // App-level uniqueness authority: scoped to the active tenant/language,
+        // since the DB unique was demoted (the compound scope key can't be
+        // expressed by either plugin alone — see core-schema.ts).
         const [existing] = await db
           .select({ id: templates.id })
           .from(templates)
@@ -173,25 +197,40 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
               eq(templates.collection, collection),
               eq(templates.blockType, blockType),
               eq(templates.propertyKey, propertyKey),
+              scope?.where,
             ),
           );
         if (existing) throw new CMSError('TEMPLATE_KEY_EXISTS');
 
         return db.transaction(async (tx) => {
-          const [row] = await tx
-            .insert(templates)
-            .values({
+          const id = newId('template');
+          // Raw scoped insert so plugin-owned columns (tenant_slug, language) are
+          // stamped — they are not part of the core Drizzle `templates` table.
+          // Keys are raw DB column names (snake_case), per scopedInsert.
+          await scopedInsert(
+            tx,
+            'cms.templates',
+            {
+              id,
               collection,
-              blockType,
-              propertyKey,
+              block_type: blockType,
+              property_key: propertyKey,
               template,
               description: description ?? null,
-              createdBy: userId,
-              updatedBy: userId,
-            })
-            .returning();
+              created_by: userId ?? null,
+              updated_by: userId ?? null,
+            },
+            scope,
+          );
 
-          await syncTemplateVariableUsages(tx, row.id, template);
+          await syncTemplateVariableUsages(tx, id, template);
+
+          // Re-read via Drizzle so the response keeps the camelCase shape. The
+          // id is freshly minted above, so the scope filter is belt-and-suspenders.
+          const [row] = await tx
+            .select()
+            .from(templates)
+            .where(and(eq(templates.id, id), scope?.where));
 
           return { template: row };
         });
@@ -232,11 +271,12 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
       async (ctx) => {
         const { id, template, description } = ctx.body;
         const userId = ctx.context.userId;
+        const scopeWhere = ctx.context.scope?.templates?.where;
 
         const [existing] = await db
           .select()
           .from(templates)
-          .where(eq(templates.id, id));
+          .where(and(eq(templates.id, id), scopeWhere));
         if (!existing) throw new CMSError('TEMPLATE_NOT_FOUND');
 
         return db.transaction(async (tx) => {
@@ -250,7 +290,7 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
           const [updated] = await tx
             .update(templates)
             .set(updates)
-            .where(eq(templates.id, id))
+            .where(and(eq(templates.id, id), scopeWhere))
             .returning();
 
           if (template !== undefined) {
@@ -280,13 +320,16 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
         ),
       },
       async (ctx) => {
+        const scopeWhere = ctx.context.scope?.templates?.where;
         const [existing] = await db
           .select({ id: templates.id })
           .from(templates)
-          .where(eq(templates.id, ctx.body.id));
+          .where(and(eq(templates.id, ctx.body.id), scopeWhere));
         if (!existing) throw new CMSError('TEMPLATE_NOT_FOUND');
 
-        await db.delete(templates).where(eq(templates.id, ctx.body.id));
+        await db
+          .delete(templates)
+          .where(and(eq(templates.id, ctx.body.id), scopeWhere));
         return { deleted: true };
       },
     ),
@@ -308,7 +351,7 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
         ),
       },
       async (ctx) => {
-        const vars = await loadVariables(db);
+        const vars = await loadVariables(db, ctx.context.scope);
         const resolved = resolveTemplateString(ctx.body.template, vars);
         return { resolved };
       },
@@ -340,25 +383,12 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
       },
       async (ctx) => {
         const { collection, blockType } = ctx.query;
-
-        const rows = await db
-          .select()
-          .from(templates)
-          .where(
-            and(
-              eq(templates.collection, collection),
-              eq(templates.blockType, blockType),
-            ),
-          );
-
-        if (rows.length === 0) return { defaults: {} };
-
-        const vars = await loadVariables(db);
-        const defaults: Record<string, string> = {};
-        for (const row of rows) {
-          defaults[row.propertyKey] = resolveTemplateString(row.template, vars);
-        }
-
+        const defaults = await resolveTemplateDefaults(
+          db,
+          collection,
+          blockType,
+          ctx.context.scope,
+        );
         return { defaults };
       },
     ),

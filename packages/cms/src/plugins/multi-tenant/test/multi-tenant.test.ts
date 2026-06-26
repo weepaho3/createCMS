@@ -1256,3 +1256,127 @@ describe('multiTenant — tenant override via request', () => {
     ).rejects.toThrow(/cross-tenant access denied/i);
   });
 });
+
+describe('multiTenant — templates are per-tenant', () => {
+  it('isolates template CRUD per tenant (same key allowed in each)', async () => {
+    const { cms, setTenant } = await setupMultiTenantTestCMS();
+
+    setTenant('acme');
+    await cms.api.templates.createTemplate({
+      body: {
+        collection: 'pages',
+        blockType: 'signupForm',
+        propertyKey: 'trackingId',
+        template: 'ACME-ID',
+      },
+    });
+
+    // Same key for a different tenant is NOT a duplicate.
+    setTenant('globex');
+    await cms.api.templates.createTemplate({
+      body: {
+        collection: 'pages',
+        blockType: 'signupForm',
+        propertyKey: 'trackingId',
+        template: 'GLOBEX-ID',
+      },
+    });
+
+    setTenant('acme');
+    const acme = await cms.api.templates.listTemplates({});
+    expect(acme.templates).toHaveLength(1);
+    expect(acme.templates[0].template).toBe('ACME-ID');
+
+    setTenant('globex');
+    const globex = await cms.api.templates.listTemplates({});
+    expect(globex.templates).toHaveLength(1);
+    expect(globex.templates[0].template).toBe('GLOBEX-ID');
+
+    // A duplicate within the SAME tenant is still rejected.
+    await expect(
+      cms.api.templates.createTemplate({
+        body: {
+          collection: 'pages',
+          blockType: 'signupForm',
+          propertyKey: 'trackingId',
+          template: 'GLOBEX-AGAIN',
+        },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('createBlock applies the active tenant template', async () => {
+    const { cms, setTenant } = await setupMultiTenantTestCMS();
+
+    setTenant('acme');
+    await cms.api.templates.createTemplate({
+      body: {
+        collection: 'pages',
+        blockType: 'signupForm',
+        propertyKey: 'trackingId',
+        template: 'ACME-ID',
+      },
+    });
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/', properties: { title: 'Home' } },
+    });
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'signupForm',
+        properties: { cta: 'Sign up' },
+      },
+    });
+    const tree = await cms.api.pages.getBlockTree({
+      query: { rootId: root.rootId, branchId: root.branchId },
+    });
+    expect(
+      (tree.tree.children[0]?.properties as { trackingId?: unknown })
+        ?.trackingId,
+    ).toBe('ACME-ID');
+  });
+});
+
+describe('multiTenant — variables are per-tenant', () => {
+  it('partitions variables per tenant (same key, isolated values)', async () => {
+    const { cms, setTenant } = await setupMultiTenantTestCMS();
+
+    setTenant('acme');
+    await cms.api.variables.createVariable({
+      body: { key: 'companyName', value: 'Acme Inc' },
+    });
+    // Same key for a different tenant is not a duplicate.
+    setTenant('globex');
+    await cms.api.variables.createVariable({
+      body: { key: 'companyName', value: 'Globex Corp' },
+    });
+
+    setTenant('acme');
+    const acme = await cms.api.variables.listVariables({});
+    expect(acme.variables).toHaveLength(1);
+    expect(acme.variables[0].value).toBe('Acme Inc');
+
+    // Content resolves the active tenant's value.
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/', properties: { title: 'Home' } },
+    });
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: '{{companyName}}' },
+      },
+    });
+    const tree = await cms.api.pages.getBlockTree({
+      query: { rootId: root.rootId, branchId: root.branchId },
+    });
+    expect((tree.tree.children[0].properties as { text: string }).text).toBe(
+      'Acme Inc',
+    );
+  });
+});

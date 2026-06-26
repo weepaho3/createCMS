@@ -93,6 +93,8 @@ function computeScope(
       'assets',
       'assetFolders',
       'redirects',
+      'templates',
+      'variables',
     ] as const) {
       const tableScope = result[table];
       if (!tableScope) continue;
@@ -140,6 +142,9 @@ function computeScope(
       };
     }
     // The reference resolver is provided by at most one scoping plugin.
+    if (result.variableResolver) {
+      merged.variableResolver = result.variableResolver;
+    }
     if (result.referenceResolver) {
       merged.referenceResolver = result.referenceResolver;
     }

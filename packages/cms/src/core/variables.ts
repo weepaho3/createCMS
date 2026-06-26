@@ -2,6 +2,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 
 import type { VersionToIndex } from './assets';
 import type { BlockTreeNode } from './blocks/reconstruct-snapshot';
+import type { ResolvedScope } from './types/definitions';
 import type { DrizzleInstance } from './types/drizzle';
 
 import { newId } from '../utils/nanoid';
@@ -16,6 +17,7 @@ import {
   templates,
   variables,
 } from './db/schema.generated';
+import { crossScopeColumns, rootScopeConditions } from './scope';
 
 const VAR_PATTERN = /\{\{(\w+)\}\}/g;
 
@@ -52,15 +54,25 @@ export function extractVariableKeysFromProperties(
 }
 
 /**
- * Loads all variables from the DB and returns a Map<key, value>.
- * Called once per read request.
+ * Loads the variable `key -> value` map for the active scope. Called once per
+ * read request and fed to {@link substituteVariables} / {@link resolveTemplateString}.
+ *
+ * - With the i18n plugin (`scope.variableResolver`): resolves each key in the
+ *   active language, falling back through the chain (tenant filtered).
+ * - Otherwise: a plain load, filtered by `scope.variables?.where` (the
+ *   multi-tenant per-tenant partition; unfiltered when no scoping plugin is on).
  */
 export async function loadVariables(
   db: DrizzleInstance,
+  scope?: ResolvedScope,
 ): Promise<Map<string, string>> {
+  if (scope?.variableResolver) {
+    return scope.variableResolver.load(db, scope.variables?.insertColumns);
+  }
   const rows = await db
     .select({ key: variables.key, value: variables.value })
-    .from(variables);
+    .from(variables)
+    .where(scope?.variables?.where);
   return new Map(rows.map((r) => [r.key, r.value]));
 }
 
@@ -228,7 +240,12 @@ export async function insertVariableUsagesForVersions(
 export async function isVariableInUse(
   db: DrizzleInstance,
   variableKey: string,
+  scope?: ResolvedScope,
 ): Promise<boolean> {
+  // Tenant-scoped (language excluded): with i18n fallback a value can be
+  // rendered by any language that lacks its own override, so "in use" spans
+  // languages within the tenant — conservative and safe for the delete guard.
+  const tenantConds = rootScopeConditions(crossScopeColumns(scope?.roots));
   const [blockHit, templateHit] = await Promise.all([
     db
       .select({ id: contentUsages.id })
@@ -249,9 +266,14 @@ export async function isVariableInUse(
           eq(contentUsages.targetKey, variableKey),
           isNull(roots.archivedAt),
           eq(blockVersions.deleted, false),
+          ...tenantConds,
         ),
       )
       .limit(1),
+    // Template usage is intentionally NOT scope-filtered: templateVariableUsages
+    // carries no tenant/language column, so this is conservative (a key used by
+    // any template, in any scope, blocks the delete). Safe (over-blocks, never
+    // under-blocks); a precise per-scope template guard would need the column.
     db
       .select({ id: templateVariableUsages.id })
       .from(templateVariableUsages)
@@ -269,6 +291,7 @@ export async function isVariableInUse(
 export async function getVariableUsageDetails(
   db: DrizzleInstance,
   variableKey: string,
+  scope?: ResolvedScope,
 ): Promise<{
   blockUsageCount: number;
   templateUsageCount: number;
@@ -304,6 +327,7 @@ export async function getVariableUsageDetails(
           eq(contentUsages.targetKey, variableKey),
           isNull(roots.archivedAt),
           eq(blockVersions.deleted, false),
+          ...rootScopeConditions(crossScopeColumns(scope?.roots)),
         ),
       ),
     db
@@ -335,6 +359,7 @@ export async function getVariableUsageDetails(
 export async function findPublishedRootsUsingVariable(
   db: DrizzleInstance,
   variableKey: string,
+  scope?: ResolvedScope,
 ): Promise<
   {
     rootId: string;
@@ -368,6 +393,9 @@ export async function findPublishedRootsUsingVariable(
         eq(contentUsages.targetKey, variableKey),
         isNull(roots.archivedAt),
         eq(blockVersions.deleted, false),
+        // Tenant-scoped (language excluded): a base-language value change can
+        // affect fallback consumers in any language within the tenant.
+        ...rootScopeConditions(crossScopeColumns(scope?.roots)),
       ),
     );
 

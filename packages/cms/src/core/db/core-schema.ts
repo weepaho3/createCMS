@@ -828,7 +828,12 @@ export const coreSchema = defineCoreSchema({
         updatedAt: { type: 'timestamp', notNull: true, defaultNow: true },
       },
       indexes: {
-        keyUnique: { columns: ['key'], unique: true },
+        // Non-unique lookup. A core GLOBAL unique on `key` cannot be loosened by
+        // a plugin and would forbid the same variable per tenant/language, so
+        // uniqueness is the app-level authority (createVariable's scope-aware
+        // existence check). The compound key (tenant_slug, language, key) can't
+        // be expressed by either scoping plugin alone — same as templates.
+        keyIdx: { columns: ['key'] },
       },
     },
 
@@ -854,9 +859,15 @@ export const coreSchema = defineCoreSchema({
         updatedAt: { type: 'timestamp', notNull: true, defaultNow: true },
       },
       indexes: {
-        collectionBlockPropUnique: {
+        // Non-unique lookup. A core GLOBAL unique on (collection, blockType,
+        // propertyKey) cannot be loosened by a plugin and would forbid the same
+        // template across tenants/languages, so uniqueness is the app-level
+        // authority (createTemplate's scope-aware existence check). The correct
+        // compound key (tenant_slug, language, collection, blockType, propertyKey)
+        // can't be expressed by either scoping plugin alone — same situation as
+        // redirects' path-source.
+        collectionBlockPropIdx: {
           columns: ['collection', 'blockType', 'propertyKey'],
-          unique: true,
         },
         collectionIdx: { columns: ['collection'] },
         collectionBlockIdx: { columns: ['collection', 'blockType'] },

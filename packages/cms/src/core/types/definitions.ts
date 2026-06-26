@@ -138,6 +138,21 @@ export type ReferenceResolver = {
   ): Promise<string[]>;
 };
 
+/**
+ * Plugin-provided variable resolution (i18n). Loads the variable map for the
+ * active language WITH fallback: for each key, the value from the highest-priority
+ * language in `[active, ...fallback]` that has a row. `scopeColumns` carries the
+ * cross-scope tenant predicate (language is resolved by the chain, NOT filtered).
+ * When absent, core loads variables directly (optionally tenant-filtered). The
+ * read paths ride this off the resolved scope. (Seam B, variables.)
+ */
+export type VariableResolver = {
+  load(
+    db: DrizzleInstance,
+    scopeColumns: Record<string, unknown> | undefined,
+  ): Promise<Map<string, string>>;
+};
+
 /** One variant branch of a running A/B test on a referenced root. */
 export type RunningAbTestVariant = {
   branchId: string;
@@ -179,11 +194,18 @@ export type ResolvedScope = {
   assets?: TableScope;
   assetFolders?: TableScope;
   redirects?: TableScope;
+  templates?: TableScope;
+  variables?: TableScope;
   /**
    * Plugin-provided reference resolver (i18n translation-group resolution). When
    * absent, callers use core's identity default. Generic — see `ReferenceResolver`.
    */
   referenceResolver?: ReferenceResolver;
+  /**
+   * Plugin-provided variable resolver (i18n active-language-with-fallback). When
+   * absent, core loads variables directly. Generic — see {@link VariableResolver}.
+   */
+  variableResolver?: VariableResolver;
   /**
    * Plugin-provided running-A/B-test resolver (AB_FANOUT F2 server fan-out).
    * When absent, the read path assumes no running tests. Generic — see
@@ -647,6 +669,8 @@ export type BranchListItem = {
   createdAt: Date;
   updatedAt: Date;
   isDeletable: boolean;
+  /** Whether this branch is currently published (has a `publications` row). */
+  hasPublications: boolean;
   createdByUser?: unknown;
 };
 
@@ -767,6 +791,14 @@ export type CollectionDefinition<
    * compile error at the `defineCollection` call site.
    */
   structure?: CollectionStructure<TBlocks>;
+  /**
+   * Per-collection branch-protection overrides. Each field set here wins over the
+   * global `branchProtection` config for THIS collection only; unset fields
+   * inherit the global value (then the default). Lets, e.g., a `reusableBlock`
+   * collection opt out of `protectPublishedBranches` while pages keep it. See
+   * {@link BranchProtectionConfig}.
+   */
+  branchProtection?: Partial<BranchProtectionConfig>;
 };
 
 export type AnyCollectionDefinition = CollectionDefinition<

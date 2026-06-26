@@ -98,7 +98,7 @@ The whole object is optional, but when you provide it, `keepDays` and `keepMinCo
 
 ## `branchProtection`
 
-Governance for published content and the merge/publish approval gates. Every field is opt-in; an empty config preserves current behavior.
+Governance for published content and the merge/publish approval gates. Every field is opt-in; an empty config preserves current behavior. Each field can be **overridden per collection** via the collection's own `branchProtection` (a `Partial<BranchProtectionConfig>`): a collection's value wins over this global one field-by-field, and unset fields inherit the global value. For example a `reusableBlock` collection can set `branchProtection: { protectPublishedBranches: false }` to stay directly editable while pages keep the global protection.
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |

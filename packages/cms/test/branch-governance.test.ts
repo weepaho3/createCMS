@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import { createCMS } from '../src/index';
 import { setupTestCMS } from './utils/cms';
+import { setupTestDB } from './utils/db';
+import { DUMMY_MEDIA_CONFIG } from './utils/fixtures';
 
 describe('branch protection — protectPublishedBranches', () => {
   const createParagraph = (
@@ -232,5 +235,90 @@ describe('defaultBranchName', () => {
         body: { branchId: root.branchId, newName: 'x' },
       }),
     ).rejects.toThrow(/main branch/i);
+  });
+});
+
+describe('branch protection — per-collection override', () => {
+  async function setupPerCollectionCMS() {
+    const { db } = await setupTestDB();
+    return createCMS({
+      db,
+      media: { ...DUMMY_MEDIA_CONFIG },
+      // Global: protect published branches everywhere…
+      branchProtection: { protectPublishedBranches: true },
+      collections: {
+        pages: {
+          label: 'Pages',
+          root: {
+            properties: {
+              title: { type: 'string', label: 'Title', required: true },
+            },
+          },
+          blocks: {
+            para: {
+              label: 'Para',
+              properties: { text: { type: 'string', label: 'Text' } },
+            },
+          },
+        },
+        widgets: {
+          label: 'Widgets',
+          // …except this collection opts out.
+          branchProtection: { protectPublishedBranches: false },
+          root: {
+            properties: {
+              name: { type: 'string', label: 'Name', required: true },
+            },
+          },
+          blocks: {
+            para: {
+              label: 'Para',
+              properties: { text: { type: 'string', label: 'Text' } },
+            },
+          },
+        },
+      },
+    } as const);
+  }
+
+  it('lets a collection opt out of a globally-enabled protection', async () => {
+    const cms = await setupPerCollectionCMS();
+
+    // widgets overrides protectPublishedBranches=false → editable after publish.
+    const w = await cms.api.widgets.createRoot({
+      body: { properties: { name: 'W' } },
+    });
+    await cms.api.widgets.publishBranch({
+      body: { rootId: w.rootId, branchId: w.branchId },
+    });
+    const block = await cms.api.widgets.createBlock({
+      body: {
+        rootId: w.rootId,
+        branchId: w.branchId,
+        parentBlockId: w.rootId,
+        type: 'para',
+        properties: { text: 'edited live' },
+      },
+    });
+    expect(block.blockId).toBeTruthy();
+
+    // pages inherits the global protection → locked after publish.
+    const p = await cms.api.pages.createRoot({
+      body: { properties: { title: 'P' } },
+    });
+    await cms.api.pages.publishBranch({
+      body: { rootId: p.rootId, branchId: p.branchId },
+    });
+    await expect(
+      cms.api.pages.createBlock({
+        body: {
+          rootId: p.rootId,
+          branchId: p.branchId,
+          parentBlockId: p.rootId,
+          type: 'para',
+          properties: { text: 'x' },
+        },
+      }),
+    ).rejects.toThrow(/published/i);
   });
 });

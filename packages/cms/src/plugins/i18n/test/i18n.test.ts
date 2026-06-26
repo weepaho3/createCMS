@@ -1714,3 +1714,202 @@ describe('i18n — config & middleware guards', () => {
     ).rejects.toThrow(/defaultLanguage/i);
   });
 });
+
+describe('i18n — templates are per-language', () => {
+  it('isolates template CRUD per language (same key allowed in each)', async () => {
+    const { cms, setLanguage } = await setupI18nTestCMS();
+
+    setLanguage('en');
+    await cms.api.templates.createTemplate({
+      body: {
+        collection: 'pages',
+        blockType: 'signupForm',
+        propertyKey: 'trackingId',
+        template: 'EN-DEFAULT',
+      },
+    });
+
+    // Same (collection, blockType, propertyKey) in another language is NOT a
+    // duplicate — uniqueness is per-language.
+    setLanguage('de');
+    await cms.api.templates.createTemplate({
+      body: {
+        collection: 'pages',
+        blockType: 'signupForm',
+        propertyKey: 'trackingId',
+        template: 'DE-DEFAULT',
+      },
+    });
+
+    // Each language sees only its own templates.
+    setLanguage('en');
+    const en = await cms.api.templates.listTemplates({});
+    expect(en.templates).toHaveLength(1);
+    expect(en.templates[0].template).toBe('EN-DEFAULT');
+
+    setLanguage('de');
+    const de = await cms.api.templates.listTemplates({});
+    expect(de.templates).toHaveLength(1);
+    expect(de.templates[0].template).toBe('DE-DEFAULT');
+
+    // But a real duplicate within the SAME language is still rejected.
+    await expect(
+      cms.api.templates.createTemplate({
+        body: {
+          collection: 'pages',
+          blockType: 'signupForm',
+          propertyKey: 'trackingId',
+          template: 'DE-AGAIN',
+        },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('createBlock applies the active language template', async () => {
+    const { cms, setLanguage } = await setupI18nTestCMS();
+
+    setLanguage('en');
+    await cms.api.templates.createTemplate({
+      body: {
+        collection: 'pages',
+        blockType: 'signupForm',
+        propertyKey: 'trackingId',
+        template: 'EN-DEFAULT',
+      },
+    });
+    setLanguage('de');
+    await cms.api.templates.createTemplate({
+      body: {
+        collection: 'pages',
+        blockType: 'signupForm',
+        propertyKey: 'trackingId',
+        template: 'DE-DEFAULT',
+      },
+    });
+
+    const trackingIdOf = async (lang: string) => {
+      setLanguage(lang);
+      const root = await cms.api.pages.createRoot({
+        body: { slug: `/${lang}`, properties: { title: 'Home' } },
+      });
+      await cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'signupForm',
+          properties: { cta: 'Sign up' },
+        },
+      });
+      const tree = await cms.api.pages.getBlockTree({
+        query: { rootId: root.rootId, branchId: root.branchId },
+      });
+      return (tree.tree.children[0]?.properties as { trackingId?: unknown })
+        ?.trackingId;
+    };
+
+    expect(await trackingIdOf('en')).toBe('EN-DEFAULT');
+    expect(await trackingIdOf('de')).toBe('DE-DEFAULT');
+  });
+
+  it('scopes templates by tenant AND language together (both plugins)', async () => {
+    const { cms, set } = await setupI18nMultiTenantTestCMS();
+
+    const make = (template: string) =>
+      cms.api.templates.createTemplate({
+        body: {
+          collection: 'pages',
+          blockType: 'signupForm',
+          propertyKey: 'trackingId',
+          template,
+        },
+      });
+
+    set('acme', 'de');
+    await make('ACME-DE');
+    // Same key in a different (tenant, language) cell is not a duplicate.
+    set('acme', 'en');
+    await make('ACME-EN');
+    set('globex', 'de');
+    await make('GLOBEX-DE');
+
+    const only = async (tenant: string, lang: string, expected: string) => {
+      set(tenant, lang);
+      const { templates } = await cms.api.templates.listTemplates({});
+      expect(templates).toHaveLength(1);
+      expect(templates[0].template).toBe(expected);
+    };
+    await only('acme', 'de', 'ACME-DE');
+    await only('acme', 'en', 'ACME-EN');
+    await only('globex', 'de', 'GLOBEX-DE');
+
+    // The (globex, en) cell has none.
+    set('globex', 'en');
+    const { templates: none } = await cms.api.templates.listTemplates({});
+    expect(none).toHaveLength(0);
+  });
+});
+
+describe('i18n — variables resolve with language fallback', () => {
+  it('uses the active-language value, falling back through the chain', async () => {
+    const { cms, setLanguage } = await setupI18nTestCMS();
+
+    // companyName only in the default language 'en'; cta has a 'de' override.
+    setLanguage('en');
+    await cms.api.variables.createVariable({
+      body: { key: 'companyName', value: 'Acme' },
+    });
+    await cms.api.variables.createVariable({
+      body: { key: 'cta', value: 'Buy now' },
+    });
+    setLanguage('de');
+    // Same key, different language cell → not a duplicate.
+    await cms.api.variables.createVariable({
+      body: { key: 'cta', value: 'Jetzt kaufen' },
+    });
+
+    // A German page referencing both variables.
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/de', properties: { title: 'Home' } },
+    });
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: '{{companyName}} — {{cta}}' },
+      },
+    });
+    const tree = await cms.api.pages.getBlockTree({
+      query: { rootId: root.rootId, branchId: root.branchId },
+    });
+    // companyName falls back to 'en' (Acme); cta uses the 'de' override.
+    expect((tree.tree.children[0].properties as { text: string }).text).toBe(
+      'Acme — Jetzt kaufen',
+    );
+  });
+
+  it('manages the exact active-language cell (no fallback in CRUD)', async () => {
+    const { cms, setLanguage } = await setupI18nTestCMS();
+    setLanguage('en');
+    await cms.api.variables.createVariable({
+      body: { key: 'companyName', value: 'Acme' },
+    });
+
+    // In 'de', the management view shows only the 'de' cell — companyName (en
+    // only) is NOT listed even though content would fall back to it.
+    setLanguage('de');
+    const { variables: deVars } = await cms.api.variables.listVariables({});
+    expect(deVars).toHaveLength(0);
+
+    // Creating companyName in 'de' is allowed (different cell) and wins for de.
+    await cms.api.variables.createVariable({
+      body: { key: 'companyName', value: 'Acme DE' },
+    });
+    const { variable } = await cms.api.variables.getVariable({
+      query: { key: 'companyName' },
+    });
+    expect(variable.value).toBe('Acme DE');
+  });
+});
