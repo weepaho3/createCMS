@@ -20,7 +20,7 @@ import {
 } from '../blocks/commit-writer';
 import { deepCopySubtree, type BlockVersionRow } from '../blocks/copy-subtree';
 import { diffTree } from '../blocks/diff-tree';
-import { requireRootInScope } from '../blocks/guards';
+import { assertBranchWritable, requireRootInScope } from '../blocks/guards';
 import {
   assertPlacementAllowed,
   buildPlacementIndex,
@@ -128,16 +128,11 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
   // `allowChildren` container gate from the block defs.
   const placementIndex = buildPlacementIndex(def.structure, def.blocks);
 
-  // Branch-protection policy (e.g. `protectMain`). `createRoot` is exempt — it
-  // seeds the default branch — so this guards only the content-mutation routes.
+  // Branch-protection policy. When `protectPublishedBranches` is on, a branch is
+  // read-only for direct content mutations exactly while it is published; the
+  // mutation routes below call the shared `assertBranchWritable` guard.
+  // `createRoot` seeds a fresh, unpublished branch and is never gated.
   const branchPolicy = resolveBranchPolicy(cmsCtx);
-  function assertBranchWritable(branch: { name: string }): void {
-    if (
-      branchPolicy.protectMain &&
-      branch.name === branchPolicy.defaultBranchName
-    )
-      throw new CMSError('PROTECTED_BRANCH');
-  }
 
   // When `forceCommitMessage` is on, a commit-producing route must be given a
   // non-empty `message`; otherwise it falls back to an auto-generated default.
@@ -624,7 +619,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             .where(and(eq(branches.id, branchId), eq(branches.rootId, rootId)))
             .for('update');
           if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
-          assertBranchWritable(branch);
+          await assertBranchWritable(tx, branchPolicy, rootId, branch.id);
 
           const oldHeadId = branch.headCommitId;
 
@@ -867,7 +862,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             )
             .for('update');
           if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
-          assertBranchWritable(branch);
+          await assertBranchWritable(tx, branchPolicy, input.rootId, branch.id);
 
           const oldHeadId = branch.headCommitId;
 
@@ -1085,7 +1080,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             )
             .for('update');
           if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
-          assertBranchWritable(branch);
+          await assertBranchWritable(tx, branchPolicy, input.rootId, branch.id);
 
           const oldHeadId = branch.headCommitId;
 
@@ -1280,7 +1275,12 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             )
             .for('update');
           if (!sourceBranch) throw new CMSError('BRANCH_NOT_FOUND');
-          assertBranchWritable(sourceBranch);
+          await assertBranchWritable(
+            tx,
+            branchPolicy,
+            input.rootId,
+            sourceBranch.id,
+          );
 
           const oldHeadId = sourceBranch.headCommitId;
           const allSnaps = await tx
@@ -1520,7 +1520,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             .where(and(eq(branches.id, branchId), eq(branches.rootId, rootId)))
             .for('update');
           if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
-          assertBranchWritable(branch);
+          await assertBranchWritable(tx, branchPolicy, rootId, branch.id);
 
           const oldHeadId = branch.headCommitId;
 
@@ -1652,7 +1652,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             .where(and(eq(branches.id, branchId), eq(branches.rootId, rootId)))
             .for('update');
           if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
-          assertBranchWritable(branch);
+          await assertBranchWritable(tx, branchPolicy, rootId, branch.id);
 
           const oldHeadId = branch.headCommitId;
 
@@ -1833,7 +1833,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             .where(and(eq(branches.id, branchId), eq(branches.rootId, rootId)))
             .for('update');
           if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
-          assertBranchWritable(branch);
+          await assertBranchWritable(tx, branchPolicy, rootId, branch.id);
 
           const oldHeadId = branch.headCommitId;
 

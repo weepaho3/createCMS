@@ -7,6 +7,7 @@ import type {
   CollectionWithName,
   DataRetentionConfig,
   DrizzleInstance,
+  MergeStrategy,
 } from './types';
 import type { ResolvedSlugConfig } from './types/definitions';
 import type {
@@ -68,6 +69,7 @@ export function createCMSContext(input: {
   forceCommitMessage?: boolean;
   defaultBranchName?: string;
   branchProtection?: BranchProtectionConfig;
+  mergeStrategy?: MergeStrategy;
 }): CMSProcedureCtx {
   return input;
 }

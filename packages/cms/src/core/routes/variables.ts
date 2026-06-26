@@ -27,7 +27,7 @@ export function createVariableEndpoints(
      * @returns An array of all variables with their keys, values, descriptions, and metadata.
      */
     listVariables: createCMSEndpoint(
-      '/variables',
+      '/variables/listVariables',
       {
         method: 'GET',
         metadata: cmsMeta(
@@ -48,7 +48,7 @@ export function createVariableEndpoints(
      * @throws VARIABLE_NOT_FOUND if no variable exists with the given key.
      */
     getVariable: createCMSEndpoint(
-      '/variables/get',
+      '/variables/getVariable',
       {
         method: 'GET',
         query: z.object({ key: z.string() }),
@@ -81,7 +81,7 @@ export function createVariableEndpoints(
      * @example await cmsClient.variables.createVariable({ key: 'app_name', value: 'MyApp', description: 'Application name' })
      */
     createVariable: createCMSEndpoint(
-      '/variables/create',
+      '/variables/createVariable',
       {
         method: 'POST',
         body: z.object({
@@ -144,7 +144,7 @@ export function createVariableEndpoints(
      * @example await cmsClient.variables.updateVariable({ key: 'app_name', value: 'UpdatedApp' })
      */
     updateVariable: createCMSEndpoint(
-      '/variables/update',
+      '/variables/updateVariable',
       {
         method: 'POST',
         body: z.object({
@@ -217,7 +217,7 @@ export function createVariableEndpoints(
      * @example await cmsClient.variables.deleteVariable({ key: 'deprecated_var' })
      */
     deleteVariable: createCMSEndpoint(
-      '/variables/delete',
+      '/variables/deleteVariable',
       {
         method: 'POST',
         body: z.object({ key: z.string() }),
@@ -252,7 +252,7 @@ export function createVariableEndpoints(
      * @throws VARIABLE_NOT_FOUND if no variable exists with the given key.
      */
     getVariableUsages: createCMSEndpoint(
-      '/variables/usages',
+      '/variables/getVariableUsages',
       {
         method: 'GET',
         query: z.object({ key: z.string() }),

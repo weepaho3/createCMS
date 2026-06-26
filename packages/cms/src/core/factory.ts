@@ -406,6 +406,7 @@ export const createCMS = <
     forceCommitMessage: definition.forceCommitMessage,
     defaultBranchName: definition.defaultBranchName,
     branchProtection: definition.branchProtection,
+    mergeStrategy: definition.mergeStrategy,
   });
 
   if (definition.user) {

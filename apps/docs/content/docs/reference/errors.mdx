@@ -48,7 +48,7 @@ try {
 | `BLOCK_NOT_FOUND` | 404 | Block not found in snapshot |
 | `PARENT_NOT_FOUND` | 404 | Parent block not found |
 | `BLOCK_NOT_ALLOWED_IN_PARENT` | 400 | Block type is not allowed inside the target parent (violates the collection's `structure` rules or the parent's `allowChildren`) |
-| `PROTECTED_BRANCH` | 403 | A direct content mutation was attempted on the protected default branch (`branchProtection.protectMain`) |
+| `PROTECTED_BRANCH` | 403 | A direct content mutation was attempted on a published branch while `branchProtection.protectPublishedBranches` is enabled (edit via a separate branch + merge, or unpublish first) |
 | `COMMIT_MESSAGE_REQUIRED` | 400 | A content mutation was made with no `message` while `forceCommitMessage` is enabled |
 | `COMMIT_NOT_FOUND` | 404 | Commit not found |
 | `EMPTY_SNAPSHOT` | 400 | Empty snapshot — no versions found |

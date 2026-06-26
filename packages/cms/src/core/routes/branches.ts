@@ -8,7 +8,7 @@ import type {
 } from '../types';
 import type { DrizzleInstance } from '../types/drizzle';
 
-import { requireRootInScope } from '../blocks/guards';
+import { assertBranchWritable, requireRootInScope } from '../blocks/guards';
 import { loadBlocksAtCommit } from '../blocks/reconstruct-snapshot';
 import { resolveBranchPolicy } from '../branch-policy';
 import {
@@ -676,6 +676,14 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
             )
             .for('update');
           if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
+          // A revert rewrites the branch head in place — a direct content
+          // mutation, so it is blocked while the branch is published.
+          await assertBranchWritable(
+            tx,
+            branchPolicy,
+            branch.rootId,
+            branch.id,
+          );
 
           const [targetCommit] = await tx
             .select({ id: commits.id })

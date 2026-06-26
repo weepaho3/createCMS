@@ -918,11 +918,15 @@ export type CMSUserConfig<TTable extends AnyPgTable = AnyPgTable> = {
  */
 export type BranchProtectionConfig = {
   /**
-   * Reject direct content mutations on the default branch — edits must happen on
-   * a non-default branch and reach the default branch via a merge. `createRoot`
-   * (which seeds the default branch) is exempt. Default `false`.
+   * Lock a branch against direct content mutations for exactly as long as it is
+   * published. Published content is the live, production-facing tree, so it is
+   * made immutable in place: changes go via another branch + merge, then a
+   * re-publish. Unpublishing a branch makes it directly editable again. This
+   * applies to ANY published branch, not just the default one (a root can have
+   * several published branches at once, e.g. A/B variants). A freshly created,
+   * never-published branch is freely editable. Default `false`.
    */
-  protectMain?: boolean;
+  protectPublishedBranches?: boolean;
   /**
    * Whether `executeMerge` requires approvals. Default `false` — a merge needs
    * no approval unless you opt in. (Set `true` to gate merges on approvals.)
@@ -940,6 +944,18 @@ export type BranchProtectionConfig = {
    */
   requiredReviewers?: number;
 };
+
+/**
+ * How `executeMerge` integrates a source branch when a fast-forward IS possible
+ * (the target has not diverged from the common ancestor):
+ * - `'fast-forward'` (default) — move the target head to the source head; no
+ *   merge commit. The leanest history.
+ * - `'merge-commit'` — always record an explicit merge commit (git's `--no-ff`),
+ *   so every integration is visible in history.
+ *
+ * When the target HAS diverged a merge commit is always created regardless.
+ */
+export type MergeStrategy = 'fast-forward' | 'merge-commit';
 
 export type CMSDefinition<
   TCollections extends Record<string, AnyCollectionDefinition> = Record<
@@ -964,6 +980,13 @@ export type CMSDefinition<
   defaultBranchName?: string;
   /** Branch-protection and approval gates — see {@link BranchProtectionConfig}. */
   branchProtection?: BranchProtectionConfig;
+  /**
+   * Default integration strategy for `executeMerge` when a fast-forward is
+   * possible. `'fast-forward'` (default) or `'merge-commit'` (always record a
+   * merge commit). Override per call with `executeMerge({ noFastForward })`.
+   * See {@link MergeStrategy}.
+   */
+  mergeStrategy?: MergeStrategy;
   authMiddleware?: CMSMiddleware;
   middleware?: CMSMiddleware;
   basePath?: string;
@@ -995,6 +1018,8 @@ export type CMSProcedureCtx = {
   defaultBranchName?: string;
   /** Branch-protection and approval gates — see {@link BranchProtectionConfig}. */
   branchProtection?: BranchProtectionConfig;
+  /** Default merge integration strategy — see {@link CMSDefinition.mergeStrategy}. */
+  mergeStrategy?: MergeStrategy;
   scopeConditions?: ScopeConditionFactory[];
   notificationService?: import('../notifications/service').NotificationService;
   resolvedUser?: ResolvedUserConfig;
