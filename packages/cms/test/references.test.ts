@@ -388,6 +388,72 @@ describe('reference usage index (RB1)', () => {
     expect(rows[0].propertyKey).toBe('block');
   });
 
+  it('getBlockTree includeReferencePreviews returns published previews in one call', async () => {
+    const { cms } = await setupReferenceCMS();
+
+    // A reusable block with content, published.
+    const reusable = await cms.api.reusableBlocks.createRoot({
+      body: { properties: { label: 'Newsletter CTA' } },
+    });
+    await cms.api.reusableBlocks.createBlock({
+      body: {
+        rootId: reusable.rootId,
+        branchId: reusable.branchId,
+        parentBlockId: reusable.rootId,
+        type: 'emailForm',
+        properties: { heading: 'Subscribe now' },
+      },
+    });
+    await publishBranch(cms.api.reusableBlocks, {
+      rootId: reusable.rootId,
+      branchId: reusable.branchId,
+    });
+
+    // A page embedding the reusable block by reference.
+    const page = await cms.api.pages.createRoot({
+      body: { slug: '/home', properties: { title: 'Home' } },
+    });
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: page.rootId,
+        branchId: page.branchId,
+        parentBlockId: page.rootId,
+        type: 'reusableContent',
+        properties: { block: reusable.rootId },
+      },
+    });
+
+    const result = await cms.api.pages.getBlockTree({
+      query: {
+        rootId: page.rootId,
+        branchId: page.branchId,
+        raw: true,
+        includeReferencePreviews: true,
+      },
+    });
+
+    // The raw editable tree keeps the reference value (not inlined).
+    expect(result.tree.children[0].properties.block).toBe(reusable.rootId);
+
+    // The sidecar carries the PUBLISHED preview, keyed by the stored value.
+    const preview = result.references?.[reusable.rootId];
+    expect(preview).toBeDefined();
+    expect(preview.children[0].type).toBe('emailForm');
+    expect(preview.children[0].properties.heading).toBe('Subscribe now');
+  });
+
+  it('getBlockTree omits the references sidecar without the flag', async () => {
+    const { cms } = await setupReferenceCMS();
+    const page = await cms.api.pages.createRoot({
+      body: { slug: '/plain', properties: { title: 'Plain' } },
+    });
+
+    const result = await cms.api.pages.getBlockTree({
+      query: { rootId: page.rootId, branchId: page.branchId, raw: true },
+    });
+    expect(result.references).toBeUndefined();
+  });
+
   it('does not index non-reference properties', async () => {
     const { cms, db } = await setupReferenceCMS();
 

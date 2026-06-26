@@ -364,6 +364,71 @@ async function resolveTreeReferences(
   replaceReferencesInTree(tree, collectionDef, resolvedMap);
 }
 
+/**
+ * Builds a sidecar map of PUBLISHED previews for every reference embedded in
+ * `tree`, keyed by the STORED reference value (rootId / `tgr_`). Each preview is
+ * the referenced root's published render tree in the active scope — its own
+ * nested references resolved and `{{variables}}` substituted, exactly like
+ * getPublishedContent. References that are not published (or out of scope) are
+ * omitted. This lets getBlockTree return the raw editable tree PLUS all reference
+ * previews in ONE call instead of N getPublishedContent round-trips, while
+ * reusing the same resolution machinery (no duplication).
+ */
+export async function buildReferencePreviews(
+  db: DrizzleInstance,
+  tree: BlockTreeNode,
+  collectionDef: CollectionWithName,
+  allCollections: Record<string, CollectionWithName>,
+  resolver: ReferenceResolver,
+  scopeColumns: Record<string, unknown> | undefined,
+  vars: Map<string, string>,
+  abTestResolver?: AbTestResolver,
+): Promise<Record<string, BlockTreeNode>> {
+  const previews: Record<string, BlockTreeNode> = {};
+  const refsByCollection = collectReferenceRootIds(tree, collectionDef);
+
+  for (const [targetCollectionName, valueSet] of refsByCollection) {
+    const targetDef = allCollections[targetCollectionName];
+    if (!targetDef) continue;
+
+    const valueToRootId = await resolver.resolveRenderTargets(
+      db,
+      scopeColumns,
+      targetCollectionName,
+      [...valueSet],
+    );
+    const loaded = await loadPublishedRoots(
+      db,
+      targetCollectionName,
+      [...new Set(valueToRootId.values())],
+      scopeColumns,
+      abTestResolver,
+    );
+
+    for (const [storedValue, rootId] of valueToRootId) {
+      const data = loaded.get(rootId);
+      if (!data) continue; // not published / out of scope — omit from the sidecar
+
+      // Fully render the preview: resolve its own nested references, then vars.
+      await resolveTreeReferences(
+        db,
+        data.tree,
+        targetDef,
+        allCollections,
+        resolver,
+        scopeColumns,
+        new Set([rootId]),
+        1,
+        abTestResolver,
+      );
+      substituteVariables(data.tree, vars);
+      previews[storedValue] = data.tree;
+    }
+  }
+
+  return previews;
+}
+
 type PublishedContentQuery =
   | {
       rootId: string;
@@ -390,7 +455,7 @@ export function createPublicationEndpoints<
 >(def: TDef, cmsCtx: CMSProcedureCtx) {
   const { db } = cmsCtx;
   const collectionName = def.name;
-  const branchPolicy = resolveBranchPolicy(cmsCtx);
+  const branchPolicy = resolveBranchPolicy(cmsCtx, def.branchProtection);
 
   return {
     /**
@@ -843,7 +908,7 @@ export function createPublicationEndpoints<
         );
 
         if (!raw) {
-          const vars = await loadVariables(db);
+          const vars = await loadVariables(db, ctx.context.scope);
           for (const variant of variants) {
             substituteVariables(variant.tree, vars);
           }

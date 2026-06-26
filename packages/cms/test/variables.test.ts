@@ -812,6 +812,45 @@ describe('Template CRUD endpoints', () => {
       }),
     ).rejects.toThrow();
   });
+
+  it('rejects a template for a non-text or non-existent property', async () => {
+    const { cms } = await setupTestCMS();
+
+    // `image.src` is an `image` property (expects an asset id), not text.
+    await expect(
+      cms.api.templates.createTemplate({
+        body: {
+          collection: 'pages',
+          blockType: 'image',
+          propertyKey: 'src',
+          template: 'not-an-image',
+        },
+      }),
+    ).rejects.toThrow(/text property/i);
+
+    // A property that does not exist on the block type.
+    await expect(
+      cms.api.templates.createTemplate({
+        body: {
+          collection: 'pages',
+          blockType: 'paragraph',
+          propertyKey: 'doesNotExist',
+          template: 'x',
+        },
+      }),
+    ).rejects.toThrow(/text property/i);
+
+    // A `string` text property IS accepted.
+    const { template } = await cms.api.templates.createTemplate({
+      body: {
+        collection: 'pages',
+        blockType: 'image',
+        propertyKey: 'alt',
+        template: 'Default alt text',
+      },
+    });
+    expect(template.propertyKey).toBe('alt');
+  });
 });
 
 describe('Template resolve endpoint', () => {

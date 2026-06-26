@@ -81,5 +81,41 @@ export const i18nSchema = definePluginSchema<CoreTables>({
         },
       },
     },
+    // Templates are per-language (a German vs English default for the same
+    // field). No DB-unique here for the same reason as redirects: the compound
+    // (tenant_slug, language, collection, blockType, propertyKey) can't be
+    // expressed by either plugin alone — createTemplate's scope-aware check is
+    // the authority. Lookup indexed.
+    templates: {
+      columns: {
+        language: {
+          type: 'text',
+          notNull: true,
+        },
+      },
+      indexes: {
+        languageCollectionBlockIdx: {
+          columns: ['language', 'collection', 'blockType'],
+        },
+      },
+    },
+    // Variables are per-language, resolved with FALLBACK (like roots): a value
+    // missing in the active language falls back through the chain. The `key` is
+    // the translation group (companyName/en + companyName/de share key). No
+    // DB-unique (compound key is app-level authority). The index also serves the
+    // resolver's `key IN (...) AND language IN (chain)` lookup.
+    variables: {
+      columns: {
+        language: {
+          type: 'text',
+          notNull: true,
+        },
+      },
+      indexes: {
+        languageKeyIdx: {
+          columns: ['language', 'key'],
+        },
+      },
+    },
   },
 });

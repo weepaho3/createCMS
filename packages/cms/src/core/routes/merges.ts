@@ -350,7 +350,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
 ) {
   const { db } = cmsCtx;
   const collectionName = def.name;
-  const branchPolicy = resolveBranchPolicy(cmsCtx);
+  const branchPolicy = resolveBranchPolicy(cmsCtx, def.branchProtection);
 
   return {
     /**

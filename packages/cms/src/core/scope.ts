@@ -19,14 +19,36 @@ export function rootScopeConditions(
   scopeColumns: Record<string, unknown> | undefined,
   exclude: readonly string[] = [],
 ): SQL[] {
+  return tableScopeConditions('roots', scopeColumns, exclude);
+}
+
+/**
+ * Like {@link rootScopeConditions} but against an un-aliased `cms.variables` —
+ * for the variable resolver's tenant filtering (`language` excluded, since the
+ * fallback chain resolves it, not a hard equality).
+ */
+export function variableScopeConditions(
+  scopeColumns: Record<string, unknown> | undefined,
+  exclude: readonly string[] = [],
+): SQL[] {
+  return tableScopeConditions('variables', scopeColumns, exclude);
+}
+
+function tableScopeConditions(
+  table: string,
+  scopeColumns: Record<string, unknown> | undefined,
+  exclude: readonly string[] = [],
+): SQL[] {
   if (!scopeColumns) return [];
   const conds: SQL[] = [];
   for (const [col, val] of Object.entries(scopeColumns)) {
     if (val === undefined || val === null || exclude.includes(col)) continue;
     if (!SAFE_COLUMN.test(col)) {
-      throw new Error(`rootScopeConditions: unsafe scope column "${col}"`);
+      throw new Error(`tableScopeConditions: unsafe scope column "${col}"`);
     }
-    conds.push(sql`"cms"."roots".${sql.raw(`"${col}"`)} = ${val}`);
+    conds.push(
+      sql`"cms".${sql.raw(`"${table}"`)}.${sql.raw(`"${col}"`)} = ${val}`,
+    );
   }
   return conds;
 }

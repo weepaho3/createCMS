@@ -71,8 +71,10 @@ import {
   normalizeSlug,
   validateSlugUniqueness,
 } from '../slug';
+import { loadTemplateStrings } from '../templates';
 import { userEnrichment } from '../user/enrichment';
 import { loadVariables, substituteVariables } from '../variables';
+import { buildReferencePreviews } from './publications';
 
 // ============================================================================
 // Schemas
@@ -131,8 +133,9 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
   // Branch-protection policy. When `protectPublishedBranches` is on, a branch is
   // read-only for direct content mutations exactly while it is published; the
   // mutation routes below call the shared `assertBranchWritable` guard.
-  // `createRoot` seeds a fresh, unpublished branch and is never gated.
-  const branchPolicy = resolveBranchPolicy(cmsCtx);
+  // `createRoot` seeds a fresh, unpublished branch and is never gated. The
+  // collection's own `branchProtection` (if any) overrides the global config.
+  const branchPolicy = resolveBranchPolicy(cmsCtx, def.branchProtection);
 
   // When `forceCommitMessage` is on, a commit-producing route must be given a
   // non-empty `message`; otherwise it falls back to an auto-generated default.
@@ -657,7 +660,20 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           );
 
           const childBlockId = newId('block');
-          const blockProps = (properties as Record<string, unknown>) ?? {};
+          // Server-side template defaults: pre-fill any property the caller did
+          // NOT provide with this block type's template, scoped to the active
+          // tenant/language. The raw template string is stored as-is so embedded
+          // {{variables}} stay live (resolved at read time). Caller values win.
+          const templateDefaults = await loadTemplateStrings(
+            tx,
+            collectionName,
+            type,
+            ctx.context.scope?.templates?.where,
+          );
+          const blockProps = {
+            ...templateDefaults,
+            ...(properties as Record<string, unknown> | undefined),
+          };
 
           const newChildrenArray = [...(parentVersion.children ?? [])];
           const insertPosition = position ?? newChildrenArray.length;
@@ -718,6 +734,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           branchId: z.string(),
           commitId: z.string().optional(),
           raw: z.coerce.boolean().optional(),
+          includeReferencePreviews: z.coerce.boolean().optional(),
         }),
         metadata: cmsMeta(
           {
@@ -727,6 +744,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
                 branchId: string;
                 commitId?: string;
                 raw?: boolean;
+                includeReferencePreviews?: boolean;
               },
             },
           },
@@ -739,7 +757,8 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
         ),
       },
       async (ctx) => {
-        const { rootId, branchId, commitId, raw } = ctx.query;
+        const { rootId, branchId, commitId, raw, includeReferencePreviews } =
+          ctx.query;
 
         // Scope gate: reject a root outside the caller's scope before resolving
         // any commit (closes IDOR via rootId on both resolution paths). It also
@@ -774,14 +793,40 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
         const tree = assembleBlockTree(blocks, rootId);
         if (!tree) throw new CMSError('ROOT_NOT_FOUND');
 
-        if (!raw) {
-          const vars = await loadVariables(db);
-          substituteVariables(tree, vars);
+        const scope = ctx.context.scope;
+        // Load variables once: needed to substitute the main tree (unless raw)
+        // and/or to render the reference previews (always resolved).
+        const vars =
+          !raw || includeReferencePreviews
+            ? await loadVariables(db, scope)
+            : null;
+        if (!raw && vars) substituteVariables(tree, vars);
+
+        // Opt-in sidecar: the PUBLISHED preview of every reference embedded in the
+        // tree, keyed by the stored reference value — one call instead of N
+        // getPublishedContent round-trips. Resolved through the active scope.
+        let references: Record<string, BlockTreeNode> | undefined;
+        if (includeReferencePreviews && vars) {
+          references = await buildReferencePreviews(
+            db,
+            tree,
+            def,
+            cmsCtx.collections,
+            scope.referenceResolver ?? coreReferenceResolver,
+            crossScopeColumns(scope.roots),
+            vars,
+            scope.abTestResolver,
+          );
         }
 
-        return { tree, reconstructed } as unknown as {
+        return {
+          tree,
+          reconstructed,
+          ...(references ? { references } : {}),
+        } as unknown as {
           tree: InferBlockTreeNode<TDef['blocks'], TDef['root']['properties']>;
           reconstructed: boolean;
+          references?: Record<string, BlockTreeNode>;
         };
       },
     ),

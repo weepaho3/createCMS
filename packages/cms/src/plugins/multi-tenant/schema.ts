@@ -104,5 +104,38 @@ export const multiTenantSchema = definePluginSchema<CoreTables>({
         },
       },
     },
+    // Templates are per-tenant. No DB-unique is added: the correct compound key
+    // (tenant_slug, language, collection, blockType, propertyKey) can't be
+    // expressed by either plugin alone, so per-scope uniqueness is the app-level
+    // authority (createTemplate's scope-aware existence check). Lookup indexed.
+    templates: {
+      columns: {
+        tenantSlug: {
+          type: 'text',
+          notNull: true,
+        },
+      },
+      indexes: {
+        tenantCollectionBlockIdx: {
+          columns: ['tenantSlug', 'collection', 'blockType'],
+        },
+      },
+    },
+    // Variables are per-tenant (each tenant has its own companyName/siteUrl/…).
+    // No DB-unique (compound (tenant_slug, language, key) is app-level authority,
+    // same as templates). Lookup indexed.
+    variables: {
+      columns: {
+        tenantSlug: {
+          type: 'text',
+          notNull: true,
+        },
+      },
+      indexes: {
+        tenantKeyIdx: {
+          columns: ['tenantSlug', 'key'],
+        },
+      },
+    },
   },
 });

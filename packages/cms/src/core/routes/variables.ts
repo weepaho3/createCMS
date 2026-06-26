@@ -1,12 +1,15 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import * as z from 'zod';
 
 import type { RevalidationRunner } from '../revalidation';
 import type { CMSProcedureCtx } from '../types';
+import type { ResolvedScope } from '../types/definitions';
 
+import { newId } from '../../utils/nanoid';
 import { variables } from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
+import { scopedInsert, variableScopeConditions } from '../scope';
 import {
   findPublishedRootsUsingVariable,
   getVariableUsageDetails,
@@ -20,6 +23,13 @@ export function createVariableEndpoints(
   revalidationRunner: RevalidationRunner | null,
 ) {
   const { db } = cmsCtx;
+
+  // CRUD targets the EXACT active cell (tenant + language). Unlike content
+  // reads (which fall back across languages), managing a variable always means
+  // the active language's own row — so we filter by the full insert scope, not
+  // the read `where` (which deliberately omits language for the fallback).
+  const cellConditions = (scope: ResolvedScope | undefined) =>
+    variableScopeConditions(scope?.variables?.insertColumns);
 
   return {
     /**
@@ -35,8 +45,12 @@ export function createVariableEndpoints(
           { ...META, operation: 'read' },
         ),
       },
-      async () => {
-        const rows = await db.select().from(variables).orderBy(variables.key);
+      async (ctx) => {
+        const rows = await db
+          .select()
+          .from(variables)
+          .where(and(...cellConditions(ctx.context.scope)))
+          .orderBy(variables.key);
         return { variables: rows };
       },
     ),
@@ -59,13 +73,14 @@ export function createVariableEndpoints(
       },
       async (ctx) => {
         const { key } = ctx.query;
+        const scope = ctx.context.scope;
         const [variable] = await db
           .select()
           .from(variables)
-          .where(eq(variables.key, key));
+          .where(and(eq(variables.key, key), ...cellConditions(scope)));
         if (!variable) throw new CMSError('VARIABLE_NOT_FOUND');
 
-        const inUse = await isVariableInUse(db, key);
+        const inUse = await isVariableInUse(db, key, scope);
         return { variable, inUse };
       },
     ),
@@ -112,23 +127,40 @@ export function createVariableEndpoints(
       async (ctx) => {
         const { key, value, description } = ctx.body;
         const userId = ctx.context.userId;
+        const scope = ctx.context.scope;
 
+        // App-level uniqueness authority, scoped to the active cell (tenant +
+        // language) — the DB unique was demoted (see core-schema.ts).
         const [existing] = await db
           .select({ id: variables.id })
           .from(variables)
-          .where(eq(variables.key, key));
+          .where(and(eq(variables.key, key), ...cellConditions(scope)));
         if (existing) throw new CMSError('VARIABLE_KEY_EXISTS');
 
-        const [variable] = await db
-          .insert(variables)
-          .values({
+        // Raw scoped insert so plugin-owned columns (tenant_slug, language) are
+        // stamped — they are not part of the core Drizzle `variables` table.
+        const id = newId('variable');
+        await scopedInsert(
+          db,
+          'cms.variables',
+          {
+            id,
             key,
             value,
             description: description ?? null,
-            createdBy: userId,
-            updatedBy: userId,
-          })
-          .returning();
+            created_by: userId ?? null,
+            updated_by: userId ?? null,
+          },
+          scope?.variables,
+        );
+
+        // Re-read via Drizzle so the response keeps the camelCase shape. The id
+        // is freshly minted above, so the scope filter is belt-and-suspenders —
+        // it keeps every read uniformly scoped.
+        const [variable] = await db
+          .select()
+          .from(variables)
+          .where(and(eq(variables.id, id), ...cellConditions(scope)));
 
         return { variable };
       },
@@ -168,11 +200,12 @@ export function createVariableEndpoints(
       async (ctx) => {
         const { key, value, description } = ctx.body;
         const userId = ctx.context.userId;
+        const scope = ctx.context.scope;
 
         const [existing] = await db
           .select()
           .from(variables)
-          .where(eq(variables.key, key));
+          .where(and(eq(variables.key, key), ...cellConditions(scope)));
         if (!existing) throw new CMSError('VARIABLE_NOT_FOUND');
 
         const updates: Record<string, unknown> = {
@@ -185,7 +218,7 @@ export function createVariableEndpoints(
         const [updated] = await db
           .update(variables)
           .set(updates)
-          .where(eq(variables.key, key))
+          .where(and(eq(variables.key, key), ...cellConditions(scope)))
           .returning();
 
         if (
@@ -193,7 +226,11 @@ export function createVariableEndpoints(
           value !== existing.value &&
           revalidationRunner
         ) {
-          const affected = await findPublishedRootsUsingVariable(db, key);
+          const affected = await findPublishedRootsUsingVariable(
+            db,
+            key,
+            scope,
+          );
           for (const root of affected) {
             await revalidationRunner.postProcess(
               'updateBlock',
@@ -228,18 +265,21 @@ export function createVariableEndpoints(
       },
       async (ctx) => {
         const { key } = ctx.body;
+        const scope = ctx.context.scope;
 
         const [existing] = await db
           .select({ id: variables.id })
           .from(variables)
-          .where(eq(variables.key, key));
+          .where(and(eq(variables.key, key), ...cellConditions(scope)));
         if (!existing) throw new CMSError('VARIABLE_NOT_FOUND');
 
-        if (await isVariableInUse(db, key)) {
+        if (await isVariableInUse(db, key, scope)) {
           throw new CMSError('VARIABLE_IN_USE');
         }
 
-        await db.delete(variables).where(eq(variables.key, key));
+        await db
+          .delete(variables)
+          .where(and(eq(variables.key, key), ...cellConditions(scope)));
 
         return { deleted: true };
       },
@@ -263,14 +303,15 @@ export function createVariableEndpoints(
       },
       async (ctx) => {
         const { key } = ctx.query;
+        const scope = ctx.context.scope;
 
         const [existing] = await db
           .select({ id: variables.id })
           .from(variables)
-          .where(eq(variables.key, key));
+          .where(and(eq(variables.key, key), ...cellConditions(scope)));
         if (!existing) throw new CMSError('VARIABLE_NOT_FOUND');
 
-        return getVariableUsageDetails(db, key);
+        return getVariableUsageDetails(db, key, scope);
       },
     ),
   };

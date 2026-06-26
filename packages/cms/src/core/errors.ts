@@ -275,6 +275,11 @@ export const CMS_ERRORS = {
     message: 'Cannot delete variable: it is still in use',
   },
   TEMPLATE_NOT_FOUND: { status: 404 as const, message: 'Template not found' },
+  TEMPLATE_PROPERTY_INVALID: {
+    status: 400 as const,
+    message:
+      'A template can only target an existing text property (type `string` or `richText`) of the block type',
+  },
   TEMPLATE_KEY_EXISTS: {
     status: 409 as const,
     message:

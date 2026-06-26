@@ -14,6 +14,7 @@ import { createI18nCollectionEndpoints } from './collection-endpoints';
 import { $ERROR_CODES } from './errors';
 import { buildI18nReferenceResolver } from './reference-resolver';
 import { i18nSchema } from './schema';
+import { buildI18nVariableResolver } from './variable-resolver';
 
 // The translation-group id prefix is owned by this plugin (core no longer
 // declares it). Registered at import so newId('translationGroup') works in
@@ -218,6 +219,23 @@ export function i18n<const L extends readonly string[]>(config: I18nConfig<L>) {
             where: sql`"cms"."redirects"."language" = ${language}`,
             insertColumns: { language },
           },
+          // Templates are per-language: a default for the same field can differ
+          // per language (e.g. German vs English boilerplate). createBlock applies
+          // the active language's defaults; CRUD is language-scoped.
+          templates: {
+            where: sql`"cms"."templates"."language" = ${language}`,
+            insertColumns: { language },
+          },
+          // Variables are per-language but resolved with FALLBACK on READ — so
+          // there is intentionally NO `where` here (the chain, not a hard
+          // equality, picks the language). `language` is stamped on insert; CRUD
+          // targets the exact active-language cell via the variableScopeConditions
+          // helper, and content rendering rides the variableResolver below.
+          variables: {
+            insertColumns: { language },
+          },
+          // Active-language-with-fallback variable resolution for content reads.
+          variableResolver: buildI18nVariableResolver(language, fallback),
           // The reference resolver core's read path + co-render walk ride through
           // the Seam B handle (translation-group aware: tgr_ -> best fallback
           // sibling; rot_ -> active-language sibling, else anchor). P1 still

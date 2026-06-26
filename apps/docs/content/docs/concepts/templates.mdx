@@ -3,7 +3,7 @@ title: Templates
 description: Default property values per collection, block, and property.
 ---
 
-A template is a default value for a single block property, scoped to a collection and a block type. When an editor adds that block, the property starts from the template instead of empty.
+A template is a default value for a single block property, scoped to a collection and a block type. When a block is created, any **optional** property the caller leaves unset is seeded from its template.
 
 ## How templates are keyed
 
@@ -16,9 +16,23 @@ property:   cite
 template:   "© {{companyName}}"
 ```
 
+## Applied server-side on create
+
+`createBlock` applies templates automatically: for the block being created, every property the caller did **not** provide is filled from its template. There is no client wiring to do — if a template exists, it is used.
+
+- **`createBlock` only.** Defaults are seeded when a fresh block is added. `duplicateBlock` makes a faithful copy (it must match the original, not re-default) and `updateBlocks` applies a client-authoritative tree, so neither re-applies templates.
+- **Optional properties only.** A required property must still be provided by the caller (the input is validated before defaults are applied). Mark a property optional if you want it template-defaulted.
+- **Text properties only.** A template targets a `string` or `richText` property — `createTemplate` rejects any other type (or a property that does not exist on the block) with `TEMPLATE_PROPERTY_INVALID`.
+- **Caller wins.** An explicitly provided value always overrides the template.
+- **Variables stay live.** The raw template string is stored as-is, so embedded `{{variables}}` resolve at read time like any other content — changing a variable updates blocks already seeded from the template (it is not frozen at creation).
+
 ## Templates use variables
 
-A template string can contain `{{key}}` [variables](/docs/concepts/variables), resolved when the default is applied. `resolveTemplate` resolves a string on demand, and `getTemplateDefaults` returns the resolved defaults for every property of a collection and block type.
+A template string can contain `{{key}}` [variables](/docs/concepts/variables). `resolveTemplate` resolves a string on demand, and `getTemplateDefaults` returns the resolved defaults for every property of a collection and block type (for prefilling an editor UI).
+
+## Scoping (i18n / multi-tenant)
+
+Templates participate in scoping like content does. With the **i18n** plugin a template is per **language** (a German and an English default can coexist for the same field); with **multi-tenant** it is per **tenant**. `createBlock` applies the active scope's template, and the `(collection, blockType, propertyKey)` uniqueness is enforced **within** that scope — so the same key is free to differ per language and per tenant.
 
 <Callout type="info">
   For the CRUD methods, see the [Templates reference](/docs/reference/templates).

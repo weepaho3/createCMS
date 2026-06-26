@@ -463,7 +463,7 @@ export const templates = cms.table(
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("templates_collection_block_prop_unique").on(table.collection, table.blockType, table.propertyKey),
+    index("templates_collection_block_prop_idx").on(table.collection, table.blockType, table.propertyKey),
     index("templates_collection_idx").on(table.collection),
     index("templates_collection_block_idx").on(table.collection, table.blockType),
   ],
@@ -496,7 +496,7 @@ export const variables = cms.table(
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("variables_key_unique").on(table.key),
+    index("variables_key_idx").on(table.key),
   ],
 );
 

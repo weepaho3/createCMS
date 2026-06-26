@@ -102,6 +102,14 @@ export function multiTenant() {
             where: sql`"cms"."redirects"."tenant_slug" = ${tenantSlug}`,
             insertColumns,
           },
+          templates: {
+            where: sql`"cms"."templates"."tenant_slug" = ${tenantSlug}`,
+            insertColumns,
+          },
+          variables: {
+            where: sql`"cms"."variables"."tenant_slug" = ${tenantSlug}`,
+            insertColumns,
+          },
         };
       };
 

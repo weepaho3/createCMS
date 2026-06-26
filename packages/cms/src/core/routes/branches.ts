@@ -104,7 +104,7 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
 ) {
   const { db } = cmsCtx;
   const collectionName = def.name;
-  const branchPolicy = resolveBranchPolicy(cmsCtx);
+  const branchPolicy = resolveBranchPolicy(cmsCtx, def.branchProtection);
 
   return {
     /**
@@ -334,6 +334,7 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
             createdBy: b.created_by,
             createdAt: new Date(b.created_at as string),
             updatedAt: new Date(b.updated_at as string),
+            hasPublications: state.published.has(b.id as string),
             isDeletable:
               (b.name as string) !== branchPolicy.defaultBranchName &&
               !nonDeletable.has(b.id as string),
