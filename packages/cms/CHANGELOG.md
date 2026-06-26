@@ -1,5 +1,36 @@
 # @createcms/core
 
+## 0.2.4
+
+### Patch Changes
+
+- [#11](https://github.com/weepaho3/createCMS/pull/11) [`bd91957`](https://github.com/weepaho3/createCMS/commit/bd91957a052f275b5e3ea41394e3be3744b3e2be) Thanks [@weepaho3](https://github.com/weepaho3)! - Fix a client/server path mismatch that made the `variables`, `templates`, and `search` namespaces unreachable from the client.
+
+  The client proxy builds every request URL as `/<namespace>/<method>` (e.g. `client.variables.listVariables()` → `/variables/listVariables`), but these endpoints were mounted at hand-written paths that didn't follow that convention (`/variables`, `/variables/get`, `/templates/create`, `/search`, …). Every such call 404'd. Handler-level tests didn't catch it because `cms.api.<ns>.<method>()` invokes the handler directly and never exercises HTTP routing.
+
+  - All `variables` endpoints now mount at `/variables/<method>` (e.g. `/variables/listVariables`, `/variables/getVariable`).
+  - All `templates` endpoints now mount at `/templates/<method>` (e.g. `/templates/listTemplates`, `/templates/getTemplate`).
+  - `search` now mounts at `/search/search` (matching `client.search.search()`).
+
+  A new test asserts every RPC endpoint is mounted at exactly `/<namespace>/<method>`, so this class of drift can't regress. (Direct-URL routes with a path parameter, like the public `/media/asset/{assetSlug}` redirect, are intentionally exempt.)
+
+- [#11](https://github.com/weepaho3/createCMS/pull/11) [`ff516e9`](https://github.com/weepaho3/createCMS/commit/ff516e97e8a96dd3420dec708ada8dce49c505e5) Thanks [@weepaho3](https://github.com/weepaho3)! - Add a configurable merge strategy for `executeMerge`.
+
+  - **`mergeStrategy`** (CMS config) — `'fast-forward'` (default) or `'merge-commit'`. Controls how `executeMerge` integrates when a fast-forward is possible (the target has not diverged). `'merge-commit'` always records an explicit merge commit (git's `--no-ff`) so every integration is visible in history. A diverged target always produces a merge commit regardless.
+  - **`executeMerge({ noFastForward })`** — per-call override of the configured strategy. `true` forces a merge commit, `false` forces a fast-forward.
+
+  A merge with nothing to integrate (the source and target heads are already equal) stays a no-op fast-forward even under `noFastForward`/`'merge-commit'`, so no empty merge commit is fabricated. Default behavior is unchanged (`'fast-forward'`).
+
+- Replace `branchProtection.protectMain` with `branchProtection.protectPublishedBranches`.
+
+  **Breaking:** `protectMain` (shipped in 0.2.3) is removed. It protected the default branch by name; the replacement instead locks a branch against direct content mutations for exactly as long as it is **published** — published content is the live, production-facing tree, so it is made immutable in place. Changes go via another branch + merge, then a re-publish; unpublishing makes the branch directly editable again. This applies to **any** published branch (a root can have several at once, e.g. A/B variants), not just the default one, and a never-published branch is freely editable.
+
+  - Enforced by a shared `assertBranchWritable` guard on every content-mutation route, including `revertBranch` (which rewrites a published branch's head in place).
+  - `createRoot` is never gated (it seeds a fresh, unpublished branch).
+  - Still throws `PROTECTED_BRANCH` (403).
+
+  Migration: rename `protectMain: true` to `protectPublishedBranches: true`. Note the new semantics — protection now follows the publication state, not the branch name.
+
 ## 0.2.3
 
 ### Patch Changes
