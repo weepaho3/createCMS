@@ -1,5 +1,12 @@
 # @createcms/example-blog
 
+## 0.0.5
+
+### Patch Changes
+
+- Updated dependencies [[`be8c643`](https://github.com/weepaho3/createCMS/commit/be8c64337574fc780bf9714fe2acc8ab2402dbd0), [`1d9bf1f`](https://github.com/weepaho3/createCMS/commit/1d9bf1fcf211112ad707c661a72a3d85333627c9), [`a45021a`](https://github.com/weepaho3/createCMS/commit/a45021a28245d0063e8e2c0aa9fc5bd6ffd17411)]:
+  - @createcms/core@0.2.3
+
 ## 0.0.4
 
 ### Patch Changes
