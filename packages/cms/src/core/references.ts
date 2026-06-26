@@ -49,6 +49,29 @@ export function getReferencePropertyNames(
 }
 
 /**
+ * The NAMES of a block's `link`-type properties (root or child). Single source of
+ * truth shared by the read-time link resolver and the write-time usage indexer,
+ * mirroring {@link getReferencePropertyNames}. A link carries no fixed target
+ * collection (it is a discriminated union and may be external), so this returns a
+ * plain Set of property keys.
+ */
+export function getLinkPropertyNames(
+  collectionDef: CollectionWithName,
+  blockType: string,
+): Set<string> {
+  const linkProps = new Set<string>();
+  const props =
+    blockType === collectionDef.name || blockType === 'root'
+      ? collectionDef.root.properties
+      : collectionDef.blocks?.[blockType]?.properties;
+  if (!props) return linkProps;
+  for (const [key, spec] of Object.entries(props)) {
+    if (spec.type === 'link') linkProps.add(key);
+  }
+  return linkProps;
+}
+
+/**
  * Inserts content_usages `reference` rows for newly-created block versions, within
  * the same transaction that created them — the third sibling of the asset and
  * variable indexers (see core/content-index.ts). A reference is a top-level
@@ -71,7 +94,7 @@ export async function insertReferenceUsagesForVersions(
 ): Promise<void> {
   const rows: {
     id: string;
-    targetKind: 'reference';
+    targetKind: 'reference' | 'link';
     targetKey: string;
     blockVersionId: string;
     rootId: string;
@@ -88,6 +111,26 @@ export async function insertReferenceUsagesForVersions(
         id: newId('contentUsage'),
         targetKind: 'reference',
         targetKey: value,
+        blockVersionId: version.blockVersionId,
+        rootId,
+        blockId: version.blockId,
+        propertyKey: propKey,
+      });
+    }
+
+    // INTERNAL links index their target rootId too (targetKind 'link') — for the
+    // usage UI / soft delete-warning. External/email/phone links are not tracked.
+    const linkProps = getLinkPropertyNames(collectionDef, version.type);
+    for (const propKey of linkProps) {
+      const value = version.properties[propKey] as
+        | { kind?: string; rootId?: unknown }
+        | undefined;
+      if (!value || value.kind !== 'internal') continue;
+      if (typeof value.rootId !== 'string' || !value.rootId) continue;
+      rows.push({
+        id: newId('contentUsage'),
+        targetKind: 'link',
+        targetKey: value.rootId,
         blockVersionId: version.blockVersionId,
         rootId,
         blockId: version.blockId,

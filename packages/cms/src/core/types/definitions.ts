@@ -45,6 +45,49 @@ export type ResolvedReference<TProps = Record<string, unknown>> = {
   };
 };
 
+/** The kinds a `link` property can point at. */
+export type LinkKind = 'internal' | 'external' | 'email' | 'phone';
+
+/**
+ * The AUTHORED value of a `link` property — a discriminated union over `kind`.
+ * An `internal` link stores the target's `rootId` (a language-aware reference,
+ * resolved to the current path at read time, NOT an embedded tree); the other
+ * kinds store their literal target. Kept as the stored value in `raw` mode
+ * (write input + the editor read).
+ */
+export type LinkValue =
+  | {
+      kind: 'internal';
+      rootId: string;
+      /** The target's collection — needed to resolve its (language-aware) path. */
+      collection: string;
+      fragment?: string;
+      query?: string;
+    }
+  | { kind: 'external'; url: string }
+  | { kind: 'email'; email: string }
+  | { kind: 'phone'; phone: string };
+
+/**
+ * The RESOLVED value of a `link` on the published read path (`resolved` mode):
+ * every kind is normalised to an `href` for the renderer. An `internal` link's
+ * `href` is the target's CURRENT, language-aware path (or `null` when the target
+ * is gone / out of scope — the renderer disables the link). External / email /
+ * phone are static pass-throughs (`href` = url / `mailto:` / `tel:`).
+ */
+export type ResolvedLink =
+  | {
+      kind: 'internal';
+      targetRootId: string;
+      collection: string;
+      href: string | null;
+      fragment?: string;
+      query?: string;
+    }
+  | { kind: 'external'; href: string }
+  | { kind: 'email'; href: string }
+  | { kind: 'phone'; href: string };
+
 // ============================================================================
 // Scope Conditions (plugin-injected query/insert scoping)
 // ============================================================================
@@ -252,6 +295,9 @@ type BlockTypes = {
   // inlined to a `ResolvedReference` only on the published read path (the
   // `resolved` inference mode); write input + the editor read keep the string.
   reference: string;
+  // The AUTHORED value of a link is a `LinkValue` union; it resolves to a
+  // `ResolvedLink` (an href) only on the read path (the `resolved` mode).
+  link: LinkValue;
 };
 
 /** Reference inference mode: `raw` (write input + getBlockTree editor read) keeps
@@ -284,7 +330,15 @@ type BlockPropertySpec<T extends BlockPropertyType> = {
    */
   group?: string;
 } & (T extends 'select' ? { options: readonly SelectOption[] } : {}) &
-  (T extends 'reference' ? { collection: string } : {});
+  (T extends 'reference' ? { collection: string } : {}) &
+  (T extends 'link'
+    ? {
+        /** Which kinds may be picked. Default: all. */
+        allowedKinds?: readonly LinkKind[];
+        /** Restrict `internal` targets to these collections (default: any). */
+        allowedCollections?: readonly string[];
+      }
+    : {});
 
 /** Discriminated union over all concrete block-property specs. */
 export type BlockProperty = {
@@ -322,7 +376,13 @@ type InferPropertyValue<
           >
         : ResolvedReference
       : string
-    : BlockTypes[T['type']];
+    : T extends { type: 'link' }
+      ? // A link is the stored `LinkValue` in `raw` mode (write input + editor
+        // read) and a `ResolvedLink` (an href) on the `resolved` read path.
+        M extends 'resolved'
+        ? ResolvedLink
+        : LinkValue
+      : BlockTypes[T['type']];
 
 type RequiredPart<
   T extends Record<string, BlockProperty>,

@@ -116,13 +116,15 @@ async function resolveRootPath(
   };
 }
 
-/** A page-reference's CURRENT path (for UI display), or `null` if the root is gone. */
+/** A page-reference's CURRENT path (for UI display), or `null` if the root is
+ *  gone — or out of `rootScope` when one is passed (defensive scope gate). */
 export async function resolveRootCurrentPath(
   db: DrizzleInstance,
   slugCfg: EnabledSlugConfig,
   rootId: string,
+  rootScope?: TableScope,
 ): Promise<string | null> {
-  return (await resolveRootPath(db, slugCfg, rootId))?.path ?? null;
+  return (await resolveRootPath(db, slugCfg, rootId, rootScope))?.path ?? null;
 }
 
 /** Resolve a redirect's target to a destination path, or `null` if unreachable. */

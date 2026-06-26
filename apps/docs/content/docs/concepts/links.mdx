@@ -1,0 +1,63 @@
+---
+title: Links
+description: A language-aware link property resolved to the current path at read time.
+---
+
+A `link` property points at a target — an internal entry, an external URL, an email, or a phone number — and is **resolved at read time** to an `href`. An **internal** link is a language-aware reference (not a hardcoded slug): it is resolved to the target entry's **current path** in the active language, exactly like a redirect's page target. Nothing is embedded — only a path is resolved (unlike [references](/docs/concepts/blocks), which inline the whole target tree).
+
+## Defining a link
+
+```ts
+blocks: {
+  cta: {
+    label: 'CTA',
+    properties: {
+      label: { type: 'string', label: 'Label', required: true },
+      href:  {
+        type: 'link',
+        label: 'Link',
+        allowedKinds: ['internal', 'external'], // default: all four
+        allowedCollections: ['pages'],          // restrict internal targets
+      },
+    },
+  },
+},
+```
+
+## Stored vs resolved
+
+A link is a discriminated union over `kind`. What you **store** (and what the editor reads with `raw: true`, so the binding survives target renames):
+
+```ts
+type LinkValue =
+  | { kind: 'internal'; rootId: string; collection: string; fragment?: string; query?: string }
+  | { kind: 'external'; url: string }
+  | { kind: 'email';    email: string }
+  | { kind: 'phone';    phone: string }
+```
+
+What a read **resolves** to (`getBlockTree` with `raw: false`, and `getPublishedContent`) — every kind normalised to an `href` for the renderer:
+
+```ts
+type ResolvedLink =
+  | { kind: 'internal'; targetRootId: string; collection: string; href: string | null; fragment?; query? }
+  | { kind: 'external'; href: string }   // = url
+  | { kind: 'email';    href: string }   // = mailto:email
+  | { kind: 'phone';    href: string }   // = tel:phone
+```
+
+## How an internal link resolves
+
+1. The stored target is mapped to the **active-language sibling** via the same reference resolver the i18n plugin provides (a German page links to the German target, falling back through the configured chain).
+2. That sibling's **current path** is resolved (ancestor-aware) — so renaming or moving the target updates every link automatically.
+3. `fragment` / `query` are appended (`/pages/about?tab=2#team`).
+
+A target that is gone, archived, or out of scope resolves to `href: null` — the renderer should disable or hide the link. External / email / phone links are static pass-throughs.
+
+## Referential integrity
+
+Internal link targets are indexed (the same usage table as references), so the editor can show "linked from N places". Unlike a reference — whose target is embedded, so deleting it breaks the render — a link is **not** hard-blocked on target deletion: a dangling link is expected and recoverable, so it is a **warning**, not an error.
+
+<Callout type="info">
+  Links resolve only on `raw: false` reads. With `raw: true` (the editor view) the stored `LinkValue` is returned unchanged, so the link picker can re-edit the target.
+</Callout>

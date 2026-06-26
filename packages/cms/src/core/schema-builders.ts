@@ -9,7 +9,58 @@ import type {
   InferMergeBlockVersionInput,
   InferPartialBlockProperties,
   InferUpdateBlockInput,
+  LinkKind,
 } from './types';
+
+const ALL_LINK_KINDS: readonly LinkKind[] = [
+  'internal',
+  'external',
+  'email',
+  'phone',
+];
+
+function linkKindSchema(
+  kind: LinkKind,
+  allowedCollections?: readonly string[],
+): z.ZodType {
+  switch (kind) {
+    case 'internal':
+      return z.object({
+        kind: z.literal('internal'),
+        rootId: z.string(),
+        // Constrain the target collection to the allowed set when configured.
+        collection: allowedCollections?.length
+          ? z.enum(allowedCollections as [string, ...string[]])
+          : z.string(),
+        fragment: z.string().optional(),
+        query: z.string().optional(),
+      });
+    case 'external':
+      return z.object({ kind: z.literal('external'), url: z.string() });
+    case 'email':
+      return z.object({ kind: z.literal('email'), email: z.string() });
+    case 'phone':
+      return z.object({ kind: z.literal('phone'), phone: z.string() });
+  }
+}
+
+/** A `link` value validator: a discriminated union over `kind`, restricted to
+ *  `allowedKinds` (default: all) — and, for internal links, to
+ *  `allowedCollections` (default: any collection). */
+function buildLinkSchema(
+  allowedKinds?: readonly LinkKind[],
+  allowedCollections?: readonly string[],
+): z.ZodType {
+  const kinds = allowedKinds?.length ? allowedKinds : ALL_LINK_KINDS;
+  const members = kinds.map((k) => linkKindSchema(k, allowedCollections)) as [
+    z.ZodType,
+    ...z.ZodType[],
+  ];
+  return z.discriminatedUnion(
+    'kind',
+    members as unknown as [z.ZodObject, ...z.ZodObject[]],
+  );
+}
 
 const zodForBlockType: Record<BlockPropertyType, z.ZodType> = {
   string: z.string(),
@@ -20,6 +71,7 @@ const zodForBlockType: Record<BlockPropertyType, z.ZodType> = {
   image: z.string(),
   select: z.string(), // overridden below for select with options
   reference: z.string(),
+  link: buildLinkSchema(), // overridden below to honour allowedKinds
 };
 
 export function buildPropertiesSchema<T extends Record<string, BlockProperty>>(
@@ -34,6 +86,8 @@ export function buildPropertiesSchema<T extends Record<string, BlockProperty>>(
     if (prop.type === 'select') {
       const values = prop.options.map((o) => o.value);
       field = z.enum(values as [string, ...string[]]);
+    } else if (prop.type === 'link') {
+      field = buildLinkSchema(prop.allowedKinds, prop.allowedCollections);
     } else {
       field = zodForBlockType[prop.type];
     }
