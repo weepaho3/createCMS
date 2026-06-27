@@ -58,7 +58,7 @@ const INK_GLYPHS = 6;
 // resting createCMS({▪}); WORD_RESERVE is the room the morphing words expand
 // into (sized for the longest default word); the box reserves it up front
 // instead of growing at runtime. UNIT_PX maps viewBox units to px (uncapped).
-const RESTING_W = 1399;
+const RESTING_W = 1469; // resting right edge (includes the gap after the "S")
 const WORD_RESERVE = 1000;
 const VIEWBOX_W = RESTING_W + WORD_RESERVE;
 const UNIT_PX = 0.46;
@@ -136,11 +136,11 @@ export default function CreateCMSLogoAnimation({
     const END = BLOCK_START + BLOCK_DUR + 240;
     // X coordinates are anchored at the wordmark's pen (x=0) so the mark needs
     // no left-padding compensation. (Time constants above are unrelated.)
-    const FEAT_X = 1207; //          left edge of the words
+    const FEAT_X = 1277; //          left edge of the words
     const FEAT_PAD = 54; //          gap before the closing brace
-    const BRACE_REST_X = 1278; //    resting x of the closing "}"
-    const CARET_AT_PARENS = 1127;
-    const CARET_AT_BRACES = 1207;
+    const BRACE_REST_X = 1348; //    resting x of the closing "}"
+    const CARET_AT_PARENS = 1197;
+    const CARET_AT_BRACES = 1277;
     // Swap the per-glyph typed text for the static wordmark once typing is done.
     const SWAP = TYPE_START + GLYPH_COUNT * MS_PER_GLYPH + 40;
 
@@ -406,17 +406,18 @@ export default function CreateCMSLogoAnimation({
               <g>): Safari/iOS does not reliably inherit it, which dropped the
               brackets onto the alphabetic baseline (sitting too high). */}
           <g fontWeight="600" fontSize="171" textAnchor="middle" style={{ fill: ink }}>
-            <text data-p1 x="1102" y="170" dominantBaseline="central">(</text>
-            <text data-b1 x="1154" y="170" dominantBaseline="central">{'{'}</text>
-            <text data-b2 x="1278" y="170" dominantBaseline="central">{'}'}</text>
-            <text data-p2 x="1329" y="170" dominantBaseline="central">)</text>
+            <text data-p1 x="1172" y="170" dominantBaseline="central">(</text>
+            <text data-b1 x="1224" y="170" dominantBaseline="central">{'{'}</text>
+            <text data-b2 x="1348" y="170" dominantBaseline="central">{'}'}</text>
+            <text data-p2 x="1399" y="170" dominantBaseline="central">)</text>
           </g>
-          <text data-feat x="1207" y="173" fontWeight="600" fontSize="140" textAnchor="start" dominantBaseline="central" style={{ fill: accent }}></text>
-          <text data-feat2 x="1207" y="173" fontWeight="600" fontSize="140" textAnchor="start" dominantBaseline="central" style={{ fill: accent }}></text>
-          <rect data-blk x="1184.5" y="146" width="63" height="62" rx="17" style={{ fill: accent }}></rect>
-          {/* Caret base x=0 = the wordmark's left edge (it translateX-es along
-              the typed glyphs); it rests invisible, so the static frame is fine. */}
-          <rect data-caret x="0" y="96" width="9" height="150" rx="2" style={{ fill: accent }}></rect>
+          <text data-feat x="1277" y="173" fontWeight="600" fontSize="140" textAnchor="start" dominantBaseline="central" style={{ fill: accent }}></text>
+          <text data-feat2 x="1277" y="173" fontWeight="600" fontSize="140" textAnchor="start" dominantBaseline="central" style={{ fill: accent }}></text>
+          <rect data-blk x="1254.5" y="146" width="63" height="62" rx="17" style={{ fill: accent }}></rect>
+          {/* Caret is an animation-only element (the typing cursor); it starts
+              hidden so it never shows in the resting / reduced-motion state, and
+              the animation fades it in via renderAt when it actually types. */}
+          <rect data-caret x="0" y="96" width="9" height="150" rx="2" style={{ fill: accent, opacity: 0 }}></rect>
         </g>
       </svg>
     </span>
