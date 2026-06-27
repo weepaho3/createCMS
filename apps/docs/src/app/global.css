@@ -82,6 +82,16 @@ body {
   --sidebar-ring: oklch(0.552 0.016 285.938);
 }
 
+/* Brand mark (animated createCMS logo) — accent orange is constant across
+   themes; only the ink flips with the .dark class for a flash-free swap. */
+:root {
+  --cc-ink: #1c1917;
+  --cc-accent: #ea580c;
+}
+.dark {
+  --cc-ink: #fafaf9;
+}
+
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);

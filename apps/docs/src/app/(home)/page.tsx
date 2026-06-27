@@ -1,5 +1,7 @@
 import Link from 'next/link';
 
+import CreateCMSLogoAnimation from '@/components/createcms-logo-animation';
+
 const features = [
   {
     title: 'Git-like versioning',
@@ -22,19 +24,34 @@ const features = [
 export default function HomePage() {
   return (
     <main className="flex flex-1 flex-col items-center px-4 py-20">
-      <section className="flex max-w-2xl flex-col items-center text-center">
-        <span className="mb-5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+      <section className="flex w-full max-w-4xl flex-col items-start text-left">
+        <span className="mb-6 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-600 dark:text-amber-400">
           ⚠️ Pre-1.0 · work in progress · not production-ready
         </span>
-        <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
-          The CMS that lives in your database
+
+        {/* The animated brand mark IS the headline. The SVG is decorative
+            (per-glyph animated text), so the accessible name comes from the
+            <h1>'s aria-label. */}
+        <h1 aria-label="createCMS" className="w-full">
+          <CreateCMSLogoAnimation
+            ink="var(--cc-ink)"
+            accent="var(--cc-accent)"
+            fontFamily="var(--font-geist-sans), system-ui, sans-serif"
+            maxWidth="100%"
+            style={{ justifyContent: 'flex-start' }}
+          />
         </h1>
-        <p className="mt-5 text-lg text-fd-muted-foreground">
-          createCMS is a composable, block-based, Git-like headless CMS for
-          TypeScript — powered by Drizzle ORM, with a fully type-safe API.
+
+        <p className="mt-8 max-w-2xl text-2xl font-medium tracking-tight text-balance">
+          Build your CMS into your app — not your app into a CMS.
+        </p>
+        <p className="mt-4 max-w-2xl text-lg text-fd-muted-foreground">
+          Define your content in code, get a fully type-safe API, and build
+          exactly the CMS your product needs — with your content and its full
+          Git-like history living in your own database.
         </p>
 
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+        <div className="mt-8 flex flex-wrap items-center justify-start gap-3">
           <Link
             href="/docs"
             className="rounded-lg bg-fd-primary px-5 py-2.5 text-sm font-medium text-fd-primary-foreground"
