@@ -402,11 +402,14 @@ export default function CreateCMSLogoAnimation({
               create<tspan style={{ fill: accent }}>CMS</tspan>
             </text>
           </g>
-          <g fontWeight="600" fontSize="171" textAnchor="middle" dominantBaseline="central" style={{ fill: ink }}>
-            <text data-p1 x="1102" y="170">(</text>
-            <text data-b1 x="1154" y="170">{'{'}</text>
-            <text data-b2 x="1278" y="170">{'}'}</text>
-            <text data-p2 x="1329" y="170">)</text>
+          {/* dominant-baseline is set on EACH <text> (not inherited from the
+              <g>): Safari/iOS does not reliably inherit it, which dropped the
+              brackets onto the alphabetic baseline (sitting too high). */}
+          <g fontWeight="600" fontSize="171" textAnchor="middle" style={{ fill: ink }}>
+            <text data-p1 x="1102" y="170" dominantBaseline="central">(</text>
+            <text data-b1 x="1154" y="170" dominantBaseline="central">{'{'}</text>
+            <text data-b2 x="1278" y="170" dominantBaseline="central">{'}'}</text>
+            <text data-p2 x="1329" y="170" dominantBaseline="central">)</text>
           </g>
           <text data-feat x="1207" y="173" fontWeight="600" fontSize="140" textAnchor="start" dominantBaseline="central" style={{ fill: accent }}></text>
           <text data-feat2 x="1207" y="173" fontWeight="600" fontSize="140" textAnchor="start" dominantBaseline="central" style={{ fill: accent }}></text>
