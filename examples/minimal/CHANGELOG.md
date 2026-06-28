@@ -1,5 +1,12 @@
 # @createcms/example-minimal
 
+## 0.0.10
+
+### Patch Changes
+
+- Updated dependencies [[`8ca638b`](https://github.com/weepaho3/createCMS/commit/8ca638b305d79300e02416af32a06295b4757678)]:
+  - @createcms/core@0.2.8
+
 ## 0.0.9
 
 ### Patch Changes

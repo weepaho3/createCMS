@@ -3,6 +3,16 @@ title: Changelog
 description: Release notes for @createcms/core, generated from Changesets.
 ---
 
+## 0.2.8
+
+### Patch Changes
+
+- [#22](https://github.com/weepaho3/createCMS/pull/22) [`8ca638b`](https://github.com/weepaho3/createCMS/commit/8ca638b305d79300e02416af32a06295b4757678) Thanks [@weepaho3](https://github.com/weepaho3)! - Resolve `image` block properties to `&#123; id, slug }` on the rendered read path.
+
+  `image` properties store the asset **id** (`ast_…`). `getPublishedContent` (and `getBlockTree` unless `raw`) now resolves each one to `&#123; id, slug }` — exactly as `link` and `reference` properties are resolved — so a renderer builds the gate URL `/media/asset/&#123;slug}` straight from the slug, with no second lookup. This keeps the SEO-friendly slug in the URL and routes every image request through the status-checked gate, while the id stays the stored value (usage tracking and the archive guard are unaffected).
+
+  Resolves to `null` when the asset is archived or out of scope — the resolver is scoped, so a forged cross-tenant id in content never leaks another tenant's slug, symmetric with link resolution. A `raw` read keeps the stored id for editor re-picking. Type: in `resolved` mode an `image` property now infers as `ResolvedImage` (`&#123; id, slug } | null`).
+
 ## 0.2.7
 
 ### Patch Changes
