@@ -62,7 +62,7 @@ Returns the editing view of an entry's block tree. `GET`, input via `query`.
 | `rootId` | `string` | yes | The entry. |
 | `branchId` | `string` | yes | The branch to read. |
 | `commitId` | `string` | no | A specific commit (defaults to branch head). |
-| `raw` | `boolean` | no | Skip variable substitution. |
+| `raw` | `boolean` | no | Keep stored values for editing: skip variable, link, and image resolution. |
 | `includeReferencePreviews` | `boolean` | no | Also return a `references` sidecar (see below). |
 
 Returns `{ tree, reconstructed }`. The `tree` is a discriminated union over `type`, and the top node is `type: 'root'`.
@@ -109,9 +109,11 @@ Returns the published view of an entry, with references resolved. `GET`, input v
 | `rootId` | `string` | Look up by entry id. |
 | `slug` | `string` | Look up by slug (slug-enabled collections). |
 | `path` | `string` | Look up by full path. |
-| `raw` | `boolean` | Skip variable substitution. |
+| `raw` | `boolean` | Keep stored values: skip variable, link, and image resolution. |
 
 Returns `{ rootId, collection, variants }`, where each variant has `branchId`, `branchName`, `commitId`, `publishedAt`, `publishedBy`, and a resolved `tree`. Additional fields appear when relevant: a page-level A/B test descriptor when one is running, and `ancestors` when the collection uses nested slugs.
+
+In the resolved `tree`, `reference` properties are inlined, `link` properties become a `ResolvedLink` (an `href`), and `image` properties become `{ id, slug }` — or `null` when the asset is gone or out of scope. Build the gate URL `/media/asset/{slug}` from the slug to serve it. A `raw` read keeps the stored target / asset id instead, for re-picking in an editor.
 
 ```ts
 const { variants } = await cms.api.pages.getPublishedContent({

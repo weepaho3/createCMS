@@ -459,6 +459,54 @@ describe('multiTenantPlugin — asset isolation', () => {
       .where(eq(assets.id, 'asset-globex-1'));
     expect(globexAsset.status).toBe('private');
   });
+
+  it('resolves an in-scope image but nulls a cross-tenant one (no slug leak)', async () => {
+    const { cms, db, setTenant } = await setupMultiTenantTestCMS();
+
+    // One asset per tenant (tenant_slug is the plugin-added scope column).
+    await db.execute(sql`
+      INSERT INTO cms.assets (id, slug, mime_type, size, object_key, status, tenant_slug)
+      VALUES
+        ('asset-acme-hero', 'acme-hero', 'image/png', 1024, 'acme/hero.png', 'public', 'acme'),
+        ('asset-globex-secret', 'globex-secret', 'image/png', 1024, 'globex/secret.png', 'public', 'globex')
+    `);
+
+    // Acme authors a page: one hero references its OWN asset, another references
+    // a (forged) globex asset id — both are author-controlled strings.
+    setTenant('acme');
+    const page = await cms.api.pages.createRoot({
+      body: { slug: '/heroes', properties: { title: 'Heroes' } },
+    });
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: page.rootId,
+        branchId: page.branchId,
+        parentBlockId: page.rootId,
+        type: 'hero',
+        properties: { title: 'Mine', backgroundImage: 'asset-acme-hero' },
+      },
+    });
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: page.rootId,
+        branchId: page.branchId,
+        parentBlockId: page.rootId,
+        type: 'hero',
+        properties: { title: 'Theirs', backgroundImage: 'asset-globex-secret' },
+      },
+    });
+
+    // Resolved read as acme: own asset → { id, slug }; cross-tenant id → null.
+    // The scope gate (assetScopeConditions) never leaks globex's slug.
+    const { tree } = await cms.api.pages.getBlockTree({
+      query: { rootId: page.rootId, branchId: page.branchId, raw: false },
+    });
+    expect(tree.children[0].properties.backgroundImage).toEqual({
+      id: 'asset-acme-hero',
+      slug: 'acme-hero',
+    });
+    expect(tree.children[1].properties.backgroundImage).toBeNull();
+  });
 });
 
 // ============================================================================

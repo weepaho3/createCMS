@@ -72,6 +72,30 @@ export function getLinkPropertyNames(
 }
 
 /**
+ * The NAMES of a block's `image`-type properties (root or child), read from the
+ * collection definition — mirroring {@link getLinkPropertyNames}. Used by the
+ * read-time image resolver (`resolveImageAssets`, core/images.ts) to know which
+ * string properties hold an asset id to resolve to `{ id, slug }`. Type-aware on
+ * purpose (only declared `image` fields), unlike the write-time asset indexer,
+ * which scans for `ast_` ids anywhere (galleries, rich-text) for GC safety.
+ */
+export function getImagePropertyNames(
+  collectionDef: CollectionWithName,
+  blockType: string,
+): Set<string> {
+  const imageProps = new Set<string>();
+  const props =
+    blockType === collectionDef.name || blockType === 'root'
+      ? collectionDef.root.properties
+      : collectionDef.blocks?.[blockType]?.properties;
+  if (!props) return imageProps;
+  for (const [key, spec] of Object.entries(props)) {
+    if (spec.type === 'image') imageProps.add(key);
+  }
+  return imageProps;
+}
+
+/**
  * Inserts content_usages `reference` rows for newly-created block versions, within
  * the same transaction that created them — the third sibling of the asset and
  * variable indexers (see core/content-index.ts). A reference is a top-level
