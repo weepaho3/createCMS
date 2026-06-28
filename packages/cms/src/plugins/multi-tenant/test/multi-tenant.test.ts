@@ -501,11 +501,13 @@ describe('multiTenantPlugin — asset isolation', () => {
     const { tree } = await cms.api.pages.getBlockTree({
       query: { rootId: page.rootId, branchId: page.branchId, raw: false },
     });
-    expect(tree.children[0].properties.backgroundImage).toEqual({
-      id: 'asset-acme-hero',
-      slug: 'acme-hero',
-    });
-    expect(tree.children[1].properties.backgroundImage).toBeNull();
+    // `properties` is the union of all block types' props; narrow to the hero
+    // field under test.
+    const bgImage = (i: number) =>
+      (tree.children[i].properties as { backgroundImage: unknown })
+        .backgroundImage;
+    expect(bgImage(0)).toEqual({ id: 'asset-acme-hero', slug: 'acme-hero' });
+    expect(bgImage(1)).toBeNull();
   });
 });
 

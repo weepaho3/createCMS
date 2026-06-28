@@ -1046,13 +1046,14 @@ describe('variant delivery via asset endpoint', () => {
     });
 
     // Request with format=webp&w=800 should resolve to variant
-    const result = await (cms.api.media.asset as any)({
-      params: { assetSlug: 'hero.jpg' },
-      query: { format: 'webp', w: 800 },
-    });
+    const res = await cms.router.handler(
+      new Request(
+        'http://localhost/api/cms/media/asset/hero.jpg?format=webp&w=800',
+      ),
+    );
 
-    expect(result.headers.location).toContain('hero-800-webp.webp');
-    expect(result.headers['content-type']).toBe('image/webp');
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toContain('hero-800-webp.webp');
   });
 
   it('falls back to original when variant does not exist', async () => {
@@ -1068,14 +1069,14 @@ describe('variant delivery via asset endpoint', () => {
     });
 
     // Request a variant that doesn't exist — should fall back to original
-    const result = await (cms.api.media.asset as any)({
-      params: { assetSlug: 'photo.jpg' },
-      query: { format: 'webp', w: 400 },
-    });
+    const res = await cms.router.handler(
+      new Request(
+        'http://localhost/api/cms/media/asset/photo.jpg?format=webp&w=400',
+      ),
+    );
 
-    expect(result.headers.location).toContain('photo.jpg');
-    expect(result.headers['content-type']).toBe('image/webp');
-    expect(result.headers['vary']).toBe('Accept');
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toContain('photo.jpg');
   });
 
   it('returns download Content-Disposition when download=true', async () => {
@@ -1090,12 +1091,14 @@ describe('variant delivery via asset endpoint', () => {
       status: 'public',
     });
 
-    const result = await (cms.api.media.asset as any)({
-      params: { assetSlug: 'report.pdf' },
-      query: { download: true },
-    });
+    const res = await cms.router.handler(
+      new Request(
+        'http://localhost/api/cms/media/asset/report.pdf?download=true',
+      ),
+    );
 
-    expect(result.headers['content-disposition']).toContain(
+    expect(res.status).toBe(302);
+    expect(res.headers.get('content-disposition')).toContain(
       'attachment; filename="report.pdf"',
     );
   });
@@ -1117,15 +1120,15 @@ describe('public URL (CDN) delivery', () => {
       status: 'public',
     });
 
-    const result = await (cms.api.media.asset as any)({
-      params: { assetSlug: 'hero.jpg' },
-      query: {},
-    });
+    const res = await cms.router.handler(
+      new Request('http://localhost/api/cms/media/asset/hero.jpg'),
+    );
 
-    expect(result.headers.location).toBe('https://cdn.test.local/hero.jpg');
-    expect(result.headers['cache-control']).toContain('immutable');
-    expect(result.headers['cache-control']).toContain('max-age=31536000');
-    expect(result.headers.location).not.toContain('X-Amz-');
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('https://cdn.test.local/hero.jpg');
+    expect(res.headers.get('cache-control')).toContain('immutable');
+    expect(res.headers.get('cache-control')).toContain('max-age=31536000');
+    expect(res.headers.get('location')).not.toContain('X-Amz-');
   });
 
   it('builds correct URL with object key', async () => {
@@ -1139,12 +1142,12 @@ describe('public URL (CDN) delivery', () => {
       status: 'public',
     });
 
-    const result = await (cms.api.media.asset as any)({
-      params: { assetSlug: 'logo.png' },
-      query: {},
-    });
+    const res = await cms.router.handler(
+      new Request('http://localhost/api/cms/media/asset/logo.png'),
+    );
 
-    expect(result.headers.location).toBe('https://cdn.test.local/logo.png');
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('https://cdn.test.local/logo.png');
   });
 });
 

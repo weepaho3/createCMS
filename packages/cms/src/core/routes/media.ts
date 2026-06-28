@@ -19,7 +19,6 @@ import { createS3Client } from '../storage/s3/client';
 import {
   buildPublicObjectUrl,
   buildVariantSlug,
-  getContentTypeForVariant,
   putObject,
   S3Error,
   signPutObject,
@@ -482,7 +481,10 @@ export function createMediaEndpoints(
      * access control (rejects assets whose status is `private`).
      */
     asset: createEndpoint(
-      '/media/asset/{assetSlug}',
+      // rou3 (better-call's router) only recognises `:param`; an OpenAPI-style
+      // `{assetSlug}` is treated as a literal segment, so every real
+      // `/media/asset/<slug>` request 404s at the router before the handler runs.
+      '/media/asset/:assetSlug',
       {
         method: 'GET',
         query: z.object({
@@ -542,26 +544,26 @@ export function createMediaEndpoints(
         }
 
         const location = buildPublicObjectUrl(mediaConfig.publicUrl, targetKey);
-        const contentType = getContentTypeForVariant(
-          asset.mimeType,
-          ctx.query?.format,
-        );
 
-        return {
-          headers: {
-            location,
-            'cache-control':
-              'public, max-age=31536000, s-maxage=86400, immutable',
-            'content-type': contentType,
-            ...(hasVariantParams ? { vary: 'Accept' } : {}),
-            ...(ctx.query?.download
-              ? {
-                  'content-disposition': `attachment; filename="${asset.slug.replace(/["\\\r\n]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(asset.slug)}`,
-                }
-              : {}),
-          },
-          body: {},
-        };
+        // Redirect (302) so a real `<img src>` / browser request follows
+        // `location` to the public object URL. better-call applies response
+        // headers from `ctx.responseHeaders` (and the status from `ctx.redirect`),
+        // NOT from a returned `{ headers, body }` object — that shape is only
+        // visible to the server-side caller, never on the HTTP response, so the
+        // router would otherwise answer 200 with an empty body (a broken image).
+        // The redirect itself is cached (immutable); the CDN serves the bytes
+        // with their own content-type.
+        ctx.responseHeaders.set(
+          'cache-control',
+          'public, max-age=31536000, s-maxage=86400, immutable',
+        );
+        if (ctx.query?.download) {
+          ctx.responseHeaders.set(
+            'content-disposition',
+            `attachment; filename="${asset.slug.replace(/["\\\r\n]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(asset.slug)}`,
+          );
+        }
+        return ctx.redirect(location);
       },
     ),
 
