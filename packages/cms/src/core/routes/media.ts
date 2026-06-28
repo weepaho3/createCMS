@@ -22,7 +22,6 @@ import {
   getContentTypeForVariant,
   putObject,
   S3Error,
-  signGetObject,
   signPutObject,
 } from '../storage/s3/utils';
 import { MEDIA_DEFAULTS } from '../types/s3';
@@ -282,6 +281,65 @@ export function createMediaEndpoints(
     // ========================================================================
 
     /**
+     * Lists folders in the asset library, by parent — the read counterpart to
+     * the folder mutations. Navigate the tree level by level: omit `parentId`
+     * for the root-level folders, then pass a folder's id to get its children.
+     *
+     * @param parentId - Optional parent folder id; if omitted, returns the ROOT-level folders (those with no parent).
+     * @returns The direct child folders of the given parent (or of the root), sorted by name.
+     * @example await cmsClient.media.listFolders()                  // root folders
+     * @example await cmsClient.media.listFolders({ parentId })      // a folder's subfolders
+     */
+    listFolders: createCMSEndpoint(
+      '/media/listFolders',
+      {
+        method: 'GET',
+        query: z.object({ parentId: z.string().optional() }).optional(),
+        metadata: cmsMeta(
+          { $Infer: { query: {} as { parentId?: string } } },
+          { operation: 'read', ...MEDIA_META },
+        ),
+      },
+      async (ctx) => {
+        const { scope } = ctx.context;
+        const parentId = ctx.query?.parentId;
+
+        // Children of `parentId`, or the root level when omitted. The scope
+        // predicate is applied to the CHILDREN, so an out-of-scope `parentId`
+        // simply yields no rows (no cross-tenant leak).
+        const conditions: ReturnType<typeof eq>[] = [
+          parentId
+            ? eq(assetFolders.parentId, parentId)
+            : isNull(assetFolders.parentId),
+        ];
+        if (scope.assetFolders?.where)
+          conditions.push(scope.assetFolders.where as any);
+
+        const folderRows = await db
+          .select({
+            id: assetFolders.id,
+            name: assetFolders.name,
+            parentId: assetFolders.parentId,
+            createdBy: assetFolders.createdBy,
+            createdAt: assetFolders.createdAt,
+          })
+          .from(assetFolders)
+          .where(and(...conditions))
+          .orderBy(sql`${assetFolders.name} ASC`);
+
+        return {
+          folders: folderRows.map((folder) => ({
+            id: folder.id,
+            name: folder.name,
+            parentId: folder.parentId ?? null,
+            createdBy: folder.createdBy ?? null,
+            createdAt: folder.createdAt,
+          })),
+        };
+      },
+    ),
+
+    /**
      * Lists assets in the media library with optional filtering and pagination.
      *
      * @param folderId - Optional folder id to filter by.
@@ -291,7 +349,7 @@ export function createMediaEndpoints(
      * @param offset - Pagination offset (default 0).
      * @param sortBy - Sort field: 'createdAt', 'slug', or 'size' (default 'createdAt').
      * @param sortOrder - Sort direction: 'asc' or 'desc' (default 'desc').
-     * @returns Paginated list of assets with total count and hasMore flag.
+     * @returns Paginated list of assets (each with a ready-to-use public `url`) plus total count and hasMore flag.
      * @example await cmsClient.media.listAssets({ limit: 20, status: 'public' })
      */
     listAssets: createCMSEndpoint(
@@ -399,6 +457,12 @@ export function createMediaEndpoints(
             mimeType: asset.mimeType,
             size: asset.size,
             objectKey: asset.objectKey,
+            // Direct object URL (`${publicUrl}/${objectKey}`) for INTERNAL/admin
+            // display — e.g. thumbnails in a media-library UI. It needs no helper
+            // and never exposes `publicUrl`. Do NOT persist this into content:
+            // content references the asset by id and is served through the gate
+            // (`GET /media/asset/{slug}`), which enforces status and transforms.
+            url: buildPublicObjectUrl(mediaConfig.publicUrl, asset.objectKey),
             status: asset.status,
             folderId: asset.folderId ?? null,
             variantOf: asset.variantOf ?? null,
@@ -497,66 +561,6 @@ export function createMediaEndpoints(
               : {}),
           },
           body: {},
-        };
-      },
-    ),
-
-    /**
-     * Generates a time-limited signed URL for authenticated asset access.
-     *
-     * @param assetSlug - The asset slug.
-     * @param expiresIn - Optional TTL in seconds (60–86400); defaults to 3600 for public assets, 300 for private.
-     * @returns Signed URL, asset status, and Unix timestamp when the URL expires.
-     * @throws ASSET_NOT_FOUND if the asset does not exist.
-     * @example await cmsClient.media.getAssetUrlAuthenticated({ assetSlug: 'photo' })
-     */
-    getAssetUrlAuthenticated: createCMSEndpoint(
-      '/media/getAssetUrlAuthenticated',
-      {
-        method: 'POST',
-        body: z.object({
-          assetSlug: z.string(),
-          expiresIn: z.number().int().min(60).max(86400).optional(),
-        }),
-        metadata: cmsMeta({}, { operation: 'read', ...MEDIA_META }),
-      },
-      async (ctx) => {
-        const { scope } = ctx.context;
-
-        const conditions = [
-          eq(assets.slug, ctx.body.assetSlug),
-          isNull(assets.archivedAt),
-        ];
-        if (scope.assets?.where) conditions.push(scope.assets.where as any);
-
-        const [asset] = await db
-          .select({
-            id: assets.id,
-            objectKey: assets.objectKey,
-            status: assets.status,
-          })
-          .from(assets)
-          .where(and(...conditions));
-
-        if (!asset) {
-          throw new CMSError('ASSET_NOT_FOUND', {
-            message: errorMessages.assetNotFound(ctx.body.assetSlug),
-          });
-        }
-
-        const ttl =
-          ctx.body.expiresIn ?? (asset.status === 'public' ? 3600 : 300);
-        const client = getS3Client();
-        const url = await signGetObject(client, {
-          bucket: bucketName,
-          key: asset.objectKey,
-          expiresIn: ttl,
-        });
-
-        return {
-          url,
-          status: asset.status,
-          expiresAt: Date.now() + ttl * 1000,
         };
       },
     ),
@@ -840,6 +844,11 @@ export function createMediaEndpoints(
               id: p.id,
               slug: p.slug,
               objectKey: p.objectKey,
+              // Direct object URL the asset will have once the PUT below succeeds
+              // (deterministic from the object key) — for INTERNAL/admin display
+              // like a media library, not for embedding in content (which
+              // references the asset id and serves through `/media/asset/{slug}`).
+              url: buildPublicObjectUrl(mediaConfig.publicUrl, p.objectKey),
               signedUrl,
               headers: {
                 'Content-Type': p.file.type,
@@ -947,6 +956,9 @@ export function createMediaEndpoints(
             id: p.id,
             slug: p.slug,
             objectKey: p.objectKey,
+            // Direct object URL for INTERNAL/admin display (see createSignedUpload) —
+            // not for content, which references the asset id and serves via the gate.
+            url: buildPublicObjectUrl(mediaConfig.publicUrl, p.objectKey),
           })),
         };
       },

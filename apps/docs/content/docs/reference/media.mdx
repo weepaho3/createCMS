@@ -16,21 +16,17 @@ Returns presigned PUT URLs; the browser uploads each file straight to the bucket
 | `files` | `{ name, size, type, variantOf? }[]` | Files to upload (at least one). |
 | `folderId` | `string` | Target folder (optional). |
 
-Returns `{ assets: { id, slug, objectKey, signedUrl, headers }[], expiresAt }`. New assets are created `private`. PUT each file to its `signedUrl` with the returned `headers` (`Content-Type`, `x-amz-acl: public-read`).
+Returns `{ assets: { id, slug, objectKey, url, signedUrl, headers }[], expiresAt }`. New assets are created `private`. `url` is the **direct** object URL the asset will have once uploaded — for internal/admin display (e.g. a media library); serve assets in content through the [public delivery](#public-delivery) gate. `signedUrl` is the presigned PUT — PUT each file to it with the returned `headers` (`Content-Type`, `x-amz-acl: public-read`).
 
 ### `uploadAssets`
 
-Uploads file bytes through the server. `POST`, input via `body`. Same shape as `createSignedUpload`, but each file carries a `buffer: Blob | ArrayBuffer`. Returns `{ assets: { id, slug, objectKey }[] }`.
+Uploads file bytes through the server. `POST`, input via `body`. Same shape as `createSignedUpload`, but each file carries a `buffer: Blob | ArrayBuffer`. Returns `{ assets: { id, slug, objectKey, url }[] }`.
 
 ## Assets
 
 ### `listAssets`
 
-`GET`. Query: `folderId?`, `status?` (`'private' | 'public'`), `search?`, `limit?` (default 20), `offset?`, `sortBy?` (`'createdAt' | 'slug' | 'size'`), `sortOrder?`. Returns `{ assets, total, hasMore }`.
-
-### `getAssetUrlAuthenticated`
-
-Mints a signed GET URL for an asset. `POST`, `body: { assetSlug, expiresIn? }`. Returns `{ url, status, expiresAt }`. Default TTL: 3600s for public assets, 300s for private.
+`GET`. Query: `folderId?`, `status?` (`'private' | 'public'`), `search?`, `limit?` (default 20), `offset?`, `sortBy?` (`'createdAt' | 'slug' | 'size'`), `sortOrder?`. Returns `{ assets, total, hasMore }`. Each asset includes a **direct** `url` (`${publicUrl}/${objectKey}`) for internal/admin display such as a media library — no presign or `publicUrl` lookup needed; serve assets in content through the [public delivery](#public-delivery) gate.
 
 ### `updateAssetStatus`
 
@@ -46,6 +42,12 @@ Soft-deletes assets (and their variants). `POST`, `body: { assetIds: string[] }`
 
 ## Folders
 
+### `listFolders`
+
+`GET`, `query: { parentId? }`. Returns `{ folders: { id, name, parentId, createdBy, createdAt }[] }` — the direct child folders of `parentId`, or the root-level folders when `parentId` is omitted, sorted by name. Navigate the tree level by level (pass a folder's id to get its children).
+
+The mutations below manage the tree:
+
 | Method | Input | Returns |
 | --- | --- | --- |
 | `createFolder` | `body: { name, parentFolderId? }` | `{ folder }` |
@@ -54,4 +56,4 @@ Soft-deletes assets (and their variants). `POST`, `body: { assetIds: string[] }`
 
 ## Public delivery
 
-`GET /media/asset/{slug}` is a public redirect to the asset's object URL. It honors `?format=webp|jpeg|png`, `?w=<width>` (resolving a pre-uploaded variant, falling back to the original), and `?download`. Private assets return `ASSET_ACCESS_DENIED`.
+`GET /media/asset/{slug}` is a public redirect to the asset's object URL — the way to serve assets in content and on public pages. It honors `?format=webp|jpeg|png`, `?w=<width>` (resolving a pre-uploaded variant, falling back to the original), and `?download`. Private assets return `ASSET_ACCESS_DENIED`.

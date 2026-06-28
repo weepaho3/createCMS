@@ -213,6 +213,63 @@ describe('media.deleteFolder', () => {
 });
 
 // ============================================================================
+// List Folders
+// ============================================================================
+
+describe('media.listFolders', () => {
+  it('returns root-level folders (sorted by name) when no parentId is given', async () => {
+    const { cms } = await setupTestCMS();
+
+    await cms.api.media.createFolder({ body: { name: 'Beta' } });
+    await cms.api.media.createFolder({ body: { name: 'Alpha' } });
+
+    const result = await cms.api.media.listFolders();
+
+    expect(result.folders.map((f) => f.name)).toEqual(['Alpha', 'Beta']);
+    expect(result.folders.every((f) => f.parentId === null)).toBe(true);
+  });
+
+  it('returns the direct children of a parent folder', async () => {
+    const { cms } = await setupTestCMS();
+
+    const parent = await cms.api.media.createFolder({
+      body: { name: 'Media' },
+    });
+    await cms.api.media.createFolder({
+      body: { name: 'Logos', parentFolderId: parent.folder.id },
+    });
+    await cms.api.media.createFolder({
+      body: { name: 'Icons', parentFolderId: parent.folder.id },
+    });
+    // a root-level sibling that must NOT appear under the parent
+    await cms.api.media.createFolder({ body: { name: 'Root sibling' } });
+
+    const result = await cms.api.media.listFolders({
+      query: { parentId: parent.folder.id },
+    });
+
+    expect(result.folders.map((f) => f.name)).toEqual(['Icons', 'Logos']);
+    expect(result.folders.every((f) => f.parentId === parent.folder.id)).toBe(
+      true,
+    );
+  });
+
+  it('returns an empty list for a leaf or unknown parent', async () => {
+    const { cms } = await setupTestCMS();
+    const leaf = await cms.api.media.createFolder({ body: { name: 'Leaf' } });
+
+    expect(
+      (await cms.api.media.listFolders({ query: { parentId: leaf.folder.id } }))
+        .folders,
+    ).toEqual([]);
+    expect(
+      (await cms.api.media.listFolders({ query: { parentId: 'nope' } }))
+        .folders,
+    ).toEqual([]);
+  });
+});
+
+// ============================================================================
 // List Assets
 // ============================================================================
 
@@ -225,6 +282,23 @@ describe('media.listAssets', () => {
     expect(result.assets).toEqual([]);
     expect(result.total).toBe(0);
     expect(result.hasMore).toBe(false);
+  });
+
+  it('returns a ready-to-use public url for each asset', async () => {
+    const { cms, db } = await setupTestCMS();
+
+    await db.insert(assets).values({
+      slug: 'photo.png',
+      mimeType: 'image/png',
+      size: 1024,
+      objectKey: 'photo.png',
+      status: 'public',
+    });
+
+    const result = await cms.api.media.listAssets();
+
+    // `${publicUrl}/${objectKey}` built server-side (DUMMY_MEDIA_CONFIG.publicUrl).
+    expect(result.assets[0].url).toBe('https://cdn.test.local/photo.png');
   });
 
   it('returns assets filtered by folder', async () => {

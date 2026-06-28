@@ -19,14 +19,13 @@ Each upload creates a row in `assets`:
 | `mimeType`, `size` | Content type and byte size. |
 | `archivedAt` | Soft-delete marker for pruning. |
 
-Folders are a nested tree (`asset_folders`, each with a `parentId`). `createFolder`, `moveFolder`, and `deleteFolder` manage them; a folder that still holds assets or subfolders cannot be deleted (`FOLDER_HAS_CONTENT`).
+Folders are a nested tree (`asset_folders`, each with a `parentId`). `listFolders` reads them — the children of a parent, or the root-level folders when no `parentId` is given; `createFolder`, `moveFolder`, and `deleteFolder` manage them; a folder that still holds assets or subfolders cannot be deleted (`FOLDER_HAS_CONTENT`).
 
 ## Private vs public
 
-Assets are created **private**. A private asset is not served by the public endpoint; requesting it returns `ASSET_ACCESS_DENIED`. You have two ways to expose one:
+`status` is a **visibility flag**. An asset is created `private`, and a private asset is not served by the public redirect (`GET /media/asset/{slug}` returns `ASSET_ACCESS_DENIED`). To expose one, flip it to `public` with `updateAssetStatus` — publishing content that references an asset does this automatically.
 
-- Flip it to `public` with `updateAssetStatus`, then serve it from your CDN.
-- Keep it private and mint a short-lived signed URL with `getAssetUrlAuthenticated` (default TTL 3600s for public assets, 300s for private).
+The gate is enforced by the CMS endpoints, not by the object store — uploaded objects are `public-read`, so `status` is not a hard-privacy boundary. Treat it as "should this be shown," not "is this secret."
 
 ## Uploading: signed URL vs server
 
@@ -37,15 +36,15 @@ There are two upload paths:
 
 Both validate against the limits (defaults: `maxFiles` 10, `maxFileSize` 4 MB, `allowedMimeTypes` `['image/*', 'video/*', 'application/pdf']`), and signed URLs expire after 120s by default. The browser hook is in [Upload and serve media](/docs/guides/media-uploads).
 
-## Serving and the public URL
+## Serving assets
 
-A public asset's URL is `${publicUrl}/${objectKey}`. The raw bucket URL returns the original bytes and ignores any query string.
+Serve assets through the **gate**: `GET /media/asset/{slug}`, a public redirect to the object. This is the contract to use in content and on public pages — it enforces `status` (a `private` asset returns `ASSET_ACCESS_DENIED`) and honors `?format=webp|jpeg|png` and `?w=<width>` by resolving a **pre-uploaded variant** (an asset whose `variantOf` points at the original), falling back to the original. It sends immutable, year-long cache headers. There is no on-the-fly transform: create variants ahead of time, for example with the [media optimize plugin](/docs/plugins/media-optimize), which optimizes in the browser before upload.
 
-For transformed delivery, the CMS exposes `GET /media/asset/{slug}`, which honors `?format=webp|jpeg|png` and `?w=<width>` by resolving a **pre-uploaded variant** (an asset whose `variantOf` points at the original), falling back to the original. It sends immutable, year-long cache headers. There is no on-the-fly transform: create variants ahead of time, for example with the [media optimize plugin](/docs/plugins/media-optimize), which optimizes in the browser before upload.
+Each asset also has a **direct** object URL, `${publicUrl}/${objectKey}` — returned as `url` by `listAssets` and the upload responses. It bypasses the gate (no status check, no transforms), so it is meant for **internal tooling** such as a media-library admin UI rendering thumbnails of assets you already manage. Don't bake it into content or public pages — serve those through the gate.
 
 ## Images in content
 
-An `image` block property stores a reference to an uploaded asset. To render it, resolve the asset to a URL: serve a public asset from `${publicUrl}/${objectKey}`, or a private one through a signed URL. `getAssetUsages` reports which entries reference an asset, and archiving is blocked while an asset is used by live content.
+An `image` block property stores the asset **id** (an `ast_…` reference), never a URL — the read path returns it verbatim. To render it, serve through the gate: resolve the id to the asset's `slug` (e.g. via `listAssets`) and point at `GET /media/asset/{slug}`. Don't store the direct `url` in content — it bypasses the status gate and transforms and pins the entry to your current bucket layout. `getAssetUsages` reports which entries reference an asset (the index keys on the asset id), and archiving is blocked while an asset is used by live content.
 
 <Callout type="info">
   For uploading and serving step by step, see [Upload and serve media](/docs/guides/media-uploads).
