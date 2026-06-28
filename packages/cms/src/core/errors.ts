@@ -265,6 +265,11 @@ export const CMS_ERRORS = {
       'Reference nesting is too deep (a reusable block embeds others past the limit)',
   },
   ASSET_NOT_FOUND: { status: 404 as const, message: 'Asset not found' },
+  CANNOT_REPLACE_VARIANT: {
+    status: 400 as const,
+    message:
+      'Cannot replace a variant asset directly; replace the original and regenerate its variants',
+  },
   VARIABLE_NOT_FOUND: { status: 404 as const, message: 'Variable not found' },
   VARIABLE_KEY_EXISTS: {
     status: 409 as const,

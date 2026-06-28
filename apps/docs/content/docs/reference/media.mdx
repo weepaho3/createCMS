@@ -36,6 +36,14 @@ Uploads file bytes through the server. `POST`, input via `body`. Same shape as `
 
 Soft-deletes assets (and their variants). `POST`, `body: { assetIds: string[] }`. Returns `{ archived, archivedIds, skipped }`. Assets used by live content are skipped, not failed.
 
+### `moveAssets`
+
+`POST`, `body: { assetIds: string[], folderId: string | null }` (`null` moves to the root). Returns `{ moved, movedIds, skipped }`. Moves assets between folders; non-existent, out-of-scope, archived, and variant ids are skipped (surfaced in `skipped`), and a moved asset's variants follow it into the same folder (variants are never moved on their own). Throws `FOLDER_NOT_FOUND` (unknown/out-of-scope target) or `ASSET_NOT_FOUND` (no live ids).
+
+### `replaceAsset`
+
+`POST`, `body: { assetId: string, file: { name, size, type, buffer } }`. Returns `{ asset: { id, slug, objectKey, url, mimeType, size } }`. Swaps the bytes behind an asset while keeping its **`id`** (and `folderId` / `status`), so every content reference picks up the new image with no content change — the id-addressed gate re-resolves it. A new slug / object key is minted for a clean cache-bust and the asset's old variants are archived (regenerate them afterward). Server-side and atomic. Throws `CANNOT_REPLACE_VARIANT` (target is itself a variant), `ASSET_NOT_FOUND`, `FILE_TOO_LARGE` / `INVALID_FILE_TYPE`, or `UPLOAD_FAILED` (asset left unchanged).
+
 ### `getAssetUsages`
 
 `GET`, `query: { assetId }`. Returns `{ pageCount, pages: { rootId, collection, slug, occurrences }[] }`.
