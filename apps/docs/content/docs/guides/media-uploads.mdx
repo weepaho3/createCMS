@@ -68,14 +68,18 @@ const files = (results ?? []).flatMap((r) =>
 
 ### Serve an asset
 
-A stored asset has an `objectKey` (equal to its `slug`). A **public** asset's URL is your `publicUrl` joined with that key:
+Serve assets through the CMS **gate**: `GET /media/asset/{slug}`, a public redirect to the object. Use this in content and on public pages — it enforces `status` (a `private` asset returns `ASSET_ACCESS_DENIED`; flip one to `public` with `updateAssetStatus`) and honors `?format=` and `?w=` by resolving a **pre-uploaded** variant asset (falling back to the original). There is no on-the-fly transform: produce variants ahead of time (for example with the optimize plugin).
 
-```ts
-const url = `${publicUrl}/${asset.objectKey}`;
-// e.g. https://cdn.example.com/welcome-hero
+```html
+<img src="https://your-cms.example.com/media/asset/welcome-hero" />
 ```
 
-The raw bucket URL serves the original bytes and **ignores query strings**. To request a transformed variant, go through the CMS endpoint `GET /media/asset/{slug}`, which honors `?format=` and `?w=` by resolving a **pre-uploaded** variant asset (falling back to the original). There is no on-the-fly transform: produce variants ahead of time (for example with the optimize plugin). Private assets are not served there (`ASSET_ACCESS_DENIED`); get a temporary URL with `getAssetUrlAuthenticated`.
+`listAssets` and the upload responses also return a **direct** `url` per asset — your `publicUrl` joined with the asset's `objectKey`. It bypasses the gate (no status check, no transforms, ignores query strings), so it is for **internal tooling** like a media-library admin UI showing thumbnails of assets you manage — not for embedding in content:
+
+```ts
+const thumb = asset.url; // direct object URL — admin/library display only
+// e.g. https://cdn.example.com/welcome-hero
+```
 
 ### Upload from the server
 

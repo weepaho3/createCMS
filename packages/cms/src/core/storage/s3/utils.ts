@@ -123,27 +123,6 @@ export async function deleteObject(
   );
 }
 
-export async function signGetObject(
-  client: S3Client,
-  params: {
-    bucket: string;
-    key: string;
-    expiresIn: number;
-  },
-): Promise<string> {
-  const url = baseSignedUrl(
-    `${client.buildBucketUrl(params.bucket)}/${params.key}`,
-    { expiresIn: params.expiresIn },
-  );
-
-  return (
-    await client.s3.sign(url.toString(), {
-      method: 'GET',
-      aws: { signQuery: true, allHeaders: true },
-    })
-  ).url;
-}
-
 export function buildPublicObjectUrl(
   publicBaseUrl: string,
   key: string,
