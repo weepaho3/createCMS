@@ -69,6 +69,29 @@ const { ConsentGate } = cmsClient.consent;
 </ConsentGate>;
 ```
 
+## Driving the gate from a CMP
+
+The plugin is CMP-agnostic. It auto-reads Consent Mode v2 commands off `window.dataLayer`, so any CMP that emits them — Cookiebot, Usercentrics, OneTrust, or [c15t](https://c15t.com) via Google Tag Manager — drives the gate with no extra wiring. (You can also call `setConsent` from the CMP's update callback, which is the most reliable path under GTM.)
+
+### The c15t adapter
+
+For [c15t](https://c15t.com) specifically — or any setup where you'd rather drive the gate explicitly than via `dataLayer` (e.g. c15t's offline mode) — an optional adapter at `@createcms/core/plugins/consent/c15t` maps c15t's consent categories to the four signals and pushes the decision into the gate:
+
+```tsx title="components/consent-bridge.tsx"
+import { useConsentManager } from '@c15t/react';
+import { useC15tConsentBridge } from '@createcms/core/plugins/consent/c15t';
+import { cmsClient } from '@/lib/cms-client';
+
+// Render inside c15t's <ConsentManagerProvider>.
+export function ConsentBridge() {
+  const { consents, hasConsented } = useConsentManager();
+  useC15tConsentBridge(cmsClient, { consents, hasConsented });
+  return null;
+}
+```
+
+The default mapping is `measurement` → `analytics_storage` and `marketing` → `ad_storage` / `ad_user_data` / `ad_personalization` (`necessary` / `functionality` / `experience` are ignored); pass a third argument to override it. The adapter takes c15t's consent record as input and has **no `@c15t/*` dependency**, so it works with any c15t version. The pure mapper `consentModeFromC15t(consents, mapping?)` is exported too.
+
 ## State
 
 `ConsentState` has four signals, each `'granted'` or `'denied'`:

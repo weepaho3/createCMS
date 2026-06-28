@@ -212,6 +212,16 @@
         "default": "./dist/plugins/consent/client.cjs"
       }
     },
+    "./plugins/consent/c15t": {
+      "import": {
+        "types": "./dist/plugins/consent/c15t.d.ts",
+        "default": "./dist/plugins/consent/c15t.js"
+      },
+      "require": {
+        "types": "./dist/plugins/consent/c15t.d.cts",
+        "default": "./dist/plugins/consent/c15t.cjs"
+      }
+    },
     "./next": {
       "import": {
         "types": "./dist/next/index.d.ts",
