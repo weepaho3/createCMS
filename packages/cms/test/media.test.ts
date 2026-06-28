@@ -1045,10 +1045,11 @@ describe('variant delivery via asset endpoint', () => {
       variantOf: primary.id,
     });
 
-    // Request with format=webp&w=800 should resolve to variant
+    // Request by id with format=webp&w=800 should resolve to variant (the
+    // variant lookup keys off the primary's current slug).
     const res = await cms.router.handler(
       new Request(
-        'http://localhost/api/cms/media/asset/hero.jpg?format=webp&w=800',
+        `http://localhost/api/cms/media/asset/${primary.id}?format=webp&w=800`,
       ),
     );
 
@@ -1060,18 +1061,21 @@ describe('variant delivery via asset endpoint', () => {
     const { cms, db, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
 
-    await db.insert(assets).values({
-      slug: 'photo.jpg',
-      mimeType: 'image/jpeg',
-      size: 5000,
-      objectKey: 'photo.jpg',
-      status: 'public',
-    });
+    const [asset] = await db
+      .insert(assets)
+      .values({
+        slug: 'photo.jpg',
+        mimeType: 'image/jpeg',
+        size: 5000,
+        objectKey: 'photo.jpg',
+        status: 'public',
+      })
+      .returning({ id: assets.id });
 
     // Request a variant that doesn't exist — should fall back to original
     const res = await cms.router.handler(
       new Request(
-        'http://localhost/api/cms/media/asset/photo.jpg?format=webp&w=400',
+        `http://localhost/api/cms/media/asset/${asset.id}?format=webp&w=400`,
       ),
     );
 
@@ -1083,17 +1087,20 @@ describe('variant delivery via asset endpoint', () => {
     const { cms, db, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
 
-    await db.insert(assets).values({
-      slug: 'report.pdf',
-      mimeType: 'application/pdf',
-      size: 10000,
-      objectKey: 'report.pdf',
-      status: 'public',
-    });
+    const [asset] = await db
+      .insert(assets)
+      .values({
+        slug: 'report.pdf',
+        mimeType: 'application/pdf',
+        size: 10000,
+        objectKey: 'report.pdf',
+        status: 'public',
+      })
+      .returning({ id: assets.id });
 
     const res = await cms.router.handler(
       new Request(
-        'http://localhost/api/cms/media/asset/report.pdf?download=true',
+        `http://localhost/api/cms/media/asset/${asset.id}?download=true`,
       ),
     );
 
@@ -1109,41 +1116,48 @@ describe('variant delivery via asset endpoint', () => {
 // ============================================================================
 
 describe('public URL (CDN) delivery', () => {
-  it('uses immutable cache headers and direct CDN URL', async () => {
+  it('uses short cache headers and direct CDN URL', async () => {
     const { cms, db } = await setupTestCMS();
 
-    await db.insert(assets).values({
-      slug: 'hero.jpg',
-      mimeType: 'image/jpeg',
-      size: 2048,
-      objectKey: 'hero.jpg',
-      status: 'public',
-    });
+    const [asset] = await db
+      .insert(assets)
+      .values({
+        slug: 'hero.jpg',
+        mimeType: 'image/jpeg',
+        size: 2048,
+        objectKey: 'hero.jpg',
+        status: 'public',
+      })
+      .returning({ id: assets.id });
 
     const res = await cms.router.handler(
-      new Request('http://localhost/api/cms/media/asset/hero.jpg'),
+      new Request(`http://localhost/api/cms/media/asset/${asset.id}`),
     );
 
     expect(res.status).toBe(302);
     expect(res.headers.get('location')).toBe('https://cdn.test.local/hero.jpg');
-    expect(res.headers.get('cache-control')).toContain('immutable');
-    expect(res.headers.get('cache-control')).toContain('max-age=31536000');
+    // Short-cached (re-resolvable) so a replaceAsset swap propagates; NOT immutable.
+    expect(res.headers.get('cache-control')).toContain('max-age=300');
+    expect(res.headers.get('cache-control')).not.toContain('immutable');
     expect(res.headers.get('location')).not.toContain('X-Amz-');
   });
 
   it('builds correct URL with object key', async () => {
     const { cms, db } = await setupTestCMS();
 
-    await db.insert(assets).values({
-      slug: 'logo.png',
-      mimeType: 'image/png',
-      size: 1024,
-      objectKey: 'logo.png',
-      status: 'public',
-    });
+    const [asset] = await db
+      .insert(assets)
+      .values({
+        slug: 'logo.png',
+        mimeType: 'image/png',
+        size: 1024,
+        objectKey: 'logo.png',
+        status: 'public',
+      })
+      .returning({ id: assets.id });
 
     const res = await cms.router.handler(
-      new Request('http://localhost/api/cms/media/asset/logo.png'),
+      new Request(`http://localhost/api/cms/media/asset/${asset.id}`),
     );
 
     expect(res.status).toBe(302);

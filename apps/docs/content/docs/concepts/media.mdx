@@ -23,7 +23,7 @@ Folders are a nested tree (`asset_folders`, each with a `parentId`). `listFolder
 
 ## Private vs public
 
-`status` is a **visibility flag**. An asset is created `private`, and a private asset is not served by the public redirect (`GET /media/asset/{slug}` returns `ASSET_ACCESS_DENIED`). To expose one, flip it to `public` with `updateAssetStatus` — publishing content that references an asset does this automatically.
+`status` is a **visibility flag**. An asset is created `private`, and a private asset is not served by the public redirect (`GET /media/asset/{id}` returns `ASSET_ACCESS_DENIED`). To expose one, flip it to `public` with `updateAssetStatus` — publishing content that references an asset does this automatically.
 
 The gate is enforced by the CMS endpoints, not by the object store — uploaded objects are `public-read`, so `status` is not a hard-privacy boundary. Treat it as "should this be shown," not "is this secret."
 
@@ -38,13 +38,19 @@ Both validate against the limits (defaults: `maxFiles` 10, `maxFileSize` 4 MB, `
 
 ## Serving assets
 
-Serve assets through the **gate**: `GET /media/asset/{slug}`, a public redirect to the object. This is the contract to use in content and on public pages — it enforces `status` (a `private` asset returns `ASSET_ACCESS_DENIED`) and honors `?format=webp|jpeg|png` and `?w=<width>` by resolving a **pre-uploaded variant** (an asset whose `variantOf` points at the original), falling back to the original. It sends immutable, year-long cache headers. There is no on-the-fly transform: create variants ahead of time, for example with the [media optimize plugin](/docs/plugins/media-optimize), which optimizes in the browser before upload.
+Serve assets through the **gate**: `GET /media/asset/{id}`, a public redirect to the object, addressed by the **asset id** (which is what content stores). It is the contract to use in content and on public pages — it enforces `status` (a `private` asset returns `ASSET_ACCESS_DENIED`) and honors `?format=webp|jpeg|png` and `?w=<width>` by resolving a **pre-uploaded variant** (an asset whose `variantOf` points at the original), falling back to the original. There is no on-the-fly transform: create variants ahead of time, for example with the [media optimize plugin](/docs/plugins/media-optimize), which optimizes in the browser before upload.
+
+The redirect itself is **short-cached** (`max-age=300`, not immutable): because it is keyed by the stable id, swapping the bytes behind that id (keeping the id) re-resolves and propagates to already-rendered pages within minutes — while the object bytes stay long-cached at the CDN, since each version has its own object key.
+
+<Callout type="warn">
+  Deployment note: a CDN in front of the gate must include the **query string** in its cache key. The redirect target differs per `?format`/`?w`/`?download`, and only the query string distinguishes those cache entries — if the CDN strips it (a common default), the variant, download, and original redirects collapse into one and get cross-served.
+</Callout>
 
 Each asset also has a **direct** object URL, `${publicUrl}/${objectKey}` — returned as `url` by `listAssets` and the upload responses. It bypasses the gate (no status check, no transforms), so it is meant for **internal tooling** such as a media-library admin UI rendering thumbnails of assets you already manage. Don't bake it into content or public pages — serve those through the gate.
 
 ## Images in content
 
-An `image` block property stores the asset **id** (an `ast_…` reference), never a URL. On the rendered read path — `getPublishedContent`, and `getBlockTree` unless you pass `raw` — the CMS resolves it to `{ id, slug }` (or `null` when the asset is gone or out of scope), exactly as it resolves `link` and `reference` properties. So your renderer builds the gate URL straight from the slug — `<img src="/media/asset/{slug}">` — with no second lookup; the `raw` editor read keeps the bare id for re-picking. Don't store the direct `url` in content — it bypasses the status gate and transforms and pins the entry to your bucket layout. `getAssetUsages` reports which entries reference an asset (the index keys on the asset id), and archiving is blocked while an asset is used by live content.
+An `image` block property stores the asset **id** (an `ast_…` reference), never a URL — and the read path returns it verbatim (nothing is resolved). Your renderer builds the gate URL straight from that id: `<img src="/media/asset/{id}">`. Because the id is stable, swapping the object behind it updates every reference automatically, with no content change and no re-render. Don't store the direct `url` in content — it bypasses the status gate and transforms and pins the entry to your bucket layout, and it won't follow such a swap. `getAssetUsages` reports which entries reference an asset (the index keys on the asset id), and archiving is blocked while an asset is used by live content.
 
 <Callout type="info">
   For uploading and serving step by step, see [Upload and serve media](/docs/guides/media-uploads).

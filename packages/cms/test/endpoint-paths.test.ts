@@ -26,7 +26,7 @@ describe('endpoint path convention', () => {
         // Skip non-endpoint members (no declared HTTP path).
         if (typeof path !== 'string') continue;
         // Skip direct-URL routes with a path parameter (e.g. the public asset
-        // redirect `/media/asset/:assetSlug` — rou3 `:param` syntax, or legacy
+        // redirect `/media/asset/:assetId` — rou3 `:param` syntax, or legacy
         // `{param}` braces). These are addressed by URL, not through the RPC
         // client proxy, so the `/<ns>/<method>` rule never applies.
         if (path.includes('{') || path.includes(':')) continue;

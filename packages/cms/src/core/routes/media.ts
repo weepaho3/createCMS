@@ -481,10 +481,12 @@ export function createMediaEndpoints(
      * access control (rejects assets whose status is `private`).
      */
     asset: createEndpoint(
-      // rou3 (better-call's router) only recognises `:param`; an OpenAPI-style
-      // `{assetSlug}` is treated as a literal segment, so every real
-      // `/media/asset/<slug>` request 404s at the router before the handler runs.
-      '/media/asset/:assetSlug',
+      // Addressed by the STABLE asset id, not the slug: content stores the id,
+      // so an `<img src="/media/asset/{id}">` survives a `replaceAsset` (which
+      // mints a new slug/objectKey) without touching content or re-rendering —
+      // the gate just re-resolves the id to the current object. (rou3 needs
+      // `:param`, not OpenAPI `{param}` braces, or the route never matches.)
+      '/media/asset/:assetId',
       {
         method: 'GET',
         query: z.object({
@@ -498,8 +500,8 @@ export function createMediaEndpoints(
         ),
       },
       async (ctx) => {
-        const params = ctx.params as { assetSlug: string };
-        const assetSlug = params.assetSlug;
+        const params = ctx.params as { assetId: string };
+        const assetId = params.assetId;
 
         const [asset] = await db
           .select({
@@ -510,11 +512,11 @@ export function createMediaEndpoints(
             slug: assets.slug,
           })
           .from(assets)
-          .where(and(eq(assets.slug, assetSlug), isNull(assets.archivedAt)));
+          .where(and(eq(assets.id, assetId), isNull(assets.archivedAt)));
 
         if (!asset) {
           throw new CMSError('ASSET_NOT_FOUND', {
-            message: errorMessages.assetNotFound(assetSlug),
+            message: errorMessages.assetNotFound(assetId),
           });
         }
 
@@ -535,7 +537,11 @@ export function createMediaEndpoints(
             .select({ objectKey: assets.objectKey })
             .from(assets)
             .where(
-              and(eq(assets.slug, variantSlug), eq(assets.variantOf, asset.id)),
+              and(
+                eq(assets.slug, variantSlug),
+                eq(assets.variantOf, asset.id),
+                isNull(assets.archivedAt),
+              ),
             );
 
           if (variant) {
@@ -551,12 +557,13 @@ export function createMediaEndpoints(
         // NOT from a returned `{ headers, body }` object — that shape is only
         // visible to the server-side caller, never on the HTTP response, so the
         // router would otherwise answer 200 with an empty body (a broken image).
-        // The redirect itself is cached (immutable); the CDN serves the bytes
-        // with their own content-type.
-        ctx.responseHeaders.set(
-          'cache-control',
-          'public, max-age=31536000, s-maxage=86400, immutable',
-        );
+        //
+        // The redirect is SHORT-cached (NOT immutable) because the id->object
+        // mapping changes on `replaceAsset`: a brief TTL lets a swapped image
+        // propagate to already-rendered pages within minutes, while the bytes
+        // themselves stay long-cached at the CDN (each object key is unique per
+        // version). The 302 is bodyless, so re-resolving it is cheap.
+        ctx.responseHeaders.set('cache-control', 'public, max-age=300');
         if (ctx.query?.download) {
           ctx.responseHeaders.set(
             'content-disposition',

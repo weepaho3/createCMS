@@ -56,4 +56,4 @@ The mutations below manage the tree:
 
 ## Public delivery
 
-`GET /media/asset/{slug}` is a public redirect to the asset's object URL — the way to serve assets in content and on public pages. It honors `?format=webp|jpeg|png`, `?w=<width>` (resolving a pre-uploaded variant, falling back to the original), and `?download`. Private assets return `ASSET_ACCESS_DENIED`.
+`GET /media/asset/{id}` is a public redirect to the asset's object URL, addressed by the **asset id** (what content stores) — the way to serve assets in content and on public pages. It honors `?format=webp|jpeg|png`, `?w=<width>` (resolving a pre-uploaded variant, falling back to the original), and `?download`. Private assets return `ASSET_ACCESS_DENIED`. The redirect is short-cached (`max-age=300`, not immutable), so swapping the object behind the same id propagates automatically.

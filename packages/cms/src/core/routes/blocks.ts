@@ -41,7 +41,6 @@ import {
 } from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError, errorMessages } from '../errors';
-import { resolveImageAssets } from '../images';
 import { resolveLinkPaths } from '../links';
 import {
   captureSubtreePaths,
@@ -812,15 +811,6 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             def,
             cmsCtx.collections,
             scope.referenceResolver ?? coreReferenceResolver,
-            crossScopeColumns(scope.roots),
-          );
-          // Resolve image asset ids to `{ id, slug }` for the canvas preview;
-          // raw reads keep the stored id for re-picking, like links.
-          await resolveImageAssets(
-            db,
-            tree,
-            def,
-            cmsCtx.collections,
             crossScopeColumns(scope.roots),
           );
         }

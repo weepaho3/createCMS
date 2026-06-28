@@ -187,19 +187,6 @@ export function buildVariantSlug(
   return `${base}-${parts.join('-')}${newExt}`;
 }
 
-export function getContentTypeForVariant(
-  originalMimeType: string,
-  format?: string,
-): string {
-  if (!format) return originalMimeType;
-  const typeMap: Record<string, string> = {
-    webp: 'image/webp',
-    jpeg: 'image/jpeg',
-    png: 'image/png',
-  };
-  return typeMap[format] || originalMimeType;
-}
-
 export function getAWSHost(region: string): string {
   return `s3.${region}.amazonaws.com`;
 }

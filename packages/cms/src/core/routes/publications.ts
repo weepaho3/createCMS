@@ -30,7 +30,6 @@ import {
 } from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
-import { resolveImageAssets } from '../images';
 import { resolveLinkPaths } from '../links';
 import { syncAssetsOnPublish, syncAssetsOnUnpublish } from '../media/discovery';
 import {
@@ -432,13 +431,6 @@ export async function buildReferencePreviews(
         targetDef,
         allCollections,
         resolver,
-        scopeColumns,
-      );
-      await resolveImageAssets(
-        db,
-        data.tree,
-        targetDef,
-        allCollections,
         scopeColumns,
       );
       previews[storedValue] = data.tree;
@@ -938,15 +930,6 @@ export function createPublicationEndpoints<
               def,
               cmsCtx.collections,
               scope.referenceResolver ?? coreReferenceResolver,
-              crossScopeColumns(scope.roots),
-            );
-            // Resolve image asset ids to `{ id, slug }` so the renderer builds
-            // the gate URL `/media/asset/{slug}`.
-            await resolveImageAssets(
-              db,
-              variant.tree,
-              def,
-              cmsCtx.collections,
               crossScopeColumns(scope.roots),
             );
           }

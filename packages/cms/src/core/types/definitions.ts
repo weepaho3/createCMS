@@ -88,17 +88,6 @@ export type ResolvedLink =
   | { kind: 'email'; href: string }
   | { kind: 'phone'; href: string };
 
-/**
- * The RESOLVED value of an `image` on a rendered read path (getPublishedContent
- * `resolved` mode + the non-raw getBlockTree read): the stored asset id is
- * resolved to `{ id, slug }` so the renderer can build the gate URL
- * `/media/asset/{slug}` — status-checked, transformable, SEO-friendly slug —
- * without a second lookup. `null` when the asset is gone / out of scope (the
- * renderer omits it). The stored value stays the bare id string in `raw` mode
- * (write input + editor re-picking).
- */
-export type ResolvedImage = { id: string; slug: string } | null;
-
 // ============================================================================
 // Scope Conditions (plugin-injected query/insert scoping)
 // ============================================================================
@@ -300,8 +289,9 @@ type BlockTypes = {
   boolean: boolean;
   date: string;
   richText: string;
-  // The AUTHORED value of an image is the asset's id STRING; it resolves to a
-  // `ResolvedImage` (`{ id, slug }`) only on the read path (the `resolved` mode).
+  // An image is the asset's id STRING, on both the write and read paths. The
+  // renderer serves it via the id-addressed gate `/media/asset/{id}`; nothing is
+  // resolved at read time (a slug swap behind the id propagates automatically).
   image: string;
   select: string;
   // The AUTHORED value of a reference is the target's rootId STRING. It is
@@ -395,14 +385,9 @@ type InferPropertyValue<
         M extends 'resolved'
         ? ResolvedLink
         : LinkValue
-      : T extends { type: 'image' }
-        ? // An image is the stored asset-id string in `raw` mode (write input +
-          // editor re-picking) and a `ResolvedImage` (`{ id, slug }`) on the
-          // `resolved` read path, so the renderer can build the gate URL.
-          M extends 'resolved'
-          ? ResolvedImage
-          : string
-        : BlockTypes[T['type']];
+      : // `image` is the asset-id string in BOTH modes (served via the
+        // id-addressed gate; nothing is resolved at read time).
+        BlockTypes[T['type']];
 
 type RequiredPart<
   T extends Record<string, BlockProperty>,
