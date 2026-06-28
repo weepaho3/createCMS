@@ -26,12 +26,12 @@ function isLinkValue(value: unknown): value is LinkValue {
 }
 
 /** A `reference` property resolved to an inlined target (carries its own tree). */
-type InlinedReference = {
+export type InlinedReference = {
   collection: string;
   tree: BlockTreeNode;
   abTest?: { variants: { tree: BlockTreeNode }[] };
 };
-function isInlinedReference(value: unknown): value is InlinedReference {
+export function isInlinedReference(value: unknown): value is InlinedReference {
   return (
     typeof value === 'object' &&
     value !== null &&

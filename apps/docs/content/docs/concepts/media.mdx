@@ -44,7 +44,7 @@ Each asset also has a **direct** object URL, `${publicUrl}/${objectKey}` — ret
 
 ## Images in content
 
-An `image` block property stores the asset **id** (an `ast_…` reference), never a URL — the read path returns it verbatim. To render it, serve through the gate: resolve the id to the asset's `slug` (e.g. via `listAssets`) and point at `GET /media/asset/{slug}`. Don't store the direct `url` in content — it bypasses the status gate and transforms and pins the entry to your current bucket layout. `getAssetUsages` reports which entries reference an asset (the index keys on the asset id), and archiving is blocked while an asset is used by live content.
+An `image` block property stores the asset **id** (an `ast_…` reference), never a URL. On the rendered read path — `getPublishedContent`, and `getBlockTree` unless you pass `raw` — the CMS resolves it to `{ id, slug }` (or `null` when the asset is gone or out of scope), exactly as it resolves `link` and `reference` properties. So your renderer builds the gate URL straight from the slug — `<img src="/media/asset/{slug}">` — with no second lookup; the `raw` editor read keeps the bare id for re-picking. Don't store the direct `url` in content — it bypasses the status gate and transforms and pins the entry to your bucket layout. `getAssetUsages` reports which entries reference an asset (the index keys on the asset id), and archiving is blocked while an asset is used by live content.
 
 <Callout type="info">
   For uploading and serving step by step, see [Upload and serve media](/docs/guides/media-uploads).

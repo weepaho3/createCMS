@@ -539,8 +539,10 @@ describe('getBlockTree', () => {
       },
     });
 
+    // raw: inspect STORED content — image props resolve to { id, slug } on the
+    // rendered (non-raw) read, which this structural test is not exercising.
     const result = await cms.api.pages.getBlockTree({
-      query: { rootId: root.rootId, branchId: root.branchId },
+      query: { rootId: root.rootId, branchId: root.branchId, raw: true },
     });
 
     expect(result.reconstructed).toBe(false);
@@ -2399,8 +2401,9 @@ describe('updateBlocks', () => {
       .where(eq(commits.id, result.commitId));
     expect(newCommit.message).toBe('Batch edit');
 
+    // raw: assert STORED content round-trips (non-raw resolves image props).
     const { tree } = await cms.api.pages.getBlockTree({
-      query: { rootId: root.rootId, branchId: root.branchId },
+      query: { rootId: root.rootId, branchId: root.branchId, raw: true },
     });
 
     expect(tree.children[0].properties).toEqual({ text: 'A updated' });

@@ -30,6 +30,7 @@ import {
 } from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
+import { resolveImageAssets } from '../images';
 import { resolveLinkPaths } from '../links';
 import { syncAssetsOnPublish, syncAssetsOnUnpublish } from '../media/discovery';
 import {
@@ -423,7 +424,7 @@ export async function buildReferencePreviews(
         abTestResolver,
       );
       substituteVariables(data.tree, vars);
-      // Resolve links in the preview to their current paths, exactly like
+      // Resolve links and image assets in the preview, exactly like
       // getPublishedContent renders the same tree.
       await resolveLinkPaths(
         db,
@@ -431,6 +432,13 @@ export async function buildReferencePreviews(
         targetDef,
         allCollections,
         resolver,
+        scopeColumns,
+      );
+      await resolveImageAssets(
+        db,
+        data.tree,
+        targetDef,
+        allCollections,
         scopeColumns,
       );
       previews[storedValue] = data.tree;
@@ -930,6 +938,15 @@ export function createPublicationEndpoints<
               def,
               cmsCtx.collections,
               scope.referenceResolver ?? coreReferenceResolver,
+              crossScopeColumns(scope.roots),
+            );
+            // Resolve image asset ids to `{ id, slug }` so the renderer builds
+            // the gate URL `/media/asset/{slug}`.
+            await resolveImageAssets(
+              db,
+              variant.tree,
+              def,
+              cmsCtx.collections,
               crossScopeColumns(scope.roots),
             );
           }
