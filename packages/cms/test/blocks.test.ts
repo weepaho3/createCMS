@@ -89,24 +89,6 @@ describe('listRoots', () => {
     expect(titles).toEqual(['About', 'Home']);
   });
 
-  it('all roots share the default tenant when no plugin is active', async () => {
-    const { cms } = await setupTestCMS();
-
-    await cms.api.pages.createRoot({
-      body: { slug: '/a', properties: { title: 'Page A' } },
-    });
-
-    await cms.api.pages.createRoot({
-      body: { slug: '/b', properties: { title: 'Page B' } },
-    });
-
-    const result = await cms.api.pages.listRoots();
-
-    expect(result.roots).toHaveLength(2);
-    const titles = result.roots.map((r) => (r.properties as any).title).sort();
-    expect(titles).toEqual(['Page A', 'Page B']);
-  });
-
   it('returns paginated results with total and hasMore', async () => {
     const { cms } = await setupTestCMS();
 

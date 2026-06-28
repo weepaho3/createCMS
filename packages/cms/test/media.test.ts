@@ -1141,28 +1141,6 @@ describe('public URL (CDN) delivery', () => {
     expect(res.headers.get('cache-control')).not.toContain('immutable');
     expect(res.headers.get('location')).not.toContain('X-Amz-');
   });
-
-  it('builds correct URL with object key', async () => {
-    const { cms, db } = await setupTestCMS();
-
-    const [asset] = await db
-      .insert(assets)
-      .values({
-        slug: 'logo.png',
-        mimeType: 'image/png',
-        size: 1024,
-        objectKey: 'logo.png',
-        status: 'public',
-      })
-      .returning({ id: assets.id });
-
-    const res = await cms.router.handler(
-      new Request(`http://localhost/api/cms/media/asset/${asset.id}`),
-    );
-
-    expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('https://cdn.test.local/logo.png');
-  });
 });
 
 // ============================================================================

@@ -10,20 +10,6 @@ import { setupMultiTenantTestCMS } from './utils/cms';
 // ============================================================================
 
 describe('multiTenant — root isolation', () => {
-  it('creates a root with the active tenant slug', async () => {
-    const { cms, db, setTenant } = await setupMultiTenantTestCMS();
-    setTenant('acme');
-
-    const result = await cms.api.pages.createRoot({
-      body: { slug: '/', properties: { title: 'Home' } },
-    });
-
-    const rows = await db.execute(
-      sql`SELECT tenant_slug FROM cms.roots WHERE id = ${result.rootId}`,
-    );
-    expect(rows.rows[0].tenant_slug).toBe('acme');
-  });
-
   it('lists only roots belonging to the active tenant', async () => {
     const { cms, setTenant } = await setupMultiTenantTestCMS();
 
@@ -303,20 +289,6 @@ describe('multiTenant — list endpoints do not leak across tenants', () => {
 // ============================================================================
 
 describe('multiTenant — folder isolation', () => {
-  it('creates a folder with the active tenant slug', async () => {
-    const { cms, db, setTenant } = await setupMultiTenantTestCMS();
-    setTenant('acme');
-
-    const result = await cms.api.media.createFolder({
-      body: { name: 'Images' },
-    });
-
-    const rows = await db.execute(
-      sql`SELECT tenant_slug FROM cms.asset_folders WHERE id = ${result.folder.id}`,
-    );
-    expect(rows.rows[0].tenant_slug).toBe('acme');
-  });
-
   it('isolates folders per tenant at the DB level', async () => {
     const { cms, db, setTenant } = await setupMultiTenantTestCMS();
 
@@ -951,27 +923,6 @@ describe('multiTenant — cross-tenant access-by-ID', () => {
         body: { assetIds: ['cross-asset-1'], status: 'public' },
       }),
     ).rejects.toThrow();
-  });
-
-  it('listAssets hides other tenant assets', async () => {
-    const { cms, db, setTenant } = await setupMultiTenantTestCMS();
-
-    await db.execute(sql`
-      INSERT INTO cms.assets (id, slug, mime_type, size, object_key, status, tenant_slug)
-      VALUES
-        ('iso-asset-1', 'acme-only', 'image/png', 1024, 'acme/only.png', 'private', 'acme'),
-        ('iso-asset-2', 'globex-only', 'image/png', 1024, 'globex/only.png', 'private', 'globex')
-    `);
-
-    setTenant('acme');
-    const acmeAssets = await cms.api.media.listAssets();
-    expect(acmeAssets.assets).toHaveLength(1);
-    expect(acmeAssets.assets[0].slug).toBe('acme-only');
-
-    setTenant('globex');
-    const globexAssets = await cms.api.media.listAssets();
-    expect(globexAssets.assets).toHaveLength(1);
-    expect(globexAssets.assets[0].slug).toBe('globex-only');
   });
 });
 

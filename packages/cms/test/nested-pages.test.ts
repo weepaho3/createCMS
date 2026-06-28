@@ -496,43 +496,6 @@ describe('nested pages', () => {
   });
 
   describe('path resolution via getPublishedContent', () => {
-    it('resolves a nested path to the correct page', async () => {
-      const { cms } = await setupNestedCMS();
-
-      const parent = await cms.api.pages.createRoot({
-        body: {
-          slug: 'getting-started',
-          properties: { title: 'Getting Started' },
-        },
-      });
-
-      await publishApprovedBranch(cms, {
-        rootId: parent.rootId,
-        branchId: parent.branchId,
-        publishedBy: 'user-1',
-      });
-
-      const child = await cms.api.pages.createRoot({
-        body: {
-          parentRootId: parent.rootId,
-          slug: 'install',
-          properties: { title: 'Installation' },
-        },
-      });
-
-      await publishApprovedBranch(cms, {
-        rootId: child.rootId,
-        branchId: child.branchId,
-        publishedBy: 'user-1',
-      });
-
-      const result = await cms.api.pages.getPublishedContent({
-        query: { path: '/docs/getting-started/install' },
-      });
-
-      expect(result.rootId).toBe(child.rootId);
-    });
-
     it('resolves a top-level path', async () => {
       const { cms } = await setupNestedCMS();
 

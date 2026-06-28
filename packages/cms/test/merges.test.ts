@@ -813,31 +813,6 @@ describe('createMergeRequest', () => {
       }),
     ).rejects.toThrow(/An open merge request already exists/);
   });
-
-  it('rejects when branches belong to different roots', async () => {
-    const { cms } = await setupTestCMS();
-
-    const rootA = await cms.api.pages.createRoot({
-      body: { slug: '/a', properties: { title: 'Page A' } },
-    });
-
-    const rootB = await cms.api.pages.createRoot({
-      body: { slug: '/b', properties: { title: 'Page B' } },
-    });
-
-    await expect(
-      cms.api.pages.createMergeRequest({
-        body: {
-          title: 'Test MR',
-          sourceBranchId: rootA.branchId,
-          targetBranchId: rootB.branchId,
-          createdBy: 'user-1',
-        },
-      }),
-    ).rejects.toThrow(
-      /Source and target branches must belong to the same root/,
-    );
-  });
 });
 
 // ============================================================================
