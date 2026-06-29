@@ -47,6 +47,7 @@ export const cmsContext = createMiddleware(async () => {
     userConfig?: import('./user/resolve').ResolvedUserConfig;
     withRoot?: boolean;
     revalidationRunner?: RevalidationRunner | null;
+    realtime?: import('./realtime/types').RealtimeTransport;
   };
 });
 
@@ -59,6 +60,9 @@ export type CMSEndpointCtx = {
   userConfig?: import('./user/resolve').ResolvedUserConfig;
   withRoot?: boolean;
   revalidationRunner?: RevalidationRunner | null;
+  /** Realtime transport (when configured) — lets a handler publish live events
+   *  (e.g. the A/B ingest pushing live result deltas). */
+  realtime?: import('./realtime/types').RealtimeTransport;
 };
 
 export const createCMSEndpoint: ReturnType<
@@ -310,6 +314,7 @@ export function toCMSEndpoints(
           collection: meta.collection ?? '',
           scope,
           revalidationRunner: revalidationRunner ?? null,
+          realtime: cmsCtx.realtime,
           ...(withUser && cmsCtx.resolvedUser
             ? { withUser, userConfig: cmsCtx.resolvedUser }
             : {}),

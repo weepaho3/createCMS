@@ -30,6 +30,7 @@ import { forwardToGa4 } from './analytics/ga4-server';
 import { resolveVariant } from './assignment';
 import { collectCoRenderRoots, collectEmbeddedRoots } from './co-render';
 import { $ERROR_CODES } from './errors';
+import { publishLiveDelta } from './realtime';
 
 const AB_TEST_META = {
   scope: 'system' as const,
@@ -1006,6 +1007,17 @@ export function createABTestEndpoints(
         };
         await adapter.track(event);
 
+        // Push a live result delta to the test's dashboard channel over the
+        // shared realtime transport (best-effort; getResults stays canonical).
+        if (ab) {
+          publishLiveDelta(
+            reqCtx.context.realtime,
+            ab.testId,
+            ab.variantId,
+            event.name,
+          );
+        }
+
         // M5: opt-in server-side GA4 forward. No-op without a configured
         // endpoint, or when the event is not a consenting, client_id-bearing hit
         // (buildGa4Payload returns null). Best-effort — never breaks the ingest.
@@ -1046,6 +1058,9 @@ export function createABTestEndpoints(
         // eventType is the goal-less fallback (unchanged when no goal is set).
         // `|| null` coerces a legacy/degenerate '' to the goal-less path.
         const goal = test.goal_event || null;
+        // Surface the goal so the live dashboard applies deltas to conversions
+        // with the same rule (null = goal-less default → 'conversion').
+        results.goalEvent = goal;
         if (goal) {
           for (const v of results.variants) {
             v.conversions = v.eventBreakdown[goal]?.count ?? 0;

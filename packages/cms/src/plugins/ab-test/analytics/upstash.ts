@@ -7,23 +7,19 @@ import type {
   AggregatedResults,
   AggregatedVariantResult,
   CMSEvent,
-  LiveDelta,
   UpstashAnalyticsOptions,
 } from './types';
 
 import { newId } from '../../../utils/nanoid';
 
-// Prevent Turbopack/webpack from statically analyzing these imports.
+// Prevent Turbopack/webpack from statically analyzing this import.
 // The bundler rewrites bare `import('...')` calls into require/resolve
 // that fail when the package lives in a different workspace. By
 // constructing the specifier at runtime the import stays a true
 // dynamic import that Node resolves at execution time.
 const _upstashRedisId = ['@upstash', 'redis'].join('/');
-const _upstashRealtimeId = ['@upstash', 'realtime'].join('/');
 const _importUpstashRedis = () =>
   new Function('id', 'return import(id)')(_upstashRedisId) as Promise<any>;
-const _importUpstashRealtime = () =>
-  new Function('id', 'return import(id)')(_upstashRealtimeId) as Promise<any>;
 
 const aggregationsTable: TableDefinition = {
   tableName: 'ab_test_aggregations',
@@ -74,25 +70,25 @@ const aggregationsTable: TableDefinition = {
 };
 
 /**
- * Upstash Redis Stream adapter with batch flush and realtime delta publishing.
+ * Upstash Redis Stream adapter for durable A/B event storage with batch flush.
  *
- * Requires `@upstash/redis` and `@upstash/realtime` as peer dependencies.
- * Events are stored in Redis Streams and flushed to Postgres on demand.
- * Live deltas are published to `ab:live:{testId}` channels for realtime dashboards.
+ * Requires `@upstash/redis` as a peer dependency. Events are stored in Redis
+ * Streams and flushed to Postgres on demand. Live result deltas are NOT this
+ * adapter's concern — the `trackEvent` endpoint publishes them over the shared
+ * core realtime transport (see `publishLiveDelta`), so they work with any
+ * analytics adapter.
  */
 export function upstashAnalytics(
   options: UpstashAnalyticsOptions,
-): ABTestAnalyticsAdapter & { realtimeInstance: unknown } {
+): ABTestAnalyticsAdapter {
   let db: DrizzleInstance;
   let redis: any;
 
-  const adapter: ABTestAnalyticsAdapter & { realtimeInstance: unknown } = {
+  const adapter: ABTestAnalyticsAdapter = {
     tables: { abTestAggregations: aggregationsTable } satisfies Record<
       string,
       TableDefinition
     >,
-
-    realtimeInstance: null,
 
     async init(instance) {
       db = instance;
@@ -102,16 +98,6 @@ export function upstashAnalytics(
         url: options.url,
         token: options.token,
       });
-
-      try {
-        const upstashRealtime = await _importUpstashRealtime();
-        adapter.realtimeInstance = new upstashRealtime.Realtime({
-          url: options.url,
-          token: options.token,
-        });
-      } catch {
-        // @upstash/realtime not installed -- realtime disabled
-      }
     },
 
     async track(event: CMSEvent) {
@@ -144,20 +130,9 @@ export function upstashAnalytics(
       }
 
       await redis.xadd(streamKey, '*', entry);
-
-      if (adapter.realtimeInstance) {
-        const delta: LiveDelta = {
-          variantId,
-          eventType: event.name,
-          count: 1,
-          timestamp: Date.now(),
-        };
-        try {
-          await redis.publish(`ab:live:${testId}`, JSON.stringify(delta));
-        } catch {
-          // Non-critical
-        }
-      }
+      // Live result deltas are published by the trackEvent endpoint via the
+      // shared core realtime transport (see publishLiveDelta) — not here. This
+      // adapter only owns durable event storage.
     },
 
     async query(testId, options) {
