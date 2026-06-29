@@ -1,5 +1,44 @@
 # @createcms/core
 
+## 0.2.10
+
+### Patch Changes
+
+- [#26](https://github.com/weepaho3/createCMS/pull/26) [`ba13c71`](https://github.com/weepaho3/createCMS/commit/ba13c713319cf919a87312b9b0b1f30a2c6e96e1) Thanks [@weepaho3](https://github.com/weepaho3)! - Notifications now carry everything you need for deep links and showing the
+  responsible user, with types to match:
+
+  - **`createNotificationRouter`** (new, from `@createcms/core/react`) — define a
+    resolver per notification `type` that builds a deep link from the item's
+    fields; each resolver gets `meta` narrowed to that type. Pass
+    `createNotificationRouter<typeof cms>(…)` to type core **and**
+    plugin-contributed types. A required `fallback` keeps routing total. Pure and
+    client-side — no realtime peer, no server or schema change.
+  - **Plugin-extensible notification types** — a new `notificationTypes` plugin
+    seam (a Zod meta map): its keys fold into the `notification_type` enum at
+    `createcms generate` (so a plugin persists its own `type`) and are inferred
+    into `typeof cms` so the router types each plugin `meta`. The emit side
+    (`cms.notify` / `notificationService.notify`) accepts plugin/app type strings.
+    App-only `custom` types can also be typed by augmenting `NotificationMetaMap`.
+  - **Typed `actorUser`** — `listNotifications` (with `withUser`) and
+    `useNotifications` now type `actorUser` off your `user` config (a partial of
+    the user-table row) instead of `unknown`, inferred straight from `typeof cms`.
+  - **Actor on the live push** — the realtime notification event now carries
+    `actorUser`, resolved server-side from the `user` config's `exposeColumns`
+    (batched). The responsible user's name/avatar are available the instant a push
+    lands, no second poll. `actorUser` is also passed to `onNotification` handlers.
+
+- [#26](https://github.com/weepaho3/createCMS/pull/26) [`87b41c0`](https://github.com/weepaho3/createCMS/commit/87b41c0c979eba9cc5b8e1be1d603ee73d643c38) Thanks [@weepaho3](https://github.com/weepaho3)! - `useNotifications` now takes your typed `createCMSClient` instance directly — no
+  `as unknown as Parameters<typeof useNotifications>[0]` cast. The hook's internal
+  client shape brands `query.withUser` as `true` (matching the client's
+  `WithUserQuery`) instead of plain `boolean`, so a real typed client is
+  structurally assignable.
+
+  `userId` is now optional. Pass it straight from your auth session
+  (`session?.user?.id`) instead of the `?? ''` workaround: while it's undefined the
+  hook stays poll-only (seeded from `listNotifications`) and opens the
+  `notif:<userId>` subscription once it resolves. The CMS has no current-user
+  endpoint, so your app still supplies the id.
+
 ## 0.2.9
 
 ### Patch Changes
