@@ -36,6 +36,7 @@ import {
 import { toCMSEndpoints } from './endpoint';
 import { createHookRunner } from './hooks';
 import { createNotificationService } from './notifications/service';
+import { createRealtimeRouteHandler } from './realtime/sse';
 import {
   createRevalidationRunner,
   normalizeRevalidateConfig,
@@ -525,6 +526,20 @@ export const createCMS = <
     notificationHandlers,
   );
   cmsContext.notificationService = notificationService;
+  cmsContext.realtime = definition.realtime;
+
+  // The shared `/realtime` SSE handler — authenticates each connection and
+  // authorizes its channels before any subscription. Built once; dormant until
+  // a client subscribes (and a no-op when no transport is configured).
+  const realtimeRoute = definition.realtime
+    ? createRealtimeRouteHandler({
+        transport: definition.realtime,
+        path: `${definition.basePath ?? '/api/cms'}/realtime`,
+        cmsCtx: cmsContext,
+        authMiddleware,
+      })
+    : null;
+
   const notificationEndpoints = createNotificationEndpoints(cmsContext);
 
   const pluginApis = Object.fromEntries(
@@ -622,6 +637,12 @@ export const createCMS = <
     },
     async onRequest(request) {
       await ensureInit();
+      // The shared realtime SSE stream short-circuits the pipeline: a long-lived
+      // streaming Response must not enter per-request endpoint routing.
+      if (realtimeRoute) {
+        const realtimeResponse = await realtimeRoute(request);
+        if (realtimeResponse) return realtimeResponse;
+      }
       let req = request;
       for (const plugin of plugins) {
         if (!plugin.onRequest) continue;

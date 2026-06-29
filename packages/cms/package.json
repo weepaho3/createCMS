@@ -286,6 +286,8 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@types/s3rver": "^3.7.4",
+    "@upstash/realtime": "^1.0.3",
+    "@upstash/redis": "^1.38.0",
     "bunchee": "^6.9.3",
     "drizzle-kit": "^0.31.9",
     "drizzle-orm": "^0.45.0",
@@ -298,12 +300,20 @@
   },
   "peerDependencies": {
     "@jsquash/webp": "^1.5.0",
+    "@upstash/realtime": ">=1.0.3",
+    "@upstash/redis": ">=1.35.4",
     "drizzle-orm": "^0.45.0",
     "next": ">=16",
     "react": ">=18"
   },
   "peerDependenciesMeta": {
     "@jsquash/webp": {
+      "optional": true
+    },
+    "@upstash/realtime": {
+      "optional": true
+    },
+    "@upstash/redis": {
       "optional": true
     },
     "next": {

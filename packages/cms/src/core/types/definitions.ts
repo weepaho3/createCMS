@@ -1095,6 +1095,13 @@ export type CMSDefinition<
     | RevalidateHandler<TCollections>
     | RevalidateConfig<TCollections>;
   onNotification?: OnNotificationHandler;
+  /**
+   * Realtime delivery transport (e.g. `upstashRealtime({ url, token })`).
+   * Enables the shared `/realtime` SSE route and per-user notification push.
+   * Optional — without it the route stays dormant and notifications fall back
+   * to the durable poll.
+   */
+  realtime?: import('../realtime/types').RealtimeTransport;
 };
 
 // CMSInstance is not explicitly typed -- createCMS return type is inferred by TypeScript.
@@ -1119,6 +1126,7 @@ export type CMSProcedureCtx = {
   mergeStrategy?: MergeStrategy;
   scopeConditions?: ScopeConditionFactory[];
   notificationService?: import('../notifications/service').NotificationService;
+  realtime?: import('../realtime/types').RealtimeTransport;
   resolvedUser?: ResolvedUserConfig;
 };
 
