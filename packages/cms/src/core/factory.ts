@@ -35,6 +35,7 @@ import {
 } from './context';
 import { toCMSEndpoints } from './endpoint';
 import { createHookRunner } from './hooks';
+import { makeNotificationPublishHandler } from './notifications/realtime';
 import { createNotificationService } from './notifications/service';
 import { createRealtimeRouteHandler } from './realtime/sse';
 import {
@@ -516,6 +517,13 @@ export const createCMS = <
   const searchEndpoints = createSearchEndpoints(cmsContext);
 
   const notificationHandlers: OnNotificationHandler[] = [
+    // Push every notification to its recipient's private realtime channel when
+    // a transport is configured. First in the list because it is the
+    // latency-sensitive, best-effort handler — user/plugin handlers must not
+    // delay the live push (the durable row stays canonical regardless).
+    ...(definition.realtime
+      ? [makeNotificationPublishHandler(definition.realtime)]
+      : []),
     ...(definition.onNotification ? [definition.onNotification] : []),
     ...plugins
       .map((p) => p.onNotification)

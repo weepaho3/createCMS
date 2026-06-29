@@ -71,3 +71,9 @@ export function createCMSClient<TCMS = unknown>(
 }
 
 export { useStore } from './react-store';
+export { useNotifications } from './notifications';
+export type {
+  UseNotificationsOptions,
+  UseNotificationsResult,
+  NotificationsState,
+} from './notifications';
