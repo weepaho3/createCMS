@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import type { RealtimeTransport } from '../../../core/realtime/types';
+import type { RealtimeRuntime } from '../../../core/realtime/types';
 import { publishLiveDelta } from '../realtime';
 
 function recordingTransport() {
   const calls: Array<[string, string, unknown]> = [];
-  const transport: RealtimeTransport = {
+  const transport: RealtimeRuntime = {
     async publish(channel, event, data) {
       calls.push([channel, event, data]);
     },
@@ -40,7 +40,7 @@ describe('publishLiveDelta', () => {
   });
 
   it('swallows a rejecting publish (best-effort, fire-and-forget)', async () => {
-    const transport: RealtimeTransport = {
+    const transport: RealtimeRuntime = {
       async publish() {
         throw new Error('boom');
       },

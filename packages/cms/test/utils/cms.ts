@@ -31,6 +31,7 @@ export const setupTestCMS = async (options?: {
   defaultBranchName?: string;
   branchProtection?: BranchProtectionConfig;
   mergeStrategy?: MergeStrategy;
+  notifications?: boolean;
 }) => {
   const { db } = await setupTestDB();
 
@@ -59,6 +60,7 @@ export const setupTestCMS = async (options?: {
     defaultBranchName: options?.defaultBranchName,
     branchProtection: options?.branchProtection,
     mergeStrategy: options?.mergeStrategy,
+    notifications: options?.notifications,
     ...(options?.user ? { user: options.user } : {}),
   });
 

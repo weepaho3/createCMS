@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { makeNotificationPublishHandler } from '../src/core/notifications/realtime';
 import type { NotificationPayload } from '../src/core/notifications/types';
-import type { RealtimeTransport } from '../src/core/realtime/types';
+import type { RealtimeRuntime } from '../src/core/realtime/types';
 
 function payload(recipientId: string): NotificationPayload {
   return {
@@ -23,7 +23,7 @@ function payload(recipientId: string): NotificationPayload {
 describe('makeNotificationPublishHandler', () => {
   it('publishes to the recipient private channel as a `notification` event', async () => {
     const calls: Array<[string, string, unknown]> = [];
-    const transport: RealtimeTransport = {
+    const transport: RealtimeRuntime = {
       async publish(channel, event, data) {
         calls.push([channel, event, data]);
       },
@@ -42,7 +42,7 @@ describe('makeNotificationPublishHandler', () => {
   });
 
   it('forwards transport rejection (failure isolation is the dispatcher\'s job)', async () => {
-    const transport: RealtimeTransport = {
+    const transport: RealtimeRuntime = {
       async publish() {
         throw new Error('boom');
       },

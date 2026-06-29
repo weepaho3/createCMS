@@ -1096,12 +1096,23 @@ export type CMSDefinition<
     | RevalidateConfig<TCollections>;
   onNotification?: OnNotificationHandler;
   /**
-   * Realtime delivery transport (e.g. `upstashRealtime({ url, token })`).
-   * Enables the shared `/realtime` SSE route and per-user notification push.
-   * Optional — without it the route stays dormant and notifications fall back
-   * to the durable poll.
+   * Set `false` to fully disable the notifications feature: the tables are not
+   * generated, the routes do not register or execute, and `client.notifications`
+   * (plus `cms.notify`) are absent from the inferred types. Default: enabled.
+   *
+   * IMPORTANT: pass a LITERAL `false`. The type gate keys on the literal — a
+   * widened `boolean` value keeps the types ENABLED even when it is `false` at
+   * runtime, so `cms.notify(...)` / `client.notifications.*` would type-check but
+   * throw or 404. Use `as const` (or a literal) if the value comes from a
+   * variable.
    */
-  realtime?: import('../realtime/types').RealtimeTransport;
+  notifications?: boolean;
+  /**
+   * Upstash realtime credentials. Optional; enables the shared `/realtime` SSE
+   * route, per-user notification push, and A/B live results. Without it,
+   * notifications fall back to the durable `listNotifications` poll.
+   */
+  realtime?: { url: string; token: string };
 };
 
 // CMSInstance is not explicitly typed -- createCMS return type is inferred by TypeScript.
@@ -1126,7 +1137,7 @@ export type CMSProcedureCtx = {
   mergeStrategy?: MergeStrategy;
   scopeConditions?: ScopeConditionFactory[];
   notificationService?: import('../notifications/service').NotificationService;
-  realtime?: import('../realtime/types').RealtimeTransport;
+  realtime?: import('../realtime/types').RealtimeRuntime;
   resolvedUser?: ResolvedUserConfig;
 };
 

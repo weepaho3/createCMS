@@ -1,4 +1,4 @@
-import type { RealtimeTransport } from '../realtime/types';
+import type { RealtimeRuntime } from '../realtime/types';
 import type { OnNotificationHandler } from './types';
 
 /**
@@ -12,7 +12,7 @@ import type { OnNotificationHandler } from './types';
  * durable notifications row + `listNotifications` poll stay the source of truth.
  */
 export function makeNotificationPublishHandler(
-  transport: RealtimeTransport,
+  transport: RealtimeRuntime,
 ): OnNotificationHandler {
   return (notification) =>
     transport.publish(

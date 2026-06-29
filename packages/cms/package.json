@@ -62,6 +62,16 @@
         "default": "./dist/react/index.cjs"
       }
     },
+    "./react/realtime": {
+      "import": {
+        "types": "./dist/react/realtime.d.ts",
+        "default": "./dist/react/realtime.js"
+      },
+      "require": {
+        "types": "./dist/react/realtime.d.cts",
+        "default": "./dist/react/realtime.cjs"
+      }
+    },
     "./react/blocks": {
       "import": {
         "types": "./dist/react/blocks.d.ts",
@@ -170,6 +180,16 @@
       "require": {
         "types": "./dist/plugins/ab-test/client.d.cts",
         "default": "./dist/plugins/ab-test/client.cjs"
+      }
+    },
+    "./plugins/ab-test/live": {
+      "import": {
+        "types": "./dist/plugins/ab-test/live.d.ts",
+        "default": "./dist/plugins/ab-test/live.js"
+      },
+      "require": {
+        "types": "./dist/plugins/ab-test/live.d.cts",
+        "default": "./dist/plugins/ab-test/live.cjs"
       }
     },
     "./plugins/ab-test/analytics/upstash": {

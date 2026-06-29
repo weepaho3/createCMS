@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createRealtimeRouteHandler } from '../src/core/realtime/sse';
-import type { RealtimeTransport } from '../src/core/realtime/types';
+import type { RealtimeRuntime } from '../src/core/realtime/types';
 import type {
   CMSMiddleware,
   CMSProcedureCtx,
@@ -30,7 +30,7 @@ const headerAuth: CMSMiddleware = (ctx) => {
 
 /** A transport whose SSE handler mimics @upstash/realtime: parse `?channel=`,
  *  run the authorize gate, reject with its Response or stream a 200. */
-function fakeTransport(): RealtimeTransport {
+function fakeTransport(): RealtimeRuntime {
   return {
     async publish() {},
     async getSseHandler(authorize) {
@@ -50,7 +50,7 @@ function fakeTransport(): RealtimeTransport {
 }
 
 /** A transport with no subscribe peer installed. */
-function inertTransport(): RealtimeTransport {
+function inertTransport(): RealtimeRuntime {
   return {
     async publish() {},
     async getSseHandler() {
@@ -65,7 +65,7 @@ function req(path: string, channel?: string, user?: string): Request {
 }
 
 describe('createRealtimeRouteHandler', () => {
-  function handler(opts?: { authMiddleware?: CMSMiddleware; transport?: RealtimeTransport }) {
+  function handler(opts?: { authMiddleware?: CMSMiddleware; transport?: RealtimeRuntime }) {
     return createRealtimeRouteHandler({
       transport: opts?.transport ?? fakeTransport(),
       path: '/api/cms/realtime',

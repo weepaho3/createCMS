@@ -5,10 +5,9 @@ import type * as z from 'zod';
  * (`{ notification: z.object(...) }`) or namespaced by feature
  * (`{ ab: { delta: z.object(...) } }` → event path `ab.delta`).
  *
- * This types events; the runtime {@link RealtimeTransport} is event-AGNOSTIC.
- * Event ownership lives where each event is declared (core notifications, a
- * plugin), and the merged registry is INFERRED from `typeof cms` — there is no
- * runtime merge into the transport.
+ * This types events; the runtime is event-AGNOSTIC. Event ownership lives where
+ * each event is declared (core notifications, a plugin), and the merged registry
+ * is INFERRED from `typeof cms`.
  */
 export type RealtimeEventSchema = Record<
   string,
@@ -16,10 +15,10 @@ export type RealtimeEventSchema = Record<
 >;
 
 /**
- * Per-connection channel-authorization gate. Receives the raw request (to
- * resolve the caller) and the channels it wants to subscribe to. Return a
- * `Response` to REJECT the connection (e.g. 403); return void to allow. Runs
- * once per connection, before any subscription is established.
+ * Per-connection channel-authorization gate handed to the runtime's SSE handler.
+ * Receives the raw request and the channels it wants; return a `Response` to
+ * REJECT (e.g. 403), or void to allow. Runs once per connection, before any
+ * subscription.
  */
 export type AuthorizeChannels = (
   request: Request,
@@ -27,19 +26,18 @@ export type AuthorizeChannels = (
 ) => Response | void | Promise<Response | void>;
 
 /**
- * The realtime delivery transport: a generic publish/subscribe pipe. It does
- * NOT know event shapes — those are owned and typed where each event lives.
+ * The realtime delivery runtime — a concrete Upstash-backed publish/subscribe
+ * pipe (NOT a pluggable interface; createCMS realtime is Upstash-only). Held on
+ * the procedure ctx and consumed by the SSE route, the notification publish
+ * handler, and the A/B live-delta publish.
  */
-export type RealtimeTransport = {
-  /**
-   * Fire-and-forget publish of `data` as `event` on `channel`. Best-effort:
-   * swallows transport errors (the durable store stays the source of truth).
-   */
+export type RealtimeRuntime = {
+  /** Fire-and-forget publish of `data` as `event` on `channel`. Best-effort. */
   publish(channel: string, event: string, data: unknown): Promise<void>;
   /**
    * Builds the SSE request handler, wiring `authorize` as the per-connection
-   * channel-authorization gate. Resolves to `null` when the subscribe peer
-   * (`@upstash/realtime`) is unavailable — callers then fall through.
+   * channel gate. Resolves to `null` when the subscribe peer
+   * (`@upstash/realtime`) is unavailable — the route then falls through.
    */
   getSseHandler(
     authorize: AuthorizeChannels,

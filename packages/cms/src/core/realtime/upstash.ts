@@ -1,37 +1,31 @@
-import type { RealtimeTransport } from './types';
+import type { RealtimeRuntime } from './types';
 
-export type UpstashRealtimeOptions = {
+export type RealtimeConfig = {
   url: string;
   token: string;
 };
 
 /**
- * Upstash-backed {@link RealtimeTransport} over `@upstash/realtime` (publish via
- * `realtime.channel(ch).emit(event, data)`, subscribe via its `handle()` SSE
- * bridge), which itself rides `@upstash/redis`.
+ * Builds the Upstash-backed {@link RealtimeRuntime} from the `realtime` config
+ * (`{ url, token }`). Publishes via `@upstash/realtime` (`channel.emit`) over
+ * `@upstash/redis`, and serves the SSE bridge via the library's `handle()`.
  *
- * The underlying `Realtime` is constructed SCHEMA-LESS on purpose: the transport
- * is a generic pipe. Event typing lives where each event is owned and is
- * inferred via `typeof cms` — not via this construction-time schema. This is the
- * single place that touches the untyped library surface (one encapsulated cast);
- * every consumer-facing surface is typed by its own Zod event schema.
+ * The underlying `Realtime` is constructed SCHEMA-LESS on purpose — the runtime
+ * is a generic pipe; event typing lives where each event is owned and is
+ * inferred via `typeof cms`. This is the single place that touches the untyped
+ * library surface (one encapsulated cast).
  *
  * Both `@upstash/redis` and `@upstash/realtime` are OPTIONAL peers, imported
- * lazily. If either is absent the transport is inert: `publish` no-ops and
+ * lazily. If either is absent the runtime is inert: `publish` no-ops and
  * `getSseHandler` returns `null` so the route falls through.
  */
-export function upstashRealtime(
-  options: UpstashRealtimeOptions,
-): RealtimeTransport {
+export function createRealtimeRuntime(config: RealtimeConfig): RealtimeRuntime {
   let realtime: any;
   let handleFn: any;
   let initPromise: Promise<void> | null = null;
 
-  // Memoize the in-flight init PROMISE (not a boolean): concurrent cold-start
-  // callers must all await the SAME dynamic import. A boolean flag set before
-  // the first `await` would let a racing caller pass through while `realtime` is
-  // still undefined — a false "peer unavailable" (dropped publish / 404 route).
-  // Mirrors the factory's `ensureInit` pattern.
+  // Memoize the in-flight init PROMISE (not a boolean) so concurrent cold-start
+  // callers all await the SAME dynamic import. Mirrors the factory's ensureInit.
   function ensure(): Promise<void> {
     if (!initPromise) {
       initPromise = (async () => {
@@ -44,13 +38,13 @@ export function upstashRealtime(
             handle: any;
           };
           const redis = new redisMod.Redis({
-            url: options.url,
-            token: options.token,
+            url: config.url,
+            token: config.token,
           });
           realtime = new realtimeMod.Realtime({ redis });
           handleFn = realtimeMod.handle;
         } catch {
-          // Peer(s) not installed — transport stays inert.
+          // Peer(s) not installed — runtime stays inert.
           realtime = undefined;
         }
       })();

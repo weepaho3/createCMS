@@ -2,8 +2,8 @@
 "@createcms/core": patch
 ---
 
-Real-time notifications — automatic per-user push + a `useNotifications` React hook.
+Real-time notifications — automatic per-user push + a realtime-only `useNotifications` hook.
 
-When a `realtime` transport is configured, every notification is now pushed to its recipient's private channel automatically — a built-in handler rides the existing `notify`/`notifyMany` dispatch, so all notification sources (comments, merges, approvals, …) deliver live with no extra wiring. It's best-effort: the durable notifications row and `listNotifications` poll stay the source of truth, and a dropped push self-corrects on the next reconcile.
+When `realtime` is configured, every notification is pushed to its recipient's private channel automatically — a built-in handler rides the existing dispatch, so all notification sources (comments, merges, approvals, …) deliver live with no extra wiring.
 
-On the client, `useNotifications(client, { userId, baseURL })` (from `@createcms/core/react`) seeds the list + unread count from the poll, then subscribes to the user's own `notif:<userId>` SSE stream and prepends pushed notifications live — de-duped by id so the unread count never drifts, and re-polled on (re)connect/error to reconcile. It manages its own `EventSource` (no provider to wire — just call it) opened with credentials so the session cookie authenticates the connection, and degrades to the seeded poll when realtime is unavailable. Returns `{ notifications, unreadCount, isLive, refresh }`.
+On the client, wrap your app once in `RealtimeProvider` (from `@createcms/core/react/realtime`) — `<RealtimeProvider baseURL="/api/cms">` — to open one shared connection, then call `useNotifications(client, { userId })`. It seeds list + unread count from the `listNotifications` poll, prepends live pushes de-duped by id, and the provider replays anything missed across a reconnect. `useNotifications` is realtime-only and type-requires `client.notifications`, so it only compiles when notifications are enabled. Without realtime there's no built-in polling hook — read the durable list yourself via `client.notifications.listNotifications`.

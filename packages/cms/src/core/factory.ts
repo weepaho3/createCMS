@@ -38,6 +38,7 @@ import { createHookRunner } from './hooks';
 import { makeNotificationPublishHandler } from './notifications/realtime';
 import { createNotificationService } from './notifications/service';
 import { createRealtimeRouteHandler } from './realtime/sse';
+import { createRealtimeRuntime } from './realtime/upstash';
 import {
   createRevalidationRunner,
   normalizeRevalidateConfig,
@@ -216,13 +217,23 @@ type CMSDefinitionDataKeys =
   | 'plugins'
   | 'schema'
   | 'basePath'
-  | 'user';
+  | 'user'
+  // Picked from TDef so the literal `notifications: false` survives inference
+  // (a widened `boolean` would not gate the type) and `realtime` is captured.
+  | 'notifications'
+  | 'realtime';
 
 type HasRevalidate<T> = T extends { onRevalidate: infer R }
   ? R extends undefined
     ? false
     : true
   : false;
+
+// Default-enabled: only a literal `notifications: false` in TDef disables the
+// feature. Drives whether `cms.api.notifications` / `cms.notify` exist in the
+// inferred type (mirrors HasRevalidate's value-or-undefined gating, applied to
+// member presence instead).
+type NotificationsEnabled<T> = T extends { notifications: false } ? false : true;
 
 type InferCollectionApis<
   TCollections extends Record<string, AnyCollectionDefinition>,
@@ -516,39 +527,49 @@ export const createCMS = <
   const templateEndpoints = createTemplateEndpoints(cmsContext);
   const searchEndpoints = createSearchEndpoints(cmsContext);
 
-  const notificationHandlers: OnNotificationHandler[] = [
-    // Push every notification to its recipient's private realtime channel when
-    // a transport is configured. First in the list because it is the
-    // latency-sensitive, best-effort handler — user/plugin handlers must not
-    // delay the live push (the durable row stays canonical regardless).
-    ...(definition.realtime
-      ? [makeNotificationPublishHandler(definition.realtime)]
-      : []),
-    ...(definition.onNotification ? [definition.onNotification] : []),
-    ...plugins
-      .map((p) => p.onNotification)
-      .filter((h): h is OnNotificationHandler => !!h),
-  ];
-  const notificationService = createNotificationService(
-    definition.db,
-    notificationHandlers,
-  );
+  // `notifications: false` fully disables the feature (no service, no routes, no
+  // types). Default enabled. Independent of `realtime`.
+  const notificationsEnabled = definition.notifications !== false;
+
+  // Resolve the Upstash realtime runtime (undefined when not configured). ONE
+  // shared runtime backs the /realtime route, notification push, and A/B live.
+  const realtime = definition.realtime
+    ? createRealtimeRuntime(definition.realtime)
+    : undefined;
+  cmsContext.realtime = realtime;
+
+  const notificationHandlers: OnNotificationHandler[] = notificationsEnabled
+    ? [
+        // Push every notification to its recipient's private realtime channel
+        // when realtime is configured. First because it is the latency-sensitive,
+        // best-effort handler — user/plugin handlers must not delay the live push.
+        ...(realtime ? [makeNotificationPublishHandler(realtime)] : []),
+        ...(definition.onNotification ? [definition.onNotification] : []),
+        ...plugins
+          .map((p) => p.onNotification)
+          .filter((h): h is OnNotificationHandler => !!h),
+      ]
+    : [];
+  const notificationService = notificationsEnabled
+    ? createNotificationService(definition.db, notificationHandlers)
+    : undefined;
   cmsContext.notificationService = notificationService;
-  cmsContext.realtime = definition.realtime;
 
   // The shared `/realtime` SSE handler — authenticates each connection and
-  // authorizes its channels before any subscription. Built once; dormant until
-  // a client subscribes (and a no-op when no transport is configured).
-  const realtimeRoute = definition.realtime
+  // authorizes its channels before any subscription. Gated on `realtime` ALONE
+  // (A/B live needs it even when notifications are disabled).
+  const realtimeRoute = realtime
     ? createRealtimeRouteHandler({
-        transport: definition.realtime,
+        transport: realtime,
         path: `${definition.basePath ?? '/api/cms'}/realtime`,
         cmsCtx: cmsContext,
         authMiddleware,
       })
     : null;
 
-  const notificationEndpoints = createNotificationEndpoints(cmsContext);
+  const notificationEndpoints = notificationsEnabled
+    ? createNotificationEndpoints(cmsContext)
+    : undefined;
 
   const pluginApis = Object.fromEntries(
     plugins
@@ -566,9 +587,11 @@ export const createCMS = <
     media: typeof mediaEndpoints;
     variables: typeof variableEndpoints;
     templates: typeof templateEndpoints;
-    notifications: typeof notificationEndpoints;
     search: typeof searchEndpoints;
-  } & InferPluginNamespaces<DefPlugins & CMSPlugin[]>;
+  } & (NotificationsEnabled<TDef> extends true
+      ? { notifications: NonNullable<typeof notificationEndpoints> }
+      : Record<never, never>) &
+    InferPluginNamespaces<DefPlugins & CMSPlugin[]>;
 
   const rawApi: RawApi = {
     ...collectionApis,
@@ -576,8 +599,10 @@ export const createCMS = <
     media: mediaEndpoints,
     variables: variableEndpoints,
     templates: templateEndpoints,
-    notifications: notificationEndpoints,
     search: searchEndpoints,
+    // Omitted entirely (not just undefined) when notifications are disabled, so
+    // the route never registers and `client.notifications` is absent from types.
+    ...(notificationsEnabled ? { notifications: notificationEndpoints } : {}),
     ...pluginApis,
   } as RawApi;
 
@@ -677,15 +702,22 @@ export const createCMS = <
         revalidationRunner.fireManual(opts)
     : undefined;
 
-  const notify = (input: NotificationInput) =>
-    notificationService.notify(input);
+  const notify = notificationService
+    ? (input: NotificationInput) => notificationService.notify(input)
+    : undefined;
 
   return {
     router,
     api,
     collections,
-    notify,
-    notificationService,
+    // notify / notificationService are present only when notifications are
+    // enabled — gated from the TYPE too (parallels `client.notifications`).
+    notify: notify as NotificationsEnabled<TDef> extends true
+      ? NonNullable<typeof notify>
+      : undefined,
+    notificationService: notificationService as NotificationsEnabled<TDef> extends true
+      ? NonNullable<typeof notificationService>
+      : undefined,
     revalidate: revalidate as HasRevalidate<TDef> extends true
       ? RevalidateFn<keyof DefCollections & string>
       : RevalidateFn<keyof DefCollections & string> | undefined,

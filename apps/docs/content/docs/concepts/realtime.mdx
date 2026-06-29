@@ -1,43 +1,42 @@
 ---
 title: Realtime
-description: Live server-to-client delivery over SSE — powers real-time notification push.
+description: Live server-to-client delivery over SSE — real-time notification push, Upstash-backed.
 ---
 
-Realtime is an optional transport for pushing events from the server to the browser over Server-Sent Events. Turn it on once and notifications are **pushed** to each user the moment they're raised, instead of waiting for a poll.
-
-The transport is a generic publish/subscribe pipe: the CMS owns the connection and the per-user authorization, and features publish their own live streams on top.
+Realtime is an optional layer that pushes events from the server to the browser over Server-Sent Events. Turn it on and notifications are **pushed** to each user the moment they're raised, instead of waiting for a poll. It's **Upstash-backed** — you configure it with your Upstash Redis credentials.
 
 ## Enabling it
 
-Pass a transport to the `realtime` option. The Upstash transport rides [Upstash Redis](https://upstash.com/) over HTTP (no sockets), so it works on serverless and edge runtimes:
+Pass your Upstash Redis credentials to the `realtime` option. Upstash Realtime rides Redis over HTTP (no sockets), so it works on serverless and edge runtimes:
 
 ```ts
-import { createCMS, upstashRealtime } from '@createcms/core';
+import { createCMS } from '@createcms/core';
 
 export const cms = createCMS({
   // …
-  realtime: upstashRealtime({
+  // authMiddleware must resolve the user from the request cookie (see below).
+  realtime: {
     url: process.env.UPSTASH_REDIS_REST_URL!,
     token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-  }),
+  },
 });
 ```
 
-`@upstash/realtime` and `@upstash/redis` are **optional peer dependencies** — install them alongside `realtime`:
+`@upstash/realtime` and `@upstash/redis` are **optional peer dependencies** — install them when you enable realtime:
 
 ```bash
 npm install @upstash/realtime @upstash/redis
 ```
 
-Without the transport configured, nothing breaks: notifications fall back to the poll and the `/realtime` route stays dormant.
+Without `realtime`, nothing breaks: the `/realtime` route is never mounted, and notifications stay available through the durable [`listNotifications`](/docs/reference/notifications) poll — you just don't get live push, and there is no built-in polling hook.
 
 ## How it works
 
-Enabling `realtime` mounts a single Server-Sent-Events route at `/<basePath>/realtime` (e.g. `/api/cms/realtime`). A client subscribes to one or more **channels** and receives every event published to them. The CMS's own channel is the per-user notification stream, `notif:<userId>` — a user's **private** inbox feed. Plugins can publish to their own channels over the same route.
+Enabling `realtime` mounts a single Server-Sent-Events route at `/<basePath>/realtime` (e.g. `/api/cms/realtime`). A client subscribes to one or more **channels** and receives every event published to them. The CMS's own channel is the per-user notification stream, `notif:<userId>` — a user's **private** inbox feed.
 
-The browser only ever talks to that **same-origin** route — it opens an `EventSource` to `/realtime`, and the **server is the broker**: it authenticates the connection, subscribes to the backing transport (with Upstash, the Redis pub/sub channel) using server-side credentials, and relays each message to the browser as SSE. The client never connects to the backing store directly, so the transport's URL and token never leave the server.
+The browser only ever talks to that **same-origin** route — it opens an `EventSource` to `/realtime`, and the **server is the broker**: it authenticates the connection, subscribes to Upstash Redis (pub/sub) with server-side credentials, and relays each message to the browser as SSE. The client never connects to Upstash directly, so the `url` and `token` never leave the server.
 
-The stream is best-effort: the durable store stays the source of truth, and clients reconcile with a normal fetch on connect and on error. A dropped event only delays the live update until the next reconcile.
+The stream is best-effort: the durable store stays the source of truth, and the client reconciles with a normal fetch on connect. A dropped event only delays the live update until the next reconcile.
 
 ## Security model
 
@@ -51,52 +50,44 @@ Authentication reuses your [`authMiddleware`](/docs/reference/configuration#auth
 
 ## Notifications
 
-When `realtime` is set, every notification is pushed to its recipient's private channel automatically — there's no extra wiring, because all notification sources funnel through the same dispatch. On the client, `useNotifications` seeds from the [`listNotifications`](/docs/reference/notifications) poll, then subscribes to the user's own stream and prepends pushes live:
+Real-time notifications are **realtime-only** and ride **one shared connection**. Wrap your app once in the `RealtimeProvider` (it points the connection at your CMS route with credentials), then call `useNotifications` anywhere:
 
 ```tsx
-import { useNotifications } from '@createcms/core/react';
+// app root — one shared connection for every realtime hook
+import { RealtimeProvider } from '@createcms/core/react/realtime';
+
+<RealtimeProvider baseURL="/api/cms">{children}</RealtimeProvider>;
+```
+
+```tsx
+import { useNotifications } from '@createcms/core/react/realtime';
 
 function NotificationBell() {
   const { notifications, unreadCount, isLive } = useNotifications(client, {
     userId: currentUser.id,
-    baseURL: '/api/cms',
   });
 
   return <Badge count={unreadCount} live={isLive} items={notifications} />;
 }
 ```
 
-The hook manages its own connection (no provider to wire), de-dupes by id so the unread count never drifts, reconciles via the poll on connect/error, and degrades to the seeded poll when realtime is unavailable. Pass the current user's `id` — the server authorizes it against the session, so a wrong id only yields a poll-only fallback, never another user's data.
+When `realtime` is set, every notification is pushed to its recipient's private channel automatically — all sources funnel through one dispatch. The hook seeds list + unread count from the `listNotifications` poll, then prepends live pushes de-duped by id; the provider replays anything missed across a reconnect. Pass the current user's `id` — the server authorizes it against the session, so a wrong id only yields the poll-seeded list, never another user's data.
 
-## Transports
+Without `realtime` there is no live connection — read the durable list yourself with `client.notifications.listNotifications` and poll on your own cadence. The A/B [`useLiveResults`](/docs/plugins/ab-test) hook rides the **same** `RealtimeProvider` connection.
 
-`realtime` takes a **transport** — the adapter that actually carries messages between the server and the connected clients. createCMS currently ships one:
+## Disabling notifications
 
-- **`upstashRealtime({ url, token })`** — Upstash Redis over HTTP (Redis pub/sub for delivery, no sockets; serverless- and edge-friendly).
-
-A transport is just an implementation of the `RealtimeTransport` interface, so you can back realtime with your own infrastructure (your own Redis, NATS, a managed pub/sub, …):
+Set `notifications: false` to remove the feature entirely:
 
 ```ts
-type RealtimeTransport = {
-  // Push `data` as `event` to every subscriber of `channel`.
-  publish(channel: string, event: string, data: unknown): Promise<void>;
-
-  // Build the SSE request handler for the /realtime route. `authorize` is the
-  // CMS's per-connection gate — it runs your authMiddleware + the channel
-  // policy. Call it with the channels the request asks for, return its Response
-  // if it rejects, otherwise subscribe to those channels and stream events as
-  // SSE. Return null when the transport can't serve a stream (e.g. a peer
-  // dependency is missing) so the route falls through.
-  getSseHandler(
-    authorize: (
-      request: Request,
-      channels: string[],
-    ) => Response | void | Promise<Response | void>,
-  ): Promise<((request: Request) => Promise<Response | void>) | null>;
-};
+const cms = createCMS({
+  // …
+  notifications: false,
+});
 ```
 
-Two rules a custom transport must follow:
+This is a hard, **type-level** disable: the notification tables aren't generated (regenerate your schema after toggling), the routes never register, and `client.notifications` plus `cms.notify` are **absent from the inferred types** — a stray call is a compile error, not a runtime surprise.
 
-1. **Always run `authorize` before subscribing.** It's what enforces that a user only reads their own private channel — skip it and you open every channel to everyone.
-2. **Match the wire shape the client hooks expect.** `useNotifications` parses each SSE message as a `data:` line carrying `{ id, data, event, channel }` (your payload under `data`), and ignores the connection's system frames. Emit that shape to reuse the built-in hooks, or ship your own client.
+<Callout type="info">
+  Use a literal `false` to disable — a widened `boolean` value keeps the types enabled (the runtime still honours it). `notifications` and `realtime` are independent: A/B live results can use `realtime` with `notifications: false`.
+</Callout>

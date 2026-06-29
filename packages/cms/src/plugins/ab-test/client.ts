@@ -1,15 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect } from 'react';
 
 import type {
   CMSClientPlugin,
   CMSClientStore,
   CMSFetch,
 } from '../../client/types';
-import type {
-  AggregatedResults,
-  ConsentState,
-  LiveDelta,
-} from './analytics/types';
+import type { ConsentState } from './analytics/types';
 
 import {
   CONSENT_WAIT_MS,
@@ -211,7 +207,7 @@ export function abTestClient(options?: ABTestClientOptions) {
       };
     },
 
-    getActions($fetch: CMSFetch, _$store: CMSClientStore, baseURL: string) {
+    getActions($fetch: CMSFetch, _$store: CMSClientStore, _baseURL: string) {
       const gate = createConsentGate();
 
       // M3a — client-side event-bus. A fired event fans to these sinks; each
@@ -556,151 +552,6 @@ export function abTestClient(options?: ABTestClientOptions) {
             gate.reset();
           },
 
-          /**
-           * React hook for live dashboard results.
-           * Connects to the auto-registered realtime SSE route.
-           */
-          useLiveResults(opts: { testId: string; initial: AggregatedResults }) {
-            const [results, setResults] = useState<AggregatedResults>(
-              opts.initial,
-            );
-            const [isLive, setIsLive] = useState(false);
-
-            const applyDelta = useCallback((delta: LiveDelta) => {
-              setResults((prev) => {
-                // Conversions count the test's GOAL event — the same rule
-                // getResults uses; 'conversion' is the goal-less default.
-                const goalEvent = prev.goalEvent ?? 'conversion';
-                const variants = prev.variants.map((v) => {
-                  if (v.variantId !== delta.variantId) return v;
-                  const updated = { ...v };
-                  if (delta.eventType === 'impression') {
-                    updated.impressions += delta.count;
-                  }
-                  if (delta.eventType === goalEvent) {
-                    updated.conversions += delta.count;
-                  }
-                  const breakdown = { ...updated.eventBreakdown };
-                  const entry = breakdown[delta.eventType] ?? {
-                    count: 0,
-                    uniqueVisitors: 0,
-                    distinctInteractions: 0,
-                  };
-                  breakdown[delta.eventType] = {
-                    count: entry.count + delta.count,
-                    uniqueVisitors: entry.uniqueVisitors,
-                    // Live deltas don't carry interaction ids; the funnel
-                    // refreshes on the next getResults poll.
-                    distinctInteractions: entry.distinctInteractions,
-                  };
-                  updated.eventBreakdown = breakdown;
-                  updated.conversionRate =
-                    updated.impressions > 0
-                      ? Math.round(
-                          (updated.conversions / updated.impressions) * 10000,
-                        ) / 100
-                      : 0;
-                  return updated;
-                });
-
-                return {
-                  ...prev,
-                  variants,
-                  totalImpressions: variants.reduce(
-                    (s, v) => s + v.impressions,
-                    0,
-                  ),
-                  totalConversions: variants.reduce(
-                    (s, v) => s + v.conversions,
-                    0,
-                  ),
-                };
-              });
-            }, []);
-
-            useEffect(() => {
-              // Subscribe over the shared core realtime route (public
-              // `ab:live:<testId>` channel). Requires the CMS to be configured
-              // with a `realtime` transport; otherwise the stream 404s and the
-              // hook degrades to the getResults poll.
-              const channel = `ab:live:${opts.testId}`;
-              let cancelled = false;
-              let current: EventSource | null = null;
-
-              const reconcile = () => {
-                $fetch('/abTest/getResults', {
-                  method: 'GET',
-                  query: { testId: opts.testId },
-                })
-                  .then((fresh) => setResults(fresh as AggregatedResults))
-                  .catch(() => {});
-              };
-
-              const open = () => {
-                if (cancelled) return;
-                const url = `${baseURL}/realtime?channel=${encodeURIComponent(channel)}`;
-                let socket: EventSource;
-                try {
-                  socket = new EventSource(url);
-                } catch {
-                  return;
-                }
-                current = socket;
-                const isStale = () => cancelled || socket !== current;
-
-                socket.onopen = () => {
-                  if (isStale()) return;
-                  setIsLive(true);
-                  // Reconcile increments published before the stream connected
-                  // (deltas are pure increments; a missed one is otherwise lost).
-                  reconcile();
-                };
-
-                socket.onmessage = (event) => {
-                  if (isStale()) return;
-                  let frame: unknown;
-                  try {
-                    frame = JSON.parse(event.data);
-                  } catch {
-                    return;
-                  }
-                  if (!frame || typeof frame !== 'object') return;
-                  const f = frame as Record<string, unknown>;
-                  // System frames carry `type`; data frames are the
-                  // { id, data, event, channel } envelope.
-                  if (typeof f.type === 'string') {
-                    if (f.type === 'reconnect') {
-                      socket.close();
-                      open(); // server self-terminates near its serverless window
-                    } else if (f.type === 'error' || f.type === 'disconnected') {
-                      setIsLive(false);
-                      reconcile();
-                    }
-                    return;
-                  }
-                  if (f.event !== 'delta') return;
-                  applyDelta(f.data as LiveDelta);
-                };
-
-                socket.onerror = () => {
-                  if (isStale()) return;
-                  setIsLive(false);
-                  reconcile();
-                };
-              };
-
-              open();
-
-              return () => {
-                cancelled = true;
-                current?.close();
-                current = null;
-                setIsLive(false);
-              };
-            }, [opts.testId, applyDelta, baseURL]);
-
-            return { results, isLive };
-          },
         },
       };
     },

@@ -12,10 +12,29 @@ import { fileExists } from '../utils/fs';
 import { loadCMSConfig } from '../utils/load-config';
 import { confirmOverwrite, createSpinner, printMeta } from '../utils/ui';
 
+/** The core schema, minus the notifications table + its enum when notifications
+ *  are disabled (`notifications: false`). `notificationType` is referenced only
+ *  by the `notifications` table, so both drop together. */
+export function coreSchemaFor(
+  notificationsEnabled: boolean,
+): SchemaSource['schema'] {
+  if (notificationsEnabled) return coreSchema as SchemaSource['schema'];
+  const tables = { ...coreSchema.tables };
+  delete (tables as Record<string, unknown>).notifications;
+  const enums = { ...coreSchema.enums };
+  delete (enums as Record<string, unknown>).notificationType;
+  return { ...coreSchema, tables, enums } as SchemaSource['schema'];
+}
+
 function collectSchemaSources(
   config: Awaited<ReturnType<typeof loadCMSConfig>>,
 ): SchemaSource[] {
-  const sources: SchemaSource[] = [{ name: 'core', schema: coreSchema }];
+  const sources: SchemaSource[] = [
+    {
+      name: 'core',
+      schema: coreSchemaFor(config.$notifications !== false),
+    },
+  ];
 
   if (config.$plugins) {
     for (const plugin of config.$plugins) {

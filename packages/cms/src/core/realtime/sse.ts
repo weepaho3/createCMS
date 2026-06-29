@@ -1,6 +1,6 @@
 import type { CMSMiddleware, CMSProcedureCtx } from '../types/definitions';
 import { defaultAuthorizeChannels } from './channels';
-import type { RealtimeTransport } from './types';
+import type { RealtimeRuntime } from './types';
 
 /** Channel-authorization policy: maps an authenticated (or anonymous) caller +
  *  requested channels to a rejecting `Response`, or void to allow. */
@@ -10,7 +10,7 @@ export type AuthorizeChannelsPolicy = (
 ) => Response | void;
 
 export type RealtimeRouteOptions = {
-  transport: RealtimeTransport;
+  transport: RealtimeRuntime;
   /**
    * The exact pathname this route serves (e.g. `/api/cms/realtime`). Matched
    * exactly — NOT by suffix — so it never swallows a sibling that merely ends in

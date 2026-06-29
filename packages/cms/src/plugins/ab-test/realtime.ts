@@ -1,4 +1,4 @@
-import type { RealtimeTransport } from '../../core/realtime/types';
+import type { RealtimeRuntime } from '../../core/realtime/types';
 import type { LiveDelta } from './analytics/types';
 
 /**
@@ -10,7 +10,7 @@ import type { LiveDelta } from './analytics/types';
  * dashboard until the next poll. No-op when no transport is configured.
  */
 export function publishLiveDelta(
-  realtime: RealtimeTransport | undefined,
+  realtime: RealtimeRuntime | undefined,
   testId: string,
   variantId: string,
   eventName: string,
