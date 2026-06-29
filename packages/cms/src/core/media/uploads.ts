@@ -75,7 +75,7 @@ export async function prepareAssetUpload(
   return { actor, folderId, prepared };
 }
 
-async function generateUniqueSlug(
+export async function generateUniqueSlug(
   db: DrizzleInstance,
   baseName: string,
   inFlightSlugs?: Set<string>,
@@ -112,7 +112,7 @@ async function generateUniqueSlug(
   return null;
 }
 
-function validateFiles(
+export function validateFiles(
   files: UploadFileInput[],
   config: {
     maxFiles: number;
@@ -145,7 +145,7 @@ function validateFiles(
   }
 }
 
-async function assertFolderExists(
+export async function assertFolderExists(
   db: DrizzleInstance,
   folderId: string,
   scope: ResolvedScope,

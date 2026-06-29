@@ -134,3 +134,39 @@ function TrackedForm(props: {
   children: ReactNode;
 }): ReactNode;
 ```
+
+## Realtime
+
+Imported from the `@createcms/core/react/realtime` subpath (which pulls in the optional `@upstash/realtime` peer — kept out of the main `@createcms/core/react` barrel). Both hooks ride one shared connection; see [Realtime](/docs/concepts/realtime).
+
+### `RealtimeProvider`
+
+Wraps your app in one shared realtime connection that every CMS realtime hook (`useNotifications`, the A/B `useLiveResults`) rides. Derives the endpoint + credentials from `baseURL`.
+
+```tsx
+function RealtimeProvider(props: {
+  children: ReactNode;
+  baseURL: string; // same value passed to createCMSClient
+  maxReconnectAttempts?: number;
+}): ReactNode;
+```
+
+### `useNotifications`
+
+Subscribes the current user to their live notification stream over the `RealtimeProvider` connection and seeds from the `listNotifications` poll. De-dupes by id; the provider replays anything missed across a reconnect. Realtime-only — requires a mounted `RealtimeProvider` and `notifications` enabled (it type-requires `client.notifications`). Pass the current user's `id` (the server authorizes it against the session).
+
+```ts
+function useNotifications(
+  client: CMSClient,
+  options: {
+    userId: string;
+    limit?: number;
+    withUser?: boolean;
+  },
+): {
+  notifications: NotificationListItem[];
+  unreadCount: number;
+  isLive: boolean;
+  refresh: () => void;
+};
+```

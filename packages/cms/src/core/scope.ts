@@ -34,19 +34,6 @@ export function variableScopeConditions(
   return tableScopeConditions('variables', scopeColumns, exclude);
 }
 
-/**
- * Like {@link rootScopeConditions} but against an un-aliased `cms.assets` — for
- * the read-time image resolver (`resolveImageAssets`), so an asset id stored in
- * content (an author-controlled string) only resolves to a slug when the asset
- * is in the active scope. Symmetric with the variable/root read filtering.
- */
-export function assetScopeConditions(
-  scopeColumns: Record<string, unknown> | undefined,
-  exclude: readonly string[] = [],
-): SQL[] {
-  return tableScopeConditions('assets', scopeColumns, exclude);
-}
-
 function tableScopeConditions(
   table: string,
   scopeColumns: Record<string, unknown> | undefined,

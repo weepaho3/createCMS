@@ -13,13 +13,18 @@ import {
 import { assetFolders, assets } from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError, errorMessages } from '../errors';
-import { prepareAssetUpload } from '../media/uploads';
+import {
+  assertFolderExists,
+  generateUniqueSlug,
+  prepareAssetUpload,
+  validateFiles,
+} from '../media/uploads';
 import { crossScopeColumns, scopedInsert, scopedInsertBatch } from '../scope';
 import { createS3Client } from '../storage/s3/client';
 import {
+  buildObjectKey,
   buildPublicObjectUrl,
   buildVariantSlug,
-  getContentTypeForVariant,
   putObject,
   S3Error,
   signPutObject,
@@ -482,7 +487,12 @@ export function createMediaEndpoints(
      * access control (rejects assets whose status is `private`).
      */
     asset: createEndpoint(
-      '/media/asset/{assetSlug}',
+      // Addressed by the STABLE asset id, not the slug: content stores the id,
+      // so an `<img src="/media/asset/{id}">` survives a `replaceAsset` (which
+      // mints a new slug/objectKey) without touching content or re-rendering —
+      // the gate just re-resolves the id to the current object. (rou3 needs
+      // `:param`, not OpenAPI `{param}` braces, or the route never matches.)
+      '/media/asset/:assetId',
       {
         method: 'GET',
         query: z.object({
@@ -496,8 +506,8 @@ export function createMediaEndpoints(
         ),
       },
       async (ctx) => {
-        const params = ctx.params as { assetSlug: string };
-        const assetSlug = params.assetSlug;
+        const params = ctx.params as { assetId: string };
+        const assetId = params.assetId;
 
         const [asset] = await db
           .select({
@@ -508,11 +518,11 @@ export function createMediaEndpoints(
             slug: assets.slug,
           })
           .from(assets)
-          .where(and(eq(assets.slug, assetSlug), isNull(assets.archivedAt)));
+          .where(and(eq(assets.id, assetId), isNull(assets.archivedAt)));
 
         if (!asset) {
           throw new CMSError('ASSET_NOT_FOUND', {
-            message: errorMessages.assetNotFound(assetSlug),
+            message: errorMessages.assetNotFound(assetId),
           });
         }
 
@@ -533,7 +543,11 @@ export function createMediaEndpoints(
             .select({ objectKey: assets.objectKey })
             .from(assets)
             .where(
-              and(eq(assets.slug, variantSlug), eq(assets.variantOf, asset.id)),
+              and(
+                eq(assets.slug, variantSlug),
+                eq(assets.variantOf, asset.id),
+                isNull(assets.archivedAt),
+              ),
             );
 
           if (variant) {
@@ -542,26 +556,27 @@ export function createMediaEndpoints(
         }
 
         const location = buildPublicObjectUrl(mediaConfig.publicUrl, targetKey);
-        const contentType = getContentTypeForVariant(
-          asset.mimeType,
-          ctx.query?.format,
-        );
 
-        return {
-          headers: {
-            location,
-            'cache-control':
-              'public, max-age=31536000, s-maxage=86400, immutable',
-            'content-type': contentType,
-            ...(hasVariantParams ? { vary: 'Accept' } : {}),
-            ...(ctx.query?.download
-              ? {
-                  'content-disposition': `attachment; filename="${asset.slug.replace(/["\\\r\n]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(asset.slug)}`,
-                }
-              : {}),
-          },
-          body: {},
-        };
+        // Redirect (302) so a real `<img src>` / browser request follows
+        // `location` to the public object URL. better-call applies response
+        // headers from `ctx.responseHeaders` (and the status from `ctx.redirect`),
+        // NOT from a returned `{ headers, body }` object — that shape is only
+        // visible to the server-side caller, never on the HTTP response, so the
+        // router would otherwise answer 200 with an empty body (a broken image).
+        //
+        // The redirect is SHORT-cached (NOT immutable) because the id->object
+        // mapping changes on `replaceAsset`: a brief TTL lets a swapped image
+        // propagate to already-rendered pages within minutes, while the bytes
+        // themselves stay long-cached at the CDN (each object key is unique per
+        // version). The 302 is bodyless, so re-resolving it is cheap.
+        ctx.responseHeaders.set('cache-control', 'public, max-age=300');
+        if (ctx.query?.download) {
+          ctx.responseHeaders.set(
+            'content-disposition',
+            `attachment; filename="${asset.slug.replace(/["\\\r\n]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(asset.slug)}`,
+          );
+        }
+        return ctx.redirect(location);
       },
     ),
 
@@ -618,6 +633,91 @@ export function createMediaEndpoints(
           .where(and(...updateConditions));
 
         return { updated: existing.length };
+      },
+    ),
+
+    /**
+     * Moves one or more assets into a folder (or to the root with `folderId: null`).
+     * Mirrors updateAssetStatus's bulk-by-ids + scope pattern; non-existent,
+     * out-of-scope, and archived ids are skipped (surfaced in `skipped`), so a
+     * batch partially succeeds. A moved asset's variants follow it into the same
+     * folder, so an original and its variants are never split apart — and a
+     * variant id passed on its own is skipped (variants are not moved directly).
+     *
+     * @param assetIds - Asset ids to move (at least one).
+     * @param folderId - Target folder id, or `null` to move to the root.
+     * @returns `{ moved, movedIds, skipped }`.
+     * @throws FOLDER_NOT_FOUND if `folderId` is given but does not exist (in scope).
+     * @throws ASSET_NOT_FOUND if none of the ids reference a live, in-scope asset.
+     * @example await cmsClient.media.moveAssets({ assetIds: ['ast_...'], folderId: 'fld_...' })
+     */
+    moveAssets: createCMSEndpoint(
+      '/media/moveAssets',
+      {
+        method: 'POST',
+        body: z.object({
+          assetIds: z.array(z.string()).min(1),
+          folderId: z.string().min(1).nullable(),
+        }),
+        metadata: cmsMeta({}, { operation: 'update', ...MEDIA_META }),
+      },
+      async (ctx) => {
+        const { scope } = ctx.context;
+        const { assetIds, folderId } = ctx.body;
+
+        // Validate the target folder (scoped) unless moving to the root. An
+        // out-of-scope/missing folder yields no row → FOLDER_NOT_FOUND, no leak.
+        if (folderId !== null) {
+          await assertFolderExists(db, folderId, scope);
+        }
+
+        // Live, in-scope assets among the requested ids.
+        const selectConditions = [
+          inArray(assets.id, assetIds),
+          isNull(assets.archivedAt),
+        ];
+        if (scope.assets?.where)
+          selectConditions.push(scope.assets.where as any);
+
+        const existing = await db
+          .select({ id: assets.id, variantOf: assets.variantOf })
+          .from(assets)
+          .where(and(...selectConditions));
+
+        if (existing.length === 0) {
+          throw new CMSError('ASSET_NOT_FOUND', {
+            message: 'No assets found for the given IDs',
+          });
+        }
+
+        // Only ORIGINALS move directly; a variant follows its original via the
+        // cascade below and is never relocated on its own, so it stays
+        // co-located. A variant id passed alone is therefore skipped (it is not
+        // independently movable), not split off from its original.
+        const movedIds = existing
+          .filter((a) => a.variantOf === null)
+          .map((a) => a.id);
+
+        if (movedIds.length > 0) {
+          // Move the assets AND their variants (co-located), scoped + non-archived.
+          const updateConditions = [
+            or(
+              inArray(assets.id, movedIds),
+              inArray(assets.variantOf, movedIds),
+            )!,
+            isNull(assets.archivedAt),
+          ];
+          if (scope.assets?.where)
+            updateConditions.push(scope.assets.where as any);
+
+          await db
+            .update(assets)
+            .set({ folderId, updatedAt: new Date() })
+            .where(and(...updateConditions));
+        }
+
+        const skipped = assetIds.filter((id) => !movedIds.includes(id));
+        return { moved: movedIds.length, movedIds, skipped };
       },
     ),
 
@@ -960,6 +1060,162 @@ export function createMediaEndpoints(
             // not for content, which references the asset id and serves via the gate.
             url: buildPublicObjectUrl(mediaConfig.publicUrl, p.objectKey),
           })),
+        };
+      },
+    ),
+
+    /**
+     * Replaces the bytes behind an existing asset, keeping its `id` (and
+     * `folderId`/`status`) stable so every content reference picks up the new
+     * image with no content change — the read path stores the id and the gate
+     * re-resolves it. A NEW slug/objectKey is minted (not an overwrite): the gate
+     * stamps a long CDN cache on each object, so reusing the key would serve the
+     * stale image; a new key is a natural cache-bust, and the short-cached gate
+     * redirect propagates it within minutes.
+     *
+     * Server-side and atomic, like uploadAssets but reversed: the new object is
+     * PUT first, then (only on success) the row is repointed in one transaction
+     * that also archives the asset's old variants (they depict the old bytes and
+     * are unreachable from the new slug). The old object is left orphaned for a
+     * future pruning pass. Returns the updated asset.
+     *
+     * @param assetId - The asset to replace.
+     * @param file - The new file (`buffer` of bytes, like uploadAssets).
+     * @returns `{ asset: { id, slug, objectKey, url, mimeType, size } }`.
+     * @throws ASSET_NOT_FOUND if the asset does not exist (in scope) or is archived.
+     * @throws CANNOT_REPLACE_VARIANT if the target is itself a variant.
+     * @throws FILE_TOO_LARGE / INVALID_FILE_TYPE on validation failure.
+     * @throws UPLOAD_FAILED if the S3 upload fails (the asset is left unchanged).
+     * @example await cmsClient.media.replaceAsset({ assetId: 'ast_...', file: { name, size, type, buffer } })
+     */
+    replaceAsset: createCMSEndpoint(
+      '/media/replaceAsset',
+      {
+        method: 'POST',
+        body: z.object({
+          assetId: z.string().min(1),
+          file: z.object({
+            name: z.string().min(1),
+            size: z.number().int().positive(),
+            type: z.string().min(1),
+            buffer: z.instanceof(Blob).or(z.instanceof(ArrayBuffer)),
+          }),
+        }),
+        metadata: cmsMeta({}, { operation: 'update', ...MEDIA_META }),
+      },
+      async (ctx) => {
+        const { scope } = ctx.context;
+        const { assetId, file } = ctx.body;
+
+        // 1. Load the target (live, in scope).
+        const loadConditions = [
+          eq(assets.id, assetId),
+          isNull(assets.archivedAt),
+        ];
+        if (scope.assets?.where) loadConditions.push(scope.assets.where as any);
+
+        const [target] = await db
+          .select({ id: assets.id, variantOf: assets.variantOf })
+          .from(assets)
+          .where(and(...loadConditions));
+
+        if (!target) {
+          throw new CMSError('ASSET_NOT_FOUND', {
+            message: errorMessages.assetNotFound(assetId),
+          });
+        }
+
+        // 2. A variant must be regenerated via its original, never replaced
+        //    directly (the gate computes variant slugs from the original).
+        if (target.variantOf) {
+          throw new CMSError('CANNOT_REPLACE_VARIANT');
+        }
+
+        // 3. Validate the new file (size / mime type).
+        validateFiles([file], { maxFiles, maxFileSize, allowedMimeTypes });
+
+        // 4. Mint a NEW slug/objectKey from the new file (cache-bust).
+        const slug = await generateUniqueSlug(db, file.name, undefined, scope);
+        if (!slug) {
+          throw new CMSError('SLUG_GENERATION_FAILED');
+        }
+        const objectKey = buildObjectKey(slug);
+
+        // 5. PUT the new object FIRST — on failure the row is untouched, so the
+        //    asset keeps serving its existing (still-present) object.
+        try {
+          await putObject(getS3Client(), {
+            bucket: bucketName,
+            key: objectKey,
+            body: file.buffer,
+            contentType: file.type,
+            contentLength: file.size,
+            acl: 'public-read',
+          });
+        } catch (err) {
+          const status = err instanceof S3Error ? 500 : 0;
+          throw new CMSError('UPLOAD_FAILED', {
+            message: errorMessages.uploadFailed(file.name, status),
+          });
+        }
+
+        // 6. Atomically repoint the row at the new object AND archive the old
+        //    variants (stale bytes, unreachable from the new slug). id, folderId,
+        //    status, variantOf are unchanged. Old object is left for pruning.
+        const now = new Date();
+        await db.transaction(async (tx) => {
+          const updateConditions = [
+            eq(assets.id, assetId),
+            isNull(assets.archivedAt),
+          ];
+          if (scope.assets?.where)
+            updateConditions.push(scope.assets.where as any);
+
+          const repointed = await tx
+            .update(assets)
+            .set({
+              slug,
+              objectKey,
+              mimeType: file.type,
+              size: file.size,
+              updatedAt: now,
+            })
+            .where(and(...updateConditions))
+            .returning({ id: assets.id });
+
+          // The asset was archived / left scope between the load and here
+          // (TOCTOU). Roll back so we never report a replace that didn't land;
+          // the just-PUT object is left orphaned for the pruning pass.
+          if (repointed.length === 0) {
+            throw new CMSError('ASSET_NOT_FOUND', {
+              message: errorMessages.assetNotFound(assetId),
+            });
+          }
+
+          const variantConditions = [
+            eq(assets.variantOf, assetId),
+            isNull(assets.archivedAt),
+          ];
+          if (scope.assets?.where)
+            variantConditions.push(scope.assets.where as any);
+
+          await tx
+            .update(assets)
+            .set({ archivedAt: now, updatedAt: now })
+            .where(and(...variantConditions));
+        });
+
+        return {
+          asset: {
+            id: assetId,
+            slug,
+            objectKey,
+            // Direct object URL for INTERNAL/admin display only (see the gate
+            // for serving in content).
+            url: buildPublicObjectUrl(mediaConfig.publicUrl, objectKey),
+            mimeType: file.type,
+            size: file.size,
+          },
         };
       },
     ),

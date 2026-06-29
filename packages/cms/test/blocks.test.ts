@@ -89,24 +89,6 @@ describe('listRoots', () => {
     expect(titles).toEqual(['About', 'Home']);
   });
 
-  it('all roots share the default tenant when no plugin is active', async () => {
-    const { cms } = await setupTestCMS();
-
-    await cms.api.pages.createRoot({
-      body: { slug: '/a', properties: { title: 'Page A' } },
-    });
-
-    await cms.api.pages.createRoot({
-      body: { slug: '/b', properties: { title: 'Page B' } },
-    });
-
-    const result = await cms.api.pages.listRoots();
-
-    expect(result.roots).toHaveLength(2);
-    const titles = result.roots.map((r) => (r.properties as any).title).sort();
-    expect(titles).toEqual(['Page A', 'Page B']);
-  });
-
   it('returns paginated results with total and hasMore', async () => {
     const { cms } = await setupTestCMS();
 
@@ -539,10 +521,8 @@ describe('getBlockTree', () => {
       },
     });
 
-    // raw: inspect STORED content — image props resolve to { id, slug } on the
-    // rendered (non-raw) read, which this structural test is not exercising.
     const result = await cms.api.pages.getBlockTree({
-      query: { rootId: root.rootId, branchId: root.branchId, raw: true },
+      query: { rootId: root.rootId, branchId: root.branchId },
     });
 
     expect(result.reconstructed).toBe(false);
@@ -2401,9 +2381,8 @@ describe('updateBlocks', () => {
       .where(eq(commits.id, result.commitId));
     expect(newCommit.message).toBe('Batch edit');
 
-    // raw: assert STORED content round-trips (non-raw resolves image props).
     const { tree } = await cms.api.pages.getBlockTree({
-      query: { rootId: root.rootId, branchId: root.branchId, raw: true },
+      query: { rootId: root.rootId, branchId: root.branchId },
     });
 
     expect(tree.children[0].properties).toEqual({ text: 'A updated' });

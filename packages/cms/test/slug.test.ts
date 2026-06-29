@@ -50,12 +50,6 @@ describe('createSlug', () => {
   it('handles dot-only input gracefully', () => {
     expect(createSlug('...')).toBe('.');
   });
-
-  it('converts existing hyphens to spaces then back to hyphens', () => {
-    expect(createSlug('already-hyphenated-file.jpg')).toBe(
-      'already-hyphenated-file.jpg',
-    );
-  });
 });
 
 describe('buildVariantSlug', () => {

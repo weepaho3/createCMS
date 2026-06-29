@@ -1,15 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useEffect } from 'react';
 
 import type {
   CMSClientPlugin,
   CMSClientStore,
   CMSFetch,
 } from '../../client/types';
-import type {
-  AggregatedResults,
-  ConsentState,
-  LiveDelta,
-} from './analytics/types';
+import type { ConsentState } from './analytics/types';
 
 import {
   CONSENT_WAIT_MS,
@@ -211,7 +207,7 @@ export function abTestClient(options?: ABTestClientOptions) {
       };
     },
 
-    getActions($fetch: CMSFetch, _$store: CMSClientStore, baseURL: string) {
+    getActions($fetch: CMSFetch, _$store: CMSClientStore, _baseURL: string) {
       const gate = createConsentGate();
 
       // M3a — client-side event-bus. A fired event fans to these sinks; each
@@ -556,107 +552,6 @@ export function abTestClient(options?: ABTestClientOptions) {
             gate.reset();
           },
 
-          /**
-           * React hook for live dashboard results.
-           * Connects to the auto-registered realtime SSE route.
-           */
-          useLiveResults(opts: { testId: string; initial: AggregatedResults }) {
-            const [results, setResults] = useState<AggregatedResults>(
-              opts.initial,
-            );
-            const [isLive, setIsLive] = useState(false);
-            const esRef = useRef<EventSource | null>(null);
-
-            const applyDelta = useCallback((delta: LiveDelta) => {
-              setResults((prev) => {
-                const variants = prev.variants.map((v) => {
-                  if (v.variantId !== delta.variantId) return v;
-                  const updated = { ...v };
-                  if (delta.eventType === 'impression') {
-                    updated.impressions += delta.count;
-                  } else if (delta.eventType === 'conversion') {
-                    updated.conversions += delta.count;
-                  }
-                  const breakdown = { ...updated.eventBreakdown };
-                  const entry = breakdown[delta.eventType] ?? {
-                    count: 0,
-                    uniqueVisitors: 0,
-                    distinctInteractions: 0,
-                  };
-                  breakdown[delta.eventType] = {
-                    count: entry.count + delta.count,
-                    uniqueVisitors: entry.uniqueVisitors,
-                    // Live deltas don't carry interaction ids; the funnel
-                    // refreshes on the next getResults poll.
-                    distinctInteractions: entry.distinctInteractions,
-                  };
-                  updated.eventBreakdown = breakdown;
-                  updated.conversionRate =
-                    updated.impressions > 0
-                      ? Math.round(
-                          (updated.conversions / updated.impressions) * 10000,
-                        ) / 100
-                      : 0;
-                  return updated;
-                });
-
-                return {
-                  ...prev,
-                  variants,
-                  totalImpressions: variants.reduce(
-                    (s, v) => s + v.impressions,
-                    0,
-                  ),
-                  totalConversions: variants.reduce(
-                    (s, v) => s + v.conversions,
-                    0,
-                  ),
-                };
-              });
-            }, []);
-
-            useEffect(() => {
-              const url = `${baseURL}/abTest/realtime?channels=ab:live:${opts.testId}`;
-
-              let es: EventSource;
-              try {
-                es = new EventSource(url);
-              } catch {
-                return;
-              }
-
-              esRef.current = es;
-
-              es.onopen = () => setIsLive(true);
-
-              es.onmessage = (event) => {
-                try {
-                  const delta = JSON.parse(event.data) as LiveDelta;
-                  applyDelta(delta);
-                } catch {
-                  // Ignore malformed messages
-                }
-              };
-
-              es.onerror = () => {
-                setIsLive(false);
-                $fetch('/abTest/getResults', {
-                  method: 'GET',
-                  query: { testId: opts.testId },
-                })
-                  .then((fresh) => setResults(fresh as AggregatedResults))
-                  .catch(() => {});
-              };
-
-              return () => {
-                es.close();
-                esRef.current = null;
-                setIsLive(false);
-              };
-            }, [opts.testId, applyDelta]);
-
-            return { results, isLive };
-          },
         },
       };
     },

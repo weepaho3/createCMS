@@ -59,6 +59,7 @@ export type {
   CMSAfterHookContext,
   CMSEndpointContext,
   InferPluginEndpoints,
+  InferPluginRealtimeEvents,
   InferPluginErrorCodes,
   InferPluginContext,
 } from './core/types/plugin';
@@ -154,6 +155,14 @@ export type {
   OnNotificationHandler,
 } from './core/notifications/types';
 export type { NotificationService } from './core/notifications/service';
+export { notificationEvent } from './core/notifications/events';
+export type { NotificationEvent } from './core/notifications/events';
+
+// Realtime (optional, Upstash-only). Configure with `realtime: { url, token }`
+// on createCMS to enable the shared `/realtime` SSE route + per-user push; both
+// @upstash/* packages are optional peers. There is no pluggable transport.
+export { defaultAuthorizeChannels } from './core/realtime/channels';
+export type { RealtimeEventSchema } from './core/realtime/types';
 
 // Inferred row types for the schema tables — the better-auth-style model-type
 // surface. The table OBJECTS are intentionally NOT exported: consumers generate

@@ -1,0 +1,29 @@
+import * as z from 'zod';
+
+import { notificationTypeEnum } from '../db/schema.generated';
+
+/**
+ * The realtime wire schema for a pushed notification — a Zod mirror of
+ * {@link NotificationPayload}. Core OWNS this event; it is the payload delivered
+ * on the per-user `notif:<recipientId>` channel. The transport stays
+ * event-agnostic, so this schema is what types the notification push at its own
+ * boundary (publish-side validation + client `onData` inference).
+ *
+ * `createdAt` is a `Date` in memory but a string on the SSE wire (JSON); the
+ * receive side coerces it back via `z.coerce.date()`.
+ */
+export const notificationEvent = z.object({
+  id: z.string(),
+  recipientId: z.string(),
+  actorId: z.string().nullable(),
+  type: z.enum(notificationTypeEnum.enumValues),
+  title: z.string(),
+  body: z.string().nullable(),
+  resourceType: z.string().nullable(),
+  resourceId: z.string().nullable(),
+  collection: z.string().nullable(),
+  meta: z.record(z.string(), z.unknown()).nullable(),
+  createdAt: z.coerce.date(),
+});
+
+export type NotificationEvent = z.infer<typeof notificationEvent>;

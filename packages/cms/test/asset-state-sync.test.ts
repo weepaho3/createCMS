@@ -345,8 +345,12 @@ describe('asset state sync on unpublish', () => {
 // ============================================================================
 
 describe('media.asset (public endpoint with 302 redirect)', () => {
-  it('returns redirect headers with a signed URL for a public asset', async () => {
-    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+  it('redirects (302) to the public object URL with cache headers (over real HTTP)', async () => {
+    // Drives the real router, because the redirect status + headers come from
+    // `ctx.responseHeaders`/`ctx.redirect` — not from the handler's return value,
+    // which only the server-side caller can see. (This test used to call the
+    // server-side caller and so never observed the actual 200-vs-302 status.)
+    const { cms, db } = await setupTestCMS();
 
     const [asset] = await db
       .insert(assets)
@@ -357,20 +361,20 @@ describe('media.asset (public endpoint with 302 redirect)', () => {
         objectKey: 'test.png',
         status: 'public',
       })
-      .returning();
+      .returning({ id: assets.id });
 
-    // Public asset endpoint — no auth required
-    const result = await (cms.api.media.asset as any)({
-      params: { assetSlug: asset.slug },
-      query: {},
-    });
+    // The gate is addressed by the STABLE asset id, not the slug.
+    const res = await cms.router.handler(
+      new Request(`http://localhost/api/cms/media/asset/${asset.id}`),
+    );
 
-    expect(result.headers.location).toContain('test.png');
-    expect(result.headers.location).not.toContain('X-Amz-');
-    expect(result.headers['cache-control']).toContain('immutable');
-    expect(result.headers['content-type']).toBe('image/png');
-
-    await s3.cleanup();
+    expect(res.status).toBe(302);
+    const location = res.headers.get('location');
+    expect(location).toContain('test.png'); // redirect target keeps the slug/objectKey
+    expect(location).not.toContain('X-Amz-'); // public URL, not a presigned one
+    // SHORT-cached (NOT immutable) so a replaceAsset swap re-resolves.
+    expect(res.headers.get('cache-control')).toContain('max-age=300');
+    expect(res.headers.get('cache-control')).not.toContain('immutable');
   });
 
   it('rejects access to private assets', async () => {
@@ -389,7 +393,7 @@ describe('media.asset (public endpoint with 302 redirect)', () => {
 
     await expect(
       (cms.api.media.asset as any)({
-        params: { assetSlug: privateAsset.slug },
+        params: { assetId: privateAsset.id },
         query: {},
       }),
     ).rejects.toThrow(/private.*requires authentication/i);
@@ -402,12 +406,42 @@ describe('media.asset (public endpoint with 302 redirect)', () => {
 
     await expect(
       (cms.api.media.asset as any)({
-        params: { assetSlug: 'nonexistent.png' },
+        params: { assetId: 'ast_doesnotexist00000' },
         query: {},
       }),
     ).rejects.toThrow(/Asset not found/i);
 
     await s3.cleanup();
+  });
+
+  it('routes a real GET /media/asset/<id> URL through the router (regression: rou3 param syntax)', async () => {
+    // Regression guard. The route must be registered with rou3's `:param` syntax,
+    // not OpenAPI `{param}` braces: better-call passes the path verbatim to rou3,
+    // which treats `{assetId}` as a literal segment, so EVERY real
+    // `/media/asset/<id>` HTTP request 404'd at the router before the handler
+    // ran. The server-side `cms.api.media.asset(...)` caller bypasses URL routing
+    // (it sets ctx.params directly), which is why the other tests hid the bug —
+    // so this one drives a real Request through `cms.router.handler`.
+    const { cms, db } = await setupTestCMS();
+    const [asset] = await db
+      .insert(assets)
+      .values({
+        slug: 'routed.png',
+        mimeType: 'image/png',
+        size: 1024,
+        objectKey: 'routed.png',
+        status: 'public',
+      })
+      .returning({ id: assets.id });
+
+    const res = await cms.router.handler(
+      new Request(`http://localhost/api/cms/media/asset/${asset.id}`),
+    );
+
+    // With the brace-param bug this was a 404 route-not-found; fixed → the
+    // handler runs and 302-redirects to the public object URL.
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toContain('routed.png');
   });
 });
 

@@ -62,6 +62,16 @@
         "default": "./dist/react/index.cjs"
       }
     },
+    "./react/realtime": {
+      "import": {
+        "types": "./dist/react/realtime.d.ts",
+        "default": "./dist/react/realtime.js"
+      },
+      "require": {
+        "types": "./dist/react/realtime.d.cts",
+        "default": "./dist/react/realtime.cjs"
+      }
+    },
     "./react/blocks": {
       "import": {
         "types": "./dist/react/blocks.d.ts",
@@ -172,6 +182,16 @@
         "default": "./dist/plugins/ab-test/client.cjs"
       }
     },
+    "./plugins/ab-test/live": {
+      "import": {
+        "types": "./dist/plugins/ab-test/live.d.ts",
+        "default": "./dist/plugins/ab-test/live.js"
+      },
+      "require": {
+        "types": "./dist/plugins/ab-test/live.d.cts",
+        "default": "./dist/plugins/ab-test/live.cjs"
+      }
+    },
     "./plugins/ab-test/analytics/upstash": {
       "import": {
         "types": "./dist/plugins/ab-test/analytics/upstash.d.ts",
@@ -210,6 +230,16 @@
       "require": {
         "types": "./dist/plugins/consent/client.d.cts",
         "default": "./dist/plugins/consent/client.cjs"
+      }
+    },
+    "./plugins/consent/c15t": {
+      "import": {
+        "types": "./dist/plugins/consent/c15t.d.ts",
+        "default": "./dist/plugins/consent/c15t.js"
+      },
+      "require": {
+        "types": "./dist/plugins/consent/c15t.d.cts",
+        "default": "./dist/plugins/consent/c15t.cjs"
       }
     },
     "./next": {
@@ -276,6 +306,8 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@types/s3rver": "^3.7.4",
+    "@upstash/realtime": "^1.0.3",
+    "@upstash/redis": "^1.38.0",
     "bunchee": "^6.9.3",
     "drizzle-kit": "^0.31.9",
     "drizzle-orm": "^0.45.0",
@@ -288,12 +320,20 @@
   },
   "peerDependencies": {
     "@jsquash/webp": "^1.5.0",
+    "@upstash/realtime": ">=1.0.3",
+    "@upstash/redis": ">=1.35.4",
     "drizzle-orm": "^0.45.0",
     "next": ">=16",
     "react": ">=18"
   },
   "peerDependenciesMeta": {
     "@jsquash/webp": {
+      "optional": true
+    },
+    "@upstash/realtime": {
+      "optional": true
+    },
+    "@upstash/redis": {
       "optional": true
     },
     "next": {

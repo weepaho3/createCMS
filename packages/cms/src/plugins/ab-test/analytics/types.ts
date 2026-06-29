@@ -124,6 +124,12 @@ export type AggregatedResults = {
   variants: AggregatedVariantResult[];
   totalImpressions: number;
   totalConversions: number;
+  /**
+   * The test's resolved goal event (wire name), or null for the goal-less
+   * default where `conversion` events are the goal. Set by `getResults` so the
+   * live dashboard can apply deltas to conversions with the same rule.
+   */
+  goalEvent?: string | null;
 };
 
 // ============================================================================

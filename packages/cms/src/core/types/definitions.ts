@@ -88,17 +88,6 @@ export type ResolvedLink =
   | { kind: 'email'; href: string }
   | { kind: 'phone'; href: string };
 
-/**
- * The RESOLVED value of an `image` on a rendered read path (getPublishedContent
- * `resolved` mode + the non-raw getBlockTree read): the stored asset id is
- * resolved to `{ id, slug }` so the renderer can build the gate URL
- * `/media/asset/{slug}` — status-checked, transformable, SEO-friendly slug —
- * without a second lookup. `null` when the asset is gone / out of scope (the
- * renderer omits it). The stored value stays the bare id string in `raw` mode
- * (write input + editor re-picking).
- */
-export type ResolvedImage = { id: string; slug: string } | null;
-
 // ============================================================================
 // Scope Conditions (plugin-injected query/insert scoping)
 // ============================================================================
@@ -300,8 +289,9 @@ type BlockTypes = {
   boolean: boolean;
   date: string;
   richText: string;
-  // The AUTHORED value of an image is the asset's id STRING; it resolves to a
-  // `ResolvedImage` (`{ id, slug }`) only on the read path (the `resolved` mode).
+  // An image is the asset's id STRING, on both the write and read paths. The
+  // renderer serves it via the id-addressed gate `/media/asset/{id}`; nothing is
+  // resolved at read time (a slug swap behind the id propagates automatically).
   image: string;
   select: string;
   // The AUTHORED value of a reference is the target's rootId STRING. It is
@@ -395,14 +385,9 @@ type InferPropertyValue<
         M extends 'resolved'
         ? ResolvedLink
         : LinkValue
-      : T extends { type: 'image' }
-        ? // An image is the stored asset-id string in `raw` mode (write input +
-          // editor re-picking) and a `ResolvedImage` (`{ id, slug }`) on the
-          // `resolved` read path, so the renderer can build the gate URL.
-          M extends 'resolved'
-          ? ResolvedImage
-          : string
-        : BlockTypes[T['type']];
+      : // `image` is the asset-id string in BOTH modes (served via the
+        // id-addressed gate; nothing is resolved at read time).
+        BlockTypes[T['type']];
 
 type RequiredPart<
   T extends Record<string, BlockProperty>,
@@ -1110,6 +1095,24 @@ export type CMSDefinition<
     | RevalidateHandler<TCollections>
     | RevalidateConfig<TCollections>;
   onNotification?: OnNotificationHandler;
+  /**
+   * Set `false` to fully disable the notifications feature: the tables are not
+   * generated, the routes do not register or execute, and `client.notifications`
+   * (plus `cms.notify`) are absent from the inferred types. Default: enabled.
+   *
+   * IMPORTANT: pass a LITERAL `false`. The type gate keys on the literal — a
+   * widened `boolean` value keeps the types ENABLED even when it is `false` at
+   * runtime, so `cms.notify(...)` / `client.notifications.*` would type-check but
+   * throw or 404. Use `as const` (or a literal) if the value comes from a
+   * variable.
+   */
+  notifications?: boolean;
+  /**
+   * Upstash realtime credentials. Optional; enables the shared `/realtime` SSE
+   * route, per-user notification push, and A/B live results. Without it,
+   * notifications fall back to the durable `listNotifications` poll.
+   */
+  realtime?: { url: string; token: string };
 };
 
 // CMSInstance is not explicitly typed -- createCMS return type is inferred by TypeScript.
@@ -1134,6 +1137,7 @@ export type CMSProcedureCtx = {
   mergeStrategy?: MergeStrategy;
   scopeConditions?: ScopeConditionFactory[];
   notificationService?: import('../notifications/service').NotificationService;
+  realtime?: import('../realtime/types').RealtimeRuntime;
   resolvedUser?: ResolvedUserConfig;
 };
 

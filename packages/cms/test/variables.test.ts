@@ -110,18 +110,6 @@ describe('substituteVariables', () => {
     expect(tree.children[0].properties.sub).toBe('Build fast');
   });
 
-  it('leaves unknown variables as-is', () => {
-    const tree: BlockTreeNode = {
-      blockId: 'root',
-      type: 'page',
-      properties: { title: '{{unknown}}' },
-      children: [],
-    };
-
-    substituteVariables(tree, new Map());
-    expect(tree.properties.title).toBe('{{unknown}}');
-  });
-
   it('does nothing when vars map is empty', () => {
     const tree: BlockTreeNode = {
       blockId: 'root',

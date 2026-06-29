@@ -191,6 +191,15 @@ export type CMSPlugin<TPruningData = unknown> = {
 
   onNotification?: OnNotificationHandler;
 
+  /**
+   * Realtime event schemas this plugin contributes — a Zod map keyed by event
+   * name (owned where the event lives). Merged into the inferred registry (see
+   * {@link InferPluginRealtimeEvents}) so a configured `typeof cms` types both
+   * the server publish and the client subscription with full autocomplete.
+   * Type-level only: the transport is event-agnostic, there is no runtime merge.
+   */
+  realtimeEvents?: import('../realtime/types').RealtimeEventSchema;
+
   $ERROR_CODES?: Record<string, { status: number; message: string }>;
 };
 
@@ -224,6 +233,23 @@ export type InferPluginEndpoints<P extends CMSPlugin[]> = UnionToIntersection<
       : Record<string, never>
     : Record<string, never>
 >;
+
+/**
+ * The realtime event schemas plugins contribute, intersected across all plugins
+ * — the type-level analogue of {@link InferPluginEndpoints}. A plugin without
+ * `realtimeEvents` contributes `Record<string, never>` (identity under
+ * intersection). Unioned with
+ * core's own events, this is what types `cms.realtime.publish` (server) and the
+ * client subscription, so a configured `typeof cms` autocompletes every event.
+ */
+export type InferPluginRealtimeEvents<P extends CMSPlugin[]> =
+  UnionToIntersection<
+    P[number]['realtimeEvents'] extends infer E
+      ? E extends import('../realtime/types').RealtimeEventSchema
+        ? E
+        : Record<string, never>
+      : Record<string, never>
+  >;
 
 /**
  * The per-collection endpoints plugins contribute to EVERY collection — the

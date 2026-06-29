@@ -28,6 +28,7 @@ export const createCMS = (definition) => ({
   collections: definition.collections || {},
   $plugins: definition.plugins || [],
   $schema: definition.schema,
+  $notifications: definition.notifications,
 });
 // Config authoring helpers are pure identity functions at runtime (see
 // core/define.ts). The shim re-implements them so a config that imports the
@@ -237,6 +238,9 @@ export async function loadCMSConfig(configPath: string) {
     return instance as {
       $plugins?: Array<{ id: string; schema?: unknown }>;
       $schema?: { output?: string };
+      // `notifications: false` drops the notification table + enum from the
+      // generated schema (see collectSchemaSources). Default: enabled.
+      $notifications?: boolean;
     };
   } finally {
     restore();

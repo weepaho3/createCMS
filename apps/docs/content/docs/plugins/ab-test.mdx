@@ -64,6 +64,24 @@ cmsClient.abTest.setConsent({ analytics_storage: 'granted' });
 | `dispatchEvent` | `(event) => void` | Dispatch a client event. |
 | `identify` / `reset` | visitor context | Set or clear the visitor key. |
 
+### Live results
+
+`useLiveResults` streams result deltas to the dashboard over the public `ab:live:<testId>` channel. It's imported from its own subpath (which pulls in the optional `@upstash/realtime` peer) and rides the shared [`RealtimeProvider`](/docs/concepts/realtime) connection — the same one `useNotifications` uses:
+
+```tsx
+import { useLiveResults } from '@createcms/core/plugins/ab-test/live';
+
+const { results, isLive } = useLiveResults({
+  testId,
+  initial, // SSR snapshot from getResults
+  getResults: () => client.abTest.getResults({ query: { testId } }), // reconcile on (re)connect
+});
+```
+
+<Callout type="info">
+  Live delivery is decoupled from the analytics storage adapter — it works with the Postgres or Upstash adapter, as long as [`realtime`](/docs/reference/configuration#realtime) is configured on the server. Without it the stream never connects and `initial` (+ any `getResults` reconcile) stands.
+</Callout>
+
 ## Schema
 
 | Table | Purpose |

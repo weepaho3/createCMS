@@ -18,10 +18,6 @@ import { buildSchema } from './schema';
 import { assertTrackingIntegrity } from './tracking-guard';
 import { assertNoCoRenderConflictOnPublish } from './xor-guard';
 
-const _upstashRealtimeId = ['@upstash', 'realtime'].join('/');
-const _importUpstashRealtime = () =>
-  new Function('id', 'return import(id)')(_upstashRealtimeId) as Promise<any>;
-
 export type { ABTestAnalyticsAdapter } from './analytics/types';
 export type { GA4ServerConfig, GA4Payload } from './analytics/ga4-server';
 export { buildGa4Payload, forwardToGa4 } from './analytics/ga4-server';
@@ -177,33 +173,8 @@ export function abTest(options?: ABTestPluginOptions) {
         );
         if (limited) return { response: limited };
       }
-
-      const realtimeInstance = (adapter as any).realtimeInstance;
-      if (!realtimeInstance) return;
-      if (!url.pathname.endsWith('/abTest/realtime')) return;
-
-      try {
-        const upstashRealtime = await _importUpstashRealtime();
-        const { handle } = upstashRealtime;
-        const handler = handle({
-          realtime: realtimeInstance,
-          middleware: async ({
-            channels,
-          }: {
-            request: Request;
-            channels: string[];
-          }) => {
-            for (const ch of channels) {
-              if (!ch.startsWith('ab:live:')) {
-                return new Response('Invalid channel', { status: 403 });
-              }
-            }
-          },
-        });
-        return { response: await handler(request) };
-      } catch {
-        return;
-      }
+      // Live A/B results stream over the shared core `/realtime` route
+      // (channel `ab:live:<testId>`) — the plugin no longer owns an SSE bridge.
     },
   } satisfies CMSPlugin;
 }

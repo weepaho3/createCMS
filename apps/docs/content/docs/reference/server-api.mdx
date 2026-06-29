@@ -109,11 +109,11 @@ Returns the published view of an entry, with references resolved. `GET`, input v
 | `rootId` | `string` | Look up by entry id. |
 | `slug` | `string` | Look up by slug (slug-enabled collections). |
 | `path` | `string` | Look up by full path. |
-| `raw` | `boolean` | Keep stored values: skip variable, link, and image resolution. |
+| `raw` | `boolean` | Keep stored values: skip variable and link resolution. |
 
 Returns `{ rootId, collection, variants }`, where each variant has `branchId`, `branchName`, `commitId`, `publishedAt`, `publishedBy`, and a resolved `tree`. Additional fields appear when relevant: a page-level A/B test descriptor when one is running, and `ancestors` when the collection uses nested slugs.
 
-In the resolved `tree`, `reference` properties are inlined, `link` properties become a `ResolvedLink` (an `href`), and `image` properties become `{ id, slug }` — or `null` when the asset is gone or out of scope. Build the gate URL `/media/asset/{slug}` from the slug to serve it. A `raw` read keeps the stored target / asset id instead, for re-picking in an editor.
+In the resolved `tree`, `reference` properties are inlined and `link` properties become a `ResolvedLink` (an `href`). An `image` property is returned verbatim as the stored asset-id string (nothing is resolved); build the gate URL `/media/asset/{id}` from that id to serve it. A `raw` read keeps the stored link / reference target instead, for re-picking in an editor.
 
 ```ts
 const { variants } = await cms.api.pages.getPublishedContent({

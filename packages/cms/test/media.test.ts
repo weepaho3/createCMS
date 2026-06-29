@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { assetFolders, assets } from '../src/schema';
@@ -1045,57 +1045,67 @@ describe('variant delivery via asset endpoint', () => {
       variantOf: primary.id,
     });
 
-    // Request with format=webp&w=800 should resolve to variant
-    const result = await (cms.api.media.asset as any)({
-      params: { assetSlug: 'hero.jpg' },
-      query: { format: 'webp', w: 800 },
-    });
+    // Request by id with format=webp&w=800 should resolve to variant (the
+    // variant lookup keys off the primary's current slug).
+    const res = await cms.router.handler(
+      new Request(
+        `http://localhost/api/cms/media/asset/${primary.id}?format=webp&w=800`,
+      ),
+    );
 
-    expect(result.headers.location).toContain('hero-800-webp.webp');
-    expect(result.headers['content-type']).toBe('image/webp');
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toContain('hero-800-webp.webp');
   });
 
   it('falls back to original when variant does not exist', async () => {
     const { cms, db, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
 
-    await db.insert(assets).values({
-      slug: 'photo.jpg',
-      mimeType: 'image/jpeg',
-      size: 5000,
-      objectKey: 'photo.jpg',
-      status: 'public',
-    });
+    const [asset] = await db
+      .insert(assets)
+      .values({
+        slug: 'photo.jpg',
+        mimeType: 'image/jpeg',
+        size: 5000,
+        objectKey: 'photo.jpg',
+        status: 'public',
+      })
+      .returning({ id: assets.id });
 
     // Request a variant that doesn't exist — should fall back to original
-    const result = await (cms.api.media.asset as any)({
-      params: { assetSlug: 'photo.jpg' },
-      query: { format: 'webp', w: 400 },
-    });
+    const res = await cms.router.handler(
+      new Request(
+        `http://localhost/api/cms/media/asset/${asset.id}?format=webp&w=400`,
+      ),
+    );
 
-    expect(result.headers.location).toContain('photo.jpg');
-    expect(result.headers['content-type']).toBe('image/webp');
-    expect(result.headers['vary']).toBe('Accept');
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toContain('photo.jpg');
   });
 
   it('returns download Content-Disposition when download=true', async () => {
     const { cms, db, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
 
-    await db.insert(assets).values({
-      slug: 'report.pdf',
-      mimeType: 'application/pdf',
-      size: 10000,
-      objectKey: 'report.pdf',
-      status: 'public',
-    });
+    const [asset] = await db
+      .insert(assets)
+      .values({
+        slug: 'report.pdf',
+        mimeType: 'application/pdf',
+        size: 10000,
+        objectKey: 'report.pdf',
+        status: 'public',
+      })
+      .returning({ id: assets.id });
 
-    const result = await (cms.api.media.asset as any)({
-      params: { assetSlug: 'report.pdf' },
-      query: { download: true },
-    });
+    const res = await cms.router.handler(
+      new Request(
+        `http://localhost/api/cms/media/asset/${asset.id}?download=true`,
+      ),
+    );
 
-    expect(result.headers['content-disposition']).toContain(
+    expect(res.status).toBe(302);
+    expect(res.headers.get('content-disposition')).toContain(
       'attachment; filename="report.pdf"',
     );
   });
@@ -1106,45 +1116,30 @@ describe('variant delivery via asset endpoint', () => {
 // ============================================================================
 
 describe('public URL (CDN) delivery', () => {
-  it('uses immutable cache headers and direct CDN URL', async () => {
+  it('uses short cache headers and direct CDN URL', async () => {
     const { cms, db } = await setupTestCMS();
 
-    await db.insert(assets).values({
-      slug: 'hero.jpg',
-      mimeType: 'image/jpeg',
-      size: 2048,
-      objectKey: 'hero.jpg',
-      status: 'public',
-    });
+    const [asset] = await db
+      .insert(assets)
+      .values({
+        slug: 'hero.jpg',
+        mimeType: 'image/jpeg',
+        size: 2048,
+        objectKey: 'hero.jpg',
+        status: 'public',
+      })
+      .returning({ id: assets.id });
 
-    const result = await (cms.api.media.asset as any)({
-      params: { assetSlug: 'hero.jpg' },
-      query: {},
-    });
+    const res = await cms.router.handler(
+      new Request(`http://localhost/api/cms/media/asset/${asset.id}`),
+    );
 
-    expect(result.headers.location).toBe('https://cdn.test.local/hero.jpg');
-    expect(result.headers['cache-control']).toContain('immutable');
-    expect(result.headers['cache-control']).toContain('max-age=31536000');
-    expect(result.headers.location).not.toContain('X-Amz-');
-  });
-
-  it('builds correct URL with object key', async () => {
-    const { cms, db } = await setupTestCMS();
-
-    await db.insert(assets).values({
-      slug: 'logo.png',
-      mimeType: 'image/png',
-      size: 1024,
-      objectKey: 'logo.png',
-      status: 'public',
-    });
-
-    const result = await (cms.api.media.asset as any)({
-      params: { assetSlug: 'logo.png' },
-      query: {},
-    });
-
-    expect(result.headers.location).toBe('https://cdn.test.local/logo.png');
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('https://cdn.test.local/hero.jpg');
+    // Short-cached (re-resolvable) so a replaceAsset swap propagates; NOT immutable.
+    expect(res.headers.get('cache-control')).toContain('max-age=300');
+    expect(res.headers.get('cache-control')).not.toContain('immutable');
+    expect(res.headers.get('location')).not.toContain('X-Amz-');
   });
 });
 
@@ -1339,5 +1334,291 @@ describe('media.archiveAsset', () => {
     await expect(
       cms.api.media.archiveAsset({ body: { assetIds: ['asset_nope'] } }),
     ).rejects.toThrow(/found/i);
+  });
+});
+
+// ============================================================================
+// moveAssets
+// ============================================================================
+
+describe('media.moveAssets', () => {
+  const insertAsset = (db: any, slug: string, extra: object = {}) =>
+    db
+      .insert(assets)
+      .values({
+        slug,
+        mimeType: 'image/png',
+        size: 10,
+        objectKey: slug,
+        status: 'public',
+        ...extra,
+      })
+      .returning({ id: assets.id });
+
+  it('moves assets into a folder', async () => {
+    const { cms, db } = await setupTestCMS();
+    const folder = await cms.api.media.createFolder({
+      body: { name: 'Logos' },
+    });
+    const [a1] = await insertAsset(db, 'a1.png');
+    const [a2] = await insertAsset(db, 'a2.png');
+
+    const result = await cms.api.media.moveAssets({
+      body: { assetIds: [a1.id, a2.id], folderId: folder.folder.id },
+    });
+
+    expect(result.moved).toBe(2);
+    expect(new Set(result.movedIds)).toEqual(new Set([a1.id, a2.id]));
+    expect(result.skipped).toEqual([]);
+
+    const rows = await db
+      .select({ folderId: assets.folderId })
+      .from(assets)
+      .where(inArray(assets.id, [a1.id, a2.id]));
+    expect(rows.every((r: any) => r.folderId === folder.folder.id)).toBe(true);
+  });
+
+  it('moves an asset to the root with folderId null', async () => {
+    const { cms, db } = await setupTestCMS();
+    const folder = await cms.api.media.createFolder({ body: { name: 'F' } });
+    const [a] = await insertAsset(db, 'r.png', { folderId: folder.folder.id });
+
+    await cms.api.media.moveAssets({
+      body: { assetIds: [a.id], folderId: null },
+    });
+
+    const [row] = await db
+      .select({ folderId: assets.folderId })
+      .from(assets)
+      .where(eq(assets.id, a.id));
+    expect(row.folderId).toBeNull();
+  });
+
+  it('co-moves variants with their original', async () => {
+    const { cms, db } = await setupTestCMS();
+    const folder = await cms.api.media.createFolder({ body: { name: 'F' } });
+    const [orig] = await insertAsset(db, 'o.png');
+    const [variant] = await insertAsset(db, 'o-200.webp', {
+      mimeType: 'image/webp',
+      variantOf: orig.id,
+    });
+
+    await cms.api.media.moveAssets({
+      body: { assetIds: [orig.id], folderId: folder.folder.id },
+    });
+
+    const [v] = await db
+      .select({ folderId: assets.folderId })
+      .from(assets)
+      .where(eq(assets.id, variant.id));
+    expect(v.folderId).toBe(folder.folder.id); // variant followed its original
+  });
+
+  it('skips a variant id passed on its own (never moved independently)', async () => {
+    const { cms, db } = await setupTestCMS();
+    const folder = await cms.api.media.createFolder({ body: { name: 'F' } });
+    const [orig] = await insertAsset(db, 'o.png');
+    const [variant] = await insertAsset(db, 'o-200.webp', {
+      mimeType: 'image/webp',
+      variantOf: orig.id,
+    });
+
+    const result = await cms.api.media.moveAssets({
+      body: { assetIds: [variant.id], folderId: folder.folder.id },
+    });
+
+    expect(result.moved).toBe(0);
+    expect(result.skipped).toEqual([variant.id]);
+
+    // The variant did NOT move — it stays put with its (un-moved) original.
+    const [v] = await db
+      .select({ folderId: assets.folderId })
+      .from(assets)
+      .where(eq(assets.id, variant.id));
+    expect(v.folderId).toBeNull();
+    void orig;
+  });
+
+  it('throws FOLDER_NOT_FOUND for an unknown target folder', async () => {
+    const { cms, db } = await setupTestCMS();
+    const [a] = await insertAsset(db, 'x.png');
+    await expect(
+      cms.api.media.moveAssets({
+        body: { assetIds: [a.id], folderId: 'fld_nope' },
+      }),
+    ).rejects.toThrow(/folder not found/i);
+  });
+
+  it('skips non-existent and archived ids (surfaced in skipped)', async () => {
+    const { cms, db } = await setupTestCMS();
+    const [live] = await insertAsset(db, 'l.png');
+    const [archived] = await insertAsset(db, 'arch.png', {
+      archivedAt: new Date(),
+    });
+
+    const result = await cms.api.media.moveAssets({
+      body: {
+        assetIds: [live.id, archived.id, 'ast_nope00000000000000'],
+        folderId: null,
+      },
+    });
+
+    expect(result.moved).toBe(1);
+    expect(result.movedIds).toEqual([live.id]);
+    expect(new Set(result.skipped)).toEqual(
+      new Set([archived.id, 'ast_nope00000000000000']),
+    );
+  });
+
+  it('throws ASSET_NOT_FOUND when no ids reference a live asset', async () => {
+    const { cms } = await setupTestCMS();
+    await expect(
+      cms.api.media.moveAssets({
+        body: { assetIds: ['ast_nope00000000000000'], folderId: null },
+      }),
+    ).rejects.toThrow(/found/i);
+  });
+});
+
+// ============================================================================
+// replaceAsset
+// ============================================================================
+
+describe('media.replaceAsset', () => {
+  let cleanup: (() => Promise<void>) | undefined;
+  afterEach(async () => {
+    await cleanup?.();
+  });
+
+  const pixel = new Uint8Array([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+  ]);
+  const file = (name: string, type = 'image/png') => ({
+    name,
+    size: pixel.byteLength,
+    type,
+    buffer: new Blob([pixel]),
+  });
+  const insertAsset = (db: any, slug: string, extra: object = {}) =>
+    db
+      .insert(assets)
+      .values({
+        slug,
+        mimeType: 'image/png',
+        size: 8,
+        objectKey: slug,
+        status: 'public',
+        ...extra,
+      })
+      .returning({ id: assets.id });
+
+  it('replaces bytes behind a stable id (new slug/objectKey, same id/folder/status)', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const folder = await cms.api.media.createFolder({
+      body: { name: 'Brand' },
+    });
+    const [orig] = await insertAsset(db, 'acme-logo.png', {
+      folderId: folder.folder.id,
+    });
+
+    const result = await cms.api.media.replaceAsset({
+      body: { assetId: orig.id, file: file('globex-logo.png') },
+    });
+
+    expect(result.asset.id).toBe(orig.id); // id unchanged — the whole point
+    expect(result.asset.slug).not.toBe('acme-logo.png'); // new slug → cache bust
+    expect(result.asset.slug).toContain('globex-logo');
+    expect(result.asset.objectKey).toBe(result.asset.slug);
+
+    const [row] = await db.select().from(assets).where(eq(assets.id, orig.id));
+    expect(row.slug).toBe(result.asset.slug);
+    expect(row.objectKey).toBe(result.asset.objectKey);
+    expect(row.folderId).toBe(folder.folder.id); // folder unchanged
+    expect(row.status).toBe('public'); // status unchanged
+    expect(row.archivedAt).toBeNull();
+  });
+
+  it('mints a different slug even when the replacement has the same filename', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const [orig] = await insertAsset(db, 'logo.png');
+
+    const result = await cms.api.media.replaceAsset({
+      body: { assetId: orig.id, file: file('logo.png') },
+    });
+
+    expect(result.asset.slug).not.toBe('logo.png'); // self-collision → suffix
+    expect(result.asset.slug).toContain('logo');
+  });
+
+  it('archives the old variants', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const [orig] = await insertAsset(db, 'hero.png');
+    const [variant] = await insertAsset(db, 'hero-200-webp.webp', {
+      mimeType: 'image/webp',
+      variantOf: orig.id,
+    });
+
+    await cms.api.media.replaceAsset({
+      body: { assetId: orig.id, file: file('hero-new.png') },
+    });
+
+    const [v] = await db
+      .select({ archivedAt: assets.archivedAt })
+      .from(assets)
+      .where(eq(assets.id, variant.id));
+    expect(v.archivedAt).not.toBeNull(); // old variant archived
+  });
+
+  it('rejects replacing a variant directly (CANNOT_REPLACE_VARIANT)', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const [orig] = await insertAsset(db, 'o.png');
+    const [variant] = await insertAsset(db, 'o-200.webp', {
+      mimeType: 'image/webp',
+      variantOf: orig.id,
+    });
+
+    await expect(
+      cms.api.media.replaceAsset({
+        body: { assetId: variant.id, file: file('x.png') },
+      }),
+    ).rejects.toThrow(/variant/i);
+  });
+
+  it('throws ASSET_NOT_FOUND for a missing or archived asset', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const [archived] = await insertAsset(db, 'a.png', {
+      archivedAt: new Date(),
+    });
+
+    await expect(
+      cms.api.media.replaceAsset({
+        body: { assetId: archived.id, file: file('x.png') },
+      }),
+    ).rejects.toThrow(/found/i);
+    await expect(
+      cms.api.media.replaceAsset({
+        body: { assetId: 'ast_nope00000000000000', file: file('x.png') },
+      }),
+    ).rejects.toThrow(/found/i);
+  });
+
+  it('rejects an invalid file type', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const [orig] = await insertAsset(db, 'o.png');
+
+    await expect(
+      cms.api.media.replaceAsset({
+        body: {
+          assetId: orig.id,
+          file: file('evil.exe', 'application/x-msdownload'),
+        },
+      }),
+    ).rejects.toThrow();
   });
 });

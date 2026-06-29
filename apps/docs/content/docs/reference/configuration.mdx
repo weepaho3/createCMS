@@ -37,6 +37,8 @@ export const cms = createCMS({
 | `schema` | `{ output?: string }` | no | | CLI-only: the `output` path for `createcms generate` (default `./cms-schema.ts`). Not read at runtime. |
 | `onRevalidate` | `RevalidateHandler \| RevalidateConfig` | no | | Called after content changes, for cache revalidation. |
 | `onNotification` | `OnNotificationHandler` | no | | Called when the CMS emits a notification. |
+| `notifications` | `boolean` | no | `true` | Set `false` to fully disable notifications — no tables, no routes, and `client.notifications` / `cms.notify` absent from the types (see below). |
+| `realtime` | `{ url, token }` | no | | Upstash Redis credentials. Enables the `/realtime` SSE route, per-user notification push, and A/B live results (see below). |
 
 ## `media`
 
@@ -84,6 +86,27 @@ const authMiddleware = defineAuthMiddleware(async (ctx) => {
   // ctx.request?.request), and ctx.collection (collection-scoped calls only).
   return { userId: await resolveUser(ctx) };
 });
+```
+
+## `realtime`
+
+Enables live server-to-client delivery — notification push and A/B live results — over Server-Sent Events. **Upstash-only**: pass your Upstash Redis credentials. `@upstash/realtime` and `@upstash/redis` are optional peer dependencies. See [Realtime](/docs/concepts/realtime).
+
+```ts
+const realtime = {
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+};
+```
+
+Requires `authMiddleware` to resolve the user from the request **cookie** — the realtime route authenticates each connection by session, so it must be same-origin with your app. Omit `realtime` to disable; notifications stay available through the `listNotifications` poll.
+
+## `notifications`
+
+Set `false` to fully disable the notifications feature. When disabled, the notification tables are not generated (regenerate your schema after toggling), the routes never register, and `client.notifications` plus `cms.notify` are **absent from the inferred types**. Default: enabled. Use a literal `false` — a widened `boolean` keeps the types enabled. Independent of `realtime`.
+
+```ts
+const cms = createCMS({ /* … */ notifications: false });
 ```
 
 ## `dataRetention`
