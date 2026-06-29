@@ -156,7 +156,7 @@ function RealtimeProvider(props: {
 Subscribes the current user to their live notification stream over the `RealtimeProvider` connection and seeds from the `listNotifications` poll. De-dupes by id; the provider replays anything missed across a reconnect. Realtime-only — requires a mounted `RealtimeProvider` and `notifications` enabled (it type-requires `client.notifications`). `client` is your typed `createCMSClient` instance (no cast needed). `userId` is optional: pass it straight from your auth session (`session?.user?.id`) — while it's undefined the hook stays poll-only and connects once it resolves (the CMS has no current-user endpoint, so your app supplies the id).
 
 ```ts
-function useNotifications(
+function useNotifications<TActorUser>(
   client: CMSClient,
   options: {
     userId?: string;
@@ -164,9 +164,62 @@ function useNotifications(
     withUser?: true;
   },
 ): {
-  notifications: NotificationListItem[];
+  notifications: NotificationListItem<TActorUser>[];
   unreadCount: number;
   isLive: boolean;
   refresh: () => void;
 };
+```
+
+`TActorUser` is inferred from your typed `client` — a partial of your `user` table's row. With `withUser: true`, each notification's `actorUser` (the responsible user) is typed off your config, on both the seed poll and live pushes (the wire event carries `actorUser`, so the actor shows immediately — no second poll).
+
+```tsx
+const { notifications } = useNotifications(cmsClient, {
+  userId: session?.user?.id,
+  withUser: true,
+});
+// notifications[0].actorUser?.name — typed, present live and on poll
+```
+
+Each item carries `type`, `actorId`, `resourceType`, `resourceId`, `collection`, and a free-form `meta` for deep-linking. See [`createNotificationRouter`](#createnotificationrouter) to turn those into typed links.
+
+### `createNotificationRouter`
+
+Imported from `@createcms/core/react` (pure — no realtime peer, so it works even without realtime). Maps each notification `type` to a resolver that builds a deep link (and optional display data) from the item's fields. Each resolver receives `meta` narrowed to that type; the required `fallback` keeps routing total for `custom` and any future type.
+
+```ts
+function createNotificationRouter<TActorUser>(routes: {
+  [type]?: (n: TypedNotification<type>) => NotificationRoute;
+  fallback: (n: NotificationListItem<TActorUser>) => NotificationRoute;
+}): { resolve: (n: NotificationListItem<TActorUser>) => NotificationRoute };
+
+type NotificationRoute = {
+  href?: string | null; // null = non-navigable
+  label?: string;
+  icon?: string;
+  group?: string;
+};
+```
+
+```ts title="lib/notification-routes.ts"
+import { createNotificationRouter } from '@createcms/core/react';
+
+export const notificationRouter = createNotificationRouter({
+  mention: (n) => ({ href: `/threads/${n.meta.threadId}#${n.meta.messageId}`, icon: 'at-sign' }),
+  mergeRequestOpened: (n) => ({ href: `/merge-requests/${n.meta.mergeRequestId}` }),
+  published: (n) => ({ href: `/${n.collection}/${n.resourceId}`, icon: 'rocket' }),
+  fallback: (n) => ({ href: n.resourceId ? `/${n.collection}/${n.resourceId}` : null }),
+});
+
+// at render: const { href, icon } = notificationRouter.resolve(notification);
+```
+
+The built-in core types (`mention`, `comment`, `mergeRequest*`, `approval*`, `published`, …) come with typed `meta` out of the box. To type your own `custom` notifications, augment `NotificationMetaMap`:
+
+```ts
+declare module '@createcms/core/react' {
+  interface NotificationMetaMap {
+    custom: { kind: 'invoice'; invoiceId: string };
+  }
+}
 ```

@@ -11,6 +11,10 @@ import { notificationTypeEnum } from '../db/schema.generated';
  *
  * `createdAt` is a `Date` in memory but a string on the SSE wire (JSON); the
  * receive side coerces it back via `z.coerce.date()`.
+ *
+ * `actorUser` carries the responsible user's exposed columns so a live push can
+ * render the actor immediately (no second poll). It is `.nullish()` — absent
+ * when there is no `user` config, `null` when the actor has no matching row.
  */
 export const notificationEvent = z.object({
   id: z.string(),
@@ -23,6 +27,7 @@ export const notificationEvent = z.object({
   resourceId: z.string().nullable(),
   collection: z.string().nullable(),
   meta: z.record(z.string(), z.unknown()).nullable(),
+  actorUser: z.record(z.string(), z.unknown()).nullish(),
   createdAt: z.coerce.date(),
 });
 

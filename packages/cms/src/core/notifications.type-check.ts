@@ -3,7 +3,10 @@
 // the `@ts-expect-error` below becomes unused and tsc fails — so this file is
 // self-verifying.
 
+import { pgTable, text } from 'drizzle-orm/pg-core';
+
 import { createCMSClient } from '../client/vanilla';
+import { createNotificationRouter } from '../react/notifications-router';
 import { useNotifications } from '../react/realtime';
 import { defineCollections } from './define';
 import { createCMS } from './factory';
@@ -50,3 +53,63 @@ void disabled.api.notifications;
 const realtimeClient = createCMSClient<typeof enabled>()({ baseURL: '/api/cms' });
 export const _useNotificationsAcceptsRealClient = () =>
   useNotifications(realtimeClient, { userId: 'u1', withUser: true });
+
+// --- actorUser is TYPED off the CMS `user` config (not `unknown`) ----------
+const userTable = pgTable('user', {
+  id: text('id').primaryKey(),
+  name: text('name'),
+  email: text('email'),
+});
+const withUserCms = createCMS({
+  db,
+  media,
+  collections,
+  user: { table: userTable, idColumn: userTable.id, exposeColumns: ['name', 'email'] },
+});
+
+type ListResult = Awaited<
+  ReturnType<typeof withUserCms.api.notifications.listNotifications>
+>;
+type Actor = NonNullable<ListResult['notifications'][number]['actorUser']>;
+// A real user column is typed (would error if `actorUser` were `unknown`):
+export const _actorName: string | null | undefined = (null as unknown as Actor)
+  .name;
+// @ts-expect-error - `nope` is not a column on the user table (proves not unknown/any)
+void (null as unknown as Actor).nope;
+
+// The hook infers the same actorUser shape from the typed client.
+const withUserClient = createCMSClient<typeof withUserCms>()({
+  baseURL: '/api/cms',
+});
+export const _hookActorIsTyped = () => {
+  const res = useNotifications(withUserClient, { userId: 'u1', withUser: true });
+  type HookActor = NonNullable<
+    (typeof res.notifications)[number]['actorUser']
+  >;
+  const name: string | null | undefined = (null as unknown as HookActor).name;
+  return name;
+};
+
+// --- the router narrows `meta` per notification type -----------------------
+export const _router = createNotificationRouter({
+  // core type → `meta` is typed as CoreNotificationMetaMap['mention']
+  mention: (n) => {
+    const messageId: string = n.meta.messageId;
+    return { href: `/threads/${n.meta.threadId}#${messageId}` };
+  },
+  published: (n) => ({ href: `/${n.collection}/${n.resourceId}` }),
+  fallback: (n) => ({ href: n.resourceId ? `/x/${n.resourceId}` : null }),
+});
+
+// `fallback` is required — routing must stay total.
+export const _routerNeedsFallback = () =>
+  // @ts-expect-error - missing required `fallback`
+  createNotificationRouter({ published: () => ({ href: '/' }) });
+
+// `meta` is narrowed: a non-existent key on a core type is a compile error.
+export const _routerMetaNarrows = () =>
+  createNotificationRouter({
+    // @ts-expect-error - `nope` is not on mention's meta shape
+    mention: (n) => ({ href: String(n.meta.nope) }),
+    fallback: () => ({ href: null }),
+  });

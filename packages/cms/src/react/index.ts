@@ -21,3 +21,12 @@ export type {
   CMSFetch,
   QueryState,
 } from '../client/types';
+export { createNotificationRouter } from './notifications-router';
+export type {
+  NotificationRoute,
+  NotificationRoutes,
+  NotificationRouter,
+  TypedNotification,
+  CoreNotificationMetaMap,
+  NotificationMetaMap,
+} from './notifications-router';

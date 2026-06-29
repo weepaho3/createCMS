@@ -1,4 +1,5 @@
 import type { DrizzleInstance } from '../types/drizzle';
+import type { ResolvedUserConfig } from '../user/resolve';
 import type {
   NotificationInput,
   NotificationPayload,
@@ -6,6 +7,7 @@ import type {
 } from './types';
 
 import { notifications } from '../db/schema.generated';
+import { batchFetchUsers } from '../user/join-helpers';
 
 export type NotificationService = ReturnType<typeof createNotificationService>;
 
@@ -30,6 +32,7 @@ function mapRowToPayload(
 export function createNotificationService(
   db: DrizzleInstance,
   handlers: OnNotificationHandler[],
+  resolvedUser?: ResolvedUserConfig,
 ) {
   function dispatch(payload: NotificationPayload): void {
     for (const handler of handlers) {
@@ -43,6 +46,33 @@ export function createNotificationService(
       } catch (err) {
         console.error('[cms] onNotification handler failed:', err);
       }
+    }
+  }
+
+  /**
+   * Resolve each payload's `actorUser` from the `user` config (the full
+   * `exposeColumns` allowlist), in one batched query, BEFORE dispatch so the
+   * realtime push / `onNotification` handlers carry the responsible user.
+   * Best-effort: a lookup failure leaves `actorUser` unset, never drops the
+   * already-persisted notification.
+   */
+  async function enrichActors(payloads: NotificationPayload[]): Promise<void> {
+    if (!resolvedUser) return;
+    const actorIds = [
+      ...new Set(
+        payloads
+          .map((p) => p.actorId)
+          .filter((id): id is string => id != null),
+      ),
+    ];
+    if (actorIds.length === 0) return;
+    try {
+      const users = await batchFetchUsers(db, resolvedUser, true, actorIds);
+      for (const p of payloads) {
+        p.actorUser = p.actorId ? (users.get(p.actorId) ?? null) : null;
+      }
+    } catch (err) {
+      console.error('[cms] actor enrichment failed:', err);
     }
   }
 
@@ -64,6 +94,7 @@ export function createNotificationService(
         .returning();
 
       const payload = mapRowToPayload(row);
+      await enrichActors([payload]);
       dispatch(payload);
       return payload;
     },
@@ -91,6 +122,7 @@ export function createNotificationService(
         .returning();
 
       const payloads = rows.map(mapRowToPayload);
+      await enrichActors(payloads);
 
       for (const payload of payloads) {
         dispatch(payload);

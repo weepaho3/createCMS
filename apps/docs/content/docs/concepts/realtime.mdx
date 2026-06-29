@@ -73,6 +73,22 @@ function NotificationBell() {
 
 When `realtime` is set, every notification is pushed to its recipient's private channel automatically — all sources funnel through one dispatch. The hook seeds list + unread count from the `listNotifications` poll, then prepends live pushes de-duped by id; the provider replays anything missed across a reconnect. Pass the current user's `id` — the server authorizes it against the session, so a wrong id only yields the poll-seeded list, never another user's data.
 
+### The responsible user, and deep links
+
+Pass `withUser: true` to enrich each notification with `actorUser` — the user who triggered it, typed off your `user` config. The live push carries `actorUser` on the wire, so the actor's name/avatar appear the moment a push lands (no second poll). Every item also carries `type`, `resourceType`, `resourceId`, `collection`, and a free-form `meta`, which is everything you need to build a deep link. [`createNotificationRouter`](/docs/reference/react#createnotificationrouter) turns those into typed, per-type links:
+
+```tsx
+import { createNotificationRouter } from '@createcms/core/react';
+
+const router = createNotificationRouter({
+  mention: (n) => ({ href: `/threads/${n.meta.threadId}#${n.meta.messageId}` }),
+  published: (n) => ({ href: `/${n.collection}/${n.resourceId}` }),
+  fallback: (n) => ({ href: n.resourceId ? `/${n.collection}/${n.resourceId}` : null }),
+});
+
+const { href } = router.resolve(notification); // typed meta per type
+```
+
 Without `realtime` there is no live connection — read the durable list yourself with `client.notifications.listNotifications` and poll on your own cadence. The A/B [`useLiveResults`](/docs/plugins/ab-test) hook rides the **same** `RealtimeProvider` connection.
 
 ## Disabling notifications
