@@ -4,6 +4,7 @@
 // self-verifying.
 
 import { pgTable, text } from 'drizzle-orm/pg-core';
+import * as z from 'zod';
 
 import { createCMSClient } from '../client/vanilla';
 import { createNotificationRouter } from '../react/notifications-router';
@@ -11,6 +12,7 @@ import { useNotifications } from '../react/realtime';
 import { defineCollections } from './define';
 import { createCMS } from './factory';
 import type { DrizzleInstance } from './types/drizzle';
+import type { CMSPlugin } from './types/plugin';
 import type { MediaConfig } from './types/s3';
 
 declare const db: DrizzleInstance;
@@ -111,5 +113,48 @@ export const _routerMetaNarrows = () =>
   createNotificationRouter({
     // @ts-expect-error - `nope` is not on mention's meta shape
     mention: (n) => ({ href: String(n.meta.nope) }),
+    fallback: () => ({ href: null }),
+  });
+
+// --- a PLUGIN contributes a notification type; the router narrows its meta ----
+const abPlugin = {
+  id: 'abTest',
+  notificationTypes: {
+    abTestWinner: z.object({ testId: z.string(), variant: z.string() }),
+  },
+} satisfies CMSPlugin;
+
+const cmsWithPlugin = createCMS({ db, media, collections, plugins: [abPlugin] });
+
+// A plugin can emit its OWN type (emit side accepts any string).
+export const _pluginCanEmit = () =>
+  cmsWithPlugin.notify({
+    recipientId: 'u1',
+    actorId: 'u2',
+    type: 'abTestWinner',
+    title: 'You won',
+    body: null,
+    resourceType: null,
+    resourceId: null,
+    collection: null,
+    meta: { testId: 't1', variant: 'B' },
+  });
+
+export const _pluginRouter = createNotificationRouter<typeof cmsWithPlugin>({
+  // core type still typed off CoreNotificationMetaMap
+  mention: (n) => ({ href: `/threads/${n.meta.threadId}` }),
+  // plugin type → `meta` typed from the plugin's Zod schema (via typeof cms)
+  abTestWinner: (n) => {
+    const testId: string = n.meta.testId;
+    return { href: `/experiments/${testId}` };
+  },
+  fallback: () => ({ href: null }),
+});
+
+// plugin `meta` is narrowed: a non-existent key is a compile error.
+export const _pluginMetaNarrows = () =>
+  createNotificationRouter<typeof cmsWithPlugin>({
+    // @ts-expect-error - `nope` is not on abTestWinner's meta shape
+    abTestWinner: (n) => ({ href: String(n.meta.nope) }),
     fallback: () => ({ href: null }),
   });

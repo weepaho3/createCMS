@@ -79,14 +79,15 @@ Pass `withUser: true` to enrich each notification with `actorUser` — the user 
 
 ```tsx
 import { createNotificationRouter } from '@createcms/core/react';
+import type { cms } from './cms';
 
-const router = createNotificationRouter({
+const router = createNotificationRouter<typeof cms>({
   mention: (n) => ({ href: `/threads/${n.meta.threadId}#${n.meta.messageId}` }),
   published: (n) => ({ href: `/${n.collection}/${n.resourceId}` }),
   fallback: (n) => ({ href: n.resourceId ? `/${n.collection}/${n.resourceId}` : null }),
 });
 
-const { href } = router.resolve(notification); // typed meta per type
+const { href } = router.resolve(notification); // typed meta per type (incl. plugin types)
 ```
 
 Without `realtime` there is no live connection — read the durable list yourself with `client.notifications.listNotifications` and poll on your own cadence. The A/B [`useLiveResults`](/docs/plugins/ab-test) hook rides the **same** `RealtimeProvider` connection.

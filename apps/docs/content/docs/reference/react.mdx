@@ -188,10 +188,10 @@ Each item carries `type`, `actorId`, `resourceType`, `resourceId`, `collection`,
 Imported from `@createcms/core/react` (pure — no realtime peer, so it works even without realtime). Maps each notification `type` to a resolver that builds a deep link (and optional display data) from the item's fields. Each resolver receives `meta` narrowed to that type; the required `fallback` keeps routing total for `custom` and any future type.
 
 ```ts
-function createNotificationRouter<TActorUser>(routes: {
-  [type]?: (n: TypedNotification<type>) => NotificationRoute;
-  fallback: (n: NotificationListItem<TActorUser>) => NotificationRoute;
-}): { resolve: (n: NotificationListItem<TActorUser>) => NotificationRoute };
+function createNotificationRouter<TCms>(routes: {
+  [type]?: (n: TypedNotification<type, TCms>) => NotificationRoute;
+  fallback: (n: NotificationListItem) => NotificationRoute;
+}): { resolve: (n: NotificationListItem) => NotificationRoute };
 
 type NotificationRoute = {
   href?: string | null; // null = non-navigable
@@ -201,20 +201,25 @@ type NotificationRoute = {
 };
 ```
 
+Pass your CMS type — `createNotificationRouter<typeof cms>(…)` — to pick up plugin-contributed notification types (and your `actorUser` shape) with full `meta` typing.
+
 ```ts title="lib/notification-routes.ts"
 import { createNotificationRouter } from '@createcms/core/react';
+import type { cms } from './cms';
 
-export const notificationRouter = createNotificationRouter({
+export const notificationRouter = createNotificationRouter<typeof cms>({
   mention: (n) => ({ href: `/threads/${n.meta.threadId}#${n.meta.messageId}`, icon: 'at-sign' }),
   mergeRequestOpened: (n) => ({ href: `/merge-requests/${n.meta.mergeRequestId}` }),
   published: (n) => ({ href: `/${n.collection}/${n.resourceId}`, icon: 'rocket' }),
+  // a type from a plugin's `notificationTypes` — `meta` typed off typeof cms:
+  abTestWinner: (n) => ({ href: `/experiments/${n.meta.testId}` }),
   fallback: (n) => ({ href: n.resourceId ? `/${n.collection}/${n.resourceId}` : null }),
 });
 
 // at render: const { href, icon } = notificationRouter.resolve(notification);
 ```
 
-The built-in core types (`mention`, `comment`, `mergeRequest*`, `approval*`, `published`, …) come with typed `meta` out of the box. To type your own `custom` notifications, augment `NotificationMetaMap`:
+The built-in core types (`mention`, `comment`, `mergeRequest*`, `approval*`, `published`, …) come with typed `meta` out of the box; **plugins** add their own types via the [`notificationTypes`](/docs/plugins/building#notifications-realtime-events-and-pruning) seam, inferred through `typeof cms`. To type a `custom` (or other app-only) notification raised without a plugin, augment `NotificationMetaMap`:
 
 ```ts
 declare module '@createcms/core/react' {

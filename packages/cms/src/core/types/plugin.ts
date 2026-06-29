@@ -200,6 +200,20 @@ export type CMSPlugin<TPruningData = unknown> = {
    */
   realtimeEvents?: import('../realtime/types').RealtimeEventSchema;
 
+  /**
+   * Notification types this plugin contributes — a Zod map keyed by the
+   * notification `type`, whose value is the schema for that type's `meta`. Two
+   * effects, both opt-in:
+   *  - **Schema (build-time):** each key is folded into the core
+   *    `notification_type` enum at `createcms generate`, so the plugin can
+   *    persist its own `type` (re-generate after adding the plugin, as with any
+   *    plugin schema).
+   *  - **Types:** inferred (see {@link InferPluginNotificationTypes}) into
+   *    `typeof cms`, so {@link createNotificationRouter} types the plugin's
+   *    `meta` per type with full autocomplete.
+   */
+  notificationTypes?: Record<string, import('zod').ZodType>;
+
   $ERROR_CODES?: Record<string, { status: number; message: string }>;
 };
 
@@ -250,6 +264,31 @@ export type InferPluginRealtimeEvents<P extends CMSPlugin[]> =
         : Record<string, never>
       : Record<string, never>
   >;
+
+/**
+ * The notification-type meta schemas plugins contribute, intersected across all
+ * plugins (the analogue of {@link InferPluginRealtimeEvents}). A plugin without
+ * `notificationTypes` contributes `Record<string, never>` (identity under
+ * intersection). {@link InferPluginNotificationMeta} maps the inferred Zod
+ * schemas to their value types for the router.
+ */
+export type InferPluginNotificationTypes<P extends CMSPlugin[]> =
+  UnionToIntersection<
+    P[number]['notificationTypes'] extends infer N
+      ? N extends Record<string, import('zod').ZodType>
+        ? N
+        : Record<string, never>
+      : Record<string, never>
+  >;
+
+/** The plugin-contributed notification `meta` types, keyed by notification
+ *  `type` — each Zod schema mapped to its inferred value type. Surfaced on
+ *  `typeof cms` so {@link createNotificationRouter} narrows plugin `meta`. */
+export type InferPluginNotificationMeta<P extends CMSPlugin[]> = {
+  [K in keyof InferPluginNotificationTypes<P>]: InferPluginNotificationTypes<P>[K] extends import('zod').ZodType
+    ? import('zod').infer<InferPluginNotificationTypes<P>[K]>
+    : Record<string, unknown>;
+};
 
 /**
  * The per-collection endpoints plugins contribute to EVERY collection — the

@@ -23,6 +23,33 @@ describe('notifications: false — schema gating (coreSchemaFor)', () => {
     expect(schema.tables.branches).toBeDefined();
     expect(Object.keys(schema.enums).length).toBeGreaterThan(0);
   });
+
+  it('folds plugin notification types into the notification_type enum', () => {
+    const schema = coreSchemaFor(true, ['abTestWinner', 'invoicePaid']) as {
+      enums: { notificationType: { values: string[] } };
+    };
+    const values = schema.enums.notificationType.values;
+    // core values stay…
+    expect(values).toContain('mention');
+    expect(values).toContain('custom');
+    // …and the plugin types are appended.
+    expect(values).toContain('abTestWinner');
+    expect(values).toContain('invoicePaid');
+  });
+
+  it('de-dupes folded types and never mutates the shared coreSchema', () => {
+    const a = coreSchemaFor(true, ['abTestWinner', 'abTestWinner']) as {
+      enums: { notificationType: { values: string[] } };
+    };
+    expect(
+      a.enums.notificationType.values.filter((v) => v === 'abTestWinner'),
+    ).toHaveLength(1);
+    // a second call without extras is unpolluted by the first
+    const b = coreSchemaFor(true) as CoreSchema as unknown as {
+      enums: { notificationType: { values: string[] } };
+    };
+    expect(b.enums.notificationType.values).not.toContain('abTestWinner');
+  });
 });
 
 describe('notifications: false — runtime gating', () => {

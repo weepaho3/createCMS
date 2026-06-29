@@ -24,6 +24,7 @@ import type {
   InferPluginEndpoints,
   InferPluginErrorCodes,
   InferPluginNamespaces,
+  InferPluginNotificationMeta,
 } from './types/plugin';
 
 import { DEFAULT_BRANCH_NAME } from './branch-policy';
@@ -762,5 +763,16 @@ export const createCMS = <
       ? RevalidateFn<keyof DefCollections & string>
       : RevalidateFn<keyof DefCollections & string> | undefined,
     $ERROR_CODES,
+    // Type-only registry read by `createNotificationRouter<typeof cms>`: the
+    // plugin-contributed notification `meta` shapes + the actor-user shape from
+    // the `user` config. Runtime value is `undefined` (never read at runtime).
+    $notifications: undefined as unknown as {
+      meta: InferPluginNotificationMeta<TPlugins>;
+      actorUser: TDef extends {
+        user: CMSUserConfig<infer U extends AnyPgTable>;
+      }
+        ? ActorUserShape<U>
+        : Record<string, unknown>;
+    },
   };
 };

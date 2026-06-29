@@ -53,5 +53,13 @@ export type OnNotificationHandler = (
 
 export type NotificationInput = Omit<
   NotificationPayload,
-  'id' | 'createdAt' | 'actorUser'
->;
+  'id' | 'createdAt' | 'actorUser' | 'type'
+> & {
+  /**
+   * A built-in notification type, or a plugin/app-defined type string. Any
+   * string is accepted on the emit side; validity is enforced at runtime by the
+   * generated `notification_type` enum (declare plugin types via the plugin's
+   * `notificationTypes` and re-run `createcms generate`).
+   */
+  type: NotificationType | (string & {});
+};

@@ -83,7 +83,9 @@ export function createNotificationService(
         .values({
           recipientId: input.recipientId,
           actorId: input.actorId,
-          type: input.type,
+          // Widened to allow plugin/app type strings; the generated enum is the
+          // runtime authority (core-only in this package, core+plugin in apps).
+          type: input.type as (typeof notifications.$inferInsert)['type'],
           title: input.title,
           body: input.body,
           resourceType: input.resourceType,
@@ -110,7 +112,9 @@ export function createNotificationService(
           inputs.map((input) => ({
             recipientId: input.recipientId,
             actorId: input.actorId,
-            type: input.type,
+            // Widened to allow plugin/app type strings; the generated enum is the
+          // runtime authority (core-only in this package, core+plugin in apps).
+          type: input.type as (typeof notifications.$inferInsert)['type'],
             title: input.title,
             body: input.body,
             resourceType: input.resourceType,

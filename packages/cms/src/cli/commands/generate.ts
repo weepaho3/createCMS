@@ -14,25 +14,56 @@ import { confirmOverwrite, createSpinner, printMeta } from '../utils/ui';
 
 /** The core schema, minus the notifications table + its enum when notifications
  *  are disabled (`notifications: false`). `notificationType` is referenced only
- *  by the `notifications` table, so both drop together. */
+ *  by the `notifications` table, so both drop together. When enabled,
+ *  `extraNotificationTypes` (plugin-contributed `notificationTypes` keys) are
+ *  folded into the `notification_type` enum so plugins can persist their own
+ *  `type`. */
 export function coreSchemaFor(
   notificationsEnabled: boolean,
+  extraNotificationTypes: string[] = [],
 ): SchemaSource['schema'] {
-  if (notificationsEnabled) return coreSchema as SchemaSource['schema'];
-  const tables = { ...coreSchema.tables };
-  delete (tables as Record<string, unknown>).notifications;
-  const enums = { ...coreSchema.enums };
-  delete (enums as Record<string, unknown>).notificationType;
-  return { ...coreSchema, tables, enums } as SchemaSource['schema'];
+  if (!notificationsEnabled) {
+    const tables = { ...coreSchema.tables };
+    delete (tables as Record<string, unknown>).notifications;
+    const enums = { ...coreSchema.enums };
+    delete (enums as Record<string, unknown>).notificationType;
+    return { ...coreSchema, tables, enums } as SchemaSource['schema'];
+  }
+  if (extraNotificationTypes.length === 0) {
+    return coreSchema as SchemaSource['schema'];
+  }
+  const notificationType = (
+    coreSchema.enums as Record<string, { enumName: string; values: string[] }>
+  ).notificationType;
+  const enums = {
+    ...coreSchema.enums,
+    notificationType: {
+      ...notificationType,
+      values: [...new Set([...notificationType.values, ...extraNotificationTypes])],
+    },
+  };
+  return { ...coreSchema, enums } as SchemaSource['schema'];
 }
 
 function collectSchemaSources(
   config: Awaited<ReturnType<typeof loadCMSConfig>>,
 ): SchemaSource[] {
+  // Plugin-contributed notification types fold into the core notification_type
+  // enum (so a plugin can persist its own `type`).
+  const extraNotificationTypes = (config.$plugins ?? []).flatMap((plugin) =>
+    Object.keys(
+      (plugin as { notificationTypes?: Record<string, unknown> })
+        .notificationTypes ?? {},
+    ),
+  );
+
   const sources: SchemaSource[] = [
     {
       name: 'core',
-      schema: coreSchemaFor(config.$notifications !== false),
+      schema: coreSchemaFor(
+        config.$notifications !== false,
+        extraNotificationTypes,
+      ),
     },
   ];
 
