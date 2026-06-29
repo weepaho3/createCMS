@@ -397,6 +397,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
             const [thread] = await tx
               .select({
                 id: commentThreads.id,
+                rootId: commentThreads.rootId,
                 collection: commentThreads.collection,
                 createdBy: commentThreads.createdBy,
               })
@@ -457,6 +458,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
                   meta: {
                     messageId: message.id,
                     threadId: thread.id,
+                    rootId: thread.rootId,
                   },
                 });
               }
@@ -479,6 +481,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
                 meta: {
                   messageId: message.id,
                   threadId: thread.id,
+                  rootId: thread.rootId,
                 },
               });
             }

@@ -10,7 +10,7 @@ import type {
  */
 export interface CoreNotificationMetaMap {
   mention: { messageId: string; threadId: string; rootId: string };
-  comment: { messageId: string; threadId: string };
+  comment: { messageId: string; threadId: string; rootId: string };
   threadResolved: { threadId: string; rootId: string };
   mergeRequestOpened: {
     mergeRequestId: string;
@@ -27,18 +27,24 @@ export interface CoreNotificationMetaMap {
   };
   approvalRequested: {
     approvalId: string;
+    rootId: string;
     branchId: string;
+    branchName: string;
     commitId: string;
     mergeRequestId?: string;
   };
   approvalApproved: {
     approvalId: string;
+    rootId: string;
     branchId: string;
+    branchName: string;
     mergeRequestId?: string;
   };
   approvalRejected: {
     approvalId: string;
+    rootId: string;
     branchId: string;
+    branchName: string;
     mergeRequestId?: string;
   };
   published: { rootId: string; branchId: string; commitId: string };
