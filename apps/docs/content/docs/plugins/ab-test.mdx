@@ -63,6 +63,11 @@ cmsClient.abTest.setConsent({ analytics_storage: 'granted' });
 | `setConsent` / `getConsent` | Consent Mode v2 signals | Gate analytics on consent. |
 | `dispatchEvent` | `(event) => void` | Dispatch a client event. |
 | `identify` / `reset` | visitor context | Set or clear the visitor key. |
+| `useLiveResults` | `({ testId, initial }) => { results, isLive }` | React hook: live dashboard results. |
+
+<Callout type="info">
+  `useLiveResults` streams result deltas over the [realtime](/docs/concepts/realtime) transport on the public `ab:live:<testId>` channel, so the dashboard updates live. Delivery is decoupled from the analytics storage adapter — it works with the Postgres or Upstash adapter. It requires a `realtime` transport configured on the server; without it, it falls back to the `getResults` poll.
+</Callout>
 
 ## Schema
 

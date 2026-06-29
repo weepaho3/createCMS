@@ -1,5 +1,5 @@
 {
   "title": "Core Concepts",
   "icon": "Lightbulb",
-  "pages": ["collections", "blocks", "media", "variables", "templates", "links", "redirects", "commits", "branches", "merges", "publishing", "collaboration", "notifications", "search", "data-retention", "type-safety", "events-tracking", "..."]
+  "pages": ["collections", "blocks", "media", "variables", "templates", "links", "redirects", "commits", "branches", "merges", "publishing", "collaboration", "notifications", "realtime", "search", "data-retention", "type-safety", "events-tracking", "..."]
 }

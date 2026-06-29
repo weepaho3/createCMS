@@ -21,6 +21,8 @@ Each notification carries a `type`, a `title` and `body`, the `resourceType` and
 
 Notifications are written after the triggering action commits, fire-and-forget: a notification failure never rolls back the action. Read them with `listNotifications` (which also returns an `unreadCount`), and mark them read, unread, or archived.
 
+With [realtime](/docs/concepts/realtime) configured, notifications are also **pushed** to each recipient the moment they're raised — the `useNotifications` hook prepends them live on top of the poll, so an inbox stays current without polling.
+
 <Callout type="info">
   For the inbox methods and the full type list, see the [Notifications reference](/docs/reference/notifications).
 </Callout>

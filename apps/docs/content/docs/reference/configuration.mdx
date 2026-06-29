@@ -86,6 +86,21 @@ const authMiddleware = defineAuthMiddleware(async (ctx) => {
 });
 ```
 
+## `realtime`
+
+Enables live server-to-client delivery — notification push and A/B live results — over Server-Sent Events. Pass a transport; `upstashRealtime({ url, token })` rides Upstash Redis over HTTP. `@upstash/realtime` and `@upstash/redis` are optional peer dependencies. See [Realtime](/docs/concepts/realtime).
+
+```ts
+import { upstashRealtime } from '@createcms/core';
+
+const realtime = upstashRealtime({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+```
+
+Requires `authMiddleware` to resolve the user from the request **cookie** — the realtime route authenticates each connection by session, so it must be same-origin with your app. Omit `realtime` to disable; notifications fall back to the poll.
+
 ## `dataRetention`
 
 The whole object is optional, but when you provide it, `keepDays` and `keepMinCommits` are required.

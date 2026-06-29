@@ -134,3 +134,26 @@ function TrackedForm(props: {
   children: ReactNode;
 }): ReactNode;
 ```
+
+## Realtime
+
+### `useNotifications`
+
+Subscribes the current user to their live notification stream and seeds from the `listNotifications` poll. Manages its own connection (no provider), de-dupes by id, and degrades to the poll when [`realtime`](/docs/concepts/realtime) isn't configured. Pass the current user's `id` (the server authorizes it against the session) and the same `baseURL` as the client.
+
+```ts
+function useNotifications(
+  client: CMSClient,
+  options: {
+    userId: string;
+    baseURL: string;
+    limit?: number;
+    withUser?: boolean;
+  },
+): {
+  notifications: NotificationListItem[];
+  unreadCount: number;
+  isLive: boolean;
+  refresh: () => void;
+};
+```

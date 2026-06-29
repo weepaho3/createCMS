@@ -1,0 +1,102 @@
+---
+title: Realtime
+description: Live server-to-client delivery over SSE — powers real-time notification push.
+---
+
+Realtime is an optional transport for pushing events from the server to the browser over Server-Sent Events. Turn it on once and notifications are **pushed** to each user the moment they're raised, instead of waiting for a poll.
+
+The transport is a generic publish/subscribe pipe: the CMS owns the connection and the per-user authorization, and features publish their own live streams on top.
+
+## Enabling it
+
+Pass a transport to the `realtime` option. The Upstash transport rides [Upstash Redis](https://upstash.com/) over HTTP (no sockets), so it works on serverless and edge runtimes:
+
+```ts
+import { createCMS, upstashRealtime } from '@createcms/core';
+
+export const cms = createCMS({
+  // …
+  realtime: upstashRealtime({
+    url: process.env.UPSTASH_REDIS_REST_URL!,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  }),
+});
+```
+
+`@upstash/realtime` and `@upstash/redis` are **optional peer dependencies** — install them alongside `realtime`:
+
+```bash
+npm install @upstash/realtime @upstash/redis
+```
+
+Without the transport configured, nothing breaks: notifications fall back to the poll and the `/realtime` route stays dormant.
+
+## How it works
+
+Enabling `realtime` mounts a single Server-Sent-Events route at `/<basePath>/realtime` (e.g. `/api/cms/realtime`). A client subscribes to one or more **channels** and receives every event published to them. The CMS's own channel is the per-user notification stream, `notif:<userId>` — a user's **private** inbox feed. Plugins can publish to their own channels over the same route.
+
+The browser only ever talks to that **same-origin** route — it opens an `EventSource` to `/realtime`, and the **server is the broker**: it authenticates the connection, subscribes to the backing transport (with Upstash, the Redis pub/sub channel) using server-side credentials, and relays each message to the browser as SSE. The client never connects to the backing store directly, so the transport's URL and token never leave the server.
+
+The stream is best-effort: the durable store stays the source of truth, and clients reconcile with a normal fetch on connect and on error. A dropped event only delays the live update until the next reconcile.
+
+## Security model
+
+The `/realtime` route **authenticates every connection** and **authorizes each requested channel** against that identity. A user's private channel `notif:<userId>` is delivered only to that user — a caller can subscribe to their **own** and no one else's — and it **fails closed**: an unauthenticated connection is rejected for a private channel.
+
+Authentication reuses your [`authMiddleware`](/docs/reference/configuration#authmiddleware) — it must resolve the user from the request **cookie/session**, because the browser's `EventSource` cannot send an `Authorization` header (it sends cookies only).
+
+<Callout type="warn">
+  Because auth is cookie-based, the realtime route must be **same-origin** with your app (the common case — your app calls its own `/api/cms`). Cross-origin cookie auth over SSE is not supported.
+</Callout>
+
+## Notifications
+
+When `realtime` is set, every notification is pushed to its recipient's private channel automatically — there's no extra wiring, because all notification sources funnel through the same dispatch. On the client, `useNotifications` seeds from the [`listNotifications`](/docs/reference/notifications) poll, then subscribes to the user's own stream and prepends pushes live:
+
+```tsx
+import { useNotifications } from '@createcms/core/react';
+
+function NotificationBell() {
+  const { notifications, unreadCount, isLive } = useNotifications(client, {
+    userId: currentUser.id,
+    baseURL: '/api/cms',
+  });
+
+  return <Badge count={unreadCount} live={isLive} items={notifications} />;
+}
+```
+
+The hook manages its own connection (no provider to wire), de-dupes by id so the unread count never drifts, reconciles via the poll on connect/error, and degrades to the seeded poll when realtime is unavailable. Pass the current user's `id` — the server authorizes it against the session, so a wrong id only yields a poll-only fallback, never another user's data.
+
+## Transports
+
+`realtime` takes a **transport** — the adapter that actually carries messages between the server and the connected clients. createCMS currently ships one:
+
+- **`upstashRealtime({ url, token })`** — Upstash Redis over HTTP (Redis pub/sub for delivery, no sockets; serverless- and edge-friendly).
+
+A transport is just an implementation of the `RealtimeTransport` interface, so you can back realtime with your own infrastructure (your own Redis, NATS, a managed pub/sub, …):
+
+```ts
+type RealtimeTransport = {
+  // Push `data` as `event` to every subscriber of `channel`.
+  publish(channel: string, event: string, data: unknown): Promise<void>;
+
+  // Build the SSE request handler for the /realtime route. `authorize` is the
+  // CMS's per-connection gate — it runs your authMiddleware + the channel
+  // policy. Call it with the channels the request asks for, return its Response
+  // if it rejects, otherwise subscribe to those channels and stream events as
+  // SSE. Return null when the transport can't serve a stream (e.g. a peer
+  // dependency is missing) so the route falls through.
+  getSseHandler(
+    authorize: (
+      request: Request,
+      channels: string[],
+    ) => Response | void | Promise<Response | void>,
+  ): Promise<((request: Request) => Promise<Response | void>) | null>;
+};
+```
+
+Two rules a custom transport must follow:
+
+1. **Always run `authorize` before subscribing.** It's what enforces that a user only reads their own private channel — skip it and you open every channel to everyone.
+2. **Match the wire shape the client hooks expect.** `useNotifications` parses each SSE message as a `data:` line carrying `{ id, data, event, channel }` (your payload under `data`), and ignores the connection's system frames. Emit that shape to reuse the built-in hooks, or ship your own client.
