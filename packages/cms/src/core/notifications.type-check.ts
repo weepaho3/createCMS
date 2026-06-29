@@ -158,3 +158,22 @@ export const _pluginMetaNarrows = () =>
     abTestWinner: (n) => ({ href: String(n.meta.nope) }),
     fallback: () => ({ href: null }),
   });
+
+// --- REGRESSION: a CMS with NO notification-type plugin still types core meta --
+// Without stripping the empty registry's index signature, KnownNotificationType
+// widens to `string` and `n.meta` collapses to `never`. `enabled` has no plugins.
+export const _routerNoPluginCmsTypesCoreMeta = () =>
+  createNotificationRouter<typeof enabled>({
+    mention: (n) => ({ href: `/threads/${n.meta.threadId}` }),
+    fallback: () => ({ href: null }),
+  });
+
+// The discriminating check: a bad meta key MUST still error here. If `n.meta`
+// had collapsed to `never`, `n.meta.nope` would be allowed and this
+// `@ts-expect-error` would go unused → tsc fails.
+export const _routerNoPluginMetaNarrows = () =>
+  createNotificationRouter<typeof enabled>({
+    // @ts-expect-error - `nope` is not on mention's meta shape
+    mention: (n) => ({ href: String(n.meta.nope) }),
+    fallback: () => ({ href: null }),
+  });

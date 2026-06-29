@@ -84,10 +84,28 @@ type DefaultMarker = {
   $notifications: { meta: Record<never, never>; actorUser: Record<string, unknown> };
 };
 
+/**
+ * Strip any `string`/`number`/`symbol` index signature from `T`. Without this, a
+ * CMS that contributes NO plugin notification types resolves its registry to
+ * `Record<string, never>` (or `never`), whose `keyof` is `string` — that widens
+ * {@link KnownNotificationType} to `string` and collapses every `meta` to
+ * `never`. Stripping the index signature collapses such a registry to `{}`
+ * (`keyof {}` is `never`), while keeping any concrete plugin keys intact.
+ */
+type RemoveIndex<T> = {
+  [K in keyof T as string extends K
+    ? never
+    : number extends K
+      ? never
+      : symbol extends K
+        ? never
+        : K]: T[K];
+};
+
 type PluginMetaOf<TCms> = TCms extends {
   $notifications: { meta: infer M };
 }
-  ? M
+  ? RemoveIndex<M>
   : Record<never, never>;
 
 type ActorOf<TCms> = TCms extends {
