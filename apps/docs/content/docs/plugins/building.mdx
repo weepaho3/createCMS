@@ -1,0 +1,315 @@
+---
+title: Building plugins
+description: Build your own server and client plugins — endpoints, schema, hooks, request scope, realtime events, and more.
+---
+
+A plugin extends createCMS without forking it. There are two halves, each a plain object you can build incrementally:
+
+- a **server plugin** (`CMSPlugin`) — added to `createCMS({ plugins })` — contributes endpoints, database tables, hooks, request-scoped query conditions, request interception, error codes, pruning, and more;
+- a **client plugin** (`CMSClientPlugin`) — added to `createCMSClient({ plugins })` — contributes typed actions to the client.
+
+Everything below is optional: a plugin uses only the seams it needs. Write the object with `satisfies CMSPlugin` so TypeScript checks the shape while keeping your literal types for inference.
+
+## A minimal plugin
+
+The only required field is `id` — it namespaces the plugin's endpoints and error codes. A bare `id` is already a valid (if inert) plugin:
+
+```ts title="plugins/page-views.ts"
+import type { CMSPlugin } from '@createcms/core';
+
+export function pageViews() {
+  return { id: 'pageViews' } satisfies CMSPlugin;
+}
+```
+
+Register it on the server:
+
+```ts title="lib/cms.ts"
+import { createCMS } from '@createcms/core';
+import { pageViews } from './plugins/page-views';
+
+export const cms = createCMS({
+  db,
+  collections,
+  media,
+  plugins: [pageViews()],
+});
+```
+
+The rest of this guide grows `pageViews` into a real plugin that counts views per root, then surveys the advanced seams using the official plugins as references.
+
+## Add a database table
+
+`definePluginSchema` declares tables (and enums) that merge into your generated schema. Each table is a plain object — see the [column reference](/docs/reference/configuration) for the field types:
+
+```ts title="plugins/page-views.ts"
+import { definePluginSchema } from '@createcms/core';
+
+const schema = definePluginSchema({
+  tables: {
+    pageViews: {
+      tableName: 'page_views',
+      indexPrefix: 'pgv',
+      columns: {
+        // one row per root → rootId is the primary key
+        rootId: {
+          type: 'text',
+          primaryKey: true,
+          references: { table: 'roots', column: 'id', onDelete: 'cascade' },
+        },
+        count: { type: 'integer', notNull: true, default: 0 },
+        updatedAt: { type: 'timestamp', notNull: true, defaultNow: true },
+      },
+    },
+  },
+});
+
+export function pageViews() {
+  return { id: 'pageViews', schema } satisfies CMSPlugin;
+}
+```
+
+<Callout type="warn">
+  Schema is build-time, not runtime: after adding or changing a plugin's `schema`, re-run `createcms generate` and apply the migration. The plugin's tables then exist in your database.
+</Callout>
+
+## Add endpoints
+
+`endpoints` is a record of [`createCMSEndpoint`](/docs/reference/server-api) definitions. They surface on the server at `cms.api.<id>.<method>` and on a typed client at `client.<id>.<method>`.
+
+The path **must** be `/<id>/<method>` — that's the convention the client proxy builds its request URLs from. Each handler reads `db` (and `scope`, `userId`) from `reqCtx.context`, and queries through the injected `db`:
+
+```ts title="plugins/page-views.ts"
+import { createCMSEndpoint, cmsMeta } from '@createcms/core';
+import { sql } from 'drizzle-orm';
+import * as z from 'zod';
+
+const endpoints = {
+  recordView: createCMSEndpoint(
+    '/pageViews/recordView',
+    {
+      method: 'POST',
+      body: z.object({ rootId: z.string() }),
+      metadata: cmsMeta(
+        { $Infer: { body: {} as { rootId: string } } },
+        { operation: 'update', scope: 'system', permissionResource: 'pageViews' },
+      ),
+    },
+    async (reqCtx) => {
+      const { db } = reqCtx.context;
+      const { rootId } = reqCtx.body;
+      await db.execute(sql`
+        insert into "cms"."page_views" ("root_id", "count") values (${rootId}, 1)
+        on conflict ("root_id") do update set
+          "count" = "cms"."page_views"."count" + 1,
+          "updated_at" = now()
+      `);
+      return {};
+    },
+  ),
+
+  getViews: createCMSEndpoint(
+    '/pageViews/getViews',
+    {
+      method: 'GET',
+      query: z.object({ rootId: z.string() }),
+      metadata: cmsMeta(
+        { $Infer: { query: {} as { rootId: string } } },
+        { operation: 'read', scope: 'system', permissionResource: 'pageViews' },
+      ),
+    },
+    async (reqCtx) => {
+      const { db } = reqCtx.context;
+      const rows = await db.execute<{ count: number }>(sql`
+        select "count" from "cms"."page_views" where "root_id" = ${reqCtx.query.rootId}
+      `);
+      return { count: rows[0]?.count ?? 0 };
+    },
+  ),
+};
+```
+
+Attach `endpoints` to the plugin object. The `metadata` (via `cmsMeta`) is required: `operation` and `scope` drive the auth/permission chain, `permissionResource` is what your `authMiddleware` checks, and `$Infer` is what makes the input typed on the client.
+
+<Callout type="info">
+  Every endpoint runs through your `authMiddleware`, the scope resolver, and hooks automatically. To opt an endpoint out (e.g. a public ingest), pass `{ public: true, operation, scope }` to `cmsMeta` — it then handles its own access control.
+</Callout>
+
+## Typed error codes
+
+`$ERROR_CODES` declares the errors your plugin throws. They merge into the client's `$ERROR_CODES`, so consumers can branch on a stable `code`. Throw with better-call's `APIError`:
+
+```ts title="plugins/page-views.ts"
+import { APIError } from 'better-call';
+
+const $ERROR_CODES = {
+  ROOT_NOT_FOUND: { status: 404, message: 'Root not found' },
+} as const;
+
+// inside a handler:
+throw new APIError(404, {
+  code: 'ROOT_NOT_FOUND',
+  message: $ERROR_CODES.ROOT_NOT_FOUND.message,
+});
+```
+
+## React to actions with hooks
+
+`hooks` run before or after any CMS action (use the action name, or `'*'` for all). A `before` hook can override the input; an `after` hook sees the result. The official A/B plugin uses a `before` hook on `publishBranch` as an integrity guard:
+
+```ts title="plugins/page-views.ts"
+hooks: {
+  after: [
+    {
+      action: 'deleteRoot',
+      handler: async (ctx) => {
+        // ctx.action, ctx.collection, ctx.db, ctx.input, ctx.scope
+        await ctx.db.execute(
+          sql`delete from "cms"."page_views" where "root_id" = ${ctx.input.rootId}`,
+        );
+      },
+    },
+  ],
+}
+```
+
+The same `before`/`after` shape is available inline on `createCMS({ hooks })` when you don't need a whole plugin.
+
+## Scope every request (multi-tenancy, i18n)
+
+This is the most powerful seam. A plugin's `init(ctx)` can return **scope conditions** — per-table `WHERE` clauses and insert columns that the CMS applies to *every* core read and write automatically. The official `multiTenant` plugin scopes every table by `tenant_slug`:
+
+```ts title="plugins/multi-tenant-style.ts"
+import type { CMSPlugin, ScopeConditionFactory } from '@createcms/core';
+import { sql } from 'drizzle-orm';
+
+init(_ctx) {
+  // Runs once per request; `mw` is your authMiddleware's result.
+  const factory: ScopeConditionFactory = (mw) => {
+    const tenantSlug = (mw as { tenantSlug?: string }).tenantSlug;
+    return {
+      roots: {
+        where: sql`"cms"."roots"."tenant_slug" = ${tenantSlug}`,
+        insertColumns: { tenant_slug: tenantSlug },
+      },
+      // …assets, redirects, templates, variables, etc.
+    };
+  };
+  return { context: { scopeConditions: [factory] } };
+}
+```
+
+`scopeConditions` is a concatenated array, so multiple plugins (e.g. multi-tenant + i18n) compose: every factory's `WHERE` is `AND`-ed together. The `init` return's `context` is merged onto the request context; array fields like `scopeConditions` are appended rather than replaced.
+
+## Per-collection endpoints
+
+Where `endpoints` mounts under the plugin id, `collectionEndpoints(collection, ctx)` is called once per collection and mounts under each one, at `cms.api.<collection>.<method>`. The official `i18n` plugin uses it for `createTranslation` / `listTranslations`:
+
+```ts
+collectionEndpoints: (collection, ctx) => ({
+  createTranslation: createCMSEndpoint(/* … */),
+  listTranslations: createCMSEndpoint(/* … */),
+}),
+```
+
+## Intercept requests
+
+`onRequest(request, ctx)` runs before routing — return `{ response }` to short-circuit, `{ request }` to rewrite, or nothing to continue. `onResponse(response, ctx)` post-processes. The A/B plugin uses `onRequest` to rate-limit its public ingest before any DB work:
+
+```ts
+async onRequest(request, ctx) {
+  const url = new URL(request.url);
+  if (request.method === 'POST' && url.pathname.endsWith('/pageViews/recordView')) {
+    const limited = await rateLimit(request);
+    if (limited) return { response: limited }; // 429, pipeline stops here
+  }
+}
+```
+
+## Path-bound middleware
+
+For middleware tied to a path rather than an action, use `middlewares`:
+
+```ts
+middlewares: [{ path: '/pageViews/*', middleware: myMiddleware }],
+```
+
+## Notifications, realtime events, and pruning
+
+Three more seams, each optional:
+
+- **`onNotification(notification)`** — called whenever the CMS emits a notification (the same handler is also available as the top-level `createCMS({ onNotification })` option). Use it to mirror notifications to email, Slack, etc.
+- **`realtimeEvents`** — a Zod map of events your plugin publishes over the shared [realtime](/docs/concepts/realtime) transport. It's inferred into `typeof cms` so a client subscription is typed. (Requires `realtime` configured.)
+- **`pruning: { plan, execute }`** — contribute to `runPruningPass`: `plan` returns the deletable rows for a root, `execute` deletes them in the retention transaction. Use it so your plugin's tables honour `dataRetention`.
+
+## The client plugin
+
+A client plugin adds actions to `createCMSClient`. `getActions($fetch, $store, baseURL)` returns a record merged onto the client; `$ERROR_CODES` adds the plugin's error codes to `client.$ERROR_CODES`:
+
+```ts title="plugins/page-views-client.ts"
+import type { CMSClientPlugin } from '@createcms/core';
+
+export function pageViewsClient(): CMSClientPlugin {
+  return {
+    id: 'pageViews',
+    getActions: ($fetch) => ({
+      recordView: (rootId: string) =>
+        $fetch('/pageViews/recordView', { method: 'POST', body: { rootId } }),
+    }),
+    $ERROR_CODES: { ROOT_NOT_FOUND: { status: 404, message: 'Root not found' } },
+  };
+}
+```
+
+```ts title="lib/cms-client.ts"
+import { createCMSClient } from '@createcms/core/react';
+import { pageViewsClient } from './plugins/page-views-client';
+
+export const client = createCMSClient<typeof cms>()({
+  baseURL: '/api/cms',
+  plugins: [pageViewsClient()],
+});
+
+// fully typed:
+await client.pageViews.getViews({ query: { rootId } }); // from the server endpoint
+client.recordView(rootId); // from getActions
+```
+
+## How the types flow
+
+Plugin contributions reach `typeof cms` and the client through inference — there's no codegen step:
+
+- server `endpoints` → `cms.api.<id>.*` and (via `typeof cms`) `client.<id>.*`;
+- `collectionEndpoints` → `cms.api.<collection>.*`;
+- client `getActions` → `client.*`;
+- `realtimeEvents` → the typed realtime event registry;
+- `$ERROR_CODES` (server + client) → `client.$ERROR_CODES`.
+
+Keep `satisfies CMSPlugin` on the server object and type the client plugin as `CMSClientPlugin`, and a configured `createCMS` / `createCMSClient` infers the rest.
+
+## Reference: plugin fields
+
+Every field is optional except `id`.
+
+| Server (`CMSPlugin`) | What it does |
+| --- | --- |
+| `id` | **Required.** Namespaces endpoints + error codes. |
+| `endpoints` | Routes at `cms.api.<id>.<method>` (path `/<id>/<method>`). |
+| `collectionEndpoints` | Routes mounted on every collection. |
+| `schema` | Tables + enums merged into the generated schema. |
+| `hooks` | `before` / `after` handlers on CMS actions. |
+| `middlewares` | Path-bound better-call middleware. |
+| `init` | Per-instance setup; returns context (incl. `scopeConditions`) + extra hooks. |
+| `onRequest` / `onResponse` | Intercept / rewrite requests and responses. |
+| `onNotification` | Handle every emitted notification. |
+| `realtimeEvents` | Zod event map published over the realtime transport. |
+| `pruning` | `plan` / `execute` for data-retention. |
+| `$ERROR_CODES` | Typed error codes. |
+
+| Client (`CMSClientPlugin`) | What it does |
+| --- | --- |
+| `id` | **Required.** |
+| `getActions` | Actions merged onto the client. |
+| `init` | Client-side setup (`$fetch`, `$store`). |
+| `pathMethods` | HTTP method per action path. |
+| `$ERROR_CODES` | Typed error codes on the client. |
