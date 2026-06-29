@@ -3,6 +3,8 @@
 // the `@ts-expect-error` below becomes unused and tsc fails — so this file is
 // self-verifying.
 
+import { createCMSClient } from '../client/vanilla';
+import { useNotifications } from '../react/realtime';
 import { defineCollections } from './define';
 import { createCMS } from './factory';
 import type { DrizzleInstance } from './types/drizzle';
@@ -40,3 +42,11 @@ enabled.notificationService satisfies object;
 // compile error, so `client.notifications` is absent for free.
 // @ts-expect-error - notifications namespace gated out when notifications: false
 void disabled.api.notifications;
+
+// --- useNotifications accepts the REAL typed client with NO cast -----------
+// Regression guard: the NotificationsClient shim must match the client's
+// `WithUserQuery` (not plain boolean), so `useNotifications(client, …)` compiles
+// directly — no `as unknown as Parameters<typeof useNotifications>[0]`.
+const realtimeClient = createCMSClient<typeof enabled>()({ baseURL: '/api/cms' });
+export const _useNotificationsAcceptsRealClient = () =>
+  useNotifications(realtimeClient, { userId: 'u1', withUser: true });

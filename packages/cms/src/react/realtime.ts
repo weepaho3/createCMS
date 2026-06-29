@@ -59,8 +59,10 @@ export function RealtimeProvider({
  *  real typed client's `notifications` namespace). */
 type NotificationsClient = {
   notifications: {
+    // `withUser` matches the client's `WithUserQuery` (`true`, never `boolean`),
+    // so a real typed CMS client is assignable without a cast.
     listNotifications: (opts?: {
-      query?: { limit?: number; withUser?: boolean };
+      query?: { limit?: number; withUser?: true };
     }) => Promise<ListNotificationsResult>;
   };
 };
@@ -68,15 +70,17 @@ type NotificationsClient = {
 export type UseNotificationsOptions = {
   /**
    * The current user's id — used to subscribe to the private `notif:<userId>`
-   * channel. The server authorizes it against the session, so a wrong id only
-   * yields a poll-only fallback, never another user's data.
+   * channel (the server authorizes it against the session). Optional: pass it
+   * straight from your auth session (`session?.user?.id`); while it is undefined
+   * the hook stays poll-only and connects once it resolves. The CMS has no
+   * "current user" endpoint, so your app supplies the id.
    */
-  userId: string;
+  userId?: string;
   /** Page size for the seed / reconcile poll (default 50). */
   limit?: number;
-  /** Include actor-user data in the listed notifications. Note: live-pushed
-   *  items do not carry `actorUser` until the next poll resolves it. */
-  withUser?: boolean;
+  /** Pass `true` to enrich the seeded list with actor-user data. Live-pushed
+   *  items gain it on the next poll. */
+  withUser?: true;
 };
 
 export type { NotificationsState };
@@ -133,6 +137,9 @@ export function useNotifications(
   }, [refresh]);
 
   const { status } = useRealtime({
+    // Connect only once the userId is known — poll-only until then, no
+    // `notif:undefined` subscription, no `userId ?? ''` workaround.
+    enabled: Boolean(userId),
     channels: [`notif:${userId}`],
     events: ['notification'],
     onData({ data }) {
