@@ -252,7 +252,7 @@ notificationTypes: {
 },
 ```
 
-After `createcms generate`, `abTestWinner` is a valid `notification_type`, and the app's `createNotificationRouter<typeof cms>({ abTestWinner: (n) => ({ href: `/experiments/${n.meta.testId}` }), … })` routes it with `meta` fully typed.
+After `createcms generate`, `abTestWinner` is a valid `notification_type`, and [`createNotificationRouter<typeof cms>`](/docs/reference/react#createnotificationrouter) types its `meta` per type, so the app routes it with full autocomplete.
 
 ## The client plugin
 
