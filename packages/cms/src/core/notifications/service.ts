@@ -1,4 +1,5 @@
 import type { DrizzleInstance } from '../types/drizzle';
+import type { ResolvedUserConfig } from '../user/resolve';
 import type {
   NotificationInput,
   NotificationPayload,
@@ -6,6 +7,7 @@ import type {
 } from './types';
 
 import { notifications } from '../db/schema.generated';
+import { batchFetchUsers } from '../user/join-helpers';
 
 export type NotificationService = ReturnType<typeof createNotificationService>;
 
@@ -30,6 +32,7 @@ function mapRowToPayload(
 export function createNotificationService(
   db: DrizzleInstance,
   handlers: OnNotificationHandler[],
+  resolvedUser?: ResolvedUserConfig,
 ) {
   function dispatch(payload: NotificationPayload): void {
     for (const handler of handlers) {
@@ -46,6 +49,33 @@ export function createNotificationService(
     }
   }
 
+  /**
+   * Resolve each payload's `actorUser` from the `user` config (the full
+   * `exposeColumns` allowlist), in one batched query, BEFORE dispatch so the
+   * realtime push / `onNotification` handlers carry the responsible user.
+   * Best-effort: a lookup failure leaves `actorUser` unset, never drops the
+   * already-persisted notification.
+   */
+  async function enrichActors(payloads: NotificationPayload[]): Promise<void> {
+    if (!resolvedUser) return;
+    const actorIds = [
+      ...new Set(
+        payloads
+          .map((p) => p.actorId)
+          .filter((id): id is string => id != null),
+      ),
+    ];
+    if (actorIds.length === 0) return;
+    try {
+      const users = await batchFetchUsers(db, resolvedUser, true, actorIds);
+      for (const p of payloads) {
+        p.actorUser = p.actorId ? (users.get(p.actorId) ?? null) : null;
+      }
+    } catch (err) {
+      console.error('[cms] actor enrichment failed:', err);
+    }
+  }
+
   return {
     async notify(input: NotificationInput): Promise<NotificationPayload> {
       const [row] = await db
@@ -53,7 +83,9 @@ export function createNotificationService(
         .values({
           recipientId: input.recipientId,
           actorId: input.actorId,
-          type: input.type,
+          // Widened to allow plugin/app type strings; the generated enum is the
+          // runtime authority (core-only in this package, core+plugin in apps).
+          type: input.type as (typeof notifications.$inferInsert)['type'],
           title: input.title,
           body: input.body,
           resourceType: input.resourceType,
@@ -64,6 +96,7 @@ export function createNotificationService(
         .returning();
 
       const payload = mapRowToPayload(row);
+      await enrichActors([payload]);
       dispatch(payload);
       return payload;
     },
@@ -79,7 +112,9 @@ export function createNotificationService(
           inputs.map((input) => ({
             recipientId: input.recipientId,
             actorId: input.actorId,
-            type: input.type,
+            // Widened to allow plugin/app type strings; the generated enum is the
+          // runtime authority (core-only in this package, core+plugin in apps).
+          type: input.type as (typeof notifications.$inferInsert)['type'],
             title: input.title,
             body: input.body,
             resourceType: input.resourceType,
@@ -91,6 +126,7 @@ export function createNotificationService(
         .returning();
 
       const payloads = rows.map(mapRowToPayload);
+      await enrichActors(payloads);
 
       for (const payload of payloads) {
         dispatch(payload);

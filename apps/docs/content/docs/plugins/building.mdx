@@ -236,11 +236,23 @@ middlewares: [{ path: '/pageViews/*', middleware: myMiddleware }],
 
 ## Notifications, realtime events, and pruning
 
-Three more seams, each optional:
+Four more seams, each optional:
 
 - **`onNotification(notification)`** — called whenever the CMS emits a notification (the same handler is also available as the top-level `createCMS({ onNotification })` option). Use it to mirror notifications to email, Slack, etc.
+- **`notificationTypes`** — a Zod map keyed by a notification `type`, whose values schema that type's `meta`. Two effects: the keys are folded into the core `notification_type` enum at `createcms generate` (so the plugin can persist its own `type` — re-generate after adding it), and the map is inferred into `typeof cms` so [`createNotificationRouter`](/docs/reference/react#createnotificationrouter) types each `meta` per type. Raise one with `ctx.notificationService.notify({ type, meta, … })`.
 - **`realtimeEvents`** — a Zod map of events your plugin publishes over the shared [realtime](/docs/concepts/realtime) transport. It's inferred into `typeof cms` so a client subscription is typed. (Requires `realtime` configured.)
 - **`pruning: { plan, execute }`** — contribute to `runPruningPass`: `plan` returns the deletable rows for a root, `execute` deletes them in the retention transaction. Use it so your plugin's tables honour `dataRetention`.
+
+```ts title="plugins/ab-test.ts"
+import * as z from 'zod';
+
+// on the plugin object:
+notificationTypes: {
+  abTestWinner: z.object({ testId: z.string(), variant: z.string() }),
+},
+```
+
+After `createcms generate`, `abTestWinner` is a valid `notification_type`, and the app's `createNotificationRouter<typeof cms>({ abTestWinner: (n) => ({ href: `/experiments/${n.meta.testId}` }), … })` routes it with `meta` fully typed.
 
 ## The client plugin
 
@@ -302,6 +314,7 @@ Every field is optional except `id`.
 | `init` | Per-instance setup; returns context (incl. `scopeConditions`) + extra hooks. |
 | `onRequest` / `onResponse` | Intercept / rewrite requests and responses. |
 | `onNotification` | Handle every emitted notification. |
+| `notificationTypes` | Zod meta map; adds notification types (enum + typed router). |
 | `realtimeEvents` | Zod event map published over the realtime transport. |
 | `pruning` | `plan` / `execute` for data-retention. |
 | `$ERROR_CODES` | Typed error codes. |

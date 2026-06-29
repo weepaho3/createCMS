@@ -56,37 +56,45 @@ export function RealtimeProvider({
 }
 
 /** The slice of the CMS client this hook needs (structurally satisfied by the
- *  real typed client's `notifications` namespace). */
-type NotificationsClient = {
+ *  real typed client's `notifications` namespace). `TActorUser` is inferred from
+ *  the client's `listNotifications` return, so a typed client flows its
+ *  `actorUser` shape straight through to the hook result. */
+type NotificationsClient<TActorUser = Record<string, unknown>> = {
   notifications: {
+    // `withUser` matches the client's `WithUserQuery` (`true`, never `boolean`),
+    // so a real typed CMS client is assignable without a cast.
     listNotifications: (opts?: {
-      query?: { limit?: number; withUser?: boolean };
-    }) => Promise<ListNotificationsResult>;
+      query?: { limit?: number; withUser?: true };
+    }) => Promise<ListNotificationsResult<TActorUser>>;
   };
 };
 
 export type UseNotificationsOptions = {
   /**
    * The current user's id — used to subscribe to the private `notif:<userId>`
-   * channel. The server authorizes it against the session, so a wrong id only
-   * yields a poll-only fallback, never another user's data.
+   * channel (the server authorizes it against the session). Optional: pass it
+   * straight from your auth session (`session?.user?.id`); while it is undefined
+   * the hook stays poll-only and connects once it resolves. The CMS has no
+   * "current user" endpoint, so your app supplies the id.
    */
-  userId: string;
+  userId?: string;
   /** Page size for the seed / reconcile poll (default 50). */
   limit?: number;
-  /** Include actor-user data in the listed notifications. Note: live-pushed
-   *  items do not carry `actorUser` until the next poll resolves it. */
-  withUser?: boolean;
+  /** Pass `true` to enrich the seeded list with actor-user data (`actorUser`).
+   *  Live-pushed items already carry `actorUser` from the wire, so the actor is
+   *  available immediately on a push too. */
+  withUser?: true;
 };
 
 export type { NotificationsState };
 
-export type UseNotificationsResult = NotificationsState & {
-  /** Whether the shared realtime connection is currently connected. */
-  isLive: boolean;
-  /** Force a re-poll (reconcile against the durable list). */
-  refresh: () => void;
-};
+export type UseNotificationsResult<TActorUser = Record<string, unknown>> =
+  NotificationsState<TActorUser> & {
+    /** Whether the shared realtime connection is currently connected. */
+    isLive: boolean;
+    /** Force a re-poll (reconcile against the durable list). */
+    refresh: () => void;
+  };
 
 const { useRealtime } = createRealtime<{
   notification: typeof notificationEvent;
@@ -106,12 +114,12 @@ const { useRealtime } = createRealtime<{
  * `createCMSClient` recommends) — a new identity each render re-fires the seed
  * poll.
  */
-export function useNotifications(
-  client: NotificationsClient,
+export function useNotifications<TActorUser = Record<string, unknown>>(
+  client: NotificationsClient<TActorUser>,
   options: UseNotificationsOptions,
-): UseNotificationsResult {
+): UseNotificationsResult<TActorUser> {
   const { userId, limit = 50, withUser } = options;
-  const [state, setState] = useState<NotificationsState>({
+  const [state, setState] = useState<NotificationsState<TActorUser>>({
     notifications: [],
     unreadCount: 0,
   });
@@ -133,6 +141,9 @@ export function useNotifications(
   }, [refresh]);
 
   const { status } = useRealtime({
+    // Connect only once the userId is known — poll-only until then, no
+    // `notif:undefined` subscription, no `userId ?? ''` workaround.
+    enabled: Boolean(userId),
     channels: [`notif:${userId}`],
     events: ['notification'],
     onData({ data }) {
@@ -140,7 +151,12 @@ export function useNotifications(
       // and the recipient check is defense-in-depth over the server's authz.
       const parsed = notificationEvent.safeParse(data);
       if (!parsed.success || parsed.data.recipientId !== userId) return;
-      const pushed = { ...parsed.data, readAt: null } as NotificationListItem;
+      // The wire event carries `actorUser`, so a live push shows the actor
+      // immediately — no wait for the next reconcile poll.
+      const pushed = {
+        ...parsed.data,
+        readAt: null,
+      } as NotificationListItem<TActorUser>;
       setState((prev) => mergePushedNotification(prev, pushed));
     },
   });

@@ -24,6 +24,7 @@ import type {
   InferPluginEndpoints,
   InferPluginErrorCodes,
   InferPluginNamespaces,
+  InferPluginNotificationMeta,
 } from './types/plugin';
 
 import { DEFAULT_BRANCH_NAME } from './branch-policy';
@@ -208,6 +209,42 @@ type WithUserApi<T, TTable extends AnyPgTable> = {
       : T[NS][K];
   };
 };
+
+// The actor-user object on a notification item. `exposeColumns` is a runtime
+// allowlist (typed only as `string[]`), so the tightest static shape we can
+// derive is a partial of the user table's row.
+type ActorUserShape<TTable extends AnyPgTable> = Partial<TTable['$inferSelect']>;
+
+// Rewrite a `listNotifications` RESULT to type `actorUser` off the user table.
+type InjectActorUser<R, TTable extends AnyPgTable> = R extends {
+  notifications: Array<infer Item>;
+}
+  ? Omit<R, 'notifications'> & {
+      notifications: Array<
+        Omit<Item, 'actorUser'> & { actorUser?: ActorUserShape<TTable> | null }
+      >;
+    }
+  : R;
+
+// Type the OUTPUT of `notifications.listNotifications` (WithUserApi only types
+// the input flag). Leaves every other endpoint untouched.
+type WithActorUserApi<T, TTable extends AnyPgTable> = T extends {
+  notifications: infer NS;
+}
+  ? Omit<T, 'notifications'> & {
+      notifications: {
+        [K in keyof NS]: K extends 'listNotifications'
+          ? NS[K] extends (...args: infer A) => infer R
+            ? (
+                ...args: A
+              ) => R extends Promise<infer RR>
+                ? Promise<InjectActorUser<RR, TTable>>
+                : R
+            : NS[K]
+          : NS[K];
+      };
+    }
+  : T;
 
 type CMSDefinitionDataKeys =
   | 'db'
@@ -551,7 +588,11 @@ export const createCMS = <
       ]
     : [];
   const notificationService = notificationsEnabled
-    ? createNotificationService(definition.db, notificationHandlers)
+    ? createNotificationService(
+        definition.db,
+        notificationHandlers,
+        cmsContext.resolvedUser,
+      )
     : undefined;
   cmsContext.notificationService = notificationService;
 
@@ -640,7 +681,7 @@ export const createCMS = <
   type FinalApi = TDef extends {
     user: CMSUserConfig<infer U extends AnyPgTable>;
   }
-    ? WithUserApi<BaseApi, U>
+    ? WithActorUserApi<WithUserApi<BaseApi, U>, U>
     : BaseApi;
 
   const api = Object.fromEntries(
@@ -722,5 +763,16 @@ export const createCMS = <
       ? RevalidateFn<keyof DefCollections & string>
       : RevalidateFn<keyof DefCollections & string> | undefined,
     $ERROR_CODES,
+    // Type-only registry read by `createNotificationRouter<typeof cms>`: the
+    // plugin-contributed notification `meta` shapes + the actor-user shape from
+    // the `user` config. Runtime value is `undefined` (never read at runtime).
+    $notifications: undefined as unknown as {
+      meta: InferPluginNotificationMeta<TPlugins>;
+      actorUser: TDef extends {
+        user: CMSUserConfig<infer U extends AnyPgTable>;
+      }
+        ? ActorUserShape<U>
+        : Record<string, unknown>;
+    },
   };
 };
