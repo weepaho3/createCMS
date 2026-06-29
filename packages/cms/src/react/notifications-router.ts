@@ -10,7 +10,7 @@ import type {
  */
 export interface CoreNotificationMetaMap {
   mention: { messageId: string; threadId: string; rootId: string };
-  comment: { messageId: string; threadId: string };
+  comment: { messageId: string; threadId: string; rootId: string };
   threadResolved: { threadId: string; rootId: string };
   mergeRequestOpened: {
     mergeRequestId: string;
@@ -27,18 +27,24 @@ export interface CoreNotificationMetaMap {
   };
   approvalRequested: {
     approvalId: string;
+    rootId: string;
     branchId: string;
+    branchName: string;
     commitId: string;
     mergeRequestId?: string;
   };
   approvalApproved: {
     approvalId: string;
+    rootId: string;
     branchId: string;
+    branchName: string;
     mergeRequestId?: string;
   };
   approvalRejected: {
     approvalId: string;
+    rootId: string;
     branchId: string;
+    branchName: string;
     mergeRequestId?: string;
   };
   published: { rootId: string; branchId: string; commitId: string };
@@ -78,10 +84,28 @@ type DefaultMarker = {
   $notifications: { meta: Record<never, never>; actorUser: Record<string, unknown> };
 };
 
+/**
+ * Strip any `string`/`number`/`symbol` index signature from `T`. Without this, a
+ * CMS that contributes NO plugin notification types resolves its registry to
+ * `Record<string, never>` (or `never`), whose `keyof` is `string` — that widens
+ * {@link KnownNotificationType} to `string` and collapses every `meta` to
+ * `never`. Stripping the index signature collapses such a registry to `{}`
+ * (`keyof {}` is `never`), while keeping any concrete plugin keys intact.
+ */
+type RemoveIndex<T> = {
+  [K in keyof T as string extends K
+    ? never
+    : number extends K
+      ? never
+      : symbol extends K
+        ? never
+        : K]: T[K];
+};
+
 type PluginMetaOf<TCms> = TCms extends {
   $notifications: { meta: infer M };
 }
-  ? M
+  ? RemoveIndex<M>
   : Record<never, never>;
 
 type ActorOf<TCms> = TCms extends {

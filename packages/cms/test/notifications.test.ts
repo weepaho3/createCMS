@@ -925,6 +925,13 @@ describe('notification triggers', () => {
       expect(approvalNotifs.map((n) => n.recipientId).sort()).toEqual(
         [USER_2, USER_3].sort(),
       );
+      // meta carries the deep-link fields a SYNC router can't fetch later:
+      // rootId + branchName, not just branchId.
+      expect(approvalNotifs[0].meta).toMatchObject({
+        rootId: expect.any(String),
+        branchId: expect.any(String),
+        branchName: expect.any(String),
+      });
     });
 
     it('sends approvalApproved notification to the requester', async () => {

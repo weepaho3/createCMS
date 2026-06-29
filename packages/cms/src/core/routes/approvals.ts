@@ -221,11 +221,14 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
             let mergeRequestId: string | null = null;
             let branchId: string;
             let commitId: string;
+            let rootId: string;
+            let branchName: string;
 
             if (input.mergeRequestId) {
               const [mr] = await tx
                 .select({
                   id: mergeRequests.id,
+                  rootId: mergeRequests.rootId,
                   sourceBranchId: mergeRequests.sourceBranchId,
                   status: mergeRequests.status,
                 })
@@ -244,7 +247,10 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
                 throw new CMSError('MERGE_REQUEST_NOT_OPEN');
 
               const [sourceBranch] = await tx
-                .select({ headCommitId: branches.headCommitId })
+                .select({
+                  headCommitId: branches.headCommitId,
+                  name: branches.name,
+                })
                 .from(branches)
                 .where(eq(branches.id, mr.sourceBranchId))
                 .for('update');
@@ -254,10 +260,14 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
               mergeRequestId = mr.id;
               branchId = mr.sourceBranchId;
               commitId = sourceBranch.headCommitId;
+              rootId = mr.rootId;
+              branchName = sourceBranch.name;
             } else {
               const [branch] = await tx
                 .select({
                   id: branches.id,
+                  rootId: branches.rootId,
+                  name: branches.name,
                   headCommitId: branches.headCommitId,
                 })
                 .from(branches)
@@ -275,6 +285,8 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
 
               branchId = branch.id;
               commitId = branch.headCommitId;
+              rootId = branch.rootId;
+              branchName = branch.name;
             }
 
             const existing = await tx
@@ -326,7 +338,9 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
                 collection: collectionName,
                 meta: {
                   approvalId: a.id,
+                  rootId,
                   branchId,
+                  branchName,
                   commitId,
                   mergeRequestId,
                 },
@@ -392,6 +406,8 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
                 id: approvals.id,
                 mergeRequestId: approvals.mergeRequestId,
                 branchId: approvals.branchId,
+                rootId: branches.rootId,
+                branchName: branches.name,
                 commitId: approvals.commitId,
                 status: approvals.status,
                 requestedBy: approvals.requestedBy,
@@ -466,7 +482,9 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
                 collection: collectionName,
                 meta: {
                   approvalId: updated.id,
+                  rootId: approval.rootId,
                   branchId: updated.branchId,
+                  branchName: approval.branchName,
                   mergeRequestId: updated.mergeRequestId,
                 },
               });
@@ -532,6 +550,8 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
                 id: approvals.id,
                 mergeRequestId: approvals.mergeRequestId,
                 branchId: approvals.branchId,
+                rootId: branches.rootId,
+                branchName: branches.name,
                 commitId: approvals.commitId,
                 status: approvals.status,
                 requestedBy: approvals.requestedBy,
@@ -606,7 +626,9 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
                 collection: collectionName,
                 meta: {
                   approvalId: updated.id,
+                  rootId: approval.rootId,
                   branchId: updated.branchId,
+                  branchName: approval.branchName,
                   mergeRequestId: updated.mergeRequestId,
                   rejectionReason: input.rejectionReason,
                 },
