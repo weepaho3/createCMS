@@ -1,5 +1,52 @@
 # @createcms/core
 
+## 0.2.9
+
+### Patch Changes
+
+- [#24](https://github.com/weepaho3/createCMS/pull/24) [`238208f`](https://github.com/weepaho3/createCMS/commit/238208f1d142536a9e5f4257f9ded247a5b6454a) Thanks [@weepaho3](https://github.com/weepaho3)! - Add an optional **c15t adapter** for the consent gate at `@createcms/core/plugins/consent/c15t`.
+
+  [c15t](https://c15t.com) is a consent-management platform (banner + storage + Consent Mode); the createCMS consent gate is the consumer-side layer that buffers the CMS's own A/B + analytics effects until consent is decided. This adapter bridges them:
+
+  - `consentModeFromC15t(consents, mapping?)` — pure mapper from c15t's categories to Consent Mode v2 signals (default: `measurement` → `analytics_storage`, `marketing` → `ad_storage`/`ad_user_data`/`ad_personalization`; `necessary`/`functionality`/`experience` ignored). The mapping is overridable.
+  - `useC15tConsentBridge(client, { consents, hasConsented }, mapping?)` — a React hook that pushes c15t's decision into the gate once the visitor has decided.
+
+  It takes c15t's consent record as input and has **no `@c15t/*` dependency**, so it works with any c15t version — the consumer wires `useConsentManager()` in. (If c15t already emits Consent Mode commands onto `window.dataLayer` via GTM, the gate's auto-read picks them up and no adapter is needed; this is for the offline / no-dataLayer case or driving the gate explicitly.)
+
+- [#24](https://github.com/weepaho3/createCMS/pull/24) [`57029a5`](https://github.com/weepaho3/createCMS/commit/57029a5c45d864e9856c85e5dc341c922c925729) Thanks [@weepaho3](https://github.com/weepaho3)! - Media gate is now addressed by the **asset id**, and content images are served with no read-path resolution.
+
+  - **Gate by id.** The public gate is `GET /media/asset/{id}` (the stable asset id, which is exactly what content stores), a 302 redirect to the object. An `<img src="/media/asset/{id}">` survives swapping the bytes behind an asset id (new slug/object key, same id) with **no content change and no re-render** — the gate re-resolves the id to the current object. The redirect is **short-cached** (`max-age=300`, no longer `immutable`) so such a swap propagates within minutes, while the object bytes stay long-cached at the CDN (each version has its own object key). A CDN in front of the gate must include the query string in its cache key (the redirect target varies by `?format`/`?w`/`?download`).
+  - **Two latent gate bugs fixed along the way** (the gate never worked over real HTTP before, because content used direct CDN URLs): the route was registered with OpenAPI `{param}` braces — rou3 only matches `:param`, so every request 404'd at the router before the handler ran — and the handler set the redirect via a returned `{ headers, body }` object that better-call never applies to the HTTP response (it answered `200` with an empty body). Both are fixed; the gate is now covered by tests that drive a real `Request` through `cms.router.handler`.
+  - **Reverted the read-path image→`{ id, slug }` resolution** shipped in 0.2.8 (`resolveImageAssets` / `ResolvedImage`). With the id-addressed gate the renderer builds the URL straight from the stored id, so no read-time resolution is needed; an `image` block property is a plain asset-id string on both the write and read paths.
+
+- [#24](https://github.com/weepaho3/createCMS/pull/24) [`584d981`](https://github.com/weepaho3/createCMS/commit/584d9817b2de7cb3092bc371bc6fc0551c4cfc1c) Thanks [@weepaho3](https://github.com/weepaho3)! - Add `media.moveAssets` — move assets between folders (and to the root).
+
+  `moveAssets({ assetIds, folderId })` sets the folder of one or more assets (`folderId: null` moves them to the root) — the missing write counterpart to `moveFolder` for drag-and-drop in a media library. Bulk-by-ids and scoped like `updateAssetStatus`: non-existent, out-of-scope, and archived ids are skipped and returned in `skipped` so a batch partially succeeds; a moved asset's variants follow it into the same folder so an original and its variants are never split apart (and a variant id passed on its own is skipped — variants are not moved directly). Returns `{ moved, movedIds, skipped }`. Throws `FOLDER_NOT_FOUND` for an unknown (or out-of-scope) target folder, `ASSET_NOT_FOUND` if none of the ids reference a live asset.
+
+- [#24](https://github.com/weepaho3/createCMS/pull/24) [`584d981`](https://github.com/weepaho3/createCMS/commit/584d9817b2de7cb3092bc371bc6fc0551c4cfc1c) Thanks [@weepaho3](https://github.com/weepaho3)! - Add `media.replaceAsset` — swap the bytes behind an existing asset, keeping its id.
+
+  `replaceAsset({ assetId, file })` replaces an asset's content while keeping its `id` (and `folderId` / `status`) stable, so every content reference picks up the new image with **no content change and no re-render** — content stores the id and the id-addressed gate re-resolves it (the short-cached redirect propagates the swap within minutes). The classic use case: a logo / brand image changes — replace it once, and it updates everywhere it's used.
+
+  A **new** slug / object key is minted (not an overwrite) so the long CDN cache on the old object can't keep serving the stale image. The endpoint is server-side and atomic: the new object is uploaded first, then — only on success — the row is repointed in a single transaction that also **archives the asset's old variants** (they depict the old bytes and are unreachable from the new slug, so callers should regenerate variants afterward). The old object is left in the bucket for a future pruning pass. Throws `CANNOT_REPLACE_VARIANT` if the target is itself a variant (replace the original instead), `ASSET_NOT_FOUND`, `FILE_TOO_LARGE` / `INVALID_FILE_TYPE`, or `UPLOAD_FAILED` (which leaves the asset unchanged).
+
+- [#24](https://github.com/weepaho3/createCMS/pull/24) [`7cdf688`](https://github.com/weepaho3/createCMS/commit/7cdf688d5fa30b2f32404195e5037bf660f4e1a2) Thanks [@weepaho3](https://github.com/weepaho3)! - A/B live results ride the shared realtime connection (fixes a never-working path).
+
+  The A/B live-dashboard delta stream previously lived inside the plugin (its own mis-constructed realtime instance + a bare `EventSource`) and never actually delivered. It now uses the shared realtime layer end-to-end: the `trackEvent` ingest publishes each delta over `ctx.realtime` to the public `ab:live:<testId>` channel — decoupled from the analytics storage adapter, so it works with the Postgres adapter too — and `useLiveResults` rides the same `RealtimeProvider` connection as `useNotifications`.
+
+  `useLiveResults` moves off the client proxy to its own subpath, `@createcms/core/plugins/ab-test/live` (which pulls in the optional `@upstash/realtime` peer, keeping the main A/B client peer-free). It applies live increments and reconciles against the absolute `getResults` aggregate on (re)connect; without `realtime` the stream never connects and the SSR `initial` (+ any `getResults` reconcile) stands.
+
+- [#24](https://github.com/weepaho3/createCMS/pull/24) [`8c43239`](https://github.com/weepaho3/createCMS/commit/8c43239121c32229a39164dffe2f9c2ed12cd243) Thanks [@weepaho3](https://github.com/weepaho3)! - Real-time notifications — automatic per-user push + a realtime-only `useNotifications` hook.
+
+  When `realtime` is configured, every notification is pushed to its recipient's private channel automatically — a built-in handler rides the existing dispatch, so all notification sources (comments, merges, approvals, …) deliver live with no extra wiring.
+
+  On the client, wrap your app once in `RealtimeProvider` (from `@createcms/core/react/realtime`) — `<RealtimeProvider baseURL="/api/cms">` — to open one shared connection, then call `useNotifications(client, { userId })`. It seeds list + unread count from the `listNotifications` poll, prepends live pushes de-duped by id, and the provider replays anything missed across a reconnect. `useNotifications` is realtime-only and type-requires `client.notifications`, so it only compiles when notifications are enabled. Without realtime there's no built-in polling hook — read the durable list yourself via `client.notifications.listNotifications`.
+
+- [#24](https://github.com/weepaho3/createCMS/pull/24) [`5bdaa2c`](https://github.com/weepaho3/createCMS/commit/5bdaa2cb770e42023b4451ed307c7ed3334e3a72) Thanks [@weepaho3](https://github.com/weepaho3)! - Add an optional, Upstash-backed realtime layer — and a `notifications` on/off switch.
+
+  Configure `realtime: { url, token }` (your Upstash Redis credentials; `@upstash/realtime` + `@upstash/redis` are optional peers) to mount a shared `/realtime` SSE route. The route authenticates each connection via your `authMiddleware` (the session is read from the request cookie — `EventSource` can't send auth headers) and authorizes every channel against that identity: a user may subscribe only to their own private `notif:<userId>` channel (fails closed when unauthenticated), while `ab:live:<testId>` stays world-readable. The server is the broker — the browser only ever talks to your same-origin route; the Upstash credentials never leave the server. Realtime is Upstash-only (no pluggable transport).
+
+  Separately, `notifications: false` on `createCMS` fully disables the notifications feature: the tables aren't generated, the routes never register, and `client.notifications` plus `cms.notify` are absent from the inferred types (a stray call is a compile error). Default: enabled. Use a literal `false`. `notifications` and `realtime` are independent — A/B live results can use `realtime` with `notifications: false`.
+
 ## 0.2.8
 
 ### Patch Changes
