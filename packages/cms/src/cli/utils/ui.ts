@@ -18,7 +18,7 @@ export async function confirmOverwrite(filePath: string): Promise<boolean> {
     printMeta('file', filePath);
     printMeta(
       'hint',
-      'Delete the file first or run the command in an interactive terminal.',
+      'Re-run with --force to overwrite, delete the file first, or run in an interactive terminal.',
     );
     return false;
   }

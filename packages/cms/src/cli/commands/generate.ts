@@ -88,7 +88,8 @@ export function registerGenerateCommand(cli: CAC) {
       'Generate the Drizzle schema from your CMS config',
     )
     .option('--output <path>', 'Override the output file path')
-    .action(async (configArg?: string, options?: { output?: string }) => {
+    .option('--force', 'Overwrite the output file without prompting')
+    .action(async (configArg?: string, options?: { output?: string; force?: boolean }) => {
       const cwd = process.cwd();
 
       const spinner = createSpinner('Looking for config');
@@ -145,11 +146,18 @@ export function registerGenerateCommand(cli: CAC) {
         );
       }
 
-      if (await fileExists(outputPath)) {
+      if (!options?.force && (await fileExists(outputPath))) {
         const shouldOverwrite = await confirmOverwrite(outputPath);
         if (!shouldOverwrite) {
-          console.log(`\n  ${kleur.yellow('Generation cancelled.')}`);
-          return;
+          // A deliberate decline (interactive) needs a line; the non-TTY
+          // refusal was already reported by confirmOverwrite. Either way exit
+          // NON-ZERO so a stale committed schema never silently passes CI.
+          if (process.stdin.isTTY && process.stdout.isTTY) {
+            console.log(
+              `\n  ${kleur.yellow('Generation cancelled.')} Re-run with --force to overwrite.`,
+            );
+          }
+          process.exit(1);
         }
       }
 

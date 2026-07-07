@@ -27,13 +27,14 @@ npx createcms init [--cwd <dir>] [--preset <name>]
 Generates a Drizzle schema from your CMS config (core tables plus any plugin schema). The schema is content-agnostic, so you re-run it only when you add or change a plugin that ships schema, not when you edit a collection.
 
 ```bash
-npx createcms generate [config] [--output <path>]
+npx createcms generate [config] [--output <path>] [--force]
 ```
 
 | Argument / flag | Type | Default | Description |
 | --- | --- | --- | --- |
 | `config` | path | auto-discovered | Path to your CMS config file. |
 | `--output` | path | `./cms-schema.ts` | Where to write the generated schema. |
+| `--force` | flag | `false` | Overwrite the output file without prompting. |
 
 When `config` is omitted, the CLI searches these paths in order and uses the first that exists:
 
@@ -41,7 +42,11 @@ When `config` is omitted, the CLI searches these paths in order and uses the fir
 cms.ts, cms.js, src/cms.ts, src/cms.js, src/lib/cms.ts, src/lib/cms.js, lib/cms.ts, lib/cms.js
 ```
 
-The output path falls back to the config's `schema.output` when set, otherwise `./cms-schema.ts`. If the output file already exists, the CLI asks before overwriting. Loading your config does not open a database connection or contact S3: the CLI stubs every installed package, so a run only confirms the config file loads and the schema emits.
+The output path falls back to the config's `schema.output` when set, otherwise `./cms-schema.ts`. If the output file already exists, the CLI asks before overwriting; pass `--force` to overwrite without prompting. Loading your config does not open a database connection or contact S3: the CLI stubs every installed package, so a run only confirms the config file loads and the schema emits.
+
+<Callout type="info">
+  In a non-interactive environment (CI) the CLI cannot prompt, so an existing output file without `--force` is a hard error (exit code 1), never a silent no-op. Add `--force` to your `cms:generate` script — or delete the file first — so regeneration runs in CI.
+</Callout>
 
 <Callout type="warn">
   Run `generate` under **Node.js**, not Bun (`npx createcms generate`, not `bunx`). It loads plugin schemas through a Node module-resolution hook that Bun does not implement — under Bun it aborts with an explanatory error rather than emitting a schema with every plugin's tables silently dropped.
