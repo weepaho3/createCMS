@@ -22,11 +22,32 @@ bun add @createcms/core
 ## Quickstart
 
 ```ts
-import { createCMS } from '@createcms/core';
+import { createCMS, defineCollection, defineCollections } from '@createcms/core';
+import { db } from './db'; // your Drizzle client
+
+const pages = defineCollection({
+  label: 'Pages',
+  root: {
+    properties: {
+      title: { type: 'string', required: true, label: 'Title' },
+    },
+  },
+});
 
 export const cms = createCMS({
-  db,                        // your Drizzle client
-  collections: { pages },    // your collection definitions
+  db,
+  collections: defineCollections({ pages }),
+  // Media uploads go to S3-compatible storage:
+  media: {
+    provider: 'aws',
+    region: process.env.S3_REGION!,
+    bucketName: process.env.S3_BUCKET!,
+    accessKeyId: process.env.S3_KEY!,
+    secretAccessKey: process.env.S3_SECRET!,
+    publicUrl: process.env.S3_PUBLIC_URL!,
+  },
+  // Resolve the current user + permissions for each request:
+  authMiddleware: async () => ({ userId: 'system' }),
 });
 ```
 

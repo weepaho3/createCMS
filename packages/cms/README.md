@@ -71,15 +71,7 @@ const pages = defineCollection({
 export const collections = defineCollections({ pages });
 ```
 
-### 2. Generate the database schema
-
-Generate a Drizzle schema for your collections + plugins, then run your migrations as usual:
-
-```bash
-npx createcms generate
-```
-
-### 3. Create the CMS
+### 2. Create the CMS
 
 ```ts
 import { createCMS } from '@createcms/core';
@@ -95,6 +87,14 @@ export const cms = createCMS({
     return { userId: '...' };
   },
 });
+```
+
+### 3. Generate the database schema
+
+With your CMS config in place, generate a Drizzle schema for your collections + plugins, then run your migrations as usual (run it under Node.js, not Bun):
+
+```bash
+npx createcms generate
 ```
 
 ### 4. Mount the HTTP router (Next.js)
@@ -115,7 +115,7 @@ Server-side, call the typed API directly:
 ```tsx
 import { cms } from '@/lib/cms';
 import { BlocksRenderer, createBlocksMap } from '@createcms/core/react';
-import { pagesCollection } from '@/cms/collections/pages/definition';
+import { pagesCollection } from '@/cms/collections/pages';
 
 // Pass the collection DEFINITION — it types the component props and carries
 // each block's declared `events` for A/B goal tracking (single source of truth).
