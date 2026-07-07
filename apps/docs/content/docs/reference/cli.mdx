@@ -43,6 +43,10 @@ cms.ts, cms.js, src/cms.ts, src/cms.js, src/lib/cms.ts, src/lib/cms.js, lib/cms.
 
 The output path falls back to the config's `schema.output` when set, otherwise `./cms-schema.ts`. If the output file already exists, the CLI asks before overwriting. Loading your config does not open a database connection or contact S3: the CLI stubs every installed package, so a run only confirms the config file loads and the schema emits.
 
+<Callout type="warn">
+  Run `generate` under **Node.js**, not Bun (`npx createcms generate`, not `bunx`). It loads plugin schemas through a Node module-resolution hook that Bun does not implement — under Bun it aborts with an explanatory error rather than emitting a schema with every plugin's tables silently dropped.
+</Callout>
+
 ```bash
 npx createcms generate
 #   config   /app/src/lib/cms.ts

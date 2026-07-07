@@ -166,7 +166,97 @@ function resolveRealCmsDistDir(cwd: string): string | null {
   }
 }
 
+/**
+ * `generate` loads the config by aliasing every installed package to a stub and
+ * patching Node's `Module._resolveFilename`. Bun supports neither that CJS
+ * resolve hook nor jiti's alias interception the same way, so under Bun EVERY
+ * plugin's schema is silently dropped from the output. Fail loudly instead of
+ * emitting a wrong schema.
+ */
+export function assertNodeRuntime(): void {
+  const isBun =
+    typeof process.versions.bun === 'string' ||
+    typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined';
+  if (isBun) {
+    throw new Error(
+      'createcms generate must run under Node.js, not Bun.\n' +
+        "Bun does not support the module-resolution hook the schema loader relies on, " +
+        'so plugin schemas would be silently dropped.\n' +
+        'Run it with Node instead:  npx createcms generate',
+    );
+  }
+}
+
+/**
+ * Reads the runtime file path out of a single package.json `exports` entry,
+ * tolerating both the conditional-object shape
+ * (`{ import: { default }, require: { default } }`) and the plain-string shape.
+ * Prefers ESM.
+ */
+function resolveExportTarget(entry: unknown): string | null {
+  if (typeof entry === 'string') return entry;
+  if (!entry || typeof entry !== 'object') return null;
+  const cond = (c: unknown): string | null =>
+    typeof c === 'string'
+      ? c
+      : c && typeof c === 'object'
+        ? ((c as { default?: unknown }).default as string) ?? null
+        : null;
+  const e = entry as Record<string, unknown>;
+  return cond(e.import) ?? cond(e.require) ?? cond(e.default) ?? null;
+}
+
+/**
+ * Derives `@createcms/core/<subpath>` → absolute-dist-file aliases from the
+ * package's OWN `exports` map, so every current and future subpath (every
+ * bundled plugin included) resolves to the real module during `generate`. This
+ * replaces a hand-maintained list that silently dropped any unlisted plugin
+ * (e.g. `plugins/i18n`, `plugins/consent`, `plugins/ab-test/live`) to a stub.
+ * The main entry (`.`) is intentionally excluded — it stays the lightweight shim.
+ */
+export function deriveCmsSubpathAliases(
+  pkgRoot: string,
+  exportsMap: Record<string, unknown>,
+): Record<string, string> {
+  const aliases: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(exportsMap)) {
+    if (key === '.' || key === './package.json' || key.includes('*')) continue;
+    const target = resolveExportTarget(entry);
+    if (!target) continue;
+    const specifier = key.replace(/^\.\//, '');
+    aliases[`@createcms/core/${specifier}`] = path.resolve(pkgRoot, target);
+  }
+  return aliases;
+}
+
+/**
+ * A plugin whose real module failed to resolve loads as the opaque stub proxy
+ * (a function whose every property is another stub), NOT a plain object with a
+ * string `id`. Detect that and abort — otherwise `generate` would emit a schema
+ * that silently omits the plugin's tables and enums.
+ */
+export function assertPluginsLoaded(plugins: unknown): void {
+  if (!Array.isArray(plugins)) return;
+  plugins.forEach((plugin, index) => {
+    if (
+      !plugin ||
+      typeof plugin !== 'object' ||
+      typeof (plugin as { id?: unknown }).id !== 'string'
+    ) {
+      throw new Error(
+        `Plugin at index ${index} failed to load its real module during ` +
+          '`createcms generate` (it resolved to a stub, so its schema would be ' +
+          'dropped). Ensure the plugin package is installed, that you import it ' +
+          'from a valid @createcms/core subpath, and that you run generate under ' +
+          'Node.js (not Bun).',
+      );
+    }
+  });
+}
+
 export async function loadCMSConfig(configPath: string) {
+  assertNodeRuntime();
+
   const cwd = path.dirname(configPath);
   const tsconfigAlias = readTsconfigPaths(cwd);
 
@@ -184,9 +274,10 @@ export async function loadCMSConfig(configPath: string) {
   alias['@createcms/core'] = shimPath;
 
   // Jiti treats aliases as prefix replacements, so @createcms/core/plugins/server
-  // would resolve to <shimPath>/plugins/server (which doesn't exist).
-  // We need explicit aliases for subpaths that must resolve to the real package
-  // so the generator can load plugin schemas.
+  // would resolve to <shimPath>/plugins/server (which doesn't exist). Every
+  // subpath that must load the REAL module (all plugins contribute schema here)
+  // needs an explicit alias, derived from the package's own `exports` map so the
+  // list can never drift out of sync with what the package ships.
   const cmsDistDir = resolveRealCmsDistDir(cwd);
   if (cmsDistDir) {
     for (const key of Object.keys(alias)) {
@@ -194,23 +285,17 @@ export async function loadCMSConfig(configPath: string) {
         delete alias[key];
       }
     }
-    // Map import specifiers → dist entry points
-    const subpathMap: Record<string, string> = {
-      'plugins/server': 'plugins/server.js',
-      'plugins/client': 'plugins/client.js',
-      'plugins/multi-tenant': 'plugins/multi-tenant/index.js',
-      'plugins/ab-test': 'plugins/ab-test/index.js',
-      'plugins/ab-test/client': 'plugins/ab-test/client.js',
-      'plugins/media-optimize': 'plugins/media-optimize/index.js',
-      plugins: 'plugins/index.js',
-      nanoid: 'nanoid.js',
-    };
-    for (const [specifier, distRelative] of Object.entries(subpathMap)) {
-      alias[`@createcms/core/${specifier}`] = path.join(
-        cmsDistDir,
-        distRelative,
-      );
+    const pkgRoot = path.dirname(cmsDistDir);
+    let exportsMap: Record<string, unknown> = {};
+    try {
+      const pkg = JSON.parse(
+        readFileSync(path.join(pkgRoot, 'package.json'), 'utf8'),
+      ) as { exports?: Record<string, unknown> };
+      exportsMap = pkg.exports ?? {};
+    } catch {
+      // No/invalid package.json — fall through with no subpath aliases.
     }
+    Object.assign(alias, deriveCmsSubpathAliases(pkgRoot, exportsMap));
   }
 
   // tsconfig paths override everything (e.g. @/* → ./src/*)
@@ -234,6 +319,10 @@ export async function loadCMSConfig(configPath: string) {
         `No CMS instance found. Export your createCMS() result as default or named "cms" from ${configPath}`,
       );
     }
+
+    // Fail loudly if any plugin resolved to a stub — otherwise its schema would
+    // be silently omitted from the generated output.
+    assertPluginsLoaded((instance as { $plugins?: unknown }).$plugins);
 
     return instance as {
       $plugins?: Array<{ id: string; schema?: unknown }>;

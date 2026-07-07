@@ -33,8 +33,11 @@ export const cms = createCMS({
 Generate the database schema, then run your migrations:
 
 ```bash
-bunx createcms generate
+npx createcms generate
 ```
+
+> `createcms generate` runs under Node.js (not Bun) — it uses a Node
+> module-resolution hook to load plugin schemas.
 
 See the **[docs](./apps/docs)** for collections, branches, publishing, plugins,
 and the Next.js integration guide.
