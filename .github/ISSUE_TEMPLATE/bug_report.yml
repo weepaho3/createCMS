@@ -1,0 +1,66 @@
+name: Bug report
+description: Report a problem with @createcms/core
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. A minimal reproduction is the single biggest
+        factor in getting it fixed quickly.
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Steps, or a minimal repo / code snippet, that reproduce the problem.
+      render: ts
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen.
+    validations:
+      required: false
+  - type: input
+    id: core-version
+    attributes:
+      label: "@createcms/core version"
+      description: The exact version you are on (`npm ls @createcms/core`).
+      placeholder: 0.x.y
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: Node / Bun version
+    validations:
+      required: false
+  - type: input
+    id: database
+    attributes:
+      label: Database
+      placeholder: Postgres / Neon / PGlite
+    validations:
+      required: false
+  - type: input
+    id: framework
+    attributes:
+      label: Framework
+      placeholder: Next.js 16.x, etc.
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else — logs, screenshots.
+    validations:
+      required: false

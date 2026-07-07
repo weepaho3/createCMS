@@ -283,7 +283,8 @@
     "clean": "rm -rf dist .turbo",
     "generate:schema": "bun run scripts/generate-schema.ts",
     "lint": "oxlint",
-    "test": "vitest",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
