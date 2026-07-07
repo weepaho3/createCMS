@@ -8,18 +8,37 @@ on:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Only cancel superseded PR runs; never cancel a main-branch run mid-flight, so
+  # every merged commit gets a CI verdict (ci-06).
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
 
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0 # `changeset status` diffs against the base branch
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.2.23
+          bun-version-file: package.json # single source of truth: packageManager
+
+      - name: Cache bun, turbo & next
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.bun/install/cache
+            .turbo
+            apps/docs/.next/cache
+          key: ${{ runner.os }}-ci-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-ci-
 
       - name: Install
         run: bun install --frozen-lockfile
@@ -35,3 +54,13 @@ jobs:
 
       - name: Build
         run: bun run build
+
+      - name: Validate published package
+        run: |
+          bunx --yes publint packages/cms
+          bunx --yes @arethetypeswrong/cli --pack packages/cms --profile node16
+
+      - name: Changeset status (non-blocking)
+        if: github.event_name == 'pull_request'
+        run: bunx changeset status --since=origin/${{ github.base_ref }}
+        continue-on-error: true

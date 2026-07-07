@@ -74,3 +74,12 @@ bun run --filter=@createcms/core test:watch
 Releases are automated via [Changesets](https://github.com/changesets/changesets):
 merging the "Version Packages" PR publishes to npm with provenance. Maintainers
 handle releases — contributors just add a changeset.
+
+**Recovery:** publish and tagging are not atomic. If a release run dies after
+`npm publish` but before the tags are pushed (npm has the new version, but the
+git tag / GitHub release is missing), recreate the tags:
+
+```bash
+bunx changeset tag   # tag every already-published version
+git push --tags
+```
