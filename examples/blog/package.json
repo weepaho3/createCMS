@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "next build",
+    "check-types": "tsc --noEmit",
     "cms:generate": "createcms generate",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
