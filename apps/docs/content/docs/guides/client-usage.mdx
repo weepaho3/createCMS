@@ -16,7 +16,7 @@ import type { cms } from '@/lib/cms';
 export const cmsClient = createCMSClient<typeof cms>()({ baseURL: '/api/cms' });
 ```
 
-Outside React (a script, a server task), import the vanilla client from `@createcms/core` and call it directly: `createCMSClient<typeof cms>({ baseURL })`.
+Outside React (a script, a server task), import the vanilla client from `@createcms/core` and call it directly: `createCMSClient<typeof cms>({ baseURL })`. **With plugins, use the curried `()(...)` form here too** — `createCMSClient<typeof cms>()({ baseURL, plugins: [...] })` — so plugin action types infer; the direct call widens them to the generic plugin type.
 
 ### Read
 

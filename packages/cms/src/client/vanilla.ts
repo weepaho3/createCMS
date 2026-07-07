@@ -14,17 +14,20 @@ import { getClientConfig, type ClientConfig } from './config';
  * client is usable immediately — API calls will await init completion
  * transparently.
  *
- * Atom hooks are exposed as raw nanostores atoms (e.g. `client.useMediaLibrary`).
- * For React components, use `createCMSClient` from `@createcms/core/react` instead.
+ * Plugin atom hooks are exposed as raw nanostores atoms. For React components,
+ * use `createCMSClient` from `@createcms/core/react` instead.
+ *
+ * Call it directly for a plugin-less client. **With plugins, use the curried
+ * `()(...)` form** — the empty `()` is what infers each plugin's action types
+ * (the direct call widens them to the generic `CMSClientPlugin[]`):
  *
  * ```ts
- * const client = createCMSClient<typeof cms>({
+ * const client = createCMSClient<typeof cms>()({
  *   baseURL: '/api/cms',
  *   plugins: [mediaOptimizeClient()],
  * });
  *
  * const roots = await client.pages.listRoots();
- * client.useMediaLibrary.subscribe(state => console.log(state.data));
  * ```
  */
 export function createCMSClient<TCMS = unknown>(

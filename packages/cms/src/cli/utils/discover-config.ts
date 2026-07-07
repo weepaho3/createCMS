@@ -2,7 +2,9 @@ import path from 'node:path';
 
 import { fileExists } from './fs';
 
-const CONFIG_CANDIDATES = [
+/** The project-relative paths `generate` auto-discovers, in priority order.
+ *  Exported so the "not found" error can list exactly what was searched. */
+export const CONFIG_CANDIDATES = [
   'cms.ts',
   'cms.js',
   'src/cms.ts',

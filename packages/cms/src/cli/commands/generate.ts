@@ -7,7 +7,7 @@ import type { SchemaSource } from '../../core/db/merge';
 
 import { generateSchema } from '../../core/codegen/generate';
 import { coreSchema } from '../../core/db/core-schema';
-import { discoverConfig } from '../utils/discover-config';
+import { CONFIG_CANDIDATES, discoverConfig } from '../utils/discover-config';
 import { fileExists } from '../utils/fs';
 import { loadCMSConfig } from '../utils/load-config';
 import { confirmOverwrite, createSpinner, printMeta } from '../utils/ui';
@@ -102,7 +102,8 @@ export function registerGenerateCommand(cli: CAC) {
         const discovered = await discoverConfig(cwd);
         if (!discovered) {
           spinner.fail(
-            'No cms.ts found. Searched cms.ts, src/cms.ts, src/lib/cms.ts. Pass a path: createcms generate ./path/to/cms.ts',
+            `No CMS config found. Searched: ${CONFIG_CANDIDATES.join(', ')}. ` +
+              'Pass an explicit path: createcms generate ./path/to/cms.ts',
           );
           process.exit(1);
         }
