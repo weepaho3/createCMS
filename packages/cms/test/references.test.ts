@@ -10,7 +10,7 @@ import type { CustomMediaConfig } from '../src/core/types/s3';
 import { isReferencedByLiveContent } from '../src/core/references';
 import { createCMS } from '../src/index';
 import { contentUsages } from '../src/schema';
-import { setupTestDB } from './utils/db';
+import { setupTestDB } from '../src/test-utils/db';
 
 type AnyApi = Record<string, (...args: any[]) => Promise<any>>;
 type AnyCMS = { api: Record<string, AnyApi> };

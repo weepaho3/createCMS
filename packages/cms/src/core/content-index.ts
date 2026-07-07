@@ -1,12 +1,26 @@
 import type { CollectionWithName } from './types';
 import type { DrizzleInstance } from './types/drizzle';
 
-import {
-  insertAssetReferencesForVersions,
-  type VersionToIndex,
-} from './assets';
+import { insertAssetReferencesForVersions } from './media/usage';
 import { insertReferenceUsagesForVersions } from './references';
 import { insertVariableUsagesForVersions } from './variables';
+
+/**
+ * A freshly-inserted block version to index. Block versions are immutable and
+ * append-only, so references are inserted exactly ONCE (never re-synced) and
+ * removed only when the version itself is pruned (FK cascade). Generic across
+ * every content-usage indexer (asset/variable/reference), so it lives here at
+ * the indexing entry point rather than behind any one domain path.
+ */
+export type VersionToIndex = {
+  blockVersionId: string;
+  blockId: string;
+  // The block's type — needed by the reference indexer to look up which
+  // properties are `reference`-typed in the collection def (asset/variable
+  // extraction is type-agnostic and ignores it).
+  type: string;
+  properties: Record<string, unknown>;
+};
 
 /** A block version as handed to the content indexer at creation time. */
 export type IndexableVersion = VersionToIndex & { deleted?: boolean };

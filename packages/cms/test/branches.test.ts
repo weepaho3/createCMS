@@ -8,8 +8,8 @@ import {
   mergeRequests,
   publications,
 } from '../src/schema';
-import { setupTestCMS } from './utils/cms';
-import { requestAndApproveMerge } from './utils/helpers';
+import { setupTestCMS } from '../src/test-utils/cms';
+import { requestAndApproveMerge } from '../src/test-utils/helpers';
 
 describe('createBranch', () => {
   it('creates a branch pointing at the source branch head commit', async () => {

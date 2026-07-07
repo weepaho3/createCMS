@@ -2,7 +2,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { assetFolders, assets } from '../src/schema';
-import { setupTestCMS } from './utils/cms';
+import { setupTestCMS } from '../src/test-utils/cms';
 
 // ============================================================================
 // Folder Operations

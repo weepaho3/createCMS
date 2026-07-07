@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { setupTestCMS } from '../../../test/utils/cms';
+import { setupTestCMS } from '../../test-utils/cms';
 
 // Pins the perf-11 follow-up (commit 8d6f64e): listMergeRequests.commentCount
 // must count only LIVE comment threads — a soft-deleted thread (deletedAt set)

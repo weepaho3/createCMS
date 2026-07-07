@@ -6,14 +6,14 @@
 import { pgTable, text } from 'drizzle-orm/pg-core';
 import * as z from 'zod';
 
-import { createCMSClient } from '../client/vanilla';
-import { createNotificationRouter } from '../react/notifications-router';
-import { useNotifications } from '../react/realtime';
-import { defineCollections, defineUserConfig } from './define';
-import { createCMS } from './factory';
-import type { DrizzleInstance } from './types/drizzle';
-import type { CMSPlugin } from './types/plugin';
-import type { MediaConfig } from './types/s3';
+import { createCMSClient } from '../../client/vanilla';
+import { createNotificationRouter } from '../../react/notifications-router';
+import { useNotifications } from '../../react/realtime';
+import { defineCollections, defineUserConfig } from '../define';
+import { createCMS } from '../factory';
+import type { DrizzleInstance } from '../types/drizzle';
+import type { CMSPlugin } from '../types/plugin';
+import type { MediaConfig } from '../types/s3';
 
 declare const db: DrizzleInstance;
 declare const media: MediaConfig;

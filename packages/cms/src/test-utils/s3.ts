@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import S3rver from 's3rver';
 
-import type { CustomMediaConfig } from '../../src/core/types/s3';
+import type { CustomMediaConfig } from '../core/types/s3';
 
 const TEST_BUCKET = 'test-bucket';
 const TEST_ACCESS_KEY = 'S3RVER';

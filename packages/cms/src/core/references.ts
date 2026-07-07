@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 
-import type { VersionToIndex } from './assets';
+import type { VersionToIndex } from './content-index';
 import type { CollectionWithName } from './types';
 import type { ReferenceResolver } from './types/definitions';
 import type { DrizzleInstance } from './types/drizzle';
@@ -151,7 +151,7 @@ export async function insertReferenceUsagesForVersions(
  * Matches exactly the stored value — it does NOT expand to the translation group,
  * so deleting a translation SIBLING (reached only via read-time auto-upgrade) is
  * allowed and degrades gracefully to the anchor. Mirrors
- * isAssetReferencedByLiveContent (core/assets.ts).
+ * isAssetReferencedByLiveContent (core/media/usage.ts).
  *
  * `scopeColumns` are the active CROSS-SCOPE columns (the caller already removed a
  * scoping plugin's cross-scope columns via `crossScopeColumns`), so a host in any

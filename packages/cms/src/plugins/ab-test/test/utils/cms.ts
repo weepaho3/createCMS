@@ -1,10 +1,10 @@
 import type { CMSMiddleware } from '../../../../core/types/definitions';
 
-import { setupTestDB } from '../../../../../test/utils/db';
+import { setupTestDB } from '../../../../test-utils/db';
 import {
   DUMMY_MEDIA_CONFIG,
   TEST_COLLECTIONS,
-} from '../../../../../test/utils/fixtures';
+} from '../../../../test-utils/fixtures';
 import { createCMS } from '../../../../core/factory';
 import { multiTenant } from '../../../multi-tenant/index';
 import { multiTenantSchema } from '../../../multi-tenant/schema';

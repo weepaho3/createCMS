@@ -1,8 +1,8 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { setupTestDB } from '../../../../test/utils/db';
-import { DUMMY_MEDIA_CONFIG } from '../../../../test/utils/fixtures';
+import { setupTestDB } from '../../../test-utils/db';
+import { DUMMY_MEDIA_CONFIG } from '../../../test-utils/fixtures';
 import { createCMS } from '../../../core/factory';
 import { i18n } from '../../i18n/index';
 import { i18nSchema } from '../../i18n/schema';
