@@ -21,7 +21,7 @@ The same works with your package manager of choice (`pnpm add`, `yarn add`, or `
 
 ## Create your CMS
 
-Pass your Drizzle database instance to `createCMS` along with your collections and a media configuration. This is the smallest working setup:
+Pass your Drizzle database instance to `createCMS` along with your collections. `media` (S3-compatible storage) is optional — include it when you need uploads; omit it for a content-only app. This is a typical setup:
 
 ```ts title="lib/cms.ts"
 import { createCMS, defineCollection, defineCollections } from '@createcms/core';

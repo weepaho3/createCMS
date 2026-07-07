@@ -1062,7 +1062,12 @@ export type CMSDefinition<
   TPlugins extends CMSPlugin[] = CMSPlugin[],
 > = {
   db: DrizzleInstance;
-  media: MediaConfig;
+  /**
+   * S3-compatible storage for media uploads and asset serving. Optional: a
+   * content-only app that never uploads can omit it. When absent, the media
+   * endpoints still exist on the API but throw `MEDIA_NOT_CONFIGURED` on use.
+   */
+  media?: MediaConfig;
   collections: TCollections;
   dataRetention?: DataRetentionConfig;
   /**

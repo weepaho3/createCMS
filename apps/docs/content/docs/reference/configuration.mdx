@@ -22,7 +22,7 @@ export const cms = createCMS({
 | --- | --- | --- | --- | --- |
 | `db` | `DrizzleInstance` | yes | | Your Drizzle (PostgreSQL) database instance. |
 | `collections` | `Record<string, CollectionDefinition>` | yes | | The collections, usually grouped with `defineCollections`. |
-| `media` | `MediaConfig` | yes | | S3-compatible storage config (see below). |
+| `media` | `MediaConfig` | no | | S3-compatible storage config (see below). Optional — a content-only app can omit it; the media endpoints then throw `MEDIA_NOT_CONFIGURED` on use. |
 | `authMiddleware` | `CMSMiddleware` | no | | Resolves the user and permissions per request. |
 | `middleware` | `CMSMiddleware` | no | | Alias for `authMiddleware`. |
 | `plugins` | `CMSPlugin[]` | no | `[]` | Server plugins. |
@@ -41,6 +41,8 @@ export const cms = createCMS({
 | `realtime` | `{ url, token }` | no | | Upstash Redis credentials. Enables the `/realtime` SSE route, per-user notification push, and A/B live results (see below). |
 
 ## `media`
+
+`media` is optional. Omit it for a content-only app that never uploads — the media endpoints stay on the API but throw `MEDIA_NOT_CONFIGURED` when called. Add it as soon as you need uploads or asset serving.
 
 `MediaConfig` is a discriminated union on `provider`. These base fields apply to every provider:
 

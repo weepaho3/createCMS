@@ -46,7 +46,7 @@ export const collections = defineCollections({ pages });
 
 ### 2. Create the CMS
 
-Pass your Drizzle `db`, the `collections`, and a `media` configuration to `createCMS`. The CLI in the next step discovers this file, so create it first:
+Pass your Drizzle `db` and the `collections` to `createCMS` (the `media` config below is optional — omit it for a content-only app). The CLI in the next step discovers this file, so create it first:
 
 ```ts title="lib/cms.ts"
 import { createCMS } from '@createcms/core';

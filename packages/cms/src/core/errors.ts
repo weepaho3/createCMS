@@ -219,6 +219,11 @@ export const CMS_ERRORS = {
     status: 500 as const,
     message: 'Server-side upload to S3 failed',
   },
+  MEDIA_NOT_CONFIGURED: {
+    status: 500 as const,
+    message:
+      'Media is not configured. Pass a `media` config to createCMS() to enable uploads and asset storage.',
+  },
   SLUG_ALREADY_EXISTS: {
     status: 409 as const,
     message:

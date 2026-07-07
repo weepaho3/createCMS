@@ -18,7 +18,7 @@ const ADMIN_META = { scope: 'system' as const, permissionResource: 'admin' };
 export function createAdminEndpoints(
   cmsCtx: CMSProcedureCtx,
   plugins: CMSPlugin[] = [],
-  mediaConfig: MediaConfig,
+  mediaConfig?: MediaConfig,
 ) {
   const { db, dataRetention } = cmsCtx;
 

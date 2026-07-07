@@ -35,26 +35,35 @@ const MEDIA_META = { scope: 'system' as const, permissionResource: 'media' };
 
 export function createMediaEndpoints(
   cmsCtx: CMSProcedureCtx,
-  mediaConfig: MediaConfig,
+  mediaConfig?: MediaConfig,
 ) {
   const { db } = cmsCtx;
+
+  // `media` is optional on createCMS(): a content-only app can omit it. The
+  // endpoints still exist (stable API shape), but any operation that actually
+  // needs storage resolves the config through this guard and fails with a clear
+  // `MEDIA_NOT_CONFIGURED` error instead of a `Cannot read properties of
+  // undefined`.
+  function requireMedia(): MediaConfig {
+    if (!mediaConfig) throw new CMSError('MEDIA_NOT_CONFIGURED');
+    return mediaConfig;
+  }
 
   let s3Client: S3Client | null = null;
   function getS3Client(): S3Client {
     if (!s3Client) {
-      s3Client = createS3Client(mediaConfig);
+      s3Client = createS3Client(requireMedia());
     }
     return s3Client;
   }
 
-  const maxFileSize = mediaConfig.maxFileSize ?? MEDIA_DEFAULTS.maxFileSize;
-  const maxFiles = mediaConfig.maxFiles ?? MEDIA_DEFAULTS.maxFiles;
-  const allowedMimeTypes = mediaConfig.allowedMimeTypes ?? [
+  const maxFileSize = mediaConfig?.maxFileSize ?? MEDIA_DEFAULTS.maxFileSize;
+  const maxFiles = mediaConfig?.maxFiles ?? MEDIA_DEFAULTS.maxFiles;
+  const allowedMimeTypes = mediaConfig?.allowedMimeTypes ?? [
     ...MEDIA_DEFAULTS.allowedMimeTypes,
   ];
   const signedUrlExpiresIn =
-    mediaConfig.signedUrlExpiresIn ?? MEDIA_DEFAULTS.signedUrlExpiresIn;
-  const bucketName = mediaConfig.bucketName;
+    mediaConfig?.signedUrlExpiresIn ?? MEDIA_DEFAULTS.signedUrlExpiresIn;
 
   return {
     // ========================================================================
@@ -467,7 +476,7 @@ export function createMediaEndpoints(
             // and never exposes `publicUrl`. Do NOT persist this into content:
             // content references the asset by id and is served through the gate
             // (`GET /media/asset/{slug}`), which enforces status and transforms.
-            url: buildPublicObjectUrl(mediaConfig.publicUrl, asset.objectKey),
+            url: buildPublicObjectUrl(requireMedia().publicUrl, asset.objectKey),
             status: asset.status,
             folderId: asset.folderId ?? null,
             variantOf: asset.variantOf ?? null,
@@ -555,7 +564,7 @@ export function createMediaEndpoints(
           }
         }
 
-        const location = buildPublicObjectUrl(mediaConfig.publicUrl, targetKey);
+        const location = buildPublicObjectUrl(requireMedia().publicUrl, targetKey);
 
         // Redirect (302) so a real `<img src>` / browser request follows
         // `location` to the public object URL. better-call applies response
@@ -933,7 +942,7 @@ export function createMediaEndpoints(
         const signedResults = await Promise.all(
           prepared.map(async (p) => {
             const signedUrl = await signPutObject(client, {
-              bucket: bucketName,
+              bucket: requireMedia().bucketName,
               key: p.objectKey,
               contentType: p.file.type,
               contentLength: p.file.size,
@@ -948,7 +957,7 @@ export function createMediaEndpoints(
               // (deterministic from the object key) — for INTERNAL/admin display
               // like a media library, not for embedding in content (which
               // references the asset id and serves through `/media/asset/{slug}`).
-              url: buildPublicObjectUrl(mediaConfig.publicUrl, p.objectKey),
+              url: buildPublicObjectUrl(requireMedia().publicUrl, p.objectKey),
               signedUrl,
               headers: {
                 'Content-Type': p.file.type,
@@ -1036,7 +1045,7 @@ export function createMediaEndpoints(
           const file = filesByIndex.get(i)!;
           try {
             await putObject(client, {
-              bucket: bucketName,
+              bucket: requireMedia().bucketName,
               key: p.objectKey,
               body: file.buffer,
               contentType: file.type,
@@ -1058,7 +1067,7 @@ export function createMediaEndpoints(
             objectKey: p.objectKey,
             // Direct object URL for INTERNAL/admin display (see createSignedUpload) —
             // not for content, which references the asset id and serves via the gate.
-            url: buildPublicObjectUrl(mediaConfig.publicUrl, p.objectKey),
+            url: buildPublicObjectUrl(requireMedia().publicUrl, p.objectKey),
           })),
         };
       },
@@ -1145,7 +1154,7 @@ export function createMediaEndpoints(
         //    asset keeps serving its existing (still-present) object.
         try {
           await putObject(getS3Client(), {
-            bucket: bucketName,
+            bucket: requireMedia().bucketName,
             key: objectKey,
             body: file.buffer,
             contentType: file.type,
@@ -1212,7 +1221,7 @@ export function createMediaEndpoints(
             objectKey,
             // Direct object URL for INTERNAL/admin display only (see the gate
             // for serving in content).
-            url: buildPublicObjectUrl(mediaConfig.publicUrl, objectKey),
+            url: buildPublicObjectUrl(requireMedia().publicUrl, objectKey),
             mimeType: file.type,
             size: file.size,
           },
