@@ -1,7 +1,5 @@
 import * as z from 'zod';
 
-import { notificationTypeEnum } from '../db/schema.generated';
-
 /**
  * The realtime wire schema for a pushed notification — a Zod mirror of
  * {@link NotificationPayload}. Core OWNS this event; it is the payload delivered
@@ -20,7 +18,11 @@ export const notificationEvent = z.object({
   id: z.string(),
   recipientId: z.string(),
   actorId: z.string().nullable(),
-  type: z.enum(notificationTypeEnum.enumValues),
+  // Any string: core types live in `./constants` (NOTIFICATION_TYPES) but plugins
+  // contribute their own, and the client must accept a plugin push (not drop it).
+  // The wire type is validated by SHAPE here; the per-type `meta` is narrowed at
+  // the type level via `typeof cms`, not at this runtime boundary (react-01).
+  type: z.string(),
   title: z.string(),
   body: z.string().nullable(),
   resourceType: z.string().nullable(),

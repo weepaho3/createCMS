@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Fragment } from 'react';
 
 import type { BlockTreeNode } from '../core/blocks/reconstruct-snapshot';
 import type {
@@ -155,7 +156,7 @@ export function createBlocksMap<
  *
  * @example
  * ```tsx
- * import { BlocksRenderer } from '@createcms/core/react';
+ * import { BlocksRenderer } from '@createcms/core/react/blocks';
  * import { pageBlocks } from '@/lib/blocks/pages';
  *
  * export default async function Page() {
@@ -230,7 +231,7 @@ function renderContentNode(
   fromReference = false,
 ): ReactNode {
   const renderedChildren = node.children.map((child) =>
-    renderContentNode(child, components, events),
+    renderContentNode(child, components, events, fromReference),
   );
 
   const childrenNode =
@@ -248,9 +249,11 @@ function renderContentNode(
     // if so, render the referenced tree inline using the same components.
     for (const value of Object.values(node.properties)) {
       if (isResolvedReference(value) && value.tree.children.length > 0) {
-        const refChildren = value.tree.children.map((child) =>
-          renderContentNode(child, components, events),
-        );
+        const refChildren = value.tree.children.map((child) => (
+          <Fragment key={child.blockId}>
+            {renderContentNode(child, components, events, true)}
+          </Fragment>
+        ));
         return <>{refChildren}</>;
       }
     }
@@ -271,7 +274,11 @@ function renderContentNode(
   for (const value of Object.values(node.properties)) {
     if (isResolvedReference(value) && value.tree.children.length > 0) {
       for (const child of value.tree.children) {
-        refRendered.push(renderContentNode(child, components, events, true));
+        refRendered.push(
+          <Fragment key={child.blockId}>
+            {renderContentNode(child, components, events, true)}
+          </Fragment>,
+        );
       }
     }
   }

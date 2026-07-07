@@ -33,7 +33,7 @@ function setup(options?: { disableDataLayerSink?: boolean }) {
   }) as unknown as CMSFetch;
   const $store: CMSClientStore = {
     notify() {},
-    listen() {},
+    listen: () => () => {},
     atoms: {},
   };
   const actions = abTestClient(options).getActions!(

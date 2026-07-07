@@ -10,8 +10,16 @@ import { encodeFlagQuery } from '../core/with-flags';
  * - `client.pages.listRoots()` -> `$fetch("/pages/listRoots", ...)`
  * - Direct properties on `routes` (plugin actions, atom hooks, $fetch, $store)
  *   are returned as-is.
- * - On successful API calls, matching `atomListeners` are triggered to
- *   invalidate dependent query atoms.
+ * - On successful MUTATING (non-GET) API calls, matching `atomListeners` are
+ *   triggered to invalidate dependent query atoms. GET reads never invalidate.
+ *
+ * NOT referentially stable: every property access mints a NEW namespace proxy,
+ * and every method access mints a NEW function, so
+ * `client.pages.list !== client.pages.list`. Treat the client as a module-level
+ * singleton. Do NOT derive React hook deps (useEffect/useCallback/useMemo) from
+ * `client.x.y` — passing `client.pages.list` in a dependency array re-runs the
+ * effect on every render. Extract the method once (e.g. into a stable ref or a
+ * module-scoped const) and depend on that instead.
  */
 export function createDynamicPathProxy(
   routes: Record<string, unknown>,
@@ -73,7 +81,12 @@ function createNamespaceProxy(
           ...opts,
           ...(query ? { query } : {}),
         }).then((data) => {
-          triggerListeners(routePath, atoms, atomListeners);
+          // Only mutations invalidate query atoms. A plain GET read must not
+          // toggle signals, or every subscribed query atom would refetch in a
+          // loop after a simple read.
+          if (httpMethod !== 'GET') {
+            triggerListeners(routePath, atoms, atomListeners);
+          }
           return data;
         });
       };
@@ -99,10 +112,10 @@ function triggerListeners(
     // and read the CURRENT value at set-time (not a value captured earlier) so
     // rapid successive mutations can't cancel each other out and drop an
     // invalidation.
-    setTimeout(() => {
+    queueMicrotask(() => {
       const current = signal.get();
       signal.set(typeof current === 'boolean' ? !current : current);
-    }, 0);
+    });
 
     match.callback?.(routePath);
   }

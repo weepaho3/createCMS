@@ -1,3 +1,5 @@
+'use client';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { OptimizationConfig } from '../../core/types/s3';
@@ -39,11 +41,18 @@ export function useOptimize(
   const abortRef = useRef(false);
   const runIdRef = useRef(0);
 
+  const inputArray = Array.isArray(input) ? input : [input];
+  // Content key: a different array of the SAME length (but different files) must
+  // still re-run the optimize effect, so key on file identity, not array length.
+  const filesKey = inputArray
+    .map((f) => `${f.name}:${f.size}:${f.lastModified}`)
+    .join('|');
+
   const files = useMemo(
-    () => (Array.isArray(input) ? input : [input]),
-    // Stabilize: same File instances → same array
+    () => inputArray,
+    // Stabilize on content: same files → same array reference.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [Array.isArray(input) ? input.length : input],
+    [filesKey],
   );
 
   const configKey = JSON.stringify(config);

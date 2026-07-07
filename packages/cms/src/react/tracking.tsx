@@ -16,8 +16,6 @@ import type { ClientCMSEvent } from '../plugins/ab-test/client-sinks';
 
 import { resolveWireName } from '../core/events';
 
-export { resolveWireName };
-
 // ============================================================================
 // M3c — BlockTracker: fire declared block events from functional blocks
 // ============================================================================

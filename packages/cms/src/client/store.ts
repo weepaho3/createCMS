@@ -19,7 +19,11 @@ export function createStore(
     },
     listen(signal: string, listener: () => void) {
       const atom = atoms[signal];
-      if (atom) atom.subscribe(listener);
+      // Use `listen` (deferred — fires on the NEXT change, matching the method
+      // name) rather than `subscribe` (fires immediately). Return the
+      // unsubscribe so callers can tear down; a no-op when the atom is missing.
+      if (atom) return atom.listen(listener);
+      return () => {};
     },
     atoms,
   };

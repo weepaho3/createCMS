@@ -1,7 +1,10 @@
+'use client';
+
 import {
   createElement,
   useCallback,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -20,6 +23,7 @@ import type { Serialize } from '../client/types';
 
 import { notificationEvent } from '../core/notifications/events';
 import {
+  mergePolledNotifications,
   mergePushedNotification,
   type NotificationsState,
 } from '../core/notifications/merge';
@@ -103,6 +107,13 @@ export type UseNotificationsResult<TActorUser = Record<string, unknown>> =
   SerializedNotifications<TActorUser> & {
     /** Whether the shared realtime connection is currently connected. */
     isLive: boolean;
+    /** Whether a seed/reconcile poll is currently in flight. */
+    isLoading: boolean;
+    /**
+     * The error from the most recent seed/reconcile poll, or `null` if the
+     * latest poll succeeded. Previously such failures were swallowed silently.
+     */
+    error: Error | null;
     /** Force a re-poll (reconcile against the durable list). */
     refresh: () => void;
   };
@@ -134,17 +145,32 @@ export function useNotifications<TActorUser = Record<string, unknown>>(
     notifications: [],
     unreadCount: 0,
   });
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  // Monotonic id for the in-flight poll. Each `refresh` claims the next id; a
+  // resolving poll applies its result only if it is still the latest, so a slow
+  // older poll can never clobber a newer one (or a push that landed meanwhile).
+  const pollIdRef = useRef(0);
 
   const refresh = useCallback(() => {
+    const pollId = ++pollIdRef.current;
+    setIsLoading(true);
     client.notifications
       .list({ query: { limit, withUser } })
-      .then((res) =>
-        setState({
-          notifications: res.notifications,
-          unreadCount: res.unreadCount,
-        }),
-      )
-      .catch(() => {});
+      .then((res) => {
+        if (pollId !== pollIdRef.current) return; // superseded — drop stale result
+        // Merge (don't replace) so a push that raced this poll survives.
+        setState((prev) => mergePolledNotifications(prev, res));
+        setError(null);
+        setIsLoading(false);
+      })
+      .catch((err: unknown) => {
+        if (pollId !== pollIdRef.current) return; // superseded — ignore stale error
+        // Surface the failure instead of swallowing it with `.catch(() => {})`.
+        setError(err instanceof Error ? err : new Error(String(err)));
+        setIsLoading(false);
+      });
   }, [client, limit, withUser]);
 
   useEffect(() => {
@@ -180,6 +206,8 @@ export function useNotifications<TActorUser = Record<string, unknown>>(
     notifications: state.notifications,
     unreadCount: state.unreadCount,
     isLive: status === 'connected',
+    isLoading,
+    error,
     refresh,
   };
 }

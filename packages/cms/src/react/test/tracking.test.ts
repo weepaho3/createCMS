@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildBlockEvent, resolveWireName } from '../tracking';
+import { buildBlockEvent } from '../tracking';
+import { resolveWireName } from '../../core/events';
 
 const RUNTIME_WITH_AB = {
   dispatch: () => {},
