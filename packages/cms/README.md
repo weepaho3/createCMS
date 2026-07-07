@@ -110,11 +110,11 @@ export const POST = handler;
 
 ### 5. Read & render content
 
-Server-side, call the typed API directly:
+Server-side, call the typed API directly. Import the rendering helpers from the RSC-safe `@createcms/core/react/blocks` subpath (the `@createcms/core/react` barrel also re-exports the client hooks, so it is for Client Components):
 
 ```tsx
 import { cms } from '@/lib/cms';
-import { BlocksRenderer, createBlocksMap } from '@createcms/core/react';
+import { BlocksRenderer, createBlocksMap } from '@createcms/core/react/blocks';
 import { pagesCollection } from '@/cms/collections/pages';
 
 // Pass the collection DEFINITION — it types the component props and carries

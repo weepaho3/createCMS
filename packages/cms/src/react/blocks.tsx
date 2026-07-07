@@ -13,6 +13,11 @@ import type {
 
 import { BlockTracker } from './tracking';
 
+// `pickVariant` is the server-side A/B variant pick — server-safe and pure, so
+// it belongs on this RSC-safe rendering entry (not just the client barrel), and
+// Server Components can import every rendering + variant helper from one place.
+export { pickVariant } from './variant';
+
 // ============================================================================
 // Type-level utilities
 // ============================================================================
@@ -112,7 +117,7 @@ export function extractBlockEvents(
  *
  * @example
  * ```tsx
- * import { createBlocksMap } from '@createcms/core/react';
+ * import { createBlocksMap } from '@createcms/core/react/blocks';
  * import { pagesCollection } from '@/cms/collections/pages/definition';
  *
  * export const pageBlocks = createBlocksMap(pagesCollection, {
@@ -155,7 +160,7 @@ export function createBlocksMap<
  *
  * @example
  * ```tsx
- * import { BlocksRenderer } from '@createcms/core/react';
+ * import { BlocksRenderer } from '@createcms/core/react/blocks';
  * import { pageBlocks } from '@/lib/blocks/pages';
  *
  * export default async function Page() {
@@ -184,7 +189,7 @@ export function BlocksRenderer({
  *
  * @example
  * ```tsx
- * import { createBlocksRenderer } from '@createcms/core/react';
+ * import { createBlocksRenderer } from '@createcms/core/react/blocks';
  * import { pagesCollection } from '@/cms/collections/pages/definition';
  *
  * const PageBlocks = createBlocksRenderer(pagesCollection, {
@@ -329,7 +334,7 @@ function renderContentNode(
  *
  * @example
  * ```tsx
- * import { createContentRenderer } from '@createcms/core/react';
+ * import { createContentRenderer } from '@createcms/core/react/blocks';
  * import { pagesCollection } from '@/cms/collections/pages/definition';
  *
  * const RenderPage = createContentRenderer(pagesCollection, {

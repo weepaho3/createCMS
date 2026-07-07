@@ -5,7 +5,23 @@ import type {
   CollectionDefinition,
 } from '../../core/types/definitions';
 
-import { createBlocksMap, extractBlockEvents } from '../blocks';
+import {
+  BlocksRenderer,
+  createBlocksMap,
+  extractBlockEvents,
+  pickVariant,
+} from '../blocks';
+
+// dx-11: the RSC-safe `@createcms/core/react/blocks` entry must carry the full
+// rendering + variant surface, so Server Components never fall back to the
+// client barrel. `pickVariant` is re-exported here from `./variant`.
+describe('react/blocks server-safe entry', () => {
+  it('exports the rendering + variant helpers', () => {
+    expect(typeof createBlocksMap).toBe('function');
+    expect(typeof BlocksRenderer).toBe('function');
+    expect(typeof pickVariant).toBe('function');
+  });
+});
 
 // A collection with ONE functional block (declares events + trackingId) and
 // TWO presentational blocks (no events) — the M3b registration must carry the

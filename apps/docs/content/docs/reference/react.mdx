@@ -3,7 +3,11 @@ title: React
 description: Block rendering, variant, and tracking exports for React.
 ---
 
-These exports turn published content into React UI and wire up event tracking. The rendering and variant helpers come from the `@createcms/core/react` barrel; the tracking helpers come from the `@createcms/core/react/tracking` subpath (they are not re-exported by the barrel).
+These exports turn published content into React UI and wire up event tracking.
+
+<Callout type="warn">
+  Import the rendering and variant helpers (`createBlocksMap`, `BlocksRenderer`, `createBlocksRenderer`, `createContentRenderer`, `pickVariant`) from the **`@createcms/core/react/blocks`** subpath in Server Components — it is RSC-safe. The `@createcms/core/react` barrel re-exports them too, but it also pulls in the client hooks (`createCMSClient`, `useStore`, …), so it is for **Client Components**. The tracking helpers come from `@createcms/core/react/tracking`.
+</Callout>
 
 ## Rendering
 
