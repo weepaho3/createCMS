@@ -57,6 +57,14 @@ export const CMS_ERRORS = {
     message:
       'userId is required for this route when neither the request nor middleware provides one',
   },
+  UNAUTHORIZED: {
+    status: 401 as const,
+    message: 'Authentication is required',
+  },
+  FORBIDDEN: {
+    status: 403 as const,
+    message: 'You do not have permission to perform this action',
+  },
   CANNOT_MOVE_ROOT: {
     status: 400 as const,
     message: 'Cannot move the root block',

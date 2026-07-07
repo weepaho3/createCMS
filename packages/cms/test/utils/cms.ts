@@ -48,12 +48,19 @@ export const setupTestCMS = async (options?: {
   const userPlugins = options?.plugins ?? [];
   const plugins: CMSPlugin<any>[] = [...userPlugins];
 
+  // Default to a no-op auth middleware (userId undefined — same behaviour as
+  // no middleware) so the "no authMiddleware configured" startup warning does
+  // not spam the test output. Tests that pass their own auth/middleware win.
+  const noAuthProvided = !options?.authMiddleware && !options?.middleware;
+
   const cms = createCMS({
     db,
     media: mediaConfig,
     collections: TEST_COLLECTIONS,
     dataRetention: options?.dataRetention,
-    authMiddleware: options?.authMiddleware,
+    authMiddleware:
+      options?.authMiddleware ??
+      (noAuthProvided ? async () => ({}) : undefined),
     middleware: options?.middleware,
     plugins,
     forceCommitMessage: options?.forceCommitMessage,

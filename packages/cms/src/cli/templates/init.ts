@@ -187,7 +187,7 @@ export const DEFAULT_PRESET = 'pages';
 /** `src/lib/cms.ts` — the createCMS config, wired to the chosen preset. */
 const cmsConfigTemplate = (
   preset: Preset,
-): string => `import { createCMS } from '@createcms/core';
+): string => `import { createCMS, CMSError } from '@createcms/core';
 
 import { ${preset.exportName} } from '@/cms/collections/${preset.fileName}';
 // TODO: point this at YOUR Drizzle client (a DrizzleInstance). createcms does
@@ -213,12 +213,12 @@ export const cms = createCMS({
     publicUrl: process.env.S3_PUBLIC_URL!,
   },
   // Published content is public; everything else requires auth. Replace the
-  // TODO with your real session/permission check (return {} to allow, throw to
-  // deny).
+  // TODO with your real session/permission check: return { userId } to allow,
+  // throw \`new CMSError('UNAUTHORIZED')\` (401) or \`'FORBIDDEN'\` (403) to deny.
   authMiddleware: async (ctx) => {
     if (ctx.permissionResource === 'publishedContent') return {};
     // TODO: resolve the signed-in user / permissions here.
-    throw new Error('Unauthorized');
+    throw new CMSError('UNAUTHORIZED');
   },
 });
 `;

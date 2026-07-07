@@ -78,13 +78,24 @@ const media = {
 
 A function that receives the request context and returns a result object. `userId` is optional (anonymous requests omit it); any extra fields you return extend the context available to scoping and hooks.
 
+<Callout type="warn">
+  `authMiddleware` is optional, but omitting it leaves **every** endpoint — including destructive content, media, and admin mutations — unauthenticated and unscoped. `createCMS` logs a warning at startup when it is missing. Return `{}` (no `userId`) from an `authMiddleware` to intentionally allow all and silence the warning.
+</Callout>
+
+To **deny** a request, throw — return a result object to allow. Throw a `CMSError` so the response carries the right HTTP status; a bare `throw new Error(...)` becomes an HTTP 500. Two codes cover the common cases: `UNAUTHORIZED` (401) and `FORBIDDEN` (403).
+
 ```ts
-import { defineAuthMiddleware } from '@createcms/core';
+import { defineAuthMiddleware, CMSError } from '@createcms/core';
 
 const authMiddleware = defineAuthMiddleware(async (ctx) => {
   // ctx.operation, ctx.request (a curated request; the raw Request is at
   // ctx.request?.request), and ctx.collection (collection-scoped calls only).
-  return { userId: await resolveUser(ctx) };
+  if (ctx.permissionResource === 'publishedContent') return {}; // public reads
+
+  const user = await resolveUser(ctx);
+  if (!user) throw new CMSError('UNAUTHORIZED'); // 401
+  if (!user.canWrite) throw new CMSError('FORBIDDEN'); // 403
+  return { userId: user.id };
 });
 ```
 

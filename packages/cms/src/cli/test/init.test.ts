@@ -26,7 +26,11 @@ describe('createcms init — scaffoldInit', () => {
       'created',
       'created',
     ]);
-    expect(await read('src/lib/cms.ts')).toContain('createCMS(');
+    const cmsSource = await read('src/lib/cms.ts');
+    expect(cmsSource).toContain('createCMS(');
+    // dx-07: the deny path uses CMSError (→ 401), not a bare Error (→ HTTP 500).
+    expect(cmsSource).toContain("CMSError('UNAUTHORIZED')");
+    expect(cmsSource).not.toContain("new Error('Unauthorized')");
     expect(await read('src/cms/collections/pages.ts')).toContain(
       'pagesCollection',
     );

@@ -443,6 +443,19 @@ export const createCMS = <
     definition.middleware,
   );
 
+  // Without an auth middleware, EVERY endpoint — including destructive content,
+  // media, and admin mutations — runs unauthenticated and unscoped. That is
+  // almost never intended, so warn loudly. Pass an `authMiddleware` (return an
+  // empty object to intentionally allow all) to silence this.
+  if (!authMiddleware) {
+    console.warn(
+      '[cms] No `authMiddleware` configured — the entire HTTP API is ' +
+        'unauthenticated: every endpoint, including content/media/admin ' +
+        'mutations, runs with no user and no permission checks. Pass ' +
+        '`authMiddleware` to createCMS() (return `{}` to intentionally allow all).',
+    );
+  }
+
   validateCollectionReferences(definition.collections);
 
   const collections = processCollections(definition.collections) as {
