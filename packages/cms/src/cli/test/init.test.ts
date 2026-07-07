@@ -1,15 +1,29 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { resolvePreset, scaffoldInit } from '../commands/init';
+import {
+  detectProjectLayout,
+  resolvePreset,
+  scaffoldInit,
+} from '../commands/init';
 import { PRESETS } from '../templates/init';
+
+/** Write a minimal tsconfig with a single wildcard path alias. */
+const writeTsconfig = (dir: string, alias: string, target: string) =>
+  writeFile(
+    path.join(dir, 'tsconfig.json'),
+    JSON.stringify({ compilerOptions: { paths: { [alias]: [target] } } }),
+    'utf8',
+  );
 
 describe('createcms init — scaffoldInit', () => {
   let dir: string;
   beforeEach(async () => {
     dir = await mkdtemp(path.join(tmpdir(), 'createcms-init-'));
+    // Default the tests to the create-next-app src layout (`@/*` → `./src/*`).
+    await writeTsconfig(dir, '@/*', './src/*');
   });
   afterEach(async () => {
     await rm(dir, { recursive: true, force: true });
@@ -134,6 +148,82 @@ describe('createcms init — scaffoldInit', () => {
 
     const cms = await read('src/lib/cms.ts');
     expect(cms).toContain('docs: docsCollection');
+  });
+});
+
+// dx-09: the scaffold is not hardcoded to the `src/` layout — it detects the
+// project's layout + import alias so files and imports match.
+describe('createcms init — layout detection', () => {
+  let dir: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'createcms-layout-'));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+  const read = (p: string) => readFile(path.join(dir, p), 'utf8');
+
+  it('scaffolds into src/ with `@` when `@/*` → ./src/*', async () => {
+    await writeTsconfig(dir, '@/*', './src/*');
+    const res = await scaffoldInit({ cwd: dir, preset: PRESETS.pages });
+
+    expect(res.layout).toEqual({ baseDir: 'src', alias: '@', hasAlias: true });
+    expect(res.files.map((f) => f.path)).toContain('src/lib/cms.ts');
+    const cms = await read('src/lib/cms.ts');
+    expect(cms).toContain("from '@/cms/collections/pages'");
+    expect(cms).toContain("output: './src/db/schema/cms.ts'");
+    await read('src/app/api/cms/[[...rest]]/route.ts'); // exists
+  });
+
+  it('scaffolds into the project ROOT when `@/*` → ./*', async () => {
+    await writeTsconfig(dir, '@/*', './*');
+    const res = await scaffoldInit({ cwd: dir, preset: PRESETS.pages });
+
+    expect(res.layout).toEqual({ baseDir: '', alias: '@', hasAlias: true });
+    const paths = res.files.map((f) => f.path);
+    expect(paths).toContain('lib/cms.ts');
+    expect(paths).toContain('app/api/cms/[[...rest]]/route.ts');
+    expect(paths).not.toContain('src/lib/cms.ts');
+    const cms = await read('lib/cms.ts');
+    expect(cms).toContain("output: './db/schema/cms.ts'");
+    expect(cms).toContain("from '@/cms/collections/pages'"); // alias unchanged
+  });
+
+  it('honors a non-`@` alias (e.g. `~/*` → ./src/*)', async () => {
+    await writeTsconfig(dir, '~/*', './src/*');
+    const res = await scaffoldInit({ cwd: dir, preset: PRESETS.pages });
+
+    expect(res.layout).toEqual({ baseDir: 'src', alias: '~', hasAlias: true });
+    const cms = await read('src/lib/cms.ts');
+    expect(cms).toContain("import { db } from '~/lib/db'");
+    expect(cms).toContain("from '~/cms/collections/pages'");
+  });
+
+  it('resolves aliases against baseUrl (baseUrl "./src", `@/*` → ["*"])', async () => {
+    await writeFile(
+      path.join(dir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: { baseUrl: './src', paths: { '@/*': ['*'] } },
+      }),
+      'utf8',
+    );
+    expect(await detectProjectLayout(dir)).toEqual({
+      baseDir: 'src',
+      alias: '@',
+      hasAlias: true,
+    });
+  });
+
+  it('falls back to the src/ directory when no alias is configured', async () => {
+    await mkdir(path.join(dir, 'src'), { recursive: true });
+    const layout = await detectProjectLayout(dir);
+    expect(layout).toEqual({ baseDir: 'src', alias: '@', hasAlias: false });
+  });
+
+  it('falls back to the ROOT layout with no tsconfig and no src/', async () => {
+    const res = await scaffoldInit({ cwd: dir, preset: PRESETS.pages });
+    expect(res.layout).toEqual({ baseDir: '', alias: '@', hasAlias: false });
+    expect(res.files.map((f) => f.path)).toContain('lib/cms.ts');
   });
 });
 

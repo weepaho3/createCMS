@@ -22,6 +22,10 @@ npx createcms init [--cwd <dir>] [--preset <name>]
 | `--cwd` | path | current directory | Project root to scaffold into. |
 | `--preset` | name | | Collection preset to scaffold. |
 
+`init` never overwrites existing files (each is reported as `created` or `exists`).
+
+It adapts to your project layout: it reads your `tsconfig.json` (or `jsconfig.json`) `paths` to find the import alias (e.g. `@/*`) and whether it maps to the `src/` layout or the project root, then writes matching file paths and imports. If your project uses `src/`, files land under `src/`; if it maps to the root, they land at the root. When no `@/*`-style alias is configured, `init` falls back to detecting a `src/` directory, uses the default `@` prefix, and warns that you need to add the path alias for the scaffolded imports to resolve.
+
 ## `createcms generate`
 
 Generates a Drizzle schema from your CMS config (core tables plus any plugin schema). The schema is content-agnostic, so you re-run it only when you add or change a plugin that ships schema, not when you edit a collection.

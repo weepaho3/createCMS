@@ -3,10 +3,30 @@
 // ============================================================================
 //
 // Plain string templates (bundled into dist by bunchee — NOT read from disk at
-// runtime). They target a Next.js App Router project using the create-next-app
-// `--src-dir` layout (files under `src/`, the `@/*` → `./src/*` path alias).
-// db wiring is intentionally left to the consumer (`@/lib/db`) — `init` only
-// scaffolds the CMS side.
+// runtime). They target a Next.js App Router project. The file paths and the
+// import-alias prefix are NOT hardcoded: `detectProjectLayout` reads the
+// project's tsconfig/jsconfig to decide the `src/`-vs-root layout and the `@/*`
+// (or other) path alias, and the templates below are parameterized by that
+// `ProjectLayout` so the scaffold matches the project. db wiring is left to the
+// consumer (`<alias>/lib/db`) — `init` only scaffolds the CMS side.
+
+/**
+ * How the target project is laid out, so the scaffold writes matching paths.
+ */
+export type ProjectLayout = {
+  /** `'src'` for the create-next-app `--src-dir` layout, `''` for root layout. */
+  baseDir: string;
+  /** Import-alias prefix WITHOUT the trailing `/*` (e.g. `'@'`, `'~'`). */
+  alias: string;
+  /** Whether a matching wildcard path alias was actually found in the tsconfig.
+   *  When false the scaffold falls back to `'@'` and the caller warns. */
+  hasAlias: boolean;
+};
+
+/** Prefix a project-relative path with the layout's base dir (`src/` or none). */
+function inBase(layout: ProjectLayout, rel: string): string {
+  return layout.baseDir ? `${layout.baseDir}/${rel}` : rel;
+}
 
 /**
  * A ready-made collection the consumer can scaffold via `createcms init
@@ -184,21 +204,22 @@ export const PRESETS: Record<string, Preset> = {
 
 export const DEFAULT_PRESET = 'pages';
 
-/** `src/lib/cms.ts` — the createCMS config, wired to the chosen preset. */
+/** `<baseDir>/lib/cms.ts` — the createCMS config, wired to the chosen preset. */
 const cmsConfigTemplate = (
   preset: Preset,
+  layout: ProjectLayout,
 ): string => `import { createCMS, CMSError } from '@createcms/core';
 
-import { ${preset.exportName} } from '@/cms/collections/${preset.fileName}';
+import { ${preset.exportName} } from '${layout.alias}/cms/collections/${preset.fileName}';
 // TODO: point this at YOUR Drizzle client (a DrizzleInstance). createcms does
 // not scaffold the database client — wire your own (see https://orm.drizzle.team).
-import { db } from '@/lib/db';
+import { db } from '${layout.alias}/lib/db';
 
 export const cms = createCMS({
   db,
   // Where \`createcms generate\` writes the Drizzle schema for the CMS tables.
   schema: {
-    output: './src/db/schema/cms.ts',
+    output: './${inBase(layout, 'db/schema/cms.ts')}',
   },
   collections: {
     ${preset.collectionKey}: ${preset.exportName},
@@ -223,8 +244,9 @@ export const cms = createCMS({
 });
 `;
 
-/** `src/app/api/cms/[[...rest]]/route.ts` — mounts the CMS HTTP router. */
-const routeHandlerTemplate = (): string => `import { cms } from '@/lib/cms';
+/** `<baseDir>/app/api/cms/[[...rest]]/route.ts` — mounts the CMS HTTP router. */
+const routeHandlerTemplate = (layout: ProjectLayout): string =>
+  `import { cms } from '${layout.alias}/lib/cms';
 
 const { handler } = cms.router;
 
@@ -253,20 +275,26 @@ export const GENERATE_SCRIPT = {
 
 /**
  * The files `init` scaffolds for a chosen preset, relative to the project root.
- * Order is display order. Paths assume the `src/` layout (module header).
+ * Order is display order. Paths are prefixed with `layout.baseDir` (`src/` or
+ * root) so the scaffold matches the project's layout; `.env.example` always
+ * lands at the root.
  */
 export function buildInitFiles(
   preset: Preset,
+  layout: ProjectLayout,
 ): ReadonlyArray<{ path: string; content: () => string }> {
   return [
-    { path: 'src/lib/cms.ts', content: () => cmsConfigTemplate(preset) },
     {
-      path: `src/cms/collections/${preset.fileName}.ts`,
+      path: inBase(layout, 'lib/cms.ts'),
+      content: () => cmsConfigTemplate(preset, layout),
+    },
+    {
+      path: inBase(layout, `cms/collections/${preset.fileName}.ts`),
       content: preset.collection,
     },
     {
-      path: 'src/app/api/cms/[[...rest]]/route.ts',
-      content: routeHandlerTemplate,
+      path: inBase(layout, 'app/api/cms/[[...rest]]/route.ts'),
+      content: () => routeHandlerTemplate(layout),
     },
     { path: '.env.example', content: envExampleTemplate },
   ];
