@@ -19,19 +19,26 @@ export const POST = handler;
 
 ### Read content in a Server Component
 
-Call the typed API directly on the server. No client fetch is needed for published content:
+Call the typed API directly on the server. No client fetch is needed for published content. Use a catch-all route and look up by **`path`** — the full published path, with a leading slash — so nested pages resolve too:
 
-```tsx title="app/[slug]/page.tsx"
+```tsx title="app/[[...slug]]/page.tsx"
 import { cms } from '@/lib/cms';
 
-export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ slug?: string[] }>;
+}) {
   const { slug } = await params;
+  const path = `/${(slug ?? []).join('/')}`; // '/' for home, '/blog/post' nested
   const { variants } = await cms.api.pages.getPublishedContent({
-    query: { slug: `/${slug}` },
+    query: { path },
   });
   // render variants[0].tree (see Render content)
 }
 ```
+
+`getPublishedContent` looks content up by `path` (the full path), by `slug` (a single stored slug segment, no leading slash), or by `rootId`. Prefer `path` for URL-driven routing; it is the only one that resolves nested pages.
 
 ### Revalidate on publish
 
