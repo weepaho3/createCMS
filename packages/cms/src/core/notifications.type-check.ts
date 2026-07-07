@@ -25,16 +25,18 @@ const enabled = createCMS({ db, media, collections });
 void enabled.api.notifications.listNotifications;
 void enabled.notify;
 
-// --- notifications EXPLICITLY enabled ------------------------------------
-const explicit = createCMS({ db, media, collections, notifications: true });
-void explicit.api.notifications.listNotifications;
-void explicit.notify;
+// --- `notifications: true` is NOT accepted — omit it to enable -----------
+export const _rejectsTrue = () =>
+  // @ts-expect-error - only the literal `false` is accepted; omit to enable
+  createCMS({ db, media, collections, notifications: true });
 
-// --- a WIDENED boolean keeps the types ENABLED (documented contract) ------
+// --- a WIDENED boolean is a COMPILE ERROR (dx-19 literal-only gate) -------
+// Wiring `notifications` to an env var can no longer silently keep the types
+// enabled while the runtime disables the feature.
 declare const flag: boolean;
-const widened = createCMS({ db, media, collections, notifications: flag });
-void widened.api.notifications.listNotifications;
-void widened.notify;
+export const _rejectsWidenedBoolean = () =>
+  // @ts-expect-error - a widened `boolean` cannot be assigned to `false`
+  createCMS({ db, media, collections, notifications: flag });
 
 // --- notifications DISABLED ----------------------------------------------
 const disabled = createCMS({ db, media, collections, notifications: false });

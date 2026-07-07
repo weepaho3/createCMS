@@ -24,6 +24,29 @@ npx createcms generate
 npx drizzle-kit generate && npx drizzle-kit migrate
 ```
 
+## Every endpoint 404s (or returns "Unknown CMS error")
+
+**Cause.** The catch-all route is mounted at a path that does not match the CMS `basePath` (default `/api/cms`). The router only recognises requests under `basePath`, so a mismatch leaves every endpoint unrouted, it surfaces as a bare `404` (or, once a request does reach the router but nothing matches, an `Unknown CMS error`).
+
+Common variants: the file lives at `app/api/route.ts` instead of `app/api/cms/[[...rest]]/route.ts`; the catch-all segment is misspelled; or `basePath` was set in `createCMS` but the folder still reflects the old path.
+
+**Fix.** Confirm what the router is actually mounted at with a `GET` to the `basePath` root, which answers with a JSON banner:
+
+```bash
+curl http://localhost:3000/api/cms
+```
+
+```json
+{
+  "ok": true,
+  "cms": "@createcms/core",
+  "basePath": "/api/cms",
+  "message": "CMS router mounted. Endpoints are served at /api/cms/<namespace>/<method>."
+}
+```
+
+If you get that banner, the router is mounted and `basePath` is whatever the response reports, line your route folder up with it. If you get a bare `404` instead, the route file itself is not wired: mount it as a catch-all (see [Use with Next.js](/docs/guides/nextjs)). If you set a custom `basePath` in `createCMS`, the folder must match it (e.g. `basePath: '/api/content'` needs `app/api/content/[[...rest]]/route.ts`).
+
 ## `DATA_RETENTION_NOT_CONFIGURED`
 
 **Cause.** You called `admin.runPruning` without configuring retention.

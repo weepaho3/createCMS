@@ -703,14 +703,32 @@ export const createCMS = <
     })),
   );
 
+  const basePath = definition.basePath ?? '/api/cms';
+
   const router = createRouter(wrappedEndpoints, {
-    basePath: definition.basePath ?? '/api/cms',
+    basePath,
     routerMiddleware,
     onError: (error) => {
       console.error(error);
     },
     async onRequest(request) {
       await ensureInit();
+      // A GET to the mount root answers with a small JSON banner so the mount
+      // can be verified with one `curl <basePath>`. A bare 404 there almost
+      // always means the catch-all route is mounted at the wrong path (it must
+      // match `basePath`, default `/api/cms`) or the client `baseURL` disagrees.
+      const { pathname } = new URL(request.url);
+      if (
+        request.method === 'GET' &&
+        (pathname === basePath || pathname === `${basePath}/`)
+      ) {
+        return Response.json({
+          ok: true,
+          cms: '@createcms/core',
+          basePath,
+          message: `CMS router mounted. Endpoints are served at ${basePath}/<namespace>/<method>.`,
+        });
+      }
       // The shared realtime SSE stream short-circuits the pipeline: a long-lived
       // streaming Response must not enter per-request endpoint routing.
       if (realtimeRoute) {

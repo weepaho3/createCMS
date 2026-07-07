@@ -31,7 +31,7 @@ export const setupTestCMS = async (options?: {
   defaultBranchName?: string;
   branchProtection?: BranchProtectionConfig;
   mergeStrategy?: MergeStrategy;
-  notifications?: boolean;
+  notifications?: false;
 }) => {
   const { db } = await setupTestDB();
 

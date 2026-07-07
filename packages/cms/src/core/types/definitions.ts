@@ -1096,17 +1096,16 @@ export type CMSDefinition<
     | RevalidateConfig<TCollections>;
   onNotification?: OnNotificationHandler;
   /**
-   * Set `false` to fully disable the notifications feature: the tables are not
+   * Set to `false` to fully disable the notifications feature: the tables are not
    * generated, the routes do not register or execute, and `client.notifications`
-   * (plus `cms.notify`) are absent from the inferred types. Default: enabled.
+   * (plus `cms.notify`) are absent from the inferred types. Omit it (the default)
+   * to keep notifications enabled.
    *
-   * IMPORTANT: pass a LITERAL `false`. The type gate keys on the literal — a
-   * widened `boolean` value keeps the types ENABLED even when it is `false` at
-   * runtime, so `cms.notify(...)` / `client.notifications.*` would type-check but
-   * throw or 404. Use `as const` (or a literal) if the value comes from a
-   * variable.
+   * The type accepts only the literal `false`, so a widened `boolean` (e.g. from
+   * an env var) is a compile error rather than a silent trap — the type gate and
+   * the runtime can never disagree.
    */
-  notifications?: boolean;
+  notifications?: false;
   /**
    * Upstash realtime credentials. Optional; enables the shared `/realtime` SSE
    * route, per-user notification push, and A/B live results. Without it,
