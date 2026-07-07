@@ -36,10 +36,12 @@ export function createSearchEndpoints(cmsCtx: CMSProcedureCtx) {
      *
      * @example
      * const { results, total, hasMore } = await cmsClient.search.search({
-     *   q: 'homepage',
-     *   entityTypes: ['root', 'variable'],
-     *   limit: 10,
-     *   offset: 0,
+     *   query: {
+     *     q: 'homepage',
+     *     entityTypes: ['root', 'variable'],
+     *     limit: 10,
+     *     offset: 0,
+     *   },
      * });
      */
     search: createCMSEndpoint(

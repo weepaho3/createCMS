@@ -197,7 +197,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
      * @throws USER_ID_REQUIRED if userId is not present.
      * @throws MERGE_REQUEST_NOT_FOUND if targetType='mergeRequest' and mergeRequestId does not exist or is out of scope.
      * @throws COMMIT_NOT_FOUND if commitId is provided but does not exist.
-     * @example await cmsClient.pages.createCommentThread({ targetType: 'block', blockId: 'b1', body: 'Fix needed', mentions: ['user2'] })
+     * @example await cmsClient.pages.createCommentThread({ body: { targetType: 'block', blockId: 'b1', body: 'Fix needed', mentions: ['user2'] } })
      */
     createCommentThread: createCMSEndpoint(
       `/${collectionName}/createCommentThread`,
@@ -354,7 +354,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
      * @throws USER_ID_REQUIRED if userId is not present.
      * @throws COMMENT_THREAD_NOT_FOUND if thread does not exist in this collection.
      * @throws COMMENT_MESSAGE_NOT_FOUND if parentMessageId does not exist in this thread.
-     * @example await cmsClient.pages.createCommentMessage({ threadId: 't1', body: 'Addressed' })
+     * @example await cmsClient.pages.createCommentMessage({ body: { threadId: 't1', body: 'Addressed' } })
      */
     createCommentMessage: createCMSEndpoint(
       `/${collectionName}/createCommentMessage`,
@@ -506,7 +506,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
      * @param limit Page size (1–100, default 20).
      * @param offset Pagination offset (default 0).
      * @returns Paginated list of threads with message count, first/latest message summaries, and user enrichment.
-     * @example await cmsClient.pages.listCommentThreads({ status: 'open', limit: 50 })
+     * @example await cmsClient.pages.listCommentThreads({ query: { status: 'open', limit: 50 } })
      */
     listCommentThreads: createCMSEndpoint(
       `/${collectionName}/listCommentThreads`,
@@ -753,7 +753,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
      * @param threadId Required thread ID.
      * @returns Thread object, full message array (with deleted messages body masked), and optional author user profiles.
      * @throws COMMENT_THREAD_NOT_FOUND if thread does not exist or is deleted.
-     * @example await cmsClient.pages.getCommentThread({ threadId: 't1' })
+     * @example await cmsClient.pages.getCommentThread({ query: { threadId: 't1' } })
      */
     getCommentThread: createCMSEndpoint(
       `/${collectionName}/getCommentThread`,
@@ -874,7 +874,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
      * @throws USER_ID_REQUIRED if userId is not present.
      * @throws COMMENT_THREAD_NOT_FOUND if thread does not exist.
      * @throws COMMENT_THREAD_ALREADY_RESOLVED if thread is already resolved.
-     * @example await cmsClient.pages.resolveCommentThread({ threadId: 't1' })
+     * @example await cmsClient.pages.resolveCommentThread({ body: { threadId: 't1' } })
      */
     resolveCommentThread: createCMSEndpoint(
       `/${collectionName}/resolveCommentThread`,
@@ -978,7 +978,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
      * @returns Deleted thread ID.
      * @throws USER_ID_REQUIRED if userId is not present.
      * @throws COMMENT_THREAD_NOT_FOUND if thread does not exist.
-     * @example await cmsClient.pages.deleteCommentThread({ threadId: 't1' })
+     * @example await cmsClient.pages.deleteCommentThread({ body: { threadId: 't1' } })
      */
     deleteCommentThread: createCMSEndpoint(
       `/${collectionName}/deleteCommentThread`,
@@ -1053,7 +1053,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
      * @throws USER_ID_REQUIRED if userId is not present.
      * @throws COMMENT_THREAD_NOT_FOUND if thread does not exist.
      * @throws COMMENT_THREAD_NOT_RESOLVED if thread is not currently resolved.
-     * @example await cmsClient.pages.reopenCommentThread({ threadId: 't1' })
+     * @example await cmsClient.pages.reopenCommentThread({ body: { threadId: 't1' } })
      */
     reopenCommentThread: createCMSEndpoint(
       `/${collectionName}/reopenCommentThread`,
@@ -1165,7 +1165,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
      * @throws COMMENT_MESSAGE_NOT_FOUND if message does not exist.
      * @throws COMMENT_MESSAGE_DELETED if message is already deleted.
      * @throws COMMENT_AUTHOR_MISMATCH if userId is not the message author.
-     * @example await cmsClient.pages.updateCommentMessage({ messageId: 'm1', body: 'Revised' })
+     * @example await cmsClient.pages.updateCommentMessage({ body: { messageId: 'm1', body: 'Revised' } })
      */
     updateCommentMessage: createCMSEndpoint(
       `/${collectionName}/updateCommentMessage`,
@@ -1271,7 +1271,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
      * @throws COMMENT_MESSAGE_NOT_FOUND if message does not exist.
      * @throws COMMENT_MESSAGE_DELETED if message is already deleted.
      * @throws COMMENT_AUTHOR_MISMATCH if userId is not the message author.
-     * @example await cmsClient.pages.deleteCommentMessage({ messageId: 'm1' })
+     * @example await cmsClient.pages.deleteCommentMessage({ body: { messageId: 'm1' } })
      */
     deleteCommentMessage: createCMSEndpoint(
       `/${collectionName}/deleteCommentMessage`,
@@ -1349,7 +1349,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
      * @param limit Page size (1–100, default 20).
      * @param offset Pagination offset (default 0).
      * @returns Paginated list of mentions with associated message and thread context.
-     * @example await cmsClient.pages.listMentions({ mentionedUserId: 'user1', limit: 50 })
+     * @example await cmsClient.pages.listMentions({ query: { mentionedUserId: 'user1', limit: 50 } })
      */
     listMentions: createCMSEndpoint(
       `/${collectionName}/listMentions`,

@@ -112,7 +112,7 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
      * @param branchId The branch ID to fetch.
      * @returns Branch data with id, rootId, name, headCommitId, createdBy, createdAt, updatedAt, isDeletable flag, and optionally createdByUser.
      * @throws BRANCH_NOT_FOUND if the branch does not exist or is outside the current scope.
-     * @example await cmsClient.pages.getBranch({ branchId: 'br_abc123' })
+     * @example await cmsClient.pages.getBranch({ query: { branchId: 'br_abc123' } })
      */
     getBranch: createCMSEndpoint(
       `/${collectionName}/getBranch`,
@@ -195,7 +195,7 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
      * @param hasPublications Filter by branches with (true) or without (false) any publications.
      * @param hasOpenMergeRequests Filter by branches with (true) or without (false) open merge requests.
      * @returns Paginated array of branch items, total count, and hasMore flag.
-     * @example await cmsClient.pages.listBranches({ rootId: 'root_123', limit: 50 })
+     * @example await cmsClient.pages.listBranches({ query: { rootId: 'root_123', limit: 50 } })
      */
     listBranches: createCMSEndpoint(
       `/${collectionName}/listBranches`,
@@ -362,7 +362,7 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
      * @returns Object with new branchId and its initial headCommitId (copied from source).
      * @throws BRANCH_NOT_FOUND if sourceBranchId does not exist.
      * @throws BRANCH_NAME_ALREADY_EXISTS if name is already taken in this root.
-     * @example await cmsClient.pages.createBranch({ rootId: 'root_123', name: 'feature-x', sourceBranchId: 'br_main' })
+     * @example await cmsClient.pages.createBranch({ body: { rootId: 'root_123', name: 'feature-x', sourceBranchId: 'br_main' } })
      */
     createBranch: createCMSEndpoint(
       `/${collectionName}/createBranch`,

@@ -361,7 +361,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * @returns A diff array (each entry lists changeTypes: added, deleted, modified, moved, childrenReordered) plus commit ids.
      * @throws BRANCH_NOT_FOUND if either branch does not exist in this collection.
      * @throws BRANCHES_NOT_SAME_ROOT if the branches are from different roots.
-     * @example await cmsClient.pages.getDiff({ sourceBranchId: 'src-id', targetBranchId: 'tgt-id' })
+     * @example await cmsClient.pages.getDiff({ body: { sourceBranchId: 'src-id', targetBranchId: 'tgt-id' } })
      */
     getDiff: createCMSEndpoint(
       `/${collectionName}/getDiff`,
@@ -421,7 +421,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * @returns A conflicts array and a hasConflicts flag, plus commit ids.
      * @throws BRANCH_NOT_FOUND if either branch does not exist in this collection.
      * @throws BRANCHES_NOT_SAME_ROOT if the branches are from different roots.
-     * @example await cmsClient.pages.checkConflicts({ sourceBranchId: 'src-id', targetBranchId: 'tgt-id' })
+     * @example await cmsClient.pages.checkConflicts({ body: { sourceBranchId: 'src-id', targetBranchId: 'tgt-id' } })
      */
     checkConflicts: createCMSEndpoint(
       `/${collectionName}/checkConflicts`,
@@ -488,7 +488,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * @throws BRANCH_NOT_FOUND if either branch does not exist.
      * @throws BRANCHES_NOT_SAME_ROOT if branches have different root ids.
      * @throws USER_ID_REQUIRED if no actor (userId or createdBy) is provided.
-     * @example await cmsClient.pages.createMergeRequest({ sourceBranchId: 'src', targetBranchId: 'tgt', title: 'Merge feature' })
+     * @example await cmsClient.pages.createMergeRequest({ body: { sourceBranchId: 'src', targetBranchId: 'tgt', title: 'Merge feature' } })
      */
     createMergeRequest: createCMSEndpoint(
       `/${collectionName}/createMergeRequest`,
@@ -649,7 +649,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * @param sortBy - Sort field: createdAt (default), updatedAt, status, or title.
      * @param sortDirection - 'asc' or 'desc' (default 'desc').
      * @returns Array of merge request objects plus total count and hasMore flag.
-     * @example await cmsClient.pages.listMergeRequests({ status: 'open', limit: 50 })
+     * @example await cmsClient.pages.listMergeRequests({ query: { status: 'open', limit: 50 } })
      */
     listMergeRequests: createCMSEndpoint(
       `/${collectionName}/listMergeRequests`,
@@ -879,7 +879,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * @returns The updated merge request row.
      * @throws MERGE_REQUEST_NOT_FOUND if the merge request does not exist.
      * @throws MERGE_REQUEST_NOT_OPEN if the merge request is already merged or closed.
-     * @example await cmsClient.pages.updateMergeRequest({ mergeRequestId: 'mr-id', title: 'Updated title' })
+     * @example await cmsClient.pages.updateMergeRequest({ body: { mergeRequestId: 'mr-id', title: 'Updated title' } })
      */
     updateMergeRequest: createCMSEndpoint(
       `/${collectionName}/updateMergeRequest`,
@@ -944,7 +944,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * @returns The updated merge request row.
      * @throws MERGE_REQUEST_NOT_FOUND if the merge request does not exist.
      * @throws MERGE_REQUEST_NOT_OPEN if the merge request is not in open status.
-     * @example await cmsClient.pages.closeMergeRequest({ mergeRequestId: 'mr-id', reason: 'No longer needed' })
+     * @example await cmsClient.pages.closeMergeRequest({ body: { mergeRequestId: 'mr-id', reason: 'No longer needed' } })
      */
     closeMergeRequest: createCMSEndpoint(
       `/${collectionName}/closeMergeRequest`,
@@ -1024,7 +1024,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * @throws MERGE_REQUEST_ALREADY_MERGED if the merge request was already merged.
      * @throws MERGE_REQUEST_NOT_CLOSED if the merge request is still open.
      * @throws MERGE_REQUEST_ALREADY_EXISTS if another open MR exists for the same source-target pair.
-     * @example await cmsClient.pages.reopenMergeRequest({ mergeRequestId: 'mr-id' })
+     * @example await cmsClient.pages.reopenMergeRequest({ body: { mergeRequestId: 'mr-id' } })
      */
     reopenMergeRequest: createCMSEndpoint(
       `/${collectionName}/reopenMergeRequest`,
@@ -1147,7 +1147,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * @throws MERGE_APPROVAL_REQUIRED if no approval requests exist.
      * @throws APPROVALS_NOT_FULLY_APPROVED if not all approval requests are approved.
      * @throws UNRESOLVED_CONFLICTS if any conflict lacks a resolution.
-     * @example await cmsClient.pages.executeMerge({ mergeRequestId: 'mr-id' })
+     * @example await cmsClient.pages.executeMerge({ body: { mergeRequestId: 'mr-id' } })
      */
     executeMerge: createCMSEndpoint(
       `/${collectionName}/executeMerge`,
@@ -1496,7 +1496,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * @throws MERGE_REQUEST_NOT_FOUND if the merge request does not exist.
      * @throws CONFLICT_NOT_FOUND if no conflict exists for the given block in this MR.
      * @throws BRANCH_NOT_FOUND if the source branch is not found.
-     * @example await cmsClient.pages.createMergeBlockVersion({ mergeRequestId: 'mr-id', blockId: 'b-id', type: 'card', properties: { ... } })
+     * @example await cmsClient.pages.createMergeBlockVersion({ body: { mergeRequestId: 'mr-id', blockId: 'b-id', type: 'card', properties: { ... } } })
      */
     createMergeBlockVersion: createCMSEndpoint(
       `/${collectionName}/createMergeBlockVersion`,
@@ -1616,7 +1616,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * @throws MERGE_REQUEST_NOT_OPEN if the merge request is not open.
      * @throws CONFLICT_NOT_FOUND if any conflict id does not belong to this MR.
      * @throws RESOLVED_VERSION_NOT_FOUND if a manual resolution references a non-existent version.
-     * @example await cmsClient.pages.resolveConflicts({ mergeRequestId: 'mr-id', resolutions: [{ conflictId: 'c-id', resolution: 'source', resolvedBy: 'user-id' }] })
+     * @example await cmsClient.pages.resolveConflicts({ body: { mergeRequestId: 'mr-id', resolutions: [{ conflictId: 'c-id', resolution: 'source', resolvedBy: 'user-id' }] } })
      */
     resolveConflicts: createCMSEndpoint(
       `/${collectionName}/resolveConflicts`,

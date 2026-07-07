@@ -121,7 +121,7 @@ export function createRedirectEndpoints<TDef extends CollectionWithName>(
      * @param path The request path to resolve (e.g. '/about' or '/old-page').
      * @returns An object with a `redirect` field containing the target URL and status code, or null if no redirect matches.
      * @throws SLUG_NOT_ENABLED if the collection does not have slugs enabled.
-     * @example await cmsClient.pages.resolveRedirect({ path: '/old-page' })
+     * @example await cmsClient.pages.resolveRedirect({ query: { path: '/old-page' } })
      */
     resolveRedirect: createCMSEndpoint(
       `/${collectionName}/resolveRedirect`,
@@ -170,7 +170,7 @@ export function createRedirectEndpoints<TDef extends CollectionWithName>(
      * @throws SLUG_NOT_ENABLED if slugs are not enabled for this collection.
      * @throws REDIRECT_INVALID if a source page root does not exist or a required field is missing.
      * @throws REDIRECT_SOURCE_EXISTS if an active redirect with the same source already exists.
-     * @example await cmsClient.pages.createRedirect({ sourceType: 'path', sourcePath: '/old-page', targetType: 'page', targetRootId: 'root_123', statusCode: 301 })
+     * @example await cmsClient.pages.createRedirect({ body: { sourceType: 'path', sourcePath: '/old-page', targetType: 'page', targetRootId: 'root_123', statusCode: 301 } })
      */
     createRedirect: createCMSEndpoint(
       `/${collectionName}/createRedirect`,
@@ -270,7 +270,7 @@ export function createRedirectEndpoints<TDef extends CollectionWithName>(
      * @throws REDIRECT_NOT_FOUND if the redirect does not exist or is not in scope.
      * @throws REDIRECT_INVALID if a source page root does not exist or a required field is missing.
      * @throws REDIRECT_SOURCE_EXISTS if another active redirect with the same source already exists.
-     * @example await cmsClient.pages.updateRedirect({ redirectId: 'redirect_123', sourceType: 'path', sourcePath: '/new-path', targetType: 'page', targetRootId: 'root_456' })
+     * @example await cmsClient.pages.updateRedirect({ body: { redirectId: 'redirect_123', sourceType: 'path', sourcePath: '/new-path', targetType: 'page', targetRootId: 'root_456' } })
      */
     updateRedirect: createCMSEndpoint(
       `/${collectionName}/updateRedirect`,
@@ -368,7 +368,7 @@ export function createRedirectEndpoints<TDef extends CollectionWithName>(
      * @param redirectId The id of the redirect to archive.
      * @returns The archived redirect's id.
      * @throws REDIRECT_NOT_FOUND if the redirect does not exist, is already archived, or is not in scope.
-     * @example await cmsClient.pages.archiveRedirect({ redirectId: 'redirect_123' })
+     * @example await cmsClient.pages.archiveRedirect({ body: { redirectId: 'redirect_123' } })
      */
     archiveRedirect: createCMSEndpoint(
       `/${collectionName}/archiveRedirect`,
@@ -405,7 +405,7 @@ export function createRedirectEndpoints<TDef extends CollectionWithName>(
      * @param limit Maximum number of redirects to return (1–100; defaults to 50).
      * @param offset Number of redirects to skip (defaults to 0).
      * @returns An object with `redirects` (array of redirect objects with resolved paths), `total` (count of all active redirects), and `hasMore` (boolean indicating more results).
-     * @example await cmsClient.pages.listRedirects({ limit: 25, offset: 0 })
+     * @example await cmsClient.pages.listRedirects({ query: { limit: 25, offset: 0 } })
      */
     listRedirects: createCMSEndpoint(
       `/${collectionName}/listRedirects`,

@@ -485,8 +485,10 @@ export function createPublicationEndpoints<
      *
      * @example
      * const pub = await cmsClient.pages.publishBranch({
-     *   rootId: 'root_123',
-     *   branchId: 'branch_456'
+     *   body: {
+     *     rootId: 'root_123',
+     *     branchId: 'branch_456'
+     *   }
      * });
      */
     publishBranch: createCMSEndpoint(
@@ -654,8 +656,10 @@ export function createPublicationEndpoints<
      *
      * @example
      * const result = await cmsClient.pages.unpublishBranch({
-     *   rootId: 'root_123',
-     *   branchId: 'branch_456'
+     *   body: {
+     *     rootId: 'root_123',
+     *     branchId: 'branch_456'
+     *   }
      * });
      */
     unpublishBranch: createCMSEndpoint(
@@ -753,7 +757,9 @@ export function createPublicationEndpoints<
      *
      * @example
      * const content = await cmsClient.pages.getPublishedContent({
-     *   rootId: 'root_123'
+     *   query: {
+     *     rootId: 'root_123'
+     *   }
      * });
      */
     getPublishedContent: createCMSEndpoint(

@@ -166,7 +166,7 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
      * @throws MERGE_REQUEST_NOT_OPEN If the merge request is not in open status.
      * @throws BRANCH_NOT_FOUND If the branch does not exist.
      * @throws APPROVAL_ALREADY_REQUESTED If an approval from any requested reviewer for this commit already exists.
-     * @example await cmsClient.pages.requestApproval({ branchId: 'br_123', requestedBy: 'user1', requestedReviewers: ['user2', 'user3'], message: 'Please review' })
+     * @example await cmsClient.pages.requestApproval({ body: { branchId: 'br_123', requestedBy: 'user1', requestedReviewers: ['user2', 'user3'], message: 'Please review' } })
      */
     requestApproval: createCMSEndpoint(
       `/${collectionName}/requestApproval`,
@@ -367,7 +367,7 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
      * @throws APPROVAL_NOT_PENDING If the approval is not in pending status.
      * @throws APPROVAL_REVIEWER_MISMATCH If the reviewer is not the requested reviewer for this approval.
      * @throws APPROVAL_STALE If the approval is for a direct publication and the branch has since moved to a different commit.
-     * @example await cmsClient.pages.approve({ approvalId: 'apr_123', reviewedBy: 'user2' })
+     * @example await cmsClient.pages.approve({ body: { approvalId: 'apr_123', reviewedBy: 'user2' } })
      */
     approve: createCMSEndpoint(
       `/${collectionName}/approve`,
@@ -509,7 +509,7 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
      * @throws APPROVAL_NOT_PENDING If the approval is not in pending status.
      * @throws APPROVAL_REVIEWER_MISMATCH If the reviewer is not the requested reviewer for this approval.
      * @throws APPROVAL_STALE If the approval is for a direct publication and the branch has since moved to a different commit.
-     * @example await cmsClient.pages.reject({ approvalId: 'apr_123', reviewedBy: 'user2', rejectionReason: 'Needs revision' })
+     * @example await cmsClient.pages.reject({ body: { approvalId: 'apr_123', reviewedBy: 'user2', rejectionReason: 'Needs revision' } })
      */
     reject: createCMSEndpoint(
       `/${collectionName}/reject`,
@@ -650,7 +650,7 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
      * @returns Object containing the canceled approval id.
      * @throws APPROVAL_NOT_FOUND If the approval does not exist or is not accessible.
      * @throws APPROVAL_NOT_PENDING If the approval is not in pending status.
-     * @example await cmsClient.pages.cancelApproval({ approvalId: 'apr_123' })
+     * @example await cmsClient.pages.cancelApproval({ body: { approvalId: 'apr_123' } })
      */
     cancelApproval: createCMSEndpoint(
       `/${collectionName}/cancelApproval`,
@@ -725,7 +725,7 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
      * @param approvalId The approval id to retrieve.
      * @returns The approval record with requestedByUser, requestedReviewerUser, and reviewedByUser populated.
      * @throws APPROVAL_NOT_FOUND If the approval does not exist or is not accessible.
-     * @example await cmsClient.pages.getApproval({ approvalId: 'apr_123' })
+     * @example await cmsClient.pages.getApproval({ query: { approvalId: 'apr_123' } })
      */
     getApproval: createCMSEndpoint(
       `/${collectionName}/getApproval`,
@@ -816,7 +816,7 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
      * @param reviewedBy Filter by the user who reviewed the approval.
      * @param targetType Filter by target type: 'mergeRequest' (has mergeRequestId) or 'publication' (no mergeRequestId); silent if combined with incompatible filters.
      * @returns Object containing approvals array, total count, and hasMore flag.
-     * @example await cmsClient.pages.listApprovals({ status: 'pending', limit: 10, offset: 0 })
+     * @example await cmsClient.pages.listApprovals({ query: { status: 'pending', limit: 10, offset: 0 } })
      */
     listApprovals: createCMSEndpoint(
       `/${collectionName}/listApprovals`,

@@ -410,7 +410,14 @@ function validateCollectionReferences(
  * export const cms = createCMS({
  *   db,
  *   collections: defineCollections({ pages, posts }),
- *   media: { bucket, baseUrl },
+ *   media: {
+ *     provider: 'aws',
+ *     region: 'eu-central-1',
+ *     bucketName: 'my-cms-assets',
+ *     accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+ *     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+ *     publicUrl: 'https://cdn.example.com/',
+ *   },
  *   authMiddleware,
  * });
  * ```

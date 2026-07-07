@@ -30,7 +30,7 @@ export function createNotificationEndpoints(cmsCtx: CMSProcedureCtx) {
      * @throws USER_ID_REQUIRED - No authenticated user in the request context.
      *
      * @example
-     * const result = await cmsClient.notifications.listNotifications({ unreadOnly: true, limit: 10 });
+     * const result = await cmsClient.notifications.listNotifications({ query: { unreadOnly: true, limit: 10 } });
      */
     listNotifications: createCMSEndpoint(
       '/notifications/listNotifications',
@@ -174,7 +174,7 @@ export function createNotificationEndpoints(cmsCtx: CMSProcedureCtx) {
      * @throws NOTIFICATION_RECIPIENT_MISMATCH - The current user is not the recipient of the notification.
      *
      * @example
-     * await cmsClient.notifications.markNotificationsRead({ notificationId: 'notif-123' });
+     * await cmsClient.notifications.markNotificationsRead({ body: { notificationId: 'notif-123' } });
      */
     markNotificationsRead: createCMSEndpoint(
       '/notifications/markNotificationsRead',
@@ -261,7 +261,7 @@ export function createNotificationEndpoints(cmsCtx: CMSProcedureCtx) {
      * @throws NOTIFICATION_RECIPIENT_MISMATCH - The current user is not the recipient of the notification.
      *
      * @example
-     * await cmsClient.notifications.markNotificationsUnread({ notificationId: 'notif-123' });
+     * await cmsClient.notifications.markNotificationsUnread({ body: { notificationId: 'notif-123' } });
      */
     markNotificationsUnread: createCMSEndpoint(
       '/notifications/markNotificationsUnread',
@@ -346,7 +346,7 @@ export function createNotificationEndpoints(cmsCtx: CMSProcedureCtx) {
      * @throws NOTIFICATION_RECIPIENT_MISMATCH - The current user is not the recipient of the notification.
      *
      * @example
-     * await cmsClient.notifications.archiveNotification({ notificationId: 'notif-123' });
+     * await cmsClient.notifications.archiveNotification({ body: { notificationId: 'notif-123' } });
      */
     archiveNotification: createCMSEndpoint(
       '/notifications/archiveNotification',

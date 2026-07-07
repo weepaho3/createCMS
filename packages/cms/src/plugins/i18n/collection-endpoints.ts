@@ -71,7 +71,7 @@ export function createI18nCollectionEndpoints(
      * @throws TRANSLATION_EXISTS if a translation to targetLanguage already exists for this entry.
      * @throws TRANSLATION_PARENT_NOT_TRANSLATED if the source has a parent that has no translation in the target language.
      * @throws SLUG_EMPTY_NOT_ALLOWED if the target slug is empty and the collection disallows root slugs.
-     * @example await cmsClient.pages.createTranslation({ sourceRootId: 'root_abc', targetLanguage: 'de', seed: 'copy' })
+     * @example await cmsClient.pages.createTranslation({ body: { sourceRootId: 'root_abc', targetLanguage: 'de', seed: 'copy' } })
      */
     createTranslation: createCMSEndpoint(
       `/${collectionName}/createTranslation`,
@@ -327,7 +327,7 @@ export function createI18nCollectionEndpoints(
      * @param rootId The root id (must exist in the active language and tenant).
      * @returns The translation key (group id) and an array of all siblings with their language, root id, slug, and resolved path.
      * @throws TRANSLATION_SOURCE_NOT_FOUND if rootId does not exist or has no translation key.
-     * @example await cmsClient.pages.listTranslations({ rootId: 'root_abc' })
+     * @example await cmsClient.pages.listTranslations({ query: { rootId: 'root_abc' } })
      */
     listTranslations: createCMSEndpoint(
       `/${collectionName}/listTranslations`,

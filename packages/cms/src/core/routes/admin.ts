@@ -34,7 +34,7 @@ export function createAdminEndpoints(
      * @returns An object with deletion counts (commits, block versions, snapshots, merge requests, approvals), lists of deleted root IDs and asset IDs, the number of live roots processed, and a `done` flag (true when all due work is drained within budget).
      * @throws DATA_RETENTION_NOT_CONFIGURED if dataRetention is not configured.
      * @example
-     * const result = await cmsClient.admin.runPruning({ dryRun: false, maxRoots: 10, maxDurationMs: 5000 });
+     * const result = await cmsClient.admin.runPruning({ body: { dryRun: false, maxRoots: 10, maxDurationMs: 5000 } });
      */
     runPruning: createCMSEndpoint(
       '/admin/runPruning',

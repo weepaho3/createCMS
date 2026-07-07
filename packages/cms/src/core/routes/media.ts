@@ -68,7 +68,7 @@ export function createMediaEndpoints(
      * @param parentFolderId - Optional parent folder id; if omitted, creates a root-level folder.
      * @returns The created folder with its metadata (id, name, parentId, createdBy, createdAt).
      * @throws PARENT_NOT_FOUND if parentFolderId does not reference an existing folder.
-     * @example await cmsClient.media.createFolder({ name: 'Images' })
+     * @example await cmsClient.media.createFolder({ body: { name: 'Images' } })
      */
     createFolder: createCMSEndpoint(
       '/media/createFolder',
@@ -293,7 +293,7 @@ export function createMediaEndpoints(
      * @param parentId - Optional parent folder id; if omitted, returns the ROOT-level folders (those with no parent).
      * @returns The direct child folders of the given parent (or of the root), sorted by name.
      * @example await cmsClient.media.listFolders()                  // root folders
-     * @example await cmsClient.media.listFolders({ parentId })      // a folder's subfolders
+     * @example await cmsClient.media.listFolders({ query: { parentId } })      // a folder's subfolders
      */
     listFolders: createCMSEndpoint(
       '/media/listFolders',
@@ -355,7 +355,7 @@ export function createMediaEndpoints(
      * @param sortBy - Sort field: 'createdAt', 'slug', or 'size' (default 'createdAt').
      * @param sortOrder - Sort direction: 'asc' or 'desc' (default 'desc').
      * @returns Paginated list of assets (each with a ready-to-use public `url`) plus total count and hasMore flag.
-     * @example await cmsClient.media.listAssets({ limit: 20, status: 'public' })
+     * @example await cmsClient.media.listAssets({ query: { limit: 20, status: 'public' } })
      */
     listAssets: createCMSEndpoint(
       '/media/listAssets',
@@ -591,7 +591,7 @@ export function createMediaEndpoints(
      * @param status - Target status: 'private' or 'public'.
      * @returns Count of successfully updated assets.
      * @throws ASSET_NOT_FOUND if none of the asset ids exist.
-     * @example await cmsClient.media.updateAssetStatus({ assetIds: ['ast_...'], status: 'public' })
+     * @example await cmsClient.media.updateAssetStatus({ body: { assetIds: ['ast_...'], status: 'public' } })
      */
     updateAssetStatus: createCMSEndpoint(
       '/media/updateAssetStatus',
@@ -649,7 +649,7 @@ export function createMediaEndpoints(
      * @returns `{ moved, movedIds, skipped }`.
      * @throws FOLDER_NOT_FOUND if `folderId` is given but does not exist (in scope).
      * @throws ASSET_NOT_FOUND if none of the ids reference a live, in-scope asset.
-     * @example await cmsClient.media.moveAssets({ assetIds: ['ast_...'], folderId: 'fld_...' })
+     * @example await cmsClient.media.moveAssets({ body: { assetIds: ['ast_...'], folderId: 'fld_...' } })
      */
     moveAssets: createCMSEndpoint(
       '/media/moveAssets',
@@ -728,7 +728,7 @@ export function createMediaEndpoints(
      * @param assetIds - Array of asset ids to archive (at least one).
      * @returns Count of archived assets, their ids, and ids of skipped (in-use) assets.
      * @throws ASSET_NOT_FOUND if none of the asset ids exist.
-     * @example await cmsClient.media.archiveAsset({ assetIds: ['ast_...'] })
+     * @example await cmsClient.media.archiveAsset({ body: { assetIds: ['ast_...'] } })
      */
     archiveAsset: createCMSEndpoint(
       '/media/archiveAsset',
@@ -823,7 +823,7 @@ export function createMediaEndpoints(
      * @param assetId - The asset id to query.
      * @returns Page count and a list of each live (non-archived) page using the asset, with per-block occurrences.
      * @throws ASSET_NOT_FOUND if the asset does not exist.
-     * @example await cmsClient.media.getAssetUsages({ assetId: 'ast_...' })
+     * @example await cmsClient.media.getAssetUsages({ query: { assetId: 'ast_...' } })
      */
     getAssetUsages: createCMSEndpoint(
       '/media/getAssetUsages',
@@ -877,7 +877,7 @@ export function createMediaEndpoints(
      * @throws FOLDER_NOT_FOUND if folderId does not exist.
      * @throws ASSET_NOT_FOUND if a variantOf id does not reference an existing asset.
      * @throws SLUG_GENERATION_FAILED if slug generation exhausts retry attempts.
-     * @example await cmsClient.media.createSignedUpload({ files: [{ name: 'photo.jpg', size: 512000, type: 'image/jpeg' }] })
+     * @example await cmsClient.media.createSignedUpload({ body: { files: [{ name: 'photo.jpg', size: 512000, type: 'image/jpeg' }] } })
      */
     createSignedUpload: createCMSEndpoint(
       '/media/createSignedUpload',
@@ -976,7 +976,7 @@ export function createMediaEndpoints(
      * @throws ASSET_NOT_FOUND if a variantOf id does not reference an existing asset.
      * @throws SLUG_GENERATION_FAILED if slug generation exhausts retry attempts.
      * @throws UPLOAD_FAILED if the S3 upload fails.
-     * @example await cmsClient.media.uploadAssets({ files: [{ name: 'photo.jpg', size: 512000, type: 'image/jpeg', buffer }] })
+     * @example await cmsClient.media.uploadAssets({ body: { files: [{ name: 'photo.jpg', size: 512000, type: 'image/jpeg', buffer }] } })
      */
     uploadAssets: createCMSEndpoint(
       '/media/uploadAssets',
@@ -1086,7 +1086,7 @@ export function createMediaEndpoints(
      * @throws CANNOT_REPLACE_VARIANT if the target is itself a variant.
      * @throws FILE_TOO_LARGE / INVALID_FILE_TYPE on validation failure.
      * @throws UPLOAD_FAILED if the S3 upload fails (the asset is left unchanged).
-     * @example await cmsClient.media.replaceAsset({ assetId: 'ast_...', file: { name, size, type, buffer } })
+     * @example await cmsClient.media.replaceAsset({ body: { assetId: 'ast_...', file: { name, size, type, buffer } } })
      */
     replaceAsset: createCMSEndpoint(
       '/media/replaceAsset',

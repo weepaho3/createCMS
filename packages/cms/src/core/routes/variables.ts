@@ -93,7 +93,7 @@ export function createVariableEndpoints(
      * @param description Optional description of the variable's purpose.
      * @returns The created variable with id, timestamps, and creator metadata.
      * @throws VARIABLE_KEY_EXISTS if a variable with this key already exists.
-     * @example await cmsClient.variables.createVariable({ key: 'app_name', value: 'MyApp', description: 'Application name' })
+     * @example await cmsClient.variables.createVariable({ body: { key: 'app_name', value: 'MyApp', description: 'Application name' } })
      */
     createVariable: createCMSEndpoint(
       '/variables/createVariable',
@@ -173,7 +173,7 @@ export function createVariableEndpoints(
      * @param description Optional new description.
      * @returns The updated variable.
      * @throws VARIABLE_NOT_FOUND if no variable exists with the given key.
-     * @example await cmsClient.variables.updateVariable({ key: 'app_name', value: 'UpdatedApp' })
+     * @example await cmsClient.variables.updateVariable({ body: { key: 'app_name', value: 'UpdatedApp' } })
      */
     updateVariable: createCMSEndpoint(
       '/variables/updateVariable',
@@ -251,7 +251,7 @@ export function createVariableEndpoints(
      * @returns A boolean confirming deletion.
      * @throws VARIABLE_NOT_FOUND if no variable exists with the given key.
      * @throws VARIABLE_IN_USE if the variable is referenced in any live content or template.
-     * @example await cmsClient.variables.deleteVariable({ key: 'deprecated_var' })
+     * @example await cmsClient.variables.deleteVariable({ body: { key: 'deprecated_var' } })
      */
     deleteVariable: createCMSEndpoint(
       '/variables/deleteVariable',

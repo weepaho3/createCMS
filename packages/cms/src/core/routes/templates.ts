@@ -51,7 +51,7 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
      * @param collection - Filter templates by collection name.
      * @param blockType - Filter templates by block type.
      * @returns The list of matching template records.
-     * @example await cmsClient.templates.listTemplates({ collection: 'pages', blockType: 'hero' })
+     * @example await cmsClient.templates.listTemplates({ query: { collection: 'pages', blockType: 'hero' } })
      */
     listTemplates: createCMSEndpoint(
       '/templates/listTemplates',
@@ -105,7 +105,7 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
      * @param id - The template ID.
      * @returns The template record.
      * @throws TEMPLATE_NOT_FOUND if the template does not exist.
-     * @example await cmsClient.templates.getTemplate({ id: 'tpl_abc123' })
+     * @example await cmsClient.templates.getTemplate({ query: { id: 'tpl_abc123' } })
      */
     getTemplate: createCMSEndpoint(
       '/templates/getTemplate',
@@ -141,7 +141,7 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
      * @param description - Optional description.
      * @returns The created template record.
      * @throws TEMPLATE_KEY_EXISTS if a template with this collection, blockType, and propertyKey already exists.
-     * @example await cmsClient.templates.createTemplate({ collection: 'pages', blockType: 'hero', propertyKey: 'title', template: 'Welcome to {{siteName}}' })
+     * @example await cmsClient.templates.createTemplate({ body: { collection: 'pages', blockType: 'hero', propertyKey: 'title', template: 'Welcome to {{siteName}}' } })
      */
     createTemplate: createCMSEndpoint(
       '/templates/createTemplate',
@@ -244,7 +244,7 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
      * @param description - The new description (optional; if omitted, the current value is preserved).
      * @returns The updated template record.
      * @throws TEMPLATE_NOT_FOUND if the template does not exist.
-     * @example await cmsClient.templates.updateTemplate({ id: 'tpl_abc123', template: 'Updated {{siteName}} content' })
+     * @example await cmsClient.templates.updateTemplate({ body: { id: 'tpl_abc123', template: 'Updated {{siteName}} content' } })
      */
     updateTemplate: createCMSEndpoint(
       '/templates/updateTemplate',
@@ -307,7 +307,7 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
      * @param id - The template ID.
      * @returns An object with deleted: true.
      * @throws TEMPLATE_NOT_FOUND if the template does not exist.
-     * @example await cmsClient.templates.deleteTemplate({ id: 'tpl_abc123' })
+     * @example await cmsClient.templates.deleteTemplate({ body: { id: 'tpl_abc123' } })
      */
     deleteTemplate: createCMSEndpoint(
       '/templates/deleteTemplate',
@@ -338,7 +338,7 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
      * Resolves a template string by substituting {{variableKey}} placeholders with their current values from the variables table.
      * @param template - The template string to resolve.
      * @returns The resolved template string with variables substituted (unresolved placeholders remain as-is).
-     * @example await cmsClient.templates.resolveTemplate({ template: 'Hello {{userName}}, welcome to {{siteName}}' })
+     * @example await cmsClient.templates.resolveTemplate({ body: { template: 'Hello {{userName}}, welcome to {{siteName}}' } })
      */
     resolveTemplate: createCMSEndpoint(
       '/templates/resolveTemplate',
@@ -362,7 +362,7 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
      * @param collection - The collection name.
      * @param blockType - The block type.
      * @returns An object mapping propertyKey to the resolved template string; empty if no templates exist for this collection/blockType pair.
-     * @example await cmsClient.templates.getTemplateDefaults({ collection: 'pages', blockType: 'hero' })
+     * @example await cmsClient.templates.getTemplateDefaults({ query: { collection: 'pages', blockType: 'hero' } })
      */
     getTemplateDefaults: createCMSEndpoint(
       '/templates/getTemplateDefaults',

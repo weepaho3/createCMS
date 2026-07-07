@@ -164,9 +164,11 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
      * @throws PARENT_ROOT_NOT_FOUND when parentRootId does not exist.
      * @example
      * const result = await cmsClient.pages.createRoot({
-     *   message: 'New page',
-     *   slug: 'my-page',
-     *   properties: { title: 'My Page' }
+     *   body: {
+     *     message: 'New page',
+     *     slug: 'my-page',
+     *     properties: { title: 'My Page' }
+     *   }
      * });
      */
     createRoot: createCMSEndpoint(
@@ -301,10 +303,12 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
      * @returns Paginated result with roots array, total count, and hasMore flag.
      * @example
      * const result = await cmsClient.pages.listRoots({
-     *   limit: 20,
-     *   offset: 0,
-     *   sortBy: 'createdAt',
-     *   sortDirection: 'desc'
+     *   query: {
+     *     limit: 20,
+     *     offset: 0,
+     *     sortBy: 'createdAt',
+     *     sortDirection: 'desc'
+     *   }
      * });
      */
     listRoots: createCMSEndpoint(
@@ -567,11 +571,13 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
      * @throws BRANCH_NOT_FOUND when branch does not exist.
      * @example
      * const result = await cmsClient.pages.createBlock({
-     *   rootId: 'root_123',
-     *   branchId: 'br_main',
-     *   parentBlockId: 'block_abc',
-     *   type: 'TextBlock',
-     *   properties: { text: 'Hello' }
+     *   body: {
+     *     rootId: 'root_123',
+     *     branchId: 'br_main',
+     *     parentBlockId: 'block_abc',
+     *     type: 'TextBlock',
+     *     properties: { text: 'Hello' }
+     *   }
      * });
      */
     createBlock: createCMSEndpoint(
@@ -722,8 +728,10 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
      * @throws BRANCH_NOT_FOUND when branch does not exist.
      * @example
      * const result = await cmsClient.pages.getBlockTree({
-     *   rootId: 'root_123',
-     *   branchId: 'br_main'
+     *   query: {
+     *     rootId: 'root_123',
+     *     branchId: 'br_main'
+     *   }
      * });
      */
     getBlockTree: createCMSEndpoint(
@@ -1654,10 +1662,12 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
      * @throws BRANCH_NOT_FOUND when branch does not exist.
      * @example
      * const result = await cmsClient.pages.updateRoot({
-     *   rootId: 'root_123',
-     *   branchId: 'br_main',
-     *   properties: { title: 'Updated Title' },
-     *   slug: 'updated-slug'
+     *   body: {
+     *     rootId: 'root_123',
+     *     branchId: 'br_main',
+     *     properties: { title: 'Updated Title' },
+     *     slug: 'updated-slug'
+     *   }
      * });
      */
     updateRoot: createCMSEndpoint(
@@ -1835,9 +1845,11 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
      * @throws BRANCH_NOT_FOUND when branch does not exist.
      * @example
      * const result = await cmsClient.pages.updateBlocks({
-     *   rootId: 'root_123',
-     *   branchId: 'br_main',
-     *   tree: { blockId: 'root_123', type: 'Page', properties: {}, children: [] }
+     *   body: {
+     *     rootId: 'root_123',
+     *     branchId: 'br_main',
+     *     tree: { blockId: 'root_123', type: 'Page', properties: {}, children: [] }
+     *   }
      * });
      */
     updateBlocks: createCMSEndpoint(
@@ -2084,7 +2096,9 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
      * @throws ROOT_NOT_FOUND when root does not exist.
      * @example
      * const root = await cmsClient.pages.getRoot({
-     *   rootId: 'root_123'
+     *   query: {
+     *     rootId: 'root_123'
+     *   }
      * });
      */
     getRoot: createCMSEndpoint(
@@ -2212,7 +2226,9 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
      * @throws ROOT_IN_USE when root is embedded as a reusable block on live pages.
      * @example
      * const result = await cmsClient.pages.deleteRoot({
-     *   rootId: 'root_123'
+     *   body: {
+     *     rootId: 'root_123'
+     *   }
      * });
      */
     deleteRoot: createCMSEndpoint(
@@ -2381,9 +2397,11 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
      * @throws ROOT_NOT_FOUND when rootId does not exist.
      * @example
      * const history = await cmsClient.pages.getRootHistory({
-     *   rootId: 'root_123',
-     *   limit: 20,
-     *   offset: 0
+     *   query: {
+     *     rootId: 'root_123',
+     *     limit: 20,
+     *     offset: 0
+     *   }
      * });
      */
     getRootHistory: createCMSEndpoint(
