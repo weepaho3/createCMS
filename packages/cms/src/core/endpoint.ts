@@ -310,7 +310,13 @@ export function toCMSEndpoints(
         context: {
           ...requestContext.context,
           db: cmsCtx.db,
-          userId: mwResult.userId,
+          // Middleware-resolved identity (from the request/headers) wins. An
+          // in-process `cms.api.*({ context: { userId } })` caller's value is the
+          // fallback — safe because HTTP requests never populate `context` from
+          // client input, so only trusted server-side callers can set it.
+          userId:
+            mwResult.userId ??
+            (requestContext.context as { userId?: string } | undefined)?.userId,
           collection: meta.collection ?? '',
           scope,
           revalidationRunner: revalidationRunner ?? null,

@@ -76,12 +76,13 @@ describe('revalidation tags (FA3b)', () => {
     const req = await cms.api.pages.requestApproval({
       body: {
         branchId: root.branchId,
-        requestedBy: 'r',
         requestedReviewers: ['rev'],
       },
+      context: { userId: 'r' },
     });
     await cms.api.pages.approve({
-      body: { approvalId: req.approvals[0].id, reviewedBy: 'rev' },
+      body: { approvalId: req.approvals[0].id },
+      context: { userId: 'rev' },
     });
     await cms.api.pages.publishBranch({
       body: { rootId: root.rootId, branchId: root.branchId, publishedBy: 'a' },
@@ -112,12 +113,13 @@ describe('revalidation tags (FA3b)', () => {
     const req = await cms.api.pages.requestApproval({
       body: {
         branchId: root.branchId,
-        requestedBy: 'r',
         requestedReviewers: ['rev'],
       },
+      context: { userId: 'r' },
     });
     await cms.api.pages.approve({
-      body: { approvalId: req.approvals[0].id, reviewedBy: 'rev' },
+      body: { approvalId: req.approvals[0].id },
+      context: { userId: 'rev' },
     });
     await cms.api.pages.publishBranch({
       body: { rootId: root.rootId, branchId: root.branchId, publishedBy: 'a' },
@@ -164,22 +166,23 @@ describe('revalidation tags (FA3b)', () => {
     const req = await cms.api.pages.requestApproval({
       body: {
         branchId: root.branchId,
-        requestedBy: 'r',
         requestedReviewers: ['rev'],
       },
+      context: { userId: 'r' },
     });
     await cms.api.pages.approve({
-      body: { approvalId: req.approvals[0].id, reviewedBy: 'rev' },
+      body: { approvalId: req.approvals[0].id },
+      context: { userId: 'rev' },
     });
     await cms.api.pages.publishBranch({
       body: { rootId: root.rootId, branchId: root.branchId, publishedBy: 'a' },
     });
 
     // Archive (soft-delete) the published page → auto-creates old-path → parent.
-    // deleteRoot carries no branchId, so the runner resolves the published branch.
-    await cms.api.pages.deleteRoot({ body: { rootId: root.rootId } });
+    // archiveRoot carries no branchId, so the runner resolves the published branch.
+    await cms.api.pages.archiveRoot({ body: { rootId: root.rootId } });
 
-    const ev = events.find((e) => e.action === 'deleteRoot');
+    const ev = events.find((e) => e.action === 'archiveRoot');
     expect(ev).toBeDefined();
     expect(ev!.paths.some((p) => p.includes('gone'))).toBe(true);
   });
@@ -214,12 +217,13 @@ describe('revalidation tags (FA3b)', () => {
     const req = await cms.api.pages.requestApproval({
       body: {
         branchId: child.branchId,
-        requestedBy: 'r',
         requestedReviewers: ['rev'],
       },
+      context: { userId: 'r' },
     });
     await cms.api.pages.approve({
-      body: { approvalId: req.approvals[0].id, reviewedBy: 'rev' },
+      body: { approvalId: req.approvals[0].id },
+      context: { userId: 'rev' },
     });
     await cms.api.pages.publishBranch({
       body: {

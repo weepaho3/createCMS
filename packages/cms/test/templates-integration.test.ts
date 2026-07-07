@@ -18,7 +18,10 @@ async function trackingId(
     ?.trackingId;
 }
 
-async function rootWithForm(cms: Cms, properties: Record<string, string>) {
+async function rootWithForm(
+  cms: Cms,
+  properties: { cta: string; trackingId?: string },
+) {
   const root = await cms.api.pages.createRoot({
     body: { slug: '/', properties: { title: 'Home' } },
   });

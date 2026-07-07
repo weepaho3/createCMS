@@ -34,16 +34,16 @@ async function publishBranch(
   const request = await api.requestApproval({
     body: {
       branchId: input.branchId,
-      requestedBy: 'requester-1',
       requestedReviewers: ['reviewer-1'],
     },
+    context: { userId: 'requester-1' },
   });
 
   await api.approve({
     body: {
       approvalId: request.approvals[0].id,
-      reviewedBy: 'reviewer-1',
     },
+    context: { userId: 'reviewer-1' },
   });
 
   return await api.publishBranch({ body: input });
@@ -619,7 +619,7 @@ describe('reference delete guard (RB4)', () => {
     });
 
     await expect(
-      cms.api.reusableBlocks.deleteRoot({ body: { rootId: reusable.rootId } }),
+      cms.api.reusableBlocks.archiveRoot({ body: { rootId: reusable.rootId } }),
     ).rejects.toThrow(/embedded/i);
   });
 
@@ -642,7 +642,7 @@ describe('reference delete guard (RB4)', () => {
     });
 
     await expect(
-      cms.api.reusableBlocks.deleteRoot({ body: { rootId: reusable.rootId } }),
+      cms.api.reusableBlocks.archiveRoot({ body: { rootId: reusable.rootId } }),
     ).rejects.toThrow();
 
     await cms.api.pages.deleteBlock({
@@ -653,7 +653,7 @@ describe('reference delete guard (RB4)', () => {
       },
     });
 
-    const res = await cms.api.reusableBlocks.deleteRoot({
+    const res = await cms.api.reusableBlocks.archiveRoot({
       body: { rootId: reusable.rootId },
     });
     expect(res.rootId).toBe(reusable.rootId);

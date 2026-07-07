@@ -1123,7 +1123,7 @@ export type CMSDefinition<
   /**
    * Upstash realtime credentials. Optional; enables the shared `/realtime` SSE
    * route, per-user notification push, and A/B live results. Without it,
-   * notifications fall back to the durable `listNotifications` poll.
+   * notifications fall back to the durable `list` poll.
    */
   realtime?: { url: string; token: string };
 };

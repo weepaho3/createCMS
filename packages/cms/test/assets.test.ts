@@ -149,7 +149,7 @@ describe('asset reference tracking', () => {
       },
     });
 
-    await cms.api.pages.deleteRoot({ body: { rootId: root.rootId } });
+    await cms.api.pages.archiveRoot({ body: { rootId: root.rootId } });
 
     const usages = await cms.api.media.getAssetUsages({
       query: { assetId: asset.id },

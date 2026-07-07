@@ -19,7 +19,7 @@ import { CMSError, type CMSErrorCode } from '../errors';
  *
  * Soft-archived roots (`archivedAt` set) are treated as gone: they are excluded
  * here, so every by-id read/mutation 404s on an archived root. Physical removal
- * is the pruning layer's job; deleteRoot and pruning query roots directly.
+ * is the pruning layer's job; archiveRoot and pruning query roots directly.
  */
 export async function requireRootInScope(
   exec: DrizzleInstance,

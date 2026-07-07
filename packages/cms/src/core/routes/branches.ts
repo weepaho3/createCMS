@@ -358,7 +358,7 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
      * @param rootId The root ID for which to create the branch.
      * @param name Unique branch name within the root.
      * @param sourceBranchId The branch whose head commit will initialize the new branch's head.
-     * @param createdBy Optional user ID; falls back to ctx.context.userId if not provided.
+     * @param createdBy Optional explicit actor id, used only as a fallback when ctx.context.userId is absent; context identity takes precedence.
      * @returns Object with the created branch row and its isDeletable flag (always true for a fresh branch).
      * @throws BRANCH_NOT_FOUND if sourceBranchId does not exist.
      * @throws BRANCH_NAME_ALREADY_EXISTS if name is already taken in this root.
@@ -618,7 +618,7 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
      * @param branchId The branch ID to revert.
      * @param targetCommitId The commit whose snapshot to restore.
      * @param message Optional custom commit message (default: auto-generated).
-     * @param createdBy Optional user ID; falls back to ctx.context.userId if not provided.
+     * @param createdBy Optional explicit actor id, used only as a fallback when ctx.context.userId is absent; context identity takes precedence.
      * @returns Object with the commit envelope (id, message, createdAt, createdBy) of the revert commit.
      * @throws BRANCH_NOT_FOUND if the branch does not exist.
      * @throws COMMIT_NOT_FOUND if targetCommitId does not belong to this root.

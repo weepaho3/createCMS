@@ -22,18 +22,18 @@ const collections = defineCollections({});
 // --- notifications ENABLED (default) -------------------------------------
 const enabled = createCMS({ db, media, collections });
 // The inbox namespace and the `notify` helper exist.
-void enabled.api.notifications.listNotifications;
+void enabled.api.notifications.list;
 void enabled.notify;
 
 // --- notifications EXPLICITLY enabled ------------------------------------
 const explicit = createCMS({ db, media, collections, notifications: true });
-void explicit.api.notifications.listNotifications;
+void explicit.api.notifications.list;
 void explicit.notify;
 
 // --- a WIDENED boolean keeps the types ENABLED (documented contract) ------
 declare const flag: boolean;
 const widened = createCMS({ db, media, collections, notifications: flag });
-void widened.api.notifications.listNotifications;
+void widened.api.notifications.list;
 void widened.notify;
 
 // --- notifications DISABLED ----------------------------------------------
@@ -70,7 +70,7 @@ const withUserCms = createCMS({
 });
 
 type ListResult = Awaited<
-  ReturnType<typeof withUserCms.api.notifications.listNotifications>
+  ReturnType<typeof withUserCms.api.notifications.list>
 >;
 type Actor = NonNullable<ListResult['notifications'][number]['actorUser']>;
 // A real user column is typed (would error if `actorUser` were `unknown`):

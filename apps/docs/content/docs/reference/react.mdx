@@ -153,7 +153,7 @@ function RealtimeProvider(props: {
 
 ### `useNotifications`
 
-Subscribes the current user to their live notification stream over the `RealtimeProvider` connection and seeds from the `listNotifications` poll. De-dupes by id; the provider replays anything missed across a reconnect. Realtime-only — requires a mounted `RealtimeProvider` and `notifications` enabled (it type-requires `client.notifications`). `client` is your typed `createCMSClient` instance (no cast needed). `userId` is optional: pass it straight from your auth session (`session?.user?.id`) — while it's undefined the hook stays poll-only and connects once it resolves (the CMS has no current-user endpoint, so your app supplies the id).
+Subscribes the current user to their live notification stream over the `RealtimeProvider` connection and seeds from the `notifications.list` poll. De-dupes by id; the provider replays anything missed across a reconnect. Realtime-only — requires a mounted `RealtimeProvider` and `notifications` enabled (it type-requires `client.notifications`). `client` is your typed `createCMSClient` instance (no cast needed). `userId` is optional: pass it straight from your auth session (`session?.user?.id`) — while it's undefined the hook stays poll-only and connects once it resolves (the CMS has no current-user endpoint, so your app supplies the id).
 
 ```ts
 function useNotifications<TActorUser>(

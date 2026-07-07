@@ -847,7 +847,7 @@ describe('nested pages', () => {
         body: { slug: 'to-delete', properties: { title: 'To Delete' } },
       });
 
-      const res = await cms.api.pages.deleteRoot({
+      const res = await cms.api.pages.archiveRoot({
         body: { rootId: page.rootId },
       });
       expect(res.rootId).toBe(page.rootId);
@@ -874,7 +874,7 @@ describe('nested pages', () => {
       });
 
       await expect(
-        cms.api.pages.deleteRoot({ body: { rootId: parent.rootId } }),
+        cms.api.pages.archiveRoot({ body: { rootId: parent.rootId } }),
       ).rejects.toThrow(/child pages/i);
 
       const list = await cms.api.pages.listRoots();
@@ -894,8 +894,8 @@ describe('nested pages', () => {
         },
       });
 
-      await cms.api.pages.deleteRoot({ body: { rootId: child.rootId } });
-      const res = await cms.api.pages.deleteRoot({
+      await cms.api.pages.archiveRoot({ body: { rootId: child.rootId } });
+      const res = await cms.api.pages.archiveRoot({
         body: { rootId: parent.rootId },
       });
       expect(res.rootId).toBe(parent.rootId);
@@ -906,9 +906,9 @@ describe('nested pages', () => {
       const page = await cms.api.pages.createRoot({
         body: { slug: 'once', properties: { title: 'Once' } },
       });
-      await cms.api.pages.deleteRoot({ body: { rootId: page.rootId } });
+      await cms.api.pages.archiveRoot({ body: { rootId: page.rootId } });
       await expect(
-        cms.api.pages.deleteRoot({ body: { rootId: page.rootId } }),
+        cms.api.pages.archiveRoot({ body: { rootId: page.rootId } }),
       ).rejects.toThrow(/not found/i);
     });
   });

@@ -847,7 +847,7 @@ describe('listMergeRequests', () => {
     expect(before.mergeRequests).toHaveLength(1);
 
     // Soft-delete the page; its MR must drop out of the list.
-    await cms.api.pages.deleteRoot({ body: { rootId: root.rootId } });
+    await cms.api.pages.archiveRoot({ body: { rootId: root.rootId } });
 
     const after = await cms.api.pages.listMergeRequests({ query: {} });
     expect(after.total).toBe(0);
@@ -1838,16 +1838,16 @@ describe('executeMerge', () => {
     const pendingRequest = await cms.api.pages.requestApproval({
       body: {
         mergeRequestId: mr.mergeRequest.id,
-        requestedBy: 'requester-1',
         requestedReviewers: ['reviewer-1', 'reviewer-2'],
       },
+      context: { userId: 'requester-1' },
     });
 
     await cms.api.pages.approve({
       body: {
         approvalId: pendingRequest.approvals[0].id,
-        reviewedBy: pendingRequest.approvals[0].requestedReviewer,
       },
+      context: { userId: pendingRequest.approvals[0].requestedReviewer },
     });
 
     await expect(
@@ -1861,9 +1861,9 @@ describe('executeMerge', () => {
     await cms.api.pages.reject({
       body: {
         approvalId: pendingRequest.approvals[1].id,
-        reviewedBy: pendingRequest.approvals[1].requestedReviewer,
         rejectionReason: 'Needs changes',
       },
+      context: { userId: pendingRequest.approvals[1].requestedReviewer },
     });
 
     await expect(

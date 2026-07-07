@@ -5,13 +5,13 @@ description: Full-text search across CMS entities, via cms.api.search.
 
 Full-text search runs over a maintained index spanning seven entity types: `root`, `comment`, `mergeRequest`, `variable`, `template`, `asset`, and `notification`.
 
-## `search.search`
+## `search.query`
 
 `GET`.
 
 | Query field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `q` | `string` | | Search term (required). |
+| `search` | `string` | | Search term (required). |
 | `entityTypes` | `string[] \| string` | all | Restrict to entity types (array or comma-separated). |
 | `collection` | `string` | | Restrict to a collection. |
 | `rootId` | `string` | | Restrict to one entry. |

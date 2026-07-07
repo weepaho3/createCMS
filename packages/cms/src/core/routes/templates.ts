@@ -54,10 +54,10 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
      * @param limit - Optional page size.
      * @param offset - Optional number of rows to skip.
      * @returns A page of matching template records: { templates, total, hasMore }.
-     * @example await cmsClient.templates.listTemplates({ collection: 'pages', blockType: 'hero', limit: 20 })
+     * @example await cmsClient.templates.list({ collection: 'pages', blockType: 'hero', limit: 20 })
      */
-    listTemplates: createCMSEndpoint(
-      '/templates/listTemplates',
+    list: createCMSEndpoint(
+      '/templates/list',
       {
         method: 'GET',
         query: z
@@ -122,18 +122,18 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
 
     /**
      * Retrieves a single template by ID.
-     * @param id - The template ID.
+     * @param templateId - The template ID.
      * @returns The template record.
      * @throws TEMPLATE_NOT_FOUND if the template does not exist.
-     * @example await cmsClient.templates.getTemplate({ id: 'tpl_abc123' })
+     * @example await cmsClient.templates.getTemplate({ templateId: 'tpl_abc123' })
      */
     getTemplate: createCMSEndpoint(
       '/templates/getTemplate',
       {
         method: 'GET',
-        query: z.object({ id: z.string() }),
+        query: z.object({ templateId: z.string() }),
         metadata: cmsMeta(
-          { $Infer: { query: {} as { id: string } } },
+          { $Infer: { query: {} as { templateId: string } } },
           { ...META, operation: 'read' },
         ),
       },
@@ -143,7 +143,7 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
           .from(templates)
           .where(
             and(
-              eq(templates.id, ctx.query.id),
+              eq(templates.id, ctx.query.templateId),
               ctx.context.scope?.templates?.where,
             ),
           );
@@ -259,19 +259,19 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
 
     /**
      * Updates a template's template string and/or description, and re-syncs variable usages if the template string changes.
-     * @param id - The template ID.
+     * @param templateId - The template ID.
      * @param template - The new template string (optional; if omitted, the current value is preserved).
      * @param description - The new description (optional; if omitted, the current value is preserved).
      * @returns The updated template record.
      * @throws TEMPLATE_NOT_FOUND if the template does not exist.
-     * @example await cmsClient.templates.updateTemplate({ id: 'tpl_abc123', template: 'Updated {{siteName}} content' })
+     * @example await cmsClient.templates.updateTemplate({ templateId: 'tpl_abc123', template: 'Updated {{siteName}} content' })
      */
     updateTemplate: createCMSEndpoint(
       '/templates/updateTemplate',
       {
         method: 'POST',
         body: z.object({
-          id: z.string(),
+          templateId: z.string(),
           template: z.string().optional(),
           description: z.string().optional(),
         }),
@@ -279,7 +279,7 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
           {
             $Infer: {
               body: {} as {
-                id: string;
+                templateId: string;
                 template?: string;
                 description?: string;
               },
@@ -289,14 +289,14 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
         ),
       },
       async (ctx) => {
-        const { id, template, description } = ctx.body;
+        const { templateId, template, description } = ctx.body;
         const userId = ctx.context.userId;
         const scopeWhere = ctx.context.scope?.templates?.where;
 
         const [existing] = await db
           .select()
           .from(templates)
-          .where(and(eq(templates.id, id), scopeWhere));
+          .where(and(eq(templates.id, templateId), scopeWhere));
         if (!existing) throw new CMSError('TEMPLATE_NOT_FOUND');
 
         return db.transaction(async (tx) => {
@@ -310,11 +310,11 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
           const [updated] = await tx
             .update(templates)
             .set(updates)
-            .where(and(eq(templates.id, id), scopeWhere))
+            .where(and(eq(templates.id, templateId), scopeWhere))
             .returning();
 
           if (template !== undefined) {
-            await syncTemplateVariableUsages(tx, id, template);
+            await syncTemplateVariableUsages(tx, templateId, template);
           }
 
           return { template: updated };
@@ -324,18 +324,18 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
 
     /**
      * Deletes a template by ID.
-     * @param id - The template ID.
+     * @param templateId - The template ID.
      * @returns The id of the deleted template: { templateId }.
      * @throws TEMPLATE_NOT_FOUND if the template does not exist.
-     * @example await cmsClient.templates.deleteTemplate({ id: 'tpl_abc123' })
+     * @example await cmsClient.templates.deleteTemplate({ templateId: 'tpl_abc123' })
      */
     deleteTemplate: createCMSEndpoint(
       '/templates/deleteTemplate',
       {
         method: 'POST',
-        body: z.object({ id: z.string() }),
+        body: z.object({ templateId: z.string() }),
         metadata: cmsMeta(
-          { $Infer: { body: {} as { id: string } } },
+          { $Infer: { body: {} as { templateId: string } } },
           { ...META, operation: 'delete' },
         ),
       },
@@ -344,13 +344,13 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
         const [existing] = await db
           .select({ id: templates.id })
           .from(templates)
-          .where(and(eq(templates.id, ctx.body.id), scopeWhere));
+          .where(and(eq(templates.id, ctx.body.templateId), scopeWhere));
         if (!existing) throw new CMSError('TEMPLATE_NOT_FOUND');
 
         await db
           .delete(templates)
-          .where(and(eq(templates.id, ctx.body.id), scopeWhere));
-        return { templateId: ctx.body.id };
+          .where(and(eq(templates.id, ctx.body.templateId), scopeWhere));
+        return { templateId: ctx.body.templateId };
       },
     ),
 
@@ -363,16 +363,16 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
     resolveTemplate: createCMSEndpoint(
       '/templates/resolveTemplate',
       {
-        method: 'POST',
-        body: z.object({ template: z.string() }),
+        method: 'GET',
+        query: z.object({ template: z.string() }),
         metadata: cmsMeta(
-          { $Infer: { body: {} as { template: string } } },
+          { $Infer: { query: {} as { template: string } } },
           { ...META, operation: 'read' },
         ),
       },
       async (ctx) => {
         const vars = await loadVariables(db, ctx.context.scope);
-        const resolved = resolveTemplateString(ctx.body.template, vars);
+        const resolved = resolveTemplateString(ctx.query.template, vars);
         return { resolved };
       },
     ),

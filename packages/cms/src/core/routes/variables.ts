@@ -39,8 +39,8 @@ export function createVariableEndpoints(
      * @param search Optional case-insensitive substring match against the variable key.
      * @returns Paginated result with variables array, total count, and hasMore flag.
      */
-    listVariables: createCMSEndpoint(
-      '/variables/listVariables',
+    list: createCMSEndpoint(
+      '/variables/list',
       {
         method: 'GET',
         query: z

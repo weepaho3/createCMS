@@ -415,7 +415,7 @@ describe('multiTenantPlugin — asset isolation', () => {
     `);
 
     setTenant('acme');
-    await cms.api.media.updateAssetStatus({
+    await cms.api.media.updateAssetsStatus({
       body: { assetIds: ['asset-acme-1'], status: 'public' },
     });
 
@@ -919,7 +919,7 @@ describe('multiTenant — cross-tenant access-by-ID', () => {
 
     setTenant('globex');
     await expect(
-      cms.api.media.updateAssetStatus({
+      cms.api.media.updateAssetsStatus({
         body: { assetIds: ['cross-asset-1'], status: 'public' },
       }),
     ).rejects.toThrow();
@@ -1234,12 +1234,12 @@ describe('multiTenant — templates are per-tenant', () => {
     });
 
     setTenant('acme');
-    const acme = await cms.api.templates.listTemplates({});
+    const acme = await cms.api.templates.list({});
     expect(acme.templates).toHaveLength(1);
     expect(acme.templates[0].template).toBe('ACME-ID');
 
     setTenant('globex');
-    const globex = await cms.api.templates.listTemplates({});
+    const globex = await cms.api.templates.list({});
     expect(globex.templates).toHaveLength(1);
     expect(globex.templates[0].template).toBe('GLOBEX-ID');
 
@@ -1306,7 +1306,7 @@ describe('multiTenant — variables are per-tenant', () => {
     });
 
     setTenant('acme');
-    const acme = await cms.api.variables.listVariables({ query: {} });
+    const acme = await cms.api.variables.list({ query: {} });
     expect(acme.variables).toHaveLength(1);
     expect(acme.variables[0].value).toBe('Acme Inc');
 

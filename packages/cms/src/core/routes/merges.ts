@@ -483,7 +483,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * @param targetBranchId - The target branch id to merge into.
      * @param title - A brief title for the merge request.
      * @param description - Optional longer description.
-     * @param createdBy - Optional user id; defaults to ctx.context.userId.
+     * @param createdBy - Optional explicit actor id; used only when ctx.context.userId is absent (context takes precedence).
      * @returns The created merge request row, conflicts array, and hasConflicts flag.
      * @throws MERGE_REQUEST_ALREADY_EXISTS if an open MR for this pair exists.
      * @throws BRANCH_NOT_FOUND if either branch does not exist.
@@ -715,7 +715,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
         const orderExpr = sql.raw(orderColumn);
         const dirExpr = sortDirection === 'asc' ? sql`ASC` : sql`DESC`;
 
-        // Exclude merge requests whose root was soft-deleted (deleteRoot sets
+        // Exclude merge requests whose root was soft-deleted (archiveRoot sets
         // roots.archived_at) — they must not surface in the MR list, mirroring
         // listRoots' own archived filter.
         const conditions = [
@@ -1136,7 +1136,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * conflicts resolved.
      *
      * @param mergeRequestId - The merge request id.
-     * @param mergedBy - Optional user id; defaults to ctx.context.userId.
+     * @param mergedBy - Optional explicit actor id; used only when ctx.context.userId is absent (context takes precedence).
      * @param message - Optional custom commit message (auto-generated if omitted).
      * @param noFastForward - Force a merge commit even when a fast-forward is possible; overrides the
      *   configured `mergeStrategy`. `false` forces a fast-forward.

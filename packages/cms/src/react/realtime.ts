@@ -57,13 +57,13 @@ export function RealtimeProvider({
 
 /** The slice of the CMS client this hook needs (structurally satisfied by the
  *  real typed client's `notifications` namespace). `TActorUser` is inferred from
- *  the client's `listNotifications` return, so a typed client flows its
+ *  the client's `list` return, so a typed client flows its
  *  `actorUser` shape straight through to the hook result. */
 type NotificationsClient<TActorUser = Record<string, unknown>> = {
   notifications: {
     // `withUser` matches the client's `WithUserQuery` (`true`, never `boolean`),
     // so a real typed CMS client is assignable without a cast.
-    listNotifications: (opts?: {
+    list: (opts?: {
       query?: { limit?: number; withUser?: true };
     }) => Promise<ListNotificationsResult<TActorUser>>;
   };
@@ -103,7 +103,7 @@ const { useRealtime } = createRealtime<{
 /**
  * Real-time notifications for the current user.
  *
- * Seeds list + unread count from the durable `listNotifications` poll, then
+ * Seeds list + unread count from the durable `list` poll, then
  * subscribes to the user's own `notif:<userId>` channel over the shared
  * {@link RealtimeProvider} connection. Pushes are prepended live and de-duped by
  * id; the provider replays anything missed across a reconnect, and the poll
@@ -126,7 +126,7 @@ export function useNotifications<TActorUser = Record<string, unknown>>(
 
   const refresh = useCallback(() => {
     client.notifications
-      .listNotifications({ query: { limit, withUser } })
+      .list({ query: { limit, withUser } })
       .then((res) =>
         setState({
           notifications: res.notifications,

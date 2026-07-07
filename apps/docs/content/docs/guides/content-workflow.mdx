@@ -59,19 +59,20 @@ Every merge requires an approval. Request sign-off, have a reviewer approve, the
 const { approvals } = await cms.api.pages.requestApproval({
   body: {
     mergeRequestId: mr.mergeRequest.id,
-    requestedBy: 'editor-1',
     requestedReviewers: ['reviewer-1'],
   },
 });
 
 await cms.api.pages.approve({
-  body: { approvalId: approvals[0].id, reviewedBy: 'reviewer-1' },
+  body: { approvalId: approvals[0].id },
 });
 
 await cms.api.pages.executeMerge({
   body: { mergeRequestId: mr.mergeRequest.id },
 });
 ```
+
+The actor on `requestApproval` and `approve` comes from the request's auth context — you no longer pass `requestedBy` or `reviewedBy` in the body.
 
 ### Publish
 

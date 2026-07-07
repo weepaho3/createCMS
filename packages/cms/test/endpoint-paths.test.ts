@@ -41,4 +41,23 @@ describe('endpoint path convention', () => {
 
     expect(offenders).toEqual([]);
   });
+
+  // The client seeds a STATIC default `pathMethods` (src/client/config.ts) for the
+  // core POSTs that take no/optional body — the proxy's body-presence heuristic
+  // would otherwise dispatch GET and 404. If any of these endpoints changed method
+  // (or moved), the static client map would silently drift; this locks it to the
+  // server's generated `$pathMethods`.
+  it('server $pathMethods marks the body-optional core POSTs the client hard-codes', async () => {
+    const { cms } = await setupTestCMS();
+    const pathMethods = (cms as unknown as { $pathMethods: Record<string, string> })
+      .$pathMethods;
+    for (const path of [
+      '/admin/reindexSearch',
+      '/admin/runPruning',
+      '/notifications/markNotificationsRead',
+      '/notifications/markNotificationsUnread',
+    ]) {
+      expect(pathMethods[path]).toBe('POST');
+    }
+  });
 });

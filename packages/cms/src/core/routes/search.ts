@@ -26,7 +26,7 @@ export function createSearchEndpoints(cmsCtx: CMSProcedureCtx) {
      * Search across all indexed entities using full-text search.
      * Returns paginated results ranked by relevance, with optional filtering by entity type, collection, or root.
      *
-     * @param q The search query string.
+     * @param search The search query string.
      * @param entityTypes Optional array of entity types to filter by (root, comment, mergeRequest, variable, template, asset, notification).
      * @param collection Optional collection name to limit results to a specific collection.
      * @param rootId Optional root id to limit results to a specific root.
@@ -35,19 +35,19 @@ export function createSearchEndpoints(cmsCtx: CMSProcedureCtx) {
      * @returns An object containing the search results array, total count of all matches, and a hasMore flag indicating if additional results exist beyond the current page.
      *
      * @example
-     * const { results, total, hasMore } = await cmsClient.search.search({
-     *   q: 'homepage',
+     * const { results, total, hasMore } = await cmsClient.search.query({
+     *   search: 'homepage',
      *   entityTypes: ['root', 'variable'],
      *   limit: 10,
      *   offset: 0,
      * });
      */
-    search: createCMSEndpoint(
-      '/search/search',
+    query: createCMSEndpoint(
+      '/search/query',
       {
         method: 'GET',
         query: z.object({
-          q: z.string().min(1),
+          search: z.string().min(1),
           entityTypes: z
             .union([
               z.array(z.enum(ENTITY_TYPES)),
@@ -70,7 +70,7 @@ export function createSearchEndpoints(cmsCtx: CMSProcedureCtx) {
           {
             $Infer: {
               query: {} as {
-                q: string;
+                search: string;
                 entityTypes?: Array<(typeof ENTITY_TYPES)[number]>;
                 collection?: string;
                 rootId?: string;
@@ -84,7 +84,7 @@ export function createSearchEndpoints(cmsCtx: CMSProcedureCtx) {
       },
       async (ctx) => {
         const query = ctx.query ?? ({} as Record<string, unknown>);
-        const q = (query as { q: string }).q;
+        const q = (query as { search: string }).search;
         const entityTypes = (query as { entityTypes?: string[] }).entityTypes;
         const collection = (query as { collection?: string }).collection;
         const rootId = (query as { rootId?: string }).rootId;

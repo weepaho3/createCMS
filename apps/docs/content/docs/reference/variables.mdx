@@ -7,7 +7,7 @@ Variables are reusable values referenced in content as `{{key}}` and substituted
 
 | Method | HTTP | Input | Returns |
 | --- | --- | --- | --- |
-| `listVariables` | GET | | `{ variables }` |
+| `list` | GET | | `{ variables }` |
 | `getVariable` | GET | `query: { key }` | `{ variable, inUse }` |
 | `createVariable` | POST | `body: { key, value, description? }` | `{ variable }` |
 | `updateVariable` | POST | `body: { key, value?, description? }` | `{ variable }` |

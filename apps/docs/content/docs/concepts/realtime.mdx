@@ -28,7 +28,7 @@ export const cms = createCMS({
 npm install @upstash/realtime @upstash/redis
 ```
 
-Without `realtime`, nothing breaks: the `/realtime` route is never mounted, and notifications stay available through the durable [`listNotifications`](/docs/reference/notifications) poll — you just don't get live push, and there is no built-in polling hook.
+Without `realtime`, nothing breaks: the `/realtime` route is never mounted, and notifications stay available through the durable [`notifications.list`](/docs/reference/notifications) poll — you just don't get live push, and there is no built-in polling hook.
 
 ## How it works
 
@@ -71,7 +71,7 @@ function NotificationBell() {
 }
 ```
 
-When `realtime` is set, every notification is pushed to its recipient's private channel automatically — all sources funnel through one dispatch. The hook seeds list + unread count from the `listNotifications` poll, then prepends live pushes de-duped by id; the provider replays anything missed across a reconnect. Pass the current user's `id` — the server authorizes it against the session, so a wrong id only yields the poll-seeded list, never another user's data.
+When `realtime` is set, every notification is pushed to its recipient's private channel automatically — all sources funnel through one dispatch. The hook seeds list + unread count from the `notifications.list` poll, then prepends live pushes de-duped by id; the provider replays anything missed across a reconnect. Pass the current user's `id` — the server authorizes it against the session, so a wrong id only yields the poll-seeded list, never another user's data.
 
 ### The responsible user, and deep links
 
@@ -90,7 +90,7 @@ const router = createNotificationRouter<typeof cms>({
 const { href } = router.resolve(notification); // typed meta per type (incl. plugin types)
 ```
 
-Without `realtime` there is no live connection — read the durable list yourself with `client.notifications.listNotifications` and poll on your own cadence. The A/B [`useLiveResults`](/docs/plugins/ab-test) hook rides the **same** `RealtimeProvider` connection.
+Without `realtime` there is no live connection — read the durable list yourself with `client.notifications.list` and poll on your own cadence. The A/B [`useLiveResults`](/docs/plugins/ab-test) hook rides the **same** `RealtimeProvider` connection.
 
 ## Disabling notifications
 

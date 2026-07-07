@@ -54,7 +54,10 @@ export function resolveTenantSlug(
   );
 }
 
-const PLUGIN_ID = 'multi-tenant' as const;
+// A plugin id is an api namespace + URL segment, so it must be a valid JS
+// identifier (enforced by validatePluginPaths on the api-design branch).
+// camelCase, not kebab-case.
+const PLUGIN_ID = 'multiTenant' as const;
 
 const $ERROR_CODES = {
   TENANT_SLUG_REQUIRED: {

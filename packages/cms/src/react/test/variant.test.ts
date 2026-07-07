@@ -15,7 +15,7 @@ import { pickVariant } from '../variant';
  */
 
 const COLLECTIONS = {
-  reusableBlocks: {
+  reusableblocks: {
     label: 'Reusable Blocks',
     reusableBlock: true,
     root: {
@@ -46,7 +46,7 @@ const COLLECTIONS = {
         properties: {
           block: {
             type: 'reference' as const,
-            collection: 'reusableBlocks',
+            collection: 'reusableblocks',
             label: 'Block',
             required: true as const,
           },
@@ -86,10 +86,12 @@ async function publish(
   branchId: string,
 ) {
   const req = await cms.api[collection].requestApproval({
-    body: { branchId, requestedBy: 'r', requestedReviewers: ['rev'] },
+    body: { branchId, requestedReviewers: ['rev'] },
+    context: { userId: 'r' },
   });
   await cms.api[collection].approve({
-    body: { approvalId: req.approvals[0].id, reviewedBy: 'rev' },
+    body: { approvalId: req.approvals[0].id },
+    context: { userId: 'rev' },
   });
   return cms.api[collection].publishBranch({
     body: { rootId, branchId, publishedBy: 'a' },
@@ -169,12 +171,12 @@ describe('pickVariant (FA3 server-side pick)', () => {
     const { cms } = await setup();
     const block = await twoVariantRoot(
       cms,
-      'reusableBlocks',
+      'reusableblocks',
       'label',
       'Control',
       'Variant',
     );
-    await startTest(cms, 'reusableBlocks', block);
+    await startTest(cms, 'reusableblocks', block);
 
     const page = await cms.api.pages.createRoot({
       body: { slug: 'host', properties: { title: 'Host' } },

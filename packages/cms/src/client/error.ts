@@ -25,10 +25,13 @@ export class CMSClientError extends Error {
     this.code = errorBody.code;
   }
 
-  get cmsCode(): CMSErrorCode | undefined {
+  get cmsCode(): CMSErrorCode | (string & {}) | undefined {
     if (this.code && this.code in CMS_ERRORS) {
+      // Recognized core code (literal-typed for autocomplete).
       return this.code as CMSErrorCode;
     }
-    return undefined;
+    // Plugin / unrecognized code — surface the raw string so callers can
+    // still match on it (e.g. `err.cmsCode === 'OPTIMIZATION_FAILED'`).
+    return this.code || undefined;
   }
 }

@@ -122,7 +122,7 @@ describe('publishBranch', () => {
 
   it('uses middleware userId when publishedBy is omitted', async () => {
     const { cms, db } = await setupTestCMS({
-      middleware: async () => ({ userId: 'middleware-user' }),
+      middleware: async () => ({ userId: 'reviewer-1' }),
     });
 
     const root = await cms.api.pages.createRoot({
@@ -152,14 +152,14 @@ describe('publishBranch', () => {
       branchId: draft.branch.id,
     });
 
-    expect(result.publication.publishedBy).toBe('middleware-user');
+    expect(result.publication.publishedBy).toBe('reviewer-1');
 
     const [publication] = await db
       .select()
       .from(publications)
       .where(eq(publications.rootId, root.rootId));
 
-    expect(publication.publishedBy).toBe('middleware-user');
+    expect(publication.publishedBy).toBe('reviewer-1');
   });
 
   it('defaults publishedBy to system when omitted', async () => {
@@ -702,14 +702,14 @@ describe('listPublications', () => {
 
     // Sort desc (default) - draft should be first
     const descResult = await cms.api.pages.listPublications({
-      query: { rootId: root.rootId, sortOrder: 'desc' },
+      query: { rootId: root.rootId, sortDirection: 'desc' },
     });
 
     expect(descResult.publications[0].branchName).toBe('draft');
 
     // Sort asc - main should be first
     const ascResult = await cms.api.pages.listPublications({
-      query: { rootId: root.rootId, sortOrder: 'asc' },
+      query: { rootId: root.rootId, sortDirection: 'asc' },
     });
 
     expect(ascResult.publications[0].branchName).toBe('main');
@@ -794,7 +794,7 @@ describe('listPublications', () => {
     expect(before.total).toBeGreaterThan(0);
 
     // Soft-delete the page; its publications must drop out of the list.
-    await cms.api.pages.deleteRoot({ body: { rootId: root.rootId } });
+    await cms.api.pages.archiveRoot({ body: { rootId: root.rootId } });
 
     const after = await cms.api.pages.listPublications({ query: {} });
     expect(after.total).toBe(0);

@@ -19,9 +19,9 @@ Each notification carries a `type`, a `title` and `body`, the `resourceType` and
 
 ## Delivery
 
-Notifications are written after the triggering action commits, fire-and-forget: a notification failure never rolls back the action. Read them with `listNotifications` (which also returns an `unreadCount`), and mark them read, unread, or archived.
+Notifications are written after the triggering action commits, fire-and-forget: a notification failure never rolls back the action. Read them with `notifications.list` (which also returns an `unreadCount`), and mark them read, unread, or archived.
 
-With [realtime](/docs/concepts/realtime) configured, notifications are also **pushed** to each recipient the moment they're raised — the `useNotifications` hook (under a `RealtimeProvider`) prepends them live on top of the poll. Without realtime, `listNotifications` is the only path; there is no built-in polling hook.
+With [realtime](/docs/concepts/realtime) configured, notifications are also **pushed** to each recipient the moment they're raised — the `useNotifications` hook (under a `RealtimeProvider`) prepends them live on top of the poll. Without realtime, `notifications.list` is the only path; there is no built-in polling hook.
 
 You can disable the feature entirely with `notifications: false` on `createCMS` — the tables, routes, and `client.notifications` / `cms.notify` types all disappear. See [configuration](/docs/reference/configuration#notifications).
 

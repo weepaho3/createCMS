@@ -576,7 +576,7 @@ export async function executeRootPruning(
  * comment_threads / content_usages clean up the rest.
  *
  * The caller MUST process archived roots oldest-`archivedAt`-first: a child is
- * always archived before its parent (deleteRoot refuses to archive a parent
+ * always archived before its parent (archiveRoot refuses to archive a parent
  * with live children), so ascending order guarantees a child row is gone before
  * its parent's `parentRootId` cascade could touch it.
  */

@@ -464,7 +464,7 @@ describe('media.updateAssetStatus', () => {
       })
       .returning();
 
-    const result = await cms.api.media.updateAssetStatus({
+    const result = await cms.api.media.updateAssetsStatus({
       body: { assetIds: [asset.id], status: 'public' },
     });
 
@@ -503,7 +503,7 @@ describe('media.updateAssetStatus', () => {
       })
       .returning();
 
-    const result = await cms.api.media.updateAssetStatus({
+    const result = await cms.api.media.updateAssetsStatus({
       body: { assetIds: [a1.id, a2.id], status: 'public' },
     });
 
@@ -526,7 +526,7 @@ describe('media.updateAssetStatus', () => {
     const { cms } = await setupTestCMS();
 
     await expect(
-      cms.api.media.updateAssetStatus({
+      cms.api.media.updateAssetsStatus({
         body: { assetIds: ['nonexistent'], status: 'public' },
       }),
     ).rejects.toThrow(/Asset not found|No assets found/i);

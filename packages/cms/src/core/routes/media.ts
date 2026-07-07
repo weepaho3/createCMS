@@ -128,7 +128,7 @@ export function createMediaEndpoints(
      * Moves a folder to a new parent folder or to root level.
      *
      * @param folderId - The folder to move.
-     * @param newParentFolderId - Optional new parent folder id; if omitted, moves to root level.
+     * @param newParentFolderId - New parent folder id. Omit or pass `null` to detach the folder to the root level.
      * @returns The updated folder with its new parent relationship.
      * @throws FOLDER_NOT_FOUND if folderId does not exist.
      * @throws PARENT_NOT_FOUND if newParentFolderId does not exist.
@@ -141,7 +141,7 @@ export function createMediaEndpoints(
         method: 'POST',
         body: z.object({
           folderId: z.string(),
-          newParentFolderId: z.string().optional(),
+          newParentFolderId: z.string().nullable().optional(),
         }),
         metadata: cmsMeta({}, { operation: 'update', ...MEDIA_META }),
       },
@@ -287,34 +287,40 @@ export function createMediaEndpoints(
 
     /**
      * Lists folders in the asset library, by parent — the read counterpart to
-     * the folder mutations. Navigate the tree level by level: omit `parentId`
+     * the folder mutations. Navigate the tree level by level: omit `parentFolderId`
      * for the root-level folders, then pass a folder's id to get its children.
      *
-     * @param parentId - Optional parent folder id; if omitted, returns the ROOT-level folders (those with no parent).
+     * @param parentFolderId - Optional parent folder id; if omitted, returns the ROOT-level folders (those with no parent).
      * @returns The direct child folders of the given parent (or of the root), sorted by name.
+     *
+     * @remarks Intentionally unpaginated: this is per-level tree navigation, so
+     * each call is naturally bounded by a single parent's direct-child fan-out
+     * (not the whole tree). Callers page the tree by descending, not by offset.
+     * If a single level is ever expected to hold thousands of siblings, revisit
+     * and add `limit`/`offset` + `{ folders, total, hasMore }` to match listAssets.
      * @example await cmsClient.media.listFolders()                  // root folders
-     * @example await cmsClient.media.listFolders({ parentId })      // a folder's subfolders
+     * @example await cmsClient.media.listFolders({ parentFolderId })      // a folder's subfolders
      */
     listFolders: createCMSEndpoint(
       '/media/listFolders',
       {
         method: 'GET',
-        query: z.object({ parentId: z.string().optional() }).optional(),
+        query: z.object({ parentFolderId: z.string().optional() }).optional(),
         metadata: cmsMeta(
-          { $Infer: { query: {} as { parentId?: string } } },
+          { $Infer: { query: {} as { parentFolderId?: string } } },
           { operation: 'read', ...MEDIA_META },
         ),
       },
       async (ctx) => {
         const { scope } = ctx.context;
-        const parentId = ctx.query?.parentId;
+        const parentFolderId = ctx.query?.parentFolderId;
 
-        // Children of `parentId`, or the root level when omitted. The scope
-        // predicate is applied to the CHILDREN, so an out-of-scope `parentId`
+        // Children of `parentFolderId`, or the root level when omitted. The scope
+        // predicate is applied to the CHILDREN, so an out-of-scope `parentFolderId`
         // simply yields no rows (no cross-tenant leak).
         const conditions: ReturnType<typeof eq>[] = [
-          parentId
-            ? eq(assetFolders.parentId, parentId)
+          parentFolderId
+            ? eq(assetFolders.parentId, parentFolderId)
             : isNull(assetFolders.parentId),
         ];
         if (scope.assetFolders?.where)
@@ -353,7 +359,7 @@ export function createMediaEndpoints(
      * @param limit - Max results per page (1–100, default 20).
      * @param offset - Pagination offset (default 0).
      * @param sortBy - Sort field: 'createdAt', 'slug', or 'size' (default 'createdAt').
-     * @param sortOrder - Sort direction: 'asc' or 'desc' (default 'desc').
+     * @param sortDirection - Sort direction: 'asc' or 'desc' (default 'desc').
      * @returns Paginated list of assets (each with a ready-to-use public `url`) plus total count and hasMore flag.
      * @example await cmsClient.media.listAssets({ limit: 20, status: 'public' })
      */
@@ -378,7 +384,7 @@ export function createMediaEndpoints(
               .enum(['createdAt', 'slug', 'size'])
               .optional()
               .default('createdAt'),
-            sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
+            sortDirection: z.enum(['asc', 'desc']).optional().default('desc'),
           })
           .optional(),
         metadata: cmsMeta(
@@ -391,7 +397,7 @@ export function createMediaEndpoints(
                 limit?: number;
                 offset?: number;
                 sortBy?: 'createdAt' | 'slug' | 'size';
-                sortOrder?: 'asc' | 'desc';
+                sortDirection?: 'asc' | 'desc';
               },
             },
           },
@@ -407,7 +413,7 @@ export function createMediaEndpoints(
           limit = 20,
           offset = 0,
           sortBy = 'createdAt',
-          sortOrder = 'desc',
+          sortDirection = 'desc',
         } = ctx.query ?? {};
 
         const conditions: ReturnType<typeof eq>[] = [isNull(assets.archivedAt)];
@@ -437,7 +443,7 @@ export function createMediaEndpoints(
               : assets.createdAt;
 
         const orderBy =
-          sortOrder === 'asc'
+          sortDirection === 'asc'
             ? sql`${sortColumn} ASC`
             : sql`${sortColumn} DESC`;
 
@@ -592,10 +598,10 @@ export function createMediaEndpoints(
      * @returns `{ updated, updatedIds, skipped }` — the count and ids of the
      *   updated assets, plus the requested ids that matched no live, in-scope asset.
      * @throws ASSET_NOT_FOUND if none of the asset ids exist.
-     * @example await cmsClient.media.updateAssetStatus({ assetIds: ['ast_...'], status: 'public' })
+     * @example await cmsClient.media.updateAssetsStatus({ assetIds: ['ast_...'], status: 'public' })
      */
-    updateAssetStatus: createCMSEndpoint(
-      '/media/updateAssetStatus',
+    updateAssetsStatus: createCMSEndpoint(
+      '/media/updateAssetsStatus',
       {
         method: 'POST',
         body: z.object({
@@ -608,7 +614,7 @@ export function createMediaEndpoints(
         const { scope } = ctx.context;
         const { assetIds, status } = ctx.body;
 
-        // Exclude archived (soft-deleted) assets, matching moveAssets/archiveAsset:
+        // Exclude archived (soft-deleted) assets, matching moveAssets/archiveAssets:
         // an archived id is reported in `skipped`, never silently counted as updated.
         const selectConditions = [
           inArray(assets.id, assetIds),
@@ -649,7 +655,7 @@ export function createMediaEndpoints(
 
     /**
      * Moves one or more assets into a folder (or to the root with `folderId: null`).
-     * Mirrors updateAssetStatus's bulk-by-ids + scope pattern; non-existent,
+     * Mirrors updateAssetsStatus's bulk-by-ids + scope pattern; non-existent,
      * out-of-scope, and archived ids are skipped (surfaced in `skipped`), so a
      * batch partially succeeds. A moved asset's variants follow it into the same
      * folder, so an original and its variants are never split apart — and a
@@ -739,10 +745,10 @@ export function createMediaEndpoints(
      * @param assetIds - Array of asset ids to archive (at least one).
      * @returns Count of archived assets, their ids, and ids of skipped (in-use) assets.
      * @throws ASSET_NOT_FOUND if none of the asset ids exist.
-     * @example await cmsClient.media.archiveAsset({ assetIds: ['ast_...'] })
+     * @example await cmsClient.media.archiveAssets({ assetIds: ['ast_...'] })
      */
-    archiveAsset: createCMSEndpoint(
-      '/media/archiveAsset',
+    archiveAssets: createCMSEndpoint(
+      '/media/archiveAssets',
       {
         method: 'POST',
         body: z.object({

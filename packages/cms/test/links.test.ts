@@ -229,12 +229,13 @@ async function publishBranch(
   const request = await api.requestApproval({
     body: {
       branchId: input.branchId,
-      requestedBy: 'requester-1',
       requestedReviewers: ['reviewer-1'],
     },
+    context: { userId: 'requester-1' },
   });
   await api.approve({
-    body: { approvalId: request.approvals[0].id, reviewedBy: 'reviewer-1' },
+    body: { approvalId: request.approvals[0].id },
+    context: { userId: 'reviewer-1' },
   });
   await api.publishBranch({ body: input });
 }
