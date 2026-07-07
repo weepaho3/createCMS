@@ -54,6 +54,10 @@ export const cms = createCMS({
 });
 ```
 
+<Callout type="info">
+  `db` is **your** Drizzle client — createcms does not create it. Set it up with Drizzle's own docs: [connect to PostgreSQL](https://orm.drizzle.team/docs/get-started-postgresql) (the `db` client you export from `./db`) and the [`drizzle.config.ts`](https://orm.drizzle.team/docs/drizzle-config-file) that `drizzle-kit` reads to apply the schema `createcms generate` writes (see Drizzle's [migrations guide](https://orm.drizzle.team/docs/migrations)).
+</Callout>
+
 ## Environment variables
 
 `@createcms/core` reads no environment variables itself. The values above are yours: the database connection used by your Drizzle `db` instance, and your S3 credentials. A typical `.env`:

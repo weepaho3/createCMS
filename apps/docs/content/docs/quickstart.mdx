@@ -46,7 +46,7 @@ export const collections = defineCollections({ pages });
 
 ### 2. Create the CMS
 
-Pass your Drizzle `db`, the `collections`, and a `media` configuration to `createCMS`. The CLI in the next step discovers this file, so create it first:
+Pass your Drizzle `db`, the `collections`, and a `media` configuration to `createCMS`. The CLI in the next step discovers this file, so create it first. `db` is your own Drizzle client — see [Drizzle's PostgreSQL guide](https://orm.drizzle.team/docs/get-started-postgresql) to create the `./db` module.
 
 ```ts title="lib/cms.ts"
 import { createCMS } from '@createcms/core';
@@ -76,7 +76,7 @@ export const cms = createCMS({
 
 ### 3. Generate and apply the schema
 
-Generate the Drizzle schema, then apply it with your migration workflow:
+Generate the Drizzle schema, then apply it with your migration workflow. The `drizzle-kit` step reads a [`drizzle.config.ts`](https://orm.drizzle.team/docs/drizzle-config-file) pointing at the generated schema — see Drizzle's [migrations guide](https://orm.drizzle.team/docs/migrations):
 
 ```bash
 npx createcms generate
