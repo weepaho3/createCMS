@@ -7,22 +7,31 @@ A composable, block-based **headless CMS** powered by [better-call](https://gith
 > changes, rough edges, and bugs (including possible data-loss edge cases). Use it for
 > prototyping and exploration — **not** for production workloads. Pin an exact version.
 
+**[Documentation](../../apps/docs/content/docs)** · **[Examples](../../examples)** · **[Changelog](./CHANGELOG.md)** · **[Contributing](../../CONTRIBUTING.md)**
+
 ## Features
 
 - **Block-based content** — define collections as a typed `root` plus child blocks; content is a tree of blocks.
 - **Git-like versioning** — every collection entry is a `root` with branches, commits, and snapshots. Edit on a branch, open a merge request, diff, resolve conflicts, merge, publish.
 - **End-to-end type safety** — collection definitions drive both the write API *and* the read responses. Autocomplete on `properties` everywhere, no manual types.
 - **Type-safe client** — a proxy-based client mirrors the server API: `client.pages.listRoots()` is fully typed from `typeof cms`.
-- **Plugins** — extend the server API, client, hooks, schema, and request scope. Ships with multi-tenant, A/B testing, and client-side media optimization.
+- **Plugins** — extend the server API, client, hooks, schema, and request scope. Ships with multi-tenant, i18n, A/B testing, client-side media optimization, and consent.
 - **Framework-friendly** — first-class Next.js route mounting and React rendering helpers; the core is framework-agnostic.
 
 ## Installation
 
 ```bash
 npm install @createcms/core
-# peer deps
-npm install drizzle-orm
+# required peers
+npm install drizzle-orm react
 ```
+
+### Requirements
+
+- **Node.js ≥ 18** — per the package `engines`.
+- **PostgreSQL** — the CMS is database-native (Drizzle + Postgres).
+- **Required peers** — `drizzle-orm@^0.45` and `react@>=18`.
+- **Optional** — `next@>=16` for the first-class Next.js integration.
 
 ## Quick start
 
@@ -71,15 +80,7 @@ const pages = defineCollection({
 export const collections = defineCollections({ pages });
 ```
 
-### 2. Generate the database schema
-
-Generate a Drizzle schema for your collections + plugins, then run your migrations as usual:
-
-```bash
-npx createcms generate
-```
-
-### 3. Create the CMS
+### 2. Create the CMS
 
 ```ts
 import { createCMS } from '@createcms/core';
@@ -97,6 +98,14 @@ export const cms = createCMS({
 });
 ```
 
+### 3. Generate the database schema
+
+`createcms generate` discovers and loads this config (searching `cms.ts`, `src/cms.ts`, `src/lib/cms.ts`), so create it first. It emits a Drizzle schema for your collections + plugins; then run your migrations as usual:
+
+```bash
+npx createcms generate
+```
+
 ### 4. Mount the HTTP router (Next.js)
 
 ```ts
@@ -110,12 +119,12 @@ export const POST = handler;
 
 ### 5. Read & render content
 
-Server-side, call the typed API directly:
+Server-side, call the typed API directly. Import the renderer from `@createcms/core/react/blocks`, which is RSC-safe — the `@createcms/core/react` barrel is a client boundary (`'use client'`).
 
 ```tsx
 import { cms } from '@/lib/cms';
-import { BlocksRenderer, createBlocksMap } from '@createcms/core/react';
-import { pagesCollection } from '@/cms/collections/pages/definition';
+import { BlocksRenderer, createBlocksMap } from '@createcms/core/react/blocks';
+import { pagesCollection } from '@/cms/collections/pages';
 
 // Pass the collection DEFINITION — it types the component props and carries
 // each block's declared `events` for A/B goal tracking (single source of truth).
@@ -163,7 +172,9 @@ export const cms = createCMS({
 | Multi-tenant | `@createcms/core/plugins/multi-tenant` | Per-tenant data isolation via request-scoped query conditions. |
 | A/B testing | `@createcms/core/plugins/ab-test` | Deterministic variant assignment, event tracking, pluggable analytics. |
 | Media optimize | `@createcms/core/plugins/media-optimize` | Client-side resize/compress/WebP before upload. |
+| i18n | `@createcms/core/plugins/i18n` | Per-entry translations across a fixed language universe with per-language fallback chains; adds translation tables and language-scoped read/write endpoints. |
+| Consent | `@createcms/core/plugins/consent` | Google Consent Mode v2 gate (buffer-then-flush) with CMP/dataLayer auto-read and a `<ConsentGate>` wrapper for consent-gated tracking and embeds. |
 
 ## License
 
-See repository.
+[MIT](./LICENSE)

@@ -40,7 +40,7 @@ npx drizzle-kit generate && npx drizzle-kit migrate
 
 ## Usage
 
-Tenant isolation is automatic once installed. Reads and inserts on the base tables (`roots`, `assets`, `asset_folders`, `redirects`) are filtered and stamped by the `tenantSlug` your `authMiddleware` returns; child tables (branches, commits, merge requests, publications) are isolated transitively through their tenant-scoped root. There is no client-side tenant state.
+Tenant isolation is automatic once installed. Reads and inserts on the base tables (`roots`, `assets`, `asset_folders`, `redirects`, `templates`, `variables`) are filtered and stamped by the `tenantSlug` your `authMiddleware` returns; child tables (branches, commits, merge requests, publications) are isolated transitively through their tenant-scoped root. There is no client-side tenant state.
 
 To resolve the tenant from the request yourself, use `resolveTenantSlug`, which reads `tenantSlug` from the request body or query (with an optional fallback):
 
@@ -60,6 +60,8 @@ The plugin adds a `tenantSlug` column (text, not null) and tenant-scoped indexes
 | `assets` | `tenantSlug` | `(tenantSlug)`, unique `(tenantSlug, slug)` |
 | `asset_folders` | `tenantSlug` | unique `(tenantSlug, parentId, name)` |
 | `redirects` | `tenantSlug` | `(tenantSlug, collection)` |
+| `templates` | `tenantSlug` | `(tenantSlug, collection, blockType)` |
+| `variables` | `tenantSlug` | `(tenantSlug, key)` |
 
 ## Error codes
 

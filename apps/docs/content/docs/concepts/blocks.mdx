@@ -1,6 +1,6 @@
 ---
 title: Blocks
-description: Block properties, the eight field types, and functional blocks.
+description: Block properties, the nine field types, and functional blocks.
 ---
 
 Blocks are the pieces a content tree is built from. A block definition declares a `label` and a set of typed `properties`. The same property shape is used by the root and by every child block.
@@ -26,7 +26,7 @@ const hero = defineBlock({
 
 ## Property field types
 
-Every property has a `type` and a `label`, plus optional `required`, `defaultValue`, `description`, `placeholder`, and `group`. There are eight field types:
+Every property has a `type` and a `label`, plus optional `required`, `defaultValue`, `description`, `placeholder`, and `group`. There are nine field types:
 
 | Type | Stored value | Notes |
 | --- | --- | --- |
@@ -35,11 +35,12 @@ Every property has a `type` and a `label`, plus optional `required`, `defaultVal
 | `boolean` | `boolean` | True or false. |
 | `date` | `string` | ISO date string. |
 | `richText` | `string` | HTML or rich-text markup. |
-| `image` | `string` | Asset reference (object key). |
+| `image` | `string` | Asset id (served via `/media/asset/{id}`). |
 | `select` | `string` | One of a fixed set; requires `options`. |
 | `reference` | `string` | The target entry's `rootId`; requires `collection`. |
+| `link` | `LinkValue` | Internal/external/email/phone link; optional `allowedKinds` / `allowedCollections` restrict it. |
 
-Two types carry extra config. `select` requires an `options` array of `{ label, value }`, and the stored value is one of those values. `reference` requires a `collection` name, and the stored value is the referenced entry's `rootId`. On the published read path, a reference is inlined to its resolved target.
+Three types carry extra config. `select` requires an `options` array of `{ label, value }`, and the stored value is one of those values. `reference` requires a `collection` name, and the stored value is the referenced entry's `rootId`; on the published read path, a reference is inlined to its resolved target. `link` optionally restricts which kinds may be picked (`allowedKinds`) and, for an internal target, which collections it may point at (`allowedCollections`).
 
 ## Nesting
 

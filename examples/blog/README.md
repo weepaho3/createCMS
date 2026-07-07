@@ -67,6 +67,10 @@ bun run db:generate   # drizzle-kit generate — diff schema into SQL migrations
 bun run db:migrate    # drizzle-kit migrate  — apply them to your database
 ```
 
+The default PGlite path is in-memory and needs no migrations; these scripts read
+`drizzle.config.ts` and connect via `DATABASE_URL`, so run them only once you
+point `DATABASE_URL` at a real Postgres.
+
 ## Key constraints
 
 - **Every page that reads CMS data must be `export const dynamic = 'force-dynamic'`.**

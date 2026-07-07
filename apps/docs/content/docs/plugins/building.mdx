@@ -40,7 +40,7 @@ The rest of this guide grows `pageViews` into a real plugin that counts views pe
 
 ## Add a database table
 
-`definePluginSchema` declares tables (and enums) that merge into your generated schema. Each table is a plain object — see the [column reference](/docs/reference/configuration) for the field types:
+`definePluginSchema` declares tables (and enums) that merge into your generated schema. Each table is a plain object — see the [column reference](/docs/reference/configuration#plugin-schema-columns) for the field types:
 
 ```ts title="plugins/page-views.ts"
 import { definePlugin, definePluginSchema } from '@createcms/core';
@@ -335,4 +335,5 @@ Every field is optional except `id`.
 | `getActions` | Actions merged onto the client. |
 | `init` | Client-side setup (`$fetch`, `$store`). |
 | `pathMethods` | HTTP method per action path. |
+| `atomListeners` | `CMSAtomListener[]` — invalidate query atoms after a mutation. Each `{ matcher, signal, callback? }` toggles a signal atom so subscribed `createCMSQuery` atoms refetch. |
 | `$ERROR_CODES` | Typed error codes on the client. |

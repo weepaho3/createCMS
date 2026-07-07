@@ -9,7 +9,7 @@ Notifications are the per-user inbox. The CMS raises them on @mentions in commen
 
 ### `list`
 
-`GET`. Query: `type?`, `unreadOnly?`, `collection?`, `limit?` (default 20), `offset?`. Returns `{ notifications, total, hasMore, unreadCount }`. Each notification has `id`, `actorId`, `type`, `title`, `body`, `resourceType`, `resourceId`, `collection`, `meta`, `readAt`, and `createdAt`.
+`GET`. Query: `type?`, `unreadOnly?`, `collection?`, `limit?` (default 20), `offset?`, and `withUser?: true` (a transport-level flag on every endpoint) — pass `withUser: true` to include `actorUser` (the acting user, limited to your `user` config's `exposeColumns` allowlist) on each item. Returns `{ notifications, total, hasMore, unreadCount }`. Each notification has `id`, `recipientId`, `actorId`, `type`, `title`, `body`, `resourceType`, `resourceId`, `collection`, `meta`, `readAt`, `createdAt`, and `actorUser?` (present only with `withUser: true`).
 
 ### `markNotificationsRead` / `markNotificationsUnread`
 
