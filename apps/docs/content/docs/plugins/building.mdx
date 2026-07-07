@@ -43,9 +43,12 @@ The rest of this guide grows `pageViews` into a real plugin that counts views pe
 `definePluginSchema` declares tables (and enums) that merge into your generated schema. Each table is a plain object — see the [column reference](/docs/reference/configuration) for the field types:
 
 ```ts title="plugins/page-views.ts"
-import { definePluginSchema } from '@createcms/core';
+import { definePlugin, definePluginSchema } from '@createcms/core';
 
-const schema = definePluginSchema({
+// Curried: call `definePluginSchema()` (no type arg when you only declare your
+// own tables), then pass the schema. Use `definePluginSchema<CoreTables>()` when
+// you `extend` core tables so the extend keys are type-checked.
+const schema = definePluginSchema()({
   tables: {
     pageViews: {
       tableName: 'page_views',
@@ -57,15 +60,22 @@ const schema = definePluginSchema({
           primaryKey: true,
           references: { table: 'roots', column: 'id', onDelete: 'cascade' },
         },
-        count: { type: 'integer', notNull: true, default: 0 },
+        // `default` is a discriminated union, not a raw scalar.
+        count: {
+          type: 'integer',
+          notNull: true,
+          default: { kind: 'literal', value: 0 },
+        },
         updatedAt: { type: 'timestamp', notNull: true, defaultNow: true },
       },
     },
   },
 });
 
+// `definePlugin` keeps `id` a literal (so `cms.api.pageViews` is a real
+// namespace, not a string index signature) and preserves endpoint contributions.
 export function pageViews() {
-  return { id: 'pageViews', schema } satisfies CMSPlugin;
+  return definePlugin({ id: 'pageViews', schema });
 }
 ```
 
@@ -240,7 +250,7 @@ Four more seams, each optional:
 
 - **`onNotification(notification)`** — called whenever the CMS emits a notification (the same handler is also available as the top-level `createCMS({ onNotification })` option). Use it to mirror notifications to email, Slack, etc.
 - **`notificationTypes`** — a Zod map keyed by a notification `type`, whose values schema that type's `meta`. Two effects: the keys are folded into the core `notification_type` enum at `createcms generate` (so the plugin can persist its own `type` — re-generate after adding it), and the map is inferred into `typeof cms` so [`createNotificationRouter`](/docs/reference/react#createnotificationrouter) types each `meta` per type. Raise one with `ctx.notificationService.notify({ type, meta, … })`.
-- **`realtimeEvents`** — a Zod map of events your plugin publishes over the shared [realtime](/docs/concepts/realtime) transport. It's inferred into `typeof cms` so a client subscription is typed. (Requires `realtime` configured.)
+- **`realtimeEvents`** — a Zod map of events your plugin publishes over the shared [realtime](/docs/concepts/realtime) transport (the transport itself is event-agnostic). Use the schemas to validate on publish and to parse on the client; the CMS does not currently thread them into a typed `cms.realtime.publish` or typed client subscriptions. (Requires `realtime` configured.)
 - **`pruning: { plan, execute }`** — contribute to `runPruningPass`: `plan` returns the deletable rows for a root, `execute` deletes them in the retention transaction. Use it so your plugin's tables honour `dataRetention`.
 
 ```ts title="plugins/ab-test.ts"
@@ -294,7 +304,7 @@ Plugin contributions reach `typeof cms` and the client through inference — the
 - server `endpoints` → `cms.api.<id>.*` and (via `typeof cms`) `client.<id>.*`;
 - `collectionEndpoints` → `cms.api.<collection>.*`;
 - client `getActions` → `client.*`;
-- `realtimeEvents` → the typed realtime event registry;
+- `realtimeEvents` → the realtime event registry your plugin publishes;
 - `$ERROR_CODES` (server + client) → `client.$ERROR_CODES`.
 
 Keep `satisfies CMSPlugin` on the server object and type the client plugin as `CMSClientPlugin`, and a configured `createCMS` / `createCMSClient` infers the rest.

@@ -1,3 +1,6 @@
+import type { AnyColumn } from 'drizzle-orm';
+import type { AnyPgTable } from 'drizzle-orm/pg-core';
+
 import type {
   AnyBlockDefinition,
   AnyCollectionDefinition,
@@ -9,6 +12,8 @@ import type {
   RequireTrackingId,
   RootDefinition,
 } from './types';
+import type { CMSUserConfig } from './types/definitions';
+import type { CMSPlugin } from './types/plugin';
 
 /**
  * Reserved property holding a functional block's stable, per-instance,
@@ -204,4 +209,61 @@ export function defineCollections<
  */
 export function defineAuthMiddleware(middleware: CMSMiddleware): CMSMiddleware {
   return middleware;
+}
+
+/**
+ * Identity helper for authoring a plugin. Preserves the literal `id` (so it
+ * becomes the `cms.api.<id>` namespace key, not a `string` index signature) and
+ * the exact `endpoints` record, while still type-checking the object against
+ * {@link CMSPlugin}. The `const` type-param modifier is what keeps `id` a
+ * literal — without it, generic inference widens `id: 'myPlugin'` back to
+ * `string` and the helper is pointless.
+ *
+ * Strictly safer than the `{ ... } satisfies CMSPlugin` pattern it replaces:
+ * `satisfies` rejects typo'd fields but WIDENS `id` to `string`; this helper
+ * keeps `id` literal AND rejects unknown top-level keys (via the `never`-mapped
+ * excess-key guard).
+ *
+ * @example
+ * ```ts
+ * const myPlugin = definePlugin({
+ *   id: 'myPlugin',
+ *   endpoints: { ... },
+ *   hooks: { before: [...], after: [...] },
+ *   async init(ctx) { return { context: { myService } }; },
+ * });
+ * ```
+ */
+export function definePlugin<const T extends CMSPlugin>(
+  plugin: T & Record<Exclude<keyof T, keyof CMSPlugin>, never>,
+): T {
+  return plugin;
+}
+
+/**
+ * Identity helper for the CMS `user` relation config. Infers the user table
+ * from `config.table` so `exposeColumns` is checked against the table's real
+ * columns — a typo is a compile error, not a value silently dropped by the
+ * runtime allowlist filter. The authoring surface (`CMSDefinition.user`) uses
+ * the defaulted `CMSUserConfig<AnyPgTable>`, which widens `exposeColumns` to
+ * `string[]`; this helper restores per-table inference.
+ *
+ * NOTE the return type is the STRUCTURAL shape of `CMSUserConfig<TTable>`, not
+ * the named alias. `CMSUserConfig<T>` is invariant in `T` (the type param
+ * appears both covariantly in `table` and contravariantly via
+ * `keyof T['$inferSelect']`), so a value typed `CMSUserConfig<userTable>` will
+ * NOT assign to the `CMSUserConfig<AnyPgTable>` slot on `createCMS`. Returning
+ * the anonymous shape makes the result behave like an inline literal — it
+ * assigns to that slot AND still lets `createCMS` recover the concrete table via
+ * its `user: CMSUserConfig<infer U>` inference (so `withUser`/`actorUser` stay
+ * typed).
+ */
+export function defineUserConfig<const TTable extends AnyPgTable>(
+  config: CMSUserConfig<TTable>,
+): {
+  table: TTable;
+  idColumn: AnyColumn;
+  exposeColumns: (keyof TTable['$inferSelect'] & string)[];
+} {
+  return config;
 }

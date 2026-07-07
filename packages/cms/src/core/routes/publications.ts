@@ -1009,20 +1009,27 @@ export function createPublicationEndpoints<
           }));
         }
 
-        return response as unknown as Omit<typeof response, 'variants'> & {
-          variants: (Omit<(typeof variants)[number], 'tree'> & {
+        // Retype ONLY the dynamic `tree` leaf per variant — not the whole
+        // response. The raw assembled tree carries the schema-less BlockTreeNode
+        // shape (required by the variable/link mutations above); the API surface
+        // narrows it to the `resolved`-mode inferred tree. Every other field
+        // flows through the spreads with its real, structurally-checked type.
+        return {
+          ...response,
+          variants: response.variants.map((variant) => ({
+            ...variant,
             // `resolved` mode: getPublishedContent inlines references, so a
             // `reference` property surfaces as a ResolvedReference whose
             // `properties` are typed from the TARGET collection's root (RB6②, via
             // the threaded collections map). The editor read getBlockTree keeps
             // the raw rootId string via the default mode.
-            tree: InferBlockTreeNode<
+            tree: variant.tree as InferBlockTreeNode<
               TDef['blocks'],
               TDef['root']['properties'],
               'resolved',
               TCollections
-            >;
-          })[];
+            >,
+          })),
         };
       },
     ),

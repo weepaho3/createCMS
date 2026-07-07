@@ -28,12 +28,19 @@ import { getClientConfigSync, runPluginInit } from './config';
  * client.media.uploadState.subscribe(state => console.log(state.files));
  * ```
  */
-export function createCMSClient<TCMS = unknown>(
-  options: CMSClientOptions & { plugins?: CMSClientPlugin[] },
-): CMSVanillaClientInstance<TCMS, CMSClientPlugin[]>;
+// TPlugins is INFERRED from `options.plugins` and defaults to `[]` (not
+// `CMSClientPlugin[]`): a wide default would intersect a `Record<string,unknown>`
+// index signature into the client via InferPluginActions, making `client.anyTypo`
+// type-check. `[]` gives an empty action set when no plugins are passed.
+export function createCMSClient<
+  TCMS = unknown,
+  const TPlugins extends CMSClientPlugin[] = [],
+>(
+  options: CMSClientOptions & { plugins?: TPlugins },
+): CMSVanillaClientInstance<TCMS, TPlugins>;
 
 export function createCMSClient<TCMS = unknown>(): <
-  const TPlugins extends CMSClientPlugin[] = CMSClientPlugin[],
+  const TPlugins extends CMSClientPlugin[] = [],
 >(
   options: CMSClientOptions & { plugins?: TPlugins },
 ) => CMSVanillaClientInstance<TCMS, TPlugins>;
@@ -44,7 +51,7 @@ export function createCMSClient<TCMS = unknown>(
   if (options) {
     return createVanillaClient<TCMS, CMSClientPlugin[]>(options);
   }
-  return <const TPlugins extends CMSClientPlugin[] = CMSClientPlugin[]>(
+  return <const TPlugins extends CMSClientPlugin[] = []>(
     opts: CMSClientOptions & { plugins?: TPlugins },
   ) => createVanillaClient<TCMS, TPlugins>(opts);
 }

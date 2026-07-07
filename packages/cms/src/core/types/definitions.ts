@@ -910,7 +910,12 @@ export type DataRetentionConfig = {
 
 /**
  * Subset of the incoming request forwarded to the authMiddleware.
- * Available for all call styles (HTTP router and direct server-side calls).
+ *
+ * From the HTTP router every field is populated. Direct server-side
+ * `cms.api.*` calls forward `body`, `query`, and `headers` (plus an actor via
+ * `context: { userId }`) — see the typed `EndpointCaller`; `params` and the raw
+ * `request` are HTTP-router-only (there is no Request object for an in-process
+ * call), so authMiddleware must not rely on them for the direct-call path.
  */
 export type CMSMiddlewareRequest = {
   body?: Record<string, unknown>;

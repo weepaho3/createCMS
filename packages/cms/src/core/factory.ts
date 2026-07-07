@@ -101,19 +101,20 @@ export type CMSEndpointKey<TPlugins extends CMSPlugin[] = []> =
   | EndpointKeysOf<typeof createSearchEndpoints>
   | PluginEndpointKey<TPlugins>;
 
-// Config-hook types whose `action` autocompletes core + plugin endpoint keys.
-// The `(string & {})` keeps any string assignable (non-breaking) while the
-// literal union still surfaces in editor completions. These narrow the loose
-// CMSBeforeHook/CMSAfterHook used for standalone plugin authoring.
+// Config-hook types whose `action` is the closed union of core + plugin endpoint
+// keys (plus `'*'`). Pre-1.0 (ts-09) we dropped the `(string & {})` escape hatch:
+// a misspelled action is now a compile error at `createCMS({ hooks })` instead of
+// silently never firing. These narrow the loose CMSBeforeHook/CMSAfterHook used
+// for standalone plugin authoring.
 type CMSConfigBeforeHook<TPlugins extends CMSPlugin[]> = Omit<
   CMSBeforeHook,
   'action'
-> & { action: CMSEndpointKey<TPlugins> | '*' | (string & {}) };
+> & { action: CMSEndpointKey<TPlugins> | '*' };
 
 type CMSConfigAfterHook<TPlugins extends CMSPlugin[]> = Omit<
   CMSAfterHook,
   'action'
-> & { action: CMSEndpointKey<TPlugins> | '*' | (string & {}) };
+> & { action: CMSEndpointKey<TPlugins> | '*' };
 
 /** Inline `createCMS({ hooks })` config, plugin-endpoint-aware for autocomplete. */
 export type CMSConfigHooks<TPlugins extends CMSPlugin[] = []> = {
@@ -220,27 +221,58 @@ type AddWithUser<TFn, TTable extends AnyPgTable> = TFn extends (
 
 type WithUserApi<T, TTable extends AnyPgTable> = {
   [NS in keyof T]: {
+    // For every enrichable endpoint (unique keys), add the `withUser` INPUT flag;
+    // the OUTPUT rewrite (InjectUserField) additionally types `createdByUser`/
+    // `actorUser` off the user table on the results that DECLARE those fields
+    // (the typed list-item shapes) — see InjectUserField.
     [K in keyof T[NS]]: K extends UserEnrichableEndpoints
-      ? AddWithUser<T[NS][K], TTable>
+      ? AddWithUser<T[NS][K], TTable> extends (...args: infer A) => infer R
+        ? (
+            ...args: A
+          ) => R extends Promise<infer RR>
+            ? Promise<InjectUserField<RR, TTable>>
+            : InjectUserField<R, TTable>
+        : AddWithUser<T[NS][K], TTable>
       : T[NS][K];
   };
 };
 
-// The actor-user object on a notification item. `exposeColumns` is a runtime
-// allowlist (typed only as `string[]`), so the tightest static shape we can
-// derive is a partial of the user table's row.
+// The actor-user object on an enriched row: a PARTIAL of the user table's row.
+// This is a deliberate SAFE UPPER BOUND (ts-11): `exposeColumns` is a runtime
+// allowlist typed only as `string[]`, and narrowing `actorUser` to exactly the
+// exposed columns would require capturing `exposeColumns` as a `const` literal
+// tuple threaded through `CMSUserConfig` — which is invariant in its table param,
+// so the tuple can't flow to this call site without a bespoke helper generic.
+// Every non-exposed column is therefore typed as optionally-present (never
+// wrongly required); the runtime filter in user/resolve.ts is the source of truth.
 type ActorUserShape<TTable extends AnyPgTable> = Partial<TTable['$inferSelect']>;
 
-// Rewrite a `list` RESULT to type `actorUser` off the user table.
-type InjectActorUser<R, TTable extends AnyPgTable> = R extends {
-  notifications: Array<infer Item>;
-}
-  ? Omit<R, 'notifications'> & {
-      notifications: Array<
-        Omit<Item, 'actorUser'> & { actorUser?: ActorUserShape<TTable> | null }
-      >;
-    }
-  : R;
+// Rewrite a `withUser`-enriched RESULT: wherever a `createdByUser` / `actorUser`
+// field is DECLARED on a result type, type it off the user table instead of
+// leaving it `unknown` (ts-06). Recurses through arrays/objects; a result whose
+// type doesn't declare those fields is returned unchanged. NB: this keys on the
+// literal field names, so it only fires on endpoints with a STRUCTURED result
+// that names them (listRoots/listBranches/listMergeRequests items, and
+// notifications.list) — the single-item GETs (getBranch/getApproval) currently
+// return a loose `Record<string, unknown>`, so their `createdByUser` stays
+// `unknown` until they gain a structured return type. (Enrichable endpoints never
+// return a block tree, so this doesn't recurse into recursive content types.)
+type InjectUserField<T, TTable extends AnyPgTable> = T extends Date
+  ? T
+  : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    T extends (...args: any[]) => any
+    ? T
+    : T extends Array<infer U>
+      ? InjectUserField<U, TTable>[]
+      : T extends ReadonlyArray<infer U>
+        ? ReadonlyArray<InjectUserField<U, TTable>>
+        : T extends object
+          ? {
+              [K in keyof T]: K extends 'createdByUser' | 'actorUser'
+                ? ActorUserShape<TTable> | null
+                : InjectUserField<T[K], TTable>;
+            }
+          : T;
 
 // Type the OUTPUT of `notifications.list` (WithUserApi only types
 // the input flag). Leaves every other endpoint untouched.
@@ -257,7 +289,7 @@ type WithActorUserApi<T, TTable extends AnyPgTable> = T extends {
             ? (
                 ...args: A
               ) => R extends Promise<infer RR>
-                ? Promise<InjectActorUser<RR, TTable>>
+                ? Promise<InjectUserField<RR, TTable>>
                 : R
             : NS[K]
           : NS[K];
@@ -901,9 +933,12 @@ export const createCMS = <
     // the proxy dispatches the correct HTTP method without body-presence
     // inference. See `createCMSClient({ pathMethods: cms.$pathMethods })`.
     $pathMethods: pathMethods,
-    // Type-only registry read by `createNotificationRouter<typeof cms>`: the
-    // plugin-contributed notification `meta` shapes + the actor-user shape from
-    // the `user` config. Runtime value is `undefined` (never read at runtime).
+    // ⚠️ TYPE-LEVEL ONLY — the runtime value is `undefined`. Unlike its sibling
+    // `$ERROR_CODES` / `$pathMethods` (real objects), this is a PHANTOM field: it
+    // exists purely so `createNotificationRouter<typeof cms>` can read the
+    // plugin-contributed notification `meta` shapes + the `user`-config actor-user
+    // shape off `typeof cms`. NEVER access `cms.$notifications` as a value — it
+    // will throw `TypeError: Cannot read properties of undefined`.
     $notifications: undefined as unknown as {
       meta: InferPluginNotificationMeta<TPlugins>;
       actorUser: TDef extends {

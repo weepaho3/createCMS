@@ -1,7 +1,7 @@
 import { sql, type SQL } from 'drizzle-orm';
 
 import type { RootTableScope, TableScope } from './types/definitions';
-import type { DrizzleInstance } from './types/drizzle';
+import type { DbOrTx, DrizzleInstance } from './types/drizzle';
 
 const SAFE_IDENTIFIER = /^[a-z_][a-z0-9_.]*$/i;
 const SAFE_COLUMN = /^[a-z_][a-z0-9_]*$/i;
@@ -85,7 +85,7 @@ function assertSafeIdentifier(name: string): void {
  * Returns all columns via RETURNING *.
  */
 export async function scopedInsert<T extends Record<string, unknown>>(
-  db: DrizzleInstance,
+  db: DbOrTx,
   tableName: string,
   values: T,
   scope: TableScope | undefined,

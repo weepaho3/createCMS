@@ -7,6 +7,8 @@ import type {
   CMSProcedureCtx,
   InferMergeBlockVersionInput,
   ListMergeRequestsResult,
+  MergeRequestListItem,
+  RootSummary,
 } from '../types';
 import type { DrizzleInstance } from '../types/drizzle';
 
@@ -819,54 +821,84 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
           OFFSET ${offset}
         `);
 
-        const items = (result.rows as Array<Record<string, unknown>>).map(
-          (row) => {
-            const conflictCount = parseInt(String(row.conflict_count), 10);
-            const commentCount = parseInt(String(row.comment_count), 10);
-            const item: Record<string, unknown> = {
-              id: row.id,
-              rootId: row.root_id,
-              sourceBranchId: row.source_branch_id,
-              sourceBranchName: row.source_branch_name,
-              targetBranchId: row.target_branch_id,
-              targetBranchName: row.target_branch_name,
-              sourceCommitId: row.source_commit_id,
-              baseCommitId: row.base_commit_id,
-              mergeCommitId: row.merge_commit_id,
-              status: row.status,
-              title: row.title,
-              description: row.description,
-              createdBy: row.created_by,
-              createdAt: new Date(row.created_at as string),
-              updatedAt: new Date(row.updated_at as string),
-              conflictCount,
-              hasConflicts: conflictCount > 0,
-              commentCount,
-            };
+        // Raw-SQL row: the hand-selected column shape. Typing it lets the mapper
+        // below be structurally checked against MergeRequestListItem rather than
+        // blindly asserted. Timestamp/count columns stay `unknown` (coerced via
+        // `new Date` / `parseInt(String(...))`).
+        const rows = result.rows as Array<{
+          id: string;
+          root_id: string;
+          source_branch_id: string;
+          source_branch_name: string;
+          target_branch_id: string;
+          target_branch_name: string;
+          source_commit_id: string;
+          base_commit_id: string | null;
+          merge_commit_id: string | null;
+          status: 'open' | 'merged' | 'closed';
+          title: string | null;
+          description: string | null;
+          created_by: string;
+          created_at: unknown;
+          updated_at: unknown;
+          conflict_count: unknown;
+          comment_count: unknown;
+        }>;
 
-            enrich.apply(item, row);
+        const items = rows.map((row) => {
+          const conflictCount = parseInt(String(row.conflict_count), 10);
+          const commentCount = parseInt(String(row.comment_count), 10);
+          const item: MergeRequestListItem<TDef['root']['properties']> = {
+            id: row.id,
+            rootId: row.root_id,
+            sourceBranchId: row.source_branch_id,
+            sourceBranchName: row.source_branch_name,
+            targetBranchId: row.target_branch_id,
+            targetBranchName: row.target_branch_name,
+            sourceCommitId: row.source_commit_id,
+            baseCommitId: row.base_commit_id,
+            mergeCommitId: row.merge_commit_id,
+            status: row.status,
+            title: row.title,
+            description: row.description,
+            createdBy: row.created_by,
+            createdAt: new Date(row.created_at as string),
+            updatedAt: new Date(row.updated_at as string),
+            conflictCount,
+            hasConflicts: conflictCount > 0,
+            commentCount,
+          };
 
-            return item;
-          },
-        );
+          enrich.apply(item, row);
+
+          return item;
+        });
 
         if (ctx.context.withRoot) {
-          const rootIds = [...new Set(items.map((i) => i.rootId as string))];
+          const rootIds = [...new Set(items.map((i) => i.rootId))];
           const rootMap = await batchFetchRoots(
             db,
             rootIds,
             branchPolicy.defaultBranchName,
           );
           for (const item of items) {
-            item.root = rootMap.get(item.rootId as string) ?? null;
+            // batchFetchRoots types `properties` as the schema-less
+            // `Record<string, unknown>`; the API surface narrows it to the
+            // collection's typed root properties. This one leaf is the dynamic
+            // JSON boundary — cast it, not the whole item.
+            item.root =
+              (rootMap.get(item.rootId) as
+                | RootSummary<TDef['root']['properties']>
+                | undefined) ?? null;
           }
         }
 
-        return {
+        const response: ListMergeRequestsResult<TDef['root']['properties']> = {
           mergeRequests: items,
           total,
           hasMore: offset + items.length < total,
-        } as unknown as ListMergeRequestsResult<TDef['root']['properties']>;
+        };
+        return response;
       },
     ),
 

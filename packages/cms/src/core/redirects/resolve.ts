@@ -1,7 +1,7 @@
 import { and, eq, isNull } from 'drizzle-orm';
 
 import type { ResolvedSlugConfig, TableScope } from '../types/definitions';
-import type { DrizzleInstance } from '../types/drizzle';
+import type { DbOrTx, DrizzleInstance } from '../types/drizzle';
 
 import { publications, redirects, roots } from '../db/schema.generated';
 import {
@@ -119,7 +119,7 @@ async function resolveRootPath(
 /** A page-reference's CURRENT path (for UI display), or `null` if the root is
  *  gone — or out of `rootScope` when one is passed (defensive scope gate). */
 export async function resolveRootCurrentPath(
-  db: DrizzleInstance,
+  db: DbOrTx,
   slugCfg: EnabledSlugConfig,
   rootId: string,
   rootScope?: TableScope,

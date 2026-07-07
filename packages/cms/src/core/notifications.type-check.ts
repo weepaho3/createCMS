@@ -9,7 +9,7 @@ import * as z from 'zod';
 import { createCMSClient } from '../client/vanilla';
 import { createNotificationRouter } from '../react/notifications-router';
 import { useNotifications } from '../react/realtime';
-import { defineCollections } from './define';
+import { defineCollections, defineUserConfig } from './define';
 import { createCMS } from './factory';
 import type { DrizzleInstance } from './types/drizzle';
 import type { CMSPlugin } from './types/plugin';
@@ -62,11 +62,30 @@ const userTable = pgTable('user', {
   name: text('name'),
   email: text('email'),
 });
+
+// `defineUserConfig` infers the user table from `table`, so `exposeColumns` is
+// checked against the table's real columns — a typo is a compile error, not a
+// value silently dropped by the runtime allowlist filter. Without the helper,
+// `CMSDefinition.user` is the defaulted `CMSUserConfig<AnyPgTable>`, which widens
+// `exposeColumns` to `string[]` and lets a typo through.
+defineUserConfig({
+  table: userTable,
+  idColumn: userTable.id,
+  // @ts-expect-error - 'nope' is not a column on userTable (proves not string[])
+  exposeColumns: ['name', 'nope'],
+});
+// control: real columns compile
+const userConfig = defineUserConfig({
+  table: userTable,
+  idColumn: userTable.id,
+  exposeColumns: ['name', 'email'],
+});
+
 const withUserCms = createCMS({
   db,
   media,
   collections,
-  user: { table: userTable, idColumn: userTable.id, exposeColumns: ['name', 'email'] },
+  user: userConfig,
 });
 
 type ListResult = Awaited<

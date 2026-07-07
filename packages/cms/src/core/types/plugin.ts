@@ -137,12 +137,14 @@ export type CMSPluginInitResult = {
  *
  * @example
  * ```ts
- * const myPlugin: CMSPlugin = {
- *   id: 'my-plugin',
+ * import { definePlugin } from '@createcms/core';
+ *
+ * const myPlugin = definePlugin({
+ *   id: 'myPlugin',
  *   endpoints: { ... },
  *   hooks: { before: [...], after: [...] },
  *   async init(ctx) { return { context: { myService } }; },
- * };
+ * });
  * ```
  */
 export type CMSPlugin<TPruningData = unknown> = {
@@ -193,10 +195,9 @@ export type CMSPlugin<TPruningData = unknown> = {
 
   /**
    * Realtime event schemas this plugin contributes — a Zod map keyed by event
-   * name (owned where the event lives). Merged into the inferred registry (see
-   * {@link InferPluginRealtimeEvents}) so a configured `typeof cms` types both
-   * the server publish and the client subscription with full autocomplete.
-   * Type-level only: the transport is event-agnostic, there is no runtime merge.
+   * name (owned where the event lives). Type-level only: the transport is
+   * event-agnostic (`RealtimeRuntime.publish` takes `data: unknown`) and there
+   * is no runtime merge, so nothing consumes this registry yet.
    */
   realtimeEvents?: import('../realtime/types').RealtimeEventSchema;
 
@@ -252,9 +253,9 @@ export type InferPluginEndpoints<P extends CMSPlugin[]> = UnionToIntersection<
  * The realtime event schemas plugins contribute, intersected across all plugins
  * — the type-level analogue of {@link InferPluginEndpoints}. A plugin without
  * `realtimeEvents` contributes `Record<string, never>` (identity under
- * intersection). Unioned with
- * core's own events, this is what types `cms.realtime.publish` (server) and the
- * client subscription, so a configured `typeof cms` autocompletes every event.
+ * intersection). Currently unused: the transport is event-agnostic
+ * (`RealtimeRuntime.publish` takes `data: unknown`) and `createCMS` exposes no
+ * realtime member, so nothing consumes this registry yet.
  */
 export type InferPluginRealtimeEvents<P extends CMSPlugin[]> =
   UnionToIntersection<

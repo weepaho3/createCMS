@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 
-import type { DrizzleInstance } from '../types/drizzle';
+import type { DbOrTx, DrizzleInstance } from '../types/drizzle';
 
 import { blockVersions, commitSnapshots } from '../db/schema.generated';
 
@@ -107,7 +107,7 @@ async function loadSnapshotRows(
 }
 
 export async function loadBlocksAtCommit(
-  db: DrizzleInstance,
+  db: DbOrTx,
   commitId: string,
   rootId: string,
 ): Promise<ReconstructionResult> {

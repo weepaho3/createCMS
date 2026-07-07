@@ -16,11 +16,22 @@ import type {
   NotificationListItem,
 } from '../core/notifications/types';
 
+import type { Serialize } from '../client/types';
+
 import { notificationEvent } from '../core/notifications/events';
 import {
   mergePushedNotification,
   type NotificationsState,
 } from '../core/notifications/merge';
+
+// The hook seeds from the HTTP `list` poll, whose timestamps arrive as ISO
+// strings (see `Serialize`), and merges live pushes. Both sides are normalised
+// to this serialized shape so a `notifications` item never mixes string (poll)
+// and Date (push) under one type.
+type SerializedNotifications<TActorUser> = Serialize<
+  NotificationsState<TActorUser>
+>;
+type SerializedItem<TActorUser> = Serialize<NotificationListItem<TActorUser>>;
 
 export type RealtimeProviderProps = {
   children: ReactNode;
@@ -65,7 +76,7 @@ type NotificationsClient<TActorUser = Record<string, unknown>> = {
     // so a real typed CMS client is assignable without a cast.
     list: (opts?: {
       query?: { limit?: number; withUser?: true };
-    }) => Promise<ListNotificationsResult<TActorUser>>;
+    }) => Promise<Serialize<ListNotificationsResult<TActorUser>>>;
   };
 };
 
@@ -89,7 +100,7 @@ export type UseNotificationsOptions = {
 export type { NotificationsState };
 
 export type UseNotificationsResult<TActorUser = Record<string, unknown>> =
-  NotificationsState<TActorUser> & {
+  SerializedNotifications<TActorUser> & {
     /** Whether the shared realtime connection is currently connected. */
     isLive: boolean;
     /** Force a re-poll (reconcile against the durable list). */
@@ -119,7 +130,7 @@ export function useNotifications<TActorUser = Record<string, unknown>>(
   options: UseNotificationsOptions,
 ): UseNotificationsResult<TActorUser> {
   const { userId, limit = 50, withUser } = options;
-  const [state, setState] = useState<NotificationsState<TActorUser>>({
+  const [state, setState] = useState<SerializedNotifications<TActorUser>>({
     notifications: [],
     unreadCount: 0,
   });
@@ -155,8 +166,12 @@ export function useNotifications<TActorUser = Record<string, unknown>>(
       // immediately — no wait for the next reconcile poll.
       const pushed = {
         ...parsed.data,
+        // `notificationEvent` coerces the wire string to a Date; normalise it
+        // back to the ISO string the poll (Serialize) uses, so the list never
+        // mixes string and Date timestamps.
+        createdAt: parsed.data.createdAt.toISOString(),
         readAt: null,
-      } as NotificationListItem<TActorUser>;
+      } as SerializedItem<TActorUser>;
       setState((prev) => mergePushedNotification(prev, pushed));
     },
   });

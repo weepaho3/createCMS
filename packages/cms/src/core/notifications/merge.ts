@@ -11,10 +11,12 @@ export type NotificationsState<TActorUser = Record<string, unknown>> = {
  * list AND the count together keeps `unreadCount` from drifting when a push and
  * a poll race. Pure — the reducing core of `useNotifications`, unit-tested.
  */
-export function mergePushedNotification<TActorUser = Record<string, unknown>>(
-  state: NotificationsState<TActorUser>,
-  pushed: NotificationListItem<TActorUser>,
-): NotificationsState<TActorUser> {
+export function mergePushedNotification<
+  TItem extends { id: string; readAt: unknown },
+>(
+  state: { notifications: TItem[]; unreadCount: number },
+  pushed: TItem,
+): { notifications: TItem[]; unreadCount: number } {
   if (state.notifications.some((n) => n.id === pushed.id)) return state;
   return {
     notifications: [pushed, ...state.notifications],

@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, type SQL } from 'drizzle-orm';
 
 import type { ResolvedScope } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
@@ -88,8 +88,8 @@ export async function generateUniqueSlug(
 
   while (counter <= MAX_SLUG_ATTEMPTS + 1) {
     if (!inFlightSlugs?.has(slug)) {
-      const conditions = [eq(assets.slug, slug)];
-      if (scope?.assets?.where) conditions.push(scope.assets.where as any);
+      const conditions: SQL[] = [eq(assets.slug, slug)];
+      if (scope?.assets?.where) conditions.push(scope.assets.where);
 
       const [existing] = await db
         .select({ id: assets.id })
@@ -150,9 +150,9 @@ export async function assertFolderExists(
   folderId: string,
   scope: ResolvedScope,
 ) {
-  const conditions = [eq(assetFolders.id, folderId)];
+  const conditions: SQL[] = [eq(assetFolders.id, folderId)];
   if (scope.assetFolders?.where)
-    conditions.push(scope.assetFolders.where as any);
+    conditions.push(scope.assetFolders.where);
 
   const [folder] = await db
     .select({ id: assetFolders.id })

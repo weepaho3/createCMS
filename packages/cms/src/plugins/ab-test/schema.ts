@@ -145,7 +145,7 @@ export function buildSchema(adapter?: ABTestAnalyticsAdapter) {
     ...coreTables,
     ...(adapter?.tables ?? defaultAdapterTables),
   };
-  return definePluginSchema<CoreTables>({
+  return definePluginSchema<CoreTables>()({
     tables,
     enums: { abTestStatus },
   });

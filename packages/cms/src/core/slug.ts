@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import slugify from 'slugify';
 
-import type { DrizzleInstance, ResolvedSlugConfig } from './types';
+import type { DbOrTx, DrizzleInstance, ResolvedSlugConfig } from './types';
 
 import { CMSError } from './errors';
 
@@ -52,7 +52,7 @@ export function splitPath(
 const SAFE_SCOPE_COLUMN = /^[a-z_][a-z0-9_]*$/i;
 
 export async function validateSlugUniqueness(
-  db: DrizzleInstance,
+  db: DbOrTx,
   collection: string,
   parentRootId: string | null,
   slug: string,
@@ -259,7 +259,7 @@ export async function resolvePathToRootId(
  * Used to prevent circular references in moveRoot.
  */
 export async function isAncestorOf(
-  db: DrizzleInstance,
+  db: DbOrTx,
   rootId: string,
   candidateAncestorId: string,
 ): Promise<boolean> {

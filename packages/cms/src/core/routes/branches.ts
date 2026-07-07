@@ -2,6 +2,7 @@ import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
 import type {
+  BranchListItem,
   CollectionWithName,
   CMSProcedureCtx,
   ListBranchesResult,
@@ -317,8 +318,19 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
           10,
         );
 
-        const branchRows = rows.rows as Array<Record<string, unknown>>;
-        const branchIds = branchRows.map((b) => b.id as string);
+        // Raw-SQL row: the hand-selected column shape. Typing it lets the mapper
+        // below be structurally checked against BranchListItem rather than blindly
+        // asserted. Timestamp columns stay `unknown` (coerced via `new Date`).
+        const branchRows = rows.rows as Array<{
+          id: string;
+          root_id: string;
+          name: string;
+          head_commit_id: string;
+          created_by: string | null;
+          created_at: unknown;
+          updated_at: unknown;
+        }>;
+        const branchIds = branchRows.map((b) => b.id);
         const state = await getBranchState(db, branchIds);
         const nonDeletable = new Set([
           ...state.published,
@@ -326,7 +338,7 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
         ]);
 
         const paginated = branchRows.map((b) => {
-          const item: Record<string, unknown> = {
+          const item: BranchListItem = {
             id: b.id,
             rootId: b.root_id,
             name: b.name,
@@ -334,10 +346,10 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
             createdBy: b.created_by,
             createdAt: new Date(b.created_at as string),
             updatedAt: new Date(b.updated_at as string),
-            hasPublications: state.published.has(b.id as string),
+            hasPublications: state.published.has(b.id),
             isDeletable:
-              (b.name as string) !== branchPolicy.defaultBranchName &&
-              !nonDeletable.has(b.id as string),
+              b.name !== branchPolicy.defaultBranchName &&
+              !nonDeletable.has(b.id),
           };
 
           enrich.apply(item, b);
@@ -345,11 +357,12 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
           return item;
         });
 
-        return {
+        const result: ListBranchesResult = {
           branches: paginated,
           total,
           hasMore: offset + paginated.length < total,
-        } as unknown as ListBranchesResult;
+        };
+        return result;
       },
     ),
 
