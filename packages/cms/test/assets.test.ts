@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 
 import { assets, contentUsages } from '../src/schema';
-import { setupTestCMS } from './utils/cms';
+import { setupTestCMS } from '../src/test-utils/cms';
 
 async function insertAsset(
   db: Awaited<ReturnType<typeof setupTestCMS>>['db'],

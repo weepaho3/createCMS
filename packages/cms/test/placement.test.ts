@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { createCMS } from '../src/index';
-import { setupTestDB } from './utils/db';
-import { DUMMY_MEDIA_CONFIG } from './utils/fixtures';
+import { setupTestDB } from '../src/test-utils/db';
+import { DUMMY_MEDIA_CONFIG } from '../src/test-utils/fixtures';
 
 /**
  * Collection exercising all three acceptance modes plus the container gate:

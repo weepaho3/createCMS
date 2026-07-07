@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { coreSchemaFor } from '../src/cli/commands/generate';
-import { setupTestCMS } from './utils/cms';
+import { setupTestCMS } from '../src/test-utils/cms';
 
 type CoreSchema = {
   tables: Record<string, unknown>;

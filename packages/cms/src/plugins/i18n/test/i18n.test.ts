@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 
-import { setupTestCMS } from '../../../../test/utils/cms';
+import { setupTestCMS } from '../../../test-utils/cms';
 import { setupI18nMultiTenantTestCMS, setupI18nTestCMS } from './utils/cms';
 
 // A self-referential collection for language-aware reference tests.

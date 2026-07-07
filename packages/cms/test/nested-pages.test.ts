@@ -11,9 +11,9 @@ import {
   validateSlugUniqueness,
 } from '../src/core/slug';
 import { createCMS } from '../src/index';
-import { setupTestDB } from './utils/db';
-import { DUMMY_MEDIA_CONFIG } from './utils/fixtures';
-import { publishApprovedBranch } from './utils/helpers';
+import { setupTestDB } from '../src/test-utils/db';
+import { DUMMY_MEDIA_CONFIG } from '../src/test-utils/fixtures';
+import { publishApprovedBranch } from '../src/test-utils/helpers';
 
 type Api = Record<string, (...args: any[]) => Promise<any>>;
 type CMS = { api: { pages: Api } };

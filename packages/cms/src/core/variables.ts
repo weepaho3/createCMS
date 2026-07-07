@@ -1,6 +1,6 @@
 import { and, eq, isNull } from 'drizzle-orm';
 
-import type { VersionToIndex } from './assets';
+import type { VersionToIndex } from './content-index';
 import type { BlockTreeNode } from './blocks/reconstruct-snapshot';
 import type { ResolvedScope } from './types/definitions';
 import type { DrizzleInstance } from './types/drizzle';

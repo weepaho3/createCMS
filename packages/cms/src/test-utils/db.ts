@@ -5,12 +5,12 @@ import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { SchemaModule } from '../../src/core/db/types';
+import type { SchemaModule } from '../core/db/types';
 
-import { coreSchema } from '../../src/core/db/core-schema';
-import { emitDrizzleSchema } from '../../src/core/db/emit';
-import { mergeSchemaSources, type SchemaSource } from '../../src/core/db/merge';
-import * as baseSchema from '../../src/schema';
+import { coreSchema } from '../core/db/core-schema';
+import { emitDrizzleSchema } from '../core/db/emit';
+import { mergeSchemaSources, type SchemaSource } from '../core/db/merge';
+import * as baseSchema from '../schema';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

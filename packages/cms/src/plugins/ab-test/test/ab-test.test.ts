@@ -1,8 +1,8 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 
-import { TEST_COLLECTIONS } from '../../../../test/utils/fixtures';
-import { publishApprovedBranch } from '../../../../test/utils/helpers';
+import { TEST_COLLECTIONS } from '../../../test-utils/fixtures';
+import { publishApprovedBranch } from '../../../test-utils/helpers';
 import { CONTROL_CODE, decideEdgeVariant } from '../../../ab-edge';
 import { pickVariant } from '../../../react/variant';
 import { postgresAnalytics } from '../analytics/postgres';

@@ -1,4 +1,4 @@
-import type { CustomMediaConfig } from '../../src/core/types/s3';
+import type { CustomMediaConfig } from '../core/types/s3';
 import type {
   BranchProtectionConfig,
   CMSMiddleware,
@@ -6,9 +6,9 @@ import type {
   CMSUserConfig,
   DataRetentionConfig,
   MergeStrategy,
-} from '../../src/index';
+} from '../index';
 
-import { createCMS } from '../../src/index';
+import { createCMS } from '../index';
 import { setupTestDB } from './db';
 import { DUMMY_MEDIA_CONFIG, TEST_COLLECTIONS } from './fixtures';
 import { type TestS3, setupTestS3 } from './s3';

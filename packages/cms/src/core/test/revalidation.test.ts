@@ -2,8 +2,8 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import type { RevalidateEvent } from '../types/definitions';
 
-import { setupTestDB } from '../../../test/utils/db';
-import { DUMMY_MEDIA_CONFIG } from '../../../test/utils/fixtures';
+import { setupTestDB } from '../../test-utils/db';
+import { DUMMY_MEDIA_CONFIG } from '../../test-utils/fixtures';
 import { createCMS } from '../factory';
 import { rootRevalidateTag } from '../revalidation';
 

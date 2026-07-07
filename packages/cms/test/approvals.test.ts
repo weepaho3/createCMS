@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { setupTestCMS } from './utils/cms';
+import { setupTestCMS } from '../src/test-utils/cms';
 
 async function createMergeRequestFixture() {
   const { cms } = await setupTestCMS();

@@ -7,9 +7,9 @@ import type {
 } from '../src/index';
 
 import { createCMS } from '../src/index';
-import { setupTestCMS } from './utils/cms';
-import { DUMMY_MEDIA_CONFIG, TEST_COLLECTIONS } from './utils/fixtures';
-import { requestAndApproveMerge } from './utils/helpers';
+import { setupTestCMS } from '../src/test-utils/cms';
+import { DUMMY_MEDIA_CONFIG, TEST_COLLECTIONS } from '../src/test-utils/fixtures';
+import { requestAndApproveMerge } from '../src/test-utils/helpers';
 
 const USER_1 = 'user-1';
 const USER_2 = 'user-2';

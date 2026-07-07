@@ -50,6 +50,40 @@ bun run --filter=@createcms/core test:watch
 | [`apps/docs`](./apps/docs) | The documentation site (Fumadocs); content lives in [`apps/docs/content/docs`](./apps/docs/content/docs). | `bun run --filter=docs dev` → <http://localhost:4000> |
 | [`examples/minimal`](./examples/minimal), [`examples/blog`](./examples/blog) | Runnable example apps (PGlite in-memory, no DB setup). | `bun run --filter=<name> dev` |
 
+### Package layout (`packages/cms/src`)
+
+Every `src/` entry mirrors a subpath in `package.json`'s `exports` map (the CLI is
+the `bin` entry):
+
+```
+packages/cms/src/
+  index.ts            # main entry (the "." export); db.ts · nanoid.ts are thin
+                      # export entries (schema.ts is internal — test-only, not exported)
+  core/               # framework-agnostic engine — all server logic
+    routes/           #   better-call endpoint definitions — the HTTP surface
+    <domain>/         #   per-domain logic: blocks, media, notifications, search,
+                      #   redirects, realtime, user, storage, db, codegen, admin
+    types/            #   shared types
+    factory.ts router.ts context.ts define.ts …   # wiring/logic at core root
+  cli/                # the createcms CLI (commands/ templates/ utils/)
+  bin/createcms.ts    # #! shim → cli (the "bin" entry)
+  client/             # framework-agnostic client core (proxy, build, config, vanilla)
+  react/              # React entries: index, blocks, realtime, variant, tracking
+  next/               # Next.js adapters (./next, ./next/middleware)
+  ab-edge/            # framework-agnostic edge A/B core (./ab-edge)
+  plugins/<name>/     # self-contained plugins (own schema/endpoints/client + README)
+  test-utils/         # shared test helpers (setupTestCMS, fixtures, db bootstrap)
+```
+
+**Where new code goes:** an endpoint goes in `core/routes/`; the logic it calls
+lives in `core/<domain>/`. A plugin is self-contained under `plugins/<name>/`. Any
+new `src/` entry must be added to the `exports` map to ship.
+
+**Where tests go:** unit tests co-locate next to the code in `src/**/test/`; broader
+integration tests that spin up a full CMS live in the package-level
+[`test/`](./packages/cms/test). Shared helpers live in `src/test-utils/` (imported by
+both). Both trees are type-checked — `tsconfig` includes `src` and `test`.
+
 ## Submitting changes
 
 1. Fork + branch from `main`.
