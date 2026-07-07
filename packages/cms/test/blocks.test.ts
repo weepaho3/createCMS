@@ -34,7 +34,7 @@ describe('createRoot', () => {
     const [commit] = await db
       .select()
       .from(commits)
-      .where(eq(commits.id, result.commitId));
+      .where(eq(commits.id, result.commit.id));
     expect(commit.rootId).toBe(result.rootId);
     expect(commit.parentCommitId).toBeNull();
     expect(commit.message).toBe('Create home page');
@@ -46,13 +46,13 @@ describe('createRoot', () => {
       .where(eq(branches.id, result.branchId));
     expect(branch.name).toBe('main');
     expect(branch.rootId).toBe(result.rootId);
-    expect(branch.headCommitId).toBe(result.commitId);
+    expect(branch.headCommitId).toBe(result.commit.id);
 
     // Root block version stores the input properties
     const [bv] = await db
       .select()
       .from(blockVersions)
-      .where(eq(blockVersions.commitId, result.commitId));
+      .where(eq(blockVersions.commitId, result.commit.id));
     expect(bv.blockId).toBe(result.rootId);
     expect(bv.rootId).toBe(result.rootId);
     expect(bv.type).toBe('pages');
@@ -63,7 +63,7 @@ describe('createRoot', () => {
     const [snap] = await db
       .select()
       .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, result.commitId));
+      .where(eq(commitSnapshots.commitId, result.commit.id));
     expect(snap.blockId).toBe(result.rootId);
     expect(snap.blockVersionId).toBe(bv.id);
   });
@@ -279,8 +279,8 @@ describe('createBlock', () => {
     const [newCommit] = await db
       .select()
       .from(commits)
-      .where(eq(commits.id, child.commitId));
-    expect(newCommit.parentCommitId).toBe(root.commitId);
+      .where(eq(commits.id, child.commit.id));
+    expect(newCommit.parentCommitId).toBe(root.commit.id);
     expect(newCommit.rootId).toBe(root.rootId);
     expect(newCommit.message).toBe('Add intro paragraph');
 
@@ -290,7 +290,7 @@ describe('createBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, child.commitId),
+          eq(blockVersions.commitId, child.commit.id),
           eq(blockVersions.blockId, child.blockId),
         ),
       );
@@ -304,7 +304,7 @@ describe('createBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, child.commitId),
+          eq(blockVersions.commitId, child.commit.id),
           eq(blockVersions.blockId, root.rootId),
         ),
       );
@@ -314,7 +314,7 @@ describe('createBlock', () => {
     const snapRows = await db
       .select()
       .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, child.commitId));
+      .where(eq(commitSnapshots.commitId, child.commit.id));
     const snapBlockIds = snapRows.map((s) => s.blockId).sort();
     expect(snapBlockIds).toEqual([root.rootId, child.blockId].sort());
 
@@ -323,7 +323,7 @@ describe('createBlock', () => {
       .select()
       .from(branches)
       .where(eq(branches.id, root.branchId));
-    expect(branch.headCommitId).toBe(child.commitId);
+    expect(branch.headCommitId).toBe(child.commit.id);
   });
 
   it('appends multiple children in order', async () => {
@@ -359,7 +359,7 @@ describe('createBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, second.commitId),
+          eq(blockVersions.commitId, second.commit.id),
           eq(blockVersions.blockId, root.rootId),
         ),
       );
@@ -369,7 +369,7 @@ describe('createBlock', () => {
     const snapRows = await db
       .select()
       .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, second.commitId));
+      .where(eq(commitSnapshots.commitId, second.commit.id));
     expect(snapRows).toHaveLength(3);
     const snapBlockIds = snapRows.map((s) => s.blockId).sort();
     expect(snapBlockIds).toEqual(
@@ -380,8 +380,8 @@ describe('createBlock', () => {
     const [secondCommit] = await db
       .select()
       .from(commits)
-      .where(eq(commits.id, second.commitId));
-    expect(secondCommit.parentCommitId).toBe(first.commitId);
+      .where(eq(commits.id, second.commit.id));
+    expect(secondCommit.parentCommitId).toBe(first.commit.id);
   });
 
   it('inserts block at specified position in children array', async () => {
@@ -442,7 +442,7 @@ describe('createBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, y.commitId),
+          eq(blockVersions.commitId, y.commit.id),
           eq(blockVersions.blockId, root.rootId),
         ),
       );
@@ -550,7 +550,7 @@ describe('getBlockTree', () => {
     });
 
     // After createRoot we have one commit with no children
-    const initialCommitId = root.commitId;
+    const initialCommitId = root.commit.id;
 
     // Add a child block — this produces a second commit
     const child = await cms.api.pages.createBlock({
@@ -602,7 +602,7 @@ describe('getBlockTree', () => {
       },
     });
 
-    const c2CommitId = para.commitId;
+    const c2CommitId = para.commit.id;
 
     // C3: add an image child
     await cms.api.pages.createBlock({
@@ -671,7 +671,7 @@ describe('getBlockTree', () => {
       query: {
         rootId: root.rootId,
         branchId: root.branchId,
-        commitId: para.commitId,
+        commitId: para.commit.id,
       },
     });
 
@@ -739,7 +739,7 @@ describe('moveBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, move.commitId),
+          eq(blockVersions.commitId, move.commit.id),
           eq(blockVersions.blockId, root.rootId),
         ),
       );
@@ -748,14 +748,14 @@ describe('moveBlock', () => {
     const [moveCommit] = await db
       .select()
       .from(commits)
-      .where(eq(commits.id, move.commitId));
+      .where(eq(commits.id, move.commit.id));
     expect(moveCommit.message).toBe('Move C to the front');
 
     // Snapshot still has all 4 blocks (root + A + B + C)
     const snapRows = await db
       .select()
       .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, move.commitId));
+      .where(eq(commitSnapshots.commitId, move.commit.id));
     expect(snapRows).toHaveLength(4);
     const snapBlockIds = snapRows.map((s) => s.blockId).sort();
     expect(snapBlockIds).toEqual(
@@ -807,7 +807,7 @@ describe('moveBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, move.commitId),
+          eq(blockVersions.commitId, move.commit.id),
           eq(blockVersions.blockId, root.rootId),
         ),
       );
@@ -819,7 +819,7 @@ describe('moveBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, move.commitId),
+          eq(blockVersions.commitId, move.commit.id),
           eq(blockVersions.blockId, containerA.blockId),
         ),
       );
@@ -829,7 +829,7 @@ describe('moveBlock', () => {
     const snapRows = await db
       .select()
       .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, move.commitId));
+      .where(eq(commitSnapshots.commitId, move.commit.id));
     expect(snapRows).toHaveLength(3);
     const snapBlockIds = snapRows.map((s) => s.blockId).sort();
     expect(snapBlockIds).toEqual(
@@ -992,12 +992,16 @@ describe('deleteBlock', () => {
       },
     });
 
+    // deleteBlock reports the removed subtree ids (ret-20); a leaf paragraph is
+    // its own whole subtree.
+    expect(del.deletedBlockIds).toEqual([para.blockId]);
+
     // New commit is a child of the previous commit
     const [newCommit] = await db
       .select()
       .from(commits)
-      .where(eq(commits.id, del.commitId));
-    expect(newCommit.parentCommitId).toBe(para.commitId);
+      .where(eq(commits.id, del.commit.id));
+    expect(newCommit.parentCommitId).toBe(para.commit.id);
     expect(newCommit.rootId).toBe(root.rootId);
     expect(newCommit.message).toBe('Remove old paragraph');
 
@@ -1007,7 +1011,7 @@ describe('deleteBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, del.commitId),
+          eq(blockVersions.commitId, del.commit.id),
           eq(blockVersions.blockId, root.rootId),
         ),
       );
@@ -1019,7 +1023,7 @@ describe('deleteBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, del.commitId),
+          eq(blockVersions.commitId, del.commit.id),
           eq(blockVersions.blockId, para.blockId),
         ),
       );
@@ -1030,7 +1034,7 @@ describe('deleteBlock', () => {
     const snapRows = await db
       .select()
       .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, del.commitId));
+      .where(eq(commitSnapshots.commitId, del.commit.id));
     expect(snapRows).toHaveLength(2);
 
     // Branch head advanced to the new commit
@@ -1038,7 +1042,7 @@ describe('deleteBlock', () => {
       .select()
       .from(branches)
       .where(eq(branches.id, root.branchId));
-    expect(branch.headCommitId).toBe(del.commitId);
+    expect(branch.headCommitId).toBe(del.commit.id);
   });
 
   it('soft-deletes a block and all its descendants recursively', async () => {
@@ -1095,7 +1099,7 @@ describe('deleteBlock', () => {
         .from(blockVersions)
         .where(
           and(
-            eq(blockVersions.commitId, del.commitId),
+            eq(blockVersions.commitId, del.commit.id),
             eq(blockVersions.blockId, blockId),
           ),
         );
@@ -1106,7 +1110,7 @@ describe('deleteBlock', () => {
     const snapRows = await db
       .select()
       .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, del.commitId));
+      .where(eq(commitSnapshots.commitId, del.commit.id));
     expect(snapRows).toHaveLength(4);
 
     // Root's children[] no longer contains the container
@@ -1115,7 +1119,7 @@ describe('deleteBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, del.commitId),
+          eq(blockVersions.commitId, del.commit.id),
           eq(blockVersions.blockId, root.rootId),
         ),
       );
@@ -1174,7 +1178,7 @@ describe('deleteBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, del.commitId),
+          eq(blockVersions.commitId, del.commit.id),
           eq(blockVersions.blockId, root.rootId),
         ),
       );
@@ -1184,7 +1188,7 @@ describe('deleteBlock', () => {
     const snapRows = await db
       .select()
       .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, del.commitId));
+      .where(eq(commitSnapshots.commitId, del.commit.id));
     expect(snapRows).toHaveLength(4);
 
     // B is soft-deleted, A and C are not
@@ -1193,7 +1197,7 @@ describe('deleteBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, del.commitId),
+          eq(blockVersions.commitId, del.commit.id),
           eq(blockVersions.blockId, b.blockId),
         ),
       );
@@ -1303,7 +1307,7 @@ describe('deleteBlock', () => {
         .from(blockVersions)
         .where(
           and(
-            eq(blockVersions.commitId, del.commitId),
+            eq(blockVersions.commitId, del.commit.id),
             eq(blockVersions.blockId, blockId),
           ),
         );
@@ -1314,7 +1318,7 @@ describe('deleteBlock', () => {
     const snapRows = await db
       .select()
       .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, del.commitId));
+      .where(eq(commitSnapshots.commitId, del.commit.id));
     expect(snapRows).toHaveLength(2);
   });
 
@@ -1445,7 +1449,7 @@ describe('duplicateBlock', () => {
     const [dupCommit] = await db
       .select()
       .from(commits)
-      .where(eq(commits.id, dup.commitId));
+      .where(eq(commits.id, dup.commit.id));
     expect(dupCommit.message).toBe('Duplicate intro paragraph');
 
     // The duplicated block version has the same type and properties
@@ -1454,7 +1458,7 @@ describe('duplicateBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, dup.commitId),
+          eq(blockVersions.commitId, dup.commit.id),
           eq(blockVersions.blockId, dup.blockId),
         ),
       );
@@ -1468,7 +1472,7 @@ describe('duplicateBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, dup.commitId),
+          eq(blockVersions.commitId, dup.commit.id),
           eq(blockVersions.blockId, root.rootId),
         ),
       );
@@ -1478,7 +1482,7 @@ describe('duplicateBlock', () => {
     const snapRows = await db
       .select()
       .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, dup.commitId));
+      .where(eq(commitSnapshots.commitId, dup.commit.id));
     expect(snapRows).toHaveLength(3);
     const snapBlockIds = snapRows.map((s) => s.blockId).sort();
     expect(snapBlockIds).toEqual(
@@ -1546,7 +1550,7 @@ describe('duplicateBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, dup.commitId),
+          eq(blockVersions.commitId, dup.commit.id),
           eq(blockVersions.blockId, dup.blockId),
         ),
       );
@@ -1564,7 +1568,7 @@ describe('duplicateBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, dup.commitId),
+          eq(blockVersions.commitId, dup.commit.id),
           eq(blockVersions.blockId, (dupContainerBv.children as string[])[0]),
         ),
       );
@@ -1576,7 +1580,7 @@ describe('duplicateBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, dup.commitId),
+          eq(blockVersions.commitId, dup.commit.id),
           eq(blockVersions.blockId, (dupContainerBv.children as string[])[1]),
         ),
       );
@@ -1587,7 +1591,7 @@ describe('duplicateBlock', () => {
     const snapRows = await db
       .select()
       .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, dup.commitId));
+      .where(eq(commitSnapshots.commitId, dup.commit.id));
     expect(snapRows).toHaveLength(7);
 
     // Root's children[] now has both the original container and the duplicate
@@ -1596,7 +1600,7 @@ describe('duplicateBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, dup.commitId),
+          eq(blockVersions.commitId, dup.commit.id),
           eq(blockVersions.blockId, root.rootId),
         ),
       );
@@ -1669,12 +1673,12 @@ describe('duplicateBlock', () => {
       .where(eq(branches.id, dup.branchId));
     expect(newBranch.name).toBe('main');
     expect(newBranch.rootId).toBe(dup.rootId);
-    expect(newBranch.headCommitId).toBe(dup.commitId);
+    expect(newBranch.headCommitId).toBe(dup.commit.id);
 
     const [newCommit] = await db
       .select()
       .from(commits)
-      .where(eq(commits.id, dup.commitId));
+      .where(eq(commits.id, dup.commit.id));
     expect(newCommit.rootId).toBe(dup.rootId);
     expect(newCommit.parentCommitId).toBeNull();
     expect(newCommit.message).toBe('Duplicate original page');
@@ -1685,7 +1689,7 @@ describe('duplicateBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, dup.commitId),
+          eq(blockVersions.commitId, dup.commit.id),
           eq(blockVersions.blockId, dup.rootId),
         ),
       );
@@ -1703,7 +1707,7 @@ describe('duplicateBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, dup.commitId),
+          eq(blockVersions.commitId, dup.commit.id),
           eq(blockVersions.blockId, dupContainerId),
         ),
       );
@@ -1721,7 +1725,7 @@ describe('duplicateBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, dup.commitId),
+          eq(blockVersions.commitId, dup.commit.id),
           eq(blockVersions.blockId, dupChildAId),
         ),
       );
@@ -1733,7 +1737,7 @@ describe('duplicateBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, dup.commitId),
+          eq(blockVersions.commitId, dup.commit.id),
           eq(blockVersions.blockId, dupChildBId),
         ),
       );
@@ -1744,7 +1748,7 @@ describe('duplicateBlock', () => {
     const snapRows = await db
       .select()
       .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, dup.commitId));
+      .where(eq(commitSnapshots.commitId, dup.commit.id));
     expect(snapRows).toHaveLength(4);
     const snapBlockIds = snapRows.map((s) => s.blockId).sort();
     expect(snapBlockIds).toEqual(
@@ -1892,12 +1896,12 @@ describe('updateBlock', () => {
     });
 
     // New commit was created
-    expect(update.commitId).not.toBe(para.commitId);
+    expect(update.commit.id).not.toBe(para.commit.id);
 
     const [updateCommit] = await db
       .select()
       .from(commits)
-      .where(eq(commits.id, update.commitId));
+      .where(eq(commits.id, update.commit.id));
     expect(updateCommit.message).toBe('Refine paragraph copy');
 
     // Block version at the new commit has merged properties
@@ -1906,7 +1910,7 @@ describe('updateBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, update.commitId),
+          eq(blockVersions.commitId, update.commit.id),
           eq(blockVersions.blockId, para.blockId),
         ),
       );
@@ -1918,7 +1922,7 @@ describe('updateBlock', () => {
       .select()
       .from(branches)
       .where(eq(branches.id, root.branchId));
-    expect(branch.headCommitId).toBe(update.commitId);
+    expect(branch.headCommitId).toBe(update.commit.id);
   });
 
   it('preserves omitted properties during partial update', async () => {
@@ -1954,7 +1958,7 @@ describe('updateBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, update.commitId),
+          eq(blockVersions.commitId, update.commit.id),
           eq(blockVersions.blockId, img.blockId),
         ),
       );
@@ -1997,7 +2001,7 @@ describe('updateBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, update.commitId),
+          eq(blockVersions.commitId, update.commit.id),
           eq(blockVersions.blockId, img.blockId),
         ),
       );
@@ -2048,7 +2052,7 @@ describe('updateBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, update.commitId),
+          eq(blockVersions.commitId, update.commit.id),
           eq(blockVersions.blockId, container.blockId),
         ),
       );
@@ -2077,7 +2081,7 @@ describe('updateBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, update.commitId),
+          eq(blockVersions.commitId, update.commit.id),
           eq(blockVersions.blockId, root.rootId),
         ),
       );
@@ -2087,7 +2091,7 @@ describe('updateBlock', () => {
     const [updateCommit] = await db
       .select()
       .from(commits)
-      .where(eq(commits.id, update.commitId));
+      .where(eq(commits.id, update.commit.id));
     expect(updateCommit.message).toBe('Rename page');
   });
 
@@ -2133,7 +2137,7 @@ describe('updateBlock', () => {
     const snapRows = await db
       .select()
       .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, update.commitId));
+      .where(eq(commitSnapshots.commitId, update.commit.id));
     expect(snapRows).toHaveLength(3);
     const snapBlockIds = snapRows.map((s) => s.blockId).sort();
     expect(snapBlockIds).toEqual([root.rootId, a.blockId, b.blockId].sort());
@@ -2291,14 +2295,14 @@ describe('updateBlock', () => {
     const [commit2] = await db
       .select()
       .from(commits)
-      .where(eq(commits.id, update2.commitId));
-    expect(commit2.parentCommitId).toBe(update1.commitId);
+      .where(eq(commits.id, update2.commit.id));
+    expect(commit2.parentCommitId).toBe(update1.commit.id);
 
     const [commit1] = await db
       .select()
       .from(commits)
-      .where(eq(commits.id, update1.commitId));
-    expect(commit1.parentCommitId).toBe(para.commitId);
+      .where(eq(commits.id, update1.commit.id));
+    expect(commit1.parentCommitId).toBe(para.commit.id);
 
     // Final version has V3
     const [finalBv] = await db
@@ -2306,7 +2310,7 @@ describe('updateBlock', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, update2.commitId),
+          eq(blockVersions.commitId, update2.commit.id),
           eq(blockVersions.blockId, para.blockId),
         ),
       );
@@ -2373,12 +2377,14 @@ describe('updateBlocks', () => {
       },
     });
 
-    expect(result.commitId).toBeDefined();
+    expect(result.commit.id).toBeDefined();
+    // A real save reports changed:true (ret-04).
+    expect(result.changed).toBe(true);
 
     const [newCommit] = await db
       .select()
       .from(commits)
-      .where(eq(commits.id, result.commitId));
+      .where(eq(commits.id, result.commit.id));
     expect(newCommit.message).toBe('Batch edit');
 
     const { tree } = await cms.api.pages.getBlockTree({
@@ -2419,7 +2425,7 @@ describe('updateBlocks', () => {
       },
     });
 
-    expect(result.commitId).toBeDefined();
+    expect(result.commit.id).toBeDefined();
 
     const { tree } = await cms.api.pages.getBlockTree({
       query: { rootId: root.rootId, branchId: root.branchId },
@@ -2433,7 +2439,7 @@ describe('updateBlocks', () => {
     const snapRows = await db
       .select()
       .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, result.commitId));
+      .where(eq(commitSnapshots.commitId, result.commit.id));
     const snapBlockIds = snapRows.map((s) => s.blockId).sort();
     expect(snapBlockIds).toEqual([root.rootId, newBlockId].sort());
   });
@@ -2497,7 +2503,7 @@ describe('updateBlocks', () => {
       .from(blockVersions)
       .where(
         and(
-          eq(blockVersions.commitId, result.commitId),
+          eq(blockVersions.commitId, result.commit.id),
           eq(blockVersions.blockId, a.blockId),
         ),
       );
@@ -2721,7 +2727,7 @@ describe('updateBlocks', () => {
       },
     });
 
-    expect(result.commitId).toBeDefined();
+    expect(result.commit.id).toBeDefined();
 
     const { tree } = await cms.api.pages.getBlockTree({
       query: { rootId: root.rootId, branchId: root.branchId },
@@ -2739,7 +2745,7 @@ describe('updateBlocks', () => {
       .select()
       .from(commits)
       .where(eq(commits.rootId, root.rootId));
-    const batchCommit = allCommits.find((c) => c.id === result.commitId);
+    const batchCommit = allCommits.find((c) => c.id === result.commit.id);
     expect(batchCommit!.message).toBe('Mixed batch');
   });
 
@@ -2785,7 +2791,9 @@ describe('updateBlocks', () => {
       },
     });
 
-    expect(result.commitId).toBe(branchBefore.headCommitId);
+    expect(result.commit.id).toBe(branchBefore.headCommitId);
+    // No-op is distinguishable from a real save via `changed` (ret-04).
+    expect(result.changed).toBe(false);
 
     const [branchAfter] = await db
       .select()
@@ -2956,7 +2964,7 @@ describe('updateBlocks', () => {
     const snapRows = await db
       .select()
       .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, result.commitId));
+      .where(eq(commitSnapshots.commitId, result.commit.id));
 
     expect(snapRows).toHaveLength(3);
     const snapBlockIds = snapRows.map((s) => s.blockId).sort();
@@ -3098,7 +3106,7 @@ describe('middleware', () => {
     const [commitRow] = await db
       .select()
       .from(commits)
-      .where(eq(commits.id, root.commitId));
+      .where(eq(commits.id, root.commit.id));
     const [branchRow] = await db
       .select()
       .from(branches)
@@ -3150,7 +3158,7 @@ describe('middleware', () => {
     });
 
     expect(root.rootId).toBeDefined();
-    expect(root.commitId).toBeDefined();
+    expect(root.commit.id).toBeDefined();
   });
 });
 

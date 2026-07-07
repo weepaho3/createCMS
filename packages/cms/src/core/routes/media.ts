@@ -589,7 +589,8 @@ export function createMediaEndpoints(
      *
      * @param assetIds - Array of asset ids to update (at least one).
      * @param status - Target status: 'private' or 'public'.
-     * @returns Count of successfully updated assets.
+     * @returns `{ updated, updatedIds, skipped }` — the count and ids of the
+     *   updated assets, plus the requested ids that matched no live, in-scope asset.
      * @throws ASSET_NOT_FOUND if none of the asset ids exist.
      * @example await cmsClient.media.updateAssetStatus({ assetIds: ['ast_...'], status: 'public' })
      */
@@ -607,7 +608,12 @@ export function createMediaEndpoints(
         const { scope } = ctx.context;
         const { assetIds, status } = ctx.body;
 
-        const selectConditions = [inArray(assets.id, assetIds)];
+        // Exclude archived (soft-deleted) assets, matching moveAssets/archiveAsset:
+        // an archived id is reported in `skipped`, never silently counted as updated.
+        const selectConditions = [
+          inArray(assets.id, assetIds),
+          isNull(assets.archivedAt),
+        ];
         if (scope.assets?.where)
           selectConditions.push(scope.assets.where as any);
 
@@ -632,7 +638,12 @@ export function createMediaEndpoints(
           .set({ status, updatedAt: new Date() })
           .where(and(...updateConditions));
 
-        return { updated: existing.length };
+        const skipped = assetIds.filter((id) => !existingIds.includes(id));
+        return {
+          updated: existingIds.length,
+          updatedIds: existingIds,
+          skipped,
+        };
       },
     ),
 
@@ -870,7 +881,7 @@ export function createMediaEndpoints(
      *
      * @param files - Array of file metadata (name, size, type, optional variantOf).
      * @param folderId - Optional target folder id.
-     * @returns Array of assets with their signed upload URLs and headers, plus expiration timestamp.
+     * @returns Array of assets with their signed upload URLs and headers, plus the `expiresAt` Date the signed URLs expire at.
      * @throws TOO_MANY_FILES if file count exceeds the configured limit.
      * @throws FILE_TOO_LARGE if any file exceeds the configured size limit.
      * @throws INVALID_FILE_TYPE if any file has a disallowed MIME type.
@@ -911,7 +922,7 @@ export function createMediaEndpoints(
         });
 
         const client = getS3Client();
-        const expiresAt = Date.now() + signedUrlExpiresIn * 1000;
+        const expiresAt = new Date(Date.now() + signedUrlExpiresIn * 1000);
 
         await scopedInsertBatch(
           db,
@@ -968,7 +979,7 @@ export function createMediaEndpoints(
      *
      * @param files - Array of files with buffer or Blob content (name, size, type, buffer, optional variantOf).
      * @param folderId - Optional target folder id.
-     * @returns Array of uploaded assets with their ids, slugs, and object keys.
+     * @returns Array of uploaded assets, each with the same fields a `listAssets` row carries (id, slug, mimeType, size, objectKey, url, status, folderId, variantOf, uploadedBy, createdAt, updatedAt).
      * @throws TOO_MANY_FILES if file count exceeds the configured limit.
      * @throws FILE_TOO_LARGE if any file exceeds the configured size limit.
      * @throws INVALID_FILE_TYPE if any file has a disallowed MIME type.
@@ -1014,7 +1025,7 @@ export function createMediaEndpoints(
 
         const filesByIndex = new Map(ctx.body.files.map((f, i) => [i, f]));
 
-        await scopedInsertBatch(
+        const inserted = await scopedInsertBatch(
           db,
           'cms.assets',
           prepared.map((p) => ({
@@ -1030,6 +1041,7 @@ export function createMediaEndpoints(
           })),
           scope.assets,
         );
+        const insertedById = new Map(inserted.map((row) => [row.id, row]));
 
         for (let i = 0; i < prepared.length; i++) {
           const p = prepared[i];
@@ -1052,14 +1064,28 @@ export function createMediaEndpoints(
         }
 
         return {
-          assets: prepared.map((p) => ({
-            id: p.id,
-            slug: p.slug,
-            objectKey: p.objectKey,
-            // Direct object URL for INTERNAL/admin display (see createSignedUpload) —
-            // not for content, which references the asset id and serves via the gate.
-            url: buildPublicObjectUrl(mediaConfig.publicUrl, p.objectKey),
-          })),
+          assets: prepared.map((p) => {
+            const row = insertedById.get(p.id)!;
+            return {
+              id: p.id,
+              slug: p.slug,
+              mimeType: p.file.type,
+              size: p.file.size,
+              objectKey: p.objectKey,
+              // Direct object URL for INTERNAL/admin display (see createSignedUpload) —
+              // not for content, which references the asset id and serves via the gate.
+              url: buildPublicObjectUrl(mediaConfig.publicUrl, p.objectKey),
+              status: 'private' as const,
+              folderId: folderId ?? null,
+              variantOf: p.file.variantOf ?? null,
+              uploadedBy: actor ?? null,
+              // scopedInsertBatch returns a raw db.execute row: timestamptz comes
+              // back as a string, so wrap it in a Date to match listAssets (which
+              // reads Dates via a Drizzle .select()).
+              createdAt: new Date(row.created_at as string),
+              updatedAt: new Date(row.updated_at as string),
+            };
+          }),
         };
       },
     ),
@@ -1081,7 +1107,7 @@ export function createMediaEndpoints(
      *
      * @param assetId - The asset to replace.
      * @param file - The new file (`buffer` of bytes, like uploadAssets).
-     * @returns `{ asset: { id, slug, objectKey, url, mimeType, size } }`.
+     * @returns `{ asset }` with the same fields a `listAssets` row carries (id, slug, mimeType, size, objectKey, url, status, folderId, variantOf, uploadedBy, createdAt, updatedAt).
      * @throws ASSET_NOT_FOUND if the asset does not exist (in scope) or is archived.
      * @throws CANNOT_REPLACE_VARIANT if the target is itself a variant.
      * @throws FILE_TOO_LARGE / INVALID_FILE_TYPE on validation failure.
@@ -1163,7 +1189,7 @@ export function createMediaEndpoints(
         //    variants (stale bytes, unreachable from the new slug). id, folderId,
         //    status, variantOf are unchanged. Old object is left for pruning.
         const now = new Date();
-        await db.transaction(async (tx) => {
+        const repointedRow = await db.transaction(async (tx) => {
           const updateConditions = [
             eq(assets.id, assetId),
             isNull(assets.archivedAt),
@@ -1181,7 +1207,7 @@ export function createMediaEndpoints(
               updatedAt: now,
             })
             .where(and(...updateConditions))
-            .returning({ id: assets.id });
+            .returning();
 
           // The asset was archived / left scope between the load and here
           // (TOCTOU). Roll back so we never report a replace that didn't land;
@@ -1203,18 +1229,29 @@ export function createMediaEndpoints(
             .update(assets)
             .set({ archivedAt: now, updatedAt: now })
             .where(and(...variantConditions));
+
+          return repointed[0];
         });
 
         return {
           asset: {
-            id: assetId,
-            slug,
-            objectKey,
+            id: repointedRow.id,
+            slug: repointedRow.slug,
+            mimeType: repointedRow.mimeType,
+            size: repointedRow.size,
+            objectKey: repointedRow.objectKey,
             // Direct object URL for INTERNAL/admin display only (see the gate
             // for serving in content).
-            url: buildPublicObjectUrl(mediaConfig.publicUrl, objectKey),
-            mimeType: file.type,
-            size: file.size,
+            url: buildPublicObjectUrl(
+              mediaConfig.publicUrl,
+              repointedRow.objectKey,
+            ),
+            status: repointedRow.status,
+            folderId: repointedRow.folderId ?? null,
+            variantOf: repointedRow.variantOf ?? null,
+            uploadedBy: repointedRow.uploadedBy ?? null,
+            createdAt: repointedRow.createdAt,
+            updatedAt: repointedRow.updatedAt,
           },
         };
       },

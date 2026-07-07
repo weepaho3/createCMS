@@ -359,7 +359,7 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
      * @param name Unique branch name within the root.
      * @param sourceBranchId The branch whose head commit will initialize the new branch's head.
      * @param createdBy Optional user ID; falls back to ctx.context.userId if not provided.
-     * @returns Object with new branchId and its initial headCommitId (copied from source).
+     * @returns Object with the created branch row and its isDeletable flag (always true for a fresh branch).
      * @throws BRANCH_NOT_FOUND if sourceBranchId does not exist.
      * @throws BRANCH_NAME_ALREADY_EXISTS if name is already taken in this root.
      * @example await cmsClient.pages.createBranch({ rootId: 'root_123', name: 'feature-x', sourceBranchId: 'br_main' })
@@ -430,9 +430,12 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
             })
             .returning();
 
+          // A freshly created branch can never be the default branch and has no
+          // publications or open merge requests yet, so isDeletable is
+          // statically true.
           return {
-            branchId: newBranch.id,
-            headCommitId: newBranch.headCommitId,
+            branch: newBranch,
+            isDeletable: true,
           };
         });
       },
@@ -442,7 +445,7 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
      * Renames an existing branch.
      * @param branchId The branch ID to rename.
      * @param newName The new branch name.
-     * @returns Updated branch data with new name and refreshed updatedAt.
+     * @returns Object with the updated branch row (new name, refreshed updatedAt) and its isDeletable flag.
      * @throws BRANCH_NOT_FOUND if the branch does not exist.
      * @throws CANNOT_RENAME_MAIN_BRANCH if the branch is 'main'.
      * @throws BRANCH_NAME_ALREADY_EXISTS if newName is already taken in this root.
@@ -517,11 +520,10 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
             .returning();
 
           const nonDeletable = await checkDeletable(tx, [updated.id]);
-          return withIsDeletable(
-            updated,
-            nonDeletable,
-            branchPolicy.defaultBranchName,
-          );
+          const isDeletable =
+            updated.name !== branchPolicy.defaultBranchName &&
+            !nonDeletable.has(updated.id);
+          return { branch: updated, isDeletable };
         });
       },
     ),
@@ -617,7 +619,7 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
      * @param targetCommitId The commit whose snapshot to restore.
      * @param message Optional custom commit message (default: auto-generated).
      * @param createdBy Optional user ID; falls back to ctx.context.userId if not provided.
-     * @returns Object with newCommitId of the revert commit.
+     * @returns Object with the commit envelope (id, message, createdAt, createdBy) of the revert commit.
      * @throws BRANCH_NOT_FOUND if the branch does not exist.
      * @throws COMMIT_NOT_FOUND if targetCommitId does not belong to this root.
      * @throws EMPTY_SNAPSHOT if the target commit snapshot is empty.
@@ -734,7 +736,12 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
             .where(eq(branches.id, branchId));
 
           return {
-            newCommitId: newCommit.id,
+            commit: {
+              id: newCommit.id,
+              message: newCommit.message,
+              createdAt: newCommit.createdAt,
+              createdBy: newCommit.createdBy,
+            },
           };
         });
       },
@@ -751,15 +758,15 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
     checkDivergence: createCMSEndpoint(
       `/${collectionName}/checkDivergence`,
       {
-        method: 'POST',
-        body: z.object({
+        method: 'GET',
+        query: z.object({
           sourceBranchId: z.string(),
           targetBranchId: z.string(),
         }),
         metadata: cmsMeta(
           {
             $Infer: {
-              body: {} as { sourceBranchId: string; targetBranchId: string },
+              query: {} as { sourceBranchId: string; targetBranchId: string },
             },
           },
           {
@@ -771,7 +778,7 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
         ),
       },
       async (ctx) => {
-        const { sourceBranchId, targetBranchId } = ctx.body;
+        const { sourceBranchId, targetBranchId } = ctx.query;
 
         const [[sourceBranch], [targetBranch]] = await Promise.all([
           db

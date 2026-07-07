@@ -144,7 +144,7 @@ describe('asset state sync on publish', () => {
       publishedBy: 'user-1',
     });
 
-    expect(result.rootId).toBe(root.rootId);
+    expect(result.publication.rootId).toBe(root.rootId);
   });
 });
 
@@ -250,7 +250,7 @@ describe('asset state sync on unpublish', () => {
 
     await publishApprovedBranch(cms, {
       rootId: root.rootId,
-      branchId: draft.branchId,
+      branchId: draft.branch.id,
       publishedBy: 'user-2',
     });
 
@@ -312,7 +312,7 @@ describe('asset state sync on unpublish', () => {
 
     await publishApprovedBranch(cms, {
       rootId: root.rootId,
-      branchId: draft.branchId,
+      branchId: draft.branch.id,
       publishedBy: 'user-2',
     });
 
@@ -329,7 +329,7 @@ describe('asset state sync on unpublish', () => {
 
     // Unpublish second branch - asset goes private
     await cms.api.pages.unpublishBranch({
-      body: { rootId: root.rootId, branchId: draft.branchId },
+      body: { rootId: root.rootId, branchId: draft.branch.id },
     });
 
     const [afterSecond] = await db

@@ -477,7 +477,7 @@ export function createPublicationEndpoints<
      * @param branchId The branch whose head commit should be published.
      * @param publishedBy Optional override for the actor performing the publication; defaults to the current user.
      *
-     * @returns The publication record with rootId, branchId, commitId, publishedBy, and publishedAt.
+     * @returns Object with the publication entity ({ publication }) containing rootId, branchId, commitId, publishedBy, publishedAt, and branchName.
      *
      * @throws ROOT_NOT_FOUND The root does not exist or is outside the active scope.
      * @throws BRANCH_NOT_FOUND The branch does not exist or belongs to a different root.
@@ -538,6 +538,7 @@ export function createPublicationEndpoints<
               id: branches.id,
               rootId: branches.rootId,
               headCommitId: branches.headCommitId,
+              name: branches.name,
             })
             .from(branches)
             .where(and(eq(branches.id, branchId), eq(branches.rootId, rootId)))
@@ -590,7 +591,7 @@ export function createPublicationEndpoints<
               )
               .returning();
 
-            return updated;
+            return { ...updated, branchName: branch.name };
           }
 
           const [created] = await tx
@@ -603,7 +604,7 @@ export function createPublicationEndpoints<
             })
             .returning();
 
-          return created;
+          return { ...created, branchName: branch.name };
         });
 
         await syncAssetsOnPublish(db, publication.commitId, rootId);
@@ -637,7 +638,7 @@ export function createPublicationEndpoints<
           }
         }
 
-        return publication;
+        return { publication };
       },
     ),
 
@@ -647,7 +648,7 @@ export function createPublicationEndpoints<
      * @param rootId The root whose publication to remove.
      * @param branchId The branch whose publication to remove.
      *
-     * @returns Object with rootId and branchId of the unpublished branch.
+     * @returns Object with rootId, branchId, the unpublishedCommitId that was live, and unpublishedAt.
      *
      * @throws ROOT_NOT_FOUND The root does not exist or is outside the active scope.
      * @throws PUBLICATION_NOT_FOUND No active publication exists for this root-branch pair.
@@ -732,6 +733,8 @@ export function createPublicationEndpoints<
         return {
           rootId,
           branchId,
+          unpublishedCommitId: commitId,
+          unpublishedAt: new Date(),
         };
       },
     ),

@@ -720,7 +720,7 @@ describe('runPruning', () => {
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: featureBranch.branchId,
+        branchId: featureBranch.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'Feature block' },
@@ -730,7 +730,7 @@ describe('runPruning', () => {
     // Create a merge request
     const mr = await cms.api.pages.createMergeRequest({
       body: {
-        sourceBranchId: featureBranch.branchId,
+        sourceBranchId: featureBranch.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'test-user',
         title: 'Feature merge',
@@ -740,7 +740,7 @@ describe('runPruning', () => {
     // Request and approve the merge
     const approvalResult = await cms.api.pages.requestApproval({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         requestedBy: 'requester-1',
         requestedReviewers: ['reviewer-1'],
       },
@@ -755,7 +755,7 @@ describe('runPruning', () => {
     // Execute the merge (status becomes 'merged')
     await cms.api.pages.executeMerge({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         mergedBy: 'test-user',
       },
     });
@@ -764,7 +764,7 @@ describe('runPruning', () => {
     const mrApprovalsBefore = await db
       .select()
       .from(approvals)
-      .where(eq(approvals.mergeRequestId, mr.mergeRequestId));
+      .where(eq(approvals.mergeRequestId, mr.mergeRequest.id));
     expect(mrApprovalsBefore.length).toBe(1);
 
     // Backdate the MR's updatedAt and all commits to trigger pruning
@@ -780,7 +780,7 @@ describe('runPruning', () => {
     await db
       .update(mergeRequests)
       .set({ updatedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) })
-      .where(eq(mergeRequests.id, mr.mergeRequestId));
+      .where(eq(mergeRequests.id, mr.mergeRequest.id));
 
     const result = await cms.api.admin.runPruning({ body: { dryRun: false } });
 
@@ -790,21 +790,21 @@ describe('runPruning', () => {
     const mrAfter = await db
       .select()
       .from(mergeRequests)
-      .where(eq(mergeRequests.id, mr.mergeRequestId));
+      .where(eq(mergeRequests.id, mr.mergeRequest.id));
     expect(mrAfter.length).toBe(0);
 
     // Cascaded: approvals for this MR should be gone
     const mrApprovalsAfter = await db
       .select()
       .from(approvals)
-      .where(eq(approvals.mergeRequestId, mr.mergeRequestId));
+      .where(eq(approvals.mergeRequestId, mr.mergeRequest.id));
     expect(mrApprovalsAfter.length).toBe(0);
 
     // Cascaded: merge_conflicts for this MR should be gone
     const conflictsAfter = await db
       .select()
       .from(mergeConflicts)
-      .where(eq(mergeConflicts.mergeRequestId, mr.mergeRequestId));
+      .where(eq(mergeConflicts.mergeRequestId, mr.mergeRequest.id));
     expect(conflictsAfter.length).toBe(0);
   });
 
@@ -1200,7 +1200,7 @@ describe('runPruning — archived-root hard-delete + resumability (5c)', () => {
     await cms.api.pages.updateBlock({
       body: {
         rootId: root.rootId,
-        branchId: feature.branchId,
+        branchId: feature.branch.id,
         blockId: block.blockId,
         type: 'paragraph',
         properties: { text: 'no asset here' },

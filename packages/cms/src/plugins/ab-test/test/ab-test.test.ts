@@ -51,7 +51,7 @@ async function createPageWithBranches(cms: any) {
   await cms.api.pages.createBlock({
     body: {
       rootId: root.rootId,
-      branchId: branch2.branchId,
+      branchId: branch2.branch.id,
       parentBlockId: root.rootId,
       type: 'paragraph',
       properties: { text: 'Variant content' },
@@ -60,14 +60,14 @@ async function createPageWithBranches(cms: any) {
 
   await publishApprovedBranch(cms, {
     rootId: root.rootId,
-    branchId: branch2.branchId,
+    branchId: branch2.branch.id,
     publishedBy: 'admin',
   });
 
   return {
     rootId: root.rootId,
     mainBranchId: root.branchId,
-    variantBranchId: branch2.branchId,
+    variantBranchId: branch2.branch.id,
   };
 }
 
@@ -975,7 +975,7 @@ describe('multi-tenant isolation', () => {
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: branch2.branchId,
+        branchId: branch2.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'Variant content' },
@@ -984,14 +984,14 @@ describe('multi-tenant isolation', () => {
 
     await publishApprovedBranch(cms, {
       rootId: root.rootId,
-      branchId: branch2.branchId,
+      branchId: branch2.branch.id,
       publishedBy: 'admin',
     });
 
     return {
       rootId: root.rootId,
       mainBranchId: root.branchId,
-      variantBranchId: branch2.branchId,
+      variantBranchId: branch2.branch.id,
     };
   }
 
@@ -1270,7 +1270,7 @@ describe('A/B Test trackingId guard', () => {
     });
     await publishApprovedBranch(cms, {
       rootId: root.rootId,
-      branchId: variant.branchId,
+      branchId: variant.branch.id,
       publishedBy: 'admin',
     });
     // link both (now-published, consistent {a}) branches as test variants and
@@ -1280,12 +1280,12 @@ describe('A/B Test trackingId guard', () => {
         rootId: root.rootId,
         collection: 'pages',
         name: 'Drift test',
-        variants: makeVariants(root.branchId, variant.branchId),
+        variants: makeVariants(root.branchId, variant.branch.id),
       },
     });
     await cms.api.abTest.updateTest({ body: { testId, status: 'running' } });
     // introduce drift: the variant now also has trackingId 'b' → set {a,b}
-    await addSignupForm(cms, root.rootId, variant.branchId, {
+    await addSignupForm(cms, root.rootId, variant.branch.id, {
       cta: 'B',
       trackingId: 'b',
     });
@@ -1294,7 +1294,7 @@ describe('A/B Test trackingId guard', () => {
       cms.api.pages.publishBranch({
         body: {
           rootId: root.rootId,
-          branchId: variant.branchId,
+          branchId: variant.branch.id,
           publishedBy: 'admin',
         },
       }),
@@ -1324,7 +1324,7 @@ describe('A/B Test trackingId guard', () => {
     });
     await publishApprovedBranch(cms, {
       rootId: root.rootId,
-      branchId: variant.branchId,
+      branchId: variant.branch.id,
       publishedBy: 'admin',
     });
     // a DRAFT test (never started) — drift must not be enforced
@@ -1333,10 +1333,10 @@ describe('A/B Test trackingId guard', () => {
         rootId: root.rootId,
         collection: 'pages',
         name: 'Draft test',
-        variants: makeVariants(root.branchId, variant.branchId),
+        variants: makeVariants(root.branchId, variant.branch.id),
       },
     });
-    await addSignupForm(cms, root.rootId, variant.branchId, {
+    await addSignupForm(cms, root.rootId, variant.branch.id, {
       cta: 'B',
       trackingId: 'b',
     });
@@ -1345,7 +1345,7 @@ describe('A/B Test trackingId guard', () => {
       cms.api.pages.publishBranch({
         body: {
           rootId: root.rootId,
-          branchId: variant.branchId,
+          branchId: variant.branch.id,
           publishedBy: 'admin',
         },
       }),
@@ -1376,7 +1376,7 @@ describe('A/B Test trackingId guard', () => {
     // variant inherits the 'a' form unchanged → set {a}; publish it
     await publishApprovedBranch(cms, {
       rootId: root.rootId,
-      branchId: variant.branchId,
+      branchId: variant.branch.id,
       publishedBy: 'admin',
     });
     const { testId } = await cms.api.abTest.createTest({
@@ -1384,7 +1384,7 @@ describe('A/B Test trackingId guard', () => {
         rootId: root.rootId,
         collection: 'pages',
         name: 'No-drift test',
-        variants: makeVariants(root.branchId, variant.branchId),
+        variants: makeVariants(root.branchId, variant.branch.id),
       },
     });
     await cms.api.abTest.updateTest({ body: { testId, status: 'running' } });
@@ -1393,7 +1393,7 @@ describe('A/B Test trackingId guard', () => {
       cms.api.pages.publishBranch({
         body: {
           rootId: root.rootId,
-          branchId: variant.branchId,
+          branchId: variant.branch.id,
           publishedBy: 'admin',
         },
       }),

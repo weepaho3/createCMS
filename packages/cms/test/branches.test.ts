@@ -27,17 +27,17 @@ describe('createBranch', () => {
       },
     });
 
-    expect(result.branchId).toBeDefined();
-    expect(result.headCommitId).toBe(root.commitId);
+    expect(result.branch.id).toBeDefined();
+    expect(result.branch.headCommitId).toBe(root.commit.id);
 
     const [branch] = await db
       .select()
       .from(branches)
-      .where(eq(branches.id, result.branchId));
+      .where(eq(branches.id, result.branch.id));
 
     expect(branch.name).toBe('draft');
     expect(branch.rootId).toBe(root.rootId);
-    expect(branch.headCommitId).toBe(root.commitId);
+    expect(branch.headCommitId).toBe(root.commit.id);
     expect(branch.createdBy).toBeNull();
   });
 
@@ -60,7 +60,7 @@ describe('createBranch', () => {
     const [branch] = await db
       .select()
       .from(branches)
-      .where(eq(branches.id, result.branchId));
+      .where(eq(branches.id, result.branch.id));
 
     expect(branch.createdBy).toBe('user-42');
   });
@@ -85,7 +85,7 @@ describe('createBranch', () => {
     const [branch] = await db
       .select()
       .from(branches)
-      .where(eq(branches.id, result.branchId));
+      .where(eq(branches.id, result.branch.id));
 
     expect(branch.createdBy).toBe('middleware-user');
   });
@@ -110,7 +110,7 @@ describe('createBranch', () => {
     const [branch] = await db
       .select()
       .from(branches)
-      .where(eq(branches.id, result.branchId));
+      .where(eq(branches.id, result.branch.id));
 
     expect(branch.createdBy).toBe('auth-middleware-user');
   });
@@ -142,18 +142,18 @@ describe('createBranch', () => {
       },
     });
 
-    expect(draft.headCommitId).toBe(block.commitId);
+    expect(draft.branch.headCommitId).toBe(block.commit.id);
 
     // Fork from draft (should also be at block.commitId)
     const feature = await cms.api.pages.createBranch({
       body: {
         rootId: root.rootId,
         name: 'feature',
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
       },
     });
 
-    expect(feature.headCommitId).toBe(block.commitId);
+    expect(feature.branch.headCommitId).toBe(block.commit.id);
   });
 
   it('rejects creating a branch with a duplicate name for the same root', async () => {
@@ -209,7 +209,7 @@ describe('createBranch', () => {
       },
     });
 
-    expect(branchA.branchId).not.toBe(branchB.branchId);
+    expect(branchA.branch.id).not.toBe(branchB.branch.id);
   });
 
   it('rejects when source branch does not exist', async () => {
@@ -271,7 +271,7 @@ describe('createBranch', () => {
     const block = await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'Draft content' },
@@ -282,15 +282,15 @@ describe('createBranch', () => {
     const [draftBranch] = await db
       .select()
       .from(branches)
-      .where(eq(branches.id, draft.branchId));
-    expect(draftBranch.headCommitId).toBe(block.commitId);
+      .where(eq(branches.id, draft.branch.id));
+    expect(draftBranch.headCommitId).toBe(block.commit.id);
 
     // Main branch head should remain at the original commit
     const [mainBranch] = await db
       .select()
       .from(branches)
       .where(eq(branches.id, root.branchId));
-    expect(mainBranch.headCommitId).toBe(root.commitId);
+    expect(mainBranch.headCommitId).toBe(root.commit.id);
   });
 });
 
@@ -309,7 +309,7 @@ describe('getBranch', () => {
     expect(branch.id).toBe(root.branchId);
     expect(branch.rootId).toBe(root.rootId);
     expect(branch.name).toBe('main');
-    expect(branch.headCommitId).toBe(root.commitId);
+    expect(branch.headCommitId).toBe(root.commit.id);
     expect(branch.createdBy).toBeNull();
     expect(branch.createdAt).toBeInstanceOf(Date);
     expect(branch.updatedAt).toBeInstanceOf(Date);
@@ -332,7 +332,7 @@ describe('getBranch', () => {
     });
 
     const branch = await cms.api.pages.getBranch({
-      query: { branchId: draft.branchId },
+      query: { branchId: draft.branch.id },
     });
 
     expect(branch.isDeletable).toBe(true);
@@ -355,13 +355,13 @@ describe('getBranch', () => {
 
     await db.insert(publications).values({
       rootId: root.rootId,
-      branchId: draft.branchId,
-      commitId: draft.headCommitId,
+      branchId: draft.branch.id,
+      commitId: draft.branch.headCommitId,
       publishedBy: 'user-1',
     });
 
     const branch = await cms.api.pages.getBranch({
-      query: { branchId: draft.branchId },
+      query: { branchId: draft.branch.id },
     });
 
     expect(branch.isDeletable).toBe(false);
@@ -540,8 +540,8 @@ describe('listBranches', () => {
 
     await db.insert(publications).values({
       rootId: root.rootId,
-      branchId: draft.branchId,
-      commitId: draft.headCommitId,
+      branchId: draft.branch.id,
+      commitId: draft.branch.headCommitId,
       publishedBy: 'user-1',
     });
 
@@ -550,7 +550,7 @@ describe('listBranches', () => {
     });
 
     expect(result.branches).toHaveLength(1);
-    expect(result.branches[0].id).toBe(draft.branchId);
+    expect(result.branches[0].id).toBe(draft.branch.id);
   });
 
   it('returns hasPublications per branch', async () => {
@@ -569,8 +569,8 @@ describe('listBranches', () => {
 
     await db.insert(publications).values({
       rootId: root.rootId,
-      branchId: draft.branchId,
-      commitId: draft.headCommitId,
+      branchId: draft.branch.id,
+      commitId: draft.branch.headCommitId,
       publishedBy: 'user-1',
     });
 
@@ -579,7 +579,7 @@ describe('listBranches', () => {
     });
 
     const byId = new Map(result.branches.map((b) => [b.id, b.hasPublications]));
-    expect(byId.get(draft.branchId)).toBe(true);
+    expect(byId.get(draft.branch.id)).toBe(true);
     expect(byId.get(root.branchId)).toBe(false);
   });
 
@@ -600,10 +600,10 @@ describe('listBranches', () => {
 
     await db.insert(mergeRequests).values({
       rootId: root.rootId,
-      sourceBranchId: draft.branchId,
+      sourceBranchId: draft.branch.id,
       targetBranchId: root.branchId,
-      sourceCommitId: draft.headCommitId,
-      baseCommitId: root.commitId,
+      sourceCommitId: draft.branch.headCommitId,
+      baseCommitId: root.commit.id,
       status: 'open',
       createdBy: 'user-1',
     });
@@ -614,7 +614,7 @@ describe('listBranches', () => {
 
     expect(result.branches).toHaveLength(2);
     expect(result.branches.map((b) => b.id).sort()).toEqual(
-      [draft.branchId, root.branchId].sort(),
+      [draft.branch.id, root.branchId].sort(),
     );
   });
 
@@ -635,8 +635,8 @@ describe('listBranches', () => {
 
     await db.insert(publications).values({
       rootId: root.rootId,
-      branchId: draft.branchId,
-      commitId: draft.headCommitId,
+      branchId: draft.branch.id,
+      commitId: draft.branch.headCommitId,
       publishedBy: 'user-1',
     });
 
@@ -665,11 +665,11 @@ describe('renameBranch', () => {
     });
 
     const updated = await cms.api.pages.renameBranch({
-      body: { branchId: draft.branchId, newName: 'review' },
+      body: { branchId: draft.branch.id, newName: 'review' },
     });
 
-    expect(updated.id).toBe(draft.branchId);
-    expect(updated.name).toBe('review');
+    expect(updated.branch.id).toBe(draft.branch.id);
+    expect(updated.branch.name).toBe('review');
   });
 
   it('rejects renaming the main branch', async () => {
@@ -711,7 +711,7 @@ describe('renameBranch', () => {
 
     await expect(
       cms.api.pages.renameBranch({
-        body: { branchId: feature.branchId, newName: 'draft' },
+        body: { branchId: feature.branch.id, newName: 'draft' },
       }),
     ).rejects.toThrow(/A branch with this name already exists/);
   });
@@ -744,10 +744,10 @@ describe('deleteBranch', () => {
     });
 
     const result = await cms.api.pages.deleteBranch({
-      body: { branchId: draft.branchId },
+      body: { branchId: draft.branch.id },
     });
 
-    expect(result.branchId).toBe(draft.branchId);
+    expect(result.branchId).toBe(draft.branch.id);
 
     const remaining = await cms.api.pages.listBranches({
       query: { rootId: root.rootId },
@@ -785,13 +785,13 @@ describe('deleteBranch', () => {
 
     await db.insert(publications).values({
       rootId: root.rootId,
-      branchId: draft.branchId,
-      commitId: draft.headCommitId,
+      branchId: draft.branch.id,
+      commitId: draft.branch.headCommitId,
       publishedBy: 'user-1',
     });
 
     await expect(
-      cms.api.pages.deleteBranch({ body: { branchId: draft.branchId } }),
+      cms.api.pages.deleteBranch({ body: { branchId: draft.branch.id } }),
     ).rejects.toThrow(/Cannot delete a branch that has active publications/);
   });
 
@@ -812,15 +812,15 @@ describe('deleteBranch', () => {
 
     await db.insert(mergeRequests).values({
       rootId: root.rootId,
-      sourceBranchId: draft.branchId,
+      sourceBranchId: draft.branch.id,
       targetBranchId: root.branchId,
-      sourceCommitId: draft.headCommitId,
+      sourceCommitId: draft.branch.headCommitId,
       status: 'open',
       createdBy: 'user-1',
     });
 
     await expect(
-      cms.api.pages.deleteBranch({ body: { branchId: draft.branchId } }),
+      cms.api.pages.deleteBranch({ body: { branchId: draft.branch.id } }),
     ).rejects.toThrow(
       /Cannot delete a branch that is part of open merge requests/,
     );
@@ -852,11 +852,11 @@ describe('checkDivergence', () => {
     });
 
     const result = await cms.api.pages.checkDivergence({
-      body: { sourceBranchId: draft.branchId, targetBranchId: root.branchId },
+      query: { sourceBranchId: draft.branch.id, targetBranchId: root.branchId },
     });
 
     expect(result.hasCommonAncestor).toBe(true);
-    expect(result.commonAncestorCommitId).toBe(root.commitId);
+    expect(result.commonAncestorCommitId).toBe(root.commit.id);
     expect(result.sourceAhead).toBe(0);
     expect(result.targetAhead).toBe(0);
     expect(result.canFastForward).toBe(true);
@@ -880,7 +880,7 @@ describe('checkDivergence', () => {
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'Change 1' },
@@ -890,7 +890,7 @@ describe('checkDivergence', () => {
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'Change 2' },
@@ -898,11 +898,11 @@ describe('checkDivergence', () => {
     });
 
     const result = await cms.api.pages.checkDivergence({
-      body: { sourceBranchId: draft.branchId, targetBranchId: root.branchId },
+      query: { sourceBranchId: draft.branch.id, targetBranchId: root.branchId },
     });
 
     expect(result.hasCommonAncestor).toBe(true);
-    expect(result.commonAncestorCommitId).toBe(root.commitId);
+    expect(result.commonAncestorCommitId).toBe(root.commit.id);
     expect(result.sourceAhead).toBe(2);
     expect(result.targetAhead).toBe(0);
     expect(result.canFastForward).toBe(true);
@@ -927,7 +927,7 @@ describe('checkDivergence', () => {
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'Draft 1' },
@@ -937,7 +937,7 @@ describe('checkDivergence', () => {
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'Draft 2' },
@@ -956,11 +956,11 @@ describe('checkDivergence', () => {
     });
 
     const result = await cms.api.pages.checkDivergence({
-      body: { sourceBranchId: draft.branchId, targetBranchId: root.branchId },
+      query: { sourceBranchId: draft.branch.id, targetBranchId: root.branchId },
     });
 
     expect(result.hasCommonAncestor).toBe(true);
-    expect(result.commonAncestorCommitId).toBe(root.commitId);
+    expect(result.commonAncestorCommitId).toBe(root.commit.id);
     expect(result.sourceAhead).toBe(2);
     expect(result.targetAhead).toBe(1);
     expect(result.canFastForward).toBe(false);
@@ -975,7 +975,7 @@ describe('checkDivergence', () => {
 
     await expect(
       cms.api.pages.checkDivergence({
-        body: { sourceBranchId: 'nonexistent', targetBranchId: root.branchId },
+        query: { sourceBranchId: 'nonexistent', targetBranchId: root.branchId },
       }),
     ).rejects.toThrow(/Branch not found/);
   });
@@ -1012,21 +1012,21 @@ describe('revertBranch', () => {
     const result = await cms.api.pages.revertBranch({
       body: {
         branchId: root.branchId,
-        targetCommitId: first.commitId,
+        targetCommitId: first.commit.id,
         message: 'Revert to first child only',
         createdBy: 'user-1',
       },
     });
 
-    expect(result.newCommitId).not.toBe(first.commitId);
-    expect(result.newCommitId).not.toBe(second.commitId);
+    expect(result.commit.id).not.toBe(first.commit.id);
+    expect(result.commit.id).not.toBe(second.commit.id);
 
     const [newCommit] = await db
       .select()
       .from(commits)
-      .where(eq(commits.id, result.newCommitId));
+      .where(eq(commits.id, result.commit.id));
 
-    expect(newCommit.parentCommitId).toBe(second.commitId);
+    expect(newCommit.parentCommitId).toBe(second.commit.id);
     expect(newCommit.message).toBe('Revert to first child only');
     expect(newCommit.createdBy).toBe('user-1');
 
@@ -1035,7 +1035,7 @@ describe('revertBranch', () => {
       .from(branches)
       .where(eq(branches.id, root.branchId));
 
-    expect(branch.headCommitId).toBe(result.newCommitId);
+    expect(branch.headCommitId).toBe(result.commit.id);
 
     const latest = await cms.api.pages.getBlockTree({
       query: { rootId: root.rootId, branchId: root.branchId },
@@ -1075,10 +1075,10 @@ describe('revertBranch', () => {
 
     await db
       .delete(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, first.commitId));
+      .where(eq(commitSnapshots.commitId, first.commit.id));
 
     const result = await cms.api.pages.revertBranch({
-      body: { branchId: root.branchId, targetCommitId: first.commitId },
+      body: { branchId: root.branchId, targetCommitId: first.commit.id },
     });
 
     const latest = await cms.api.pages.getBlockTree({
@@ -1091,7 +1091,7 @@ describe('revertBranch', () => {
     const newSnapshots = await db
       .select()
       .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, result.newCommitId));
+      .where(eq(commitSnapshots.commitId, result.commit.id));
 
     expect(newSnapshots.length).toBeGreaterThan(0);
   });
@@ -1122,7 +1122,7 @@ describe('revertBranch', () => {
 
     await expect(
       cms.api.pages.revertBranch({
-        body: { branchId: rootA.branchId, targetCommitId: rootB.commitId },
+        body: { branchId: rootA.branchId, targetCommitId: rootB.commit.id },
       }),
     ).rejects.toThrow(/Commit not found/);
   });
@@ -1140,19 +1140,19 @@ describe('getRootHistory', () => {
       query: { rootId: root.rootId },
     });
 
-    expect(result.data).toHaveLength(1);
+    expect(result.commits).toHaveLength(1);
     expect(result.total).toBe(1);
-    expect(result.offset).toBe(0);
-    expect(result.limit).toBe(50);
+    expect(result.hasMore).toBe(false);
 
-    const commit = result.data[0];
-    expect(commit.id).toBe(root.commitId);
+    const commit = result.commits[0];
+    expect(commit.id).toBe(root.commit.id);
     expect(commit.message).toBe('Initial commit');
     expect(commit.type).toBe('initial');
     expect(commit.parents).toEqual([]);
     expect(commit.branch).toBe('main');
     expect(commit.isPublished).toBe(false);
-    expect(commit.createdAt).toBeDefined();
+    // createdAt is a Date, like every other list endpoint (ret-15), not an ISO string.
+    expect(commit.createdAt).toBeInstanceOf(Date);
   });
 
   it('returns commits in reverse chronological order', async () => {
@@ -1186,18 +1186,18 @@ describe('getRootHistory', () => {
       query: { rootId: root.rootId },
     });
 
-    expect(result.data).toHaveLength(3);
-    expect(result.data[0].id).toBe(block2.commitId);
-    expect(result.data[1].id).toBe(block1.commitId);
-    expect(result.data[2].id).toBe(root.commitId);
+    expect(result.commits).toHaveLength(3);
+    expect(result.commits[0].id).toBe(block2.commit.id);
+    expect(result.commits[1].id).toBe(block1.commit.id);
+    expect(result.commits[2].id).toBe(root.commit.id);
 
-    expect(result.data[0].type).toBe('commit');
-    expect(result.data[1].type).toBe('commit');
-    expect(result.data[2].type).toBe('initial');
+    expect(result.commits[0].type).toBe('commit');
+    expect(result.commits[1].type).toBe('commit');
+    expect(result.commits[2].type).toBe('initial');
 
-    expect(result.data[0].parents).toEqual([block1.commitId]);
-    expect(result.data[1].parents).toEqual([root.commitId]);
-    expect(result.data[2].parents).toEqual([]);
+    expect(result.commits[0].parents).toEqual([block1.commit.id]);
+    expect(result.commits[1].parents).toEqual([root.commit.id]);
+    expect(result.commits[2].parents).toEqual([]);
   });
 
   it('labels commits with the correct branch name', async () => {
@@ -1218,7 +1218,7 @@ describe('getRootHistory', () => {
     const draftBlock = await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'Draft content' },
@@ -1239,11 +1239,11 @@ describe('getRootHistory', () => {
       query: { rootId: root.rootId },
     });
 
-    expect(result.data).toHaveLength(3);
+    expect(result.commits).toHaveLength(3);
 
-    const draftCommit = result.data.find((c) => c.id === draftBlock.commitId);
-    const mainCommit = result.data.find((c) => c.id === mainBlock.commitId);
-    const initialCommit = result.data.find((c) => c.id === root.commitId);
+    const draftCommit = result.commits.find((c) => c.id === draftBlock.commit.id);
+    const mainCommit = result.commits.find((c) => c.id === mainBlock.commit.id);
+    const initialCommit = result.commits.find((c) => c.id === root.commit.id);
 
     expect(draftCommit!.branch).toBe('draft');
     expect(mainCommit!.branch).toBe('main');
@@ -1279,7 +1279,7 @@ describe('getRootHistory', () => {
     await cms.api.pages.updateBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         blockId: blockA.blockId,
         type: 'paragraph',
         properties: { text: 'Block A (draft)' },
@@ -1299,18 +1299,18 @@ describe('getRootHistory', () => {
 
     const mr = await cms.api.pages.createMergeRequest({
       body: {
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         title: 'Test MR',
         createdBy: 'user-1',
       },
     });
 
-    await requestAndApproveMerge(cms, mr.mergeRequestId);
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
 
     const mergeResult = await cms.api.pages.executeMerge({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         mergedBy: 'user-1',
       },
     });
@@ -1319,9 +1319,9 @@ describe('getRootHistory', () => {
       query: { rootId: root.rootId },
     });
 
-    if (mergeResult.mergeCommitId) {
-      const mergeCommit = result.data.find(
-        (c) => c.id === mergeResult.mergeCommitId,
+    if (mergeResult.commit.id) {
+      const mergeCommit = result.commits.find(
+        (c) => c.id === mergeResult.commit.id,
       );
       expect(mergeCommit).toBeDefined();
       expect(mergeCommit!.type).toBe('merge');
@@ -1349,7 +1349,7 @@ describe('getRootHistory', () => {
     await db.insert(publications).values({
       rootId: root.rootId,
       branchId: root.branchId,
-      commitId: root.commitId,
+      commitId: root.commit.id,
       publishedBy: 'user-1',
     });
 
@@ -1357,8 +1357,8 @@ describe('getRootHistory', () => {
       query: { rootId: root.rootId },
     });
 
-    const publishedCommit = result.data.find((c) => c.id === root.commitId);
-    const unpublishedCommit = result.data.find((c) => c.id !== root.commitId);
+    const publishedCommit = result.commits.find((c) => c.id === root.commit.id);
+    const unpublishedCommit = result.commits.find((c) => c.id !== root.commit.id);
 
     expect(publishedCommit!.isPublished).toBe(true);
     expect(unpublishedCommit!.isPublished).toBe(false);
@@ -1395,23 +1395,21 @@ describe('getRootHistory', () => {
       query: { rootId: root.rootId, limit: 2, offset: 0 },
     });
 
-    expect(page1.data).toHaveLength(2);
+    expect(page1.commits).toHaveLength(2);
     expect(page1.total).toBe(3);
-    expect(page1.offset).toBe(0);
-    expect(page1.limit).toBe(2);
+    expect(page1.hasMore).toBe(true);
 
     const page2 = await cms.api.pages.getRootHistory({
       query: { rootId: root.rootId, limit: 2, offset: 2 },
     });
 
-    expect(page2.data).toHaveLength(1);
+    expect(page2.commits).toHaveLength(1);
     expect(page2.total).toBe(3);
-    expect(page2.offset).toBe(2);
-    expect(page2.limit).toBe(2);
+    expect(page2.hasMore).toBe(false);
 
     // No overlap between pages
-    const page1Ids = page1.data.map((c) => c.id);
-    const page2Ids = page2.data.map((c) => c.id);
+    const page1Ids = page1.commits.map((c) => c.id);
+    const page2Ids = page2.commits.map((c) => c.id);
     expect(page1Ids.filter((id) => page2Ids.includes(id))).toHaveLength(0);
   });
 
@@ -1467,8 +1465,8 @@ describe('getRootHistory', () => {
     expect(resultA.total).toBe(2);
     expect(resultB.total).toBe(2);
 
-    const allAIds = resultA.data.map((c) => c.id);
-    const allBIds = resultB.data.map((c) => c.id);
+    const allAIds = resultA.commits.map((c) => c.id);
+    const allBIds = resultB.commits.map((c) => c.id);
     expect(allAIds.filter((id) => allBIds.includes(id))).toHaveLength(0);
   });
 });

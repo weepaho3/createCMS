@@ -45,7 +45,7 @@ Creates a new entry. `POST`, input via `body`.
 | `parentRootId` | `string` | no | | Parent entry for nesting. |
 | `message` | `string` | no | `'Initial commit'` | Commit message. |
 
-Returns `{ rootId, branchId, commitId }`.
+Returns `{ commit, rootId, branchId, slug, path }`. `commit` is the new head as `{ id, message, createdAt, createdBy }` — every commit-producing mutation returns this envelope. `slug` and `path` are the server-normalized values (`path` is present for slug-enabled collections).
 
 ```ts
 const { rootId } = await cms.api.pages.createRoot({
@@ -83,7 +83,7 @@ Adds a block under a parent. `POST`, input via `body`.
 | `position` | `number` | no | Insert position (defaults to append). |
 | `message` | `string` | no | Commit message. |
 
-Returns `{ commitId, blockId }`.
+Returns `{ commit, blockId }` (`commit` is the new-head envelope; see `createRoot`).
 
 ### `updateBlock`
 
@@ -98,7 +98,7 @@ Updates a block with patch semantics: supplied fields overwrite, omitted fields 
 | `properties` | partial block properties | yes | Fields to change. |
 | `message` | `string` | no | Commit message. |
 
-Returns `{ commitId }`.
+Returns `{ commit }` (the new-head envelope; see `createRoot`).
 
 ### `getPublishedContent`
 
@@ -148,7 +148,7 @@ Creates a branch from an existing one, copying its head commit. `POST`, input vi
 | `sourceBranchId` | `string` | yes | Branch to copy the head commit from. |
 | `createdBy` | `string` | no | Actor (defaults to the request user). |
 
-Returns `{ branchId, headCommitId }`.
+Returns `{ branch, isDeletable }` — the full new branch row (same shape as a `listBranches`/`renameBranch` row) plus `isDeletable: true`.
 
 ### `getBranch`
 
@@ -172,7 +172,7 @@ Publishes a branch as the live content of an entry. `POST`, input via `body`.
 | `branchId` | `string` | yes | The branch to publish. |
 | `publishedBy` | `string` | no | Fallback actor, used only when the request has no user. The request user takes precedence. |
 
-Returns `{ rootId, branchId, commitId, publishedBy, publishedAt }`.
+Returns `{ publication }`, the publication row (`rootId`, `branchId`, `commitId`, `publishedBy`, `publishedAt`) plus `branchName`.
 
 ## Admin methods
 

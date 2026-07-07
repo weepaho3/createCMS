@@ -60,7 +60,7 @@ describe('multiTenant — root isolation', () => {
         message: 'Duplicate root',
       },
     });
-    expect(dup.commitId).toBeDefined();
+    expect(dup.commit.id).toBeDefined();
 
     // Both roots should be visible to the same tenant
     const roots = await cms.api.pages.listRoots();
@@ -248,7 +248,7 @@ describe('multiTenant — list endpoints do not leak across tenants', () => {
     });
     await cms.api.pages.createMergeRequest({
       body: {
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: acme.branchId,
         title: 'Acme MR',
         createdBy: 'acme-user',
@@ -948,7 +948,7 @@ describe('multiTenant — block CRUD within tenant roots', () => {
         properties: { text: 'Hello from Acme' },
       },
     });
-    expect(block.commitId).toBeDefined();
+    expect(block.commit.id).toBeDefined();
 
     const tree = await cms.api.pages.getBlockTree({
       query: { rootId: root.rootId, branchId: root.branchId },
@@ -1306,7 +1306,7 @@ describe('multiTenant — variables are per-tenant', () => {
     });
 
     setTenant('acme');
-    const acme = await cms.api.variables.listVariables({});
+    const acme = await cms.api.variables.listVariables({ query: {} });
     expect(acme.variables).toHaveLength(1);
     expect(acme.variables[0].value).toBe('Acme Inc');
 

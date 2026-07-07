@@ -362,7 +362,7 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
      * Approve a pending approval request.
      * @param approvalId The approval to approve.
      * @param reviewedBy User id of the reviewer approving the request.
-     * @returns The approved approval record.
+     * @returns Object containing the approved approval record under the `approval` key.
      * @throws APPROVAL_NOT_FOUND If the approval does not exist or is not accessible.
      * @throws APPROVAL_NOT_PENDING If the approval is not in pending status.
      * @throws APPROVAL_REVIEWER_MISMATCH If the reviewer is not the requested reviewer for this approval.
@@ -490,7 +490,7 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
               });
             }
 
-            return mapApproval(updated);
+            return { approval: mapApproval(updated) };
           })
           .then((result) => {
             flushNotifications(cmsCtx.notificationService, pending);
@@ -504,7 +504,7 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
      * @param approvalId The approval to reject.
      * @param reviewedBy User id of the reviewer rejecting the request.
      * @param rejectionReason Optional reason for the rejection.
-     * @returns The rejected approval record.
+     * @returns Object containing the rejected approval record under the `approval` key.
      * @throws APPROVAL_NOT_FOUND If the approval does not exist or is not accessible.
      * @throws APPROVAL_NOT_PENDING If the approval is not in pending status.
      * @throws APPROVAL_REVIEWER_MISMATCH If the reviewer is not the requested reviewer for this approval.
@@ -635,7 +635,7 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
               });
             }
 
-            return mapApproval(updated);
+            return { approval: mapApproval(updated) };
           })
           .then((result) => {
             flushNotifications(cmsCtx.notificationService, pending);

@@ -150,7 +150,7 @@ describe('Variable CRUD endpoints', () => {
     expect(created.key).toBe('brandName');
     expect(created.value).toBe('Toerbo');
 
-    const { variables: allVars } = await cms.api.variables.listVariables({});
+    const { variables: allVars } = await cms.api.variables.listVariables({ query: {} });
     expect(allVars).toHaveLength(1);
     expect(allVars[0].key).toBe('brandName');
 
@@ -165,9 +165,9 @@ describe('Variable CRUD endpoints', () => {
     expect(updated.value).toBe('NewBrand');
 
     await cms.api.variables.deleteVariable({ body: { key: 'brandName' } });
-    const { variables: afterDelete } = await cms.api.variables.listVariables(
-      {},
-    );
+    const { variables: afterDelete } = await cms.api.variables.listVariables({
+      query: {},
+    });
     expect(afterDelete).toHaveLength(0);
   });
 
@@ -257,7 +257,7 @@ describe('Variable substitution in getBlockTree', () => {
       },
     });
 
-    expect(tree.properties.title).toBe('Toerbo Home');
+    expect((tree.properties as { title?: unknown }).title).toBe('Toerbo Home');
   });
 
   it('returns raw variables when raw=true', async () => {
@@ -282,7 +282,9 @@ describe('Variable substitution in getBlockTree', () => {
       },
     });
 
-    expect(tree.properties.title).toBe('{{brandName}} Home');
+    expect((tree.properties as { title?: unknown }).title).toBe(
+      '{{brandName}} Home',
+    );
   });
 });
 
@@ -517,7 +519,7 @@ describe('Variable description', () => {
       },
     });
 
-    const { variables: allVars } = await cms.api.variables.listVariables({});
+    const { variables: allVars } = await cms.api.variables.listVariables({ query: {} });
     expect(allVars[0].description).toBe('Brand name');
 
     const { variable } = await cms.api.variables.getVariable({

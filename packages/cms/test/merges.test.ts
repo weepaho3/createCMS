@@ -36,16 +36,16 @@ describe('getDiff', () => {
     });
 
     const result = await cms.api.pages.getDiff({
-      body: {
-        sourceBranchId: draft.branchId,
+      query: {
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
       },
     });
 
     expect(result.diff).toEqual([]);
-    expect(result.sourceCommitId).toBe(root.commitId);
-    expect(result.targetCommitId).toBe(root.commitId);
-    expect(result.commonAncestorCommitId).toBe(root.commitId);
+    expect(result.sourceCommitId).toBe(root.commit.id);
+    expect(result.targetCommitId).toBe(root.commit.id);
+    expect(result.commonAncestorCommitId).toBe(root.commit.id);
   });
 
   it('detects an added block', async () => {
@@ -66,7 +66,7 @@ describe('getDiff', () => {
     const block = await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'New paragraph' },
@@ -74,8 +74,8 @@ describe('getDiff', () => {
     });
 
     const result = await cms.api.pages.getDiff({
-      body: {
-        sourceBranchId: draft.branchId,
+      query: {
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
       },
     });
@@ -117,14 +117,14 @@ describe('getDiff', () => {
     await cms.api.pages.deleteBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         blockId: block.blockId,
       },
     });
 
     const result = await cms.api.pages.getDiff({
-      body: {
-        sourceBranchId: draft.branchId,
+      query: {
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
       },
     });
@@ -166,7 +166,7 @@ describe('getDiff', () => {
     await cms.api.pages.updateBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         blockId: block.blockId,
         type: 'paragraph',
         properties: { text: 'Updated' },
@@ -174,8 +174,8 @@ describe('getDiff', () => {
     });
 
     const result = await cms.api.pages.getDiff({
-      body: {
-        sourceBranchId: draft.branchId,
+      query: {
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
       },
     });
@@ -239,7 +239,7 @@ describe('getDiff', () => {
     await cms.api.pages.moveBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         blockId: child.blockId,
         newParentBlockId: containerB.blockId,
         newIndex: 0,
@@ -247,8 +247,8 @@ describe('getDiff', () => {
     });
 
     const result = await cms.api.pages.getDiff({
-      body: {
-        sourceBranchId: draft.branchId,
+      query: {
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
       },
     });
@@ -304,7 +304,7 @@ describe('getDiff', () => {
     await cms.api.pages.moveBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         blockId: blockB.blockId,
         newParentBlockId: root.rootId,
         newIndex: 0,
@@ -312,8 +312,8 @@ describe('getDiff', () => {
     });
 
     const result = await cms.api.pages.getDiff({
-      body: {
-        sourceBranchId: draft.branchId,
+      query: {
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
       },
     });
@@ -369,7 +369,7 @@ describe('getDiff', () => {
     await cms.api.pages.updateRoot({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         slug: '/p',
         properties: { title: 'Updated Title' },
       },
@@ -378,7 +378,7 @@ describe('getDiff', () => {
     await cms.api.pages.moveBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         blockId: blockA.blockId,
         newParentBlockId: root.rootId,
         newIndex: 1,
@@ -386,8 +386,8 @@ describe('getDiff', () => {
     });
 
     const result = await cms.api.pages.getDiff({
-      body: {
-        sourceBranchId: draft.branchId,
+      query: {
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
       },
     });
@@ -407,7 +407,7 @@ describe('getDiff', () => {
 
     await expect(
       cms.api.pages.getDiff({
-        body: {
+        query: {
           sourceBranchId: 'nonexistent',
           targetBranchId: root.branchId,
         },
@@ -449,7 +449,7 @@ describe('checkConflicts', () => {
     await cms.api.pages.updateBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         blockId: block.blockId,
         type: 'paragraph',
         properties: { text: 'Source change' },
@@ -457,8 +457,8 @@ describe('checkConflicts', () => {
     });
 
     const result = await cms.api.pages.checkConflicts({
-      body: {
-        sourceBranchId: draft.branchId,
+      query: {
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
       },
     });
@@ -504,8 +504,8 @@ describe('checkConflicts', () => {
     });
 
     const result = await cms.api.pages.checkConflicts({
-      body: {
-        sourceBranchId: draft.branchId,
+      query: {
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
       },
     });
@@ -542,7 +542,7 @@ describe('checkConflicts', () => {
     await cms.api.pages.updateBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         blockId: block.blockId,
         type: 'paragraph',
         properties: { text: 'Source version' },
@@ -560,8 +560,8 @@ describe('checkConflicts', () => {
     });
 
     const result = await cms.api.pages.checkConflicts({
-      body: {
-        sourceBranchId: draft.branchId,
+      query: {
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
       },
     });
@@ -589,8 +589,8 @@ describe('checkConflicts', () => {
     });
 
     const result = await cms.api.pages.checkConflicts({
-      body: {
-        sourceBranchId: draft.branchId,
+      query: {
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
       },
     });
@@ -607,7 +607,7 @@ describe('checkConflicts', () => {
 
     await expect(
       cms.api.pages.checkConflicts({
-        body: {
+        query: {
           sourceBranchId: 'nonexistent',
           targetBranchId: root.branchId,
         },
@@ -639,7 +639,7 @@ describe('createMergeRequest', () => {
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'New block' },
@@ -648,24 +648,24 @@ describe('createMergeRequest', () => {
 
     const result = await cms.api.pages.createMergeRequest({
       body: {
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         title: 'Add paragraph',
         createdBy: 'user-1',
       },
     });
 
-    expect(result.mergeRequestId).toBeDefined();
+    expect(result.mergeRequest.id).toBeDefined();
     expect(result.hasConflicts).toBe(false);
     expect(result.conflicts).toEqual([]);
 
     const [mr] = await db
       .select()
       .from(mergeRequests)
-      .where(eq(mergeRequests.id, result.mergeRequestId));
+      .where(eq(mergeRequests.id, result.mergeRequest.id));
 
     expect(mr.status).toBe('open');
-    expect(mr.sourceBranchId).toBe(draft.branchId);
+    expect(mr.sourceBranchId).toBe(draft.branch.id);
     expect(mr.targetBranchId).toBe(root.branchId);
     expect(mr.title).toBe('Add paragraph');
     expect(mr.createdBy).toBe('user-1');
@@ -690,7 +690,7 @@ describe('createMergeRequest', () => {
 
     const result = await cms.api.pages.createMergeRequest({
       body: {
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         title: 'Middleware actor MR',
       },
@@ -699,7 +699,7 @@ describe('createMergeRequest', () => {
     const [mr] = await db
       .select()
       .from(mergeRequests)
-      .where(eq(mergeRequests.id, result.mergeRequestId));
+      .where(eq(mergeRequests.id, result.mergeRequest.id));
 
     expect(mr.createdBy).toBe('middleware-user');
   });
@@ -732,7 +732,7 @@ describe('createMergeRequest', () => {
     await cms.api.pages.updateBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         blockId: block.blockId,
         type: 'paragraph',
         properties: { text: 'Source version' },
@@ -752,7 +752,7 @@ describe('createMergeRequest', () => {
     const result = await cms.api.pages.createMergeRequest({
       body: {
         title: 'Test MR',
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'user-1',
       },
@@ -762,7 +762,7 @@ describe('createMergeRequest', () => {
     expect(result.conflicts.length).toBeGreaterThanOrEqual(1);
 
     const conflictBlock = result.conflicts.find(
-      (c) => c.blockId === block.blockId,
+      (c: any) => c.blockId === block.blockId,
     );
     expect(conflictBlock).toBeDefined();
 
@@ -770,10 +770,10 @@ describe('createMergeRequest', () => {
     const dbConflicts = await db
       .select()
       .from(mergeConflicts)
-      .where(eq(mergeConflicts.mergeRequestId, result.mergeRequestId));
+      .where(eq(mergeConflicts.mergeRequestId, result.mergeRequest.id));
 
     expect(dbConflicts.length).toBeGreaterThanOrEqual(1);
-    const dbConflict = dbConflicts.find((c) => c.blockId === block.blockId);
+    const dbConflict = dbConflicts.find((c: any) => c.blockId === block.blockId);
     expect(dbConflict).toBeDefined();
     expect(dbConflict!.resolution).toBeNull();
   });
@@ -796,7 +796,7 @@ describe('createMergeRequest', () => {
     await cms.api.pages.createMergeRequest({
       body: {
         title: 'Test MR',
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'user-1',
       },
@@ -806,7 +806,7 @@ describe('createMergeRequest', () => {
       cms.api.pages.createMergeRequest({
         body: {
           title: 'Test MR',
-          sourceBranchId: draft.branchId,
+          sourceBranchId: draft.branch.id,
           targetBranchId: root.branchId,
           createdBy: 'user-1',
         },
@@ -835,7 +835,7 @@ describe('listMergeRequests', () => {
     });
     await cms.api.pages.createMergeRequest({
       body: {
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         title: 'MR for a doomed page',
         createdBy: 'user-1',
@@ -879,7 +879,7 @@ describe('listMergeRequests', () => {
 
     await cms.api.pages.createMergeRequest({
       body: {
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         title: 'Draft MR',
         createdBy: 'user-1',
@@ -888,7 +888,7 @@ describe('listMergeRequests', () => {
 
     await cms.api.pages.createMergeRequest({
       body: {
-        sourceBranchId: feature.branchId,
+        sourceBranchId: feature.branch.id,
         targetBranchId: root.branchId,
         title: 'Feature MR',
         createdBy: 'user-2',
@@ -938,7 +938,7 @@ describe('listMergeRequests', () => {
     await cms.api.pages.createMergeRequest({
       body: {
         title: 'Test MR',
-        sourceBranchId: draftA.branchId,
+        sourceBranchId: draftA.branch.id,
         targetBranchId: rootA.branchId,
         createdBy: 'user-1',
       },
@@ -946,7 +946,7 @@ describe('listMergeRequests', () => {
     await cms.api.pages.createMergeRequest({
       body: {
         title: 'Test MR',
-        sourceBranchId: draftB.branchId,
+        sourceBranchId: draftB.branch.id,
         targetBranchId: rootB.branchId,
         createdBy: 'user-2',
       },
@@ -980,7 +980,7 @@ describe('listMergeRequests', () => {
     const mr = await cms.api.pages.createMergeRequest({
       body: {
         title: 'Test MR',
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'user-1',
       },
@@ -989,7 +989,7 @@ describe('listMergeRequests', () => {
     await db
       .update(mergeRequests)
       .set({ status: 'closed' })
-      .where(eq(mergeRequests.id, mr.mergeRequestId));
+      .where(eq(mergeRequests.id, mr.mergeRequest.id));
 
     const result = await cms.api.pages.listMergeRequests({
       query: {
@@ -1018,7 +1018,7 @@ describe('listMergeRequests', () => {
 
     await cms.api.pages.createMergeRequest({
       body: {
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         title: 'Hero redesign',
         description: 'Updates the hero section',
@@ -1064,7 +1064,7 @@ describe('listMergeRequests', () => {
     await cms.api.pages.updateBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         blockId: block.blockId,
         type: 'paragraph',
         properties: { text: 'Source version' },
@@ -1084,7 +1084,7 @@ describe('listMergeRequests', () => {
     await cms.api.pages.createMergeRequest({
       body: {
         title: 'Test MR',
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'user-1',
       },
@@ -1113,13 +1113,13 @@ describe('listMergeRequests', () => {
       {
         collection: 'pages',
         targetType: 'mergeRequest',
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         createdBy: 'user-1',
       },
       {
         collection: 'pages',
         targetType: 'mergeRequest',
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         createdBy: 'user-1',
       },
     ]);
@@ -1127,7 +1127,7 @@ describe('listMergeRequests', () => {
     const result = await cms.api.pages.listMergeRequests({
       query: { rootId: root.rootId },
     });
-    const item = result.mergeRequests.find((m) => m.id === mr.mergeRequestId)!;
+    const item = result.mergeRequests.find((m) => m.id === mr.mergeRequest.id)!;
     expect(item.conflictCount).toBe(dbConflicts.length);
     expect(item.commentCount).toBe(2);
   });
@@ -1140,13 +1140,13 @@ describe('listMergeRequests', () => {
       {
         collection: 'pages',
         targetType: 'mergeRequest',
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         createdBy: 'user-1',
       },
       {
         collection: 'pages',
         targetType: 'mergeRequest',
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         createdBy: 'user-1',
         deletedAt: new Date(), // soft-deleted → must NOT be counted
       },
@@ -1155,7 +1155,7 @@ describe('listMergeRequests', () => {
     const result = await cms.api.pages.listMergeRequests({
       query: { rootId: root.rootId },
     });
-    const item = result.mergeRequests.find((m) => m.id === mr.mergeRequestId)!;
+    const item = result.mergeRequests.find((m) => m.id === mr.mergeRequest.id)!;
     expect(item.commentCount).toBe(1);
   });
 
@@ -1185,7 +1185,7 @@ describe('listMergeRequests', () => {
     await cms.api.pages.createMergeRequest({
       body: {
         title: 'Test MR',
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'alice',
       },
@@ -1194,7 +1194,7 @@ describe('listMergeRequests', () => {
     await cms.api.pages.createMergeRequest({
       body: {
         title: 'Test MR',
-        sourceBranchId: feature.branchId,
+        sourceBranchId: feature.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'bob',
       },
@@ -1202,14 +1202,14 @@ describe('listMergeRequests', () => {
 
     const result = await cms.api.pages.listMergeRequests({
       query: {
-        sourceBranchId: feature.branchId,
+        sourceBranchId: feature.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'bob',
       },
     });
 
     expect(result.mergeRequests).toHaveLength(1);
-    expect(result.mergeRequests[0].sourceBranchId).toBe(feature.branchId);
+    expect(result.mergeRequests[0].sourceBranchId).toBe(feature.branch.id);
     expect(result.mergeRequests[0].targetBranchId).toBe(root.branchId);
     expect(result.mergeRequests[0].createdBy).toBe('bob');
     expect(result.total).toBe(1);
@@ -1235,7 +1235,7 @@ describe('listMergeRequests', () => {
       await cms.api.pages.createMergeRequest({
         body: {
           title: 'Test MR',
-          sourceBranchId: branch.branchId,
+          sourceBranchId: branch.branch.id,
           targetBranchId: root.branchId,
           createdBy: `user-${index + 1}`,
         },
@@ -1282,7 +1282,7 @@ describe('listMergeRequests', () => {
 
     await cms.api.pages.createMergeRequest({
       body: {
-        sourceBranchId: feature.branchId,
+        sourceBranchId: feature.branch.id,
         targetBranchId: root.branchId,
         title: 'Root enrichment test',
         createdBy: 'user-1',
@@ -1296,13 +1296,13 @@ describe('listMergeRequests', () => {
     expect(result.mergeRequests).toHaveLength(1);
     const mr = result.mergeRequests[0];
     expect(mr.root).toBeDefined();
-    expect(mr.root.rootId).toBe(root.rootId);
-    expect(mr.root.slug).toBe('with-root');
-    expect(mr.root.properties).toEqual(
+    expect(mr.root!.rootId).toBe(root.rootId);
+    expect(mr.root!.slug).toBe('with-root');
+    expect(mr.root!.properties).toEqual(
       expect.objectContaining({ title: 'My Page' }),
     );
-    expect(typeof mr.root.hasPublications).toBe('boolean');
-    expect(mr.root.hasPublications).toBe(false);
+    expect(typeof mr.root!.hasPublications).toBe('boolean');
+    expect(mr.root!.hasPublications).toBe(false);
   });
 
   it('omits root enrichment when withRoot is not passed', async () => {
@@ -1322,7 +1322,7 @@ describe('listMergeRequests', () => {
 
     await cms.api.pages.createMergeRequest({
       body: {
-        sourceBranchId: feature.branchId,
+        sourceBranchId: feature.branch.id,
         targetBranchId: root.branchId,
         title: 'No root test',
         createdBy: 'user-1',
@@ -1361,7 +1361,7 @@ describe('updateMergeRequest', () => {
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: feature.branchId,
+        branchId: feature.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'New content' },
@@ -1370,7 +1370,7 @@ describe('updateMergeRequest', () => {
 
     const mr = await cms.api.pages.createMergeRequest({
       body: {
-        sourceBranchId: feature.branchId,
+        sourceBranchId: feature.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'user-1',
         title: 'Original title',
@@ -1380,16 +1380,16 @@ describe('updateMergeRequest', () => {
 
     const updated = await cms.api.pages.updateMergeRequest({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         title: 'Updated title',
         description: 'Updated description',
       },
     });
 
-    expect(updated.title).toBe('Updated title');
-    expect(updated.description).toBe('Updated description');
-    expect(updated.id).toBe(mr.mergeRequestId);
-    expect(updated.status).toBe('open');
+    expect(updated.mergeRequest.title).toBe('Updated title');
+    expect(updated.mergeRequest.description).toBe('Updated description');
+    expect(updated.mergeRequest.id).toBe(mr.mergeRequest.id);
+    expect(updated.mergeRequest.status).toBe('open');
   });
 
   it('allows partial updates — only title or only description', async () => {
@@ -1410,7 +1410,7 @@ describe('updateMergeRequest', () => {
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: feature.branchId,
+        branchId: feature.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'Content' },
@@ -1419,7 +1419,7 @@ describe('updateMergeRequest', () => {
 
     const mr = await cms.api.pages.createMergeRequest({
       body: {
-        sourceBranchId: feature.branchId,
+        sourceBranchId: feature.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'user-1',
         title: 'Original',
@@ -1429,13 +1429,13 @@ describe('updateMergeRequest', () => {
 
     const updated = await cms.api.pages.updateMergeRequest({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         title: 'New title only',
       },
     });
 
-    expect(updated.title).toBe('New title only');
-    expect(updated.description).toBe('Keep this');
+    expect(updated.mergeRequest.title).toBe('New title only');
+    expect(updated.mergeRequest.description).toBe('Keep this');
   });
 
   it('rejects updating a non-existent merge request', async () => {
@@ -1469,7 +1469,7 @@ describe('updateMergeRequest', () => {
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: feature.branchId,
+        branchId: feature.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'Content' },
@@ -1479,17 +1479,17 @@ describe('updateMergeRequest', () => {
     const mr = await cms.api.pages.createMergeRequest({
       body: {
         title: 'Test MR',
-        sourceBranchId: feature.branchId,
+        sourceBranchId: feature.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'user-1',
       },
     });
 
-    await requestAndApproveMerge(cms, mr.mergeRequestId);
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
 
     await cms.api.pages.executeMerge({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         mergedBy: 'user-1',
       },
     });
@@ -1497,7 +1497,7 @@ describe('updateMergeRequest', () => {
     await expect(
       cms.api.pages.updateMergeRequest({
         body: {
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           title: 'Too late',
         },
       }),
@@ -1531,7 +1531,7 @@ describe('executeMerge', () => {
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'New content' },
@@ -1541,7 +1541,7 @@ describe('executeMerge', () => {
     const mr = await cms.api.pages.createMergeRequest({
       body: {
         title: 'Test MR',
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'user-1',
       },
@@ -1549,7 +1549,7 @@ describe('executeMerge', () => {
 
     // No requestApproval / approve calls.
     const result = await cms.api.pages.executeMerge({
-      body: { mergeRequestId: mr.mergeRequestId },
+      body: { mergeRequestId: mr.mergeRequest.id },
     });
 
     expect(result.fastForward).toBe(true);
@@ -1557,7 +1557,7 @@ describe('executeMerge', () => {
     const [mergedMR] = await db
       .select()
       .from(mergeRequests)
-      .where(eq(mergeRequests.id, mr.mergeRequestId));
+      .where(eq(mergeRequests.id, mr.mergeRequest.id));
     expect(mergedMR.status).toBe('merged');
   });
 
@@ -1579,7 +1579,7 @@ describe('executeMerge', () => {
     const block = await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'New content' },
@@ -1589,22 +1589,22 @@ describe('executeMerge', () => {
     const mr = await cms.api.pages.createMergeRequest({
       body: {
         title: 'Test MR',
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'user-1',
       },
     });
 
-    await requestAndApproveMerge(cms, mr.mergeRequestId);
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
 
     const result = await cms.api.pages.executeMerge({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
       },
     });
 
     expect(result.fastForward).toBe(true);
-    expect(result.mergeCommitId).toBeNull();
+    expect(result.commit.id).toBeDefined();
 
     // Target branch head should now point to source branch head
     const [targetBranch] = await db
@@ -1615,7 +1615,7 @@ describe('executeMerge', () => {
     const [sourceBranch] = await db
       .select()
       .from(branches)
-      .where(eq(branches.id, draft.branchId));
+      .where(eq(branches.id, draft.branch.id));
 
     expect(targetBranch.headCommitId).toBe(sourceBranch.headCommitId);
 
@@ -1623,7 +1623,7 @@ describe('executeMerge', () => {
     const [mergedMR] = await db
       .select()
       .from(mergeRequests)
-      .where(eq(mergeRequests.id, mr.mergeRequestId));
+      .where(eq(mergeRequests.id, mr.mergeRequest.id));
 
     expect(mergedMR.status).toBe('merged');
   });
@@ -1667,7 +1667,7 @@ describe('executeMerge', () => {
     await cms.api.pages.updateBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         blockId: blockA.blockId,
         type: 'paragraph',
         properties: { text: 'Block A - source edit' },
@@ -1688,7 +1688,7 @@ describe('executeMerge', () => {
     const mr = await cms.api.pages.createMergeRequest({
       body: {
         title: 'Test MR',
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'user-1',
       },
@@ -1699,23 +1699,23 @@ describe('executeMerge', () => {
     expect(mr.hasConflicts).toBe(false);
     expect(mr.conflicts).toHaveLength(0);
 
-    await requestAndApproveMerge(cms, mr.mergeRequestId);
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
 
     const result = await cms.api.pages.executeMerge({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         mergedBy: 'user-1',
         message: 'Merge draft edits into main',
       },
     });
 
     expect(result.fastForward).toBe(false);
-    expect(result.mergeCommitId).toBeDefined();
+    expect(result.commit.id).toBeDefined();
 
     const [mergeCommit] = await db
       .select()
       .from(commits)
-      .where(eq(commits.id, result.mergeCommitId!));
+      .where(eq(commits.id, result.commit.id));
     expect(mergeCommit.message).toBe('Merge draft edits into main');
 
     // Target branch head should point to the merge commit
@@ -1724,19 +1724,19 @@ describe('executeMerge', () => {
       .from(branches)
       .where(eq(branches.id, root.branchId));
 
-    expect(targetBranch.headCommitId).toBe(result.mergeCommitId);
+    expect(targetBranch.headCommitId).toBe(result.commit.id);
 
     // The merged snapshot should contain the source edit for block A
     const [snapA] = await db
       .select({ blockVersionId: commitSnapshots.blockVersionId })
       .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, result.mergeCommitId!));
+      .where(eq(commitSnapshots.commitId, result.commit.id));
 
     // Verify the merge commit snapshot exists
     const allSnaps = await db
       .select()
       .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, result.mergeCommitId!));
+      .where(eq(commitSnapshots.commitId, result.commit.id));
 
     expect(allSnaps.length).toBeGreaterThan(0);
 
@@ -1774,7 +1774,7 @@ describe('executeMerge', () => {
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'New content' },
@@ -1784,7 +1784,7 @@ describe('executeMerge', () => {
     const mr = await cms.api.pages.createMergeRequest({
       body: {
         title: 'Test MR',
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'user-1',
       },
@@ -1793,7 +1793,7 @@ describe('executeMerge', () => {
     await expect(
       cms.api.pages.executeMerge({
         body: {
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
         },
       }),
     ).rejects.toThrow(/approval is required before execution/i);
@@ -1819,7 +1819,7 @@ describe('executeMerge', () => {
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'New content' },
@@ -1829,7 +1829,7 @@ describe('executeMerge', () => {
     const mr = await cms.api.pages.createMergeRequest({
       body: {
         title: 'Test MR',
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'user-1',
       },
@@ -1837,7 +1837,7 @@ describe('executeMerge', () => {
 
     const pendingRequest = await cms.api.pages.requestApproval({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         requestedBy: 'requester-1',
         requestedReviewers: ['reviewer-1', 'reviewer-2'],
       },
@@ -1853,7 +1853,7 @@ describe('executeMerge', () => {
     await expect(
       cms.api.pages.executeMerge({
         body: {
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
         },
       }),
     ).rejects.toThrow(/not all requested approvals are approved/i);
@@ -1869,7 +1869,7 @@ describe('executeMerge', () => {
     await expect(
       cms.api.pages.executeMerge({
         body: {
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
         },
       }),
     ).rejects.toThrow(/not all requested approvals are approved/i);
@@ -1903,7 +1903,7 @@ describe('executeMerge', () => {
     await cms.api.pages.updateBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         blockId: block.blockId,
         type: 'paragraph',
         properties: { text: 'Source version' },
@@ -1923,7 +1923,7 @@ describe('executeMerge', () => {
     const mr = await cms.api.pages.createMergeRequest({
       body: {
         title: 'Test MR',
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'user-1',
       },
@@ -1931,12 +1931,12 @@ describe('executeMerge', () => {
 
     expect(mr.hasConflicts).toBe(true);
 
-    await requestAndApproveMerge(cms, mr.mergeRequestId);
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
 
     await expect(
       cms.api.pages.executeMerge({
         body: {
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
         },
       }),
     ).rejects.toThrow(/Cannot merge: there are unresolved conflicts/);
@@ -1960,7 +1960,7 @@ describe('executeMerge', () => {
     const mr = await cms.api.pages.createMergeRequest({
       body: {
         title: 'Test MR',
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'user-1',
       },
@@ -1970,12 +1970,12 @@ describe('executeMerge', () => {
     await db
       .update(mergeRequests)
       .set({ status: 'closed' })
-      .where(eq(mergeRequests.id, mr.mergeRequestId));
+      .where(eq(mergeRequests.id, mr.mergeRequest.id));
 
     await expect(
       cms.api.pages.executeMerge({
         body: {
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
         },
       }),
     ).rejects.toThrow(/Merge request is not open/);
@@ -2011,7 +2011,7 @@ describe('executeMerge', () => {
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'First change' },
@@ -2021,7 +2021,7 @@ describe('executeMerge', () => {
     const mr = await cms.api.pages.createMergeRequest({
       body: {
         title: 'Test MR',
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'user-1',
       },
@@ -2031,18 +2031,18 @@ describe('executeMerge', () => {
     const laterBlock = await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'Second change (post-MR)' },
       },
     });
 
-    await requestAndApproveMerge(cms, mr.mergeRequestId);
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
 
     const result = await cms.api.pages.executeMerge({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         mergedBy: 'user-1',
       },
     });
@@ -2061,7 +2061,9 @@ describe('executeMerge', () => {
       (c: any) => c.blockId === laterBlock.blockId,
     );
     expect(laterChild).toBeDefined();
-    expect(laterChild!.properties.text).toBe('Second change (post-MR)');
+    expect((laterChild!.properties as { text: string }).text).toBe(
+      'Second change (post-MR)',
+    );
   });
 
   it('verifies merged snapshot contains correct block versions from both sides', async () => {
@@ -2115,7 +2117,7 @@ describe('executeMerge', () => {
     await cms.api.pages.updateBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         blockId: blockA.blockId,
         type: 'paragraph',
         properties: { text: 'A from source' },
@@ -2136,7 +2138,7 @@ describe('executeMerge', () => {
     const mr = await cms.api.pages.createMergeRequest({
       body: {
         title: 'Test MR',
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'user-1',
       },
@@ -2147,11 +2149,11 @@ describe('executeMerge', () => {
     expect(mr.hasConflicts).toBe(false);
     expect(mr.conflicts).toHaveLength(0);
 
-    await requestAndApproveMerge(cms, mr.mergeRequestId);
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
 
     const result = await cms.api.pages.executeMerge({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         mergedBy: 'user-1',
       },
     });
@@ -2162,7 +2164,7 @@ describe('executeMerge', () => {
     const snaps = await db
       .select()
       .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, result.mergeCommitId!));
+      .where(eq(commitSnapshots.commitId, result.commit.id));
 
     // Block A should have source's version
     const snapA = snaps.find((s) => s.blockId === blockA.blockId);
@@ -2216,7 +2218,7 @@ describe('executeMerge — merge strategy (fast-forward vs merge-commit)', () =>
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'New content' },
@@ -2225,7 +2227,7 @@ describe('executeMerge — merge strategy (fast-forward vs merge-commit)', () =>
     const mr = await cms.api.pages.createMergeRequest({
       body: {
         title: 'MR',
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'user-1',
       },
@@ -2237,20 +2239,20 @@ describe('executeMerge — merge strategy (fast-forward vs merge-commit)', () =>
     const { cms } = await setupTestCMS();
     const { mr } = await setupFastForwardable(cms);
     const result = await cms.api.pages.executeMerge({
-      body: { mergeRequestId: mr.mergeRequestId },
+      body: { mergeRequestId: mr.mergeRequest.id },
     });
     expect(result.fastForward).toBe(true);
-    expect(result.mergeCommitId).toBeNull();
+    expect(result.commit.id).toBeDefined();
   });
 
   it("mergeStrategy: 'merge-commit' forces a merge commit even when fast-forward is possible", async () => {
     const { cms, db } = await setupTestCMS({ mergeStrategy: 'merge-commit' });
     const { root, mr } = await setupFastForwardable(cms);
     const result = await cms.api.pages.executeMerge({
-      body: { mergeRequestId: mr.mergeRequestId },
+      body: { mergeRequestId: mr.mergeRequest.id },
     });
     expect(result.fastForward).toBe(false);
-    expect(result.mergeCommitId).not.toBeNull();
+    expect(result.commit.id).toBeDefined();
 
     // The target head advances to the merge commit, which records the source as
     // its merge parent — and the merged tree still carries the source's content.
@@ -2258,11 +2260,11 @@ describe('executeMerge — merge strategy (fast-forward vs merge-commit)', () =>
       .select()
       .from(branches)
       .where(eq(branches.id, root.branchId));
-    expect(target.headCommitId).toBe(result.mergeCommitId);
+    expect(target.headCommitId).toBe(result.commit.id);
     const [mergeCommit] = await db
       .select()
       .from(commits)
-      .where(eq(commits.id, result.mergeCommitId!));
+      .where(eq(commits.id, result.commit.id));
     expect(mergeCommit.mergeSourceCommitId).toBeTruthy();
 
     const tree = await cms.api.pages.getBlockTree({
@@ -2275,20 +2277,20 @@ describe('executeMerge — merge strategy (fast-forward vs merge-commit)', () =>
     const { cms } = await setupTestCMS();
     const { mr } = await setupFastForwardable(cms);
     const result = await cms.api.pages.executeMerge({
-      body: { mergeRequestId: mr.mergeRequestId, noFastForward: true },
+      body: { mergeRequestId: mr.mergeRequest.id, noFastForward: true },
     });
     expect(result.fastForward).toBe(false);
-    expect(result.mergeCommitId).not.toBeNull();
+    expect(result.commit.id).toBeDefined();
   });
 
   it('per-call noFastForward: false overrides mergeStrategy: merge-commit (forces fast-forward)', async () => {
     const { cms } = await setupTestCMS({ mergeStrategy: 'merge-commit' });
     const { mr } = await setupFastForwardable(cms);
     const result = await cms.api.pages.executeMerge({
-      body: { mergeRequestId: mr.mergeRequestId, noFastForward: false },
+      body: { mergeRequestId: mr.mergeRequest.id, noFastForward: false },
     });
     expect(result.fastForward).toBe(true);
-    expect(result.mergeCommitId).toBeNull();
+    expect(result.commit.id).toBeDefined();
   });
 
   it('nothing to merge stays a no-op fast-forward under merge-commit strategy (no empty commit)', async () => {
@@ -2307,7 +2309,7 @@ describe('executeMerge — merge strategy (fast-forward vs merge-commit)', () =>
     const mr = await cms.api.pages.createMergeRequest({
       body: {
         title: 'MR',
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'user-1',
       },
@@ -2316,10 +2318,10 @@ describe('executeMerge — merge strategy (fast-forward vs merge-commit)', () =>
     // Even with merge-commit strategy AND noFastForward, an empty merge must not
     // fabricate a commit — heads are already equal.
     const result = await cms.api.pages.executeMerge({
-      body: { mergeRequestId: mr.mergeRequestId, noFastForward: true },
+      body: { mergeRequestId: mr.mergeRequest.id, noFastForward: true },
     });
     expect(result.fastForward).toBe(true);
-    expect(result.mergeCommitId).toBeNull();
+    expect(result.commit.id).toBeDefined();
   });
 });
 
@@ -2340,7 +2342,7 @@ describe('cross-root validation', () => {
 
     await expect(
       cms.api.pages.getDiff({
-        body: {
+        query: {
           sourceBranchId: root1.branchId,
           targetBranchId: root2.branchId,
         },
@@ -2360,7 +2362,7 @@ describe('cross-root validation', () => {
 
     await expect(
       cms.api.pages.checkConflicts({
-        body: {
+        query: {
           sourceBranchId: root1.branchId,
           targetBranchId: root2.branchId,
         },
@@ -2424,7 +2426,7 @@ describe('delete-vs-modify conflicts', () => {
     await cms.api.pages.deleteBlock({
       body: {
         rootId: root.rootId,
-        branchId: feature.branchId,
+        branchId: feature.branch.id,
         blockId: block.blockId,
       },
     });
@@ -2440,8 +2442,8 @@ describe('delete-vs-modify conflicts', () => {
     });
 
     const result = await cms.api.pages.checkConflicts({
-      body: {
-        sourceBranchId: feature.branchId,
+      query: {
+        sourceBranchId: feature.branch.id,
         targetBranchId: root.branchId,
       },
     });
@@ -2486,7 +2488,7 @@ async function createConflictingMR(cms: any, db: any) {
   await cms.api.pages.updateBlock({
     body: {
       rootId: root.rootId,
-      branchId: feature.branchId,
+      branchId: feature.branch.id,
       blockId: block.blockId,
       type: 'paragraph',
       properties: { text: 'Source edit' },
@@ -2506,7 +2508,7 @@ async function createConflictingMR(cms: any, db: any) {
   const mr = await cms.api.pages.createMergeRequest({
     body: {
       title: 'Test MR',
-      sourceBranchId: feature.branchId,
+      sourceBranchId: feature.branch.id,
       targetBranchId: root.branchId,
       createdBy: 'user-1',
     },
@@ -2517,7 +2519,7 @@ async function createConflictingMR(cms: any, db: any) {
   const dbConflicts = await db
     .select()
     .from(mergeConflicts)
-    .where(eq(mergeConflicts.mergeRequestId, mr.mergeRequestId));
+    .where(eq(mergeConflicts.mergeRequestId, mr.mergeRequest.id));
 
   return { root, block, feature, mr, dbConflicts };
 }
@@ -2529,7 +2531,7 @@ describe('resolveConflicts', () => {
 
     const result = await cms.api.pages.resolveConflicts({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         resolutions: [
           {
             conflictId: dbConflicts[0].id,
@@ -2555,7 +2557,7 @@ describe('resolveConflicts', () => {
 
     const result = await cms.api.pages.resolveConflicts({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         resolutions: [
           {
             conflictId: dbConflicts[0].id,
@@ -2582,7 +2584,7 @@ describe('resolveConflicts', () => {
 
     const result = await cms.api.pages.resolveConflicts({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         resolutions: [
           {
             conflictId: dbConflicts[0].id,
@@ -2638,7 +2640,7 @@ describe('resolveConflicts', () => {
     await cms.api.pages.updateBlock({
       body: {
         rootId: root.rootId,
-        branchId: feature.branchId,
+        branchId: feature.branch.id,
         blockId: blockA.blockId,
         type: 'paragraph',
         properties: { text: 'A source' },
@@ -2647,7 +2649,7 @@ describe('resolveConflicts', () => {
     await cms.api.pages.updateBlock({
       body: {
         rootId: root.rootId,
-        branchId: feature.branchId,
+        branchId: feature.branch.id,
         blockId: blockB.blockId,
         type: 'paragraph',
         properties: { text: 'B source' },
@@ -2675,7 +2677,7 @@ describe('resolveConflicts', () => {
     const mr = await cms.api.pages.createMergeRequest({
       body: {
         title: 'Test MR',
-        sourceBranchId: feature.branchId,
+        sourceBranchId: feature.branch.id,
         targetBranchId: root.branchId,
         createdBy: 'user-1',
       },
@@ -2686,14 +2688,14 @@ describe('resolveConflicts', () => {
     const dbConflicts = await db
       .select()
       .from(mergeConflicts)
-      .where(eq(mergeConflicts.mergeRequestId, mr.mergeRequestId));
+      .where(eq(mergeConflicts.mergeRequestId, mr.mergeRequest.id));
 
     expect(dbConflicts.length).toBeGreaterThanOrEqual(2);
 
     // Resolve only the first conflict
     const result = await cms.api.pages.resolveConflicts({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         resolutions: [
           {
             conflictId: dbConflicts[0].id,
@@ -2716,12 +2718,12 @@ describe('resolveConflicts', () => {
     await db
       .update(mergeRequests)
       .set({ status: 'closed' })
-      .where(eq(mergeRequests.id, mr.mergeRequestId));
+      .where(eq(mergeRequests.id, mr.mergeRequest.id));
 
     await expect(
       cms.api.pages.resolveConflicts({
         body: {
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           resolutions: [
             {
               conflictId: dbConflicts[0].id,
@@ -2749,7 +2751,7 @@ describe('resolveConflicts', () => {
         eq(
           mergeConflicts.mergeRequestId,
           (await db.select().from(mergeRequests)).find(
-            (m) => m.id !== mr2.mergeRequestId,
+            (m) => m.id !== mr2.mergeRequest.id,
           )!.id,
         ),
       );
@@ -2757,7 +2759,7 @@ describe('resolveConflicts', () => {
     await expect(
       cms.api.pages.resolveConflicts({
         body: {
-          mergeRequestId: mr2.mergeRequestId,
+          mergeRequestId: mr2.mergeRequest.id,
           resolutions: [
             {
               conflictId: firstMRConflicts[0].id,
@@ -2777,7 +2779,7 @@ describe('resolveConflicts', () => {
     await expect(
       cms.api.pages.resolveConflicts({
         body: {
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           resolutions: [
             {
               conflictId: dbConflicts[0].id,
@@ -2797,7 +2799,7 @@ describe('resolveConflicts', () => {
     await expect(
       cms.api.pages.resolveConflicts({
         body: {
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           resolutions: [
             {
               conflictId: dbConflicts[0].id,
@@ -2818,7 +2820,7 @@ describe('resolveConflicts', () => {
     // First resolution: source
     await cms.api.pages.resolveConflicts({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         resolutions: [
           {
             conflictId: dbConflicts[0].id,
@@ -2832,7 +2834,7 @@ describe('resolveConflicts', () => {
     // Re-resolve: target
     const result = await cms.api.pages.resolveConflicts({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         resolutions: [
           {
             conflictId: dbConflicts[0].id,
@@ -2857,8 +2859,8 @@ describe('resolveConflicts', () => {
     // Resolve all conflicts
     await cms.api.pages.resolveConflicts({
       body: {
-        mergeRequestId: mr.mergeRequestId,
-        resolutions: dbConflicts.map((c) => ({
+        mergeRequestId: mr.mergeRequest.id,
+        resolutions: dbConflicts.map((c: any) => ({
           conflictId: c.id,
           resolution: 'source' as const,
           resolvedBy: 'user-1',
@@ -2866,17 +2868,17 @@ describe('resolveConflicts', () => {
       },
     });
 
-    await requestAndApproveMerge(cms, mr.mergeRequestId);
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
 
     const result = await cms.api.pages.executeMerge({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         mergedBy: 'user-1',
       },
     });
 
     expect(result.fastForward).toBe(false);
-    expect(result.mergeCommitId).toBeDefined();
+    expect(result.commit.id).toBeDefined();
   });
 });
 
@@ -2891,7 +2893,7 @@ describe('createMergeBlockVersion', () => {
 
     const { blockVersionId } = await cms.api.pages.createMergeBlockVersion({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         blockId: block.blockId,
         type: 'paragraph',
         properties: { text: 'Manually merged content' },
@@ -2917,7 +2919,7 @@ describe('createMergeBlockVersion', () => {
     await expect(
       cms.api.pages.createMergeBlockVersion({
         body: {
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           blockId: 'nonexistent-block',
           type: 'paragraph',
           properties: { text: 'whatever' },
@@ -2933,12 +2935,12 @@ describe('createMergeBlockVersion', () => {
     await db
       .update(mergeRequests)
       .set({ status: 'closed' })
-      .where(eq(mergeRequests.id, mr.mergeRequestId));
+      .where(eq(mergeRequests.id, mr.mergeRequest.id));
 
     await expect(
       cms.api.pages.createMergeBlockVersion({
         body: {
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           blockId: block.blockId,
           type: 'paragraph',
           properties: { text: 'whatever' },
@@ -2954,7 +2956,7 @@ describe('createMergeBlockVersion', () => {
     // Step 1: Create a custom merged version
     const { blockVersionId } = await cms.api.pages.createMergeBlockVersion({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         blockId: block.blockId,
         type: 'paragraph',
         properties: { text: 'Best of both: source + target' },
@@ -2962,14 +2964,14 @@ describe('createMergeBlockVersion', () => {
     });
 
     // Step 2: Resolve all conflicts using the custom version
-    const blockConflict = dbConflicts.find((c) => c.blockId === block.blockId)!;
+    const blockConflict = dbConflicts.find((c: any) => c.blockId === block.blockId)!;
     const otherConflicts = dbConflicts.filter(
-      (c) => c.blockId !== block.blockId,
+      (c: any) => c.blockId !== block.blockId,
     );
 
     await cms.api.pages.resolveConflicts({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         resolutions: [
           {
             conflictId: blockConflict.id,
@@ -2977,7 +2979,7 @@ describe('createMergeBlockVersion', () => {
             resolvedVersionId: blockVersionId,
             resolvedBy: 'user-1',
           },
-          ...otherConflicts.map((c) => ({
+          ...otherConflicts.map((c: any) => ({
             conflictId: c.id,
             resolution: 'source' as const,
             resolvedBy: 'user-1',
@@ -2987,23 +2989,23 @@ describe('createMergeBlockVersion', () => {
     });
 
     // Step 3: Approve and merge
-    await requestAndApproveMerge(cms, mr.mergeRequestId);
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
 
     const result = await cms.api.pages.executeMerge({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         mergedBy: 'user-1',
       },
     });
 
     expect(result.fastForward).toBe(false);
-    expect(result.mergeCommitId).toBeDefined();
+    expect(result.commit.id).toBeDefined();
 
     // Verify the merged snapshot contains the custom version
     const snaps = await db
       .select()
       .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, result.mergeCommitId!));
+      .where(eq(commitSnapshots.commitId, result.commit.id));
 
     const blockSnap = snaps.find((s) => s.blockId === block.blockId);
     expect(blockSnap).toBeDefined();
@@ -3031,7 +3033,7 @@ describe('createMergeBlockVersion', () => {
     // reference, or the merged-live asset would be invisible to the GC.
     const { blockVersionId } = await cms.api.pages.createMergeBlockVersion({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         blockId: block.blockId,
         type: 'paragraph',
         properties: { text: asset.id },
@@ -3052,13 +3054,13 @@ describe('createMergeBlockVersion', () => {
     expect(refs[0].targetKey).toBe(asset.id);
 
     // Drive the resolved version to the live head via a real merge.
-    const blockConflict = dbConflicts.find((c) => c.blockId === block.blockId)!;
+    const blockConflict = dbConflicts.find((c: any) => c.blockId === block.blockId)!;
     const otherConflicts = dbConflicts.filter(
-      (c) => c.blockId !== block.blockId,
+      (c: any) => c.blockId !== block.blockId,
     );
     await cms.api.pages.resolveConflicts({
       body: {
-        mergeRequestId: mr.mergeRequestId,
+        mergeRequestId: mr.mergeRequest.id,
         resolutions: [
           {
             conflictId: blockConflict.id,
@@ -3066,7 +3068,7 @@ describe('createMergeBlockVersion', () => {
             resolvedVersionId: blockVersionId,
             resolvedBy: 'user-1',
           },
-          ...otherConflicts.map((c) => ({
+          ...otherConflicts.map((c: any) => ({
             conflictId: c.id,
             resolution: 'source' as const,
             resolvedBy: 'user-1',
@@ -3074,9 +3076,9 @@ describe('createMergeBlockVersion', () => {
         ],
       },
     });
-    await requestAndApproveMerge(cms, mr.mergeRequestId);
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
     await cms.api.pages.executeMerge({
-      body: { mergeRequestId: mr.mergeRequestId, mergedBy: 'user-1' },
+      body: { mergeRequestId: mr.mergeRequest.id, mergedBy: 'user-1' },
     });
 
     // Archive + age the asset, then GC. The merged version is now the live head
@@ -3112,7 +3114,7 @@ async function setupOpenMergeRequest() {
   await cms.api.pages.createBlock({
     body: {
       rootId: root.rootId,
-      branchId: draft.branchId,
+      branchId: draft.branch.id,
       parentBlockId: root.rootId,
       type: 'paragraph',
       properties: { text: 'New block' },
@@ -3120,14 +3122,14 @@ async function setupOpenMergeRequest() {
   });
   const mr = await cms.api.pages.createMergeRequest({
     body: {
-      sourceBranchId: draft.branchId,
+      sourceBranchId: draft.branch.id,
       targetBranchId: root.branchId,
       title: 'MR',
       createdBy: 'user-1',
     },
   });
 
-  return { ...ctx, root, draft, mergeRequestId: mr.mergeRequestId };
+  return { ...ctx, root, draft, mergeRequestId: mr.mergeRequest.id };
 }
 
 describe('closeMergeRequest', () => {
@@ -3137,7 +3139,7 @@ describe('closeMergeRequest', () => {
     const updated = await cms.api.pages.closeMergeRequest({
       body: { mergeRequestId },
     });
-    expect(updated.status).toBe('closed');
+    expect(updated.mergeRequest.status).toBe('closed');
 
     const [mr] = await db
       .select()
@@ -3165,7 +3167,7 @@ describe('reopenMergeRequest', () => {
     const updated = await cms.api.pages.reopenMergeRequest({
       body: { mergeRequestId },
     });
-    expect(updated.status).toBe('open');
+    expect(updated.mergeRequest.status).toBe('open');
 
     const [mr] = await db
       .select()
@@ -3199,7 +3201,7 @@ describe('reopenMergeRequest', () => {
 
     await cms.api.pages.createMergeRequest({
       body: {
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         title: 'MR2',
         createdBy: 'user-1',

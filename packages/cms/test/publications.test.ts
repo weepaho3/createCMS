@@ -24,7 +24,7 @@ describe('publishBranch', () => {
     const change = await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'Draft content' },
@@ -33,15 +33,17 @@ describe('publishBranch', () => {
 
     const result = await publishApprovedBranch(cms, {
       rootId: root.rootId,
-      branchId: draft.branchId,
+      branchId: draft.branch.id,
       publishedBy: 'user-1',
     });
 
-    expect(result.rootId).toBe(root.rootId);
-    expect(result.branchId).toBe(draft.branchId);
-    expect(result.commitId).toBe(change.commitId);
-    expect(result.publishedBy).toBe('user-1');
-    expect(result.publishedAt).toBeInstanceOf(Date);
+    expect(result.publication.rootId).toBe(root.rootId);
+    expect(result.publication.branchId).toBe(draft.branch.id);
+    expect(result.publication.commitId).toBe(change.commit.id);
+    expect(result.publication.publishedBy).toBe('user-1');
+    expect(result.publication.publishedAt).toBeInstanceOf(Date);
+    // branchName is carried on the publish result (ret-22), matching listPublications.
+    expect(result.publication.branchName).toBe('draft');
 
     const [publication] = await db
       .select()
@@ -49,11 +51,11 @@ describe('publishBranch', () => {
       .where(
         and(
           eq(publications.rootId, root.rootId),
-          eq(publications.branchId, draft.branchId),
+          eq(publications.branchId, draft.branch.id),
         ),
       );
 
-    expect(publication.commitId).toBe(change.commitId);
+    expect(publication.commitId).toBe(change.commit.id);
     expect(publication.publishedBy).toBe('user-1');
   });
 
@@ -75,7 +77,7 @@ describe('publishBranch', () => {
     const first = await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'First version' },
@@ -84,14 +86,14 @@ describe('publishBranch', () => {
 
     await publishApprovedBranch(cms, {
       rootId: root.rootId,
-      branchId: draft.branchId,
+      branchId: draft.branch.id,
       publishedBy: 'user-1',
     });
 
     const second = await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'Second version' },
@@ -100,12 +102,12 @@ describe('publishBranch', () => {
 
     const result = await publishApprovedBranch(cms, {
       rootId: root.rootId,
-      branchId: draft.branchId,
+      branchId: draft.branch.id,
       publishedBy: 'user-2',
     });
 
-    expect(result.commitId).toBe(second.commitId);
-    expect(result.publishedBy).toBe('user-2');
+    expect(result.publication.commitId).toBe(second.commit.id);
+    expect(result.publication.publishedBy).toBe('user-2');
 
     const rows = await db
       .select()
@@ -113,8 +115,8 @@ describe('publishBranch', () => {
       .where(eq(publications.rootId, root.rootId));
 
     expect(rows).toHaveLength(1);
-    expect(rows[0].commitId).toBe(second.commitId);
-    expect(rows[0].commitId).not.toBe(first.commitId);
+    expect(rows[0].commitId).toBe(second.commit.id);
+    expect(rows[0].commitId).not.toBe(first.commit.id);
     expect(rows[0].publishedBy).toBe('user-2');
   });
 
@@ -138,7 +140,7 @@ describe('publishBranch', () => {
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'Draft content' },
@@ -147,10 +149,10 @@ describe('publishBranch', () => {
 
     const result = await publishApprovedBranch(cms, {
       rootId: root.rootId,
-      branchId: draft.branchId,
+      branchId: draft.branch.id,
     });
 
-    expect(result.publishedBy).toBe('middleware-user');
+    expect(result.publication.publishedBy).toBe('middleware-user');
 
     const [publication] = await db
       .select()
@@ -172,8 +174,8 @@ describe('publishBranch', () => {
       branchId: root.branchId,
     });
 
-    expect(result.publishedBy).toBe('system');
-    expect(result.commitId).toBe(root.commitId);
+    expect(result.publication.publishedBy).toBe('system');
+    expect(result.publication.commitId).toBe(root.commit.id);
   });
 
   it('rejects when the branch does not exist for the root', async () => {
@@ -215,6 +217,9 @@ describe('unpublishBranch', () => {
 
     expect(result.rootId).toBe(root.rootId);
     expect(result.branchId).toBe(root.branchId);
+    // The previously-live commit + when it was unpublished (ret-13).
+    expect(result.unpublishedCommitId).toBe(root.commit.id);
+    expect(result.unpublishedAt).toBeInstanceOf(Date);
 
     const rows = await db
       .select()
@@ -261,7 +266,7 @@ describe('unpublishBranch', () => {
 
     await publishApprovedBranch(cms, {
       rootId: root.rootId,
-      branchId: draft.branchId,
+      branchId: draft.branch.id,
       publishedBy: 'user-2',
     });
 
@@ -277,7 +282,7 @@ describe('unpublishBranch', () => {
       .where(eq(publications.rootId, root.rootId));
 
     expect(rows).toHaveLength(1);
-    expect(rows[0].branchId).toBe(draft.branchId);
+    expect(rows[0].branchId).toBe(draft.branch.id);
     expect(rows[0].publishedBy).toBe('user-2');
   });
 });
@@ -305,7 +310,7 @@ describe('getPublishedContent', () => {
     expect(result.variants).toHaveLength(1);
     expect(result.variants[0].branchId).toBe(root.branchId);
     expect(result.variants[0].branchName).toBe('main');
-    expect(result.variants[0].commitId).toBe(root.commitId);
+    expect(result.variants[0].commitId).toBe(root.commit.id);
     expect(result.variants[0].publishedBy).toBe('user-1');
     expect(result.variants[0].tree.blockId).toBe(root.rootId);
     expect(result.variants[0].tree.properties).toEqual({
@@ -356,7 +361,7 @@ describe('getPublishedContent', () => {
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: variant.branchId,
+        branchId: variant.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'Variant B content' },
@@ -371,7 +376,7 @@ describe('getPublishedContent', () => {
 
     await publishApprovedBranch(cms, {
       rootId: root.rootId,
-      branchId: variant.branchId,
+      branchId: variant.branch.id,
       publishedBy: 'user-2',
     });
 
@@ -417,7 +422,7 @@ describe('getPublishedContent', () => {
 
     await publishApprovedBranch(cms, {
       rootId: root.rootId,
-      branchId: variant.branchId,
+      branchId: variant.branch.id,
       publishedBy: 'user-2',
     });
 
@@ -497,7 +502,7 @@ describe('listPublications', () => {
 
     await publishApprovedBranch(cms, {
       rootId: root.rootId,
-      branchId: draft.branchId,
+      branchId: draft.branch.id,
       publishedBy: 'user-2',
     });
 
@@ -566,16 +571,16 @@ describe('listPublications', () => {
 
     await publishApprovedBranch(cms, {
       rootId: root.rootId,
-      branchId: draft.branchId,
+      branchId: draft.branch.id,
       publishedBy: 'user-2',
     });
 
     const result = await cms.api.pages.listPublications({
-      query: { branchId: draft.branchId },
+      query: { branchId: draft.branch.id },
     });
 
     expect(result.publications).toHaveLength(1);
-    expect(result.publications[0].branchId).toBe(draft.branchId);
+    expect(result.publications[0].branchId).toBe(draft.branch.id);
     expect(result.publications[0].branchName).toBe('draft');
   });
 
@@ -598,7 +603,7 @@ describe('listPublications', () => {
 
       await publishApprovedBranch(cms, {
         rootId: root.rootId,
-        branchId: branch.branchId,
+        branchId: branch.branch.id,
         publishedBy: `user-${i}`,
       });
     }
@@ -691,7 +696,7 @@ describe('listPublications', () => {
 
     await publishApprovedBranch(cms, {
       rootId: root.rootId,
-      branchId: draft.branchId,
+      branchId: draft.branch.id,
       publishedBy: 'user-2',
     });
 
@@ -741,12 +746,12 @@ describe('listPublications', () => {
 
     await publishApprovedBranch(cms, {
       rootId: root.rootId,
-      branchId: draft.branchId,
+      branchId: draft.branch.id,
       publishedBy: 'user-2',
     });
 
     const secondPublication = await cms.api.pages.listPublications({
-      query: { branchId: draft.branchId },
+      query: { branchId: draft.branch.id },
     });
     const secondPublishedAt = secondPublication.publications[0]
       .publishedAt as Date;
@@ -765,7 +770,7 @@ describe('listPublications', () => {
     });
 
     expect(afterFirst.publications).toHaveLength(1);
-    expect(afterFirst.publications[0].branchId).toBe(draft.branchId);
+    expect(afterFirst.publications[0].branchId).toBe(draft.branch.id);
     expect(afterFirst.total).toBe(1);
 
     expect(beforeSecond.publications).toHaveLength(1);

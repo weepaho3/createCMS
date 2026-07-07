@@ -69,10 +69,10 @@ describe('branch protection — protectPublishedBranches', () => {
 
     // Publish the NON-default branch (e.g. an A/B variant) → it locks…
     await cms.api.pages.publishBranch({
-      body: { rootId: root.rootId, branchId: draft.branchId },
+      body: { rootId: root.rootId, branchId: draft.branch.id },
     });
     await expect(
-      createParagraph(cms, root.rootId, draft.branchId, 'x'),
+      createParagraph(cms, root.rootId, draft.branch.id, 'x'),
     ).rejects.toThrow(/published/i);
 
     // …while the unpublished default branch stays freely editable.
@@ -101,7 +101,7 @@ describe('branch protection — protectPublishedBranches', () => {
     });
     await expect(
       cms.api.pages.revertBranch({
-        body: { branchId: root.branchId, targetCommitId: root.commitId },
+        body: { branchId: root.branchId, targetCommitId: root.commit.id },
       }),
     ).rejects.toThrow(/published/i);
 
@@ -110,10 +110,10 @@ describe('branch protection — protectPublishedBranches', () => {
       body: { rootId: root.rootId, branchId: root.branchId },
     });
     const reverted = await cms.api.pages.revertBranch({
-      body: { branchId: root.branchId, targetCommitId: root.commitId },
+      body: { branchId: root.branchId, targetCommitId: root.commit.id },
     });
-    expect(reverted.newCommitId).toBeTruthy();
-    expect(block.commitId).toBeTruthy();
+    expect(reverted.commit.id).toBeTruthy();
+    expect(block.commit.id).toBeTruthy();
   });
 
   it('off by default: a published branch stays editable', async () => {

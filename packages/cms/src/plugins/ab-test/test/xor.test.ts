@@ -125,11 +125,11 @@ async function publishedRootWithVariant(
       sourceBranchId: root.branchId,
     },
   });
-  await publish(cms, collection, root.rootId, variant.branchId);
+  await publish(cms, collection, root.rootId, variant.branch.id);
   return {
     rootId: root.rootId,
     mainBranchId: root.branchId,
-    variantBranchId: variant.branchId,
+    variantBranchId: variant.branch.id,
   };
 }
 
@@ -172,11 +172,11 @@ async function pageEmbedding(cms: any, blockRootId: string, slug: string) {
       sourceBranchId: page.branchId,
     },
   });
-  await publish(cms, 'pages', page.rootId, variant.branchId);
+  await publish(cms, 'pages', page.rootId, variant.branch.id);
   return {
     rootId: page.rootId,
     mainBranchId: page.branchId,
-    variantBranchId: variant.branchId,
+    variantBranchId: variant.branch.id,
   };
 }
 
@@ -315,7 +315,7 @@ describe('A/B XOR cross-embed guard', () => {
     const aVariant = await cms.api.pages.createBranch({
       body: { rootId: a.rootId, name: 'variant', sourceBranchId: a.branchId },
     });
-    await publish(cms, 'pages', a.rootId, aVariant.branchId);
+    await publish(cms, 'pages', a.rootId, aVariant.branch.id);
 
     // B's test runs first → ok
     await runningTest(cms, 'pages', b);
@@ -326,7 +326,7 @@ describe('A/B XOR cross-embed guard', () => {
         rootId: a.rootId,
         collection: 'pages',
         name: 'host test',
-        variants: makeVariants(a.branchId, aVariant.branchId),
+        variants: makeVariants(a.branchId, aVariant.branch.id),
       },
     });
     await expect(
