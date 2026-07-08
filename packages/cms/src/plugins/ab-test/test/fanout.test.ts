@@ -15,7 +15,7 @@ import { buildSchema } from '../schema';
  */
 
 const FANOUT_COLLECTIONS = {
-  reusableBlocks: {
+  reusableblocks: {
     label: 'Reusable Blocks',
     reusableBlock: true,
     root: {
@@ -33,7 +33,7 @@ const FANOUT_COLLECTIONS = {
         properties: {
           inner: {
             type: 'reference' as const,
-            collection: 'reusableBlocks',
+            collection: 'reusableblocks',
             label: 'Inner',
             required: true as const,
           },
@@ -59,7 +59,7 @@ const FANOUT_COLLECTIONS = {
         properties: {
           block: {
             type: 'reference' as const,
-            collection: 'reusableBlocks',
+            collection: 'reusableblocks',
             label: 'Block',
             required: true as const,
           },
@@ -101,12 +101,13 @@ async function publish(
   const req = await cms.api[collection].requestApproval({
     body: {
       branchId,
-      requestedBy: 'requester-1',
       requestedReviewers: ['reviewer-1'],
     },
+    context: { userId: 'requester-1' },
   });
   await cms.api[collection].approve({
-    body: { approvalId: req.approvals[0].id, reviewedBy: 'reviewer-1' },
+    body: { approvalId: req.approvals[0].id },
+    context: { userId: 'reviewer-1' },
   });
   return cms.api[collection].publishBranch({
     body: { rootId, branchId, publishedBy: 'admin' },
@@ -165,29 +166,29 @@ describe('A/B server fan-out (F2)', () => {
     const { cms } = await setupFanoutCMS();
 
     // Reusable block with a published control + a published variant branch.
-    const block = await cms.api.reusableBlocks.createRoot({
+    const block = await cms.api.reusableblocks.createRoot({
       body: { properties: { label: 'Control' } },
     });
-    await publish(cms, 'reusableBlocks', block.rootId, block.branchId);
-    const variant = await cms.api.reusableBlocks.createBranch({
+    await publish(cms, 'reusableblocks', block.rootId, block.branchId);
+    const variant = await cms.api.reusableblocks.createBranch({
       body: {
         rootId: block.rootId,
         name: 'variant',
         sourceBranchId: block.branchId,
       },
     });
-    await cms.api.reusableBlocks.updateRoot({
+    await cms.api.reusableblocks.updateRoot({
       body: {
         rootId: block.rootId,
         branchId: variant.branch.id,
         properties: { label: 'Variant' },
       },
     });
-    await publish(cms, 'reusableBlocks', block.rootId, variant.branch.id);
+    await publish(cms, 'reusableblocks', block.rootId, variant.branch.id);
 
     const testId = await startTest(
       cms,
-      'reusableBlocks',
+      'reusableblocks',
       block.rootId,
       block.branchId,
       variant.branch.id,
@@ -236,10 +237,10 @@ describe('A/B server fan-out (F2)', () => {
   it('embeds a non-running block as a single reference (no abTest)', async () => {
     const { cms } = await setupFanoutCMS();
 
-    const block = await cms.api.reusableBlocks.createRoot({
+    const block = await cms.api.reusableblocks.createRoot({
       body: { properties: { label: 'Solo' } },
     });
-    await publish(cms, 'reusableBlocks', block.rootId, block.branchId);
+    await publish(cms, 'reusableblocks', block.rootId, block.branchId);
 
     const page = await cms.api.pages.createRoot({
       body: { slug: '/host2', properties: { title: 'Host2' } },
@@ -272,16 +273,16 @@ describe('A/B server fan-out (F2)', () => {
     const { cms } = await setupFanoutCMS();
 
     // A leaf block embedded by both branches of the tested block.
-    const leaf = await cms.api.reusableBlocks.createRoot({
+    const leaf = await cms.api.reusableblocks.createRoot({
       body: { properties: { label: 'Leaf' } },
     });
-    await publish(cms, 'reusableBlocks', leaf.rootId, leaf.branchId);
+    await publish(cms, 'reusableblocks', leaf.rootId, leaf.branchId);
 
     // Tested block: control embeds the leaf; the variant branch inherits it.
-    const block = await cms.api.reusableBlocks.createRoot({
+    const block = await cms.api.reusableblocks.createRoot({
       body: { properties: { label: 'B-control' } },
     });
-    await cms.api.reusableBlocks.createBlock({
+    await cms.api.reusableblocks.createBlock({
       body: {
         rootId: block.rootId,
         branchId: block.branchId,
@@ -290,26 +291,26 @@ describe('A/B server fan-out (F2)', () => {
         properties: { inner: leaf.rootId },
       },
     });
-    await publish(cms, 'reusableBlocks', block.rootId, block.branchId);
-    const variant = await cms.api.reusableBlocks.createBranch({
+    await publish(cms, 'reusableblocks', block.rootId, block.branchId);
+    const variant = await cms.api.reusableblocks.createBranch({
       body: {
         rootId: block.rootId,
         name: 'variant',
         sourceBranchId: block.branchId,
       },
     });
-    await cms.api.reusableBlocks.updateRoot({
+    await cms.api.reusableblocks.updateRoot({
       body: {
         rootId: block.rootId,
         branchId: variant.branch.id,
         properties: { label: 'B-variant' },
       },
     });
-    await publish(cms, 'reusableBlocks', block.rootId, variant.branch.id);
+    await publish(cms, 'reusableblocks', block.rootId, variant.branch.id);
 
     await startTest(
       cms,
-      'reusableBlocks',
+      'reusableblocks',
       block.rootId,
       block.branchId,
       variant.branch.id,
@@ -356,28 +357,28 @@ describe('A/B server fan-out (F2)', () => {
       body: { key: 'promo', value: 'BlackFriday' },
     });
 
-    const block = await cms.api.reusableBlocks.createRoot({
+    const block = await cms.api.reusableblocks.createRoot({
       body: { properties: { label: '{{promo}} control' } },
     });
-    await publish(cms, 'reusableBlocks', block.rootId, block.branchId);
-    const variant = await cms.api.reusableBlocks.createBranch({
+    await publish(cms, 'reusableblocks', block.rootId, block.branchId);
+    const variant = await cms.api.reusableblocks.createBranch({
       body: {
         rootId: block.rootId,
         name: 'variant',
         sourceBranchId: block.branchId,
       },
     });
-    await cms.api.reusableBlocks.updateRoot({
+    await cms.api.reusableblocks.updateRoot({
       body: {
         rootId: block.rootId,
         branchId: variant.branch.id,
         properties: { label: '{{promo}} variant' },
       },
     });
-    await publish(cms, 'reusableBlocks', block.rootId, variant.branch.id);
+    await publish(cms, 'reusableblocks', block.rootId, variant.branch.id);
     await startTest(
       cms,
-      'reusableBlocks',
+      'reusableblocks',
       block.rootId,
       block.branchId,
       variant.branch.id,
@@ -419,10 +420,10 @@ describe('A/B server fan-out (F2)', () => {
       body: { key: 'site', value: 'Acme' },
     });
 
-    const block = await cms.api.reusableBlocks.createRoot({
+    const block = await cms.api.reusableblocks.createRoot({
       body: { properties: { label: '{{site}} footer' } },
     });
-    await publish(cms, 'reusableBlocks', block.rootId, block.branchId);
+    await publish(cms, 'reusableblocks', block.rootId, block.branchId);
 
     const page = await cms.api.pages.createRoot({
       body: { slug: '/host-vars2', properties: { title: 'Host' } },

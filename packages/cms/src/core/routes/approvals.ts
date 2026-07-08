@@ -158,7 +158,6 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
      * Request approval from one or more reviewers for a merge request or branch commit.
      * @param mergeRequestId Merge request to request approval for; exactly one of mergeRequestId or branchId must be provided.
      * @param branchId Branch to request approval for; exactly one of mergeRequestId or branchId must be provided.
-     * @param requestedBy User id of the person requesting approval.
      * @param requestedReviewers Array of user ids to request approval from; must be unique and non-empty.
      * @param message Optional approval request message to send to reviewers.
      * @returns Object containing array of created approvals.
@@ -166,7 +165,7 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
      * @throws MERGE_REQUEST_NOT_OPEN If the merge request is not in open status.
      * @throws BRANCH_NOT_FOUND If the branch does not exist.
      * @throws APPROVAL_ALREADY_REQUESTED If an approval from any requested reviewer for this commit already exists.
-     * @example await cmsClient.pages.requestApproval({ branchId: 'br_123', requestedBy: 'user1', requestedReviewers: ['user2', 'user3'], message: 'Please review' })
+     * @example await cmsClient.pages.requestApproval({ branchId: 'br_123', requestedReviewers: ['user2', 'user3'], message: 'Please review' })
      */
     requestApproval: createCMSEndpoint(
       `/${collectionName}/requestApproval`,
@@ -176,7 +175,6 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
           .object({
             mergeRequestId: z.string().optional(),
             branchId: z.string().optional(),
-            requestedBy: z.string(),
             requestedReviewers: z.array(z.string().min(1)).min(1),
             message: z.string().optional(),
           })
@@ -197,7 +195,6 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
               body: {} as {
                 mergeRequestId?: string;
                 branchId?: string;
-                requestedBy: string;
                 requestedReviewers: string[];
                 message?: string;
               },
@@ -213,6 +210,8 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
       },
       async (ctx) => {
         const input = ctx.body;
+        const actor = ctx.context.userId;
+        if (!actor) throw new CMSError('USER_ID_REQUIRED');
 
         const pending: NotificationInput[] = [];
 
@@ -319,7 +318,7 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
                   mergeRequestId,
                   branchId,
                   commitId,
-                  requestedBy: input.requestedBy,
+                  requestedBy: actor,
                   requestedReviewer,
                   message: input.message,
                 })),
@@ -329,7 +328,7 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
             pending.push(
               ...inserted.map((a) => ({
                 recipientId: a.requestedReviewer,
-                actorId: input.requestedBy,
+                actorId: actor,
                 type: 'approvalRequested' as const,
                 title: 'Approval requested',
                 body: input.message ?? null,
@@ -361,13 +360,12 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
     /**
      * Approve a pending approval request.
      * @param approvalId The approval to approve.
-     * @param reviewedBy User id of the reviewer approving the request.
      * @returns Object containing the approved approval record under the `approval` key.
      * @throws APPROVAL_NOT_FOUND If the approval does not exist or is not accessible.
      * @throws APPROVAL_NOT_PENDING If the approval is not in pending status.
      * @throws APPROVAL_REVIEWER_MISMATCH If the reviewer is not the requested reviewer for this approval.
      * @throws APPROVAL_STALE If the approval is for a direct publication and the branch has since moved to a different commit.
-     * @example await cmsClient.pages.approve({ approvalId: 'apr_123', reviewedBy: 'user2' })
+     * @example await cmsClient.pages.approve({ approvalId: 'apr_123' })
      */
     approve: createCMSEndpoint(
       `/${collectionName}/approve`,
@@ -375,14 +373,12 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
         method: 'POST',
         body: z.object({
           approvalId: z.string(),
-          reviewedBy: z.string(),
         }),
         metadata: cmsMeta(
           {
             $Infer: {
               body: {} as {
                 approvalId: string;
-                reviewedBy: string;
               },
             },
           },
@@ -396,6 +392,8 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
       },
       async (ctx) => {
         const input = ctx.body;
+        const actor = ctx.context.userId;
+        if (!actor) throw new CMSError('USER_ID_REQUIRED');
 
         const pending: NotificationInput[] = [];
 
@@ -435,7 +433,7 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
             if (approval.status !== 'pending') {
               throw new CMSError('APPROVAL_NOT_PENDING');
             }
-            if (approval.requestedReviewer !== input.reviewedBy) {
+            if (approval.requestedReviewer !== actor) {
               throw new CMSError('APPROVAL_REVIEWER_MISMATCH');
             }
 
@@ -453,7 +451,7 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
               .update(approvals)
               .set({
                 status: 'approved',
-                reviewedBy: input.reviewedBy,
+                reviewedBy: actor,
                 reviewedAt: new Date(),
                 updatedAt: new Date(),
                 rejectionReason: null,
@@ -468,10 +466,10 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
 
             if (!updated) throw new CMSError('APPROVAL_NOT_PENDING');
 
-            if (updated.requestedBy !== input.reviewedBy) {
+            if (updated.requestedBy !== actor) {
               pending.push({
                 recipientId: updated.requestedBy,
-                actorId: input.reviewedBy,
+                actorId: actor,
                 type: 'approvalApproved',
                 title: 'Your approval request was approved',
                 body: null,
@@ -502,14 +500,13 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
     /**
      * Reject a pending approval request.
      * @param approvalId The approval to reject.
-     * @param reviewedBy User id of the reviewer rejecting the request.
      * @param rejectionReason Optional reason for the rejection.
      * @returns Object containing the rejected approval record under the `approval` key.
      * @throws APPROVAL_NOT_FOUND If the approval does not exist or is not accessible.
      * @throws APPROVAL_NOT_PENDING If the approval is not in pending status.
      * @throws APPROVAL_REVIEWER_MISMATCH If the reviewer is not the requested reviewer for this approval.
      * @throws APPROVAL_STALE If the approval is for a direct publication and the branch has since moved to a different commit.
-     * @example await cmsClient.pages.reject({ approvalId: 'apr_123', reviewedBy: 'user2', rejectionReason: 'Needs revision' })
+     * @example await cmsClient.pages.reject({ approvalId: 'apr_123', rejectionReason: 'Needs revision' })
      */
     reject: createCMSEndpoint(
       `/${collectionName}/reject`,
@@ -517,7 +514,6 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
         method: 'POST',
         body: z.object({
           approvalId: z.string(),
-          reviewedBy: z.string(),
           rejectionReason: z.string().optional(),
         }),
         metadata: cmsMeta(
@@ -525,7 +521,6 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
             $Infer: {
               body: {} as {
                 approvalId: string;
-                reviewedBy: string;
                 rejectionReason?: string;
               },
             },
@@ -540,6 +535,8 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
       },
       async (ctx) => {
         const input = ctx.body;
+        const actor = ctx.context.userId;
+        if (!actor) throw new CMSError('USER_ID_REQUIRED');
 
         const pending: NotificationInput[] = [];
 
@@ -579,7 +576,7 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
             if (approval.status !== 'pending') {
               throw new CMSError('APPROVAL_NOT_PENDING');
             }
-            if (approval.requestedReviewer !== input.reviewedBy) {
+            if (approval.requestedReviewer !== actor) {
               throw new CMSError('APPROVAL_REVIEWER_MISMATCH');
             }
 
@@ -597,7 +594,7 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
               .update(approvals)
               .set({
                 status: 'rejected',
-                reviewedBy: input.reviewedBy,
+                reviewedBy: actor,
                 rejectionReason: input.rejectionReason ?? null,
                 reviewedAt: new Date(),
                 updatedAt: new Date(),
@@ -612,10 +609,10 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
 
             if (!updated) throw new CMSError('APPROVAL_NOT_PENDING');
 
-            if (updated.requestedBy !== input.reviewedBy) {
+            if (updated.requestedBy !== actor) {
               pending.push({
                 recipientId: updated.requestedBy,
-                actorId: input.reviewedBy,
+                actorId: actor,
                 type: 'approvalRejected',
                 title: 'Your approval request was rejected',
                 body: input.rejectionReason ?? null,

@@ -744,6 +744,9 @@ export function createPublicationEndpoints<
      * Lookup is possible by rootId, slug, or path; at least one must be provided.
      * References are resolved inline into ResolvedReference objects; pass raw=true to skip variable substitution.
      *
+     * (Draft reads use the split getRoot / getRootBySlug endpoints; this public
+     *  read multiplexes rootId|slug|path on purpose — see getRoot's @remarks.)
+     *
      * @param rootId Optional root identifier to fetch directly.
      * @param slug Optional slug to resolve to a root; must be unique within the active scope.
      * @param path Optional path (for nested slugs) to resolve to a root.
@@ -1033,7 +1036,7 @@ export function createPublicationEndpoints<
      * @param branchId Optional filter to publications of a specific branch.
      * @param publishedAfter Optional filter to publications on or after this date.
      * @param publishedBefore Optional filter to publications on or before this date.
-     * @param sortOrder Sort direction: 'asc' or 'desc'; defaults to 'desc' (newest first).
+     * @param sortDirection Sort direction: 'asc' or 'desc'; defaults to 'desc' (newest first).
      *
      * @returns Object with publications array (each item includes rootId, branchId, commitId, publishedBy, publishedAt, branchName, rootProperties, and optionally publishedByUser if user enrichment is enabled), total count, and hasMore flag.
      */
@@ -1049,7 +1052,7 @@ export function createPublicationEndpoints<
             branchId: z.string().optional(),
             publishedAfter: z.coerce.date().optional(),
             publishedBefore: z.coerce.date().optional(),
-            sortOrder: z.enum(['asc', 'desc']).optional(),
+            sortDirection: z.enum(['asc', 'desc']).optional(),
           })
           .optional(),
         metadata: cmsMeta(
@@ -1062,7 +1065,7 @@ export function createPublicationEndpoints<
                 branchId?: string;
                 publishedAfter?: Date;
                 publishedBefore?: Date;
-                sortOrder?: 'asc' | 'desc';
+                sortDirection?: 'asc' | 'desc';
               },
             },
           },
@@ -1078,7 +1081,7 @@ export function createPublicationEndpoints<
         const input = ctx.query ?? {};
         const limit = input.limit ?? 20;
         const offset = input.offset ?? 0;
-        const sortOrder = input.sortOrder ?? 'desc';
+        const sortDirection = input.sortDirection ?? 'desc';
 
         // Exclude publications whose root was soft-deleted (roots.archived_at).
         const conditions = [
@@ -1114,7 +1117,7 @@ export function createPublicationEndpoints<
           outputKey: 'publishedByUser',
         });
 
-        const orderDir = sortOrder === 'asc' ? sql`ASC` : sql`DESC`;
+        const orderDir = sortDirection === 'asc' ? sql`ASC` : sql`DESC`;
 
         const [{ count }] = await db
           .select({ count: sql<number>`count(*)`.mapWith(Number) })

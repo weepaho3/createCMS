@@ -150,7 +150,7 @@ describe('Variable CRUD endpoints', () => {
     expect(created.key).toBe('brandName');
     expect(created.value).toBe('Toerbo');
 
-    const { variables: allVars } = await cms.api.variables.listVariables({ query: {} });
+    const { variables: allVars } = await cms.api.variables.list({ query: {} });
     expect(allVars).toHaveLength(1);
     expect(allVars[0].key).toBe('brandName');
 
@@ -165,7 +165,7 @@ describe('Variable CRUD endpoints', () => {
     expect(updated.value).toBe('NewBrand');
 
     await cms.api.variables.deleteVariable({ body: { key: 'brandName' } });
-    const { variables: afterDelete } = await cms.api.variables.listVariables({
+    const { variables: afterDelete } = await cms.api.variables.list({
       query: {},
     });
     expect(afterDelete).toHaveLength(0);
@@ -223,7 +223,7 @@ describe('Variable delete protection', () => {
     });
 
     // Archive the root — its variable usages must no longer count as "in use".
-    await cms.api.pages.deleteRoot({ body: { rootId: root.rootId } });
+    await cms.api.pages.archiveRoot({ body: { rootId: root.rootId } });
 
     const usages = await cms.api.variables.getVariableUsages({
       query: { key: 'brandName' },
@@ -519,7 +519,7 @@ describe('Variable description', () => {
       },
     });
 
-    const { variables: allVars } = await cms.api.variables.listVariables({ query: {} });
+    const { variables: allVars } = await cms.api.variables.list({ query: {} });
     expect(allVars[0].description).toBe('Brand name');
 
     const { variable } = await cms.api.variables.getVariable({
@@ -757,23 +757,23 @@ describe('Template CRUD endpoints', () => {
     expect(created.collection).toBe('pages');
     expect(created.template).toBe("{{brandName}}'s content");
 
-    const { templates: allTemplates } = await cms.api.templates.listTemplates({
+    const { templates: allTemplates } = await cms.api.templates.list({
       query: { collection: 'pages' },
     });
     expect(allTemplates).toHaveLength(1);
 
     const { template: fetched } = await cms.api.templates.getTemplate({
-      query: { id: created.id },
+      query: { templateId: created.id },
     });
     expect(fetched.template).toBe("{{brandName}}'s content");
 
     const { template: updated } = await cms.api.templates.updateTemplate({
-      body: { id: created.id, template: 'Updated {{brandName}}' },
+      body: { templateId: created.id, template: 'Updated {{brandName}}' },
     });
     expect(updated.template).toBe('Updated {{brandName}}');
 
-    await cms.api.templates.deleteTemplate({ body: { id: created.id } });
-    const { templates: afterDelete } = await cms.api.templates.listTemplates(
+    await cms.api.templates.deleteTemplate({ body: { templateId: created.id } });
+    const { templates: afterDelete } = await cms.api.templates.list(
       {},
     );
     expect(afterDelete).toHaveLength(0);
@@ -852,7 +852,7 @@ describe('Template resolve endpoint', () => {
     });
 
     const result = await cms.api.templates.resolveTemplate({
-      body: { template: "{{brandName}}'s Seite" },
+      query: { template: "{{brandName}}'s Seite" },
     });
 
     expect(result.resolved).toBe("Toerbo's Seite");

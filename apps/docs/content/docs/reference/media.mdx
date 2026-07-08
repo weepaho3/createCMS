@@ -26,13 +26,13 @@ Uploads file bytes through the server. `POST`, input via `body`. Same shape as `
 
 ### `listAssets`
 
-`GET`. Query: `folderId?`, `status?` (`'private' | 'public'`), `search?`, `limit?` (default 20), `offset?`, `sortBy?` (`'createdAt' | 'slug' | 'size'`), `sortOrder?`. Returns `{ assets, total, hasMore }`. Each asset includes a **direct** `url` (`${publicUrl}/${objectKey}`) for internal/admin display such as a media library — no presign or `publicUrl` lookup needed; serve assets in content through the [public delivery](#public-delivery) gate.
+`GET`. Query: `folderId?`, `status?` (`'private' | 'public'`), `search?`, `limit?` (default 20), `offset?`, `sortBy?` (`'createdAt' | 'slug' | 'size'`), `sortDirection?`. Returns `{ assets, total, hasMore }`. Each asset includes a **direct** `url` (`${publicUrl}/${objectKey}`) for internal/admin display such as a media library — no presign or `publicUrl` lookup needed; serve assets in content through the [public delivery](#public-delivery) gate.
 
-### `updateAssetStatus`
+### `updateAssetsStatus`
 
 `POST`, `body: { assetIds: string[], status: 'private' | 'public' }`. Returns `{ updated }`.
 
-### `archiveAsset`
+### `archiveAssets`
 
 Soft-deletes assets (and their variants). `POST`, `body: { assetIds: string[] }`. Returns `{ archived, archivedIds, skipped }`. Assets used by live content are skipped, not failed.
 
@@ -52,7 +52,7 @@ Soft-deletes assets (and their variants). `POST`, `body: { assetIds: string[] }`
 
 ### `listFolders`
 
-`GET`, `query: { parentId? }`. Returns `{ folders: { id, name, parentId, createdBy, createdAt }[] }` — the direct child folders of `parentId`, or the root-level folders when `parentId` is omitted, sorted by name. Navigate the tree level by level (pass a folder's id to get its children).
+`GET`, `query: { parentFolderId? }`. Returns `{ folders: { id, name, parentId, createdBy, createdAt }[] }` — the direct child folders of `parentFolderId`, or the root-level folders when `parentFolderId` is omitted, sorted by name. Navigate the tree level by level (pass a folder's id to get its children).
 
 The mutations below manage the tree:
 

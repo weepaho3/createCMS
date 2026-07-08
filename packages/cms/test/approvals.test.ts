@@ -46,10 +46,10 @@ describe('approvals', () => {
     const request = await cms.api.pages.requestApproval({
       body: {
         mergeRequestId: mr.mergeRequest.id,
-        requestedBy: 'author-1',
         requestedReviewers: ['reviewer-1', 'reviewer-2'],
         message: 'Please review this merge',
       },
+      context: { userId: 'author-1' },
     });
 
     expect(request.approvals).toHaveLength(2);
@@ -96,25 +96,25 @@ describe('approvals', () => {
     const request = await cms.api.pages.requestApproval({
       body: {
         mergeRequestId: mr.mergeRequest.id,
-        requestedBy: 'author-1',
         requestedReviewers: ['reviewer-1', 'reviewer-2'],
       },
+      context: { userId: 'author-1' },
     });
 
     await expect(
       cms.api.pages.approve({
         body: {
           approvalId: request.approvals[0].id,
-          reviewedBy: 'someone-else',
         },
+        context: { userId: 'someone-else' },
       }),
     ).rejects.toThrow(/only the requested reviewer/i);
 
     const approved = await cms.api.pages.approve({
       body: {
         approvalId: request.approvals[0].id,
-        reviewedBy: 'reviewer-1',
       },
+      context: { userId: 'reviewer-1' },
     });
 
     expect(approved.approval.status).toBe('approved');
@@ -123,9 +123,9 @@ describe('approvals', () => {
     const rejected = await cms.api.pages.reject({
       body: {
         approvalId: request.approvals[1].id,
-        reviewedBy: 'reviewer-2',
         rejectionReason: 'Needs work',
       },
+      context: { userId: 'reviewer-2' },
     });
 
     expect(rejected.approval.status).toBe('rejected');
@@ -139,9 +139,9 @@ describe('approvals', () => {
     const request = await cms.api.pages.requestApproval({
       body: {
         mergeRequestId: mr.mergeRequest.id,
-        requestedBy: 'author-1',
         requestedReviewers: ['reviewer-1', 'reviewer-2'],
       },
+      context: { userId: 'author-1' },
     });
 
     const cancelled = await cms.api.pages.cancelApproval({
@@ -153,8 +153,8 @@ describe('approvals', () => {
     await cms.api.pages.approve({
       body: {
         approvalId: request.approvals[1].id,
-        reviewedBy: 'reviewer-2',
       },
+      context: { userId: 'reviewer-2' },
     });
 
     await expect(
@@ -177,18 +177,18 @@ describe('approvals', () => {
     await cms.api.pages.requestApproval({
       body: {
         mergeRequestId: mr.mergeRequest.id,
-        requestedBy: 'author-1',
         requestedReviewers: ['reviewer-1'],
       },
+      context: { userId: 'author-1' },
     });
 
     await expect(
       cms.api.pages.requestApproval({
         body: {
           mergeRequestId: mr.mergeRequest.id,
-          requestedBy: 'author-1',
           requestedReviewers: ['reviewer-1'],
         },
+        context: { userId: 'author-1' },
       }),
     ).rejects.toThrow(/already been requested/i);
   });
@@ -199,24 +199,24 @@ describe('approvals', () => {
     const request = await cms.api.pages.requestApproval({
       body: {
         mergeRequestId: mr.mergeRequest.id,
-        requestedBy: 'author-1',
         requestedReviewers: ['reviewer-1'],
       },
+      context: { userId: 'author-1' },
     });
 
     await cms.api.pages.approve({
       body: {
         approvalId: request.approvals[0].id,
-        reviewedBy: 'reviewer-1',
       },
+      context: { userId: 'reviewer-1' },
     });
 
     await expect(
       cms.api.pages.approve({
         body: {
           approvalId: request.approvals[0].id,
-          reviewedBy: 'reviewer-1',
         },
+        context: { userId: 'reviewer-1' },
       }),
     ).rejects.toThrow(/not pending/i);
   });
@@ -227,9 +227,9 @@ describe('approvals', () => {
     const request = await cms.api.pages.requestApproval({
       body: {
         mergeRequestId: mr.mergeRequest.id,
-        requestedBy: 'author-1',
         requestedReviewers: ['reviewer-1'],
       },
+      context: { userId: 'author-1' },
     });
 
     await cms.api.pages.createBlock({
@@ -245,8 +245,8 @@ describe('approvals', () => {
     const approved = await cms.api.pages.approve({
       body: {
         approvalId: request.approvals[0].id,
-        reviewedBy: 'reviewer-1',
       },
+      context: { userId: 'reviewer-1' },
     });
 
     expect(approved.approval.status).toBe('approved');
@@ -258,9 +258,9 @@ describe('approvals', () => {
     const request = await cms.api.pages.requestApproval({
       body: {
         mergeRequestId: mr.mergeRequest.id,
-        requestedBy: 'author-1',
         requestedReviewers: ['reviewer-1'],
       },
+      context: { userId: 'author-1' },
     });
 
     await cms.api.pages.createBlock({
@@ -276,9 +276,9 @@ describe('approvals', () => {
     const rejected = await cms.api.pages.reject({
       body: {
         approvalId: request.approvals[0].id,
-        reviewedBy: 'reviewer-1',
         rejectionReason: 'needs work',
       },
+      context: { userId: 'reviewer-1' },
     });
 
     expect(rejected.approval.status).toBe('rejected');
@@ -294,9 +294,9 @@ describe('approvals', () => {
     const request = await cms.api.pages.requestApproval({
       body: {
         branchId: root.branchId,
-        requestedBy: 'author-1',
         requestedReviewers: ['reviewer-1'],
       },
+      context: { userId: 'author-1' },
     });
 
     await cms.api.pages.updateRoot({
@@ -312,8 +312,8 @@ describe('approvals', () => {
       cms.api.pages.approve({
         body: {
           approvalId: request.approvals[0].id,
-          reviewedBy: 'reviewer-1',
         },
+        context: { userId: 'reviewer-1' },
       }),
     ).rejects.toThrow(/stale/i);
   });
@@ -324,9 +324,9 @@ describe('approvals', () => {
     await cms.api.pages.requestApproval({
       body: {
         mergeRequestId: mr.mergeRequest.id,
-        requestedBy: 'author-1',
         requestedReviewers: ['reviewer-1'],
       },
+      context: { userId: 'author-1' },
     });
 
     const listed = await cms.api.pages.listApprovals({
@@ -350,9 +350,9 @@ describe('approvals', () => {
     const firstRequest = await cms.api.pages.requestApproval({
       body: {
         branchId: root.branchId,
-        requestedBy: 'author-1',
         requestedReviewers: ['reviewer-1'],
       },
+      context: { userId: 'author-1' },
     });
 
     await cms.api.pages.updateRoot({
@@ -369,9 +369,9 @@ describe('approvals', () => {
     const secondRequest = await cms.api.pages.requestApproval({
       body: {
         branchId: root.branchId,
-        requestedBy: 'author-1',
         requestedReviewers: ['reviewer-1'],
       },
+      context: { userId: 'author-1' },
     });
 
     expect(firstRequest.approvals[0].targetType).toBe('publication');
@@ -399,17 +399,17 @@ describe('approvals', () => {
     await cms.api.pages.requestApproval({
       body: {
         mergeRequestId: mr.mergeRequest.id,
-        requestedBy: 'author-1',
         requestedReviewers: ['reviewer-1'],
         message: 'Please review',
       },
+      context: { userId: 'author-1' },
     });
 
     const before = await cms.api.pages.listApprovals({ query: {} });
     expect(before.total).toBeGreaterThan(0);
 
     // Soft-delete the page; its approvals must drop out of the list.
-    await cms.api.pages.deleteRoot({ body: { rootId: root.rootId } });
+    await cms.api.pages.archiveRoot({ body: { rootId: root.rootId } });
 
     const after = await cms.api.pages.listApprovals({ query: {} });
     expect(after.total).toBe(0);

@@ -10,6 +10,7 @@ import type {
   CMSFetch,
 } from './types';
 
+import { CMS_ERRORS } from '../core/errors';
 import { CMSClientError } from './error';
 import { createMediaUploadAtom } from './media-upload';
 import { createStore } from './store';
@@ -19,7 +20,7 @@ export interface ClientConfig {
   $store: CMSClientStore;
   pluginsActions: Record<string, unknown>;
   pluginsAtoms: Record<string, WritableAtom<unknown>>;
-  pluginPathMethods: Record<string, string>;
+  pathMethods: Record<string, string>;
   atomListeners: CMSAtomListener[];
   $ERROR_CODES: Record<string, { status: number; message: string }>;
 }
@@ -47,7 +48,19 @@ export function getClientConfigSync(options: CMSClientOptions): ClientConfig {
     $mediaSignal: atom(false),
     uploadAssets: createMediaUploadAtom($fetch) as WritableAtom<unknown>,
   };
-  const pluginPathMethods: Record<string, string> = {};
+  // Core system endpoints that are POST but callable with NO/optional body: the
+  // proxy's body-presence heuristic would otherwise dispatch GET and 404. (Any
+  // endpoint with a required body is inferred correctly, so collection routes
+  // need nothing here.) Seeded by default so the documented no-arg calls work
+  // out of the box; `options.pathMethods` (a server `cms.$pathMethods`) extends
+  // this for collection + plugin endpoints. Drift-guarded by the search suite.
+  const pathMethods: Record<string, string> = {
+    '/admin/reindexSearch': 'POST',
+    '/admin/runPruning': 'POST',
+    '/notifications/markNotificationsRead': 'POST',
+    '/notifications/markNotificationsUnread': 'POST',
+    ...(options.pathMethods ?? {}),
+  };
   const atomListeners: CMSAtomListener[] = [
     { matcher: (path) => path.startsWith('/media/'), signal: '$mediaSignal' },
   ];
@@ -56,7 +69,7 @@ export function getClientConfigSync(options: CMSClientOptions): ClientConfig {
 
   for (const plugin of plugins) {
     if (plugin.pathMethods) {
-      Object.assign(pluginPathMethods, plugin.pathMethods);
+      Object.assign(pathMethods, plugin.pathMethods);
     }
     if (plugin.atomListeners) {
       atomListeners.push(...plugin.atomListeners);
@@ -73,7 +86,9 @@ export function getClientConfigSync(options: CMSClientOptions): ClientConfig {
     }
   }
 
-  const $ERROR_CODES: Record<string, { status: number; message: string }> = {};
+  const $ERROR_CODES: Record<string, { status: number; message: string }> = {
+    ...CMS_ERRORS,
+  };
   for (const plugin of plugins) {
     if (plugin.$ERROR_CODES) {
       Object.assign($ERROR_CODES, plugin.$ERROR_CODES);
@@ -85,7 +100,7 @@ export function getClientConfigSync(options: CMSClientOptions): ClientConfig {
     $store,
     pluginsActions,
     pluginsAtoms,
-    pluginPathMethods,
+    pathMethods,
     atomListeners,
     $ERROR_CODES,
   };

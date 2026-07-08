@@ -9,16 +9,16 @@ export async function publishApprovedBranch(
   const request = await cms.api.pages.requestApproval({
     body: {
       branchId: input.branchId,
-      requestedBy: 'requester-1',
       requestedReviewers: ['reviewer-1'],
     },
+    context: { userId: 'requester-1' },
   });
 
   await cms.api.pages.approve({
     body: {
       approvalId: request.approvals[0].id,
-      reviewedBy: 'reviewer-1',
     },
+    context: { userId: 'reviewer-1' },
   });
 
   return await cms.api.pages.publishBranch({ body: input });
@@ -32,17 +32,17 @@ export async function requestAndApproveMerge(
   const request = await cms.api.pages.requestApproval({
     body: {
       mergeRequestId,
-      requestedBy: 'requester-1',
       requestedReviewers: reviewers,
     },
+    context: { userId: 'requester-1' },
   });
 
   for (const approval of request.approvals) {
     await cms.api.pages.approve({
       body: {
         approvalId: approval.id,
-        reviewedBy: approval.requestedReviewer,
       },
+      context: { userId: approval.requestedReviewer },
     });
   }
 }

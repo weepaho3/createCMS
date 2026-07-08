@@ -30,10 +30,10 @@ export function createNotificationEndpoints(cmsCtx: CMSProcedureCtx) {
      * @throws USER_ID_REQUIRED - No authenticated user in the request context.
      *
      * @example
-     * const result = await cmsClient.notifications.listNotifications({ unreadOnly: true, limit: 10 });
+     * const result = await cmsClient.notifications.list({ unreadOnly: true, limit: 10 });
      */
-    listNotifications: createCMSEndpoint(
-      '/notifications/listNotifications',
+    list: createCMSEndpoint(
+      '/notifications/list',
       {
         method: 'GET',
         query: z
@@ -363,7 +363,7 @@ export function createNotificationEndpoints(cmsCtx: CMSProcedureCtx) {
           },
           {
             // Soft-archive, but it's a "delete" from the recipient's intent —
-            // consistent with deleteRoot/deleteCommentThread/archiveAsset.
+            // consistent with archiveRoot/deleteCommentThread/archiveAssets.
             permissionResource: 'notification',
             operation: 'delete',
             scope: 'system',

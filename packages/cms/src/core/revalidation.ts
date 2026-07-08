@@ -95,7 +95,7 @@ async function checkPublication(
 
 /**
  * Find a published branch for a root, for branch-agnostic root mutations
- * (moveRoot / deleteRoot, whose request body carries NO branchId). Returns the
+ * (moveRoot / archiveRoot, whose request body carries NO branchId). Returns the
  * branch + the root's slug, or null when the root has no published branch
  * (nothing is cached → nothing to revalidate). LIMIT 1 suffices: per-root tag
  * busting (rootRevalidateTag + pageCacheTag) invalidates every variant, so one
@@ -256,7 +256,7 @@ const WRITE_ACTIONS: Set<string> = new Set([
   'moveBlock',
   'duplicateBlock',
   'moveRoot',
-  'deleteRoot',
+  'archiveRoot',
 ]);
 
 export type RevalidationRunner = {
@@ -543,7 +543,7 @@ export function createRevalidationRunner<
         return;
       }
 
-      // ── branch-agnostic root mutations: moveRoot / deleteRoot ────────
+      // ── branch-agnostic root mutations: moveRoot / archiveRoot ────────
       // These mutate cms.roots directly and carry NO branchId in the body, so
       // the generic tail below (which requires branchId) would skip them — yet
       // both auto-create OLD→page redirects (reparent shifts the subtree's
@@ -551,7 +551,7 @@ export function createRevalidationRunner<
       // published branch and revalidate the OLD paths + the root's own/new path,
       // else the freshly-created redirect stays shadowed by the cached ISR entry
       // until the route's TTL.
-      if (action === 'moveRoot' || action === 'deleteRoot') {
+      if (action === 'moveRoot' || action === 'archiveRoot') {
         const movedRootId = input.rootId as string | undefined;
         if (!movedRootId) return;
         const pub = await findPublishedRoot(db, movedRootId);
@@ -575,7 +575,7 @@ export function createRevalidationRunner<
           oldPaths,
         );
         // A reparent shifts every published descendant's full path too (nested).
-        // (deleteRoot blocks roots-with-children, so archive has no descendants.)
+        // (archiveRoot blocks roots-with-children, so archive has no descendants.)
         if (action === 'moveRoot') {
           await cascadeDescendantRevalidation(action, collection, movedRootId);
         }
@@ -604,7 +604,7 @@ export function createRevalidationRunner<
       // paths alongside the new one, so the freshly-created redirect surfaces
       // immediately instead of after the route's ISR TTL. The `slug` gate skips
       // property-only updateRoots (no path change → no redirect). (moveRoot /
-      // deleteRoot are branch-agnostic and handled in their own branch above.)
+      // archiveRoot are branch-agnostic and handled in their own branch above.)
       const pathMayHaveChanged =
         action === 'updateRoot' && input.slug !== undefined;
       const oldPaths = pathMayHaveChanged

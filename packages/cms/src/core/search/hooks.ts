@@ -86,7 +86,7 @@ export function createSearchHooks(defaultBranchName: string): CMSAfterHook[] {
     createSearchAfterHook('moveRoot', inputRootId, indexRootFn),
     createSearchAfterHook('executeMerge', inputRootId, indexRootFn),
     // Archiving a root removes it from the working set -> drop its search entry.
-    createDeleteAfterHook('deleteRoot', 'root', inputRootId),
+    createDeleteAfterHook('archiveRoot', 'root', inputRootId),
 
     // ---- Merge requests ----
     createSearchAfterHook(
@@ -187,7 +187,7 @@ export function createSearchHooks(defaultBranchName: string): CMSAfterHook[] {
     createDeleteAfterHook(
       'deleteTemplate',
       'template',
-      (input) => input.id as string | undefined,
+      (input) => input.templateId as string | undefined,
     ),
 
     // ---- Assets ----

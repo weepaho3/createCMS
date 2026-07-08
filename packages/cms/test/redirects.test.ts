@@ -74,7 +74,7 @@ describe('redirects schema (R1)', () => {
     ]);
 
     // Archive + age the root, then hard-delete it via pruning.
-    await cms.api.pages.deleteRoot({ body: { rootId: root.rootId } });
+    await cms.api.pages.archiveRoot({ body: { rootId: root.rootId } });
     await db
       .update(roots)
       .set({ archivedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) })
@@ -234,7 +234,7 @@ describe('redirect resolution (R2)', () => {
     });
     expect(before.redirect?.location).toBe('/docs/parent/child');
 
-    await cms.api.pages.deleteRoot({ body: { rootId: child.rootId } });
+    await cms.api.pages.archiveRoot({ body: { rootId: child.rootId } });
 
     const after = await cms.api.pages.resolveRedirect({
       query: { path: '/docs/old' },
@@ -254,7 +254,7 @@ describe('redirect resolution (R2)', () => {
       targetType: 'page',
       targetRootId: target.rootId,
     });
-    await cms.api.pages.deleteRoot({ body: { rootId: target.rootId } });
+    await cms.api.pages.archiveRoot({ body: { rootId: target.rootId } });
 
     const { redirect } = await cms.api.pages.resolveRedirect({
       query: { path: '/pages/old' },
@@ -633,7 +633,7 @@ describe('redirect auto-creation (R4)', () => {
       },
     });
 
-    await cms.api.pages.deleteRoot({ body: { rootId: child.rootId } });
+    await cms.api.pages.archiveRoot({ body: { rootId: child.rootId } });
 
     const res = await cms.api.pages.resolveRedirect({
       query: { path: '/docs/parent/child' },
@@ -689,7 +689,7 @@ describe('redirect auto-creation (R4)', () => {
       body: {
         rootId: child.rootId,
         newParentRootId: parent.rootId,
-        sortOrder: 5,
+        position: 5,
       },
     });
 

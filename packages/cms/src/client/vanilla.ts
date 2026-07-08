@@ -1,11 +1,11 @@
 import type {
-  CMSClientInstance,
   CMSClientOptions,
   CMSClientPlugin,
+  CMSVanillaClientInstance,
 } from './types';
 
 import { buildClient } from './build';
-import { getClientConfig, type ClientConfig } from './config';
+import { getClientConfigSync, runPluginInit } from './config';
 
 /**
  * Creates a type-safe vanilla CMS client with plugin support.
@@ -14,8 +14,9 @@ import { getClientConfig, type ClientConfig } from './config';
  * client is usable immediately — API calls will await init completion
  * transparently.
  *
- * Atom hooks are exposed as raw nanostores atoms (e.g. `client.useMediaLibrary`).
- * For React components, use `createCMSClient` from `@createcms/core/react` instead.
+ * Media upload state is exposed as a raw nanostores atom at
+ * `client.media.uploadState`. For React components, use `createCMSClient` from
+ * `@createcms/core/react` instead.
  *
  * ```ts
  * const client = createCMSClient<typeof cms>({
@@ -24,18 +25,18 @@ import { getClientConfig, type ClientConfig } from './config';
  * });
  *
  * const roots = await client.pages.listRoots();
- * client.useMediaLibrary.subscribe(state => console.log(state.data));
+ * client.media.uploadState.subscribe(state => console.log(state.files));
  * ```
  */
 export function createCMSClient<TCMS = unknown>(
   options: CMSClientOptions & { plugins?: CMSClientPlugin[] },
-): CMSClientInstance<TCMS, CMSClientPlugin[]>;
+): CMSVanillaClientInstance<TCMS, CMSClientPlugin[]>;
 
 export function createCMSClient<TCMS = unknown>(): <
   const TPlugins extends CMSClientPlugin[] = CMSClientPlugin[],
 >(
   options: CMSClientOptions & { plugins?: TPlugins },
-) => CMSClientInstance<TCMS, TPlugins>;
+) => CMSVanillaClientInstance<TCMS, TPlugins>;
 
 export function createCMSClient<TCMS = unknown>(
   options?: CMSClientOptions & { plugins?: CMSClientPlugin[] },
@@ -50,47 +51,17 @@ export function createCMSClient<TCMS = unknown>(
 
 function createVanillaClient<TCMS, TPlugins extends CMSClientPlugin[]>(
   options: CMSClientOptions & { plugins?: TPlugins },
-): CMSClientInstance<TCMS, TPlugins> {
-  let resolved: ClientConfig | null = null;
-  const configPromise = getClientConfig(options).then((cfg) => {
-    resolved = cfg;
-    return cfg;
-  });
-
-  let realClient: CMSClientInstance<TCMS, TPlugins> | null = null;
-
-  return new Proxy({} as CMSClientInstance<TCMS, TPlugins>, {
-    get(_target, prop: string) {
-      if (realClient) return (realClient as any)[prop];
-
-      if (resolved) {
-        realClient = buildClient<TCMS, TPlugins>(
-          resolved,
-          resolved.pluginsAtoms.uploadAssets,
-        );
-        return (realClient as any)[prop];
-      }
-
-      return new Proxy(
-        {},
-        {
-          get(_t, method: string) {
-            return async (...args: unknown[]) => {
-              const cfg = await configPromise;
-              if (!realClient)
-                realClient = buildClient<TCMS, TPlugins>(
-                  cfg,
-                  cfg.pluginsAtoms.uploadAssets,
-                );
-              const ns = (realClient as any)[prop];
-              if (typeof ns === 'function') return ns(...args);
-              if (ns && typeof ns[method] === 'function')
-                return ns[method](...args);
-              return ns?.[method];
-            };
-          },
-        },
-      );
-    },
+): CMSVanillaClientInstance<TCMS, TPlugins> {
+  // Build synchronously, exactly like the React client: `getClientConfigSync`
+  // produces a fully-usable config — including the media upload atom — and
+  // plugin `init` runs only for side effects (the config is usable before it
+  // completes), so it need not block. This makes direct members like
+  // `client.media.uploadState` available immediately; the previous async lazy
+  // proxy left the atom unreachable (a function stub) until the first awaited
+  // call resolved, defeating subscribe-at-startup.
+  const config = getClientConfigSync(options);
+  runPluginInit(options, config);
+  return buildClient<CMSVanillaClientInstance<TCMS, TPlugins>>(config, {
+    uploadState: config.pluginsAtoms.uploadAssets,
   });
 }

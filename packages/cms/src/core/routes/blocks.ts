@@ -10,7 +10,11 @@ import type {
   ListRootsResult,
   RootListItem,
 } from '../types';
-import type { ResolvedSlugConfig } from '../types/definitions';
+import type {
+  ResolvedScope,
+  ResolvedSlugConfig,
+} from '../types/definitions';
+import type { DrizzleInstance } from '../types/drizzle';
 
 import { newId } from '../../utils/nanoid';
 import {
@@ -149,6 +153,225 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
     if (forceCommitMessage && (message === undefined || message.trim() === ''))
       throw new CMSError('COMMIT_MESSAGE_REQUIRED');
     return message ?? fallback;
+  }
+
+  // Shared deep-copy implementation behind both `duplicateBlock` (mode-switched
+  // union) and `duplicateRoot` (root mode forced, static return type). The
+  // discriminant is purely "is `targetParentBlockId` absent": omit it → a new
+  // top-level root is minted; provide it → the subtree is copied under a parent.
+  type DuplicateInput = {
+    rootId: string;
+    branchId: string;
+    blockId: string;
+    targetParentBlockId?: string;
+    targetProperties?: Record<string, unknown>;
+    targetSlug?: string;
+    targetIndex?: number;
+    message?: string;
+  };
+
+  async function runDuplicate(
+    tx: DrizzleInstance,
+    scope: ResolvedScope,
+    userId: string | undefined,
+    input: DuplicateInput,
+  ) {
+    await requireRootInScope(tx, input.rootId, collectionName, scope.roots);
+
+    const [sourceBranch] = await tx
+      .select({
+        id: branches.id,
+        name: branches.name,
+        headCommitId: branches.headCommitId,
+      })
+      .from(branches)
+      .where(
+        and(eq(branches.id, input.branchId), eq(branches.rootId, input.rootId)),
+      )
+      .for('update');
+    if (!sourceBranch) throw new CMSError('BRANCH_NOT_FOUND');
+    await assertBranchWritable(tx, branchPolicy, input.rootId, sourceBranch.id);
+
+    const oldHeadId = sourceBranch.headCommitId;
+    const allSnaps = await tx
+      .select({
+        blockId: commitSnapshots.blockId,
+        blockVersionId: commitSnapshots.blockVersionId,
+      })
+      .from(commitSnapshots)
+      .where(eq(commitSnapshots.commitId, oldHeadId));
+
+    const snapVersionIds = allSnaps.map((s) => s.blockVersionId);
+    if (snapVersionIds.length === 0) throw new CMSError('EMPTY_SNAPSHOT');
+
+    const allVersions = await tx
+      .select()
+      .from(blockVersions)
+      .where(inArray(blockVersions.id, snapVersionIds));
+
+    const versionByBlockId = new Map<string, BlockVersionRow>(
+      allVersions.map((v) => [
+        v.blockId,
+        {
+          blockId: v.blockId,
+          type: v.type,
+          properties: v.properties,
+          children: (v.children ?? []) as string[],
+          deleted: v.deleted,
+        },
+      ]),
+    );
+
+    const sourceVersion = versionByBlockId.get(input.blockId);
+    if (!sourceVersion)
+      throw new CMSError('BLOCK_NOT_FOUND', {
+        message: errorMessages.blockNotFound(input.blockId),
+      });
+    if (sourceVersion.deleted)
+      throw new CMSError('BLOCK_ALREADY_DELETED', {
+        message: errorMessages.blockAlreadyDeleted(input.blockId),
+      });
+
+    const { copies } = deepCopySubtree(versionByBlockId, input.blockId);
+    const isRootDuplication = !input.targetParentBlockId;
+
+    if (isRootDuplication) {
+      if (!input.targetProperties) {
+        throw new CMSError('MISSING_TARGET_PROPERTIES');
+      }
+
+      const slugCfg = def.slug as ResolvedSlugConfig | undefined;
+      let dupSlug: string | null = null;
+      if (slugCfg?.enabled && input.targetSlug) {
+        dupSlug = slugCfg.normalize
+          ? normalizeSlug(input.targetSlug)
+          : input.targetSlug;
+      }
+
+      // A duplicated root is created top-level (parent_root_id NULL). The
+      // core slug index is no longer unique, so this app-level check is the
+      // authority — previously this path leaned on the DB unique and threw a
+      // raw constraint error; now it throws SLUG_ALREADY_EXISTS cleanly.
+      if (dupSlug !== null) {
+        await validateSlugUniqueness(
+          tx as any,
+          collectionName,
+          null,
+          dupSlug,
+          undefined,
+          scope.roots?.insertColumns,
+        );
+      }
+
+      const newRoot = await scopedInsert(
+        tx as any,
+        'cms.roots',
+        {
+          id: newId('root'),
+          collection: collectionName,
+          slug: dupSlug,
+          created_by: userId,
+          // Plugin-contributed per-new-entry columns (Seam D): a duplicate
+          // is a NEW logical entry, so the i18n plugin mints a fresh
+          // translation_key here.
+          ...(scope.roots?.newEntryColumns?.() ?? {}),
+        },
+        scope.roots,
+      );
+
+      const versions: ChangedVersion[] = copies.map((copy) => {
+        const isTopLevel = copy.oldBlockId === input.blockId;
+        return {
+          blockId: isTopLevel ? newRoot.id : copy.newBlockId,
+          type: isTopLevel ? collectionName : copy.type,
+          properties: isTopLevel
+            ? (input.targetProperties as Record<string, unknown>)
+            : copy.properties,
+          children: copy.newChildren,
+        };
+      });
+
+      const { commit, branchId } = await createInitialCommit(tx, def, {
+        rootId: newRoot.id,
+        branchName: branchPolicy.defaultBranchName,
+        message: commitMessage(input.message, 'Duplicated root'),
+        createdBy: userId,
+        versions,
+      });
+
+      const dupPath = slugCfg?.enabled
+        ? ((await resolveRootCurrentPath(
+            tx as any,
+            slugCfg,
+            newRoot.id,
+            scope.roots,
+          )) ?? undefined)
+        : undefined;
+
+      return {
+        mode: 'root' as const,
+        commit,
+        rootId: newRoot.id,
+        branchId,
+        slug: dupSlug ?? undefined,
+        path: dupPath,
+      };
+    }
+
+    const parentVersion = versionByBlockId.get(input.targetParentBlockId!);
+    if (!parentVersion)
+      throw new CMSError('PARENT_NOT_FOUND', {
+        message: errorMessages.parentNotFound(input.targetParentBlockId!),
+      });
+    if (parentVersion.deleted)
+      throw new CMSError('BLOCK_ALREADY_DELETED', {
+        message: errorMessages.blockAlreadyDeleted(input.targetParentBlockId!),
+      });
+
+    assertPlacementAllowed(
+      placementIndex,
+      sourceVersion.type,
+      input.targetParentBlockId === input.rootId ? 'root' : parentVersion.type,
+    );
+
+    const topLevelCopyId = copies[0].newBlockId;
+
+    const updatedChildren = [...(parentVersion.children ?? [])];
+    const insertAt =
+      input.targetIndex !== undefined
+        ? Math.min(input.targetIndex, updatedChildren.length)
+        : updatedChildren.length;
+    updatedChildren.splice(insertAt, 0, topLevelCopyId);
+
+    const changed: ChangedVersion[] = [
+      ...copies.map((copy) => ({
+        blockId: copy.newBlockId,
+        type: copy.type,
+        properties: copy.properties,
+        children: copy.newChildren,
+      })),
+      {
+        blockId: parentVersion.blockId,
+        type: parentVersion.type,
+        properties: parentVersion.properties,
+        children: updatedChildren,
+      },
+    ];
+
+    const { commit } = await writeCommit(tx, def, {
+      rootId: input.rootId,
+      branchId: input.branchId,
+      parentCommitId: oldHeadId,
+      message: commitMessage(input.message, `Duplicate block ${input.blockId}`),
+      createdBy: userId,
+      changed,
+    });
+
+    return {
+      mode: 'child' as const,
+      commit,
+      blockId: topLevelCopyId,
+    };
   }
 
   return {
@@ -305,7 +528,10 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
      * @param sortBy Field to sort by (default 'createdAt').
      * @param sortDirection 'asc' or 'desc' (default 'desc').
      * @param filterField Field to filter on.
-     * @param filterValue Value to match in the filter field.
+     * @param filterValue Case-insensitive ILIKE pattern matched against filterField.
+     *   Passed RAW (unlike `search`, which is auto-wrapped as %term%): a bare value
+     *   is an exact case-insensitive match; include SQL `%`/`_` wildcards yourself for
+     *   partial matches (e.g. 'about%'). Use `search`/`searchField` for substring search.
      * @param hasPublications Filter roots: true (has any publication), false (none), or undefined (both).
      * @param createdAfter Filter roots created after this ISO date.
      * @param createdBefore Filter roots created before this ISO date.
@@ -1319,229 +1545,72 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
         ),
       },
       async (ctx) => {
-        const { userId } = ctx.context;
-        const input = ctx.body;
+        return db.transaction((tx) =>
+          runDuplicate(tx, ctx.context.scope, ctx.context.userId, ctx.body),
+        );
+      },
+    ),
 
-        return db.transaction(async (tx) => {
-          await requireRootInScope(
-            tx,
-            input.rootId,
-            collectionName,
-            ctx.context.scope.roots,
-          );
-
-          const [sourceBranch] = await tx
-            .select({
-              id: branches.id,
-              name: branches.name,
-              headCommitId: branches.headCommitId,
-            })
-            .from(branches)
-            .where(
-              and(
-                eq(branches.id, input.branchId),
-                eq(branches.rootId, input.rootId),
-              ),
-            )
-            .for('update');
-          if (!sourceBranch) throw new CMSError('BRANCH_NOT_FOUND');
-          await assertBranchWritable(
-            tx,
-            branchPolicy,
-            input.rootId,
-            sourceBranch.id,
-          );
-
-          const oldHeadId = sourceBranch.headCommitId;
-          const allSnaps = await tx
-            .select({
-              blockId: commitSnapshots.blockId,
-              blockVersionId: commitSnapshots.blockVersionId,
-            })
-            .from(commitSnapshots)
-            .where(eq(commitSnapshots.commitId, oldHeadId));
-
-          const snapVersionIds = allSnaps.map((s) => s.blockVersionId);
-          if (snapVersionIds.length === 0) throw new CMSError('EMPTY_SNAPSHOT');
-
-          const allVersions = await tx
-            .select()
-            .from(blockVersions)
-            .where(inArray(blockVersions.id, snapVersionIds));
-
-          const versionByBlockId = new Map<string, BlockVersionRow>(
-            allVersions.map((v) => [
-              v.blockId,
-              {
-                blockId: v.blockId,
-                type: v.type,
-                properties: v.properties,
-                children: (v.children ?? []) as string[],
-                deleted: v.deleted,
+    /**
+     * Duplicate an entire root: deep-copies the whole block tree into a NEW
+     * top-level root (parent_root_id NULL). Thin wrapper over the shared
+     * duplication path forced into root mode — `targetParentBlockId`/`targetIndex`
+     * are omitted so `isRootDuplication` is always true and the return type is
+     * static (no `mode` discriminant). For copying a subtree UNDER an existing
+     * parent, use `duplicateBlock` instead.
+     * @param rootId Source root id.
+     * @param branchId Source branch id.
+     * @param blockId Root block id to duplicate.
+     * @param targetProperties Properties for the new root block (required).
+     * @param targetSlug Optional slug for the new root (slug-enabled collections).
+     * @param message Optional commit message; defaults to 'Duplicated root'.
+     * @returns The new root: { commit, rootId, branchId, slug?, path? }.
+     * @throws BLOCK_NOT_FOUND / BLOCK_ALREADY_DELETED / SLUG_ALREADY_EXISTS
+     */
+    duplicateRoot: createCMSEndpoint(
+      `/${collectionName}/duplicateRoot`,
+      {
+        method: 'POST',
+        body: z.object({
+          rootId: z.string(),
+          branchId: z.string(),
+          blockId: z.string(),
+          targetProperties: z.record(z.string(), z.unknown()),
+          targetSlug: z.string().optional(),
+          message: z.string().optional(),
+        }),
+        metadata: cmsMeta(
+          {
+            $Infer: {
+              body: {} as {
+                rootId: string;
+                branchId: string;
+                blockId: string;
+                targetProperties: Record<string, unknown>;
+                targetSlug?: string;
+                message?: string;
               },
-            ]),
-          );
-
-          const sourceVersion = versionByBlockId.get(input.blockId);
-          if (!sourceVersion)
-            throw new CMSError('BLOCK_NOT_FOUND', {
-              message: errorMessages.blockNotFound(input.blockId),
-            });
-          if (sourceVersion.deleted)
-            throw new CMSError('BLOCK_ALREADY_DELETED', {
-              message: errorMessages.blockAlreadyDeleted(input.blockId),
-            });
-
-          const { copies } = deepCopySubtree(versionByBlockId, input.blockId);
-          const isRootDuplication = !input.targetParentBlockId;
-
-          if (isRootDuplication) {
-            if (!input.targetProperties) {
-              throw new CMSError('MISSING_TARGET_PROPERTIES');
-            }
-
-            const slugCfg = def.slug as ResolvedSlugConfig | undefined;
-            let dupSlug: string | null = null;
-            if (slugCfg?.enabled && input.targetSlug) {
-              dupSlug = slugCfg.normalize
-                ? normalizeSlug(input.targetSlug)
-                : input.targetSlug;
-            }
-
-            // A duplicated root is created top-level (parent_root_id NULL). The
-            // core slug index is no longer unique, so this app-level check is the
-            // authority — previously this path leaned on the DB unique and threw a
-            // raw constraint error; now it throws SLUG_ALREADY_EXISTS cleanly.
-            if (dupSlug !== null) {
-              await validateSlugUniqueness(
-                tx as any,
-                collectionName,
-                null,
-                dupSlug,
-                undefined,
-                ctx.context.scope.roots?.insertColumns,
-              );
-            }
-
-            const newRoot = await scopedInsert(
-              tx as any,
-              'cms.roots',
-              {
-                id: newId('root'),
-                collection: collectionName,
-                slug: dupSlug,
-                created_by: userId,
-                // Plugin-contributed per-new-entry columns (Seam D): a duplicate
-                // is a NEW logical entry, so the i18n plugin mints a fresh
-                // translation_key here.
-                ...(ctx.context.scope.roots?.newEntryColumns?.() ?? {}),
-              },
-              ctx.context.scope.roots,
-            );
-
-            const versions: ChangedVersion[] = copies.map((copy) => {
-              const isTopLevel = copy.oldBlockId === input.blockId;
-              return {
-                blockId: isTopLevel ? newRoot.id : copy.newBlockId,
-                type: isTopLevel ? collectionName : copy.type,
-                properties: isTopLevel
-                  ? (input.targetProperties as Record<string, unknown>)
-                  : copy.properties,
-                children: copy.newChildren,
-              };
-            });
-
-            const { commit, branchId } = await createInitialCommit(tx, def, {
-              rootId: newRoot.id,
-              branchName: branchPolicy.defaultBranchName,
-              message: commitMessage(input.message, 'Duplicated root'),
-              createdBy: userId,
-              versions,
-            });
-
-            const dupPath = slugCfg?.enabled
-              ? ((await resolveRootCurrentPath(
-                  tx as any,
-                  slugCfg,
-                  newRoot.id,
-                  ctx.context.scope.roots,
-                )) ?? undefined)
-              : undefined;
-
-            return {
-              mode: 'root' as const,
-              commit,
-              rootId: newRoot.id,
-              branchId,
-              slug: dupSlug ?? undefined,
-              path: dupPath,
-            };
-          }
-
-          const parentVersion = versionByBlockId.get(
-            input.targetParentBlockId!,
-          );
-          if (!parentVersion)
-            throw new CMSError('PARENT_NOT_FOUND', {
-              message: errorMessages.parentNotFound(input.targetParentBlockId!),
-            });
-          if (parentVersion.deleted)
-            throw new CMSError('BLOCK_ALREADY_DELETED', {
-              message: errorMessages.blockAlreadyDeleted(
-                input.targetParentBlockId!,
-              ),
-            });
-
-          assertPlacementAllowed(
-            placementIndex,
-            sourceVersion.type,
-            input.targetParentBlockId === input.rootId
-              ? 'root'
-              : parentVersion.type,
-          );
-
-          const topLevelCopyId = copies[0].newBlockId;
-
-          const updatedChildren = [...(parentVersion.children ?? [])];
-          const insertAt =
-            input.targetIndex !== undefined
-              ? Math.min(input.targetIndex, updatedChildren.length)
-              : updatedChildren.length;
-          updatedChildren.splice(insertAt, 0, topLevelCopyId);
-
-          const changed: ChangedVersion[] = [
-            ...copies.map((copy) => ({
-              blockId: copy.newBlockId,
-              type: copy.type,
-              properties: copy.properties,
-              children: copy.newChildren,
-            })),
-            {
-              blockId: parentVersion.blockId,
-              type: parentVersion.type,
-              properties: parentVersion.properties,
-              children: updatedChildren,
             },
-          ];
-
-          const { commit } = await writeCommit(tx, def, {
-            rootId: input.rootId,
-            branchId: input.branchId,
-            parentCommitId: oldHeadId,
-            message: commitMessage(
-              input.message,
-              `Duplicate block ${input.blockId}`,
-            ),
-            createdBy: userId,
-            changed,
-          });
-
-          return {
-            mode: 'child' as const,
-            commit,
-            blockId: topLevelCopyId,
-          };
-        });
+          },
+          {
+            permissionResource: 'block',
+            operation: 'create',
+            scope: 'collection',
+            collection: collectionName,
+          },
+        ),
+      },
+      async (ctx) => {
+        const res = await db.transaction((tx) =>
+          runDuplicate(tx, ctx.context.scope, ctx.context.userId, {
+            ...ctx.body,
+            // Force root mode: no parent → `isRootDuplication` is always true.
+            targetParentBlockId: undefined,
+          }),
+        );
+        // `res` is statically the root branch; narrow away the `child` union arm
+        // so `duplicateRoot` exposes a non-union return type.
+        return res as Extract<typeof res, { mode: 'root' }>;
       },
     ),
 
@@ -2006,7 +2075,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
      * Nesting must be enabled in collection definition; circular references are rejected.
      * @param rootId Root id to move.
      * @param newParentRootId New parent root id (or null for top-level).
-     * @param sortOrder Sort order in parent's children (optional).
+     * @param position Sort order in parent's children (optional).
      * @returns Root id and new parent root id.
      * @throws NESTING_NOT_ENABLED when nesting is disabled in collection definition.
      * @throws ROOT_NOT_FOUND when rootId does not exist.
@@ -2020,7 +2089,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
         body: z.object({
           rootId: z.string(),
           newParentRootId: z.string().nullable(),
-          sortOrder: z.number().optional(),
+          position: z.number().optional(),
         }),
         metadata: cmsMeta(
           {
@@ -2028,7 +2097,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
               body: {} as {
                 rootId: string;
                 newParentRootId: string | null;
-                sortOrder?: number;
+                position?: number;
               },
             },
           },
@@ -2046,7 +2115,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           throw new CMSError('NESTING_NOT_ENABLED');
         }
 
-        const { rootId, newParentRootId, sortOrder } = ctx.body;
+        const { rootId, newParentRootId, position } = ctx.body;
 
         return db.transaction(async (tx) => {
           const [root] = await tx
@@ -2103,7 +2172,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             ? await captureSubtreePaths(tx as any, slugCfg, rootId)
             : [];
 
-          const effectiveSortOrder = sortOrder ?? 0;
+          const effectiveSortOrder = position ?? 0;
           await tx
             .update(roots)
             .set({
@@ -2151,6 +2220,13 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
      * const root = await cmsClient.pages.getRoot({
      *   rootId: 'root_123'
      * });
+     *
+     * @remarks Draft reads are intentionally split by handle: `getRoot` (by id)
+     * and `getRootBySlug` (by slug/parent). This differs from
+     * `getPublishedContent`, which multiplexes rootId|slug|path behind one public
+     * content-delivery entrypoint. Draft callers already know which handle they
+     * hold, so two narrow endpoints give sharper types/errors; `path` resolution
+     * is a published-content concern and is deliberately absent here.
      */
     getRoot: createCMSEndpoint(
       `/${collectionName}/getRoot`,
@@ -2276,12 +2352,12 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
      * @throws ROOT_HAS_CHILDREN when root has unarchived child pages.
      * @throws ROOT_IN_USE when root is embedded as a reusable block on live pages.
      * @example
-     * const result = await cmsClient.pages.deleteRoot({
+     * const result = await cmsClient.pages.archiveRoot({
      *   rootId: 'root_123'
      * });
      */
-    deleteRoot: createCMSEndpoint(
-      `/${collectionName}/deleteRoot`,
+    archiveRoot: createCMSEndpoint(
+      `/${collectionName}/archiveRoot`,
       {
         method: 'POST',
         body: z.object({ rootId: z.string() }),

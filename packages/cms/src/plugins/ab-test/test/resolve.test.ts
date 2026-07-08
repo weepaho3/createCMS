@@ -14,7 +14,7 @@ import { buildSchema } from '../schema';
  */
 
 const RESOLVE_COLLECTIONS = {
-  reusableBlocks: {
+  reusableblocks: {
     label: 'Reusable Blocks',
     reusableBlock: true,
     root: {
@@ -45,7 +45,7 @@ const RESOLVE_COLLECTIONS = {
         properties: {
           block: {
             type: 'reference' as const,
-            collection: 'reusableBlocks',
+            collection: 'reusableblocks',
             label: 'Block',
             required: true as const,
           },
@@ -85,10 +85,12 @@ async function publish(
   branchId: string,
 ) {
   const req = await cms.api[collection].requestApproval({
-    body: { branchId, requestedBy: 'r1', requestedReviewers: ['rev1'] },
+    body: { branchId, requestedReviewers: ['rev1'] },
+    context: { userId: 'r1' },
   });
   await cms.api[collection].approve({
-    body: { approvalId: req.approvals[0].id, reviewedBy: 'rev1' },
+    body: { approvalId: req.approvals[0].id },
+    context: { userId: 'rev1' },
   });
   return cms.api[collection].publishBranch({
     body: { rootId, branchId, publishedBy: 'admin' },
@@ -198,10 +200,10 @@ describe('A/B resolve seam (FA1)', () => {
 
   it('resolves an EMBEDDED-block test through the host page path', async () => {
     const { cms } = await setupResolveCMS();
-    const block = await rootWithVariant(cms, 'reusableBlocks', {
+    const block = await rootWithVariant(cms, 'reusableblocks', {
       label: 'Newsletter',
     });
-    const blockTestId = await startTest(cms, 'reusableBlocks', block);
+    const blockTestId = await startTest(cms, 'reusableblocks', block);
 
     const page = await cms.api.pages.createRoot({
       body: { slug: 'host', properties: { title: 'Host' } },

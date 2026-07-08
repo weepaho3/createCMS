@@ -18,7 +18,7 @@ import { buildSchema } from '../schema';
  */
 
 const XOR_COLLECTIONS = {
-  reusableBlocks: {
+  reusableblocks: {
     label: 'Reusable Blocks',
     reusableBlock: true,
     root: {
@@ -49,7 +49,7 @@ const XOR_COLLECTIONS = {
         properties: {
           block: {
             type: 'reference' as const,
-            collection: 'reusableBlocks',
+            collection: 'reusableblocks',
             label: 'Block',
             required: true as const,
           },
@@ -88,12 +88,13 @@ async function publish(
   const req = await cms.api[collection].requestApproval({
     body: {
       branchId,
-      requestedBy: 'requester-1',
       requestedReviewers: ['reviewer-1'],
     },
+    context: { userId: 'requester-1' },
   });
   await cms.api[collection].approve({
-    body: { approvalId: req.approvals[0].id, reviewedBy: 'reviewer-1' },
+    body: { approvalId: req.approvals[0].id },
+    context: { userId: 'reviewer-1' },
   });
   return cms.api[collection].publishBranch({
     body: { rootId, branchId, publishedBy: 'admin' },
@@ -110,7 +111,7 @@ function makeVariants(mainBranchId: string, variantBranchId: string) {
 /** Creates a root with a published main branch + a published variant branch. */
 async function publishedRootWithVariant(
   cms: any,
-  collection: 'pages' | 'reusableBlocks',
+  collection: 'pages' | 'reusableblocks',
   props: Record<string, unknown>,
   slug?: string,
 ) {
@@ -183,12 +184,12 @@ async function pageEmbedding(cms: any, blockRootId: string, slug: string) {
 describe('A/B XOR cross-embed guard', () => {
   it('rejects a page test when its embedded block has a running test', async () => {
     const { cms } = await setupXorCMS();
-    const block = await publishedRootWithVariant(cms, 'reusableBlocks', {
+    const block = await publishedRootWithVariant(cms, 'reusableblocks', {
       label: 'Newsletter',
     });
     const page = await pageEmbedding(cms, block.rootId, '/host');
 
-    await runningTest(cms, 'reusableBlocks', block); // block test runs first → ok
+    await runningTest(cms, 'reusableblocks', block); // block test runs first → ok
 
     const { testId: pageTestId } = await cms.api.abTest.createTest({
       body: {
@@ -207,7 +208,7 @@ describe('A/B XOR cross-embed guard', () => {
 
   it('rejects a block test when its host page has a running test (reverse direction)', async () => {
     const { cms } = await setupXorCMS();
-    const block = await publishedRootWithVariant(cms, 'reusableBlocks', {
+    const block = await publishedRootWithVariant(cms, 'reusableblocks', {
       label: 'Newsletter',
     });
     const page = await pageEmbedding(cms, block.rootId, '/host2');
@@ -217,7 +218,7 @@ describe('A/B XOR cross-embed guard', () => {
     const { testId: blockTestId } = await cms.api.abTest.createTest({
       body: {
         rootId: block.rootId,
-        collection: 'reusableBlocks',
+        collection: 'reusableblocks',
         name: 'block test',
         variants: makeVariants(block.mainBranchId, block.variantBranchId),
       },
@@ -338,28 +339,28 @@ describe('A/B XOR cross-embed guard', () => {
 
   it('allows a running test on a root with no co-rendering embed (happy path)', async () => {
     const { cms } = await setupXorCMS();
-    const a = await publishedRootWithVariant(cms, 'reusableBlocks', {
+    const a = await publishedRootWithVariant(cms, 'reusableblocks', {
       label: 'A',
     });
-    const b = await publishedRootWithVariant(cms, 'reusableBlocks', {
+    const b = await publishedRootWithVariant(cms, 'reusableblocks', {
       label: 'B',
     });
-    await runningTest(cms, 'reusableBlocks', a);
-    await expect(runningTest(cms, 'reusableBlocks', b)).resolves.toBeDefined();
+    await runningTest(cms, 'reusableblocks', a);
+    await expect(runningTest(cms, 'reusableblocks', b)).resolves.toBeDefined();
   });
 
   it('publishBranch backstop rejects a publish that makes two running tests co-render (TOCTOU)', async () => {
     const { cms } = await setupXorCMS();
     // two independent blocks, each with a running test — they do NOT co-render
     // yet, so both tests start cleanly (the updateTest guard sees no edge).
-    const b = await publishedRootWithVariant(cms, 'reusableBlocks', {
+    const b = await publishedRootWithVariant(cms, 'reusableblocks', {
       label: 'B',
     });
-    const c = await publishedRootWithVariant(cms, 'reusableBlocks', {
+    const c = await publishedRootWithVariant(cms, 'reusableblocks', {
       label: 'C',
     });
-    await runningTest(cms, 'reusableBlocks', b);
-    await runningTest(cms, 'reusableBlocks', c);
+    await runningTest(cms, 'reusableblocks', b);
+    await runningTest(cms, 'reusableblocks', c);
 
     // a page embedding BOTH running blocks, created AFTER both tests started —
     // the start-time guard never saw this co-render edge.
@@ -386,7 +387,7 @@ describe('A/B XOR cross-embed guard', () => {
   it('allows publishing a shared block while two independent host pages have running tests', async () => {
     const { cms } = await setupXorCMS();
     // an UNTESTED shared block embedded by two independent pages
-    const shared = await publishedRootWithVariant(cms, 'reusableBlocks', {
+    const shared = await publishedRootWithVariant(cms, 'reusableblocks', {
       label: 'Shared',
     });
     const p1 = await pageEmbedding(cms, shared.rootId, '/shared-host-1');
@@ -398,7 +399,7 @@ describe('A/B XOR cross-embed guard', () => {
     // a routine re-publish of the shared block must NOT be rejected — its own
     // render subtree has no varying root (the flat-closure bug rejected this).
     await expect(
-      cms.api.reusableBlocks.publishBranch({
+      cms.api.reusableblocks.publishBranch({
         body: {
           rootId: shared.rootId,
           branchId: shared.mainBranchId,

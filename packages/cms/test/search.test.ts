@@ -19,7 +19,7 @@ describe('search', () => {
     // previously emitting invalid schema-qualified SQL and silently failing.)
     await cms.api.admin.reindexSearch({ body: {} });
 
-    const result = await cms.api.search.search({ query: { q: 'Zugspitze' } });
+    const result = await cms.api.search.query({ query: { search: 'Zugspitze' } });
 
     expect(result.total).toBeGreaterThan(0);
     const hit = result.results.find((r) => r.entityId === root.rootId);
@@ -39,7 +39,7 @@ describe('search', () => {
     await indexRoot(db, root.rootId);
     await indexRoot(db, root.rootId);
 
-    const result = await cms.api.search.search({ query: { q: 'Marmot' } });
+    const result = await cms.api.search.query({ query: { search: 'Marmot' } });
     const hits = result.results.filter((r) => r.entityId === root.rootId);
     expect(hits).toHaveLength(1);
   });
@@ -53,7 +53,7 @@ describe('search', () => {
 
     await cms.api.admin.reindexSearch({ body: {} });
 
-    const result = await cms.api.search.search({ query: { q: 'Capybara' } });
+    const result = await cms.api.search.query({ query: { search: 'Capybara' } });
     expect(result.total).toBeGreaterThan(0);
     expect(result.results.some((r) => r.entityType === 'variable')).toBe(true);
   });

@@ -158,11 +158,24 @@ type AreEndpointOptionsOptional<Body, Query> = undefined extends Body
         ? false
         : true;
 
+// Transport-level options every caller accepts in addition to body/query. The
+// wrapper (endpoint.ts) already forwards `headers` (into middleware's reqCtx)
+// and `context` (merged into the endpoint ctx). NB: middleware-resolved userId
+// wins over `context.userId`; headers is the reliable identity channel.
+type EndpointCallerExtras = {
+  headers?: HeadersInit;
+  context?: { userId?: string } & Record<string, unknown>;
+};
+
 type EndpointCaller<E> =
   E extends Endpoint<any, any, infer Body, infer Query, any, infer R, any, any>
     ? AreEndpointOptionsOptional<Body, Query> extends true
-      ? (opts?: OptionalizeEndpointOptions<Body, Query>) => Promise<Awaited<R>>
-      : (opts: OptionalizeEndpointOptions<Body, Query>) => Promise<Awaited<R>>
+      ? (
+          opts?: OptionalizeEndpointOptions<Body, Query> & EndpointCallerExtras,
+        ) => Promise<Awaited<R>>
+      : (
+          opts: OptionalizeEndpointOptions<Body, Query> & EndpointCallerExtras,
+        ) => Promise<Awaited<R>>
     : never;
 
 type ServerApiCallers<T> = {
@@ -189,8 +202,11 @@ type UserEnrichableEndpoints =
   | 'getCommentThread'
   | 'listApprovals'
   | 'getApproval'
-  | 'listNotifications'
   | 'listPublications';
+// NB: `notifications.list` is intentionally NOT here — its `withUser` input flag
+// is added namespace-scoped in `WithActorUserApi` below, because `list` is a
+// non-unique key (templates.list / variables.list) and this union matches keys
+// across ALL namespaces.
 
 type AddWithUser<TFn, TTable extends AnyPgTable> = TFn extends (
   opts?: infer O,
@@ -215,7 +231,7 @@ type WithUserApi<T, TTable extends AnyPgTable> = {
 // derive is a partial of the user table's row.
 type ActorUserShape<TTable extends AnyPgTable> = Partial<TTable['$inferSelect']>;
 
-// Rewrite a `listNotifications` RESULT to type `actorUser` off the user table.
+// Rewrite a `list` RESULT to type `actorUser` off the user table.
 type InjectActorUser<R, TTable extends AnyPgTable> = R extends {
   notifications: Array<infer Item>;
 }
@@ -226,15 +242,18 @@ type InjectActorUser<R, TTable extends AnyPgTable> = R extends {
     }
   : R;
 
-// Type the OUTPUT of `notifications.listNotifications` (WithUserApi only types
+// Type the OUTPUT of `notifications.list` (WithUserApi only types
 // the input flag). Leaves every other endpoint untouched.
 type WithActorUserApi<T, TTable extends AnyPgTable> = T extends {
   notifications: infer NS;
 }
   ? Omit<T, 'notifications'> & {
       notifications: {
-        [K in keyof NS]: K extends 'listNotifications'
-          ? NS[K] extends (...args: infer A) => infer R
+        // `list` gets BOTH the `withUser` INPUT flag (via AddWithUser) and the
+        // `actorUser` OUTPUT rewrite, scoped to the notifications namespace so a
+        // same-named `templates.list`/`variables.list` is never touched.
+        [K in keyof NS]: K extends 'list'
+          ? AddWithUser<NS[K], TTable> extends (...args: infer A) => infer R
             ? (
                 ...args: A
               ) => R extends Promise<infer RR>
@@ -296,47 +315,135 @@ type InferCollectionApis<
     InferCollectionEndpoints<TPlugins>;
 };
 
-function checkEndpointConflicts(plugins: CMSPlugin[]) {
-  const registry = new Map<string, { pluginId: string; methods: string[] }[]>();
+function checkEndpointConflicts(endpoints: Record<string, Endpoint>) {
+  // registry: path → list of { source, methods } across the ENTIRE surface
+  // (core + collection + plugin), so a plugin path shadowing a core/collection
+  // path is caught, not just plugin↔plugin.
+  const registry = new Map<string, { source: string; methods: string[] }[]>();
 
-  for (const plugin of plugins) {
-    if (!plugin.endpoints) continue;
-    for (const endpoint of Object.values(plugin.endpoints)) {
-      if (
-        !endpoint ||
-        !('path' in endpoint) ||
-        typeof endpoint.path !== 'string'
-      )
-        continue;
-      const path = endpoint.path;
-      let methods: string[] = [];
-      if (endpoint.options && 'method' in endpoint.options) {
-        methods = Array.isArray(endpoint.options.method)
-          ? endpoint.options.method
-          : [endpoint.options.method as string];
-      }
-      if (methods.length === 0) methods = ['*'];
+  for (const [source, endpoint] of Object.entries(endpoints)) {
+    const ep = endpoint as unknown as {
+      path?: unknown;
+      options?: { method?: unknown };
+    };
+    if (typeof ep.path !== 'string') continue;
+    const path = ep.path;
+    let methods: string[] = [];
+    const m = ep.options?.method;
+    if (m !== undefined)
+      methods = Array.isArray(m) ? (m as string[]) : [m as string];
+    if (methods.length === 0) methods = ['*'];
 
-      if (!registry.has(path)) registry.set(path, []);
-      registry.get(path)!.push({ pluginId: plugin.id, methods });
-    }
+    if (!registry.has(path)) registry.set(path, []);
+    registry.get(path)!.push({ source, methods });
   }
 
+  const conflicts: string[] = [];
   for (const [path, entries] of registry) {
     if (entries.length <= 1) continue;
     const methodMap = new Map<string, string[]>();
     for (const entry of entries) {
       for (const method of entry.methods) {
         if (!methodMap.has(method)) methodMap.set(method, []);
-        methodMap.get(method)!.push(entry.pluginId);
+        methodMap.get(method)!.push(entry.source);
       }
     }
-    for (const [method, pluginIds] of methodMap) {
-      if (pluginIds.length > 1 || method === '*') {
-        console.warn(
-          `[cms] Endpoint conflict: "${path}" [${method}] registered by plugins: ${[...new Set(pluginIds)].join(', ')}`,
+    for (const [method, sources] of methodMap) {
+      // A real conflict is two+ sources on the same method, OR a wildcard
+      // sharing the path with ANY other entry (it matches every method).
+      const wildcardClash = method === '*' && entries.length > 1;
+      if (sources.length > 1 || wildcardClash) {
+        conflicts.push(
+          `"${path}" [${method}] registered by: ${[...new Set(sources)].join(', ')}`,
         );
       }
+    }
+  }
+
+  if (conflicts.length > 0) {
+    throw new Error(
+      `[cms] Endpoint path conflict(s) detected — each path+method must be unique:\n` +
+        conflicts.map((c) => `  - ${c}`).join('\n'),
+    );
+  }
+}
+
+// A plugin id is used as an object key AND as the leading URL segment for every
+// one of its endpoints, so it must be a valid JS identifier (no dots, slashes,
+// spaces, leading digits) to keep `cms.api.<id>.<method>` and `/<id>/<method>`
+// well-formed.
+const VALID_JS_IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+
+function validatePluginPaths(plugins: CMSPlugin[]) {
+  for (const plugin of plugins) {
+    if (!VALID_JS_IDENTIFIER.test(plugin.id)) {
+      throw new Error(
+        `[cms] Plugin id "${plugin.id}" is not a valid JS identifier. ` +
+          `It is used as an api namespace and URL segment — use letters, digits, ` +
+          `_ or $, not starting with a digit.`,
+      );
+    }
+    if (!plugin.endpoints) continue;
+    const prefix = `/${plugin.id}/`;
+    for (const [key, endpoint] of Object.entries(plugin.endpoints)) {
+      const path = (endpoint as { path?: unknown })?.path;
+      if (typeof path !== 'string' || !path.startsWith(prefix)) {
+        throw new Error(
+          `[cms] Plugin "${plugin.id}" endpoint "${key}" has path ` +
+            `${JSON.stringify(path)} but must start with "${prefix}" ` +
+            `(the /<pluginId>/<method> convention the client proxy and router rely on).`,
+        );
+      }
+    }
+  }
+}
+
+function validateCollectionNames(
+  collections: Record<string, AnyCollectionDefinition>,
+  plugins: CMSPlugin[],
+) {
+  // The six static rawApi keys (factory.ts rawApi literal) + the mounted
+  // `${basePath}/realtime` route, PLUS the static client-transport keys that
+  // occupy the client proxy target (`$fetch`, `$store`, `$ERROR_CODES`) — a
+  // collection with one of those names would be silently shadowed on the client
+  // (`client.$fetch.createRoot` is `undefined`), so reject it here at boot.
+  const RESERVED_NAMESPACES = new Set([
+    'admin',
+    'media',
+    'variables',
+    'templates',
+    'search',
+    'notifications',
+    'realtime',
+    '$fetch',
+    '$store',
+    '$ERROR_CODES',
+  ]);
+  const pluginIds = new Set(plugins.map((p) => p.id));
+
+  for (const name of Object.keys(collections)) {
+    if (RESERVED_NAMESPACES.has(name)) {
+      throw new Error(
+        `[cms] Collection "${name}" collides with a reserved system namespace ` +
+          `(${[...RESERVED_NAMESPACES].join(', ')}). Rename the collection.`,
+      );
+    }
+    if (pluginIds.has(name)) {
+      throw new Error(
+        `[cms] Collection "${name}" collides with the id of an installed plugin. ` +
+          `A plugin namespace and a collection cannot share a name — rename one.`,
+      );
+    }
+    // A collection name is BOTH a URL segment (`/${name}/createRoot`) and a
+    // dot-accessed namespace (`cms.api.${name}`, `client.${name}`), so it must
+    // be a valid JS identifier: camelCase (`blogPosts`) is fine, but kebab-case
+    // (`blog-posts`) is rejected because it would break the dot access.
+    if (!VALID_JS_IDENTIFIER.test(name)) {
+      throw new Error(
+        `[cms] Collection name "${name}" is not a valid identifier. It is used ` +
+          `as an api namespace and URL segment — use letters, digits, _ or $, ` +
+          `not starting with a digit (e.g. "blogPosts", not "blog-posts").`,
+      );
     }
   }
 }
@@ -444,6 +551,7 @@ export const createCMS = <
   );
 
   validateCollectionReferences(definition.collections);
+  validateCollectionNames(definition.collections, plugins);
 
   const collections = processCollections(definition.collections) as {
     [K in keyof TCollections]: TCollections[K] & { name: string };
@@ -497,8 +605,9 @@ export const createCMS = <
     return initPromise;
   }
 
-  // Check for endpoint conflicts between plugins
-  checkEndpointConflicts(plugins);
+  // Validate plugin ids + endpoint path convention before endpoints are built.
+  // Whole-surface conflict detection runs later, once flatEndpoints exists.
+  validatePluginPaths(plugins);
 
   // Merge config hooks + plugin hooks + search hooks (config hooks run first)
   const searchHooks = createSearchHooks(
@@ -665,6 +774,31 @@ export const createCMS = <
   // Pass pluginContext (not cmsContext) so plugin-injected fields (e.g.
   // scopeConditions from multiTenant) are visible to the wrapper.
   const flatEndpoints = flattenEndpoints(rawApi as any);
+  // Throws on duplicate path+method across the ENTIRE surface (core + collection
+  // + plugin), keyed by the `ns:key` composite so the message points at the
+  // exact offending endpoints.
+  checkEndpointConflicts(flatEndpoints);
+
+  // Static path→method map for the client proxy: lets optional-body POST
+  // endpoints (e.g. notifications.markNotificationsRead, admin.reindexSearch)
+  // dispatch as POST even when called with no body, instead of falling back to
+  // body-presence inference. Built from flatEndpoints so it covers collection
+  // and plugin namespaces that are only known at cms-definition time. Param
+  // routes ({}/:) aren't RPC-proxied, mirroring endpoint-paths.test.ts.
+  const pathMethods: Record<string, 'GET' | 'POST'> = {};
+  for (const endpoint of Object.values(flatEndpoints)) {
+    const ep = endpoint as unknown as {
+      path?: string;
+      options?: { method?: string | string[] };
+    };
+    const path = ep.path;
+    if (typeof path !== 'string') continue;
+    if (path.includes('{') || path.includes(':')) continue;
+    const m = ep.options?.method;
+    const method = Array.isArray(m) ? (m.find((x) => x !== 'GET') ?? m[0]) : m;
+    if (method === 'GET' || method === 'POST') pathMethods[path] = method;
+  }
+
   const wrappedEndpoints = toCMSEndpoints(
     flatEndpoints,
     pluginContext,
@@ -763,6 +897,10 @@ export const createCMS = <
       ? RevalidateFn<keyof DefCollections & string>
       : RevalidateFn<keyof DefCollections & string> | undefined,
     $ERROR_CODES,
+    // Serializable path→method map (pure JSON) handed to the client factory so
+    // the proxy dispatches the correct HTTP method without body-presence
+    // inference. See `createCMSClient({ pathMethods: cms.$pathMethods })`.
+    $pathMethods: pathMethods,
     // Type-only registry read by `createNotificationRouter<typeof cms>`: the
     // plugin-contributed notification `meta` shapes + the actor-user shape from
     // the `user` config. Runtime value is `undefined` (never read at runtime).

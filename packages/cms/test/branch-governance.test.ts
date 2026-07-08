@@ -147,12 +147,13 @@ describe('branch protection — publish approval gate', () => {
     const req = await cms.api.pages.requestApproval({
       body: {
         branchId: root.branchId,
-        requestedBy: 'author',
         requestedReviewers: ['rev-1'],
       },
+      context: { userId: 'author' },
     });
     await cms.api.pages.approve({
-      body: { approvalId: req.approvals[0].id, reviewedBy: 'rev-1' },
+      body: { approvalId: req.approvals[0].id },
+      context: { userId: 'rev-1' },
     });
 
     const pub = await cms.api.pages.publishBranch({
@@ -175,15 +176,15 @@ describe('branch protection — publish approval gate', () => {
     const req = await cms.api.pages.requestApproval({
       body: {
         branchId: root.branchId,
-        requestedBy: 'author',
         requestedReviewers: ['rev-1', 'rev-2'],
       },
+      context: { userId: 'author' },
     });
     await cms.api.pages.approve({
       body: {
         approvalId: req.approvals[0].id,
-        reviewedBy: req.approvals[0].requestedReviewer,
       },
+      context: { userId: req.approvals[0].requestedReviewer },
     });
 
     // 1 of 2 approved → still blocked.
@@ -196,8 +197,8 @@ describe('branch protection — publish approval gate', () => {
     await cms.api.pages.approve({
       body: {
         approvalId: req.approvals[1].id,
-        reviewedBy: req.approvals[1].requestedReviewer,
       },
+      context: { userId: req.approvals[1].requestedReviewer },
     });
     const pub = await cms.api.pages.publishBranch({
       body: { rootId: root.rootId, branchId: root.branchId },

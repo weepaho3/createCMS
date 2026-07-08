@@ -7,11 +7,11 @@ A template is a default value for a block property in a given collection and blo
 
 | Method | HTTP | Input | Returns |
 | --- | --- | --- | --- |
-| `listTemplates` | GET | `query: { collection?, blockType? }` | `{ templates }` |
-| `getTemplate` | GET | `query: { id }` | `{ template }` |
+| `list` | GET | `query: { collection?, blockType? }` | `{ templates }` |
+| `getTemplate` | GET | `query: { templateId }` | `{ template }` |
 | `createTemplate` | POST | `body: { collection, blockType, propertyKey, template, description? }` | `{ template }` |
-| `updateTemplate` | POST | `body: { id, template?, description? }` | `{ template }` |
-| `deleteTemplate` | POST | `body: { id }` | `{ deleted }` |
+| `updateTemplate` | POST | `body: { templateId, template?, description? }` | `{ template }` |
+| `deleteTemplate` | POST | `body: { templateId }` | `{ deleted }` |
 | `resolveTemplate` | POST | `body: { template }` | `{ resolved }` |
 | `getTemplateDefaults` | GET | `query: { collection, blockType }` | `{ defaults }` |
 

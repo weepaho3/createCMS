@@ -1,6 +1,6 @@
-import type { WritableAtom } from 'nanostores';
+import type { ReadableAtom, WritableAtom } from 'nanostores';
 
-import type { CMSPlugin } from '../core/types/plugin';
+import { CMS_ERRORS } from '../core/errors';
 
 // ============================================================================
 // Fetch
@@ -47,7 +47,6 @@ export interface CMSClientStore {
 
 export interface CMSClientPlugin {
   id: string;
-  $InferServerPlugin?: CMSPlugin;
   init?: (
     $fetch: CMSFetch,
     $store: CMSClientStore,
@@ -110,6 +109,13 @@ export type QueryState<T = unknown> = {
 export interface CMSClientOptions {
   baseURL: string;
   plugins?: CMSClientPlugin[];
+  /**
+   * Runtime map of `path → HTTP method` used by the proxy to dispatch RPC
+   * calls (e.g. `/notifications/markNotificationsRead → 'POST'`). Seed this
+   * with the server's `cms.$pathMethods` so optional-body POST endpoints are
+   * not mis-inferred as GET. Plugin `pathMethods` are merged on top.
+   */
+  pathMethods?: Record<string, 'GET' | 'POST'>;
 }
 
 // ============================================================================
@@ -147,18 +153,35 @@ type InferClientPluginErrorCodes<P extends CMSClientPlugin[]> =
       : {}
   >;
 
+// React entrypoint: `media.useUploadAssets` is a hook thunk.
 type WithMedia<T> = T extends { media: infer M }
   ? Omit<T, 'media'> & {
       media: M & { useUploadAssets: () => MediaUploadState };
     }
   : T & { media: { useUploadAssets: () => MediaUploadState } };
 
-export type CMSClientInstance<
-  TCMS = unknown,
-  TPlugins extends CMSClientPlugin[] = CMSClientPlugin[],
-> = WithMedia<InferApi<TCMS>> &
+// Vanilla entrypoint: `media.uploadState` is the raw nanostores atom
+// (consumers call `.get()` / `.subscribe()` themselves).
+type WithMediaAtom<T> = T extends { media: infer M }
+  ? Omit<T, 'media'> & {
+      media: M & { uploadState: ReadableAtom<MediaUploadState> };
+    }
+  : T & { media: { uploadState: ReadableAtom<MediaUploadState> } };
+
+type CMSClientBase<TPlugins extends CMSClientPlugin[]> =
   InferPluginActions<TPlugins> & {
     $fetch: CMSFetch;
     $store: CMSClientStore;
-    $ERROR_CODES: InferClientPluginErrorCodes<TPlugins>;
+    // api-16: recognized core codes plus any plugin-contributed codes.
+    $ERROR_CODES: typeof CMS_ERRORS & InferClientPluginErrorCodes<TPlugins>;
   };
+
+export type CMSClientInstance<
+  TCMS = unknown,
+  TPlugins extends CMSClientPlugin[] = CMSClientPlugin[],
+> = WithMedia<InferApi<TCMS>> & CMSClientBase<TPlugins>;
+
+export type CMSVanillaClientInstance<
+  TCMS = unknown,
+  TPlugins extends CMSClientPlugin[] = CMSClientPlugin[],
+> = WithMediaAtom<InferApi<TCMS>> & CMSClientBase<TPlugins>;

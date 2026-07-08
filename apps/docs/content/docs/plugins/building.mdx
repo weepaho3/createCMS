@@ -161,7 +161,7 @@ throw new APIError(404, {
 hooks: {
   after: [
     {
-      action: 'deleteRoot',
+      action: 'archiveRoot',
       handler: async (ctx) => {
         // ctx.action, ctx.collection, ctx.db, ctx.input, ctx.scope
         await ctx.db.execute(

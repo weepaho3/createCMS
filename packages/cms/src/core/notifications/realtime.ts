@@ -9,7 +9,7 @@ import type { OnNotificationHandler } from './types';
  *
  * Best-effort: the transport swallows delivery errors and the dispatcher
  * isolates handler failures, so a dropped push never breaks `notify()` — the
- * durable notifications row + `listNotifications` poll stay the source of truth.
+ * durable notifications row + `list` poll stay the source of truth.
  */
 export function makeNotificationPublishHandler(
   transport: RealtimeRuntime,

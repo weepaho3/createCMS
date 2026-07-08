@@ -19,11 +19,11 @@ Each upload creates a row in `assets`:
 | `mimeType`, `size` | Content type and byte size. |
 | `archivedAt` | Soft-delete marker for pruning. |
 
-Folders are a nested tree (`asset_folders`, each with a `parentId`). `listFolders` reads them — the children of a parent, or the root-level folders when no `parentId` is given; `createFolder`, `moveFolder`, and `deleteFolder` manage them; a folder that still holds assets or subfolders cannot be deleted (`FOLDER_HAS_CONTENT`).
+Folders are a nested tree (`asset_folders`, each with a `parentId`). `listFolders` reads them — the children of a parent, or the root-level folders when no `parentFolderId` is given; `createFolder`, `moveFolder`, and `deleteFolder` manage them; a folder that still holds assets or subfolders cannot be deleted (`FOLDER_HAS_CONTENT`).
 
 ## Private vs public
 
-`status` is a **visibility flag**. An asset is created `private`, and a private asset is not served by the public redirect (`GET /media/asset/{id}` returns `ASSET_ACCESS_DENIED`). To expose one, flip it to `public` with `updateAssetStatus` — publishing content that references an asset does this automatically.
+`status` is a **visibility flag**. An asset is created `private`, and a private asset is not served by the public redirect (`GET /media/asset/{id}` returns `ASSET_ACCESS_DENIED`). To expose one, flip it to `public` with `updateAssetsStatus` — publishing content that references an asset does this automatically.
 
 The gate is enforced by the CMS endpoints, not by the object store — uploaded objects are `public-read`, so `status` is not a hard-privacy boundary. Treat it as "should this be shown," not "is this secret."
 

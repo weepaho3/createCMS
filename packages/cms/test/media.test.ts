@@ -245,7 +245,7 @@ describe('media.listFolders', () => {
     await cms.api.media.createFolder({ body: { name: 'Root sibling' } });
 
     const result = await cms.api.media.listFolders({
-      query: { parentId: parent.folder.id },
+      query: { parentFolderId: parent.folder.id },
     });
 
     expect(result.folders.map((f) => f.name)).toEqual(['Icons', 'Logos']);
@@ -259,11 +259,12 @@ describe('media.listFolders', () => {
     const leaf = await cms.api.media.createFolder({ body: { name: 'Leaf' } });
 
     expect(
-      (await cms.api.media.listFolders({ query: { parentId: leaf.folder.id } }))
-        .folders,
+      (await cms.api.media.listFolders({
+        query: { parentFolderId: leaf.folder.id },
+      })).folders,
     ).toEqual([]);
     expect(
-      (await cms.api.media.listFolders({ query: { parentId: 'nope' } }))
+      (await cms.api.media.listFolders({ query: { parentFolderId: 'nope' } }))
         .folders,
     ).toEqual([]);
   });
@@ -1278,7 +1279,7 @@ describe('media.archiveAsset', () => {
     });
     expect(before.assets.map((a: any) => a.id)).toContain(asset.id);
 
-    const res = await cms.api.media.archiveAsset({
+    const res = await cms.api.media.archiveAssets({
       body: { assetIds: [asset.id] },
     });
     expect(res.archived).toBe(1);
@@ -1317,7 +1318,7 @@ describe('media.archiveAsset', () => {
       })
       .returning();
 
-    const res = await cms.api.media.archiveAsset({
+    const res = await cms.api.media.archiveAssets({
       body: { assetIds: [original.id] },
     });
     expect(res.archived).toBe(2);
@@ -1332,7 +1333,7 @@ describe('media.archiveAsset', () => {
   it('throws ASSET_NOT_FOUND for unknown ids', async () => {
     const { cms } = await setupTestCMS();
     await expect(
-      cms.api.media.archiveAsset({ body: { assetIds: ['asset_nope'] } }),
+      cms.api.media.archiveAssets({ body: { assetIds: ['asset_nope'] } }),
     ).rejects.toThrow(/found/i);
   });
 });

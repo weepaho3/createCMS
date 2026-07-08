@@ -1,47 +1,48 @@
 import type { ClientConfig } from './config';
-import type { CMSClientInstance, CMSClientPlugin } from './types';
 
 import { createDynamicPathProxy } from './proxy';
 
 /**
  * Shared client assembly for both the vanilla and React entrypoints. The only
- * thing that differs between them is how `media.useUploadAssets` is exposed:
- *  - vanilla passes the raw `uploadAssets` nanostores atom (consumers call
+ * thing that differs between them is the shape of the injected `media`
+ * namespace:
+ *  - vanilla passes `{ uploadState: <raw nanostores atom> }` (consumers call
  *    `.get()` / `.subscribe()` themselves);
- *  - React passes a `() => useStore(uploadAssets)` hook thunk.
+ *  - React passes `{ useUploadAssets: () => useStore(uploadAssets) }` (a hook
+ *    thunk).
  *
- * That value is constructed by the caller and handed in as `unknown` so this
- * module never imports React — keeping it out of the vanilla bundle. The
- * `as CMSClientInstance` cast (present in both original builders) is the single
- * intentional escape hatch that normalizes the loosely-typed routes object to
- * the inferred public client type (`WithMedia` mandates
- * `useUploadAssets: () => MediaUploadState`).
+ * The `media` object is constructed by the caller so this module never imports
+ * React — keeping it out of the vanilla bundle. The caller also supplies the
+ * concrete instance type via `TInstance` (`CMSClientInstance` for React,
+ * `CMSVanillaClientInstance` for vanilla); the `as TInstance` cast is the
+ * single intentional escape hatch that normalizes the loosely-typed routes
+ * object to the inferred public client type.
  */
-export function buildClient<TCMS, TPlugins extends CMSClientPlugin[]>(
+export function buildClient<TInstance>(
   config: ClientConfig,
-  useUploadAssets: unknown,
-): CMSClientInstance<TCMS, TPlugins> {
+  media: Record<string, unknown>,
+): TInstance {
   const {
     $fetch,
     $store,
     pluginsActions,
     pluginsAtoms,
-    pluginPathMethods,
+    pathMethods,
     atomListeners,
     $ERROR_CODES,
   } = config;
 
   return createDynamicPathProxy(
     {
-      media: { useUploadAssets },
+      media,
       ...pluginsActions,
       $fetch,
       $store,
       $ERROR_CODES,
     },
     $fetch,
-    pluginPathMethods,
+    pathMethods,
     pluginsAtoms,
     atomListeners,
-  ) as CMSClientInstance<TCMS, TPlugins>;
+  ) as TInstance;
 }

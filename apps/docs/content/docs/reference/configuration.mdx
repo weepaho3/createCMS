@@ -99,7 +99,7 @@ const realtime = {
 };
 ```
 
-Requires `authMiddleware` to resolve the user from the request **cookie** — the realtime route authenticates each connection by session, so it must be same-origin with your app. Omit `realtime` to disable; notifications stay available through the `listNotifications` poll.
+Requires `authMiddleware` to resolve the user from the request **cookie** — the realtime route authenticates each connection by session, so it must be same-origin with your app. Omit `realtime` to disable; notifications stay available through the `notifications.list` poll.
 
 ## `notifications`
 

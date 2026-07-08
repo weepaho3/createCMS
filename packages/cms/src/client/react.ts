@@ -35,7 +35,7 @@ import { useStore } from './react-store';
  * });
  *
  * function MyComponent() {
- *   const { data, isPending } = client.useMediaLibrary();
+ *   const upload = client.media.useUploadAssets();
  * }
  * ```
  */
@@ -55,18 +55,20 @@ export function createCMSClient<TCMS = unknown>(
   if (options) {
     const config = getClientConfigSync(options);
     runPluginInit(options, config);
-    return buildClient<TCMS, CMSClientPlugin[]>(config, () =>
-      useStore(config.pluginsAtoms.uploadAssets as ReadableAtom),
-    );
+    return buildClient<CMSClientInstance<TCMS, CMSClientPlugin[]>>(config, {
+      useUploadAssets: () =>
+        useStore(config.pluginsAtoms.uploadAssets as ReadableAtom),
+    });
   }
   return <const TPlugins extends CMSClientPlugin[] = CMSClientPlugin[]>(
     opts: CMSClientOptions & { plugins?: TPlugins },
   ): CMSClientInstance<TCMS, TPlugins> => {
     const config = getClientConfigSync(opts);
     runPluginInit(opts, config);
-    return buildClient<TCMS, TPlugins>(config, () =>
-      useStore(config.pluginsAtoms.uploadAssets as ReadableAtom),
-    );
+    return buildClient<CMSClientInstance<TCMS, TPlugins>>(config, {
+      useUploadAssets: () =>
+        useStore(config.pluginsAtoms.uploadAssets as ReadableAtom),
+    });
   };
 }
 

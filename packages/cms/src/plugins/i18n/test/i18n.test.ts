@@ -879,7 +879,7 @@ describe('i18n + multiTenant — composition', () => {
     });
     expect(usage.pageCount).toBe(0);
 
-    const del = await cms.api.pages.deleteRoot({
+    const del = await cms.api.pages.archiveRoot({
       body: { rootId: aBlock.rootId },
     });
     expect(del.rootId).toBe(aBlock.rootId);
@@ -907,7 +907,7 @@ describe('i18n + multiTenant — composition', () => {
     });
 
     await expect(
-      cms.api.pages.deleteRoot({ body: { rootId: aBlock.rootId } }),
+      cms.api.pages.archiveRoot({ body: { rootId: aBlock.rootId } }),
     ).rejects.toThrow(/embedded/i);
   });
 
@@ -984,7 +984,7 @@ describe('i18n + multiTenant — composition', () => {
     const usage = await cms.api.media.getAssetUsages({ query: { assetId } });
     expect(usage.pageCount).toBe(0);
 
-    const res = await cms.api.media.archiveAsset({
+    const res = await cms.api.media.archiveAssets({
       body: { assetIds: [assetId] },
     });
     expect(res.archived).toBe(1);
@@ -1019,7 +1019,7 @@ describe('i18n + multiTenant — composition', () => {
     const usage = await cms.api.media.getAssetUsages({ query: { assetId } });
     expect(usage.pageCount).toBe(1);
 
-    const res = await cms.api.media.archiveAsset({
+    const res = await cms.api.media.archiveAssets({
       body: { assetIds: [assetId] },
     });
     expect(res.archived).toBe(0);
@@ -1668,7 +1668,7 @@ describe('i18n — delete guard is anchor-only (RB4)', () => {
 
     // The DE sibling is not a stored anchor → deletable (hosts fall back to en).
     setLanguage('de');
-    const delDe = await cms.api.pages.deleteRoot({
+    const delDe = await cms.api.pages.archiveRoot({
       body: { rootId: deBlockId },
     });
     expect(delDe.rootId).toBe(deBlockId);
@@ -1676,7 +1676,7 @@ describe('i18n — delete guard is anchor-only (RB4)', () => {
     // The EN anchor IS the directly-referenced value → blocked.
     setLanguage('en');
     await expect(
-      cms.api.pages.deleteRoot({ body: { rootId: enBlock.rootId } }),
+      cms.api.pages.archiveRoot({ body: { rootId: enBlock.rootId } }),
     ).rejects.toThrow(/embedded/i);
   });
 });
@@ -1743,12 +1743,12 @@ describe('i18n — templates are per-language', () => {
 
     // Each language sees only its own templates.
     setLanguage('en');
-    const en = await cms.api.templates.listTemplates({});
+    const en = await cms.api.templates.list({});
     expect(en.templates).toHaveLength(1);
     expect(en.templates[0].template).toBe('EN-DEFAULT');
 
     setLanguage('de');
-    const de = await cms.api.templates.listTemplates({});
+    const de = await cms.api.templates.list({});
     expect(de.templates).toHaveLength(1);
     expect(de.templates[0].template).toBe('DE-DEFAULT');
 
@@ -1835,7 +1835,7 @@ describe('i18n — templates are per-language', () => {
 
     const only = async (tenant: string, lang: string, expected: string) => {
       set(tenant, lang);
-      const { templates } = await cms.api.templates.listTemplates({});
+      const { templates } = await cms.api.templates.list({});
       expect(templates).toHaveLength(1);
       expect(templates[0].template).toBe(expected);
     };
@@ -1845,7 +1845,7 @@ describe('i18n — templates are per-language', () => {
 
     // The (globex, en) cell has none.
     set('globex', 'en');
-    const { templates: none } = await cms.api.templates.listTemplates({});
+    const { templates: none } = await cms.api.templates.list({});
     expect(none).toHaveLength(0);
   });
 });
@@ -1900,7 +1900,7 @@ describe('i18n — variables resolve with language fallback', () => {
     // In 'de', the management view shows only the 'de' cell — companyName (en
     // only) is NOT listed even though content would fall back to it.
     setLanguage('de');
-    const { variables: deVars } = await cms.api.variables.listVariables({});
+    const { variables: deVars } = await cms.api.variables.list({});
     expect(deVars).toHaveLength(0);
 
     // Creating companyName in 'de' is allowed (different cell) and wins for de.

@@ -110,7 +110,7 @@ describe('notification service', () => {
     expect(payload.title).toBe('Hello');
     expect(payload.createdAt).toBeInstanceOf(Date);
 
-    const list = await cms.api.notifications.listNotifications();
+    const list = await cms.api.notifications.list();
 
     expect(list.notifications).toHaveLength(1);
     expect(list.notifications[0].id).toBe(payload.id);
@@ -209,7 +209,7 @@ describe('notification service', () => {
       },
       plugins: [
         {
-          id: 'spy-plugin',
+          id: 'spyPlugin',
           onNotification: (n: NotificationPayload) => {
             received.push(n);
           },
@@ -312,7 +312,7 @@ describe('notification endpoints', () => {
 
     await seedNotifications(cms, 5);
 
-    const result = await cms.api.notifications.listNotifications({
+    const result = await cms.api.notifications.list({
       query: { limit: 2, offset: 0 },
     });
 
@@ -329,12 +329,12 @@ describe('notification endpoints', () => {
 
     await seedNotifications(cms, 3);
 
-    const list = await cms.api.notifications.listNotifications();
+    const list = await cms.api.notifications.list();
     await cms.api.notifications.markNotificationsRead({
       body: { notificationId: list.notifications[0].id },
     });
 
-    const updated = await cms.api.notifications.listNotifications();
+    const updated = await cms.api.notifications.list();
 
     expect(updated.total).toBe(3);
     expect(updated.unreadCount).toBe(2);
@@ -347,12 +347,12 @@ describe('notification endpoints', () => {
 
     await seedNotifications(cms, 3);
 
-    const list = await cms.api.notifications.listNotifications();
+    const list = await cms.api.notifications.list();
     await cms.api.notifications.markNotificationsRead({
       body: { notificationId: list.notifications[0].id },
     });
 
-    const unread = await cms.api.notifications.listNotifications({
+    const unread = await cms.api.notifications.list({
       query: { unreadOnly: true },
     });
 
@@ -389,7 +389,7 @@ describe('notification endpoints', () => {
       meta: null,
     });
 
-    const mentions = await cms.api.notifications.listNotifications({
+    const mentions = await cms.api.notifications.list({
       query: { type: 'mention' },
     });
 
@@ -426,7 +426,7 @@ describe('notification endpoints', () => {
       meta: null,
     });
 
-    const pages = await cms.api.notifications.listNotifications({
+    const pages = await cms.api.notifications.list({
       query: { collection: 'pages' },
     });
 
@@ -452,7 +452,7 @@ describe('notification endpoints', () => {
       meta: null,
     });
 
-    const listUser2 = await cms2.api.notifications.listNotifications();
+    const listUser2 = await cms2.api.notifications.list();
 
     expect(listUser2.notifications).toHaveLength(0);
     expect(listUser2.unreadCount).toBe(0);
@@ -466,7 +466,7 @@ describe('notification endpoints', () => {
 
       await seedNotifications(cms, 2);
 
-      const list = await cms.api.notifications.listNotifications();
+      const list = await cms.api.notifications.list();
       const notifId = list.notifications[0].id;
 
       const result = await cms.api.notifications.markNotificationsRead({
@@ -475,7 +475,7 @@ describe('notification endpoints', () => {
 
       expect(result.markedCount).toBe(1);
 
-      const updated = await cms.api.notifications.listNotifications();
+      const updated = await cms.api.notifications.list();
       expect(updated.unreadCount).toBe(1);
     });
 
@@ -518,7 +518,7 @@ describe('notification endpoints', () => {
 
       expect(result.markedCount).toBe(3);
 
-      const list = await cms.api.notifications.listNotifications();
+      const list = await cms.api.notifications.list();
       expect(list.unreadCount).toBe(0);
     });
 
@@ -584,7 +584,7 @@ describe('notification endpoints', () => {
 
       expect(result.notificationId).toBe(notif.id);
 
-      const list = await cms.api.notifications.listNotifications();
+      const list = await cms.api.notifications.list();
       expect(list.notifications).toHaveLength(0);
       expect(list.unreadCount).toBe(0);
     });
@@ -654,7 +654,7 @@ describe('notification endpoints', () => {
       });
       expect(unread.markedCount).toBe(1);
 
-      const list = await cms.api.notifications.listNotifications();
+      const list = await cms.api.notifications.list();
       expect(list.unreadCount).toBe(1);
     });
 
@@ -704,7 +704,7 @@ describe('notification endpoints', () => {
       const unread = await cms.api.notifications.markNotificationsUnread();
       expect(unread.markedCount).toBe(3);
 
-      const list = await cms.api.notifications.listNotifications();
+      const list = await cms.api.notifications.list();
       expect(list.unreadCount).toBe(3);
     });
 
@@ -910,7 +910,6 @@ describe('notification triggers', () => {
       await cms.api.pages.requestApproval({
         body: {
           mergeRequestId: mr.mergeRequest.id,
-          requestedBy: USER_1,
           requestedReviewers: [USER_2, USER_3],
           message: 'Please review',
         },
@@ -938,29 +937,27 @@ describe('notification triggers', () => {
       const received: NotificationPayload[] = [];
       const { db } = await setupTestCMS();
 
-      const cms = createCMSWithUser(db, USER_1, {
-        onNotification: (n) => {
-          received.push(n);
-        },
-      });
+      const cms = createCMSWithUser(db, USER_1);
 
       const { mr } = await setupMergeRequestContext(cms, USER_1);
 
       const approval = await cms.api.pages.requestApproval({
         body: {
           mergeRequestId: mr.mergeRequest.id,
-          requestedBy: USER_1,
           requestedReviewers: [USER_2],
           message: 'Please review',
         },
       });
 
-      received.length = 0;
+      const cms2 = createCMSWithUser(db, USER_2, {
+        onNotification: (n) => {
+          received.push(n);
+        },
+      });
 
-      await cms.api.pages.approve({
+      await cms2.api.pages.approve({
         body: {
           approvalId: approval.approvals[0].id,
-          reviewedBy: USER_2,
         },
       });
 
@@ -976,29 +973,27 @@ describe('notification triggers', () => {
       const received: NotificationPayload[] = [];
       const { db } = await setupTestCMS();
 
-      const cms = createCMSWithUser(db, USER_1, {
-        onNotification: (n) => {
-          received.push(n);
-        },
-      });
+      const cms = createCMSWithUser(db, USER_1);
 
       const { mr } = await setupMergeRequestContext(cms, USER_1);
 
       const approval = await cms.api.pages.requestApproval({
         body: {
           mergeRequestId: mr.mergeRequest.id,
-          requestedBy: USER_1,
           requestedReviewers: [USER_2],
           message: 'Please review',
         },
       });
 
-      received.length = 0;
+      const cms2 = createCMSWithUser(db, USER_2, {
+        onNotification: (n) => {
+          received.push(n);
+        },
+      });
 
-      await cms.api.pages.reject({
+      await cms2.api.pages.reject({
         body: {
           approvalId: approval.approvals[0].id,
-          reviewedBy: USER_2,
           rejectionReason: 'Needs changes',
         },
       });
@@ -1077,7 +1072,10 @@ describe('notification triggers', () => {
 
       const { mr } = await setupMergeRequestContext(cms1, USER_1);
 
-      await requestAndApproveMerge(cms1, mr.mergeRequest.id);
+      // cms1's authMiddleware pins the acting user to USER_1, so the reviewer
+      // must be USER_1 for the approval to go through (context.userId is
+      // overridden by the middleware).
+      await requestAndApproveMerge(cms1, mr.mergeRequest.id, [USER_1]);
 
       received.length = 0;
 
@@ -1192,7 +1190,9 @@ describe('notification triggers', () => {
 
       const { mr } = await setupMergeRequestContext(cms, USER_1);
 
-      await requestAndApproveMerge(cms, mr.mergeRequest.id);
+      // cms's authMiddleware pins the acting user to USER_1, so the reviewer
+      // must be USER_1 for the approval to go through.
+      await requestAndApproveMerge(cms, mr.mergeRequest.id, [USER_1]);
 
       received.length = 0;
 
@@ -1273,7 +1273,7 @@ describe('notification triggers', () => {
         authMiddleware: async () => ({ userId: USER_1 }),
         plugins: [
           {
-            id: 'slack-notifier',
+            id: 'slackNotifier',
             onNotification: (n: NotificationPayload) => {
               pluginReceived.push(n);
             },
@@ -1312,7 +1312,7 @@ describe('notification triggers', () => {
         },
         plugins: [
           {
-            id: 'email-notifier',
+            id: 'emailNotifier',
             onNotification: (n: NotificationPayload) => {
               pluginLevel.push(n);
             },

@@ -131,7 +131,7 @@ function createPluginPruningTestPlugin(options?: {
   onPlan?: (rootPlan: { rootId: string; deletableCommitIds: string[] }) => void;
 }): CMSPlugin<{ recordIds: string[] }> {
   return {
-    id: 'plugin-pruning-test',
+    id: 'pluginPruningTest',
     pruning: {
       plan: async ({ db, rootPlan }) => {
         options?.onPlan?.({
@@ -607,9 +607,9 @@ describe('runPruning', () => {
     const result1 = await cms.api.pages.requestApproval({
       body: {
         branchId,
-        requestedBy: 'requester-1',
         requestedReviewers: ['reviewer-1', 'reviewer-2'],
       },
+      context: { userId: 'requester-1' },
     });
 
     // Approve one, leave the other pending
@@ -618,8 +618,8 @@ describe('runPruning', () => {
         approvalId: result1.approvals.find(
           (a: any) => a.requestedReviewer === 'reviewer-1',
         )!.id,
-        reviewedBy: 'reviewer-1',
       },
+      context: { userId: 'reviewer-1' },
     });
 
     const approvalsBefore = await db
@@ -664,9 +664,9 @@ describe('runPruning', () => {
     await cms.api.pages.requestApproval({
       body: {
         branchId,
-        requestedBy: 'requester-1',
         requestedReviewers: ['reviewer-1'],
       },
+      context: { userId: 'requester-1' },
     });
 
     // Advance the branch head by creating another block
@@ -741,15 +741,15 @@ describe('runPruning', () => {
     const approvalResult = await cms.api.pages.requestApproval({
       body: {
         mergeRequestId: mr.mergeRequest.id,
-        requestedBy: 'requester-1',
         requestedReviewers: ['reviewer-1'],
       },
+      context: { userId: 'requester-1' },
     });
     await cms.api.pages.approve({
       body: {
         approvalId: approvalResult.approvals[0].id,
-        reviewedBy: 'reviewer-1',
       },
+      context: { userId: 'reviewer-1' },
     });
 
     // Execute the merge (status becomes 'merged')
@@ -823,15 +823,15 @@ describe('runPruning', () => {
     const req = await cms.api.pages.requestApproval({
       body: {
         branchId,
-        requestedBy: 'requester-1',
         requestedReviewers: ['reviewer-1'],
       },
+      context: { userId: 'requester-1' },
     });
     await cms.api.pages.approve({
       body: {
         approvalId: req.approvals[0].id,
-        reviewedBy: 'reviewer-1',
       },
+      context: { userId: 'reviewer-1' },
     });
 
     await backdateCommits(
@@ -878,7 +878,7 @@ describe('runPruning', () => {
 
     const result = await cms.api.admin.runPruning({ body: { dryRun: true } });
 
-    expect(result.plugins['plugin-pruning-test']).toEqual({
+    expect(result.plugins['pluginPruningTest']).toEqual({
       deletedRecords: 3,
     });
 
@@ -911,7 +911,7 @@ describe('runPruning', () => {
 
     const result = await cms.api.admin.runPruning({ body: { dryRun: false } });
 
-    expect(result.plugins['plugin-pruning-test']).toEqual({
+    expect(result.plugins['pluginPruningTest']).toEqual({
       deletedRecords: 3,
     });
 
@@ -1011,7 +1011,7 @@ describe('runPruning — archived-root hard-delete + resumability (5c)', () => {
     });
 
     const { rootId } = await createRootWithCommits(cms, db, 3);
-    await cms.api.pages.deleteRoot({ body: { rootId } });
+    await cms.api.pages.archiveRoot({ body: { rootId } });
     // Backdate the archive so it's unambiguously past the 7-day trash window.
     await db
       .update(roots)
@@ -1043,7 +1043,7 @@ describe('runPruning — archived-root hard-delete + resumability (5c)', () => {
     });
 
     const { rootId } = await createRootWithCommits(cms, db, 2);
-    await cms.api.pages.deleteRoot({ body: { rootId } });
+    await cms.api.pages.archiveRoot({ body: { rootId } });
 
     const result = await cms.api.admin.runPruning({ body: { dryRun: false } });
     expect(result.deletedRoots).not.toContain(rootId);
@@ -1262,7 +1262,7 @@ describe('runPruning — archived-root hard-delete + resumability (5c)', () => {
       },
     });
 
-    const archiveResult = await cms.api.media.archiveAsset({
+    const archiveResult = await cms.api.media.archiveAssets({
       body: { assetIds: [asset.id] },
     });
     expect(archiveResult.archived).toBe(0);

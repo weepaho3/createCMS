@@ -150,7 +150,7 @@ export async function insertAssetReferencesForVersions(
 
 /**
  * Authoritative liveness check for DESTRUCTIVE paths (pruning GC reclaim,
- * archiveAsset guard) AND the media-library UI — a single source of truth.
+ * archiveAssets guard) AND the media-library UI — a single source of truth.
  * True if a non-deleted block version that references the asset sits in the
  * HEAD snapshot of any branch of any non-archived root.
  *
@@ -163,7 +163,7 @@ export async function insertAssetReferencesForVersions(
  * `scopeColumns` are the active CROSS-SCOPE columns (the caller already removed a
  * scoping plugin's cross-scope columns via `crossScopeColumns`), so a host in any
  * such sibling scope still counts while a host OUTSIDE the scope (e.g. another
- * tenant) can NEVER block the owner's archiveAsset — asset ids are
+ * tenant) can NEVER block the owner's archiveAssets — asset ids are
  * author-controlled raw strings in block properties. Symmetric with
  * loadPublishedRoots and isReferencedByLiveContent (core/references.ts);
  * undefined / single-scope → unscoped, unchanged.
@@ -208,7 +208,7 @@ export async function isAssetReferencedByLiveContent(
  * `scopeColumns` are the active CROSS-SCOPE columns (a scoping plugin's
  * cross-scope columns already removed by the caller), so a host outside the scope
  * (e.g. another tenant) never appears in the usage list — symmetric with the
- * archiveAsset guard and the read path. Undefined → unscoped.
+ * archiveAssets guard and the read path. Undefined → unscoped.
  */
 export async function getAssetUsageDetails(
   db: DrizzleInstance,
