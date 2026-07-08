@@ -2,7 +2,9 @@
 
 import {
   createElement,
+  Fragment,
   useCallback,
+  useContext,
   useEffect,
   useRef,
   useState,
@@ -11,6 +13,7 @@ import {
 
 import {
   createRealtime,
+  RealtimeContext,
   RealtimeProvider as UpstashRealtimeProvider,
 } from '@upstash/realtime/client';
 
@@ -57,12 +60,42 @@ export type RealtimeProviderProps = {
  * ```tsx
  * <RealtimeProvider baseURL="/api/cms">{children}</RealtimeProvider>
  * ```
+ *
+ * Mount this ONCE, near the root. Nesting a second `RealtimeProvider` inside a
+ * subtree already covered by one would otherwise open a second `EventSource`
+ * per tab (Upstash's provider owns one connection per mounted instance). To hold
+ * the documented single-connection contract, a nested provider detects the
+ * outer one via context and transparently shares it instead of opening its own
+ * connection (and warns in development so the redundant provider gets removed).
  */
 export function RealtimeProvider({
   children,
   baseURL,
   maxReconnectAttempts,
 }: RealtimeProviderProps) {
+  // Upstash exposes its context; a non-null value here means we're already
+  // inside a RealtimeProvider, so mounting another would spawn a duplicate
+  // EventSource. Reuse the outer connection instead.
+  const isNested = useContext(RealtimeContext) !== null;
+
+  useEffect(() => {
+    if (isNested && process.env.NODE_ENV !== 'production') {
+      console.warn(
+        '[createcms] <RealtimeProvider> is nested inside another ' +
+          'RealtimeProvider. Only one is needed — the inner provider now ' +
+          'shares the outer connection instead of opening a second ' +
+          'EventSource. Mount RealtimeProvider once near your app root and ' +
+          'remove the nested one.',
+      );
+    }
+  }, [isNested]);
+
+  if (isNested) {
+    // Share the outer provider's context/connection: hooks under this subtree
+    // keep binding to the existing EventSource, so no second one is opened.
+    return createElement(Fragment, null, children);
+  }
+
   return createElement(UpstashRealtimeProvider, {
     api: { url: `${baseURL}/realtime`, withCredentials: true },
     maxReconnectAttempts,
@@ -82,15 +115,25 @@ type NotificationsClient<TActorUser = Record<string, unknown>> = {
       query?: { limit?: number; withUser?: true };
     }) => Promise<Serialize<ListNotificationsResult<TActorUser>>>;
   };
+  // Used only to resolve the current user id when `options.userId` is omitted
+  // (see `useNotifications`). Optional so a client that always supplies `userId`
+  // (or a partial test double) stays assignable; the real typed client's `users`
+  // namespace satisfies it structurally. Only `userId` is read here, so the full
+  // `{ userId, user }` whoami shape is assignable.
+  users?: {
+    whoami: () => Promise<{ userId: string | null }>;
+  };
 };
 
 export type UseNotificationsOptions = {
   /**
    * The current user's id — used to subscribe to the private `notif:<userId>`
    * channel (the server authorizes it against the session). Optional: pass it
-   * straight from your auth session (`session?.user?.id`); while it is undefined
-   * the hook stays poll-only and connects once it resolves. The CMS has no
-   * "current user" endpoint, so your app supplies the id.
+   * straight from your auth session (`session?.user?.id`) to avoid a round-trip.
+   * When OMITTED, the hook resolves the current user id via the CMS
+   * `client.users.whoami()` endpoint (client-side only) and subscribes once it
+   * resolves; until then it stays poll-only. Passing it explicitly skips the
+   * `whoami` call entirely.
    */
   userId?: string;
   /** Page size for the seed / reconcile poll (default 50). */
@@ -140,13 +183,40 @@ export function useNotifications<TActorUser = Record<string, unknown>>(
   client: NotificationsClient<TActorUser>,
   options: UseNotificationsOptions,
 ): UseNotificationsResult<TActorUser> {
-  const { userId, limit = 50, withUser } = options;
+  const { userId: explicitUserId, limit = 50, withUser } = options;
   const [state, setState] = useState<SerializedNotifications<TActorUser>>({
     notifications: [],
     unreadCount: 0,
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+
+  // When the caller omits `userId`, resolve it once from `whoami`. Runs inside
+  // an effect, so the fetch is client-only (SSR never calls it) and the hook
+  // stays poll-only until the id lands. Passing `userId` skips this entirely.
+  const [resolvedUserId, setResolvedUserId] = useState<string | undefined>(
+    undefined,
+  );
+  useEffect(() => {
+    if (explicitUserId !== undefined) return;
+    const whoami = client.users?.whoami;
+    if (!whoami) return; // no whoami endpoint on this client — stay poll-only
+    let cancelled = false;
+    whoami()
+      .then((res) => {
+        if (!cancelled && res.userId) setResolvedUserId(res.userId);
+      })
+      .catch(() => {
+        // No current user (unauthenticated / failed) — stay poll-only.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, explicitUserId]);
+
+  // Explicit id wins; otherwise the whoami-resolved id (undefined until it
+  // lands, keeping the subscription disabled). Drives the channel + authz check.
+  const userId = explicitUserId ?? resolvedUserId;
 
   // Monotonic id for the in-flight poll. Each `refresh` claims the next id; a
   // resolving poll applies its result only if it is still the latest, so a slow

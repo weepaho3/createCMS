@@ -110,20 +110,30 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
   return {
     /**
      * Retrieves a single branch with its metadata and deletability state.
-     * @param branchId The branch ID to fetch.
+     *
+     * Look up either by `{ branchId }` or, since branch names are unique per
+     * root, by `{ rootId, name }` (resolves at most one branch). The
+     * `{ rootId, name }` form avoids the listBranches + `.find` pattern, which
+     * silently breaks once a root has more than one page of branches.
      * @returns Branch data with id, rootId, name, headCommitId, createdBy, createdAt, updatedAt, isDeletable flag, and optionally createdByUser.
      * @throws BRANCH_NOT_FOUND if the branch does not exist or is outside the current scope.
      * @example await cmsClient.pages.getBranch({ branchId: 'br_abc123' })
+     * @example await cmsClient.pages.getBranch({ rootId: 'root_123', name: 'draft' })
      */
     getBranch: createCMSEndpoint(
       `/${collectionName}/getBranch`,
       {
         method: 'GET',
-        query: z.object({ branchId: z.string() }),
+        query: z.union([
+          z.object({ branchId: z.string() }),
+          z.object({ rootId: z.string(), name: z.string() }),
+        ]),
         metadata: cmsMeta(
           {
             $Infer: {
-              query: {} as { branchId: string },
+              query: {} as
+                | { branchId: string }
+                | { rootId: string; name: string },
             },
           },
           {
@@ -141,6 +151,12 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
           outputKey: 'createdByUser',
         });
 
+        // Resolve by primary key or by the (rootId, name) unique pair.
+        const lookup =
+          'branchId' in ctx.query
+            ? sql`${branches.id} = ${ctx.query.branchId}`
+            : sql`${branches.rootId} = ${ctx.query.rootId} AND ${branches.name} = ${ctx.query.name}`;
+
         const rows = await db.execute(sql`
           SELECT
             ${branches.id},
@@ -154,7 +170,7 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
           FROM ${branches}
           INNER JOIN ${roots} ON ${roots.id} = ${branches.rootId}
           ${enrich.join}
-          WHERE ${branches.id} = ${ctx.query.branchId}
+          WHERE ${lookup}
             AND ${roots.collection} = ${collectionName}
             ${ctx.context.scope.roots?.where ? sql`AND ${ctx.context.scope.roots.where}` : sql``}
         `);

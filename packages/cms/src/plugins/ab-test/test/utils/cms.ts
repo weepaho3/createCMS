@@ -23,7 +23,7 @@ export const setupABTestCMS = async (options?: {
   onRevalidate?: {
     handler: (event: {
       rootId: string;
-      slug: string | null;
+      storedSlug: string | null;
     }) => void | Promise<void>;
   };
   ga4?: Parameters<typeof abTest>[0] extends infer O

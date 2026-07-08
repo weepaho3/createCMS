@@ -1279,7 +1279,7 @@ describe('cascade revalidation', () => {
     const cascadeEvent = publishEvents.find((e) => e.collection === 'pages');
     expect(cascadeEvent).toBeDefined();
     expect(cascadeEvent!.rootId).toBe(page.rootId);
-    expect(cascadeEvent!.slug).toBe('home');
+    expect(cascadeEvent!.storedSlug).toBe('home');
   });
 
   it('fires cascade revalidation for pages referencing a published author', async () => {

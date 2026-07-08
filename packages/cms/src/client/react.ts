@@ -2,15 +2,73 @@
 
 import type { ReadableAtom } from 'nanostores';
 
+import { useMemo } from 'react';
+
 import type {
   CMSClientInstance,
   CMSClientOptions,
   CMSClientPlugin,
+  MediaUploadOptions,
+  MediaUploadState,
 } from './types';
 
 import { buildClient } from './build';
-import { getClientConfigSync, runPluginInit } from './config';
+import { type ClientConfig, getClientConfigSync, runPluginInit } from './config';
 import { useStore } from './react-store';
+
+// Shared-store key the media-optimize plugin publishes its auto-optimizer
+// under. Kept as a literal (not imported) so the React entry never statically
+// pulls in the plugin's canvas/WebP code. Must match
+// `UPLOAD_OPTIMIZER_KEY` in `plugins/media-optimize/index.ts`.
+const UPLOAD_OPTIMIZER_KEY = 'media-optimize:uploadOptimizer';
+
+type UploadOptimizer = {
+  enabled: boolean;
+  optimize: (files: File[]) => Promise<File[]>;
+};
+
+// Per-call opt-out: pass `{ optimize: false }` to skip auto-optimization even
+// when the media-optimize plugin is installed and enabled.
+type UploadOptions = MediaUploadOptions & { optimize?: boolean };
+
+/**
+ * React `useUploadAssets` hook. Wraps the raw media-upload atom so that, when
+ * the `media-optimize` plugin is installed and enabled, files are optimized on
+ * the client BEFORE signing/upload — by default, no manual `optimizeImage`
+ * call required. Opt out per call with `upload(files, { optimize: false })`.
+ * When the plugin is absent, behavior is unchanged (original bytes uploaded).
+ */
+function makeUseUploadAssets(config: ClientConfig): () => MediaUploadState {
+  return () => {
+    const state = useStore(
+      config.pluginsAtoms.uploadAssets as ReadableAtom<MediaUploadState>,
+    );
+
+    const wrappedUpload = useMemo(() => {
+      const baseUpload = state.upload;
+      return async (files: File[], options?: UploadOptions): Promise<void> => {
+        const optimizer = (
+          config.pluginsAtoms[UPLOAD_OPTIMIZER_KEY] as
+            | ReadableAtom<UploadOptimizer>
+            | undefined
+        )?.get();
+
+        const shouldOptimize =
+          !!optimizer && optimizer.enabled && options?.optimize !== false;
+
+        const finalFiles = shouldOptimize
+          ? await optimizer.optimize(files)
+          : files;
+
+        return baseUpload(finalFiles, options);
+      };
+      // `state.upload` is a stable reference (set once by the atom factory), so
+      // this memoizes to a single wrapped function across renders.
+    }, [state.upload]);
+
+    return { ...state, upload: wrappedUpload as MediaUploadState['upload'] };
+  };
+}
 
 /**
  * Creates a type-safe React CMS client with plugin support.
@@ -67,8 +125,7 @@ export function createCMSClient<TCMS = unknown>(
       console.error('[cms] plugin init failed:', err),
     );
     return buildClient<CMSClientInstance<TCMS, CMSClientPlugin[]>>(config, {
-      useUploadAssets: () =>
-        useStore(config.pluginsAtoms.uploadAssets as ReadableAtom),
+      useUploadAssets: makeUseUploadAssets(config),
     });
   }
   return <const TPlugins extends CMSClientPlugin[] = []>(
@@ -79,8 +136,7 @@ export function createCMSClient<TCMS = unknown>(
       console.error('[cms] plugin init failed:', err),
     );
     return buildClient<CMSClientInstance<TCMS, TPlugins>>(config, {
-      useUploadAssets: () =>
-        useStore(config.pluginsAtoms.uploadAssets as ReadableAtom),
+      useUploadAssets: makeUseUploadAssets(config),
     });
   };
 }
