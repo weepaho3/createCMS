@@ -287,6 +287,7 @@
     "lint": "oxlint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
@@ -306,6 +307,8 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.3.15",
     "@jsquash/webp": "^1.5.0",
+    "@testing-library/dom": "^10",
+    "@testing-library/react": "^16",
     "@types/node": "^22.10.2",
     "@types/prompts": "^2.4.9",
     "@types/react": "^19.2.2",
@@ -313,9 +316,11 @@
     "@types/s3rver": "^3.7.4",
     "@upstash/realtime": "^1.0.3",
     "@upstash/redis": "^1.38.0",
+    "@vitest/coverage-v8": "4.1.9",
     "bunchee": "^6.9.3",
     "drizzle-kit": "^0.31.9",
     "drizzle-orm": "^0.45.0",
+    "happy-dom": "^20",
     "next": "^16.2.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

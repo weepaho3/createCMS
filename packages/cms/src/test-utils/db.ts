@@ -22,13 +22,15 @@ const NANOID_SOURCE_PATH = path.resolve(__dirname, '../../src/utils/nanoid.ts');
  *
  * The temp file is created within the project directory (packages/cms/.test-schema/)
  * so that module resolution works correctly for imports like 'drizzle-orm'.
+ *
+ * The ESM module is evaluated in memory once imported, so the temp file is
+ * unlinked immediately after import — nothing else references it on disk.
+ * This runs inside the memoized migration generator, so it executes at most
+ * once per schema-set.
  */
 async function generateMergedSchema(
   plugins: Array<{ name: string; schema: SchemaModule }>,
-): Promise<{
-  schema: Record<string, unknown>;
-  cleanup: () => Promise<void>;
-}> {
+): Promise<Record<string, unknown>> {
   const sources: SchemaSource[] = [
     { name: 'core', schema: coreSchema },
     ...plugins.map((p) => ({
@@ -53,16 +55,47 @@ async function generateMergedSchema(
 
   try {
     const mod = await import(tmpFile);
-    return {
-      schema: mod,
-      cleanup: async () => {
-        await unlink(tmpFile).catch(() => {});
-      },
-    };
-  } catch (err) {
+    return mod;
+  } finally {
+    // The module is resident in memory after import; remove the temp file.
     await unlink(tmpFile).catch(() => {});
-    throw err;
   }
+}
+
+/**
+ * Memoizes the generated migration SQL per schema-set. The DDL statements
+ * emitted by `generateMigration` are identical for a given schema-set — the
+ * random temp filename and snapshot `prev.id` are metadata that never appear
+ * in the SQL, so they are excluded from the cache key.
+ *
+ * Only the SQL *generation* is cached; each `setupTestDB` call still spins up
+ * its own fresh PGlite and replays these statements against it.
+ *
+ * The cached value is a Promise, so concurrent boots of the same schema-set
+ * dedupe onto a single generation pass.
+ */
+const migrationCache = new Map<string, Promise<string[]>>();
+
+async function getMigrationStatements(
+  key: string,
+  build: () => Promise<Record<string, unknown>>,
+): Promise<string[]> {
+  let cached = migrationCache.get(key);
+  if (!cached) {
+    cached = (async () => {
+      const schema = await build();
+      const prev = generateDrizzleJson({});
+      const curr = generateDrizzleJson(schema, prev.id);
+      return generateMigration(prev, curr);
+    })();
+    // Evict on failure so a later boot can retry instead of replaying a
+    // permanently-rejected promise.
+    cached.catch(() => {
+      if (migrationCache.get(key) === cached) migrationCache.delete(key);
+    });
+    migrationCache.set(key, cached);
+  }
+  return cached;
 }
 
 /**
@@ -78,27 +111,28 @@ export const setupTestDB = async (options?: {
   const client = new PGlite();
   const db = drizzle(client, { schema: baseSchema });
 
-  let cleanup: () => Promise<void> = async () => {};
+  const plugins = options?.plugins;
+  // The cache key is the ordered plugin-name list. This is sound only because
+  // every call site maps a given name to ONE fixed schema module (a static const
+  // or a no-arg builder). If a test ever passed the same `name` with a different
+  // `schema`, it would replay the first schema's stale DDL — key on a content
+  // hash of the emitted schema then (the emit is the expensive step we memoize,
+  // so hashing it defeats the cache; keep names stable instead).
+  const statements =
+    plugins && plugins.length > 0
+      ? await getMigrationStatements(
+          `plugins:${plugins.map((p) => p.name).join('|')}`,
+          () => generateMergedSchema(plugins),
+        )
+      : await getMigrationStatements('__base__', async () => baseSchema);
 
-  if (options?.plugins && options.plugins.length > 0) {
-    const { schema: mergedSchema, cleanup: schemaCleanup } =
-      await generateMergedSchema(options.plugins);
-    cleanup = schemaCleanup;
-
-    const prev = generateDrizzleJson({});
-    const curr = generateDrizzleJson(mergedSchema, prev.id);
-    const statements = await generateMigration(prev, curr);
-    for (const stmt of statements) {
-      await db.execute(stmt);
-    }
-  } else {
-    const prev = generateDrizzleJson({});
-    const curr = generateDrizzleJson(baseSchema, prev.id);
-    const statements = await generateMigration(prev, curr);
-    for (const stmt of statements) {
-      await db.execute(stmt);
-    }
+  for (const stmt of statements) {
+    await db.execute(stmt);
   }
+
+  // The migration SQL is memoized and the schema temp file is removed inside
+  // the generator, so there is nothing left to clean up per call.
+  const cleanup: () => Promise<void> = async () => {};
 
   return { db, client, cleanup };
 };

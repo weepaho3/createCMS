@@ -933,6 +933,13 @@ export const createCMS = <
     ? (input: NotificationInput) => notificationService.notify(input)
     : undefined;
 
+  // Deterministic flush seam: awaits every floated notification promise
+  // (post-transaction batches + async handler side effects) so tests can assert
+  // without racing a real timer. No-op sugar over `notificationService.flush()`.
+  const $flushNotifications = notificationService
+    ? () => notificationService.flush()
+    : undefined;
+
   return {
     router,
     api,
@@ -944,6 +951,12 @@ export const createCMS = <
       : undefined,
     notificationService: notificationService as NotificationsEnabled<TDef> extends true
       ? NonNullable<typeof notificationService>
+      : undefined,
+    // Present only when notifications are enabled (gated from the TYPE too, like
+    // `notify`). Awaits all in-flight notification side effects — the assertion
+    // seam that replaces real `setTimeout` waits in tests.
+    $flushNotifications: $flushNotifications as NotificationsEnabled<TDef> extends true
+      ? NonNullable<typeof $flushNotifications>
       : undefined,
     revalidate: revalidate as HasRevalidate<TDef> extends true
       ? RevalidateFn<keyof DefCollections & string>
