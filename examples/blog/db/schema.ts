@@ -28,11 +28,11 @@ export const commentThreadTargetEnum = cms.enum("comment_thread_target", ["merge
 
 export const conflictResolutionEnum = cms.enum("conflict_resolution", ["source", "target", "manual"]);
 
-export const contentUsageTargetEnum = cms.enum("content_usage_target", ["asset", "variable", "reference"]);
+export const contentUsageTargetEnum = cms.enum("content_usage_target", ["asset", "variable", "reference", "link"]);
 
 export const mergeRequestStatusEnum = cms.enum("merge_request_status", ["open", "merged", "closed"]);
 
-export const notificationTypeEnum = cms.enum("notification_type", ["mention", "comment", "threadResolved", "approvalRequested", "approvalApproved", "approvalRejected", "mergeRequestOpened", "mergeRequestMerged", "mergeRequestClosed", "mergeRequestReopened", "published", "custom"]);
+export const notificationTypeEnum = cms.enum("notification_type", ["mention", "comment", "threadResolved", "threadReopened", "approvalRequested", "approvalApproved", "approvalRejected", "mergeRequestOpened", "mergeRequestMerged", "mergeRequestClosed", "mergeRequestReopened", "published", "custom"]);
 
 export const redirectEndpointTypeEnum = cms.enum("redirect_endpoint_type", ["page", "path"]);
 
@@ -232,6 +232,8 @@ export const commits = cms.table(
     message: text("message"),
     createdBy: text("created_by"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
+    branchId: text("branch_id"),
+    originBranchName: text("origin_branch_name").notNull(),
   },
   (table) => [
     foreignKey({
@@ -247,6 +249,7 @@ export const commits = cms.table(
     index("commits_parent_idx").on(table.parentCommitId),
     index("commits_merge_source_idx").on(table.mergeSourceCommitId),
     index("commits_root_created_idx").on(table.rootId, table.createdAt),
+    index("commits_branch_idx").on(table.branchId),
   ],
 );
 
@@ -459,7 +462,7 @@ export const templates = cms.table(
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("templates_collection_block_prop_unique").on(table.collection, table.blockType, table.propertyKey),
+    index("templates_collection_block_prop_idx").on(table.collection, table.blockType, table.propertyKey),
     index("templates_collection_idx").on(table.collection),
     index("templates_collection_block_idx").on(table.collection, table.blockType),
   ],
@@ -492,7 +495,7 @@ export const variables = cms.table(
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("variables_key_unique").on(table.key),
+    index("variables_key_idx").on(table.key),
   ],
 );
 

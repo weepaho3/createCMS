@@ -43,8 +43,8 @@ export const cms = createCMS({
     provider: 'digitalOcean',
     region: 'fra1',
     bucketName: process.env.S3_BUCKET!,
-    accessKeyId: process.env.S3_KEY!,
-    secretAccessKey: process.env.S3_SECRET!,
+    accessKeyId: process.env.S3_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY!,
     publicUrl: process.env.S3_PUBLIC_URL!,
   },
   authMiddleware: async () => {
@@ -61,8 +61,8 @@ export const cms = createCMS({
 ```bash title=".env"
 DATABASE_URL="postgres://user:password@localhost:5432/app"
 S3_BUCKET="my-bucket"
-S3_KEY="..."
-S3_SECRET="..."
+S3_ACCESS_KEY_ID="..."
+S3_SECRET_ACCESS_KEY="..."
 S3_PUBLIC_URL="https://cdn.example.com/"
 ```
 
@@ -75,6 +75,8 @@ npx createcms generate
 ```
 
 You should see the resolved config path, the output file, and a table and enum count.
+
+Applying that schema to your database is a separate step run with [Drizzle Kit](https://orm.drizzle.team/kit-docs/overview), which needs its own `drizzle.config.ts`. The [Quickstart](/docs/quickstart#3-generate-and-apply-the-schema) shows the config to create.
 
 <Callout type="info">
   Installed. The [Quickstart](/docs/quickstart) takes you from here to your first type-safe call.

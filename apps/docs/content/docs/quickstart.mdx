@@ -56,12 +56,14 @@ import { collections } from './collections';
 export const cms = createCMS({
   db,
   collections,
+  // Where `createcms generate` writes the Drizzle schema (default: `./cms-schema.ts`).
+  schema: { output: './db/schema.ts' },
   media: {
     provider: 'digitalOcean',
     region: 'fra1',
     bucketName: process.env.S3_BUCKET!,
-    accessKeyId: process.env.S3_KEY!,
-    secretAccessKey: process.env.S3_SECRET!,
+    accessKeyId: process.env.S3_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY!,
     publicUrl: process.env.S3_PUBLIC_URL!,
   },
   authMiddleware: async () => {
@@ -76,7 +78,24 @@ export const cms = createCMS({
 
 ### 3. Generate and apply the schema
 
-Generate the Drizzle schema, then apply it with your migration workflow:
+Generate the Drizzle schema with the CLI, then apply it with [Drizzle Kit](https://orm.drizzle.team/kit-docs/overview). Drizzle Kit reads its own config file, so create one at your project root first:
+
+```ts title="drizzle.config.ts"
+import { defineConfig } from 'drizzle-kit';
+
+export default defineConfig({
+  schema: './db/schema.ts',
+  out: './db/migrations',
+  dialect: 'postgresql',
+  dbCredentials: { url: process.env.DATABASE_URL! },
+});
+```
+
+<Callout type="info">
+  `schema` here must match where `createcms generate` writes. Step 2 set `schema.output: './db/schema.ts'`, so both point at `./db/schema.ts`. Without that option `createcms generate` defaults to `./cms-schema.ts` — keep the two in sync.
+</Callout>
+
+With the config in place, generate the schema and apply it:
 
 ```bash
 npx createcms generate

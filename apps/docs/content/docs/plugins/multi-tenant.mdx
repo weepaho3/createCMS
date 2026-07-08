@@ -36,7 +36,7 @@ npx createcms generate
 npx drizzle-kit generate && npx drizzle-kit migrate
 ```
 
-`createcms generate` only writes the schema file; the `drizzle-kit` step applies it. Skipping the migration leaves the new columns absent and tenant queries failing.
+`createcms generate` only writes the schema file; the `drizzle-kit` step applies it. Skipping the migration leaves the new columns absent and tenant queries failing. The `drizzle-kit` commands need a `drizzle.config.ts` at your project root — see the [Quickstart](/docs/quickstart#3-generate-and-apply-the-schema) for the one to create.
 
 ## Usage
 

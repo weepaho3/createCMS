@@ -35,9 +35,16 @@ examples/blog
 # from the repo root — links the workspace
 bun install
 
+# build @createcms/core once — its dist/ is gitignored and the package's
+# exports point at it, so a fresh clone must build it before the example resolves
+bun run build
+
 cd examples/blog
 bun run dev      # http://localhost:3000
 ```
+
+> No env vars are required to run the demo — see `.env.example` for the
+> optional media/database variables.
 
 The list page (`/`) shows every post; click one to open `/posts/<slug>`, which
 reads the published post by its full path (`/blog/<slug>`) and renders its blocks.

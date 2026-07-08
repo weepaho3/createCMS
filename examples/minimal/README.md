@@ -34,9 +34,16 @@ examples/minimal
 # from the repo root — links the workspace
 bun install
 
+# build @createcms/core once — its dist/ is gitignored and the package's
+# exports point at it, so a fresh clone must build it before the example resolves
+bun run build
+
 cd examples/minimal
 bun run dev      # http://localhost:3000
 ```
+
+> No env vars are required to run the demo — see `.env.example` for the
+> optional media/database variables.
 
 ## Regenerating the schema
 
