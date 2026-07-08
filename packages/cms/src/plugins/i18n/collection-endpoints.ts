@@ -6,6 +6,7 @@ import type {
   ResolvedSlugConfig,
 } from '../../core/types/definitions';
 import type { CMSPluginContext } from '../../core/types/plugin';
+import type { DbOrTx } from '../../core/types/drizzle';
 
 import {
   createInitialCommit,
@@ -16,6 +17,10 @@ import {
   type BlockVersionRow,
 } from '../../core/blocks/copy-subtree';
 import { requireRootInScope } from '../../core/blocks/guards';
+import {
+  readRootSlug,
+  withRootSlug,
+} from '../../core/blocks/reconstruct-snapshot';
 import { DEFAULT_BRANCH_NAME } from '../../core/branch-policy';
 import {
   blockVersions,
@@ -26,7 +31,7 @@ import { cmsMeta, createCMSEndpoint } from '../../core/endpoint';
 import { CMSError } from '../../core/errors';
 import { resolveRootCurrentPath } from '../../core/redirects/resolve';
 import { scopedInsert } from '../../core/scope';
-import { normalizeSlug, validateSlugUniqueness } from '../../core/slug';
+import { normalizeSlug } from '../../core/slug';
 import { newId } from '../../utils/nanoid';
 import { i18nError } from './errors';
 
@@ -186,8 +191,13 @@ export function createI18nCollectionEndpoints(
             targetParentRootId = sibRow.id;
           }
 
-          // Target slug (localized; defaults to the source slug), unique per
-          // target language under the target parent.
+          // Target slug (localized; defaults to the source slug). cms-05: the
+          // slug is VERSIONED — it is seeded into the new root's initial commit
+          // (as `__slug`, below) and NOT written to roots.slug, which stays null
+          // until the translation is first published. Drafts may collide (two
+          // unpublished siblings can share a slug), so there is no blocking
+          // up-front uniqueness check; publish enforces it per language. The cheap
+          // empty check stays.
           let targetSlug: string | null = null;
           if (slugCfg?.enabled) {
             const rawSlug = ctx.body.targetSlug ?? src.slug ?? '';
@@ -195,24 +205,11 @@ export function createI18nCollectionEndpoints(
             if (!targetSlug && !slugCfg.allowRoot) {
               throw new CMSError('SLUG_EMPTY_NOT_ALLOWED');
             }
-            await validateSlugUniqueness(
-              tx,
-              collectionName,
-              targetParentRootId,
-              targetSlug,
-              undefined,
-              // Uniqueness is checked in the TARGET language (not the active one),
-              // within the active tenant — override language on the scope columns.
-              {
-                ...scope.roots?.insertColumns,
-                language: targetLanguage,
-              },
-            );
           }
 
           // Create the sibling root: TARGET language (override the active-language
           // insert-scope), INHERITED translationKey, keep any other scope columns
-          // (e.g. tenant_slug).
+          // (e.g. tenant_slug). roots.slug stays null until publish.
           const targetScope = {
             ...scope.roots,
             insertColumns: {
@@ -227,7 +224,7 @@ export function createI18nCollectionEndpoints(
               id: newId('root'),
               collection: collectionName,
               parent_root_id: targetParentRootId,
-              slug: targetSlug,
+              slug: null,
               sort_order: 0,
               created_by: actor,
               translation_key: src.translation_key,
@@ -280,7 +277,11 @@ export function createI18nCollectionEndpoints(
                   return {
                     blockId: isTop ? newRoot.id : copy.newBlockId,
                     type: isTop ? collectionName : copy.type,
-                    properties: copy.properties,
+                    // cms-05: the copied top node carries the SOURCE's draft
+                    // `__slug`; overwrite it with this translation's own slug.
+                    properties: isTop
+                      ? withRootSlug(copy.properties, targetSlug)
+                      : copy.properties,
                     children: copy.newChildren,
                   };
                 });
@@ -292,7 +293,8 @@ export function createI18nCollectionEndpoints(
               {
                 blockId: newRoot.id,
                 type: collectionName,
-                properties: {},
+                // cms-05: seed the versioned draft slug on the blank root version.
+                properties: withRootSlug({}, targetSlug),
                 children: [],
               },
             ];
@@ -373,6 +375,8 @@ export function createI18nCollectionEndpoints(
             AND archived_at IS NULL
           ORDER BY language
         `);
+        const defaultBranchName =
+          pluginCtx.defaultBranchName ?? DEFAULT_BRANCH_NAME;
         const translations = await Promise.all(
           (
             sibRows.rows as Array<{
@@ -383,7 +387,12 @@ export function createI18nCollectionEndpoints(
           ).map(async (r) => ({
             language: r.language,
             rootId: r.id,
-            slug: r.slug,
+            // cms-05: roots.slug is only materialized at publish, so an UNPUBLISHED
+            // sibling now lists as null. Fall back to the versioned DRAFT slug on
+            // the default-branch head root version (the reserved `__slug`) so the
+            // language switcher still shows the intended slug; keep the published
+            // slug whenever it is present.
+            slug: r.slug ?? (await readDraftRootSlug(db, r.id, defaultBranchName)),
             path:
               slugCfg?.enabled && slugCfg
                 ? await resolveRootCurrentPath(db, slugCfg, r.id)
@@ -395,4 +404,39 @@ export function createI18nCollectionEndpoints(
       },
     ),
   };
+}
+
+/**
+ * cms-05: reads a root's versioned DRAFT slug — the reserved `__slug` on its
+ * default-branch head ROOT block version — for listTranslations' fallback when
+ * `roots.slug` is still null (an unpublished translation). Returns `null` when the
+ * root has no default branch or carries no draft slug (e.g. an allowRoot page).
+ */
+async function readDraftRootSlug(
+  db: DbOrTx,
+  rootId: string,
+  defaultBranchName: string,
+): Promise<string | null> {
+  const [rootVersion] = await db
+    .select({ properties: blockVersions.properties })
+    .from(branches)
+    .innerJoin(
+      commitSnapshots,
+      and(
+        eq(commitSnapshots.commitId, branches.headCommitId),
+        eq(commitSnapshots.blockId, rootId),
+      ),
+    )
+    .innerJoin(
+      blockVersions,
+      eq(blockVersions.id, commitSnapshots.blockVersionId),
+    )
+    .where(
+      and(eq(branches.rootId, rootId), eq(branches.name, defaultBranchName)),
+    )
+    .limit(1);
+
+  return rootVersion
+    ? readRootSlug(rootVersion.properties as Record<string, unknown>)
+    : null;
 }

@@ -87,18 +87,29 @@ describe('i18n — same slug across languages', () => {
     expect(en.rootId).not.toBe(de.rootId);
   });
 
-  it('rejects the same slug within the SAME language', async () => {
+  it('rejects the same slug within the SAME language at PUBLISH (drafts may collide)', async () => {
     const { cms, setLanguage } = await setupI18nTestCMS();
     setLanguage('en');
 
-    await cms.api.pages.createRoot({
+    // cms-05: two unpublished en drafts can share a slug — uniqueness is a
+    // publish-time (per-language) concern.
+    const first = await cms.api.pages.createRoot({
       body: { slug: 'about', properties: { title: 'A' } },
     });
+    const second = await cms.api.pages.createRoot({
+      body: { slug: 'about', properties: { title: 'A2' } },
+    });
+
+    // Publishing the first materializes its en slug…
+    await cms.api.pages.publishBranch({
+      body: { rootId: first.rootId, branchId: first.branchId },
+    });
+    // …so publishing the second (same en slug) now collides.
     await expect(
-      cms.api.pages.createRoot({
-        body: { slug: 'about', properties: { title: 'A2' } },
+      cms.api.pages.publishBranch({
+        body: { rootId: second.rootId, branchId: second.branchId },
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/PUBLISH_SLUG_CONFLICT|already uses this slug/i);
   });
 
   it('renaming in one language does not collide with a same-slug sibling in another', async () => {
@@ -206,7 +217,9 @@ describe('i18n — translationKey group id', () => {
     const srcKey = (
       rows.rows.find((r) => r.id === src.rootId) as { translation_key: string }
     ).translation_key;
-    const copy = rows.rows.find((r) => r.slug === 'copy') as {
+    // cms-05: the duplicate's slug is a draft (`__slug`), so roots.slug is null;
+    // identify the copy by id instead.
+    const copy = rows.rows.find((r) => r.id !== src.rootId) as {
       translation_key: string;
     };
     expect(copy.translation_key).toMatch(/^tgr_/);
@@ -243,12 +256,21 @@ describe('i18n — createTranslation', () => {
     };
     const deRow = rows.rows.find((r) => r.id === de.rootId) as {
       language: string;
-      slug: string;
+      slug: string | null;
       translation_key: string;
     };
     expect(deRow.translation_key).toBe(enRow.translation_key);
     expect(deRow.language).toBe('de');
-    expect(deRow.slug).toBe('ueber-uns');
+    // cms-05: the localized slug is seeded as a DRAFT (`__slug`) — roots.slug
+    // stays null until the translation is published.
+    expect(deRow.slug).toBeNull();
+    setLanguage('de');
+    const deTree = await cms.api.pages.getBlockTree({
+      query: { rootId: de.rootId, branchId: de.branchId, raw: true },
+    });
+    expect((deTree.tree.properties as { __slug?: string }).__slug).toBe(
+      'ueber-uns',
+    );
   });
 
   it('copy seed (default) copies the source tree as the starting draft', async () => {
@@ -604,13 +626,23 @@ describe('i18n — listTranslations', () => {
     const en = await cms.api.pages.createRoot({
       body: { slug: 'about', properties: { title: 'About' } },
     });
-    await cms.api.pages.createTranslation({
+    const de = await cms.api.pages.createTranslation({
       body: {
         sourceRootId: en.rootId,
         targetLanguage: 'de',
         targetSlug: 'ueber-uns',
       },
     });
+    // cms-05: listTranslations shows the PUBLISHED slug/path, so publish each
+    // sibling in its own language scope to materialize them.
+    await cms.api.pages.publishBranch({
+      body: { rootId: en.rootId, branchId: en.branchId },
+    });
+    setLanguage('de');
+    await cms.api.pages.publishBranch({
+      body: { rootId: de.rootId, branchId: de.branchId },
+    });
+    setLanguage('en');
 
     const res = await cms.api.pages.listTranslations({
       query: { rootId: en.rootId },
@@ -623,6 +655,38 @@ describe('i18n — listTranslations', () => {
     expect(byLang.en.path).toBe('/pages/about');
     expect(byLang.de.slug).toBe('ueber-uns');
     expect(byLang.de.path).toBe('/pages/ueber-uns');
+  });
+
+  it('shows the DRAFT slug for an UNPUBLISHED translation (cms-05 fallback)', async () => {
+    const { cms, setLanguage } = await setupI18nTestCMS();
+    setLanguage('en');
+    const en = await cms.api.pages.createRoot({
+      body: { slug: 'about', properties: { title: 'About' } },
+    });
+    const de = await cms.api.pages.createTranslation({
+      body: {
+        sourceRootId: en.rootId,
+        targetLanguage: 'de',
+        targetSlug: 'ueber-uns',
+      },
+    });
+    // Publish only the EN sibling. The DE translation stays a draft, so its
+    // roots.slug is still null — cms-05 no longer writes it on createTranslation.
+    await cms.api.pages.publishBranch({
+      body: { rootId: en.rootId, branchId: en.branchId },
+    });
+
+    const res = await cms.api.pages.listTranslations({
+      query: { rootId: en.rootId },
+    });
+    const byLang = Object.fromEntries(
+      res.translations.map((t) => [t.language, t]),
+    );
+    // Published EN shows its live slug; unpublished DE falls back to the draft
+    // `__slug` instead of listing as null.
+    expect(byLang.en.slug).toBe('about');
+    expect(byLang.de.rootId).toBe(de.rootId);
+    expect(byLang.de.slug).toBe('ueber-uns');
   });
 
   it("rejects listing another language's root (scope gate)", async () => {
@@ -698,6 +762,11 @@ describe('i18n — redirects', () => {
     const en = await cms.api.pages.createRoot({
       body: { slug: 'movers', properties: { title: 'M' } },
     });
+    // cms-05: publish the live slug, then publish the rename — the auto-redirect
+    // (language=en) is created at publish.
+    await cms.api.pages.publishBranch({
+      body: { rootId: en.rootId, branchId: en.branchId },
+    });
     await cms.api.pages.updateRoot({
       body: {
         rootId: en.rootId,
@@ -705,6 +774,9 @@ describe('i18n — redirects', () => {
         slug: 'shakers',
         properties: { title: 'M' },
       },
+    });
+    await cms.api.pages.publishBranch({
+      body: { rootId: en.rootId, branchId: en.branchId },
     });
 
     // en resolves the old path → the new one (auto-created, language=en).
@@ -746,37 +818,43 @@ describe('i18n + multiTenant — composition', () => {
     expect(rows.rows[0].language).toBe('de');
   });
 
-  it('enforces slug uniqueness per (tenant, language) — the compound authority', async () => {
+  it('enforces slug uniqueness per (tenant, language) at PUBLISH — the compound authority', async () => {
     const { cms, set } = await setupI18nMultiTenantTestCMS();
 
+    const publish = (r: { rootId: string; branchId: string }) =>
+      cms.api.pages.publishBranch({
+        body: { rootId: r.rootId, branchId: r.branchId },
+      });
+
     set('acme', 'en');
-    await cms.api.pages.createRoot({
+    const acmeEn = await cms.api.pages.createRoot({
       body: { slug: 'blog', properties: { title: 'A en' } },
     });
+    await publish(acmeEn);
 
-    // Same slug, different language within the tenant → allowed.
+    // Same slug, different language within the tenant → allowed (publishes fine).
     set('acme', 'de');
-    await expect(
-      cms.api.pages.createRoot({
-        body: { slug: 'blog', properties: { title: 'A de' } },
-      }),
-    ).resolves.toBeDefined();
+    const acmeDe = await cms.api.pages.createRoot({
+      body: { slug: 'blog', properties: { title: 'A de' } },
+    });
+    await expect(publish(acmeDe)).resolves.toBeDefined();
 
     // Same slug + language, different tenant → allowed.
     set('globex', 'en');
-    await expect(
-      cms.api.pages.createRoot({
-        body: { slug: 'blog', properties: { title: 'G en' } },
-      }),
-    ).resolves.toBeDefined();
+    const globexEn = await cms.api.pages.createRoot({
+      body: { slug: 'blog', properties: { title: 'G en' } },
+    });
+    await expect(publish(globexEn)).resolves.toBeDefined();
 
-    // Same (tenant, language) → rejected.
+    // cms-05: same (tenant, language) drafts may coexist, but the SECOND publish
+    // into (acme, en) collides.
     set('acme', 'en');
-    await expect(
-      cms.api.pages.createRoot({
-        body: { slug: 'blog', properties: { title: 'dup' } },
-      }),
-    ).rejects.toThrow();
+    const acmeEnDup = await cms.api.pages.createRoot({
+      body: { slug: 'blog', properties: { title: 'dup' } },
+    });
+    await expect(publish(acmeEnDup)).rejects.toThrow(
+      /PUBLISH_SLUG_CONFLICT|already uses this slug/i,
+    );
   });
 
   it('does not resolve a reference to another tenant’s content (resolution is tenant-scoped)', async () => {

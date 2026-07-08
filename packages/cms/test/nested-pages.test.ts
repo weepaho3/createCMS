@@ -213,17 +213,15 @@ describe('nested pages', () => {
       expect(child.rootId).not.toBe(parent.rootId);
     });
 
-    it('normalizes slugs on creation', async () => {
-      const { cms, db } = await setupNestedCMS();
+    it('normalizes the draft slug on creation', async () => {
+      const { cms } = await setupNestedCMS();
 
+      // cms-05: the slug is a versioned draft — createRoot returns the normalized
+      // draft slug; roots.slug stays null until publish.
       const root = await cms.api.pages.createRoot({
         body: { slug: 'Hello World!', properties: { title: 'Hello World' } },
       });
-
-      const result = await db.execute(
-        /* sql */ `SELECT slug FROM cms.roots WHERE id = '${root.rootId}'`,
-      );
-      expect((result.rows[0] as any).slug).toBe('hello-world');
+      expect(root.slug).toBe('hello-world');
     });
 
     it('rejects parentRootId on flat collections', async () => {
@@ -260,18 +258,25 @@ describe('nested pages', () => {
   });
 
   describe('slug uniqueness', () => {
-    it('rejects duplicate slug among siblings', async () => {
+    it('rejects a duplicate slug among siblings at PUBLISH (drafts may collide)', async () => {
       const { cms } = await setupNestedCMS();
 
-      await cms.api.pages.createRoot({
+      // cms-05: two draft siblings can share a slug; the conflict fires when the
+      // second one publishes into the already-live slug.
+      const a = await cms.api.pages.createRoot({
         body: { slug: 'about', properties: { title: 'Page A' } },
       });
-
+      const b = await cms.api.pages.createRoot({
+        body: { slug: 'about', properties: { title: 'Page B' } },
+      });
+      await cms.api.pages.publishBranch({
+        body: { rootId: a.rootId, branchId: a.branchId },
+      });
       await expect(
-        cms.api.pages.createRoot({
-          body: { slug: 'about', properties: { title: 'Page B' } },
+        cms.api.pages.publishBranch({
+          body: { rootId: b.rootId, branchId: b.branchId },
         }),
-      ).rejects.toThrow();
+      ).rejects.toThrow(/PUBLISH_SLUG_CONFLICT|already uses this slug/i);
     });
 
     it('allows same slug under different parents', async () => {
@@ -326,25 +331,32 @@ describe('nested pages', () => {
       expect(Number((rows.rows[0] as { n: number }).n)).toBe(2);
     });
 
-    it('duplicateBlock rejects a colliding target slug (closed app-level gap)', async () => {
+    it('duplicateBlock into a colliding slug is rejected at PUBLISH', async () => {
       const { cms } = await setupNestedCMS();
       const a = await cms.api.pages.createRoot({
         body: { slug: 'about', properties: { title: 'A' } },
       });
-      // Duplicating A into its own top-level slug must be rejected — previously
-      // this path had no app-level check and leaned on the DB unique.
+      await cms.api.pages.publishBranch({
+        body: { rootId: a.rootId, branchId: a.branchId },
+      });
+      // cms-05: the duplicate seeds 'about' as a DRAFT slug (allowed); publishing
+      // it into the already-live 'about' collides.
+      const dup = await cms.api.pages.duplicateBlock({
+        body: {
+          rootId: a.rootId,
+          branchId: a.branchId,
+          blockId: a.rootId,
+          targetProperties: { title: 'A copy' },
+          targetSlug: 'about',
+          message: 'dup',
+        },
+      });
+      if (dup.mode !== 'root') throw new Error('expected root duplication');
       await expect(
-        cms.api.pages.duplicateBlock({
-          body: {
-            rootId: a.rootId,
-            branchId: a.branchId,
-            blockId: a.rootId,
-            targetProperties: { title: 'A copy' },
-            targetSlug: 'about',
-            message: 'dup',
-          },
+        cms.api.pages.publishBranch({
+          body: { rootId: dup.rootId, branchId: dup.branchId },
         }),
-      ).rejects.toThrow();
+      ).rejects.toThrow(/PUBLISH_SLUG_CONFLICT|already uses this slug/i);
     });
 
     it('validateSlugUniqueness scopes by the given scope columns (e.g. language)', async () => {
@@ -479,12 +491,16 @@ describe('nested pages', () => {
         body: { slug: 'parent', properties: { title: 'Parent' } },
       });
 
-      await cms.api.pages.createRoot({
+      const child = await cms.api.pages.createRoot({
         body: {
           parentRootId: parent.rootId,
           slug: 'child',
           properties: { title: 'Child' },
         },
+      });
+      // cms-05: listRoots reflects the PUBLISHED slug, so publish the child.
+      await cms.api.pages.publishBranch({
+        body: { rootId: child.rootId, branchId: child.branchId },
       });
 
       const result = await cms.api.pages.listRoots({
@@ -669,7 +685,7 @@ describe('nested pages', () => {
         body: { slug: 'section-b', properties: { title: 'Section B' } },
       });
 
-      await cms.api.pages.createRoot({
+      const childA = await cms.api.pages.createRoot({
         body: {
           parentRootId: parentA.rootId,
           slug: 'page',
@@ -678,7 +694,7 @@ describe('nested pages', () => {
       });
 
       // Create a page with the same slug under parentB
-      await cms.api.pages.createRoot({
+      const childB = await cms.api.pages.createRoot({
         body: {
           parentRootId: parentB.rootId,
           slug: 'page',
@@ -686,11 +702,13 @@ describe('nested pages', () => {
         },
       });
 
-      const childA = (
-        await cms.api.pages.listRoots({
-          query: { parentRootId: parentA.rootId },
-        })
-      ).roots[0];
+      // cms-05: moveRoot validates against the LIVE slug set (roots.slug), so both
+      // must be published for the conflict to exist.
+      for (const c of [childA, childB]) {
+        await cms.api.pages.publishBranch({
+          body: { rootId: c.rootId, branchId: c.branchId },
+        });
+      }
 
       await expect(
         cms.api.pages.moveRoot({
@@ -721,11 +739,14 @@ describe('nested pages', () => {
   });
 
   describe('slug sync on update', () => {
-    it('syncs slug when root is updated', async () => {
+    it('syncs slug into roots.slug when the rename is published', async () => {
       const { cms, db } = await setupNestedCMS();
 
       const root = await cms.api.pages.createRoot({
         body: { slug: 'old-slug', properties: { title: 'Old Title' } },
+      });
+      await cms.api.pages.publishBranch({
+        body: { rootId: root.rootId, branchId: root.branchId },
       });
 
       await cms.api.pages.updateRoot({
@@ -736,21 +757,31 @@ describe('nested pages', () => {
           properties: {},
         },
       });
+      // cms-05: the draft rename is not live yet…
+      let result = await db.execute(
+        /* sql */ `SELECT slug FROM cms.roots WHERE id = '${root.rootId}'`,
+      );
+      expect((result.rows[0] as any).slug).toBe('old-slug');
 
-      const result = await db.execute(
+      // …publishing materializes it.
+      await cms.api.pages.publishBranch({
+        body: { rootId: root.rootId, branchId: root.branchId },
+      });
+      result = await db.execute(
         /* sql */ `SELECT slug FROM cms.roots WHERE id = '${root.rootId}'`,
       );
       expect((result.rows[0] as any).slug).toBe('new-slug');
     });
 
-    it('normalizes slug on update', async () => {
-      const { cms, db } = await setupNestedCMS();
+    it('normalizes the draft slug on update', async () => {
+      const { cms } = await setupNestedCMS();
 
       const root = await cms.api.pages.createRoot({
         body: { slug: 'page', properties: { title: 'Page' } },
       });
 
-      await cms.api.pages.updateRoot({
+      // cms-05: updateRoot returns the normalized DRAFT slug.
+      const upd = await cms.api.pages.updateRoot({
         body: {
           rootId: root.rootId,
           branchId: root.branchId,
@@ -758,34 +789,39 @@ describe('nested pages', () => {
           properties: {},
         },
       });
-
-      const result = await db.execute(
-        /* sql */ `SELECT slug FROM cms.roots WHERE id = '${root.rootId}'`,
-      );
-      expect((result.rows[0] as any).slug).toBe('new-slug-name');
+      expect(upd.slug).toBe('new-slug-name');
     });
 
-    it('rejects slug update that would create a duplicate', async () => {
+    it('rejects a slug rename into a live slug at PUBLISH', async () => {
       const { cms } = await setupNestedCMS();
 
-      await cms.api.pages.createRoot({
+      const pageA = await cms.api.pages.createRoot({
         body: { slug: 'taken', properties: { title: 'Page A' } },
       });
-
       const pageB = await cms.api.pages.createRoot({
         body: { slug: 'page-b', properties: { title: 'Page B' } },
       });
+      await cms.api.pages.publishBranch({
+        body: { rootId: pageA.rootId, branchId: pageA.branchId },
+      });
+      await cms.api.pages.publishBranch({
+        body: { rootId: pageB.rootId, branchId: pageB.branchId },
+      });
 
+      // The draft rename into 'taken' is allowed; publishing it collides.
+      await cms.api.pages.updateRoot({
+        body: {
+          rootId: pageB.rootId,
+          branchId: pageB.branchId,
+          slug: 'taken',
+          properties: {},
+        },
+      });
       await expect(
-        cms.api.pages.updateRoot({
-          body: {
-            rootId: pageB.rootId,
-            branchId: pageB.branchId,
-            slug: 'taken',
-            properties: {},
-          },
+        cms.api.pages.publishBranch({
+          body: { rootId: pageB.rootId, branchId: pageB.branchId },
         }),
-      ).rejects.toThrow();
+      ).rejects.toThrow(/PUBLISH_SLUG_CONFLICT|already uses this slug/i);
     });
   });
 
@@ -931,6 +967,12 @@ describe('nested pages', () => {
           properties: { title: 'Installation' },
         },
       });
+      // cms-05: listRoots paths are built from the PUBLISHED slug chain (roots.slug).
+      for (const r of [parent, child]) {
+        await cms.api.pages.publishBranch({
+          body: { rootId: r.rootId, branchId: r.branchId },
+        });
+      }
 
       const { roots } = await cms.api.pages.listRoots({
         query: { limit: 100 },
@@ -948,6 +990,9 @@ describe('nested pages', () => {
 
       const page = await cms.api.pages.createRoot({
         body: { slug: 'hello', properties: { title: 'Hello' } },
+      });
+      await cms.api.pages.publishBranch({
+        body: { rootId: page.rootId, branchId: page.branchId },
       });
 
       const { roots } = await cms.api.pages.listRoots({

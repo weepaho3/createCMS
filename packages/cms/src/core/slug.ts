@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import slugify from 'slugify';
 
+import type { CMSErrorCode } from './errors-data';
 import type { DbOrTx, DrizzleInstance, ResolvedSlugConfig } from './types';
 
 import { CMSError } from './errors';
@@ -47,7 +48,9 @@ export function splitPath(
 
 /**
  * Validate that a slug segment is unique among siblings in the same collection.
- * Throws `SLUG_ALREADY_EXISTS` if a conflict is found.
+ * Throws `SLUG_ALREADY_EXISTS` (default) if a conflict is found; pass
+ * `conflictError: 'PUBLISH_SLUG_CONFLICT'` (cms-05 publish-time uniqueness) to
+ * throw that typed error instead, carrying `{ slug, conflictingRootId }` data.
  */
 const SAFE_SCOPE_COLUMN = /^[a-z_][a-z0-9_]*$/i;
 
@@ -58,6 +61,7 @@ export async function validateSlugUniqueness(
   slug: string,
   excludeRootId?: string,
   scopeColumns?: Record<string, unknown>,
+  options?: { conflictError?: CMSErrorCode },
 ): Promise<void> {
   const parentCondition =
     parentRootId === null
@@ -91,7 +95,7 @@ export async function validateSlugUniqueness(
     scopeConds.length > 0 ? sql.join(scopeConds, sql` `) : sql``;
 
   const result = await db.execute(sql`
-    SELECT 1 FROM cms.roots r
+    SELECT r.id FROM cms.roots r
     WHERE r.collection = ${collection}
       AND ${parentCondition}
       AND r.slug = ${slug}
@@ -101,6 +105,12 @@ export async function validateSlugUniqueness(
   `);
 
   if (result.rows.length > 0) {
+    const conflictingRootId = (result.rows[0] as { id: string }).id;
+    if (options?.conflictError === 'PUBLISH_SLUG_CONFLICT') {
+      throw new CMSError('PUBLISH_SLUG_CONFLICT', {
+        data: { slug, conflictingRootId },
+      });
+    }
     throw new CMSError('SLUG_ALREADY_EXISTS');
   }
 }

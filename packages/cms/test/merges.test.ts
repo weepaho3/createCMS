@@ -1297,7 +1297,9 @@ describe('listMergeRequests', () => {
     const mr = result.mergeRequests[0];
     expect(mr.root).toBeDefined();
     expect(mr.root!.rootId).toBe(root.rootId);
-    expect(mr.root!.slug).toBe('with-root');
+    // cms-05: enrichment reflects the PUBLISHED slug (roots.slug), which is null
+    // until publish; the versioned draft slug lives on the block tree instead.
+    expect(mr.root!.slug).toBeNull();
     expect(mr.root!.properties).toEqual(
       expect.objectContaining({ title: 'My Page' }),
     );

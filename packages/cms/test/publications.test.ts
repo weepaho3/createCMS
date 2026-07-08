@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 
-import { publications } from '../src/schema';
+import { publications, roots } from '../src/schema';
 import { setupTestCMS } from '../src/test-utils/cms';
 import { publishApprovedBranch } from '../src/test-utils/helpers';
 
@@ -820,5 +820,189 @@ describe('listPublications', () => {
     const after = await cms.api.pages.listPublications({ query: {} });
     expect(after.total).toBe(0);
     expect(after.publications).toHaveLength(0);
+  });
+});
+
+// ============================================================================
+// cms-05 — slug materialization on publish
+// ============================================================================
+
+describe('cms-05 slug materialization on publish', () => {
+  const dbSlug = async (db: any, rootId: string): Promise<string | null> => {
+    const [r] = await db.select().from(roots).where(eq(roots.id, rootId));
+    return r.slug;
+  };
+
+  it('publishing the default branch materializes the draft slug into roots.slug', async () => {
+    const { cms, db } = await setupTestCMS();
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/about', properties: { title: 'About' } },
+    });
+    expect(await dbSlug(db, root.rootId)).toBeNull();
+
+    await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId },
+    });
+    expect(await dbSlug(db, root.rootId)).toBe('about');
+
+    // getPublishedContent now resolves by slug AND by path.
+    const bySlug = await cms.api.pages.getPublishedContent({
+      query: { slug: '/about' },
+    });
+    expect(bySlug.rootId).toBe(root.rootId);
+    const byPath = await cms.api.pages.getPublishedContent({
+      query: { path: '/pages/about' },
+    });
+    expect(byPath.rootId).toBe(root.rootId);
+    // __slug never leaks into the public tree.
+    expect(
+      (bySlug.variants[0].tree.properties as { __slug?: string }).__slug,
+    ).toBeUndefined();
+  });
+
+  it('re-publishing a renamed default branch moves roots.slug to the new slug', async () => {
+    const { cms, db } = await setupTestCMS();
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/old', properties: { title: 'P' } },
+    });
+    await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId },
+    });
+    await cms.api.pages.updateRoot({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        slug: 'new',
+        properties: { title: 'P' },
+      },
+    });
+    // Draft rename not yet live.
+    expect(await dbSlug(db, root.rootId)).toBe('old');
+    await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId },
+    });
+    expect(await dbSlug(db, root.rootId)).toBe('new');
+  });
+
+  it('throws PUBLISH_SLUG_CONFLICT when publishing a slug already live on another page', async () => {
+    const { cms } = await setupTestCMS();
+    const a = await cms.api.pages.createRoot({
+      body: { slug: '/dup', properties: { title: 'A' } },
+    });
+    const b = await cms.api.pages.createRoot({
+      body: { slug: '/dup', properties: { title: 'B' } },
+    });
+    // Drafts may collide — first publish wins.
+    await cms.api.pages.publishBranch({
+      body: { rootId: a.rootId, branchId: a.branchId },
+    });
+    await expect(
+      cms.api.pages.publishBranch({
+        body: { rootId: b.rootId, branchId: b.branchId },
+      }),
+    ).rejects.toThrow(/PUBLISH_SLUG_CONFLICT|already uses this slug/i);
+  });
+
+  it('only the DEFAULT branch materializes roots.slug — a variant publish does not', async () => {
+    const { cms, db } = await setupTestCMS();
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/base', properties: { title: 'P' } },
+    });
+    // Establish the live slug via the default (main) branch.
+    await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId },
+    });
+    expect(await dbSlug(db, root.rootId)).toBe('base');
+
+    // A variant branch with a DIFFERENT draft slug, published live (A/B).
+    const variant = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'variant-b',
+        sourceBranchId: root.branchId,
+      },
+    });
+    await cms.api.pages.updateRoot({
+      body: {
+        rootId: root.rootId,
+        branchId: variant.branch.id,
+        slug: 'variant-slug',
+        properties: { title: 'P' },
+      },
+    });
+    await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: variant.branch.id },
+    });
+    // The live URL is unchanged — a non-default publish never overwrites roots.slug.
+    expect(await dbSlug(db, root.rootId)).toBe('base');
+  });
+
+  it('the FIRST publish of ANY branch seeds a still-null roots.slug', async () => {
+    const { cms, db } = await setupTestCMS();
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/seed-me', properties: { title: 'P' } },
+    });
+    expect(await dbSlug(db, root.rootId)).toBeNull();
+
+    // Publish a NON-default branch first, while roots.slug is still null → seeds.
+    const variant = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'variant-b',
+        sourceBranchId: root.branchId,
+      },
+    });
+    await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: variant.branch.id },
+    });
+    expect(await dbSlug(db, root.rootId)).toBe('seed-me');
+  });
+
+  it('end-to-end: a draft slug edit does not change the live URL until publish', async () => {
+    const { cms } = await setupTestCMS();
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/old', properties: { title: 'P' } },
+    });
+    await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId },
+    });
+    // Live at /pages/old.
+    expect(
+      (await cms.api.pages.getPublishedContent({ query: { path: '/pages/old' } }))
+        .rootId,
+    ).toBe(root.rootId);
+
+    // Draft-rename the slug — the live URL is UNCHANGED.
+    await cms.api.pages.updateRoot({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        slug: 'new',
+        properties: { title: 'P' },
+      },
+    });
+    expect(
+      (await cms.api.pages.getPublishedContent({ query: { path: '/pages/old' } }))
+        .rootId,
+    ).toBe(root.rootId);
+    await expect(
+      cms.api.pages.getPublishedContent({ query: { path: '/pages/new' } }),
+    ).rejects.toThrow(/No published content found/);
+
+    // Publish → the live URL moves to /pages/new (and /pages/old redirects).
+    await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId },
+    });
+    expect(
+      (await cms.api.pages.getPublishedContent({ query: { path: '/pages/new' } }))
+        .rootId,
+    ).toBe(root.rootId);
+    const redirect = await cms.api.pages.resolveRedirect({
+      query: { path: '/pages/old' },
+    });
+    expect(redirect.redirect).toEqual({
+      status: 301,
+      location: '/pages/new',
+    });
   });
 });
