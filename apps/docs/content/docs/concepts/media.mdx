@@ -52,6 +52,14 @@ Each asset also has a **direct** object URL, `${publicUrl}/${objectKey}` — ret
 
 An `image` block property stores the asset **id** (an `ast_…` reference), never a URL — and the read path returns it verbatim (nothing is resolved). Your renderer builds the gate URL straight from that id: `<img src="/media/asset/{id}">`. Because the id is stable, swapping the object behind it updates every reference automatically, with no content change and no re-render. Don't store the direct `url` in content — it bypasses the status gate and transforms and pins the entry to your bucket layout, and it won't follow such a swap. `getAssetUsages` reports which entries reference an asset (the index keys on the asset id), and archiving is blocked while an asset is used by live content.
 
+## Limitations
+
+The media pipeline is deliberately thin. Know these boundaries before you design around it:
+
+- **No server-side image transforms.** `GET /media/asset/{id}?format=webp&w=800` resolves a **pre-uploaded variant** (an asset whose `variantOf` points at the original) by matching the requested format and width. If no matching variant exists, the gate **silently serves the original**, at its stored size and format: an unmatched `?format`/`?w` is not an error and does not resize or convert on the fly. Create the variants you need ahead of time.
+- **Optimization is client-side only.** The [media optimize plugin](/docs/plugins/media-optimize) resizes and re-encodes each image **in the browser** (via a canvas) before upload, then uploads the smaller original plus any variants. Nothing optimizes server-side, so a file uploaded through a path that skips the plugin is stored as-is.
+- **Assets store bytes and status, nothing else.** An `assets` row carries `slug`, `objectKey`, `mimeType`, `size`, `status`, `folderId`, and `variantOf` (see the table above), and no more. There is no stored **width/height**, **focal point**, **alt text**, or **caption**. Keep intrinsic dimensions, art-direction focal points, and accessibility text on your content instead (for example an `image` block's own `alt` property), not on the asset.
+
 <Callout type="info">
   For uploading and serving step by step, see [Upload and serve media](/docs/guides/media-uploads).
 </Callout>

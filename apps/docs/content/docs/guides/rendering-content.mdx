@@ -22,6 +22,31 @@ export const pageBlocks = createBlocksMap(collections.pages, {
 });
 ```
 
+<Callout type="warn">
+  **`richText` is a raw, unsanitized HTML string.** createcms stores it verbatim (it is typed as `string`) and ships no sanitizer, so `dangerouslySetInnerHTML` renders whatever markup the value holds. When that HTML comes from a source you do not fully control (an author, a content import, a third-party API), a payload like `<img src=x onerror="…">` runs script in your users' browsers: a stored-XSS hole. Sanitize `richText` before rendering it, as shown in [Sanitize untrusted HTML before rendering](#sanitize-untrusted-html-before-rendering).
+</Callout>
+
+### Sanitize untrusted HTML before rendering
+
+createcms is headless: it stores `richText` as an opaque HTML string and never sanitizes it, so cleaning that markup before it reaches the DOM is **your** responsibility (see [Security](/docs/resources/security)). Run every `richText` value, and any other untrusted HTML, through a sanitizer such as [DOMPurify](https://github.com/cure53/DOMPurify) or [sanitize-html](https://github.com/apostrophecms/sanitize-html) inside the block component:
+
+```tsx title="lib/blocks.tsx"
+import DOMPurify from 'isomorphic-dompurify';
+import { createBlocksMap } from '@createcms/core/react/blocks';
+import { collections } from '@/lib/collections';
+
+export const pageBlocks = createBlocksMap(collections.pages, {
+  hero: ({ properties }) => <h1>{properties.headline}</h1>,
+  richText: ({ properties }) => (
+    <div
+      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(properties.content) }}
+    />
+  ),
+});
+```
+
+`isomorphic-dompurify` runs the same sanitizer in the browser and in Server Components, so it is safe in the server-rendered `Page` below. On a Node-only path `sanitize-html` works too; plain `dompurify` needs a browser DOM, so use it only from `'use client'` components.
+
 ### Render the tree
 
 Pass the map and a tree to `BlocksRenderer`:

@@ -1,0 +1,145 @@
+---
+title: Build your own editor
+description: A recommended architecture for a custom editor UI on the createCMS API.
+---
+
+createCMS is headless: it ships the versioned content API (branches, merge requests, approvals, publishing, media, notifications) but no editor UI. You bring your own. This guide gives a recommended shape for that UI by mapping each editor surface to the API method that backs it, so you can build a dashboard, a block editor, and a review flow without inventing your own conventions.
+
+The examples use the [type-safe client](/docs/guides/client-usage) (`cmsClient`), since an editor runs in the browser. Every method also exists on `cms.api.<collection>` server-side with identical types, so the same mapping holds if you drive it from a route handler or a server action. Examples assume a `pages` collection.
+
+<Callout type="info">
+  This is the architecture, not a component library. For the model behind the loop, read [Draft, review, and publish](/docs/guides/content-workflow) and the concept pages on [Branches](/docs/concepts/branches) and [Merges](/docs/concepts/merges) first.
+</Callout>
+
+## The editorial loop
+
+An editor walks one entry from a draft to live content. Each step below is a UI surface and the method that backs it.
+
+### 1. List entries (the dashboard)
+
+The landing screen is a paginated table of an entry's roots. `listRoots` returns `{ roots, total, hasMore }`; each root carries `slug`, typed `properties`, `branchCount`, and `openMergeRequestCount` so you can badge rows that have work in flight:
+
+```ts
+const { roots, hasMore } = await cmsClient.pages.listRoots({
+  query: { limit: 20, sortBy: 'createdAt', sortDirection: 'desc' },
+});
+```
+
+Create a new entry from this screen with `createRoot` (`body: { slug, properties }`), which returns the new `rootId` and its `branchId` on `main`.
+
+### 2. Open an entry on a draft branch
+
+Never edit `main` directly. When the user opens an entry, branch off its default branch with `createBranch`, then load that branch's tree with `getBlockTree`. Pass `raw: true` so stored values (link and reference targets, `{{variables}}`, image asset ids) come back unresolved and stay editable:
+
+```ts
+const { branch } = await cmsClient.pages.createBranch({
+  body: { rootId, name: 'draft', sourceBranchId: mainBranchId },
+});
+
+const { tree } = await cmsClient.pages.getBlockTree({
+  query: { rootId, branchId: branch.id, raw: true },
+});
+```
+
+`tree` is a discriminated union over `type` with a `type: 'root'` node at the top. Render it recursively: that recursion is your block editor.
+
+### 3. Edit blocks
+
+Every block edit is a commit on the branch. Four methods cover the block toolbar:
+
+```ts
+const { blockId } = await cmsClient.pages.createBlock({
+  body: {
+    rootId,
+    branchId: branch.id,
+    parentBlockId: rootId,
+    type: 'hero',
+    properties: { headline: 'Welcome' },
+  },
+});
+
+await cmsClient.pages.updateBlock({
+  body: { rootId, branchId: branch.id, blockId, type: 'hero', properties: { headline: 'Welcome back' } },
+});
+```
+
+`updateBlock` is a patch: supplied fields overwrite, omitted fields stay, `null` deletes. Reorder and reparent with `moveBlock` (`body: { blockId, newParentBlockId, newIndex }`), and remove with `deleteBlock` (`body: { blockId }`). Both take the same `rootId` and `branchId`. After each mutation, re-read `getBlockTree` (or apply the returned `commit` optimistically) to refresh the canvas.
+
+### 4. Preview the draft
+
+To render a live-accurate preview, read the tree with references resolved. `getBlockTree` with `includeReferencePreviews: true` returns a `references` sidecar (the published render tree of every embedded reference) alongside the raw editable tree, so you preview and edit from one call:
+
+```ts
+const { tree, references } = await cmsClient.pages.getBlockTree({
+  query: { rootId, branchId: branch.id, raw: true, includeReferencePreviews: true },
+});
+```
+
+For the exact published view an anonymous visitor would get, call `getPublishedContent` instead (it returns resolved `variants`).
+
+### 5. Propose the change (merge request)
+
+When the draft is ready, open a merge request back into `main` with `createMergeRequest`. The response reports conflicts up front:
+
+```ts
+const mr = await cmsClient.pages.createMergeRequest({
+  body: { sourceBranchId: branch.id, targetBranchId: mainBranchId, title: 'Update hero' },
+});
+```
+
+If `mr.hasConflicts` is true, drive a conflict UI from `getDiff` and settle each one through `resolveConflicts` (as `source`, `target`, or a `manual` version) before merging.
+
+### 6. Request and grant approval
+
+Every merge needs an approval. `requestApproval` notifies the reviewers you name and returns the pending `approvals`; a reviewer clears theirs with `approve` (or turns it back with `reject`):
+
+```ts
+const { approvals } = await cmsClient.pages.requestApproval({
+  body: { mergeRequestId: mr.mergeRequest.id, requestedReviewers: ['editor-2'] },
+});
+
+await cmsClient.pages.approve({ body: { approvalId: approvals[0].id } });
+```
+
+The reviewer identity comes from the request's auth context, so build `approve` behind whatever session your app already has.
+
+### 7. Merge
+
+Once approved, integrate the branch with `executeMerge`:
+
+```ts
+await cmsClient.pages.executeMerge({ body: { mergeRequestId: mr.mergeRequest.id } });
+```
+
+### 8. Publish
+
+Merging updates `main` but does not make it live. Publish the target branch with `publishBranch` to promote it. After this, `getPublishedContent` (and your public site) serve the new version:
+
+```ts
+await cmsClient.pages.publishBranch({ body: { rootId, branchId: mainBranchId } });
+```
+
+### 9. Surface the inbox
+
+Approvals, merge-request activity, mentions, and publishing all raise [notifications](/docs/reference/notifications) for the affected users. Poll `notifications.list` to render a per-user inbox and an unread badge, and write back read state:
+
+```ts
+const { notifications, unreadCount } = await cmsClient.notifications.list({
+  query: { unreadOnly: true },
+});
+
+await cmsClient.notifications.markNotificationsRead({ body: { notificationId } });
+```
+
+## Components you'll build
+
+The loop above decomposes into four reusable surfaces. Each is a component (or set of components) backed by a known slice of the API.
+
+- **Block editor.** Renders the tree from `getBlockTree` (with `raw: true`) and mutates it with `createBlock`, `updateBlock`, `moveBlock`, `deleteBlock`, and `duplicateBlock`. Every edit is a commit, so undo is a branch/revert concern, not editor state.
+- **Media library.** Uploads from the browser with the `media.useUploadAssets()` hook (or `media.createSignedUpload` server-side), browses with `listAssets` and `listFolders`, and organizes with `createFolder`, `moveAssets`, and `updateAssetsStatus`. Picking an asset stores its id in an `image` property; serve it through the gate at `/media/asset/{id}` (see [Upload and serve media](/docs/guides/media-uploads)).
+- **Branch, merge request, and approval views.** Lists work in flight with `listBranches` and `listMergeRequests`, shows a diff with `getDiff` and `checkConflicts`, and drives the review with `createMergeRequest`, `resolveConflicts`, `requestApproval`, `approve`, `reject`, and `executeMerge`. Thread discussion on top with `createCommentThread` and `listCommentThreads` (see [Review with comments](/docs/guides/review-comments)).
+- **Notification inbox.** Reads with `notifications.list` and clears with `markNotificationsRead`, `markNotificationsUnread`, and `archiveNotification`.
+
+<Callout type="info">
+  Every method named here is documented with exact inputs and return shapes in the [Server API](/docs/reference/server-api) and mirrored on the [Client API](/docs/reference/client-api).
+</Callout>
