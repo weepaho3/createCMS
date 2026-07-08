@@ -8,6 +8,12 @@ import { GeistSans } from 'geist/font/sans';
 // Title template + brand defaults. The favicon is wired automatically by the
 // `app/icon.svg` file convention (no `icons` field needed here).
 export const metadata: Metadata = {
+  // Env-driven so relative openGraph.images resolve to absolute URLs before the
+  // canonical domain is finalized. Update the fallback once the real docs domain
+  // is set (or set NEXT_PUBLIC_DOCS_URL in the deploy environment).
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_DOCS_URL ?? 'https://createcms.dev',
+  ),
   title: {
     default: 'createCMS',
     template: '%s | createCMS',

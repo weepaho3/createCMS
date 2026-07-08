@@ -97,6 +97,17 @@ both). Both trees are type-checked — `tsconfig` includes `src` and `test`.
    the changelog entry and drives the next release.
 5. Open a pull request. CI runs lint, type-check, test, and build.
 
+## Versioning
+
+createCMS is pre-1.0, so **minor is the breaking channel**. Choose the changeset
+bump accordingly:
+
+- **patch** — non-breaking only: bug fixes, internal changes, additive behaviour
+  that does not alter existing public API or wire formats.
+- **minor** — anything that removes or renames public API, or changes a wire or
+  URL format (for example the media-gate URL scheme). These are breaking pre-1.0
+  and must not ship as a patch.
+
 ## Code style
 
 - TypeScript, formatted with **oxfmt** (single quotes, 80 cols) and linted with
