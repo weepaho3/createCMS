@@ -13,7 +13,7 @@ import { resolvePathToRootId, splitPath } from '../../core/slug';
 import { collectEmbeddedRoots } from './co-render';
 
 // ============================================================================
-// AB_FANOUT FA1 — edge-readable RESOLVE seam
+// Edge-readable RESOLVE seam
 // ============================================================================
 //
 // Pattern A (edge cache-per-variant) needs a lightweight, PUBLICLY-readable,
@@ -24,7 +24,7 @@ import { collectEmbeddedRoots } from './co-render';
 // pure function of (path, scope) and safe to cache (the edge tags it by rootId
 // for revalidation on test start/stop).
 //
-// XOR (F1) guarantees AT MOST ONE varying root per render, so this returns the
+// XOR guarantees AT MOST ONE varying root per render, so this returns the
 // single running test reachable from the page root (the page root itself OR one
 // transitively-embedded block), or none.
 
@@ -49,7 +49,7 @@ export type AbResolveResult = {
 };
 
 /**
- * The per-collection `resolveAbVariant` endpoint (Seam A / FA1). Surfaces at
+ * The per-collection `resolveAbVariant` endpoint. Surfaces at
  * `cms.api.<collection>.resolveAbVariant({ query: { path } })`. Lives as a
  * collection endpoint so it has the collection's slug config for `splitPath`.
  */
@@ -105,7 +105,7 @@ export function createAbResolveEndpoints(def: CollectionWithName) {
 
         // The page's full render set: the page root + its transitive embeds
         // (group-aware, cross-scope — a sibling-language/host embed still counts),
-        // mirroring the F1 XOR closure. The one running test among them varies
+        // mirroring the XOR closure. The one running test among them varies
         // this render.
         const resolver = scope.referenceResolver ?? coreReferenceResolver;
         const scopeColumns = crossScopeColumns(scope.roots);
@@ -118,7 +118,7 @@ export function createAbResolveEndpoints(def: CollectionWithName) {
         const renderSet = [rootId, ...embeds];
 
         // One query: the running test(s) on the render set, restricted to their
-        // PUBLISHED variant branches (JOIN publications — mirrors F2's skip of
+        // PUBLISHED variant branches (JOIN publications — skips
         // unpublished branches) and re-scoped to the active tenant (defense in
         // depth; the render set is already scope-resolved).
         const scopeConds = rootScopeConditions(scopeColumns);
@@ -173,7 +173,7 @@ export function createAbResolveEndpoints(def: CollectionWithName) {
 
         // Degrade to "no fan-out" (→ control) when fewer than two variant
         // branches are published or the control branch is unpublished — exactly
-        // F2's loadPublishedRoots fallback.
+        // the loadPublishedRoots fallback.
         if (variants.length < 2 || !variants.some((v) => v.isControl)) {
           return { test: null };
         }

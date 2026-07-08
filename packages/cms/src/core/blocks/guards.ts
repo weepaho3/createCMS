@@ -4,7 +4,7 @@ import type { ResolvedBranchPolicy } from '../branch-policy';
 import type { TableScope } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
 
-import { publications, roots } from '../db/schema.generated';
+import { branches, publications, roots } from '../db/schema.generated';
 import { CMSError, type CMSErrorCode } from '../errors';
 
 /**
@@ -77,4 +77,34 @@ export async function assertBranchWritable(
     )
     .limit(1);
   if (pub) throw new CMSError('PROTECTED_BRANCH');
+}
+
+/**
+ * Locks a branch row `FOR UPDATE` and asserts it is writable — the shared
+ * preamble every content-mutation route runs before advancing a branch head.
+ * The branch is selected scoped to `(id, rootId)`, so a caller cannot lock
+ * another root's branch by guessing its id; a missing branch throws
+ * `BRANCH_NOT_FOUND`, and {@link assertBranchWritable} then enforces the
+ * branch-protection policy. Returns the locked row so the caller can read its
+ * `headCommitId`. Pass the active tx so the row lock is held for the rest of the
+ * transaction.
+ */
+export async function lockWritableBranch(
+  exec: DrizzleInstance,
+  policy: ResolvedBranchPolicy,
+  rootId: string,
+  branchId: string,
+): Promise<{ id: string; name: string; headCommitId: string }> {
+  const [branch] = await exec
+    .select({
+      id: branches.id,
+      name: branches.name,
+      headCommitId: branches.headCommitId,
+    })
+    .from(branches)
+    .where(and(eq(branches.id, branchId), eq(branches.rootId, rootId)))
+    .for('update');
+  if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
+  await assertBranchWritable(exec, policy, rootId, branchId);
+  return branch;
 }

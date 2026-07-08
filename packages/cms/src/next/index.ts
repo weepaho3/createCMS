@@ -55,8 +55,8 @@ export function createRevalidateHandler(
       for (const path of paths) {
         revalidatePath(path);
       }
-      // Tags invalidate a root's control + all its variant-coded cache entries
-      // (AB_FANOUT FA3b); the A/B render routes tag their fetch by rootRevalidateTag.
+      // Tags invalidate a root's control + all its variant-coded cache entries;
+      // the A/B render routes tag their fetch by rootRevalidateTag.
       // 'max' is next 16's required second arg (equivalent to the legacy single-
       // arg immediate invalidation; the tag is marked stale regardless of profile).
       for (const tag of tags) {

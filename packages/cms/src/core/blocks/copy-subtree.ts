@@ -60,3 +60,25 @@ export function deepCopySubtree(
 
   return { copies, idMap };
 }
+
+/**
+ * Collects every descendant block id of `startBlockId` in depth-first order by
+ * walking the `children` arrays in `versionByBlockId`. The start block itself is
+ * NOT included. A block absent from the map terminates that branch of the walk.
+ */
+export function collectDescendantIds(
+  versionByBlockId: Map<string, BlockVersionRow>,
+  startBlockId: string,
+): string[] {
+  const descendants: string[] = [];
+  const visit = (blockId: string) => {
+    const version = versionByBlockId.get(blockId);
+    if (!version) return;
+    for (const childId of version.children) {
+      descendants.push(childId);
+      visit(childId);
+    }
+  };
+  visit(startBlockId);
+  return descendants;
+}

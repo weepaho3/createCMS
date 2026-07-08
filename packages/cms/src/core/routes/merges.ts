@@ -10,7 +10,6 @@ import type {
   MergeRequestListItem,
   RootSummary,
 } from '../types';
-import type { DrizzleInstance } from '../types/drizzle';
 
 import { fetchCommitSummary } from '../blocks/commit-writer';
 import {
@@ -30,10 +29,11 @@ import {
 } from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
-import { flushNotifications } from '../notifications/service';
+import { withNotifications } from '../notifications/service';
 import { batchFetchRoots } from '../root/batch-fetch';
 import { buildMergeBlockVersionInputSchema } from '../schema-builders';
 import { userEnrichment } from '../user/enrichment';
+import { parseTimestamp } from '../utils/parse-timestamp';
 import { getApprovalStateForMergeRequest } from './approvals';
 import {
   findCommonAncestor,
@@ -108,8 +108,9 @@ function propertiesEqual(
   return true;
 }
 
-function blockToOutput(block: ReconstructedBlock | undefined) {
-  return block ?? null;
+function isUniqueViolation(err: unknown, constraint: string): boolean {
+  const pgErr = err as { code?: string; constraint?: string };
+  return pgErr.code === '23505' && !!pgErr.constraint?.includes(constraint);
 }
 
 function classifyChanges(
@@ -180,9 +181,9 @@ function classifyChanges(
       diff.push({
         blockId,
         changeTypes,
-        sourceVersion: blockToOutput(source),
-        targetVersion: blockToOutput(targetBlocks.get(blockId)),
-        baseVersion: blockToOutput(base),
+        sourceVersion: source ?? null,
+        targetVersion: targetBlocks.get(blockId) ?? null,
+        baseVersion: base ?? null,
       });
     }
   }
@@ -535,10 +536,10 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
         const actor = ctx.context.userId ?? createdBy;
         if (!actor) throw new CMSError('USER_ID_REQUIRED');
 
-        const pending: NotificationInput[] = [];
-
-        return db
-          .transaction(async (tx) => {
+        return withNotifications(
+          db,
+          cmsCtx.notificationService,
+          async (tx, pending) => {
             const { sourceBranch, targetBranch } = await loadBranchPair(tx, {
               sourceBranchId,
               targetBranchId,
@@ -584,11 +585,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
                 })
                 .returning();
             } catch (err: unknown) {
-              const pgErr = err as { code?: string; constraint?: string };
-              if (
-                pgErr.code === '23505' &&
-                pgErr.constraint?.includes('mr_open_source_target')
-              ) {
+              if (isUniqueViolation(err, 'mr_open_source_target')) {
                 throw new CMSError('MERGE_REQUEST_ALREADY_EXISTS');
               }
               throw err;
@@ -630,11 +627,8 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
               hasConflicts: conflicts.length > 0,
               conflicts,
             };
-          })
-          .then((result) => {
-            flushNotifications(cmsCtx.notificationService, pending);
-            return result;
-          });
+          },
+        );
       },
     ),
 
@@ -862,8 +856,8 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
             title: row.title,
             description: row.description,
             createdBy: row.created_by,
-            createdAt: new Date(row.created_at as string),
-            updatedAt: new Date(row.updated_at as string),
+            createdAt: parseTimestamp(row.created_at),
+            updatedAt: parseTimestamp(row.updated_at),
             conflictCount,
             hasConflicts: conflictCount > 0,
             commentCount,
@@ -1004,10 +998,10 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
       async (ctx) => {
         const { mergeRequestId, reason } = ctx.body;
         const actor = ctx.context.userId;
-        const pending: NotificationInput[] = [];
-
-        return db
-          .transaction(async (tx) => {
+        return withNotifications(
+          db,
+          cmsCtx.notificationService,
+          async (tx, pending) => {
             const mr = await loadOpenMergeRequest(tx, {
               mergeRequestId,
               collectionName,
@@ -1039,11 +1033,8 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
             }
 
             return { mergeRequest: updated };
-          })
-          .then((result) => {
-            flushNotifications(cmsCtx.notificationService, pending);
-            return result;
-          });
+          },
+        );
       },
     ),
 
@@ -1081,10 +1072,10 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
       async (ctx) => {
         const { mergeRequestId } = ctx.body;
         const actor = ctx.context.userId;
-        const pending: NotificationInput[] = [];
-
-        return db
-          .transaction(async (tx) => {
+        return withNotifications(
+          db,
+          cmsCtx.notificationService,
+          async (tx, pending) => {
             const mr = await loadOpenMergeRequest(tx, {
               mergeRequestId,
               collectionName,
@@ -1122,11 +1113,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
                 .where(eq(mergeRequests.id, mergeRequestId))
                 .returning();
             } catch (err: unknown) {
-              const pgErr = err as { code?: string; constraint?: string };
-              if (
-                pgErr.code === '23505' &&
-                pgErr.constraint?.includes('mr_open_source_target')
-              ) {
+              if (isUniqueViolation(err, 'mr_open_source_target')) {
                 throw new CMSError('MERGE_REQUEST_ALREADY_EXISTS');
               }
               throw err;
@@ -1150,11 +1137,8 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
             }
 
             return { mergeRequest: updated };
-          })
-          .then((result) => {
-            flushNotifications(cmsCtx.notificationService, pending);
-            return result;
-          });
+          },
+        );
       },
     ),
 
@@ -1219,10 +1203,10 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
         const { mergeRequestId, mergedBy, message, noFastForward } = ctx.body;
         const actor = ctx.context.userId ?? mergedBy;
 
-        const pending: NotificationInput[] = [];
-
-        return db
-          .transaction(async (tx) => {
+        return withNotifications(
+          db,
+          cmsCtx.notificationService,
+          async (tx, pending) => {
             const mr = await loadOpenMergeRequest(tx, {
               mergeRequestId,
               collectionName,
@@ -1522,11 +1506,8 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
               rootId: mr.rootId,
               targetBranchId: mr.targetBranchId,
             };
-          })
-          .then((result) => {
-            flushNotifications(cmsCtx.notificationService, pending);
-            return result;
-          });
+          },
+        );
       },
     ),
 
@@ -1708,7 +1689,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
         const { mergeRequestId, resolutions } = ctx.body;
 
         return db.transaction(async (tx) => {
-          const mr = await loadOpenMergeRequest(tx, {
+          await loadOpenMergeRequest(tx, {
             mergeRequestId,
             collectionName,
             scopeWhere: ctx.context.scope.roots?.where,

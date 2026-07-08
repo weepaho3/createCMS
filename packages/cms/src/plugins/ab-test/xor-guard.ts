@@ -29,7 +29,7 @@ async function runningTestRoots(
 }
 
 /**
- * publishBranch TOCTOU backstop for the A/B XOR rule (AB_FANOUT_DESIGN §2.2).
+ * publishBranch TOCTOU backstop for the A/B XOR rule.
  * The start-time guard keeps any co-render closure at <=1 running test AT START,
  * but a later publish can introduce an embed that makes two already-running
  * tests co-render — which the start-time guard never saw.

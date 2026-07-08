@@ -3,6 +3,8 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { DbOrTx, DrizzleInstance } from '../types/drizzle';
 
 import { blockVersions, commitSnapshots } from '../db/schema.generated';
+import { CMSError } from '../errors';
+import type { BlockVersionRow } from './copy-subtree';
 
 export type ReconstructedBlock = {
   blockId: string;
@@ -233,4 +235,43 @@ export async function loadBlocksAtCommit(
   }
 
   return { blocks: state, reconstructed: true };
+}
+
+/**
+ * Loads a single commit's head snapshot into a `blockId → version` map,
+ * normalized to {@link BlockVersionRow}. This is the shared preamble behind the
+ * subtree mutations (move / delete / duplicate): read the commit's snapshot
+ * rows, hydrate their block versions, and key them by block id. Throws
+ * `EMPTY_SNAPSHOT` when the commit carries no snapshot. Pass the active tx so
+ * the read participates in the transaction's row locks.
+ */
+export async function loadVersionMapAtCommit(
+  exec: DrizzleInstance,
+  commitId: string,
+): Promise<Map<string, BlockVersionRow>> {
+  const snapshotRows = await exec
+    .select({ blockVersionId: commitSnapshots.blockVersionId })
+    .from(commitSnapshots)
+    .where(eq(commitSnapshots.commitId, commitId));
+
+  const versionIds = snapshotRows.map((row) => row.blockVersionId);
+  if (versionIds.length === 0) throw new CMSError('EMPTY_SNAPSHOT');
+
+  const versions = await exec
+    .select()
+    .from(blockVersions)
+    .where(inArray(blockVersions.id, versionIds));
+
+  return new Map(
+    versions.map((version) => [
+      version.blockId,
+      {
+        blockId: version.blockId,
+        type: version.type,
+        properties: version.properties,
+        children: version.children ?? [],
+        deleted: version.deleted,
+      },
+    ]),
+  );
 }

@@ -29,13 +29,31 @@ function mapRowToPayload(
   };
 }
 
+function toInsertRow(
+  input: NotificationInput,
+): typeof notifications.$inferInsert {
+  return {
+    recipientId: input.recipientId,
+    actorId: input.actorId,
+    // Widened to allow plugin/app type strings; the generated enum is the
+    // runtime authority (core-only in this package, core+plugin in apps).
+    type: input.type as (typeof notifications.$inferInsert)['type'],
+    title: input.title,
+    body: input.body,
+    resourceType: input.resourceType,
+    resourceId: input.resourceId,
+    collection: input.collection,
+    meta: input.meta,
+  };
+}
+
 export function createNotificationService(
   db: DrizzleInstance,
   handlers: OnNotificationHandler[],
   resolvedUser?: ResolvedUserConfig,
 ) {
-  // Test/flush seam: every floated handler promise (Seam B) and every floated
-  // `flushNotifications` batch (Seam A, registered via the exposed `track`) is
+  // Test/flush seam: every floated handler promise and every floated
+  // `flushNotifications` batch (registered via the exposed `track`) is
   // added here so `flush()` can await them deterministically instead of tests
   // racing a real `setTimeout`.
   const inFlight = new Set<Promise<unknown>>();
@@ -43,8 +61,8 @@ export function createNotificationService(
     inFlight.add(p);
     // `.catch(() => {})` on the cleanup chain (NOT on `p`): callers still get the
     // original `p` to await/catch, but the internal bookkeeping chain must never
-    // surface an unhandled rejection when `p` is a not-yet-caught promise (Seam C:
-    // `notify` tracks the raw `notifyOne` before the caller attaches `.catch`).
+    // surface an unhandled rejection when `p` is a not-yet-caught promise
+    // (`notify` tracks the raw `notifyOne` before the caller attaches `.catch`).
     void p.finally(() => inFlight.delete(p)).catch(() => {});
     return p;
   }
@@ -54,7 +72,7 @@ export function createNotificationService(
       try {
         const result = handler(payload);
         if (result instanceof Promise) {
-          // Seam B: floated async-handler rejection. Tracked so `flush()` waits.
+          // Floated async-handler rejection. Tracked so `flush()` waits.
           track(
             result.catch((err) => {
               console.error('[cms] onNotification handler failed:', err);
@@ -99,19 +117,7 @@ export function createNotificationService(
   ): Promise<NotificationPayload> {
     const [row] = await db
       .insert(notifications)
-      .values({
-        recipientId: input.recipientId,
-        actorId: input.actorId,
-        // Widened to allow plugin/app type strings; the generated enum is the
-        // runtime authority (core-only in this package, core+plugin in apps).
-        type: input.type as (typeof notifications.$inferInsert)['type'],
-        title: input.title,
-        body: input.body,
-        resourceType: input.resourceType,
-        resourceId: input.resourceId,
-        collection: input.collection,
-        meta: input.meta,
-      })
+      .values(toInsertRow(input))
       .returning();
 
     const payload = mapRowToPayload(row);
@@ -122,7 +128,7 @@ export function createNotificationService(
 
   return {
     // Register a floated promise into the in-flight set so `flush()` awaits it.
-    // Exposed for `flushNotifications` (Seam A) below.
+    // Exposed for `flushNotifications` below.
     track,
     // Awaits every currently-floated notification promise (batched flushes,
     // async handler side effects, and floated single `notify` calls),
@@ -146,21 +152,7 @@ export function createNotificationService(
 
       const rows = await db
         .insert(notifications)
-        .values(
-          inputs.map((input) => ({
-            recipientId: input.recipientId,
-            actorId: input.actorId,
-            // Widened to allow plugin/app type strings; the generated enum is the
-          // runtime authority (core-only in this package, core+plugin in apps).
-          type: input.type as (typeof notifications.$inferInsert)['type'],
-            title: input.title,
-            body: input.body,
-            resourceType: input.resourceType,
-            resourceId: input.resourceId,
-            collection: input.collection,
-            meta: input.meta,
-          })),
-        )
+        .values(inputs.map(toInsertRow))
         .returning();
 
       const payloads = rows.map(mapRowToPayload);
@@ -190,11 +182,29 @@ export function flushNotifications(
   inputs: NotificationInput[],
 ): void {
   if (!service || inputs.length === 0) return;
-  // Seam A: register the floated batch so `service.flush()` (via
+  // Register the floated batch so `service.flush()` (via
   // `cms.$flushNotifications()`) can await it deterministically.
   void service.track(
     service.notifyMany(inputs).catch((err) => {
       console.error('[cms] notification dispatch failed:', err);
     }),
   );
+}
+
+/**
+ * Runs `fn` inside a transaction with a `pending` array to collect
+ * `NotificationInput`s, then flushes them AFTER the transaction commits.
+ * Wraps the collect-then-flush pattern (see {@link flushNotifications}) so a
+ * rolled-back transaction never fires notifications for uncommitted changes.
+ */
+export function withNotifications<T>(
+  db: DrizzleInstance,
+  service: NotificationService | undefined,
+  fn: (tx: DrizzleInstance, pending: NotificationInput[]) => Promise<T>,
+): Promise<T> {
+  const pending: NotificationInput[] = [];
+  return db.transaction((tx) => fn(tx, pending)).then((result) => {
+    flushNotifications(service, pending);
+    return result;
+  });
 }

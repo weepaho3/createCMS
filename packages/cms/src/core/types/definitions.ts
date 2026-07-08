@@ -30,10 +30,10 @@ export type ResolvedReference<TProps = Record<string, unknown>> = {
   properties: TProps;
   tree: BlockTreeNode;
   /**
-   * Present only when this referenced root has a RUNNING A/B test (AB_FANOUT
-   * F2 server fan-out). The server stays a pure, cacheable function: top-level
+   * Present only when this referenced root has a RUNNING A/B test (server
+   * fan-out). The server stays a pure, cacheable function: top-level
    * `tree`/`properties` are the CONTROL branch (a no-JS / AB-disabled client
-   * renders it as-is), and the client pre-render pass (F3) picks the visitor's
+   * renders it as-is), and the client pre-render pass picks the visitor's
    * variant from `variants` and swaps it in. `variants` includes the control.
    * An OPTIONAL field (not a discriminated union) so `isResolvedReference` —
    * which narrows on `tree`/`properties` — keeps matching.
@@ -108,7 +108,7 @@ export type TableScope = {
  * plugin can compute fresh insert columns once per newly-created logical entry
  * (e.g. a freshly minted translation-group id), which the static `insertColumns`
  * channel (same value on every row) can't express. Called once per
- * createRoot / root-duplication. Generic — core names no column. (Seam D.)
+ * createRoot / root-duplication. Generic — core names no column.
  */
 export type RootTableScope = TableScope & {
   newEntryColumns?: () => Record<string, unknown>;
@@ -119,7 +119,7 @@ export type RootTableScope = TableScope & {
    * The i18n plugin declares `['language']` (a host/reference in any sibling
    * language still counts; the read path already resolved a specific sibling).
    * Generic — core names no column; passed to `rootScopeConditions` as its
-   * `exclude`. Empty/absent → every scope column filters. (Seam D6.)
+   * `exclude`. Empty/absent → every scope column filters.
    */
   crossScopeExclude?: readonly string[];
 };
@@ -140,7 +140,6 @@ export type RootTableScope = TableScope & {
  * build time. The resolver therefore closes over just its resolution POLICY
  * (e.g. the i18n active language + fallback chain). `scopeColumns` is the
  * scope predicate; the resolver excludes its own cross-scope columns.
- * (Seam B.)
  */
 export type ReferenceResolver = {
   /**
@@ -187,7 +186,7 @@ export type ReferenceResolver = {
  * language in `[active, ...fallback]` that has a row. `scopeColumns` carries the
  * cross-scope tenant predicate (language is resolved by the chain, NOT filtered).
  * When absent, core loads variables directly (optionally tenant-filtered). The
- * read paths ride this off the resolved scope. (Seam B, variables.)
+ * read paths ride this off the resolved scope.
  */
 export type VariableResolver = {
   load(
@@ -213,10 +212,10 @@ export type RunningAbTest = {
  * A plugin-provided resolver that reports which referenced roots currently have
  * a RUNNING A/B test (with that test's variant branches). Carried on the
  * resolved scope and consumed by the read path's reference loader to fan the one
- * XOR-guaranteed varying block's branches out to the client (AB_FANOUT F2). Core
+ * XOR-guaranteed varying block's branches out to the client. Core
  * ships NO default — when absent (no ab-test plugin) the read path assumes no
- * running tests and every embed stays on its deterministic single pick (F0).
- * Core never names any A/B concept beyond this interface. (Seam F.)
+ * running tests and every embed stays on its deterministic single pick.
+ * Core never names any A/B concept beyond this interface.
  */
 export type AbTestResolver = {
   /**
@@ -250,7 +249,7 @@ export type ResolvedScope = {
    */
   variableResolver?: VariableResolver;
   /**
-   * Plugin-provided running-A/B-test resolver (AB_FANOUT F2 server fan-out).
+   * Plugin-provided running-A/B-test resolver (server fan-out).
    * When absent, the read path assumes no running tests. Generic — see
    * {@link AbTestResolver}.
    */
@@ -972,7 +971,7 @@ export type RevalidateEvent<
   slug: string | null;
   paths: string[];
   /**
-   * Next.js cache tags to revalidate alongside `paths` (AB_FANOUT FA3b). Always
+   * Next.js cache tags to revalidate alongside `paths`. Always
    * includes the affected root's tag (`rootRevalidateTag(rootId)`); the A/B
    * variant-coded render routes tag their getPublishedContent fetch with it, so
    * one `revalidateTag` invalidates a root's control + every variant cache entry

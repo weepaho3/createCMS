@@ -12,7 +12,7 @@ import {
 } from '../ab-edge';
 
 // ============================================================================
-// AB_FANOUT — Next.js edge middleware (Pattern A: cache-per-variant)
+// Next.js edge middleware (Pattern A: cache-per-variant)
 // ============================================================================
 //
 // A THIN adapter over the framework-agnostic core in `@createcms/core/ab-edge`:

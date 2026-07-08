@@ -159,7 +159,6 @@ export type CMSPlugin<TPruningData = unknown> = {
    * not the flat `cms.api.<pluginId>.x`). The per-collection analogue of the
    * flat `endpoints` above. Generic — any plugin can attach a route to every
    * collection (the i18n plugin uses it for createTranslation / listTranslations).
-   * (Seam A.)
    */
   collectionEndpoints?: (
     def: CollectionWithName,
@@ -297,7 +296,7 @@ export type InferPluginNotificationMeta<P extends CMSPlugin[]> = {
  * plugins. A plugin without `collectionEndpoints` contributes `{}`, so the
  * no-plugin case is IDENTITY under intersection (a collection's API is
  * unchanged). `cms.api.<collection>` gains these keys (e.g. createTranslation)
- * only when a contributing plugin (the i18n plugin) is installed. (Seam A / D1.)
+ * only when a contributing plugin (the i18n plugin) is installed.
  */
 export type InferCollectionEndpoints<P extends CMSPlugin[]> =
   UnionToIntersection<

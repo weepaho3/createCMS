@@ -78,12 +78,12 @@ export function getLinkPropertyNames(
  * block property of type `reference` (per the collection def); its stored VALUE
  * is the raw reference string (a `rot_` rootId, or under i18n a `tgr_`
  * translationKey), recorded verbatim as `targetKey` so the reverse "who embeds
- * me" query (RB2+) can match the anchor rootId directly.
+ * me" query can match the anchor rootId directly.
  *
  * INSERT-only and keyed by the immutable blockVersionId, like its siblings. The
  * `collectionDef` is REQUIRED (no default) so every version-insert site must
  * thread it — a missed site would silently under-index, which is load-bearing for
- * the reusable-block delete guard (RB4). Ships dark in RB1: rows populate, nothing
+ * the reusable-block delete guard. Ships dark: rows populate, nothing
  * reads them yet.
  */
 export async function insertReferenceUsagesForVersions(
@@ -145,7 +145,7 @@ export async function insertReferenceUsagesForVersions(
 }
 
 /**
- * ANCHOR-only liveness check for the delete guard (RB4): true if `rootId` is the
+ * ANCHOR-only liveness check for the delete guard: true if `rootId` is the
  * DIRECTLY-stored `referencedRootId` of any LIVE reference (a non-deleted
  * referencing version in some branch HEAD snapshot of a non-archived root).
  * Matches exactly the stored value — it does NOT expand to the translation group,
@@ -281,7 +281,7 @@ export async function getReferenceUsageDetails(
 }
 
 // ============================================================================
-// Reference-resolution seam — core's identity default (Seam B)
+// Reference-resolution seam — core's identity default
 // ============================================================================
 
 /**

@@ -4,7 +4,7 @@ import type { ResolvedReference } from '../core/types/definitions';
 import { isResolvedReference } from './blocks';
 
 // ============================================================================
-// AB_FANOUT FA3 — server-side variant pick (Pattern A: cache-per-variant)
+// Server-side variant pick (Pattern A: cache-per-variant)
 // ============================================================================
 //
 // The render-side counterpart of the edge decision: given getPublishedContent's
@@ -42,7 +42,7 @@ function resolveVariantTree(
         }
       }
       // The picked tree intentionally carries NO A/B metadata downstream:
-      // attribution is owned by the edge/URL (the FA4 impression beacon), not
+      // attribution is owned by the edge/URL (the impression beacon), not
       // the rendered tree. Non-matching branch / control → leave control.
       delete ref.abTest;
     }

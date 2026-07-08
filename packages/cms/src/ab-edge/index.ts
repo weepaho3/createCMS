@@ -3,7 +3,7 @@ import type { AbResolveResult } from '../plugins/ab-test/resolve';
 import { resolveVariant } from '../plugins/ab-test/assignment';
 
 // ============================================================================
-// AB_FANOUT — framework-agnostic edge A/B core (Pattern A)
+// Framework-agnostic edge A/B core (Pattern A)
 // ============================================================================
 //
 // The portable heart of edge cache-per-variant A/B: deterministic bucketing +
