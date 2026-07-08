@@ -72,12 +72,12 @@ function createCMSQuery<T>(
   path: string,
   $fetch: CMSFetch,
   options?: CMSQueryOptions | (() => CMSQueryOptions),
-): WritableAtom<QueryState<T>>;
+): WritableAtom<CMSQueryState<T>>;
 ```
 
 `CMSQueryOptions` is `{ method?: string; query?: Record<string, unknown> }`, where `method` defaults to `'GET'`. Pass `options` as a thunk (`() => ({ query: {...} })`) to recompute it on every fetch — the only way to keep `query` or `method` reactive across refetches, since a plain object is captured once.
 
-`QueryState<T>` is `{ data, error, isPending, isRefetching, refetch }`.
+`CMSQueryState<T>` is `{ data, error, isPending, isRefetching, refetch }`.
 
 <Callout type="info">
   For per-method inputs and return shapes, see the [Server API](/docs/reference/server-api).

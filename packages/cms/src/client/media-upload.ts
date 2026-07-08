@@ -4,9 +4,9 @@ import { atom } from 'nanostores';
 
 import type {
   CMSFetch,
-  MediaUploadFileState,
-  MediaUploadOptions,
-  MediaUploadState,
+  CMSMediaUploadFileState,
+  CMSMediaUploadOptions,
+  CMSMediaUploadState,
 } from './types';
 
 // ============================================================================
@@ -97,7 +97,7 @@ function uploadWithXHR(
 // Helpers
 // ============================================================================
 
-function computeTotalProgress(files: MediaUploadFileState[]): number {
+function computeTotalProgress(files: CMSMediaUploadFileState[]): number {
   if (files.length === 0) return 0;
   const sum = files.reduce((acc, f) => acc + f.progress, 0);
   return Math.round(sum / files.length);
@@ -107,7 +107,7 @@ function computeTotalProgress(files: MediaUploadFileState[]): number {
 // Atom Factory
 // ============================================================================
 
-const INITIAL_STATE: MediaUploadState = {
+const INITIAL_STATE: CMSMediaUploadState = {
   isUploading: false,
   isAborted: false,
   files: [],
@@ -128,14 +128,14 @@ const INITIAL_STATE: MediaUploadState = {
  */
 export function createMediaUploadAtom(
   $fetch: CMSFetch,
-): WritableAtom<MediaUploadState> {
-  const store = atom<MediaUploadState>({ ...INITIAL_STATE });
+): WritableAtom<CMSMediaUploadState> {
+  const store = atom<CMSMediaUploadState>({ ...INITIAL_STATE });
 
   let controller: AbortController | null = null;
 
   function updateFileState(
     index: number,
-    patch: Partial<MediaUploadFileState>,
+    patch: Partial<CMSMediaUploadFileState>,
   ) {
     const current = store.get();
     const files = [...current.files];
@@ -162,7 +162,7 @@ export function createMediaUploadAtom(
 
   async function upload(
     files: File[],
-    options?: MediaUploadOptions,
+    options?: CMSMediaUploadOptions,
   ): Promise<void> {
     if (files.length === 0) return;
 

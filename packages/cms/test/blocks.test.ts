@@ -186,8 +186,8 @@ describe('listRoots', () => {
 
     const result = await cms.api.pages.listRoots();
 
-    const published = result.roots.find((r) => r.rootId === root1.rootId);
-    const unpublished = result.roots.find((r) => r.rootId === root2.rootId);
+    const published = result.roots.find((r) => r.id === root1.rootId);
+    const unpublished = result.roots.find((r) => r.id === root2.rootId);
 
     expect(published!.hasPublications).toBe(true);
     expect(published!.publicationCount).toBe(1);
@@ -3906,7 +3906,7 @@ describe('getRoot', () => {
     const root = await cms.api.pages.getRoot({
       query: { rootId: created.rootId },
     });
-    expect(root.rootId).toBe(created.rootId);
+    expect(root.id).toBe(created.rootId);
     expect((root.properties as any).title).toBe('About');
   });
 
@@ -3932,7 +3932,7 @@ describe('getRootBySlug', () => {
     const root = await cms.api.pages.getRootBySlug({
       query: { slug: created.slug! },
     });
-    expect(root.rootId).toBe(created.rootId);
+    expect(root.id).toBe(created.rootId);
   });
 
   it('throws ROOT_NOT_FOUND for an unknown slug', async () => {
@@ -4036,7 +4036,7 @@ describe('cms-05 versioned slug (write path)', () => {
     const beforeRevert = await cms.api.pages.getRootBySlug({
       query: { slug: 'second' },
     });
-    expect(beforeRevert.rootId).toBe(root.rootId);
+    expect(beforeRevert.id).toBe(root.rootId);
 
     // Revert the branch back to the initial commit → draft slug is 'first' again.
     await cms.api.pages.revertBranch({
@@ -4045,7 +4045,7 @@ describe('cms-05 versioned slug (write path)', () => {
     const afterRevert = await cms.api.pages.getRootBySlug({
       query: { slug: 'first' },
     });
-    expect(afterRevert.rootId).toBe(root.rootId);
+    expect(afterRevert.id).toBe(root.rootId);
     await expect(
       cms.api.pages.getRootBySlug({ query: { slug: 'second' } }),
     ).rejects.toThrow(/not found/i);

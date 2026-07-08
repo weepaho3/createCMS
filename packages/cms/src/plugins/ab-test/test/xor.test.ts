@@ -34,7 +34,7 @@ const XOR_COLLECTIONS = {
   },
   pages: {
     label: 'Pages',
-    slug: { enabled: true, root: '/pages' },
+    slug: { enabled: true, prefix: '/pages' },
     root: {
       properties: {
         title: {
@@ -94,7 +94,7 @@ async function publish(
     },
     context: { userId: 'requester-1' },
   });
-  await cms.api[collection].approve({
+  await cms.api[collection].submitApproval({
     body: { approvalId: req.approvals[0].id },
     context: { userId: 'reviewer-1' },
   });
@@ -245,7 +245,7 @@ describe('A/B XOR cross-embed guard', () => {
     const I18N_COLLECTIONS = {
       pages: {
         label: 'Pages',
-        slug: { enabled: true, root: '/pages' },
+        slug: { enabled: true, prefix: '/pages' },
         root: {
           properties: {
             title: {

@@ -13,7 +13,7 @@ import { createCMS } from '@createcms/core';
 import {
   i18n,
   resolveLanguage,
-  type MultilingualMiddlewareResult,
+  type I18nMiddlewareResult,
 } from '@createcms/core/plugins/i18n';
 
 const cms = createCMS({
@@ -31,7 +31,7 @@ const cms = createCMS({
   ],
   authMiddleware: async (
     ctx,
-  ): Promise<MultilingualMiddlewareResult<'en' | 'de' | 'fr'>> => {
+  ): Promise<I18nMiddlewareResult<'en' | 'de' | 'fr'>> => {
     const session = await getSession(ctx);
     const language = resolveLanguage(ctx, session.locale) ?? 'en';
     return { userId: session.userId, language }; // TS enforces `language`
@@ -92,12 +92,12 @@ Codes are typed into the API error union via `InferPluginErrorCodes` when the pl
 
 ## Types
 
-### `MultilingualMiddlewareResult`
+### `I18nMiddlewareResult`
 
 Extends the core `MiddlewareResult` with a required `language` field:
 
 ```typescript
-type MultilingualMiddlewareResult<L extends string = string> =
+type I18nMiddlewareResult<L extends string = string> =
   MiddlewareResult & {
     language: L;
   };

@@ -8,8 +8,8 @@ import type {
   CMSClientInstance,
   CMSClientOptions,
   CMSClientPlugin,
-  MediaUploadOptions,
-  MediaUploadState,
+  CMSMediaUploadOptions,
+  CMSMediaUploadState,
 } from './types';
 
 import { buildClient } from './build';
@@ -29,7 +29,7 @@ type UploadOptimizer = {
 
 // Per-call opt-out: pass `{ optimize: false }` to skip auto-optimization even
 // when the media-optimize plugin is installed and enabled.
-type UploadOptions = MediaUploadOptions & { optimize?: boolean };
+type UploadOptions = CMSMediaUploadOptions & { optimize?: boolean };
 
 /**
  * React `useUploadAssets` hook. Wraps the raw media-upload atom so that, when
@@ -38,10 +38,10 @@ type UploadOptions = MediaUploadOptions & { optimize?: boolean };
  * call required. Opt out per call with `upload(files, { optimize: false })`.
  * When the plugin is absent, behavior is unchanged (original bytes uploaded).
  */
-function makeUseUploadAssets(config: ClientConfig): () => MediaUploadState {
+function makeUseUploadAssets(config: ClientConfig): () => CMSMediaUploadState {
   return () => {
     const state = useStore(
-      config.pluginsAtoms.uploadAssets as ReadableAtom<MediaUploadState>,
+      config.pluginsAtoms.uploadAssets as ReadableAtom<CMSMediaUploadState>,
     );
 
     const wrappedUpload = useMemo(() => {
@@ -66,7 +66,7 @@ function makeUseUploadAssets(config: ClientConfig): () => MediaUploadState {
       // this memoizes to a single wrapped function across renders.
     }, [state.upload]);
 
-    return { ...state, upload: wrappedUpload as MediaUploadState['upload'] };
+    return { ...state, upload: wrappedUpload as CMSMediaUploadState['upload'] };
   };
 }
 

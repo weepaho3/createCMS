@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
-import type { CollectionWithName, CMSProcedureCtx } from '../types';
+import type { CollectionWithName, CMSProcedureContext } from '../types';
 import type { DrizzleInstance } from '../types/drizzle';
 
 import {
@@ -147,7 +147,7 @@ function mapApproval(row: {
 
 export function createApprovalEndpoints<TDef extends CollectionWithName>(
   def: TDef,
-  cmsCtx: CMSProcedureCtx,
+  cmsCtx: CMSProcedureContext,
 ) {
   const { db } = cmsCtx;
   const collectionName = def.name;
@@ -361,10 +361,10 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
      * @throws APPROVAL_NOT_PENDING If the approval is not in pending status.
      * @throws APPROVAL_REVIEWER_MISMATCH If the reviewer is not the requested reviewer for this approval.
      * @throws APPROVAL_STALE If the approval is for a direct publication and the branch has since moved to a different commit.
-     * @example await cmsClient.pages.approve({ approvalId: 'apr_123' })
+     * @example await cmsClient.pages.submitApproval({ approvalId: 'apr_123' })
      */
-    approve: createCMSEndpoint(
-      `/${collectionName}/approve`,
+    submitApproval: createCMSEndpoint(
+      `/${collectionName}/submitApproval`,
       {
         method: 'POST',
         body: z.object({
@@ -499,10 +499,10 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
      * @throws APPROVAL_NOT_PENDING If the approval is not in pending status.
      * @throws APPROVAL_REVIEWER_MISMATCH If the reviewer is not the requested reviewer for this approval.
      * @throws APPROVAL_STALE If the approval is for a direct publication and the branch has since moved to a different commit.
-     * @example await cmsClient.pages.reject({ approvalId: 'apr_123', rejectionReason: 'Needs revision' })
+     * @example await cmsClient.pages.submitRejection({ approvalId: 'apr_123', rejectionReason: 'Needs revision' })
      */
-    reject: createCMSEndpoint(
-      `/${collectionName}/reject`,
+    submitRejection: createCMSEndpoint(
+      `/${collectionName}/submitRejection`,
       {
         method: 'POST',
         body: z.object({

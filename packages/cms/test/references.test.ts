@@ -39,7 +39,7 @@ async function publishBranch(
     context: { userId: 'requester-1' },
   });
 
-  await api.approve({
+  await api.submitApproval({
     body: {
       approvalId: request.approvals[0].id,
     },
@@ -96,7 +96,7 @@ async function setupReferenceCMS() {
       },
       pages: {
         label: 'Pages',
-        slug: { enabled: true, root: '/pages' },
+        slug: { enabled: true, prefix: '/pages' },
         root: {
           properties: {
             title: {
@@ -1152,7 +1152,7 @@ describe('cascade revalidation', () => {
         },
         pages: {
           label: 'Pages',
-          slug: { enabled: true, root: '/pages' },
+          slug: { enabled: true, prefix: '/pages' },
           root: {
             properties: {
               title: {

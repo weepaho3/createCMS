@@ -22,7 +22,7 @@ export default async function BlogIndex() {
           // `slug` is the post's own segment; the full path is `/blog/<slug>`.
           const slug = post.slug ?? '';
           return (
-            <li key={post.rootId} style={{ margin: '2rem 0' }}>
+            <li key={post.id} style={{ margin: '2rem 0' }}>
               <h2 style={{ marginBottom: '0.25rem' }}>
                 <Link href={`/posts/${slug}`}>{post.properties.title}</Link>
               </h2>

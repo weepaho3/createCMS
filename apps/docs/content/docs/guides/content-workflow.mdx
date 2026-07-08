@@ -49,7 +49,7 @@ const mr = await cms.api.pages.createMergeRequest({
 });
 ```
 
-If `mr.hasConflicts` is true, resolve the conflicts before merging: each conflict is settled as `source`, `target`, or a `manual` version through `resolveConflicts`. See [Merges](/docs/concepts/merges) for the model.
+If `mr.hasConflicts` is true, resolve the conflicts before merging: each conflict is settled as `source`, `target`, or a `manual` version through `applyConflictResolutions`. See [Merges](/docs/concepts/merges) for the model.
 
 ### Approve and merge
 
@@ -63,7 +63,7 @@ const { approvals } = await cms.api.pages.requestApproval({
   },
 });
 
-await cms.api.pages.approve({
+await cms.api.pages.submitApproval({
   body: { approvalId: approvals[0].id },
 });
 
@@ -72,7 +72,7 @@ await cms.api.pages.executeMerge({
 });
 ```
 
-The actor on `requestApproval` and `approve` comes from the request's auth context, so you no longer pass `requestedBy` or `reviewedBy` in the body.
+The actor on `requestApproval` and `submitApproval` comes from the request's auth context, so you no longer pass `requestedBy` or `reviewedBy` in the body.
 
 ### Make review mandatory
 

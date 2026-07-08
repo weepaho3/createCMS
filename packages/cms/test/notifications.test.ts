@@ -949,7 +949,7 @@ describe('notification triggers', () => {
         },
       });
 
-      await cms2.api.pages.approve({
+      await cms2.api.pages.submitApproval({
         body: {
           approvalId: approval.approvals[0].id,
         },
@@ -985,7 +985,7 @@ describe('notification triggers', () => {
         },
       });
 
-      await cms2.api.pages.reject({
+      await cms2.api.pages.submitRejection({
         body: {
           approvalId: approval.approvals[0].id,
           rejectionReason: 'Needs changes',

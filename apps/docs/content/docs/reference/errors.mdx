@@ -54,12 +54,12 @@ try {
 | `EMPTY_SNAPSHOT` | 400 | Empty snapshot — no versions found |
 | `BLOCK_ALREADY_DELETED` | 400 | Block is already deleted |
 | `TYPE_MISMATCH` | 400 | Block type does not match the expected type |
-| `ROOT_HAS_CHILDREN` | 409 | Cannot delete a page that has child pages; archive or move the children first |
-| `ROOT_IN_USE` | 409 | Cannot delete: this root is embedded as a reusable block on live pages; remove those references first |
+| `ROOT_HAS_CHILDREN` | 409 | Cannot delete a root that has child roots; archive or move the children first |
+| `ROOT_IN_USE` | 409 | Cannot delete: this root is embedded as a reusable block on live roots; remove those references first |
 | `CANNOT_MOVE_ROOT` | 400 | Cannot move the root block |
 | `CANNOT_MOVE_INTO_SELF` | 400 | Cannot move an item into itself |
 | `CANNOT_MOVE_INTO_DESCENDANT` | 400 | Cannot move an item into its own descendant |
-| `CIRCULAR_REFERENCE` | 400 | Cannot move a page under itself or one of its descendants |
+| `CIRCULAR_REFERENCE` | 400 | Cannot move a root under itself or one of its descendants |
 | `PARENT_ROOT_NOT_FOUND` | 404 | Parent root not found in this collection |
 | `REFERENCE_DEPTH_EXCEEDED` | 422 | Reference nesting is too deep (a reusable block embeds others past the limit) |
 | `MISSING_TARGET_PROPERTIES` | 400 | targetProperties is required when duplicating a root |
@@ -112,9 +112,9 @@ try {
 | `AMBIGUOUS_SLUG` | 400 | Multiple roots match this slug — use rootId for an unambiguous lookup |
 | `SLUG_ALREADY_EXISTS` | 409 | A root with this slug on this collection with this parentRootId already exists |
 | `SLUG_NOT_ENABLED` | 400 | This collection does not have slugs enabled |
-| `SLUG_EMPTY_NOT_ALLOWED` | 400 | Empty slug is not allowed for this collection (allowRoot is false) |
+| `SLUG_EMPTY_NOT_ALLOWED` | 400 | Empty slug is not allowed for this collection (allowIndex is false) |
 | `SLUG_GENERATION_FAILED` | 500 | Failed to generate a unique slug after maximum attempts |
-| `NESTING_NOT_ENABLED` | 400 | parentRootId is not allowed — this collection does not have nested pages enabled |
+| `NESTING_NOT_ENABLED` | 400 | parentRootId is not allowed — this collection does not have nested roots enabled |
 | `REDIRECT_NOT_FOUND` | 404 | Redirect not found |
 | `REDIRECT_INVALID` | 400 | A redirect endpoint must be a page (rootId) or a path, matching its type |
 | `REDIRECT_SOURCE_EXISTS` | 409 | An active redirect already exists for this source |

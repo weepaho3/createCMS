@@ -108,9 +108,9 @@ Export subpaths:
 
 | Option      | Type                      | Default               | Description                                        |
 | ----------- | ------------------------- | --------------------- | ------------------------------------------------- |
-| `analytics` | `ABTestAnalyticsAdapter`  | `postgresAnalytics()` | Where events are stored / forwarded.              |
-| `ga4`       | `GA4ServerConfig`         | --                    | Server-side GA4 Measurement Protocol forwarding.  |
-| `rateLimit` | `ABTestRateLimitOptions`  | --                    | Rate-limit the anonymous `trackEvent` ingest.     |
+| `analytics` | `AbTestAnalyticsAdapter`  | `postgresAnalytics()` | Where events are stored / forwarded.              |
+| `ga4`       | `Ga4ServerConfig`         | --                    | Server-side GA4 Measurement Protocol forwarding.  |
+| `rateLimit` | `AbTestRateLimitOptions`  | --                    | Rate-limit the anonymous `trackEvent` ingest.     |
 
 ### Client — `abTestClient(options)`
 

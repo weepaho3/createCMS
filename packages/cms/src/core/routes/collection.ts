@@ -1,7 +1,7 @@
 import type {
   AnyCollectionDefinition,
   CollectionWithName,
-  CMSProcedureCtx,
+  CMSProcedureContext,
 } from '../types';
 
 import { createApprovalEndpoints } from './approvals';
@@ -27,7 +27,7 @@ export function createCollectionEndpoints<
   // resolved reference's `properties` from its TARGET collection. Defaults
   // to `{}` (references resolve to untyped ResolvedReference) when not supplied.
   TCollections extends Record<string, AnyCollectionDefinition> = {},
->(def: TDef, ctx: CMSProcedureCtx) {
+>(def: TDef, ctx: CMSProcedureContext) {
   const allBlockEndpoints = createBlocksEndpoints(def, ctx);
   const hasBlocks = Object.keys(def.blocks ?? {}).length > 0;
 

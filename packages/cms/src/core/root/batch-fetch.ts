@@ -16,7 +16,7 @@ import {
 import { buildFullPath } from '../slug';
 
 export type RootEnrichment = {
-  rootId: string;
+  id: string;
   slug: string | null;
   parentRootId: string | null;
   sortOrder: number;
@@ -66,7 +66,7 @@ export async function batchFetchRoots(
   const map = new Map<string, RootEnrichment>();
   for (const row of result.rows as Array<Record<string, unknown>>) {
     map.set(row.root_id as string, {
-      rootId: row.root_id as string,
+      id: row.root_id as string,
       slug: (row.slug as string) ?? null,
       parentRootId: (row.parent_root_id as string) ?? null,
       sortOrder: row.sort_order as number,
@@ -88,7 +88,7 @@ export async function batchFetchRoots(
  *  `batchFetchRootListItems`. The route casts `properties` to the collection's
  *  inferred `RootListItem<TRootProps>`. */
 export type RootListItemRow = {
-  rootId: string;
+  id: string;
   createdAt: Date;
   createdBy?: string;
   parentRootId?: string;
@@ -154,7 +154,7 @@ export async function batchFetchRootListItems(
   const map = new Map<string, RootListItemRow>();
   for (const row of result.rows as Array<Record<string, unknown>>) {
     map.set(row.root_id as string, {
-      rootId: row.root_id as string,
+      id: row.root_id as string,
       createdAt: new Date(row.created_at as string),
       createdBy: (row.created_by as string | null) ?? undefined,
       parentRootId: (row.parent_root_id as string | null) ?? undefined,

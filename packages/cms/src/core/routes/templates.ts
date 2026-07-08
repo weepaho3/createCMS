@@ -1,7 +1,7 @@
 import { and, count, eq, ilike } from 'drizzle-orm';
 import * as z from 'zod';
 
-import type { CMSProcedureCtx } from '../types';
+import type { CMSProcedureContext } from '../types';
 
 import { newId } from '../../utils/nanoid';
 import { templates, templateVariableUsages } from '../db/schema.generated';
@@ -15,7 +15,10 @@ import {
   resolveTemplateString,
 } from '../variables';
 
-const META = { scope: 'system' as const, permissionResource: 'templates' };
+const META = {
+  scope: 'system' as const,
+  permissionResource: 'template' as const,
+};
 
 async function syncTemplateVariableUsages(
   tx: any,
@@ -42,7 +45,7 @@ async function syncTemplateVariableUsages(
   }
 }
 
-export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
+export function createTemplateEndpoints(cmsCtx: CMSProcedureContext) {
   const { db } = cmsCtx;
 
   return {

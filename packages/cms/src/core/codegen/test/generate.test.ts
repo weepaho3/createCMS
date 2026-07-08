@@ -43,7 +43,7 @@ describe('generateSchema', () => {
     expect(Object.keys(result.schema.tables)).toEqual(['items']);
     const onDisk = await readFile(out, 'utf8');
     expect(onDisk).toBe(result.output); // file content === returned output
-    expect(onDisk).toContain('export const items = cms.table(');
+    expect(onDisk).toContain('export const items = cmsSchema.table(');
   });
 
   it('creates nested output directories (mkdir recursive)', async () => {
@@ -60,10 +60,10 @@ describe('generateSchema', () => {
     });
 
     const onDisk = await readFile(out, 'utf8');
-    // emit puts the db name on the next line: `cms.table(\n  "roots",`
-    expect(onDisk).toMatch(/export const roots = cms\.table\(\s+"roots",/);
+    // emit puts the db name on the next line: `cmsSchema.table(\n  "roots",`
+    expect(onDisk).toMatch(/export const roots = cmsSchema\.table\(\s+"roots",/);
     expect(onDisk).toMatch(
-      /export const redirects = cms\.table\(\s+"redirects",/,
+      /export const redirects = cmsSchema\.table\(\s+"redirects",/,
     );
     expect(Object.keys(result.schema.tables).length).toBeGreaterThan(15);
   });

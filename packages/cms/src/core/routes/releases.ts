@@ -2,7 +2,7 @@ import { APIError } from 'better-call';
 import { and, asc, desc, eq } from 'drizzle-orm';
 import * as z from 'zod';
 
-import type { CMSProcedureCtx } from '../types';
+import type { CMSProcedureContext } from '../types';
 import type { ResolvedSlugConfig } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
 
@@ -35,7 +35,10 @@ const RELEASE_EMPTY = () =>
     message: 'Cannot publish a release with no items',
   });
 
-const META = { scope: 'system' as const, permissionResource: 'release' };
+const META = {
+  scope: 'system' as const,
+  permissionResource: 'release' as const,
+};
 
 /**
  * Validates that a (rootId, branchId) pair is a real root with a branch that
@@ -62,7 +65,7 @@ async function assertItemExists(
   if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
 }
 
-export function createReleaseEndpoints(cmsCtx: CMSProcedureCtx) {
+export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
   const { db } = cmsCtx;
 
   return {

@@ -25,7 +25,7 @@ export type RateLimitStore = {
   hit(key: string, windowMs: number, now: number): number | Promise<number>;
 };
 
-export type ABTestRateLimitOptions = {
+export type AbTestRateLimitOptions = {
   /** Max `/abTest/trackEvent` requests allowed per `windowMs` per key. */
   limit: number;
   /** Window length in milliseconds. */
@@ -120,7 +120,7 @@ export function defaultRateLimitKey(request: Request): string | null {
  */
 export async function enforceTrackEventRateLimit(
   request: Request,
-  options: ABTestRateLimitOptions,
+  options: AbTestRateLimitOptions,
   store: RateLimitStore,
   now: number = Date.now(),
 ): Promise<Response | null> {

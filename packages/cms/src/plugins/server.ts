@@ -1,12 +1,12 @@
 export { abTest } from './ab-test';
 export type {
-  ABTestPluginOptions,
-  ABTestAnalyticsAdapter,
-  ABTestContext,
-  ABTestEvent,
+  AbTestPluginOptions,
+  AbTestAnalyticsAdapter,
+  AbTestContext,
+  AbTestEvent,
   AggregatedResults,
   AggregatedVariantResult,
-  CMSEvent,
+  AnalyticsEvent,
   CMSEventSource,
   LiveDelta,
 } from './ab-test';

@@ -37,7 +37,7 @@ const hero = defineBlock({
 export const pages = defineCollection({
   label: 'Pages',
   description: 'Website pages',
-  slug: { enabled: true, root: '/pages' },
+  slug: { enabled: true, prefix: '/pages' },
   root: {
     properties: {
       title: {

@@ -21,7 +21,7 @@ type CMS = { api: { pages: Api } };
 const NESTED_COLLECTIONS = {
   pages: {
     label: 'Pages',
-    slug: { enabled: true, root: '/docs', nested: true, normalize: true },
+    slug: { enabled: true, prefix: '/docs', nested: true, normalize: true },
     root: {
       properties: {
         title: { type: 'string', label: 'Title', required: true },
@@ -41,7 +41,7 @@ const NESTED_COLLECTIONS = {
 const FLAT_COLLECTIONS = {
   pages: {
     label: 'Pages',
-    slug: { enabled: true, root: '/blog', normalize: true },
+    slug: { enabled: true, prefix: '/blog', normalize: true },
     root: {
       properties: {
         title: { type: 'string', label: 'Title', required: true },
@@ -56,8 +56,8 @@ const NO_ROOT_COLLECTIONS = {
     label: 'Pages',
     slug: {
       enabled: true,
-      root: '/pages',
-      allowRoot: false,
+      prefix: '/pages',
+      allowIndex: false,
       normalize: true,
       nested: true,
     },
@@ -111,8 +111,8 @@ describe('normalizeSlug', () => {
 describe('buildFullPath', () => {
   const cfg = {
     enabled: true as const,
-    root: '/docs',
-    allowRoot: true,
+    prefix: '/docs',
+    allowIndex: true,
     normalize: true,
     nested: true,
   };
@@ -128,12 +128,12 @@ describe('buildFullPath', () => {
   });
 
   it('handles root at /', () => {
-    const rootCfg = { ...cfg, root: '/' };
+    const rootCfg = { ...cfg, prefix: '/' };
     expect(buildFullPath(rootCfg, ['about'])).toBe('/about');
   });
 
   it('handles root at / with no segments', () => {
-    const rootCfg = { ...cfg, root: '/' };
+    const rootCfg = { ...cfg, prefix: '/' };
     expect(buildFullPath(rootCfg, [])).toBe('/');
   });
 });
@@ -141,8 +141,8 @@ describe('buildFullPath', () => {
 describe('splitPath', () => {
   const cfg = {
     enabled: true as const,
-    root: '/docs',
-    allowRoot: true,
+    prefix: '/docs',
+    allowIndex: true,
     normalize: true,
     nested: true,
   };
@@ -405,8 +405,8 @@ describe('nested pages', () => {
     });
   });
 
-  describe('allowRoot', () => {
-    it('rejects empty slug when allowRoot is false', async () => {
+  describe('allowIndex', () => {
+    it('rejects empty slug when allowIndex is false', async () => {
       const { cms } = await setupNestedCMS(NO_ROOT_COLLECTIONS);
 
       await expect(
@@ -416,7 +416,7 @@ describe('nested pages', () => {
       ).rejects.toThrow();
     });
 
-    it('allows empty slug when allowRoot is true (default)', async () => {
+    it('allows empty slug when allowIndex is true (default)', async () => {
       const { cms } = await setupNestedCMS();
 
       const root = await cms.api.pages.createRoot({
@@ -448,7 +448,7 @@ describe('nested pages', () => {
       });
 
       expect(result.roots).toHaveLength(1);
-      expect(result.roots[0].rootId).toBe(parent.rootId);
+      expect(result.roots[0].id).toBe(parent.rootId);
     });
 
     it('lists children of a specific parent', async () => {
@@ -479,7 +479,7 @@ describe('nested pages', () => {
       });
 
       expect(result.roots).toHaveLength(2);
-      const ids = result.roots.map((r: any) => r.rootId);
+      const ids = result.roots.map((r: any) => r.id);
       expect(ids).toContain(child1.rootId);
       expect(ids).toContain(child2.rootId);
     });
@@ -617,7 +617,7 @@ describe('nested pages', () => {
         query: { parentRootId: parentB.rootId },
       });
       expect(children.roots).toHaveLength(1);
-      expect(children.roots[0].rootId).toBe(child.rootId);
+      expect(children.roots[0].id).toBe(child.rootId);
     });
 
     it('moves a page to top-level', async () => {
@@ -645,7 +645,7 @@ describe('nested pages', () => {
       const topLevel = await cms.api.pages.listRoots({
         query: { parentRootId: 'null' },
       });
-      const ids = topLevel.roots.map((r: any) => r.rootId);
+      const ids = topLevel.roots.map((r: any) => r.id);
       expect(ids).toContain(child.rootId);
     });
 
@@ -890,7 +890,7 @@ describe('nested pages', () => {
       expect(res.rootId).toBe(page.rootId);
 
       const list = await cms.api.pages.listRoots();
-      expect(list.roots.map((r: any) => r.rootId)).not.toContain(page.rootId);
+      expect(list.roots.map((r: any) => r.id)).not.toContain(page.rootId);
 
       await expect(
         cms.api.pages.getRoot({ query: { rootId: page.rootId } }),
@@ -912,10 +912,10 @@ describe('nested pages', () => {
 
       await expect(
         cms.api.pages.archiveRoot({ body: { rootId: parent.rootId } }),
-      ).rejects.toThrow(/child pages/i);
+      ).rejects.toThrow(/child roots/i);
 
       const list = await cms.api.pages.listRoots();
-      expect(list.roots.map((r: any) => r.rootId)).toContain(parent.rootId);
+      expect(list.roots.map((r: any) => r.id)).toContain(parent.rootId);
     });
 
     it('allows archiving the parent once the child is archived', async () => {
@@ -977,7 +977,7 @@ describe('nested pages', () => {
       const { roots } = await cms.api.pages.listRoots({
         query: { limit: 100 },
       });
-      const byId = Object.fromEntries(roots.map((r: any) => [r.rootId, r]));
+      const byId = Object.fromEntries(roots.map((r: any) => [r.id, r]));
 
       // Full path = slug-config root + ancestor slugs; slug stays the segment.
       expect(byId[parent.rootId].path).toBe('/docs/getting-started');
@@ -998,7 +998,7 @@ describe('nested pages', () => {
       const { roots } = await cms.api.pages.listRoots({
         query: { limit: 100 },
       });
-      const row = roots.find((r: any) => r.rootId === page.rootId);
+      const row = roots.find((r: any) => r.id === page.rootId);
       expect(row.path).toBe('/blog/hello');
     });
   });

@@ -30,7 +30,7 @@ const RESOLVE_COLLECTIONS = {
   },
   pages: {
     label: 'Pages',
-    slug: { enabled: true, root: '/' },
+    slug: { enabled: true, prefix: '/' },
     root: {
       properties: {
         title: {
@@ -90,7 +90,7 @@ async function publish(
     body: { branchId, requestedReviewers: ['rev1'] },
     context: { userId: 'r1' },
   });
-  await cms.api[collection].approve({
+  await cms.api[collection].submitApproval({
     body: { approvalId: req.approvals[0].id },
     context: { userId: 'rev1' },
   });

@@ -9,38 +9,38 @@ import { boolean, customType, foreignKey, index, integer, jsonb, pgSchema, prima
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { newId } from '@createcms/core/nanoid';
 
-export const cms = pgSchema('cms');
+export const cmsSchema = pgSchema('cms');
 
 const tsvectorColumn = customType<{ data: string }>({
   dataType() { return 'tsvector'; },
 });
-export const approvalStatusEnum = cms.enum("approval_status", ["pending", "approved", "rejected"]);
+export const approvalStatusEnum = cmsSchema.enum("approval_status", ["pending", "approved", "rejected"]);
 
-export const assetStatusEnum = cms.enum("asset_status", ["private", "public"]);
+export const assetStatusEnum = cmsSchema.enum("asset_status", ["private", "public"]);
 
-export const commentMessageTypeEnum = cms.enum("comment_message_type", ["comment", "system"]);
+export const commentMessageTypeEnum = cmsSchema.enum("comment_message_type", ["comment", "system"]);
 
-export const commentSystemTypeEnum = cms.enum("comment_system_type", ["threadResolved", "threadReopened"]);
+export const commentSystemTypeEnum = cmsSchema.enum("comment_system_type", ["threadResolved", "threadReopened"]);
 
-export const commentThreadStatusEnum = cms.enum("comment_thread_status", ["open", "resolved"]);
+export const commentThreadStatusEnum = cmsSchema.enum("comment_thread_status", ["open", "resolved"]);
 
-export const commentThreadTargetEnum = cms.enum("comment_thread_target", ["mergeRequest", "block"]);
+export const commentThreadTargetEnum = cmsSchema.enum("comment_thread_target", ["mergeRequest", "block"]);
 
-export const conflictResolutionEnum = cms.enum("conflict_resolution", ["source", "target", "manual"]);
+export const conflictResolutionEnum = cmsSchema.enum("conflict_resolution", ["source", "target", "manual"]);
 
-export const contentUsageTargetEnum = cms.enum("content_usage_target", ["asset", "variable", "reference", "link"]);
+export const contentUsageTargetEnum = cmsSchema.enum("content_usage_target", ["asset", "variable", "reference", "link"]);
 
-export const mergeRequestStatusEnum = cms.enum("merge_request_status", ["open", "merged", "closed"]);
+export const mergeRequestStatusEnum = cmsSchema.enum("merge_request_status", ["open", "merged", "closed"]);
 
-export const notificationTypeEnum = cms.enum("notification_type", ["mention", "comment", "threadResolved", "threadReopened", "approvalRequested", "approvalApproved", "approvalRejected", "mergeRequestOpened", "mergeRequestMerged", "mergeRequestClosed", "mergeRequestReopened", "published", "custom"]);
+export const notificationTypeEnum = cmsSchema.enum("notification_type", ["mention", "comment", "threadResolved", "threadReopened", "approvalRequested", "approvalApproved", "approvalRejected", "mergeRequestOpened", "mergeRequestMerged", "mergeRequestClosed", "mergeRequestReopened", "published", "custom"]);
 
-export const redirectEndpointTypeEnum = cms.enum("redirect_endpoint_type", ["page", "path"]);
+export const redirectEndpointTypeEnum = cmsSchema.enum("redirect_endpoint_type", ["page", "path"]);
 
-export const releaseStatusEnum = cms.enum("release_status", ["draft", "published"]);
+export const releaseStatusEnum = cmsSchema.enum("release_status", ["draft", "published"]);
 
-export const scheduledPublicationActionEnum = cms.enum("scheduled_publication_action", ["publish", "unpublish"]);
+export const scheduledPublicationActionEnum = cmsSchema.enum("scheduled_publication_action", ["publish", "unpublish"]);
 
-export const approvals = cms.table(
+export const approvals = cmsSchema.table(
   "approvals",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("approval")),
@@ -67,7 +67,7 @@ export const approvals = cms.table(
   ],
 );
 
-export const assetFolders = cms.table(
+export const assetFolders = cmsSchema.table(
   "asset_folders",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("assetFolder")),
@@ -87,7 +87,7 @@ export const assetFolders = cms.table(
   ],
 );
 
-export const assets = cms.table(
+export const assets = cmsSchema.table(
   "assets",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("asset")),
@@ -112,7 +112,7 @@ export const assets = cms.table(
   ],
 );
 
-export const blockVersions = cms.table(
+export const blockVersions = cmsSchema.table(
   "block_versions",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("blockVersion")),
@@ -133,7 +133,7 @@ export const blockVersions = cms.table(
   ],
 );
 
-export const branches = cms.table(
+export const branches = cmsSchema.table(
   "branches",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("branch")),
@@ -150,7 +150,7 @@ export const branches = cms.table(
   ],
 );
 
-export const commentMentions = cms.table(
+export const commentMentions = cmsSchema.table(
   "comment_mentions",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("commentMention")),
@@ -168,7 +168,7 @@ export const commentMentions = cms.table(
   ],
 );
 
-export const commentMessages = cms.table(
+export const commentMessages = cmsSchema.table(
   "comment_messages",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("commentMessage")),
@@ -197,7 +197,7 @@ export const commentMessages = cms.table(
   ],
 );
 
-export const commentThreads = cms.table(
+export const commentThreads = cmsSchema.table(
   "comment_threads",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("commentThread")),
@@ -225,7 +225,7 @@ export const commentThreads = cms.table(
   ],
 );
 
-export const commits = cms.table(
+export const commits = cmsSchema.table(
   "commits",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("commit")),
@@ -256,7 +256,7 @@ export const commits = cms.table(
   ],
 );
 
-export const commitSnapshots = cms.table(
+export const commitSnapshots = cmsSchema.table(
   "commit_snapshots",
   {
     commitId: text("commit_id").notNull().references(() => commits.id, { onDelete: "cascade" }),
@@ -269,7 +269,7 @@ export const commitSnapshots = cms.table(
   ],
 );
 
-export const contentUsages = cms.table(
+export const contentUsages = cmsSchema.table(
   "content_usages",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("contentUsage")),
@@ -288,7 +288,7 @@ export const contentUsages = cms.table(
   ],
 );
 
-export const mergeConflicts = cms.table(
+export const mergeConflicts = cmsSchema.table(
   "merge_conflicts",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("mergeConflict")),
@@ -309,7 +309,7 @@ export const mergeConflicts = cms.table(
   ],
 );
 
-export const mergeRequests = cms.table(
+export const mergeRequests = cmsSchema.table(
   "merge_requests",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("mergeRequest")),
@@ -335,7 +335,7 @@ export const mergeRequests = cms.table(
   ],
 );
 
-export const notifications = cms.table(
+export const notifications = cmsSchema.table(
   "notifications",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("notification")),
@@ -360,7 +360,7 @@ export const notifications = cms.table(
   ],
 );
 
-export const publications = cms.table(
+export const publications = cmsSchema.table(
   "publications",
   {
     rootId: text("root_id").notNull().references(() => roots.id),
@@ -375,7 +375,7 @@ export const publications = cms.table(
   ],
 );
 
-export const redirects = cms.table(
+export const redirects = cmsSchema.table(
   "redirects",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("redirect")),
@@ -400,7 +400,7 @@ export const redirects = cms.table(
   ],
 );
 
-export const releaseItems = cms.table(
+export const releaseItems = cmsSchema.table(
   "release_items",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("releaseItem")),
@@ -416,7 +416,7 @@ export const releaseItems = cms.table(
   ],
 );
 
-export const releases = cms.table(
+export const releases = cmsSchema.table(
   "releases",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("release")),
@@ -432,7 +432,7 @@ export const releases = cms.table(
   ],
 );
 
-export const roots = cms.table(
+export const roots = cmsSchema.table(
   "roots",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("root")),
@@ -460,7 +460,7 @@ export const roots = cms.table(
   ],
 );
 
-export const scheduledPublications = cms.table(
+export const scheduledPublications = cmsSchema.table(
   "scheduled_publications",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("scheduledPublication")),
@@ -479,7 +479,7 @@ export const scheduledPublications = cms.table(
   ],
 );
 
-export const searchIndex = cms.table(
+export const searchIndex = cmsSchema.table(
   "search_index",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("si")),
@@ -502,7 +502,7 @@ export const searchIndex = cms.table(
   ],
 );
 
-export const templates = cms.table(
+export const templates = cmsSchema.table(
   "templates",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("template")),
@@ -523,7 +523,7 @@ export const templates = cms.table(
   ],
 );
 
-export const templateVariableUsages = cms.table(
+export const templateVariableUsages = cmsSchema.table(
   "template_variable_usages",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("tplVarUsage")),
@@ -537,7 +537,7 @@ export const templateVariableUsages = cms.table(
   ],
 );
 
-export const variables = cms.table(
+export const variables = cmsSchema.table(
   "variables",
   {
     id: text("id").primaryKey().$defaultFn(() => newId("variable")),

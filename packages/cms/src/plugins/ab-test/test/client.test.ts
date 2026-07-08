@@ -32,7 +32,7 @@ function setup(options?: { disableDataLayerSink?: boolean }) {
     return Promise.resolve({});
   }) as unknown as CMSFetch;
   const $store: CMSClientStore = {
-    notify() {},
+    invalidate() {},
     listen: () => () => {},
     atoms: {},
   };
