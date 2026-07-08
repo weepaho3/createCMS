@@ -3,13 +3,13 @@ import * as z from 'zod';
 import type {
   AnyBlockDefinition,
   BlockProperty,
-  BlockPropertyType,
   InferBlockProperties,
   InferCreateBlockInput,
   InferMergeBlockVersionInput,
   InferPartialBlockProperties,
   InferUpdateBlockInput,
   LinkKind,
+  ListElementSpec,
 } from './types';
 
 const ALL_LINK_KINDS: readonly LinkKind[] = [
@@ -62,17 +62,60 @@ function buildLinkSchema(
   );
 }
 
-const zodForBlockType: Record<BlockPropertyType, z.ZodType> = {
-  string: z.string(),
-  number: z.number(),
-  boolean: z.boolean(),
-  date: z.string(),
-  richText: z.string(),
-  image: z.string(),
-  select: z.string(), // overridden below for select with options
-  reference: z.string(),
-  link: buildLinkSchema(), // overridden below to honour allowedKinds
-};
+/**
+ * Zod for a scalar / reference property (or list element) of the given `spec`,
+ * honouring the declarative constraints on it (cms-04):
+ * - `string` / `richText` → `z.string()` with `minLength`/`maxLength`/`pattern`
+ * - `number` → `z.number()` with `min`/`max`
+ * - `date` → ISO-8601 datetime string (`z.iso.datetime()`)
+ * - `boolean` → `z.boolean()`; `image` / `reference` → `z.string()`
+ *
+ * Typed loosely because it serves BOTH top-level property specs and list element
+ * specs (both carry `type` plus the optional constraint fields).
+ */
+function scalarSchema(spec: {
+  type: string;
+  minLength?: number;
+  maxLength?: number;
+  pattern?: string;
+  min?: number;
+  max?: number;
+}): z.ZodType {
+  switch (spec.type) {
+    case 'string':
+    case 'richText': {
+      let s = z.string();
+      if (typeof spec.minLength === 'number') s = s.min(spec.minLength);
+      if (typeof spec.maxLength === 'number') s = s.max(spec.maxLength);
+      if (typeof spec.pattern === 'string') s = s.regex(new RegExp(spec.pattern));
+      return s;
+    }
+    case 'number': {
+      let n = z.number();
+      if (typeof spec.min === 'number') n = n.min(spec.min);
+      if (typeof spec.max === 'number') n = n.max(spec.max);
+      return n;
+    }
+    case 'boolean':
+      return z.boolean();
+    case 'date':
+      // ISO-8601 datetime (e.g. `2024-01-01T00:00:00Z`), not a bare string.
+      return z.iso.datetime();
+    // `image` and `reference` are id / rootId strings.
+    default:
+      return z.string();
+  }
+}
+
+/** Zod for one {@link ListElementSpec}: a `select` element enumerates its
+ *  options; every other element reuses {@link scalarSchema} (a `reference`
+ *  element validates as the rootId string). */
+function elementSchema(el: ListElementSpec): z.ZodType {
+  if (el.type === 'select') {
+    return z.enum(el.options.map((o) => o.value) as [string, ...string[]]);
+  }
+  return scalarSchema(el);
+}
 
 export function buildPropertiesSchema<T extends Record<string, BlockProperty>>(
   properties: T,
@@ -83,13 +126,19 @@ export function buildPropertiesSchema<T extends Record<string, BlockProperty>>(
   for (const [key, prop] of Object.entries(properties)) {
     let field: z.ZodType;
 
-    if (prop.type === 'select') {
+    if (prop.type === 'list') {
+      // A list is a JSON array of its element schema, bounded by min/max LENGTH.
+      let arr = z.array(elementSchema(prop.of));
+      if (typeof prop.min === 'number') arr = arr.min(prop.min);
+      if (typeof prop.max === 'number') arr = arr.max(prop.max);
+      field = arr;
+    } else if (prop.type === 'select') {
       const values = prop.options.map((o) => o.value);
       field = z.enum(values as [string, ...string[]]);
     } else if (prop.type === 'link') {
       field = buildLinkSchema(prop.allowedKinds, prop.allowedCollections);
     } else {
-      field = zodForBlockType[prop.type];
+      field = scalarSchema(prop);
     }
 
     if (allOptional) {
@@ -140,6 +189,8 @@ export function buildBlockInputSchema<
       parentBlockId: z.string(),
       position: z.number().optional(),
       message: z.string().optional(),
+      // Optimistic-concurrency guard (cms-18); enforced in the blocks route.
+      expectedHeadCommitId: z.string().optional(),
       type: z.literal(name),
       properties: buildPropertiesSchema(blockDef.properties) as z.ZodType,
     }),
@@ -160,6 +211,8 @@ export function buildUpdateBlockInputSchema<
       branchId: z.string(),
       blockId: z.string(),
       message: z.string().optional(),
+      // Optimistic-concurrency guard (cms-18); enforced in the blocks route.
+      expectedHeadCommitId: z.string().optional(),
       type: z.literal(name),
       properties: buildPropertiesSchema(blockDef.properties, true) as z.ZodType,
     }),
@@ -210,6 +263,8 @@ export type UpdateRootInput<T extends Record<string, BlockProperty>> = {
   branchId: string;
   slug?: string;
   message?: string;
+  /** Optimistic-concurrency guard (cms-18); enforced in the blocks route. */
+  expectedHeadCommitId?: string;
   properties: InferPartialBlockProperties<T>;
 };
 
@@ -221,6 +276,8 @@ export function buildUpdateRootInputSchema<
     branchId: z.string(),
     slug: z.string().optional(),
     message: z.string().optional(),
+    // Optimistic-concurrency guard (cms-18); enforced in the blocks route.
+    expectedHeadCommitId: z.string().optional(),
     properties: buildPropertiesSchema(properties, true) as z.ZodType,
   }) as any;
 }

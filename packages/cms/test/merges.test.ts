@@ -1561,6 +1561,82 @@ describe('executeMerge', () => {
     expect(mergedMR.status).toBe('merged');
   });
 
+  it('blocks a merge with a pending approval request by default, then allows it once approved', async () => {
+    // Governance flags all default false, yet an OPEN/pending approval request
+    // must still gate the merge: if someone opened a review, executeMerge must
+    // not silently bypass it. Once the request is approved, the merge proceeds.
+    const { cms, db } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/pending-blocks', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'New content' },
+      },
+    });
+
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        title: 'Test MR',
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        createdBy: 'user-1',
+      },
+    });
+
+    const request = await cms.api.pages.requestApproval({
+      body: {
+        mergeRequestId: mr.mergeRequest.id,
+        requestedReviewers: ['reviewer-1'],
+      },
+      context: { userId: 'requester-1' },
+    });
+
+    // Pending request → merge is blocked even though no governance flag is set.
+    await expect(
+      cms.api.pages.executeMerge({
+        body: { mergeRequestId: mr.mergeRequest.id },
+      }),
+    ).rejects.toThrow(/not all requested approvals are approved/i);
+
+    const [stillOpen] = await db
+      .select()
+      .from(mergeRequests)
+      .where(eq(mergeRequests.id, mr.mergeRequest.id));
+    expect(stillOpen.status).toBe('open');
+
+    // Approve it, and the same merge now proceeds.
+    await cms.api.pages.approve({
+      body: { approvalId: request.approvals[0].id },
+      context: { userId: request.approvals[0].requestedReviewer },
+    });
+
+    const result = await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequest.id },
+    });
+    expect(result.fastForward).toBe(true);
+
+    const [mergedMR] = await db
+      .select()
+      .from(mergeRequests)
+      .where(eq(mergeRequests.id, mr.mergeRequest.id));
+    expect(mergedMR.status).toBe('merged');
+  });
+
   it('performs a fast-forward merge when target has not diverged', async () => {
     const { cms, db } = await setupTestCMS();
 

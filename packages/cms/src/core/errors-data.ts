@@ -42,6 +42,11 @@ export const CMS_ERRORS = {
       'Cannot delete: this root is embedded as a reusable block on live pages; remove those references first',
   },
   COMMIT_NOT_FOUND: { status: 404 as const, message: 'Commit not found' },
+  HEAD_MISMATCH: {
+    status: 409 as const,
+    message:
+      'The branch has advanced since expectedHeadCommitId was read; reload and retry',
+  },
   FOLDER_NOT_FOUND: { status: 404 as const, message: 'Folder not found' },
   FOLDER_HAS_CONTENT: {
     status: 409 as const,
@@ -265,6 +270,11 @@ export const CMS_ERRORS = {
     status: 422 as const,
     message:
       'Reference nesting is too deep (a reusable block embeds others past the limit)',
+  },
+  INVALID_REFERENCE: {
+    status: 400 as const,
+    message:
+      'A property points at an image asset or reference id that does not exist',
   },
   ASSET_NOT_FOUND: { status: 404 as const, message: 'Asset not found' },
   CANNOT_REPLACE_VARIANT: {

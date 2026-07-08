@@ -4,6 +4,7 @@ import type { CMSProcedureCtx, MediaConfig } from '../types';
 import type { CMSPlugin } from '../types/plugin';
 
 import { runPruningPass } from '../admin/pruning';
+import { runScheduledPass } from '../admin/scheduling';
 import { DEFAULT_BRANCH_NAME } from '../branch-policy';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
@@ -78,6 +79,41 @@ export function createAdminEndpoints(
           maxDurationMs: ctx.body.maxDurationMs,
           liveRescanMs: ctx.body.liveRescanMs,
           maxAssets: ctx.body.maxAssets,
+        });
+      },
+    ),
+
+    /**
+     * Processes the scheduled-publishing queue: every DUE row (scheduledAt <= now and not yet processed) is published or unpublished using the same machinery as the single endpoints, then stamped processed.
+     * Designed for periodic cron invocation (mirrors runPruning). Publishing and expiry (scheduled unpublish) both drain through here. A row whose publish/unpublish fails is still marked processed and reported in `failed` so a permanently-broken intent never re-runs forever.
+     * @param limit Optional; maximum number of due rows to process this pass (defaults to 100).
+     * @returns An object with `processed` (rows attempted), `published`, `unpublished`, and a `failed` array of { id, rootId, branchId, action, error } for rows whose publish/unpublish threw.
+     * @example
+     * const result = await cmsClient.admin.runScheduled({ limit: 50 });
+     */
+    runScheduled: createCMSEndpoint(
+      '/admin/runScheduled',
+      {
+        method: 'POST',
+        body: z
+          .object({
+            limit: z.number().int().min(1).max(1000).optional(),
+          })
+          .optional(),
+        metadata: cmsMeta(
+          {
+            $Infer: {
+              body: {} as {
+                limit?: number;
+              },
+            },
+          },
+          { operation: 'create', ...ADMIN_META },
+        ),
+      },
+      async (ctx) => {
+        return runScheduledPass(db, cmsCtx, {
+          limit: ctx.body?.limit,
         });
       },
     ),
