@@ -374,6 +374,46 @@ describe('getBranch', () => {
       cms.api.pages.getBranch({ query: { branchId: 'nonexistent-id' } }),
     ).rejects.toThrow(/Branch not found/);
   });
+
+  it('returns the branch by { rootId, name }', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    const branch = await cms.api.pages.getBranch({
+      query: { rootId: root.rootId, name: 'draft' },
+    });
+
+    expect(branch.id).toBe(draft.branch.id);
+    expect(branch.rootId).toBe(root.rootId);
+    expect(branch.name).toBe('draft');
+    expect(branch.headCommitId).toBe(draft.branch.headCommitId);
+    expect(branch.isDeletable).toBe(true);
+  });
+
+  it('rejects when no branch with that { rootId, name } exists', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    await expect(
+      cms.api.pages.getBranch({
+        query: { rootId: root.rootId, name: 'does-not-exist' },
+      }),
+    ).rejects.toThrow(/Branch not found/);
+  });
 });
 
 describe('listBranches', () => {

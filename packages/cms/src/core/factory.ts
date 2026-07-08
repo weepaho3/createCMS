@@ -53,6 +53,7 @@ import { createNotificationEndpoints } from './routes/notifications';
 import { createReleaseEndpoints } from './routes/releases';
 import { createSearchEndpoints } from './routes/search';
 import { createTemplateEndpoints } from './routes/templates';
+import { createUserEndpoints } from './routes/users';
 import { createVariableEndpoints } from './routes/variables';
 import { createSearchHooks } from './search/hooks';
 import { resolveUserConfig } from './user/resolve';
@@ -102,6 +103,7 @@ export type CMSEndpointKey<TPlugins extends CMSPlugin[] = []> =
   | EndpointKeysOf<typeof createNotificationEndpoints>
   | EndpointKeysOf<typeof createSearchEndpoints>
   | EndpointKeysOf<typeof createReleaseEndpoints>
+  | EndpointKeysOf<typeof createUserEndpoints>
   | PluginEndpointKey<TPlugins>;
 
 // Config-hook types whose `action` is the closed union of core + plugin endpoint
@@ -457,6 +459,7 @@ function validateCollectionNames(
     'search',
     'releases',
     'notifications',
+    'users',
     'realtime',
     '$fetch',
     '$store',
@@ -730,6 +733,7 @@ export const createCMS = <
   const templateEndpoints = createTemplateEndpoints(cmsContext);
   const searchEndpoints = createSearchEndpoints(cmsContext);
   const releaseEndpoints = createReleaseEndpoints(cmsContext);
+  const userEndpoints = createUserEndpoints(cmsContext);
 
   // `notifications: false` fully disables the feature (no service, no routes, no
   // types). Default enabled. Independent of `realtime`.
@@ -797,6 +801,7 @@ export const createCMS = <
     templates: typeof templateEndpoints;
     search: typeof searchEndpoints;
     releases: typeof releaseEndpoints;
+    users: typeof userEndpoints;
   } & (NotificationsEnabled<TDef> extends true
       ? { notifications: NonNullable<typeof notificationEndpoints> }
       : Record<never, never>) &
@@ -810,6 +815,7 @@ export const createCMS = <
     templates: templateEndpoints,
     search: searchEndpoints,
     releases: releaseEndpoints,
+    users: userEndpoints,
     // Omitted entirely (not just undefined) when notifications are disabled, so
     // the route never registers and `client.notifications` is absent from types.
     ...(notificationsEnabled ? { notifications: notificationEndpoints } : {}),

@@ -1091,7 +1091,20 @@ export type RevalidateEvent<
   collection: keyof TCollections & string;
   rootId: string;
   branchId: string;
-  slug: string | null;
+  /**
+   * The root's bare stored slug — a single last-path segment with NO leading
+   * slash (e.g. `'blog'`, not `/blog` and not the full nested path). It is NOT
+   * a URL and must not be used as a cache key / path: use `paths` for that.
+   * Deliberately named `storedSlug` (not `slug`) so it can't be mistaken for a
+   * path. `null` when the collection has no slug or none is resolved.
+   */
+  storedSlug: string | null;
+  /**
+   * The URL-shaped paths to revalidate. Every entry is a LEADING-SLASH path
+   * (e.g. `/blog`, `/docs/a/c`) with the collection's slug-config root prefix
+   * applied and, for nested collections, the full ancestor chain — plus any
+   * OLD inbound-redirect source paths on a rename / reparent / archive.
+   */
   paths: string[];
   /**
    * Next.js cache tags to revalidate alongside `paths`. Always

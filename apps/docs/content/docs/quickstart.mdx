@@ -111,6 +111,10 @@ The schema is **content-agnostic**: it is the core versioning tables (`roots`, `
 ```ts title="app/api/cms/[[...rest]]/route.ts"
 import { cms } from '@/lib/cms';
 
+// Recommended when realtime is enabled: keeps the `/realtime` SSE stream
+// unbuffered so live push is not cached or batched by the framework.
+export const dynamic = 'force-dynamic';
+
 const { handler } = cms.router;
 export const GET = handler;
 export const POST = handler;

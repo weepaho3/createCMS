@@ -725,7 +725,7 @@ describe('A/B Test Analytics', () => {
   });
 
   it('fires a root revalidation when a test toggles in/out of running (FA5 render-cache bust)', async () => {
-    const events: Array<{ rootId: string; slug: string | null }> = [];
+    const events: Array<{ rootId: string; storedSlug: string | null }> = [];
     const { cms, cleanupSchema } = await setupABTestCMS({
       onRevalidate: { handler: (event) => void events.push(event) },
     });
@@ -733,7 +733,7 @@ describe('A/B Test Analytics', () => {
     const page = await createPageWithBranches(cms);
     // The slug a CONTENT publish revalidates with — test start/stop must use the
     // SAME slug so the app busts the same render-cache tag.
-    const publishSlug = events.find((e) => e.rootId === page.rootId)?.slug;
+    const publishSlug = events.find((e) => e.rootId === page.rootId)?.storedSlug;
     expect(publishSlug).toBeTruthy();
     events.length = 0; // ignore the publish events from branch setup
 
@@ -753,7 +753,7 @@ describe('A/B Test Analytics', () => {
     await cms.api.abTest.updateTest({ body: { testId, status: 'running' } });
     const startEvent = events.find((e) => e.rootId === page.rootId);
     expect(startEvent).toBeTruthy();
-    expect(startEvent?.slug).toBe(publishSlug);
+    expect(startEvent?.storedSlug).toBe(publishSlug);
 
     // Pausing reverts the render to control → bust again.
     events.length = 0;
