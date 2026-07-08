@@ -158,4 +158,83 @@ describe('block placement constraints', () => {
       }),
     ).rejects.toThrow(/not allowed inside/i);
   });
+
+  it('enforces placement on updateBlocks (whitelist violation in the posted tree)', async () => {
+    const { newId } = await import('../src/utils/nanoid');
+    const { cms } = await setupCMS();
+    const root = await makeRoot(cms);
+
+    // section.accepts = ['featureItem'] — a paragraph nested under a section in
+    // the batch-posted tree must be rejected, exactly like createBlock/moveBlock.
+    await expect(
+      cms.api.pages.updateBlocks({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          tree: {
+            blockId: root.rootId,
+            type: 'pages',
+            properties: { title: 'Home' },
+            children: [
+              {
+                blockId: newId('block'),
+                type: 'section',
+                properties: { heading: 'Features' },
+                children: [
+                  {
+                    blockId: newId('block'),
+                    type: 'paragraph',
+                    properties: { text: 'nope' },
+                    children: [],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    ).rejects.toThrow(/accepts only/i);
+  });
+
+  it('allows a valid placement on updateBlocks (featureItem in section)', async () => {
+    const { newId } = await import('../src/utils/nanoid');
+    const { cms } = await setupCMS();
+    const root = await makeRoot(cms);
+
+    const sectionId = newId('block');
+    const itemId = newId('block');
+    const result = await cms.api.pages.updateBlocks({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        tree: {
+          blockId: root.rootId,
+          type: 'pages',
+          properties: { title: 'Home' },
+          children: [
+            {
+              blockId: sectionId,
+              type: 'section',
+              properties: { heading: 'Features' },
+              children: [
+                {
+                  blockId: itemId,
+                  type: 'featureItem',
+                  properties: { text: 'fast' },
+                  children: [],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    expect(result.changed).toBe(true);
+
+    const { tree } = await cms.api.pages.getBlockTree({
+      query: { rootId: root.rootId, branchId: root.branchId },
+    });
+    expect(tree.children[0].blockId).toBe(sectionId);
+    expect(tree.children[0].children[0].blockId).toBe(itemId);
+  });
 });

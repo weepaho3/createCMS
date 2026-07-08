@@ -27,7 +27,7 @@ function linkKindSchema(
     case 'internal':
       return z.object({
         kind: z.literal('internal'),
-        rootId: z.string(),
+        rootId: z.string().trim().min(1),
         // Constrain the target collection to the allowed set when configured.
         collection: allowedCollections?.length
           ? z.enum(allowedCollections as [string, ...string[]])
@@ -36,11 +36,20 @@ function linkKindSchema(
         query: z.string().optional(),
       });
     case 'external':
-      return z.object({ kind: z.literal('external'), url: z.string() });
+      return z.object({
+        kind: z.literal('external'),
+        url: z.string().trim().min(1),
+      });
     case 'email':
-      return z.object({ kind: z.literal('email'), email: z.string() });
+      return z.object({
+        kind: z.literal('email'),
+        email: z.string().trim().min(1),
+      });
     case 'phone':
-      return z.object({ kind: z.literal('phone'), phone: z.string() });
+      return z.object({
+        kind: z.literal('phone'),
+        phone: z.string().trim().min(1),
+      });
   }
 }
 
