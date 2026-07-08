@@ -11,18 +11,21 @@ export class CMSClientError extends Error {
   public readonly status: number;
   public readonly statusText: string;
   public readonly code: string | undefined;
+  public readonly data?: Record<string, unknown>;
 
   constructor(errorBody: {
     message?: string;
     code?: string;
     status?: number;
     statusText?: string;
+    data?: Record<string, unknown>;
   }) {
     super(errorBody.message ?? errorBody.statusText ?? 'Unknown CMS error');
     this.name = 'CMSClientError';
     this.status = errorBody.status ?? 500;
     this.statusText = errorBody.statusText ?? '';
     this.code = errorBody.code;
+    this.data = errorBody.data;
   }
 
   get cmsCode(): CMSErrorCode | (string & {}) | undefined {
@@ -31,7 +34,7 @@ export class CMSClientError extends Error {
       return this.code as CMSErrorCode;
     }
     // Plugin / unrecognized code — surface the raw string so callers can
-    // still match on it (e.g. `err.cmsCode === 'OPTIMIZATION_FAILED'`).
+    // still match on it (e.g. `err.cmsCode === 'AB_TEST_NOT_FOUND'`).
     return this.code || undefined;
   }
 }

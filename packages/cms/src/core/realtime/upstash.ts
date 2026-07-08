@@ -6,6 +6,16 @@ export type RealtimeConfig = {
 };
 
 /**
+ * True when a dynamic `import()` failed because the module is absent — i.e. the
+ * optional peer is not installed. Distinguishes that (expected → inert) from a
+ * real error thrown while loading/constructing an installed peer (→ surfaced).
+ */
+function isModuleNotFound(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  return code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND';
+}
+
+/**
  * Builds the Upstash-backed {@link RealtimeRuntime} from the `realtime` config
  * (`{ url, token }`). Publishes via `@upstash/realtime` (`channel.emit`) over
  * `@upstash/redis`, and serves the SSE bridge via the library's `handle()`.
@@ -29,23 +39,38 @@ export function createRealtimeRuntime(config: RealtimeConfig): RealtimeRuntime {
   function ensure(): Promise<void> {
     if (!initPromise) {
       initPromise = (async () => {
+        let redisMod: {
+          Redis: new (opts: { url: string; token: string }) => unknown;
+        };
+        let realtimeMod: {
+          Realtime: new (opts: { redis: unknown }) => any;
+          handle: any;
+        };
         try {
-          const redisMod = (await import('@upstash/redis')) as {
-            Redis: new (opts: { url: string; token: string }) => unknown;
-          };
-          const realtimeMod = (await import('@upstash/realtime')) as {
-            Realtime: new (opts: { redis: unknown }) => any;
-            handle: any;
-          };
+          redisMod = (await import('@upstash/redis')) as typeof redisMod;
+          realtimeMod = (await import('@upstash/realtime')) as typeof realtimeMod;
+        } catch (err) {
+          // Optional peer(s) not installed → runtime stays inert (silent). A
+          // module-not-found is expected; anything else is a real load error
+          // (e.g. the installed peer threw on import) and must be surfaced.
+          realtime = undefined;
+          if (!isModuleNotFound(err)) {
+            console.warn('[cms:realtime] disabled:', err);
+          }
+          return;
+        }
+        try {
           const redis = new redisMod.Redis({
             url: config.url,
             token: config.token,
           });
           realtime = new realtimeMod.Realtime({ redis });
           handleFn = realtimeMod.handle;
-        } catch {
-          // Peer(s) not installed — runtime stays inert.
+        } catch (err) {
+          // Imports resolved but construction failed — a real misconfig, not a
+          // missing peer. Surface it once so it isn't mistaken for an absent peer.
           realtime = undefined;
+          console.warn('[cms:realtime] disabled:', err);
         }
       })();
     }

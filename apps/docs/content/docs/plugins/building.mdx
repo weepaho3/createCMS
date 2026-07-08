@@ -147,21 +147,25 @@ Attach `endpoints` to the plugin object. The `metadata` (via `cmsMeta`) is requi
 
 ## Typed error codes
 
-`$ERROR_CODES` declares the errors your plugin throws. They merge into the client's `$ERROR_CODES`, so consumers can branch on a stable `code`. Throw with better-call's `APIError`:
+`$ERROR_CODES` declares the errors your plugin throws. On a **server** plugin they merge into `cms.$ERROR_CODES` (the server instance) — not the client's — so server-side consumers can branch on a stable `code`. Throw with better-call's `APIError`:
 
 ```ts title="plugins/page-views.ts"
 import { APIError } from 'better-call';
 
 const $ERROR_CODES = {
-  ROOT_NOT_FOUND: { status: 404, message: 'Root not found' },
+  PAGE_VIEWS_ROOT_NOT_FOUND: { status: 404, message: 'Root not found' },
 } as const;
 
 // inside a handler:
 throw new APIError(404, {
-  code: 'ROOT_NOT_FOUND',
-  message: $ERROR_CODES.ROOT_NOT_FOUND.message,
+  code: 'PAGE_VIEWS_ROOT_NOT_FOUND',
+  message: $ERROR_CODES.PAGE_VIEWS_ROOT_NOT_FOUND.message,
 });
 ```
+
+<Callout type="info">
+  Prefix plugin codes with the plugin name (`PAGE_VIEWS_ROOT_NOT_FOUND`, not `ROOT_NOT_FOUND`) so they don't collide with a [core code](/docs/reference/errors) or another plugin's.
+</Callout>
 
 ## React to actions with hooks
 
@@ -278,7 +282,7 @@ export function pageViewsClient(): CMSClientPlugin {
       recordView: (rootId: string) =>
         $fetch('/pageViews/recordView', { method: 'POST', body: { rootId } }),
     }),
-    $ERROR_CODES: { ROOT_NOT_FOUND: { status: 404, message: 'Root not found' } },
+    $ERROR_CODES: { PAGE_VIEWS_ROOT_NOT_FOUND: { status: 404, message: 'Root not found' } },
   };
 }
 ```
@@ -305,7 +309,7 @@ Plugin contributions reach `typeof cms` and the client through inference — the
 - `collectionEndpoints` → `cms.api.<collection>.*`;
 - client `getActions` → `client.*`;
 - `realtimeEvents` → the realtime event registry your plugin publishes;
-- `$ERROR_CODES` (server + client) → `client.$ERROR_CODES`.
+- server `$ERROR_CODES` → `cms.$ERROR_CODES`; client `$ERROR_CODES` → `client.$ERROR_CODES`.
 
 Keep `satisfies CMSPlugin` on the server object and type the client plugin as `CMSClientPlugin`, and a configured `createCMS` / `createCMSClient` infers the rest.
 

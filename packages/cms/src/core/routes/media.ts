@@ -1062,9 +1062,11 @@ export function createMediaEndpoints(
               acl: 'public-read',
             });
           } catch (err) {
+            console.error('[cms:media] upload failed', err);
             const status = err instanceof S3Error ? 500 : 0;
             throw new CMSError('UPLOAD_FAILED', {
               message: errorMessages.uploadFailed(file.name, status),
+              data: { cause: err instanceof Error ? err.message : String(err) },
             });
           }
         }
@@ -1185,9 +1187,11 @@ export function createMediaEndpoints(
             acl: 'public-read',
           });
         } catch (err) {
+          console.error('[cms:media] upload failed', err);
           const status = err instanceof S3Error ? 500 : 0;
           throw new CMSError('UPLOAD_FAILED', {
             message: errorMessages.uploadFailed(file.name, status),
+            data: { cause: err instanceof Error ? err.message : String(err) },
           });
         }
 

@@ -35,10 +35,15 @@ export function createRevalidateHandler(
   return async (request: Request): Promise<Response> => {
     const secret = request.headers.get('x-revalidate-secret');
     if (!secret || !constantTimeEqual(secret, options.secret)) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+      return Response.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    const event: RevalidateEvent = await request.json();
+    let event: RevalidateEvent;
+    try {
+      event = (await request.json()) as RevalidateEvent;
+    } catch {
+      return Response.json({ message: 'Invalid JSON body' }, { status: 400 });
+    }
     const paths = event.paths ?? [];
     const tags = event.tags ?? [];
 

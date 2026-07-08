@@ -39,7 +39,22 @@ export function getClientConfigSync(options: CMSClientOptions): ClientConfig {
   });
 
   const $fetch: CMSFetch = async (path, opts) => {
-    const res = await betterCallClient(path as any, opts as any);
+    let res: Awaited<ReturnType<typeof betterCallClient>>;
+    try {
+      res = await betterCallClient(path as any, opts as any);
+    } catch (err) {
+      // Transport failure (offline / DNS / CORS): the underlying fetch rejects
+      // with a raw TypeError, bypassing the `res.error` envelope. Wrap it so the
+      // documented `err instanceof CMSClientError` idiom holds; `status: 0` marks
+      // "the request never reached the server" (err-14).
+      if (err instanceof CMSClientError) throw err;
+      throw new CMSClientError({
+        status: 0,
+        statusText: 'Network Error',
+        code: 'NETWORK_ERROR',
+        message: err instanceof Error ? err.message : 'Network request failed',
+      });
+    }
     if (res.error) throw new CMSClientError(res.error);
     return res.data;
   };
@@ -90,9 +105,17 @@ export function getClientConfigSync(options: CMSClientOptions): ClientConfig {
     ...CMS_ERRORS,
   };
   for (const plugin of plugins) {
-    if (plugin.$ERROR_CODES) {
-      Object.assign($ERROR_CODES, plugin.$ERROR_CODES);
+    if (!plugin.$ERROR_CODES) continue;
+    for (const key of Object.keys(plugin.$ERROR_CODES)) {
+      if (key in $ERROR_CODES) {
+        // Warn on a shadowed core/plugin code instead of letting the last writer
+        // win silently (err-16).
+        console.warn(
+          `[cms] client plugin "${plugin.id}" error code "${key}" shadows an existing code`,
+        );
+      }
     }
+    Object.assign($ERROR_CODES, plugin.$ERROR_CODES);
   }
 
   return {

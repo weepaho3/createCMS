@@ -74,6 +74,21 @@ export type AbTestMiddlewareOptions = {
   resolve?: (request: NextRequest, path: string) => Promise<AbResolveResult>;
 };
 
+// The A/B resolve seam failing means every request silently falls back to the
+// control code. That fail-open is intentional (render/paint must never block),
+// but a misconfigured resolve route would otherwise be invisible — so surface
+// it ONCE per process, DEV-only, without changing the fail-open behaviour.
+let warnedResolveFailure = false;
+function warnResolveFailureOnce(err: unknown): void {
+  if (process.env.NODE_ENV !== 'production' && !warnedResolveFailure) {
+    warnedResolveFailure = true;
+    console.warn(
+      '[cms:ab] variant resolve failed, falling back to control:',
+      err,
+    );
+  }
+}
+
 async function defaultResolve(
   request: NextRequest,
   options: AbTestMiddlewareOptions,
@@ -91,7 +106,8 @@ async function defaultResolve(
     });
     if (!res.ok) return { test: null };
     return (await res.json()) as AbResolveResult;
-  } catch {
+  } catch (err) {
+    warnResolveFailureOnce(err);
     return { test: null }; // fail open to control — render/paint never blocks
   }
 }
@@ -148,7 +164,8 @@ export function abTestMiddleware(options: AbTestMiddlewareOptions) {
           value: decision.assignCode,
         };
       }
-    } catch {
+    } catch (err) {
+      warnResolveFailureOnce(err);
       rewritePath = variantRewritePath(variantPrefix, controlCode, pathname);
     }
 

@@ -76,17 +76,11 @@ This plugin uses the CMS **client** plugin system (`CMSClientPlugin`):
 | `init`          | Stores the optimization config in the shared client context as `media-optimize:config`.    |
 | `getActions`    | Exposes the `optimize.useOptimize(input, overrideConfig?)` action under `client.optimize`. |
 | `atomListeners` | Listens for `createSignedUpload` calls and triggers `$mediaSignal` for cache invalidation. |
-| `$ERROR_CODES`  | Declares plugin-specific error codes (see below).                                          |
 
-### Error codes
-
-| Code                    | Status | Description                                                     |
-| ----------------------- | ------ | --------------------------------------------------------------- |
-| `OPTIMIZATION_FAILED`   | 422    | Image optimization failed.                                      |
-| `WEBP_NOT_SUPPORTED`    | 422    | WebP encoding unavailable and `@jsquash/webp` is not installed. |
-| `CANVAS_CONTEXT_FAILED` | 500    | Failed to acquire a canvas 2D context for image processing.     |
-
-Error codes are merged into the client's `$ERROR_CODES` (`client.$ERROR_CODES`).
+Optimization runs entirely in the browser and is best-effort: on failure (WebP
+encoding unavailable, no canvas 2D context, etc.) it throws a plain `Error` that
+`optimize.useOptimize` surfaces as a string in `state.error` — the original file
+is uploaded unoptimized. There are no plugin error codes.
 
 ## How it works
 

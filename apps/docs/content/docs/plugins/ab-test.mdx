@@ -135,6 +135,22 @@ The remaining endpoints round out the admin surface:
 | `ab_test_variants` | The variants of a test, each tied to a branch, with a weight and a control flag. |
 | `ab_test_events` | The analytics event store. `eventType` is free-form (impression, conversion, form_submit, page_view, and more); `testId` and `variantId` are nullable. |
 
+## Error codes
+
+| Code | Status | When |
+| --- | --- | --- |
+| `AB_TEST_NOT_FOUND` | 404 | The referenced test does not exist. |
+| `AB_TEST_INVALID_STATUS` | 400 | The requested status transition is not allowed by the state machine. |
+| `AB_TEST_DUPLICATE_RUNNING` | 409 | Another test is already running for the same root. |
+| `AB_TEST_CROSS_EMBED_CONFLICT` | 409 | A co-rendering root (an embedded reusable block or its host page) already has a running test — at most one A/B axis may vary per render. |
+| `AB_TEST_BRANCH_NOT_PUBLISHED` | 400 | One or more variant branches are not published. |
+| `AB_TEST_NO_CONTEXT` | 400 | No visitor context is set — `identify()` was not called first. |
+| `AB_TEST_FLUSH_NOT_SUPPORTED` | 400 | The active analytics adapter does not support flushing. |
+| `AB_TEST_VARIANT_NOT_FOUND` | 404 | The referenced variant does not exist. |
+| `AB_TEST_TRACKING_ID_MISSING` | 400 | A functional block (one that declares events) has no `trackingId`; every such block needs a non-empty one before its branch can publish. |
+| `AB_TEST_TRACKING_ID_DUPLICATE` | 400 | Two functional blocks in the branch share a `trackingId`; each must be unique. |
+| `AB_TEST_TRACKING_ID_DRIFT` | 409 | The set of functional `trackingId`s differs across a root's variant branches; it must be identical so a chosen goal exists in every arm. |
+
 ## Options
 
 ### Server, `abTest(options)`
