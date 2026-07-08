@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import * as z from 'zod';
 
 import type {
@@ -12,6 +12,7 @@ import type {
   ResolvedReference,
   RunningAbTest,
 } from '../types';
+import type { ResolvedBranchPolicy } from '../branch-policy';
 import type { ResolvedSlugConfig } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
 
@@ -27,6 +28,7 @@ import {
   commitSnapshots,
   publications,
   roots,
+  scheduledPublications,
 } from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
@@ -61,12 +63,16 @@ function collectReferenceRootIds(
   function walk(node: BlockTreeNode) {
     const refProps = getReferencePropertyNames(collectionDef, node.type);
     for (const [propName, targetCollection] of refProps) {
-      const value = node.properties[propName];
-      if (typeof value !== 'string' || !value) continue;
-      if (!result.has(targetCollection)) {
-        result.set(targetCollection, new Set());
+      const raw = node.properties[propName];
+      // Single reference (string) or list-of-reference (array of strings).
+      const values = Array.isArray(raw) ? raw : [raw];
+      for (const value of values) {
+        if (typeof value !== 'string' || !value) continue;
+        if (!result.has(targetCollection)) {
+          result.set(targetCollection, new Set());
+        }
+        result.get(targetCollection)!.add(value);
       }
-      result.get(targetCollection)!.add(value);
     }
     for (const child of node.children) {
       walk(child);
@@ -86,10 +92,17 @@ function replaceReferencesInTree(
     const refProps = getReferencePropertyNames(collectionDef, node.type);
     for (const [propName, _targetCollection] of refProps) {
       const value = node.properties[propName];
-      if (typeof value !== 'string') continue;
-      const resolved = resolvedMap.get(value);
-      if (resolved) {
-        (node.properties as Record<string, unknown>)[propName] = resolved;
+      if (Array.isArray(value)) {
+        // list-of-reference: resolve each element, leaving unresolved ids as-is
+        // (matches the scalar fallback below).
+        (node.properties as Record<string, unknown>)[propName] = value.map((v) =>
+          typeof v === 'string' ? (resolvedMap.get(v) ?? v) : v,
+        );
+      } else if (typeof value === 'string') {
+        const resolved = resolvedMap.get(value);
+        if (resolved) {
+          (node.properties as Record<string, unknown>)[propName] = resolved;
+        }
       }
     }
     for (const child of node.children) {
@@ -479,6 +492,221 @@ type PublishedContentQuery =
       branchName?: string;
     };
 
+// ============================================================================
+// Shared publish/unpublish core — the SINGLE source of the publish rules,
+// reused by the per-page endpoints (below), by releases (publishRelease), and by
+// scheduled publishing (admin.runScheduled). Each runs entirely inside the
+// caller's transaction; the caller owns post-commit side effects (asset sync,
+// notifications).
+// ============================================================================
+
+/**
+ * Publishes (or re-publishes) a branch's head commit for a root, inside `tx`.
+ * Enforces scope, branch ownership, and the approval gate, then upserts the
+ * publications row. Returns the publication (with `branchName`) and the published
+ * `commitId` so the caller can run asset sync / notifications after commit.
+ *
+ * @throws ROOT_NOT_FOUND / BRANCH_NOT_FOUND / PUBLICATION_APPROVAL_REQUIRED
+ */
+export async function publishBranchInTx(
+  tx: DrizzleInstance,
+  params: {
+    collectionName: string;
+    rootId: string;
+    branchId: string;
+    actor: string;
+    branchPolicy: ResolvedBranchPolicy;
+    /** Optional plugin scope predicate (multi-tenant); omit for system callers. */
+    scopeWhere?: SQL | undefined;
+  },
+) {
+  const { collectionName, rootId, branchId, actor, branchPolicy, scopeWhere } =
+    params;
+
+  const [root] = await tx
+    .select({ id: roots.id })
+    .from(roots)
+    .where(
+      and(eq(roots.id, rootId), eq(roots.collection, collectionName), scopeWhere),
+    );
+  if (!root) throw new CMSError('ROOT_NOT_FOUND');
+
+  const [branch] = await tx
+    .select({
+      id: branches.id,
+      rootId: branches.rootId,
+      headCommitId: branches.headCommitId,
+      name: branches.name,
+    })
+    .from(branches)
+    .where(and(eq(branches.id, branchId), eq(branches.rootId, rootId)))
+    .for('update');
+  if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
+
+  const approvalState = await getApprovalStateForPublication(
+    tx,
+    branchId,
+    branch.headCommitId,
+  );
+  if (branchPolicy.requireApprovalBeforePublish) {
+    // Approval is mandatory, even when none was explicitly requested.
+    if (!approvalGatePasses(approvalState, branchPolicy.requiredReviewers)) {
+      throw new CMSError('PUBLICATION_APPROVAL_REQUIRED');
+    }
+  } else if (
+    approvalState.hasRequests &&
+    !approvalGatePasses(approvalState, branchPolicy.requiredReviewers)
+  ) {
+    // Conditional (existing) behavior: only gate when approvals exist.
+    throw new CMSError('PUBLICATION_APPROVAL_REQUIRED');
+  }
+
+  const [existing] = await tx
+    .select()
+    .from(publications)
+    .where(
+      and(eq(publications.rootId, rootId), eq(publications.branchId, branchId)),
+    );
+
+  if (existing) {
+    const [updated] = await tx
+      .update(publications)
+      .set({
+        commitId: branch.headCommitId,
+        publishedBy: actor,
+        publishedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(publications.rootId, rootId),
+          eq(publications.branchId, branchId),
+        ),
+      )
+      .returning();
+    return {
+      publication: { ...updated, branchName: branch.name },
+      commitId: branch.headCommitId,
+    };
+  }
+
+  const [created] = await tx
+    .insert(publications)
+    .values({
+      rootId,
+      branchId,
+      commitId: branch.headCommitId,
+      publishedBy: actor,
+    })
+    .returning();
+  return {
+    publication: { ...created, branchName: branch.name },
+    commitId: branch.headCommitId,
+  };
+}
+
+/**
+ * Removes a branch's publication, inside `tx`. Enforces scope + existence and
+ * returns the `commitId` that was live so the caller can run asset unsync.
+ *
+ * @throws ROOT_NOT_FOUND / PUBLICATION_NOT_FOUND
+ */
+export async function unpublishBranchInTx(
+  tx: DrizzleInstance,
+  params: {
+    collectionName: string;
+    rootId: string;
+    branchId: string;
+    scopeWhere?: SQL | undefined;
+  },
+): Promise<{ commitId: string }> {
+  const { collectionName, rootId, branchId, scopeWhere } = params;
+
+  const [root] = await tx
+    .select({ id: roots.id })
+    .from(roots)
+    .where(
+      and(eq(roots.id, rootId), eq(roots.collection, collectionName), scopeWhere),
+    );
+  if (!root) throw new CMSError('ROOT_NOT_FOUND');
+
+  const [existing] = await tx
+    .select({
+      rootId: publications.rootId,
+      branchId: publications.branchId,
+      commitId: publications.commitId,
+    })
+    .from(publications)
+    .where(
+      and(eq(publications.rootId, rootId), eq(publications.branchId, branchId)),
+    )
+    .for('update');
+  if (!existing) throw new CMSError('PUBLICATION_NOT_FOUND');
+
+  await tx
+    .delete(publications)
+    .where(
+      and(eq(publications.rootId, rootId), eq(publications.branchId, branchId)),
+    );
+
+  return { commitId: existing.commitId };
+}
+
+/**
+ * Validates a root (in scope + collection) and branch, then queues one future
+ * publish/unpublish intent in `scheduled_publications`. Shared by the
+ * schedulePublication / scheduleUnpublish endpoints.
+ *
+ * @throws ROOT_NOT_FOUND / BRANCH_NOT_FOUND
+ */
+async function queueScheduledAction(
+  db: DrizzleInstance,
+  params: {
+    collectionName: string;
+    rootId: string;
+    branchId: string;
+    action: 'publish' | 'unpublish';
+    scheduledAt: Date;
+    createdBy?: string;
+    scopeWhere?: SQL | undefined;
+  },
+) {
+  const {
+    collectionName,
+    rootId,
+    branchId,
+    action,
+    scheduledAt,
+    createdBy,
+    scopeWhere,
+  } = params;
+
+  const [root] = await db
+    .select({ id: roots.id })
+    .from(roots)
+    .where(
+      and(eq(roots.id, rootId), eq(roots.collection, collectionName), scopeWhere),
+    );
+  if (!root) throw new CMSError('ROOT_NOT_FOUND');
+
+  const [branch] = await db
+    .select({ id: branches.id })
+    .from(branches)
+    .where(and(eq(branches.id, branchId), eq(branches.rootId, rootId)));
+  if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
+
+  const [row] = await db
+    .insert(scheduledPublications)
+    .values({
+      rootId,
+      branchId,
+      action,
+      scheduledAt,
+      createdBy: createdBy ?? null,
+    })
+    .returning();
+  return row;
+}
+
 export function createPublicationEndpoints<
   TDef extends CollectionWithName,
   TCollections extends Record<string, AnyCollectionDefinition> = {},
@@ -539,92 +767,16 @@ export function createPublicationEndpoints<
         const { rootId, branchId, publishedBy } = ctx.body;
         const actor = ctx.context.userId ?? publishedBy ?? 'system';
 
-        const publication = await db.transaction(async (tx) => {
-          const [root] = await tx
-            .select({ id: roots.id })
-            .from(roots)
-            .where(
-              and(
-                eq(roots.id, rootId),
-                eq(roots.collection, collectionName),
-                ctx.context.scope.roots?.where,
-              ),
-            );
-          if (!root) throw new CMSError('ROOT_NOT_FOUND');
-
-          const [branch] = await tx
-            .select({
-              id: branches.id,
-              rootId: branches.rootId,
-              headCommitId: branches.headCommitId,
-              name: branches.name,
-            })
-            .from(branches)
-            .where(and(eq(branches.id, branchId), eq(branches.rootId, rootId)))
-            .for('update');
-          if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
-
-          const approvalState = await getApprovalStateForPublication(
-            tx,
+        const { publication } = await db.transaction((tx) =>
+          publishBranchInTx(tx, {
+            collectionName,
+            rootId,
             branchId,
-            branch.headCommitId,
-          );
-          if (branchPolicy.requireApprovalBeforePublish) {
-            // Approval is mandatory, even when none was explicitly requested.
-            if (
-              !approvalGatePasses(approvalState, branchPolicy.requiredReviewers)
-            ) {
-              throw new CMSError('PUBLICATION_APPROVAL_REQUIRED');
-            }
-          } else if (
-            approvalState.hasRequests &&
-            !approvalGatePasses(approvalState, branchPolicy.requiredReviewers)
-          ) {
-            // Conditional (existing) behavior: only gate when approvals exist.
-            throw new CMSError('PUBLICATION_APPROVAL_REQUIRED');
-          }
-
-          const [existing] = await tx
-            .select()
-            .from(publications)
-            .where(
-              and(
-                eq(publications.rootId, rootId),
-                eq(publications.branchId, branchId),
-              ),
-            );
-
-          if (existing) {
-            const [updated] = await tx
-              .update(publications)
-              .set({
-                commitId: branch.headCommitId,
-                publishedBy: actor,
-                publishedAt: new Date(),
-              })
-              .where(
-                and(
-                  eq(publications.rootId, rootId),
-                  eq(publications.branchId, branchId),
-                ),
-              )
-              .returning();
-
-            return { ...updated, branchName: branch.name };
-          }
-
-          const [created] = await tx
-            .insert(publications)
-            .values({
-              rootId,
-              branchId,
-              commitId: branch.headCommitId,
-              publishedBy: actor,
-            })
-            .returning();
-
-          return { ...created, branchName: branch.name };
-        });
+            actor,
+            branchPolicy,
+            scopeWhere: ctx.context.scope.roots?.where,
+          }),
+        );
 
         await syncAssetsOnPublish(db, publication.commitId, rootId);
 
@@ -709,46 +861,14 @@ export function createPublicationEndpoints<
       async (ctx) => {
         const { rootId, branchId } = ctx.body;
 
-        const commitId = await db.transaction(async (tx) => {
-          const [root] = await tx
-            .select({ id: roots.id })
-            .from(roots)
-            .where(
-              and(
-                eq(roots.id, rootId),
-                eq(roots.collection, collectionName),
-                ctx.context.scope.roots?.where,
-              ),
-            );
-          if (!root) throw new CMSError('ROOT_NOT_FOUND');
-
-          const [existing] = await tx
-            .select({
-              rootId: publications.rootId,
-              branchId: publications.branchId,
-              commitId: publications.commitId,
-            })
-            .from(publications)
-            .where(
-              and(
-                eq(publications.rootId, rootId),
-                eq(publications.branchId, branchId),
-              ),
-            )
-            .for('update');
-          if (!existing) throw new CMSError('PUBLICATION_NOT_FOUND');
-
-          await tx
-            .delete(publications)
-            .where(
-              and(
-                eq(publications.rootId, rootId),
-                eq(publications.branchId, branchId),
-              ),
-            );
-
-          return existing.commitId;
-        });
+        const { commitId } = await db.transaction((tx) =>
+          unpublishBranchInTx(tx, {
+            collectionName,
+            rootId,
+            branchId,
+            scopeWhere: ctx.context.scope.roots?.where,
+          }),
+        );
 
         await syncAssetsOnUnpublish(db, commitId, rootId, branchId);
 
@@ -758,6 +878,131 @@ export function createPublicationEndpoints<
           unpublishedCommitId: commitId,
           unpublishedAt: new Date(),
         };
+      },
+    ),
+
+    /**
+     * Schedules a future publish of a branch. Queues a `scheduled_publications`
+     * intent; nothing goes live until `admin.runScheduled` (cron-driven) processes
+     * due rows. Validates the root (in scope) and branch up front.
+     *
+     * @param rootId The root to publish when due.
+     * @param branchId The branch whose head commit is published when due.
+     * @param scheduledAt When the publish becomes due (ISO string or Date).
+     *
+     * @returns Object with the queued `scheduled` row (id, rootId, branchId, action:'publish', scheduledAt, processedAt:null).
+     *
+     * @throws ROOT_NOT_FOUND The root does not exist or is outside the active scope.
+     * @throws BRANCH_NOT_FOUND The branch does not exist or belongs to a different root.
+     *
+     * @example
+     * await cmsClient.pages.schedulePublication({
+     *   rootId: 'root_123', branchId: 'branch_456',
+     *   scheduledAt: '2026-01-01T00:00:00Z',
+     * });
+     */
+    schedulePublication: createCMSEndpoint(
+      `/${collectionName}/schedulePublication`,
+      {
+        method: 'POST',
+        body: z.object({
+          rootId: z.string(),
+          branchId: z.string(),
+          scheduledAt: z.coerce.date(),
+        }),
+        metadata: cmsMeta(
+          {
+            $Infer: {
+              body: {} as {
+                rootId: string;
+                branchId: string;
+                scheduledAt: Date;
+              },
+            },
+          },
+          {
+            permissionResource: 'publication',
+            operation: 'create',
+            scope: 'collection',
+            collection: collectionName,
+          },
+        ),
+      },
+      async (ctx) => {
+        const { rootId, branchId, scheduledAt } = ctx.body;
+        const scheduled = await queueScheduledAction(db, {
+          collectionName,
+          rootId,
+          branchId,
+          action: 'publish',
+          scheduledAt,
+          createdBy: ctx.context.userId,
+          scopeWhere: ctx.context.scope.roots?.where,
+        });
+        return { scheduled };
+      },
+    ),
+
+    /**
+     * Schedules a future unpublish (expiry) of a branch. Queues a
+     * `scheduled_publications` intent with action 'unpublish'; the content is
+     * taken offline when `admin.runScheduled` processes the due row. Use this to
+     * expire content at a given time. Validates the root (in scope) and branch.
+     *
+     * @param rootId The root to unpublish when due.
+     * @param branchId The branch whose publication is removed when due.
+     * @param scheduledAt When the unpublish/expiry becomes due (ISO string or Date).
+     *
+     * @returns Object with the queued `scheduled` row (id, rootId, branchId, action:'unpublish', scheduledAt, processedAt:null).
+     *
+     * @throws ROOT_NOT_FOUND The root does not exist or is outside the active scope.
+     * @throws BRANCH_NOT_FOUND The branch does not exist or belongs to a different root.
+     *
+     * @example
+     * await cmsClient.pages.scheduleUnpublish({
+     *   rootId: 'root_123', branchId: 'branch_456',
+     *   scheduledAt: '2026-02-01T00:00:00Z',
+     * });
+     */
+    scheduleUnpublish: createCMSEndpoint(
+      `/${collectionName}/scheduleUnpublish`,
+      {
+        method: 'POST',
+        body: z.object({
+          rootId: z.string(),
+          branchId: z.string(),
+          scheduledAt: z.coerce.date(),
+        }),
+        metadata: cmsMeta(
+          {
+            $Infer: {
+              body: {} as {
+                rootId: string;
+                branchId: string;
+                scheduledAt: Date;
+              },
+            },
+          },
+          {
+            permissionResource: 'publication',
+            operation: 'delete',
+            scope: 'collection',
+            collection: collectionName,
+          },
+        ),
+      },
+      async (ctx) => {
+        const { rootId, branchId, scheduledAt } = ctx.body;
+        const scheduled = await queueScheduledAction(db, {
+          collectionName,
+          rootId,
+          branchId,
+          action: 'unpublish',
+          scheduledAt,
+          createdBy: ctx.context.userId,
+          scopeWhere: ctx.context.scope.roots?.where,
+        });
+        return { scheduled };
       },
     ),
 

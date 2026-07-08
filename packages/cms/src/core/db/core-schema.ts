@@ -58,6 +58,18 @@ export const coreSchema = defineCoreSchema({
       // tracked for the usage UI / soft delete-warning (links never hard-block).
       values: ['asset', 'variable', 'reference', 'link'],
     },
+    // A queued future publish/unpublish intent (scheduled_publications). An
+    // 'unpublish' scheduled for a future `scheduledAt` doubles as content expiry.
+    scheduledPublicationAction: {
+      enumName: 'scheduled_publication_action',
+      values: ['publish', 'unpublish'],
+    },
+    // A release is a draft bundle of (rootId, branchId) items until publishRelease
+    // atomically publishes every item, flipping it to 'published'.
+    releaseStatus: {
+      enumName: 'release_status',
+      values: ['draft', 'published'],
+    },
   },
 
   tables: {
@@ -315,6 +327,57 @@ export const coreSchema = defineCoreSchema({
       },
       compositePrimaryKey: { columns: ['rootId', 'branchId'] },
       indexes: {
+        branchIdx: { columns: ['branchId'] },
+      },
+    },
+
+    // ========================================================================
+    // SCHEDULED_PUBLICATIONS — Queue of future publish/unpublish intents.
+    // ========================================================================
+    // A row is a single future intent for one (rootId, branchId): 'publish' at
+    // `scheduledAt`, or 'unpublish' at `scheduledAt` (which is how content expiry
+    // is expressed). `admin.runScheduled` (cron-driven) processes every due row
+    // (scheduledAt <= now AND processedAt IS NULL) by calling the SAME publish /
+    // unpublish machinery the single endpoints use, then stamps `processedAt`.
+    // Keeping intents in their own queue table (rather than columns on the live
+    // publications row) means a page can have both a future publish and a later
+    // expiry queued at once, and the live publications row stays a pure "currently
+    // live" record. FK cascades on root/branch delete clean the queue up.
+    scheduledPublications: {
+      tableName: 'scheduled_publications',
+      indexPrefix: 'sp',
+      columns: {
+        id: {
+          type: 'text',
+          primaryKey: true,
+          defaultId: true,
+          defaultIdPrefix: 'scheduledPublication',
+        },
+        rootId: {
+          type: 'text',
+          notNull: true,
+          references: { table: 'roots', column: 'id', onDelete: 'cascade' },
+        },
+        branchId: {
+          type: 'text',
+          notNull: true,
+          references: { table: 'branches', column: 'id', onDelete: 'cascade' },
+        },
+        action: {
+          type: { enum: 'scheduledPublicationAction' },
+          notNull: true,
+        },
+        scheduledAt: { type: 'timestamp', notNull: true },
+        createdBy: { type: 'text' },
+        createdAt: { type: 'timestamp', notNull: true, defaultNow: true },
+        // NULL until runScheduled has attempted it; stamped once processed so the
+        // due-queue scan (processedAt IS NULL) never re-picks a done row.
+        processedAt: { type: 'timestamp' },
+      },
+      indexes: {
+        // Due-queue scan: unprocessed rows ordered by when they fall due.
+        dueIdx: { columns: ['processedAt', 'scheduledAt'] },
+        rootIdx: { columns: ['rootId'] },
         branchIdx: { columns: ['branchId'] },
       },
     },
@@ -1039,6 +1102,83 @@ export const coreSchema = defineCoreSchema({
         },
         collectionIdx: { columns: ['collection'] },
         archivedAtIdx: { columns: ['archivedAt'] },
+      },
+    },
+
+    // ========================================================================
+    // RELEASES — Atomic multi-page (multi-root) publish bundle.
+    // ========================================================================
+    // Branches + publishing are per (rootId, branchId), so a coordinated launch
+    // spanning several pages is otherwise a manual, non-atomic sequence. A release
+    // is a draft list of (rootId, branchId) items (`release_items`); `publishRelease`
+    // runs the SAME per-root publish machinery for every item inside ONE database
+    // transaction — so either every page goes live or none does (any failure rolls
+    // the whole set back). Flips to 'published' when done.
+    releases: {
+      tableName: 'releases',
+      indexPrefix: 'rls',
+      columns: {
+        id: {
+          type: 'text',
+          primaryKey: true,
+          defaultId: true,
+          defaultIdPrefix: 'release',
+        },
+        title: { type: 'text', notNull: true },
+        status: {
+          type: { enum: 'releaseStatus' },
+          notNull: true,
+          default: { kind: 'literal', value: 'draft' },
+        },
+        createdBy: { type: 'text' },
+        createdAt: { type: 'timestamp', notNull: true, defaultNow: true },
+        publishedAt: { type: 'timestamp' },
+      },
+      indexes: {
+        statusIdx: { columns: ['status'] },
+        createdAtIdx: { columns: ['createdAt'] },
+      },
+    },
+
+    // ========================================================================
+    // RELEASE_ITEMS — The (rootId, branchId) members of a release.
+    // ========================================================================
+    releaseItems: {
+      tableName: 'release_items',
+      indexPrefix: 'rli',
+      columns: {
+        id: {
+          type: 'text',
+          primaryKey: true,
+          defaultId: true,
+          defaultIdPrefix: 'releaseItem',
+        },
+        releaseId: {
+          type: 'text',
+          notNull: true,
+          references: { table: 'releases', column: 'id', onDelete: 'cascade' },
+        },
+        rootId: {
+          type: 'text',
+          notNull: true,
+          references: { table: 'roots', column: 'id', onDelete: 'cascade' },
+        },
+        branchId: {
+          type: 'text',
+          notNull: true,
+          references: { table: 'branches', column: 'id', onDelete: 'cascade' },
+        },
+      },
+      indexes: {
+        releaseIdx: { columns: ['releaseId'] },
+        rootIdx: { columns: ['rootId'] },
+        branchIdx: { columns: ['branchId'] },
+        // At most one branch per root within a release — addToRelease/setReleaseItems
+        // upsert on this so re-adding a root swaps which branch it publishes.
+        releaseRootUnique: {
+          columns: ['releaseId', 'rootId'],
+          unique: true,
+        },
       },
     },
   },

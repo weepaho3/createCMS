@@ -139,6 +139,22 @@ async function setupReferenceCMS() {
               },
             },
           },
+          // cms-03: a `list` of `reference` — a MULTI-reference. Its elements are
+          // walked by the same usage-indexing/delete-guard machinery as a scalar
+          // reference.
+          reusableList: {
+            label: 'Reusable List',
+            properties: {
+              blocks: {
+                type: 'list' as const,
+                of: {
+                  type: 'reference' as const,
+                  collection: 'reusableBlocks',
+                },
+                label: 'Blocks',
+              },
+            },
+          },
         },
       },
     } as const,
@@ -315,6 +331,50 @@ describe('reference field', () => {
     const authorBlock = tree.children.find((c: any) => c.type === 'authorCard');
     expect(authorBlock).toBeDefined();
     expect(authorBlock!.properties.author).toBe(author.rootId);
+  });
+
+  // cms-04: a reference value is validated against the target collection at
+  // write time, so a nonexistent rootId is rejected instead of silently stored.
+  it('rejects a reference pointing at a nonexistent rootId', async () => {
+    const { cms } = await setupReferenceCMS();
+
+    const page = await cms.api.pages.createRoot({
+      body: { slug: '/bad-ref', properties: { title: 'Page' } },
+    });
+
+    await expect(
+      cms.api.pages.createBlock({
+        body: {
+          rootId: page.rootId,
+          branchId: page.branchId,
+          parentBlockId: page.rootId,
+          type: 'authorCard',
+          properties: { author: 'rot_doesnotexist000000' },
+        },
+      }),
+    ).rejects.toThrow(/authors does not exist/);
+  });
+
+  it('accepts a reference to an existing root in the target collection', async () => {
+    const { cms } = await setupReferenceCMS();
+
+    const author = await cms.api.authors.createRoot({
+      body: { properties: { name: 'Ada' } },
+    });
+    const page = await cms.api.pages.createRoot({
+      body: { slug: '/ok-ref', properties: { title: 'Page' } },
+    });
+
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: page.rootId,
+        branchId: page.branchId,
+        parentBlockId: page.rootId,
+        type: 'authorCard',
+        properties: { author: author.rootId },
+      },
+    });
+    expect(block.blockId).toBeDefined();
   });
 });
 
@@ -661,6 +721,39 @@ describe('reference delete guard (RB4)', () => {
       body: { rootId: reusable.rootId },
     });
     expect(res.rootId).toBe(reusable.rootId);
+  });
+
+  // cms-03: a root embedded inside a `list`-of-`reference` value is indexed into
+  // content_usages exactly like a scalar reference, so the delete guard protects
+  // it too. (Before the fix, list references were not indexed and the guard
+  // missed them.)
+  it('protects a root embedded via a list-of-reference property (ROOT_IN_USE)', async () => {
+    const { cms, db } = await setupReferenceCMS();
+    const reusable = await cms.api.reusableBlocks.createRoot({
+      body: { properties: { label: 'CTA' } },
+    });
+    expect(await isReferencedByLiveContent(db, reusable.rootId)).toBe(false);
+
+    const page = await cms.api.pages.createRoot({
+      body: { slug: '/list-ref', properties: { title: 'A' } },
+    });
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: page.rootId,
+        branchId: page.branchId,
+        parentBlockId: page.rootId,
+        type: 'reusableList',
+        properties: { blocks: [reusable.rootId] },
+      },
+    });
+
+    // The list element is indexed like a scalar reference.
+    expect(await isReferencedByLiveContent(db, reusable.rootId)).toBe(true);
+
+    // ...and archiving the referenced root is blocked while the list embeds it.
+    await expect(
+      cms.api.reusableBlocks.archiveRoot({ body: { rootId: reusable.rootId } }),
+    ).rejects.toThrow(/embedded/i);
   });
 });
 

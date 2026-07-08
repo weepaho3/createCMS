@@ -28,21 +28,25 @@ export function getReferencePropertyNames(
 ): Map<string, string> {
   const refProps = new Map<string, string>();
 
-  if (blockType === collectionDef.name || blockType === 'root') {
-    for (const [key, spec] of Object.entries(collectionDef.root.properties)) {
-      if (spec.type === 'reference') {
-        refProps.set(key, (spec as { collection: string }).collection);
-      }
-    }
-    return refProps;
-  }
+  const props =
+    blockType === collectionDef.name || blockType === 'root'
+      ? collectionDef.root.properties
+      : collectionDef.blocks?.[blockType]?.properties;
+  if (!props) return refProps;
 
-  const blockDef = collectionDef.blocks?.[blockType];
-  if (!blockDef) return refProps;
-
-  for (const [key, spec] of Object.entries(blockDef.properties)) {
+  for (const [key, spec] of Object.entries(props)) {
+    // A scalar `reference` and a `list` of `reference` both target a collection;
+    // the map records the target collection either way, and every consumer reads
+    // the stored VALUE (a single string vs. an array of strings) to decide how to
+    // walk it. Keeping both here is what makes list-of-reference ride the same
+    // usage-indexing + read-resolution machinery as a single reference.
     if (spec.type === 'reference') {
       refProps.set(key, (spec as { collection: string }).collection);
+    } else if (
+      spec.type === 'list' &&
+      (spec as { of?: { type?: string } }).of?.type === 'reference'
+    ) {
+      refProps.set(key, (spec as { of: { collection: string } }).of.collection);
     }
   }
   return refProps;
@@ -105,17 +109,23 @@ export async function insertReferenceUsagesForVersions(
   for (const version of versions) {
     const refProps = getReferencePropertyNames(collectionDef, version.type);
     for (const [propKey] of refProps) {
-      const value = version.properties[propKey];
-      if (typeof value !== 'string' || !value) continue;
-      rows.push({
-        id: newId('contentUsage'),
-        targetKind: 'reference',
-        targetKey: value,
-        blockVersionId: version.blockVersionId,
-        rootId,
-        blockId: version.blockId,
-        propertyKey: propKey,
-      });
+      const raw = version.properties[propKey];
+      // A single `reference` stores a string; a `list` of `reference` stores an
+      // array of strings. Index one usage row per referenced id either way, so
+      // the reusable-block delete guard protects list references too.
+      const values = Array.isArray(raw) ? raw : [raw];
+      for (const value of values) {
+        if (typeof value !== 'string' || !value) continue;
+        rows.push({
+          id: newId('contentUsage'),
+          targetKind: 'reference',
+          targetKey: value,
+          blockVersionId: version.blockVersionId,
+          rootId,
+          blockId: version.blockId,
+          propertyKey: propKey,
+        });
+      }
     }
 
     // INTERNAL links index their target rootId too (targetKind 'link') — for the

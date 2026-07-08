@@ -31,3 +31,79 @@ export const _missingRequired: Props = { headline: 'Join' };
 
 // @ts-expect-error - optional `ctaCount` is inferred `number`, not `string`
 export const _optionalWrongType: Props = { headline: 'Join', active: true, ctaCount: 'two' };
+
+// ---------------------------------------------------------------------------
+// list + multi-reference property inference (cms-03)
+// ---------------------------------------------------------------------------
+
+const gallery = defineBlock({
+  label: 'Gallery',
+  properties: {
+    // list of scalar → string[]
+    tags: { type: 'list', of: { type: 'string' }, label: 'Tags', required: true },
+    // list of number → number[]
+    scores: { type: 'list', of: { type: 'number' }, label: 'Scores' },
+    // list of reference → string[] (raw mode) — a multi-reference
+    related: {
+      type: 'list',
+      of: { type: 'reference', collection: 'posts' },
+      label: 'Related',
+      required: true,
+    },
+    // list of select → union-of-options array
+    sizes: {
+      type: 'list',
+      of: {
+        type: 'select',
+        options: [
+          { label: 'S', value: 's' },
+          { label: 'L', value: 'l' },
+        ],
+      },
+      label: 'Sizes',
+      required: true,
+    },
+  },
+});
+
+type GalleryProps = InferBlockProperties<typeof gallery.properties>;
+
+// String/number/reference lists infer as arrays; select-list infers the option union.
+export const _listOk: GalleryProps = {
+  tags: ['a', 'b'],
+  related: ['rot_1', 'rot_2'],
+  sizes: ['s', 'l'],
+  scores: [1, 2, 3],
+};
+
+// @ts-expect-error - `tags` elements are inferred `string`, not `number`
+export const _listWrongElement: GalleryProps = { tags: [1], related: [], sizes: [] };
+
+// @ts-expect-error - a list is an array, not a bare scalar
+export const _listNotArray: GalleryProps = { tags: 'a', related: [], sizes: [] };
+
+// @ts-expect-error - `sizes` elements are constrained to the option values
+export const _listBadOption: GalleryProps = { tags: [], related: [], sizes: ['xl'] };
+
+// @ts-expect-error - required list `related` is missing
+export const _listMissingRequired: GalleryProps = { tags: [], sizes: [] };
+
+// ---------------------------------------------------------------------------
+// declarative constraint fields are accepted on the spec (cms-04)
+// ---------------------------------------------------------------------------
+
+const constrained = defineBlock({
+  label: 'Constrained',
+  properties: {
+    title: { type: 'string', label: 'Title', minLength: 1, maxLength: 80, pattern: '^[A-Z]' },
+    count: { type: 'number', label: 'Count', min: 0, max: 10 },
+    body: { type: 'richText', label: 'Body', maxLength: 5000 },
+  },
+});
+
+// Constrained props still infer to their base runtime types.
+export const _constrainedOk: InferBlockProperties<typeof constrained.properties> = {
+  title: 'Hello',
+  count: 3,
+  body: '<p>hi</p>',
+};

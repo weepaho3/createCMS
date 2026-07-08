@@ -13,6 +13,7 @@ import {
   commits,
   commitSnapshots,
 } from '../db/schema.generated';
+import { CMSError } from '../errors';
 
 /**
  * A block version a handler wants to write in a commit. The handler pre-computes
@@ -61,12 +62,35 @@ export async function writeCommit(
     message: string;
     createdBy: string | null | undefined;
     changed: ChangedVersion[];
+    // Optimistic-concurrency precondition (cms-18). When set, the caller asserts
+    // it is writing on top of exactly this head commit; the write is rejected if
+    // the branch has advanced. Omitted → unchecked (unchanged behavior).
+    expectedHeadCommitId?: string;
   },
 ): Promise<{
   commitId: string;
   commit: CommitSummary;
   versionIdByBlockId: Map<string, string>;
 }> {
+  // Optimistic concurrency: `parentCommitId` is the branch head the caller read
+  // UNDER the branch row lock (writeCommit's contract), so comparing the caller's
+  // `expectedHeadCommitId` against it here — before writing — is race-free: a
+  // concurrent writer would have had to advance the head while holding the same
+  // lock, which cannot overlap this transaction. A stale expectation means
+  // another commit landed since the client last read; reject instead of silently
+  // clobbering it (last-write-wins).
+  if (
+    args.expectedHeadCommitId !== undefined &&
+    args.expectedHeadCommitId !== args.parentCommitId
+  ) {
+    throw new CMSError('HEAD_MISMATCH', {
+      data: {
+        expectedHeadCommitId: args.expectedHeadCommitId,
+        actualHeadCommitId: args.parentCommitId,
+      },
+    });
+  }
+
   // Record the branch this commit is created on (history attribution). The
   // branch is the one whose head this commit advances; look up its name for the
   // deletion-proof snapshot.

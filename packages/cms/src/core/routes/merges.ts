@@ -1148,8 +1148,9 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * has NOT diverged, the integration depends on the merge strategy: by default it fast-forwards
      * (no merge commit), but `mergeStrategy: 'merge-commit'` (config) or `noFastForward: true`
      * (per call) force an explicit merge commit (git's `--no-ff`). A merge with nothing to integrate
-     * (heads already equal) is always a no-op fast-forward. Requires all approvals granted and all
-     * conflicts resolved.
+     * (heads already equal) is always a no-op fast-forward. Requires all conflicts resolved. A pending
+     * approval request blocks the merge by default (regardless of the governance flags); the
+     * `requireApprovalToMerge` flag additionally makes an approval mandatory even when none was requested.
      *
      * @param mergeRequestId - The merge request id.
      * @param mergedBy - Optional explicit actor id; used only when ctx.context.userId is absent (context takes precedence).
@@ -1163,8 +1164,9 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * @throws MERGE_REQUEST_NOT_OPEN if the merge request is not open.
      * @throws BRANCH_NOT_FOUND if either branch no longer exists.
      * @throws NO_COMMON_ANCESTOR if branches have no common commit history.
-     * @throws MERGE_APPROVAL_REQUIRED if no approval requests exist.
-     * @throws APPROVALS_NOT_FULLY_APPROVED if not all approval requests are approved.
+     * @throws MERGE_APPROVAL_REQUIRED if `requireApprovalToMerge` is on and no approval requests exist.
+     * @throws APPROVALS_NOT_FULLY_APPROVED if an approval request exists but is not fully approved. A
+     *   pending (or rejected) request blocks the merge by default, regardless of the governance flags.
      * @throws UNRESOLVED_CONFLICTS if any conflict lacks a resolution.
      * @example await cmsClient.pages.executeMerge({ mergeRequestId: 'mr-id' })
      */
@@ -1311,6 +1313,8 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
               canFastForward && (!forceMergeCommit || nothingToMerge);
 
             if (branchPolicy.requireApprovalToMerge) {
+              // Strict governance: an approval is mandatory before merging, even
+              // when none was ever requested.
               if (!approvalState.hasRequests) {
                 throw new CMSError('MERGE_APPROVAL_REQUIRED');
               }
@@ -1322,6 +1326,17 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
               ) {
                 throw new CMSError('APPROVALS_NOT_FULLY_APPROVED');
               }
+            } else if (
+              approvalState.hasRequests &&
+              !approvalGatePasses(approvalState, branchPolicy.requiredReviewers)
+            ) {
+              // Default (flag-independent) behavior, mirroring publishBranch: even
+              // with the governance flags off, an approval request that exists but
+              // is not fully approved — e.g. still PENDING — blocks the merge. If
+              // someone opened an approval request, a merge must not silently
+              // bypass it; only once every request is APPROVED may the merge
+              // proceed.
+              throw new CMSError('APPROVALS_NOT_FULLY_APPROVED');
             }
 
             if (doFastForward) {

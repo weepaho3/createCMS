@@ -466,7 +466,7 @@ export async function indexNotification(
   notificationId: string,
 ): Promise<void> {
   const result = await db.execute(sql`
-    SELECT ${notifications.id}, ${notifications.title}, ${notifications.body}, ${notifications.collection}
+    SELECT ${notifications.id}, ${notifications.title}, ${notifications.body}, ${notifications.collection}, ${notifications.recipientId}
     FROM ${notifications}
     WHERE ${notifications.id} = ${notificationId}
     LIMIT 1
@@ -479,6 +479,7 @@ export async function indexNotification(
     title: string;
     body: string | null;
     collection: string | null;
+    recipient_id: string;
   };
 
   const textParts: { text: string; weight: 'A' | 'B' | 'C' | 'D' }[] = [
@@ -494,7 +495,11 @@ export async function indexNotification(
     textParts,
     title: row.title,
     snippet: row.body ? truncate(row.body, 200) : null,
-    meta: { collection: row.collection },
+    // `recipientId` is the per-user visibility key: the search endpoint only
+    // returns a 'notification' row to `meta.recipientId === ctx userId`
+    // (cms-08). Without it a reindex would make every notification's title/body
+    // searchable across users.
+    meta: { collection: row.collection, recipientId: row.recipient_id },
   });
 }
 

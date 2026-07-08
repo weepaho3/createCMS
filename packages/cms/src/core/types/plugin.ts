@@ -16,12 +16,19 @@ type Awaitable<T> = T | Promise<T>;
 // ============================================================================
 
 /**
- * Endpoint key used as a hook action identifier.
- * Accepts any string so internal plumbing doesn't need the full union,
- * but the exported `CMSEndpointKey` (from `index.ts`) provides a narrowed
- * union with autocomplete for hook authors.
+ * Endpoint key used as a hook action identifier. Surfaces the finite union of
+ * the CORE endpoint keys the system emits at runtime — the same `endpointKey`
+ * passed to `runBefore`/`runAfter` (see `endpoint.ts`) — sourced from the
+ * `CMSEndpointKey` union in `factory.ts` (instantiated with no plugins, so just
+ * the core keys), so standalone plugin authors get autocomplete on `action`.
+ * The `(string & {})` arm keeps it open: internal plumbing forwards a plain
+ * `string` `endpointKey`, and plugins contribute their own endpoint keys, both
+ * of which must still assign. Plugin-endpoint-aware CLOSED narrowing (a typo is
+ * a compile error) lives in `CMSConfigHooks<TPlugins>` (factory.ts), which
+ * layers `PluginEndpointKey<TPlugins>` on top. Type-only import — the
+ * plugin.ts ↔ factory.ts cycle is fully erased.
  */
-export type CMSHookAction = string & {};
+export type CMSHookAction = import('../factory').CMSEndpointKey | (string & {});
 
 export type CMSBeforeHookContext = {
   action: CMSHookAction;
