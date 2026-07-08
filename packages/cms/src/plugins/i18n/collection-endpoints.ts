@@ -31,7 +31,7 @@ import { newId } from '../../utils/nanoid';
 import { i18nError } from './errors';
 
 /**
- * The i18n plugin's per-collection endpoints (Seam A): createTranslation +
+ * The i18n plugin's per-collection endpoints: createTranslation +
  * listTranslations. Contributed to EVERY collection via plugin.collectionEndpoints,
  * so they surface at cms.api.<collection>.x ONLY when the i18n plugin is
  * installed (closing the leak where they appeared on every collection regardless).
@@ -204,7 +204,7 @@ export function createI18nCollectionEndpoints(
               // Uniqueness is checked in the TARGET language (not the active one),
               // within the active tenant — override language on the scope columns.
               {
-                ...(scope.roots?.insertColumns ?? {}),
+                ...scope.roots?.insertColumns,
                 language: targetLanguage,
               },
             );
@@ -216,7 +216,7 @@ export function createI18nCollectionEndpoints(
           const targetScope = {
             ...scope.roots,
             insertColumns: {
-              ...(scope.roots?.insertColumns ?? {}),
+              ...scope.roots?.insertColumns,
               language: targetLanguage,
             },
           };

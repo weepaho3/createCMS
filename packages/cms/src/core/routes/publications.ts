@@ -106,7 +106,7 @@ type LoadedRoot = {
   properties: Record<string, unknown>;
   tree: BlockTreeNode;
   /**
-   * Set when this root has a running A/B test (AB_FANOUT F2): top-level
+   * Set when this root has a running A/B test: top-level
    * `tree`/`properties` are the CONTROL branch, and `abTest.variants` carries
    * every published variant branch (incl. the control) for the client to pick.
    */
@@ -166,9 +166,9 @@ async function loadPublishedRoots(
     else pubsByRoot.set(row.rootId, [entry]);
   }
 
-  // Which referenced roots have a running A/B test (AB_FANOUT F2). No resolver
+  // Which referenced roots have a running A/B test. No resolver
   // (no ab-test plugin) → empty → every root takes the deterministic single
-  // pick below, byte-identical to pre-F2.
+  // pick below, byte-identical to the pre-fan-out behavior.
   const running = abTestResolver
     ? await abTestResolver.runningTests(db, scopeColumns, rootIds)
     : new Map<string, RunningAbTest>();
@@ -186,7 +186,7 @@ async function loadPublishedRoots(
     [...pubsByRoot.entries()].map(async ([rootId, pubs]) => {
       const test = running.get(rootId);
 
-      // Default (and F2 fallback): the deterministic single pick — the first row
+      // Default (and fallback): the deterministic single pick — the first row
       // in the ORDER BY. Used for every non-varying embed.
       const single = async () => {
         const first = pubs[0];
@@ -609,6 +609,9 @@ export function createPublicationEndpoints<
 
         await syncAssetsOnPublish(db, publication.commitId, rootId);
 
+        // Stays bespoke (not on withNotifications): the recipient (branch
+        // creator) is read AFTER commit, and the notify must fire AFTER asset
+        // sync — withNotifications flushes on commit, before syncAssetsOnPublish.
         if (cmsCtx.notificationService) {
           const [branch] = await db
             .select({ createdBy: branches.createdBy })
@@ -883,7 +886,7 @@ export function createPublicationEndpoints<
           .where(eq(publications.rootId, resolvedRootId))
           // Deterministic variant order (oldest publish first, branchId as the
           // stable tiebreak) — so `variants[0]` is a stable control default and
-          // the cache key for a variant render is reproducible (matches F0).
+          // the cache key for a variant render is reproducible.
           .orderBy(asc(publications.publishedAt), asc(publications.branchId));
 
         if (pubs.length === 0) {
@@ -941,13 +944,13 @@ export function createPublicationEndpoints<
           }
         }
 
-        // Page-LEVEL A/B test descriptor (AB_FANOUT FA3): when the PAGE root
+        // Page-LEVEL A/B test descriptor: when the PAGE root
         // itself has a running test, expose which published branch is the
         // control + the test id, so the variant-coded render route picks the
         // right page branch and the default (control) route renders the actual
         // control — not an arbitrary `variants[0]`. Embedded-block tests ride on
         // the per-reference `abTest` field instead. Degrades (omitted) unless ≥2
-        // variant branches and the control are published, mirroring FA1/F2.
+        // variant branches and the control are published.
         let pageAbTest:
           | {
               testId: string;
@@ -1020,7 +1023,7 @@ export function createPublicationEndpoints<
             ...variant,
             // `resolved` mode: getPublishedContent inlines references, so a
             // `reference` property surfaces as a ResolvedReference whose
-            // `properties` are typed from the TARGET collection's root (RB6②, via
+            // `properties` are typed from the TARGET collection's root (via
             // the threaded collections map). The editor read getBlockTree keeps
             // the raw rootId string via the default mode.
             tree: variant.tree as InferBlockTreeNode<

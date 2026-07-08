@@ -4,7 +4,7 @@ import type { DrizzleInstance } from '../../core/types/drizzle';
 import { referenceEdges } from '../../core/references';
 
 // ============================================================================
-// Co-render set — the conflict set for the A/B XOR guard (AB_FANOUT_DESIGN F1)
+// Co-render set — the conflict set for the A/B XOR guard
 // ============================================================================
 //
 // The render-tree traversal that powers the A/B cross-embed XOR rule. Built on
@@ -82,7 +82,7 @@ export async function collectEmbeddedRoots(
 
 /**
  * All roots that can appear in the SAME rendered page tree as `rootId` — the
- * conflict set for the A/B XOR rule (AB_FANOUT_DESIGN §2). = the transitive HOSTS
+ * conflict set for the A/B XOR rule. = the transitive HOSTS
  * of rootId (every root that embeds it, going up), then the transitive EMBEDS of
  * rootId AND each host (going down) — covering the page above, the blocks below,
  * and co-embedded siblings. Group-aware AND tgr_-aware (a reference may store a

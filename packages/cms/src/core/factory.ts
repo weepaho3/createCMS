@@ -337,14 +337,14 @@ type InferCollectionApis<
           : NonNullable<TCollections[K]['blocks']>;
       },
       // Thread the full collections map so getPublishedContent resolves a
-      // reference's `properties` to the target collection's typed root (RB6②).
+      // reference's `properties` to the target collection's typed root.
       TCollections
     >
   > &
     // Per-collection endpoints contributed by installed plugins (e.g. the i18n
     // plugin's createTranslation/listTranslations). Empty intersection when no
     // plugin contributes — so a collection's API only gains these with the
-    // plugin installed. (Seam A / D1.)
+    // plugin installed.
     InferCollectionEndpoints<TPlugins>;
 };
 
@@ -679,7 +679,7 @@ export const createCMS = <
         def as CollectionWithName,
         cmsContext,
       );
-      // Seam A: merge each plugin's per-collection endpoints into THIS
+      // Merge each plugin's per-collection endpoints into THIS
       // collection's record, so they surface at cms.api.<collection>.x only
       // when the plugin is installed (the i18n plugin's createTranslation /
       // listTranslations). Generic — core names no plugin concept.

@@ -532,7 +532,7 @@ export function createABTestEndpoints(
             // this block, a block it embeds, or a co-embedded sibling,
             // transitively — must not ALSO have a running test, else a single
             // render would vary on two axes (unattributable). Conservative +
-            // group-aware (AB_FANOUT_DESIGN §2). Re-checked here under the lock.
+            // group-aware. Re-checked here under the lock.
             if (coRender.size > 0) {
               const conflict = (await tx.execute(sql`
                 SELECT id FROM cms.ab_tests
@@ -853,7 +853,7 @@ export function createABTestEndpoints(
           variantId: z.string().optional(),
           // Pattern A: the edge/render route knows the served BRANCH, not the
           // variant id. Sending branchId (with testId) resolves the variant id
-          // server-side — the FA4 impression beacon uses this.
+          // server-side — the impression beacon uses this.
           branchId: z.string().optional(),
           // Optional: the anonymous Pattern A path stores NO identifier (the
           // variant comes from the URL/variant-cookie, not a visitor id). A

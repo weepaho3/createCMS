@@ -448,8 +448,8 @@ export function abTestClient(options?: ABTestClientOptions) {
           },
 
           /**
-           * Report the impression for a SERVER-rendered variant (AB_FANOUT
-           * Pattern A). Call with the served branch (the `/<branchId>/` URL
+           * Report the impression for a SERVER-rendered variant (Pattern
+           * A). Call with the served branch (the `/<branchId>/` URL
            * segment). ANONYMOUS + consent-free: sends no visitor id, not
            * consent-gated, deduped per session via sessionStorage. Reach it from
            * the variant route via {@link useImpression}.

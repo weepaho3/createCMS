@@ -1,7 +1,6 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
-import type { NotificationInput } from '../notifications/types';
 import type { CollectionWithName, CMSProcedureCtx } from '../types';
 import type { DrizzleInstance } from '../types/drizzle';
 
@@ -20,7 +19,7 @@ import {
 } from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
-import { flushNotifications } from '../notifications/service';
+import { withNotifications } from '../notifications/service';
 import { userEnrichment, type EnrichField } from '../user/enrichment';
 import { batchFetchUsers } from '../user/join-helpers';
 import { parseTimestamp, parseTimestampOrNull } from '../utils/parse-timestamp';
@@ -90,6 +89,32 @@ function mapThread(row: typeof commentThreads.$inferSelect): ThreadOutput {
     createdBy: row.createdBy,
     createdAt: new Date(row.createdAt),
     updatedAt: new Date(row.updatedAt),
+  };
+}
+
+/**
+ * Maps a raw (snake_case, string-typed) thread row from the enriched
+ * `db.execute` SELECT into the camelCase thread output shape. Shared by
+ * `listCommentThreads` and `getCommentThread`, which read threads through the
+ * user-enrichment JOIN rather than through Drizzle's typed select (so the row
+ * arrives as `Record<string, unknown>`, not `commentThreads.$inferSelect`).
+ * This is intentionally distinct from {@link mapThread}, which maps a typed row.
+ */
+function mapRawThreadRow(row: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id: row.id,
+    rootId: row.root_id,
+    collection: row.collection,
+    targetType: row.target_type,
+    mergeRequestId: row.merge_request_id,
+    blockId: row.block_id,
+    commitId: row.commit_id,
+    status: row.status,
+    resolvedBy: row.resolved_by,
+    resolvedAt: parseTimestampOrNull(row.resolved_at),
+    createdBy: row.created_by,
+    createdAt: parseTimestamp(row.created_at),
+    updatedAt: parseTimestamp(row.updated_at),
   };
 }
 
@@ -175,6 +200,44 @@ async function loadMentionsByMessageIds(
   return map;
 }
 
+/**
+ * Loads the boundary (first or latest) non-deleted comment message per thread
+ * for a set of thread IDs. `direction: 'asc'` selects the earliest message per
+ * thread, `'desc'` the most recent. The `DISTINCT ON` subquery repeats the
+ * comment/not-deleted filter so it picks the boundary among the same rows the
+ * outer `and(commentFilter, ...)` returns.
+ */
+async function loadBoundaryMessages(
+  db: DrizzleInstance,
+  threadIds: string[],
+  direction: 'asc' | 'desc',
+): Promise<(typeof commentMessages.$inferSelect)[]> {
+  const order = direction === 'asc' ? sql`ASC` : sql`DESC`;
+
+  const commentFilter = and(
+    inArray(commentMessages.threadId, threadIds),
+    eq(commentMessages.messageType, 'comment'),
+    isNull(commentMessages.deletedAt),
+  );
+
+  return db
+    .select()
+    .from(commentMessages)
+    .where(
+      and(
+        commentFilter,
+        sql`${commentMessages.id} IN (
+          SELECT DISTINCT ON (${commentMessages.threadId}) ${commentMessages.id}
+          FROM ${commentMessages}
+          WHERE ${inArray(commentMessages.threadId, threadIds)}
+            AND ${commentMessages.messageType} = 'comment'
+            AND ${commentMessages.deletedAt} IS NULL
+          ORDER BY ${commentMessages.threadId}, ${commentMessages.createdAt} ${order}
+        )`,
+      ),
+    );
+}
+
 export function createCommentEndpoints<TDef extends CollectionWithName>(
   def: TDef,
   cmsCtx: CMSProcedureCtx,
@@ -189,7 +252,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
      * @param targetType 'mergeRequest' or 'block' (required; 'mergeRequest' requires mergeRequestId, 'block' requires blockId).
      * @param body The comment text; non-empty required.
      * @param mentions Array of user IDs to mention in the initial message (optional).
-     * @param mergeRequestId Root ID extracted from this merge request if targetType is 'mergeRequest'.
+     * @param mergeRequestId The merge request to attach the thread to (required when targetType is 'mergeRequest'); also used to infer rootId.
      * @param blockId Block ID for 'block' targetType.
      * @param commitId Optional commit ID to link the thread to a specific snapshot.
      * @param rootId Optional root ID; inferred from merge request if not provided.
@@ -250,10 +313,10 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
         const userId = ctx.context.userId;
         if (!userId) throw new CMSError('USER_ID_REQUIRED');
 
-        const pending: NotificationInput[] = [];
-
-        return db
-          .transaction(async (tx) => {
+        return withNotifications(
+          db,
+          cmsCtx.notificationService,
+          async (tx, pending) => {
             let rootId = input.rootId ?? null;
 
             if (input.mergeRequestId) {
@@ -336,11 +399,8 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
               thread: mapThread(thread),
               message: mapMessage(message, resolved),
             };
-          })
-          .then((result) => {
-            flushNotifications(cmsCtx.notificationService, pending);
-            return result;
-          });
+          },
+        );
       },
     ),
 
@@ -390,10 +450,10 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
         const userId = ctx.context.userId;
         if (!userId) throw new CMSError('USER_ID_REQUIRED');
 
-        const pending: NotificationInput[] = [];
-
-        return db
-          .transaction(async (tx) => {
+        return withNotifications(
+          db,
+          cmsCtx.notificationService,
+          async (tx, pending) => {
             const [thread] = await tx
               .select({
                 id: commentThreads.id,
@@ -487,11 +547,8 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
             }
 
             return { message: mapMessage(message, resolved) };
-          })
-          .then((result) => {
-            flushNotifications(cmsCtx.notificationService, pending);
-            return result;
-          });
+          },
+        );
       },
     ),
 
@@ -622,7 +679,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
         const rawRows = dataResult.rows as Array<Record<string, unknown>>;
         const threadIds = rawRows.map((r) => r.id as string);
 
-        let messageSummaries: Record<
+        const messageSummaries: Record<
           string,
           {
             messageCount: number;
@@ -645,45 +702,17 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
             msgCountRows.map((r) => [r.threadId, r.count]),
           );
 
-          const commentFilter = and(
-            inArray(commentMessages.threadId, threadIds),
-            eq(commentMessages.messageType, 'comment'),
-            isNull(commentMessages.deletedAt),
+          const firstMessages = await loadBoundaryMessages(
+            db,
+            threadIds,
+            'asc',
           );
 
-          const firstMessages = await db
-            .select()
-            .from(commentMessages)
-            .where(
-              and(
-                commentFilter,
-                sql`${commentMessages.id} IN (
-                  SELECT DISTINCT ON (${commentMessages.threadId}) ${commentMessages.id}
-                  FROM ${commentMessages}
-                  WHERE ${inArray(commentMessages.threadId, threadIds)}
-                    AND ${commentMessages.messageType} = 'comment'
-                    AND ${commentMessages.deletedAt} IS NULL
-                  ORDER BY ${commentMessages.threadId}, ${commentMessages.createdAt} ASC
-                )`,
-              ),
-            );
-
-          const latestMessages = await db
-            .select()
-            .from(commentMessages)
-            .where(
-              and(
-                commentFilter,
-                sql`${commentMessages.id} IN (
-                  SELECT DISTINCT ON (${commentMessages.threadId}) ${commentMessages.id}
-                  FROM ${commentMessages}
-                  WHERE ${inArray(commentMessages.threadId, threadIds)}
-                    AND ${commentMessages.messageType} = 'comment'
-                    AND ${commentMessages.deletedAt} IS NULL
-                  ORDER BY ${commentMessages.threadId}, ${commentMessages.createdAt} DESC
-                )`,
-              ),
-            );
+          const latestMessages = await loadBoundaryMessages(
+            db,
+            threadIds,
+            'desc',
+          );
 
           const firstMap = new Map(firstMessages.map((m) => [m.threadId, m]));
           const latestMap = new Map(latestMessages.map((m) => [m.threadId, m]));
@@ -717,19 +746,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
         return {
           threads: rawRows.map((row) => {
             const thread: Record<string, unknown> = {
-              id: row.id,
-              rootId: row.root_id,
-              collection: row.collection,
-              targetType: row.target_type,
-              mergeRequestId: row.merge_request_id,
-              blockId: row.block_id,
-              commitId: row.commit_id,
-              status: row.status,
-              resolvedBy: row.resolved_by,
-              resolvedAt: parseTimestampOrNull(row.resolved_at),
-              createdBy: row.created_by,
-              createdAt: parseTimestamp(row.created_at),
-              updatedAt: parseTimestamp(row.updated_at),
+              ...mapRawThreadRow(row),
               ...(messageSummaries[row.id as string] ?? {
                 messageCount: 0,
                 firstMessage: null,
@@ -833,21 +850,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
           msgUserMap = await batchFetchUsers(db, uc, withUser, authorIds);
         }
 
-        const threadOutput: Record<string, unknown> = {
-          id: threadRow.id,
-          rootId: threadRow.root_id,
-          collection: threadRow.collection,
-          targetType: threadRow.target_type,
-          mergeRequestId: threadRow.merge_request_id,
-          blockId: threadRow.block_id,
-          commitId: threadRow.commit_id,
-          status: threadRow.status,
-          resolvedBy: threadRow.resolved_by,
-          resolvedAt: parseTimestampOrNull(threadRow.resolved_at),
-          createdBy: threadRow.created_by,
-          createdAt: parseTimestamp(threadRow.created_at),
-          updatedAt: parseTimestamp(threadRow.updated_at),
-        };
+        const threadOutput: Record<string, unknown> = mapRawThreadRow(threadRow);
 
         enrich.apply(threadOutput, threadRow);
 
@@ -901,10 +904,10 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
         const userId = ctx.context.userId;
         if (!userId) throw new CMSError('USER_ID_REQUIRED');
 
-        const pending: NotificationInput[] = [];
-
-        return db
-          .transaction(async (tx) => {
+        return withNotifications(
+          db,
+          cmsCtx.notificationService,
+          async (tx, pending) => {
             const [thread] = await tx
               .select()
               .from(commentThreads)
@@ -963,11 +966,8 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
               thread: mapThread(updated),
               message: mapMessage(systemMsg),
             };
-          })
-          .then((result) => {
-            flushNotifications(cmsCtx.notificationService, pending);
-            return result;
-          });
+          },
+        );
       },
     ),
 
@@ -1080,10 +1080,10 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
         const userId = ctx.context.userId;
         if (!userId) throw new CMSError('USER_ID_REQUIRED');
 
-        const pending: NotificationInput[] = [];
-
-        return db
-          .transaction(async (tx) => {
+        return withNotifications(
+          db,
+          cmsCtx.notificationService,
+          async (tx, pending) => {
             const [thread] = await tx
               .select()
               .from(commentThreads)
@@ -1128,7 +1128,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
               pending.push({
                 recipientId: thread.createdBy,
                 actorId: userId,
-                type: 'threadResolved',
+                type: 'threadReopened',
                 title: 'Your comment thread was reopened',
                 body: null,
                 resourceType: 'commentThread',
@@ -1146,11 +1146,8 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
               thread: mapThread(updated),
               message: mapMessage(systemMsg),
             };
-          })
-          .then((result) => {
-            flushNotifications(cmsCtx.notificationService, pending);
-            return result;
-          });
+          },
+        );
       },
     ),
 
@@ -1290,7 +1287,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
           },
           {
             permissionResource: 'comment',
-            operation: 'update',
+            operation: 'delete',
             scope: 'collection',
             collection: collectionName,
           },

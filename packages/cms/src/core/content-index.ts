@@ -27,8 +27,8 @@ export type IndexableVersion = VersionToIndex & { deleted?: boolean };
 
 /**
  * Single entry point that populates ALL content-derived usage indexes — the one
- * generalist `content_usages` table (asset + variable rows today; reference rows
- * from RB1) — for freshly-created block versions.
+ * generalist `content_usages` table (asset + variable rows today; reference
+ * rows) — for freshly-created block versions.
  *
  * These indexes are keyed by the immutable blockVersionId and are insert-only:
  * they are written exactly once, here, in the same transaction that creates the

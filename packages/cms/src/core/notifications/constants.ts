@@ -14,6 +14,7 @@ export const NOTIFICATION_TYPES = [
   'mention',
   'comment',
   'threadResolved',
+  'threadReopened',
   'approvalRequested',
   'approvalApproved',
   'approvalRejected',

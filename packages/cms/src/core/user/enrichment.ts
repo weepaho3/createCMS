@@ -56,12 +56,12 @@ export type UserEnrichment = {
  * and output mapping (`enrich.apply(item, row)`).
  *
  * When `withUser` / `userConfig` are absent the fragments are empty SQL and
- * `apply` is a no-op — identical to the `withUser && uc ? ... : null` /
- * `if (withUser && uc) { ... }` guards the call sites used inline before.
+ * `apply` is a no-op, so call sites splice `${enrich.select}` / `.join` /
+ * `.groupBy` and call `apply` unconditionally, without guarding on whether
+ * enrichment is active.
  *
  * A single field and a multi-field array both route through
- * `multiUserJoinFragments`; for one field it emits the same SQL the old
- * `userJoinFragments` call produced.
+ * `multiUserJoinFragments`; a single field emits one user JOIN.
  */
 export function userEnrichment(
   ctx: {

@@ -7,7 +7,7 @@ import { rootScopeConditions } from '../../core/scope';
 import { i18nRoots } from './tables';
 
 /**
- * The i18n plugin's reference resolver (Seam B). Owns ALL translation-group
+ * The i18n plugin's reference resolver. Owns ALL translation-group
  * resolution: a stored reference value (`rot_` rootId or `tgr_` group key) is
  * resolved to the rootId(s) it relates to, honouring the active language + its
  * fallback chain. Core carries this on the resolved scope and rides it from the

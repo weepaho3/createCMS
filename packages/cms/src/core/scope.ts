@@ -59,7 +59,7 @@ function tableScopeConditions(
  * varies INDEPENDENTLY of a query — e.g. the i18n plugin's `language`). Pass the
  * result to reads that legitimately span those columns (reference / host /
  * usage / co-render reads, the published-root load) so they are NOT filtered by
- * them. Core names no specific column. (Seam D6.)
+ * them. Core names no specific column.
  */
 export function crossScopeColumns(
   rootScope: RootTableScope | undefined,

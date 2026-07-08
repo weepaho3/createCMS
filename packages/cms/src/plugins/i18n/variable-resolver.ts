@@ -6,7 +6,7 @@ import { variableScopeConditions } from '../../core/scope';
 import { i18nVariables } from './tables';
 
 /**
- * The i18n plugin's variable resolver (Seam B, variables). Loads the variable
+ * The i18n plugin's variable resolver. Loads the variable
  * map for the active language WITH fallback: it queries every variable whose
  * language is in `[language, ...fallback]` (within the active tenant), then for
  * each `key` keeps the value from the highest-ranked language in the chain — so
