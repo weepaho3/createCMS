@@ -107,6 +107,13 @@ export const coreSchema = defineCoreSchema({
         slugIdx: {
           columns: ['collection', 'parentRootId', 'slug'],
         },
+        // Public slug lookup (collection + slug, no parent) for the
+        // getPublishedContent slug branch (publications.ts). Additive and
+        // non-unique — uniqueness stays app-enforced (see slugIdx above); this
+        // only exists to serve the WHERE collection=? AND slug=? predicate.
+        collectionSlugIdx: {
+          columns: ['collection', 'slug'],
+        },
         // Pruning GC round-robin: pick the least-recently-pruned live roots.
         archivedAtIdx: { columns: ['archivedAt'] },
         lastPrunedAtIdx: { columns: ['lastPrunedAt'] },
@@ -247,7 +254,6 @@ export const coreSchema = defineCoreSchema({
           columns: ['blockId', 'commitId'],
           unique: true,
         },
-        propertiesGin: { columns: ['properties'], using: 'gin' },
       },
     },
 

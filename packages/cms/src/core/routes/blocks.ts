@@ -750,9 +750,27 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
                    ${enrich.groupBy}
         `;
 
+        // Slim count: same filtering joins + WHERE as the main query, but drops
+        // everything COUNT doesn't need — the two correlated COUNT subqueries,
+        // the user-enrichment join, the LEFT JOIN publications (the publication
+        // filters use self-contained EXISTS subqueries in whereClause, not the
+        // join), and the GROUP BY. The roots→branches→commitSnapshots→
+        // blockVersions joins are INNER and decide which roots match, so they
+        // stay. COUNT(DISTINCT roots.id) mirrors the main query's GROUP BY on
+        // roots.id, keeping the total equal to the distinct roots returned
+        // pre-LIMIT even if the joins ever fan out to multiple rows per root.
         const countQuery = sql`
-          SELECT COUNT(*)::int AS count
-          FROM (${filteredRootsQuery}) AS filtered_roots
+          SELECT COUNT(DISTINCT ${roots.id})::int AS count
+          FROM ${roots}
+          JOIN ${branches}
+            ON ${branches.rootId} = ${roots.id}
+           AND ${branches.name} = ${branchPolicy.defaultBranchName}
+          JOIN ${commitSnapshots}
+            ON ${commitSnapshots.commitId} = ${branches.headCommitId}
+           AND ${commitSnapshots.blockId} = ${roots.id}
+          JOIN ${blockVersions}
+            ON ${blockVersions.id} = ${commitSnapshots.blockVersionId}
+          WHERE ${whereClause}
         `;
 
         const mainQuery = sql`

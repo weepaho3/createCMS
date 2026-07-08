@@ -31,7 +31,9 @@ function resolveVariantTree(
   for (const value of Object.values(tree.properties)) {
     if (!isResolvedReference(value)) continue;
     // `value` is narrowed to ResolvedReference — its `abTest.variants` are
-    // PublishedBranchSnapshot (branchId + isControl + properties + tree).
+    // PublishedBranchSnapshot (branchId + properties + tree), the NON-CONTROL
+    // branches only. A `branchId` that matches none (or the control branch)
+    // leaves the top-level control tree in place — exactly the desired fallback.
     const ref: ResolvedReference = value;
     if (ref.abTest) {
       if (branchId) {
