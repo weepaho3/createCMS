@@ -38,7 +38,7 @@ async function setupCommentFixture(userId = USER_1) {
   await cms.api.pages.createBlock({
     body: {
       rootId: root.rootId,
-      branchId: draft.branchId,
+      branchId: draft.branch.id,
       parentBlockId: root.rootId,
       type: 'paragraph',
       properties: { text: 'Draft content' },
@@ -47,7 +47,7 @@ async function setupCommentFixture(userId = USER_1) {
 
   const mr = await cms.api.pages.createMergeRequest({
     body: {
-      sourceBranchId: draft.branchId,
+      sourceBranchId: draft.branch.id,
       targetBranchId: root.branchId,
       title: 'Test MR',
       createdBy: userId,
@@ -69,14 +69,14 @@ describe('comments', () => {
       const result = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Looks good overall!',
         },
       });
 
       expect(result.thread.id).toBeDefined();
       expect(result.thread.targetType).toBe('mergeRequest');
-      expect(result.thread.mergeRequestId).toBe(mr.mergeRequestId);
+      expect(result.thread.mergeRequestId).toBe(mr.mergeRequest.id);
       expect(result.thread.status).toBe('open');
       expect(result.thread.collection).toBe('pages');
       expect(result.thread.createdBy).toBe(USER_1);
@@ -115,14 +115,14 @@ describe('comments', () => {
         body: {
           targetType: 'block',
           blockId: root.rootId,
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Inline comment on this block in the MR',
         },
       });
 
       expect(result.thread.targetType).toBe('block');
       expect(result.thread.blockId).toBe(root.rootId);
-      expect(result.thread.mergeRequestId).toBe(mr.mergeRequestId);
+      expect(result.thread.mergeRequestId).toBe(mr.mergeRequest.id);
     });
 
     it('rejects mergeRequest target without mergeRequestId', async () => {
@@ -177,7 +177,7 @@ describe('comments', () => {
       const { thread } = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Initial comment',
         },
       });
@@ -189,11 +189,11 @@ describe('comments', () => {
         },
       });
 
-      expect(reply.threadId).toBe(thread.id);
-      expect(reply.body).toBe('Thanks for the feedback!');
-      expect(reply.messageType).toBe('comment');
-      expect(reply.authorId).toBe(USER_1);
-      expect(reply.mentions).toEqual([]);
+      expect(reply.message.threadId).toBe(thread.id);
+      expect(reply.message.body).toBe('Thanks for the feedback!');
+      expect(reply.message.messageType).toBe('comment');
+      expect(reply.message.authorId).toBe(USER_1);
+      expect(reply.message.mentions).toEqual([]);
     });
 
     it('supports nested replies via parentMessageId', async () => {
@@ -203,7 +203,7 @@ describe('comments', () => {
         await cms.api.pages.createCommentThread({
           body: {
             targetType: 'mergeRequest',
-            mergeRequestId: mr.mergeRequestId,
+            mergeRequestId: mr.mergeRequest.id,
             body: 'Top-level comment',
           },
         });
@@ -216,7 +216,7 @@ describe('comments', () => {
         },
       });
 
-      expect(reply.parentMessageId).toBe(firstMsg.id);
+      expect(reply.message.parentMessageId).toBe(firstMsg.id);
     });
 
     it('rejects reply to non-existent thread', async () => {
@@ -239,7 +239,7 @@ describe('comments', () => {
         await cms.api.pages.createCommentThread({
           body: {
             targetType: 'mergeRequest',
-            mergeRequestId: mr.mergeRequestId,
+            mergeRequestId: mr.mergeRequest.id,
             body: 'Thread 1',
           },
         });
@@ -275,7 +275,7 @@ describe('comments', () => {
       const { thread } = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Will be resolved',
         },
       });
@@ -291,8 +291,8 @@ describe('comments', () => {
         },
       });
 
-      expect(reply.body).toBe('Follow-up after resolve');
-      expect(reply.threadId).toBe(thread.id);
+      expect(reply.message.body).toBe('Follow-up after resolve');
+      expect(reply.message.threadId).toBe(thread.id);
     });
   });
 
@@ -307,7 +307,7 @@ describe('comments', () => {
       await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'MR comment',
         },
       });
@@ -321,11 +321,11 @@ describe('comments', () => {
       });
 
       const result = await cms.api.pages.listCommentThreads({
-        query: { mergeRequestId: mr.mergeRequestId },
+        query: { mergeRequestId: mr.mergeRequest.id },
       });
 
       expect(result.total).toBe(1);
-      expect(result.threads[0].mergeRequestId).toBe(mr.mergeRequestId);
+      expect(result.threads[0].mergeRequestId).toBe(mr.mergeRequest.id);
       expect(result.threads[0].messageCount).toBeGreaterThanOrEqual(1);
       expect(result.threads[0].firstMessage).toBeDefined();
     });
@@ -344,7 +344,7 @@ describe('comments', () => {
       await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'MR comment',
         },
       });
@@ -363,7 +363,7 @@ describe('comments', () => {
       const { thread } = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Will be resolved',
         },
       });
@@ -375,7 +375,7 @@ describe('comments', () => {
       await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Still open',
         },
       });
@@ -398,7 +398,7 @@ describe('comments', () => {
         await cms.api.pages.createCommentThread({
           body: {
             targetType: 'mergeRequest',
-            mergeRequestId: mr.mergeRequestId,
+            mergeRequestId: mr.mergeRequest.id,
             body: `Comment ${i}`,
           },
         });
@@ -430,7 +430,7 @@ describe('comments', () => {
       const { thread } = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'First comment',
         },
       });
@@ -480,7 +480,7 @@ describe('comments', () => {
       const { thread } = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Please fix this',
         },
       });
@@ -493,9 +493,9 @@ describe('comments', () => {
       expect(result.thread.resolvedBy).toBe(USER_1);
       expect(result.thread.resolvedAt).toBeDefined();
 
-      expect(result.systemMessage.messageType).toBe('system');
-      expect(result.systemMessage.systemType).toBe('threadResolved');
-      expect(result.systemMessage.meta).toEqual({ by: USER_1 });
+      expect(result.message.messageType).toBe('system');
+      expect(result.message.systemType).toBe('threadResolved');
+      expect(result.message.meta).toEqual({ by: USER_1 });
     });
 
     it('rejects resolving an already-resolved thread', async () => {
@@ -504,7 +504,7 @@ describe('comments', () => {
       const { thread } = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Fix this',
         },
       });
@@ -532,7 +532,7 @@ describe('comments', () => {
       const { thread } = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Fix this',
         },
       });
@@ -549,8 +549,8 @@ describe('comments', () => {
       expect(result.thread.resolvedBy).toBeNull();
       expect(result.thread.resolvedAt).toBeNull();
 
-      expect(result.systemMessage.messageType).toBe('system');
-      expect(result.systemMessage.systemType).toBe('threadReopened');
+      expect(result.message.messageType).toBe('system');
+      expect(result.message.systemType).toBe('threadReopened');
     });
 
     it('rejects reopening a thread that is not resolved', async () => {
@@ -559,7 +559,7 @@ describe('comments', () => {
       const { thread } = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Still open',
         },
       });
@@ -583,7 +583,7 @@ describe('comments', () => {
       const { thread, message } = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Original text',
         },
       });
@@ -595,8 +595,8 @@ describe('comments', () => {
         },
       });
 
-      expect(updated.body).toBe('Updated text');
-      expect(updated.editedAt).toBeDefined();
+      expect(updated.message.body).toBe('Updated text');
+      expect(updated.message.editedAt).toBeDefined();
     });
 
     it('rejects updating a non-existent message', async () => {
@@ -631,7 +631,7 @@ describe('comments', () => {
 
       const mr = await cms1.api.pages.createMergeRequest({
         body: {
-          sourceBranchId: draft.branchId,
+          sourceBranchId: draft.branch.id,
           targetBranchId: root.branchId,
           title: 'Test MR',
           createdBy: USER_1,
@@ -641,7 +641,7 @@ describe('comments', () => {
       const { message } = await cms1.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'User 1 comment',
         },
       });
@@ -668,7 +668,7 @@ describe('comments', () => {
       const { thread, message } = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Will be deleted',
         },
       });
@@ -677,7 +677,7 @@ describe('comments', () => {
         body: { messageId: message.id },
       });
 
-      expect(deleted.deletedAt).toBeDefined();
+      expect(deleted.message.deletedAt).toBeDefined();
 
       const threadDetail = await cms.api.pages.getCommentThread({
         query: { threadId: thread.id },
@@ -703,7 +703,7 @@ describe('comments', () => {
       const { message } = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Double delete',
         },
       });
@@ -738,7 +738,7 @@ describe('comments', () => {
 
       const mr = await cms1.api.pages.createMergeRequest({
         body: {
-          sourceBranchId: draft.branchId,
+          sourceBranchId: draft.branch.id,
           targetBranchId: root.branchId,
           title: 'Test MR',
           createdBy: USER_1,
@@ -748,7 +748,7 @@ describe('comments', () => {
       const { message } = await cms1.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'User 1 comment',
         },
       });
@@ -772,7 +772,7 @@ describe('comments', () => {
       const { thread } = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Pages thread',
         },
       });
@@ -800,7 +800,7 @@ describe('comments', () => {
       const { thread } = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Please review this section',
         },
       });
@@ -855,7 +855,7 @@ describe('comments', () => {
       const result = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Hey @user-2 and @user-3, check this out',
           mentions: [USER_2, USER_3],
         },
@@ -872,7 +872,7 @@ describe('comments', () => {
       const { thread } = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Initial comment',
         },
       });
@@ -885,7 +885,7 @@ describe('comments', () => {
         },
       });
 
-      expect(reply.mentions).toEqual([USER_2]);
+      expect(reply.message.mentions).toEqual([USER_2]);
     });
 
     it('excludes self-mentions', async () => {
@@ -894,7 +894,7 @@ describe('comments', () => {
       const result = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Mentioning myself @user-1 and @user-2',
           mentions: [USER_1, USER_2],
         },
@@ -909,7 +909,7 @@ describe('comments', () => {
       const result = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: '@user-2 @user-2 @user-2',
           mentions: [USER_2, USER_2, USER_2],
         },
@@ -924,7 +924,7 @@ describe('comments', () => {
       const { message } = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'cc @user-2',
           mentions: [USER_2],
         },
@@ -940,7 +940,7 @@ describe('comments', () => {
         },
       });
 
-      expect(updated.mentions).toEqual([USER_3]);
+      expect(updated.message.mentions).toEqual([USER_3]);
     });
 
     it('getCommentThread includes mentions on each message', async () => {
@@ -949,7 +949,7 @@ describe('comments', () => {
       const { thread } = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Hey @user-2',
           mentions: [USER_2],
         },
@@ -977,7 +977,7 @@ describe('comments', () => {
       await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Mentions user-2',
           mentions: [USER_2],
         },
@@ -986,7 +986,7 @@ describe('comments', () => {
       await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Mentions user-3',
           mentions: [USER_3],
         },
@@ -995,7 +995,7 @@ describe('comments', () => {
       await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'No mentions',
         },
       });
@@ -1005,7 +1005,12 @@ describe('comments', () => {
       });
 
       expect(result.total).toBe(1);
-      expect(result.threads[0].firstMessage?.mentions).toContain(USER_2);
+      // firstMessage's inferred type omits `mentions` (a pre-existing gap in the
+      // listCommentThreads return type); the field is populated at runtime.
+      expect(
+        (result.threads[0].firstMessage as { mentions?: string[] } | undefined)
+          ?.mentions,
+      ).toContain(USER_2);
     });
 
     it('listMentions returns mentions for a user', async () => {
@@ -1014,7 +1019,7 @@ describe('comments', () => {
       await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Hey @user-2',
           mentions: [USER_2],
         },
@@ -1023,7 +1028,7 @@ describe('comments', () => {
       const { thread: thread2 } = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Another thread',
         },
       });
@@ -1056,7 +1061,7 @@ describe('comments', () => {
       const { thread: t1 } = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Thread 1 @user-2',
           mentions: [USER_2],
         },
@@ -1065,7 +1070,7 @@ describe('comments', () => {
       await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Thread 2 @user-2',
           mentions: [USER_2],
         },
@@ -1084,7 +1089,7 @@ describe('comments', () => {
       const { thread } = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Thread with mentions',
         },
       });
@@ -1119,7 +1124,7 @@ describe('comments', () => {
       const result = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'No mentions here',
         },
       });
@@ -1140,7 +1145,7 @@ describe('comments', () => {
       const created = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'To be deleted',
         },
       });
@@ -1156,7 +1161,7 @@ describe('comments', () => {
       ).rejects.toThrow(/not found/i);
 
       const list = await cms.api.pages.listCommentThreads({
-        query: { mergeRequestId: mr.mergeRequestId },
+        query: { mergeRequestId: mr.mergeRequest.id },
       });
       expect(list.threads.map((t: any) => t.id)).not.toContain(threadId);
     });

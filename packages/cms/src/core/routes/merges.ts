@@ -10,6 +10,7 @@ import type {
 } from '../types';
 import type { DrizzleInstance } from '../types/drizzle';
 
+import { fetchCommitSummary } from '../blocks/commit-writer';
 import {
   loadBlocksAtCommit,
   type ReconstructedBlock,
@@ -366,15 +367,15 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
     getDiff: createCMSEndpoint(
       `/${collectionName}/getDiff`,
       {
-        method: 'POST',
-        body: z.object({
+        method: 'GET',
+        query: z.object({
           sourceBranchId: z.string(),
           targetBranchId: z.string(),
         }),
         metadata: cmsMeta(
           {
             $Infer: {
-              body: {} as { sourceBranchId: string; targetBranchId: string },
+              query: {} as { sourceBranchId: string; targetBranchId: string },
             },
           },
           {
@@ -386,7 +387,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
         ),
       },
       async (ctx) => {
-        const { sourceBranchId, targetBranchId } = ctx.body;
+        const { sourceBranchId, targetBranchId } = ctx.query;
 
         const { sourceBranch, targetBranch } = await loadBranchPair(db, {
           sourceBranchId,
@@ -426,15 +427,15 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
     checkConflicts: createCMSEndpoint(
       `/${collectionName}/checkConflicts`,
       {
-        method: 'POST',
-        body: z.object({
+        method: 'GET',
+        query: z.object({
           sourceBranchId: z.string(),
           targetBranchId: z.string(),
         }),
         metadata: cmsMeta(
           {
             $Infer: {
-              body: {} as { sourceBranchId: string; targetBranchId: string },
+              query: {} as { sourceBranchId: string; targetBranchId: string },
             },
           },
           {
@@ -446,7 +447,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
         ),
       },
       async (ctx) => {
-        const { sourceBranchId, targetBranchId } = ctx.body;
+        const { sourceBranchId, targetBranchId } = ctx.query;
 
         const { sourceBranch, targetBranch } = await loadBranchPair(db, {
           sourceBranchId,
@@ -483,7 +484,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * @param title - A brief title for the merge request.
      * @param description - Optional longer description.
      * @param createdBy - Optional user id; defaults to ctx.context.userId.
-     * @returns Merge request id, conflicts array, and hasConflicts flag.
+     * @returns The created merge request row, conflicts array, and hasConflicts flag.
      * @throws MERGE_REQUEST_ALREADY_EXISTS if an open MR for this pair exists.
      * @throws BRANCH_NOT_FOUND if either branch does not exist.
      * @throws BRANCHES_NOT_SAME_ROOT if branches have different root ids.
@@ -623,7 +624,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
             }
 
             return {
-              mergeRequestId: mr.id,
+              mergeRequest: mr,
               hasConflicts: conflicts.length > 0,
               conflicts,
             };
@@ -876,7 +877,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * @param mergeRequestId - The merge request id.
      * @param title - New title (optional).
      * @param description - New description (optional).
-     * @returns The updated merge request row.
+     * @returns The updated merge request row, wrapped as { mergeRequest }.
      * @throws MERGE_REQUEST_NOT_FOUND if the merge request does not exist.
      * @throws MERGE_REQUEST_NOT_OPEN if the merge request is already merged or closed.
      * @example await cmsClient.pages.updateMergeRequest({ mergeRequestId: 'mr-id', title: 'Updated title' })
@@ -918,7 +919,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
         });
 
         if (title === undefined && description === undefined) {
-          return mr;
+          return { mergeRequest: mr };
         }
 
         const updates: Record<string, unknown> = { updatedAt: new Date() };
@@ -931,7 +932,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
           .where(eq(mergeRequests.id, mergeRequestId))
           .returning();
 
-        return updated;
+        return { mergeRequest: updated };
       },
     ),
 
@@ -941,7 +942,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      *
      * @param mergeRequestId - The merge request id.
      * @param reason - Optional reason for closing.
-     * @returns The updated merge request row.
+     * @returns The updated merge request row, wrapped as { mergeRequest }.
      * @throws MERGE_REQUEST_NOT_FOUND if the merge request does not exist.
      * @throws MERGE_REQUEST_NOT_OPEN if the merge request is not in open status.
      * @example await cmsClient.pages.closeMergeRequest({ mergeRequestId: 'mr-id', reason: 'No longer needed' })
@@ -1005,7 +1006,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
               });
             }
 
-            return updated;
+            return { mergeRequest: updated };
           })
           .then((result) => {
             flushNotifications(cmsCtx.notificationService, pending);
@@ -1019,7 +1020,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * Fails if the merge request is already merged or if an open MR for the same branch pair already exists.
      *
      * @param mergeRequestId - The merge request id.
-     * @returns The updated merge request row.
+     * @returns The updated merge request row, wrapped as { mergeRequest }.
      * @throws MERGE_REQUEST_NOT_FOUND if the merge request does not exist.
      * @throws MERGE_REQUEST_ALREADY_MERGED if the merge request was already merged.
      * @throws MERGE_REQUEST_NOT_CLOSED if the merge request is still open.
@@ -1116,7 +1117,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
               });
             }
 
-            return updated;
+            return { mergeRequest: updated };
           })
           .then((result) => {
             flushNotifications(cmsCtx.notificationService, pending);
@@ -1139,7 +1140,9 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * @param message - Optional custom commit message (auto-generated if omitted).
      * @param noFastForward - Force a merge commit even when a fast-forward is possible; overrides the
      *   configured `mergeStrategy`. `false` forces a fast-forward.
-     * @returns The merge commit id, fastForward flag, target branch id, and root id.
+     * @returns The commit envelope ({ id, message, createdAt, createdBy }) — the merge commit on a
+     *   non-fast-forward, or the source head that became the new target head on a fast-forward —
+     *   plus the fastForward flag, target branch id, and root id.
      * @throws MERGE_REQUEST_NOT_FOUND if the merge request does not exist.
      * @throws MERGE_REQUEST_NOT_OPEN if the merge request is not open.
      * @throws BRANCH_NOT_FOUND if either branch no longer exists.
@@ -1303,8 +1306,15 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
                 });
               }
 
+              // No new commit is written on a fast-forward — the source head
+              // simply becomes the new target head. Report that commit.
+              const commit = (await fetchCommitSummary(
+                tx,
+                liveSourceCommitId,
+              ))!;
+
               return {
-                mergeCommitId: null,
+                commit,
                 fastForward: true,
                 rootId: mr.rootId,
                 targetBranchId: mr.targetBranchId,
@@ -1470,7 +1480,12 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
             }
 
             return {
-              mergeCommitId: mergeCommit.id,
+              commit: {
+                id: mergeCommit.id,
+                message: mergeCommit.message,
+                createdAt: mergeCommit.createdAt,
+                createdBy: mergeCommit.createdBy,
+              },
               fastForward: false,
               rootId: mr.rootId,
               targetBranchId: mr.targetBranchId,

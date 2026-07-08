@@ -113,11 +113,11 @@ async function rootWithVariant(
       sourceBranchId: root.branchId,
     },
   });
-  await publish(cms, collection, root.rootId, variant.branchId);
+  await publish(cms, collection, root.rootId, variant.branch.id);
   return {
     rootId: root.rootId,
     mainBranchId: root.branchId,
-    variantBranchId: variant.branchId,
+    variantBranchId: variant.branch.id,
   };
 }
 

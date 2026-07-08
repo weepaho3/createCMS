@@ -1,6 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 
 import type { CollectionWithName } from '../types';
+import type { CommitSummary } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
 
 import { newId } from '../../utils/nanoid';
@@ -61,7 +62,11 @@ export async function writeCommit(
     createdBy: string | null | undefined;
     changed: ChangedVersion[];
   },
-): Promise<{ commitId: string; versionIdByBlockId: Map<string, string> }> {
+): Promise<{
+  commitId: string;
+  commit: CommitSummary;
+  versionIdByBlockId: Map<string, string>;
+}> {
   // Record the branch this commit is created on (history attribution). The
   // branch is the one whose head this commit advances; look up its name for the
   // deletion-proof snapshot.
@@ -152,7 +157,16 @@ export async function writeCommit(
     .set({ headCommitId: newCommit.id, updatedAt: new Date() })
     .where(eq(branches.id, args.branchId));
 
-  return { commitId: newCommit.id, versionIdByBlockId };
+  return {
+    commitId: newCommit.id,
+    commit: {
+      id: newCommit.id,
+      message: newCommit.message,
+      createdAt: newCommit.createdAt,
+      createdBy: newCommit.createdBy,
+    },
+    versionIdByBlockId,
+  };
 }
 
 /**
@@ -176,6 +190,7 @@ export async function createInitialCommit(
   },
 ): Promise<{
   commitId: string;
+  commit: CommitSummary;
   branchId: string;
   versionIdByBlockId: Map<string, string>;
 }> {
@@ -251,5 +266,36 @@ export async function createInitialCommit(
     );
   }
 
-  return { commitId: commit.id, branchId: branch.id, versionIdByBlockId };
+  return {
+    commitId: commit.id,
+    commit: {
+      id: commit.id,
+      message: commit.message,
+      createdAt: commit.createdAt,
+      createdBy: commit.createdBy,
+    },
+    branchId: branch.id,
+    versionIdByBlockId,
+  };
+}
+
+/**
+ * Load a commit's identifying metadata by id, for `{ commit }` responses where
+ * no new commit is written (a no-op batch save, or a fast-forward merge that
+ * only moves the target head). Returns `null` if the commit is gone.
+ */
+export async function fetchCommitSummary(
+  tx: DrizzleInstance,
+  commitId: string,
+): Promise<CommitSummary | null> {
+  const [row] = await tx
+    .select({
+      id: commits.id,
+      message: commits.message,
+      createdAt: commits.createdAt,
+      createdBy: commits.createdBy,
+    })
+    .from(commits)
+    .where(eq(commits.id, commitId));
+  return row ?? null;
 }

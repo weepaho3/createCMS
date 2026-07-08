@@ -21,9 +21,9 @@ describe('listMergeRequests — commentCount excludes soft-deleted threads', () 
         sourceBranchId: root.branchId,
       },
     });
-    const { mergeRequestId } = await cms.api.pages.createMergeRequest({
+    const { mergeRequest } = await cms.api.pages.createMergeRequest({
       body: {
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         title: 'MR',
         createdBy: 'tester',
@@ -31,15 +31,15 @@ describe('listMergeRequests — commentCount excludes soft-deleted threads', () 
     });
 
     const t1 = await cms.api.pages.createCommentThread({
-      body: { targetType: 'mergeRequest', mergeRequestId, body: 'first' },
+      body: { targetType: 'mergeRequest', mergeRequestId: mergeRequest.id, body: 'first' },
     });
     await cms.api.pages.createCommentThread({
-      body: { targetType: 'mergeRequest', mergeRequestId, body: 'second' },
+      body: { targetType: 'mergeRequest', mergeRequestId: mergeRequest.id, body: 'second' },
     });
 
     const countFor = async () =>
       (await cms.api.pages.listMergeRequests()).mergeRequests.find(
-        (m) => m.id === mergeRequestId,
+        (m) => m.id === mergeRequest.id,
       )?.commentCount;
 
     expect(await countFor()).toBe(2);

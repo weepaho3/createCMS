@@ -645,6 +645,19 @@ export type InferBlockTreeNode<
     };
 
 /** A single row returned by `listRoots`, typed by the root properties. */
+/**
+ * The identifying metadata of a single commit. Every commit-producing mutation
+ * (`updateBlocks`, `moveBlock`, `deleteBlock`, `updateRoot`, `revertBranch`,
+ * `executeMerge`, …) returns this as `{ commit }` so the caller has the new
+ * head's id, message, author, and timestamp without a follow-up fetch.
+ */
+export type CommitSummary = {
+  id: string;
+  message: string | null;
+  createdAt: Date;
+  createdBy: string | null;
+};
+
 export type RootListItem<TRootProps extends Record<string, BlockProperty>> = {
   rootId: string;
   createdAt: Date;

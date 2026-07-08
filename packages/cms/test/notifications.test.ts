@@ -61,7 +61,7 @@ async function setupMergeRequestContext(cms: CMS, createdBy: string) {
   await cms.api.pages.createBlock({
     body: {
       rootId: root.rootId,
-      branchId: draft.branchId,
+      branchId: draft.branch.id,
       parentBlockId: root.rootId,
       type: 'paragraph',
       properties: { text: 'Draft content' },
@@ -70,7 +70,7 @@ async function setupMergeRequestContext(cms: CMS, createdBy: string) {
 
   const mr = await cms.api.pages.createMergeRequest({
     body: {
-      sourceBranchId: draft.branchId,
+      sourceBranchId: draft.branch.id,
       targetBranchId: root.branchId,
       title: 'Test MR',
       createdBy,
@@ -767,7 +767,7 @@ describe('notification triggers', () => {
       await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Hey @user-2 check this!',
           mentions: [USER_2],
         },
@@ -791,7 +791,7 @@ describe('notification triggers', () => {
       const thread = await cms1.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Original thread',
         },
       });
@@ -829,7 +829,7 @@ describe('notification triggers', () => {
       const thread = await cms1.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Thread to resolve',
         },
       });
@@ -863,7 +863,7 @@ describe('notification triggers', () => {
       const thread = await cms1.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           body: 'Thread to reopen',
         },
       });
@@ -909,7 +909,7 @@ describe('notification triggers', () => {
 
       await cms.api.pages.requestApproval({
         body: {
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           requestedBy: USER_1,
           requestedReviewers: [USER_2, USER_3],
           message: 'Please review',
@@ -948,7 +948,7 @@ describe('notification triggers', () => {
 
       const approval = await cms.api.pages.requestApproval({
         body: {
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           requestedBy: USER_1,
           requestedReviewers: [USER_2],
           message: 'Please review',
@@ -986,7 +986,7 @@ describe('notification triggers', () => {
 
       const approval = await cms.api.pages.requestApproval({
         body: {
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           requestedBy: USER_1,
           requestedReviewers: [USER_2],
           message: 'Please review',
@@ -1041,7 +1041,7 @@ describe('notification triggers', () => {
       await cms2.api.pages.createBlock({
         body: {
           rootId: root.rootId,
-          branchId: draft.branchId,
+          branchId: draft.branch.id,
           parentBlockId: root.rootId,
           type: 'paragraph',
           properties: { text: 'New content' },
@@ -1050,7 +1050,7 @@ describe('notification triggers', () => {
 
       await cms2.api.pages.createMergeRequest({
         body: {
-          sourceBranchId: draft.branchId,
+          sourceBranchId: draft.branch.id,
           targetBranchId: root.branchId,
           title: 'Test MR',
           createdBy: USER_2,
@@ -1077,7 +1077,7 @@ describe('notification triggers', () => {
 
       const { mr } = await setupMergeRequestContext(cms1, USER_1);
 
-      await requestAndApproveMerge(cms1, mr.mergeRequestId);
+      await requestAndApproveMerge(cms1, mr.mergeRequest.id);
 
       received.length = 0;
 
@@ -1089,7 +1089,7 @@ describe('notification triggers', () => {
 
       await cms2.api.pages.executeMerge({
         body: {
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           mergedBy: USER_2,
         },
       });
@@ -1129,7 +1129,7 @@ describe('notification triggers', () => {
       await cms1.api.pages.createBlock({
         body: {
           rootId: root.rootId,
-          branchId: branch.branchId,
+          branchId: branch.branch.id,
           parentBlockId: root.rootId,
           type: 'paragraph',
           properties: { text: 'Publishable content' },
@@ -1147,7 +1147,7 @@ describe('notification triggers', () => {
       await cms2.api.pages.publishBranch({
         body: {
           rootId: root.rootId,
-          branchId: branch.branchId,
+          branchId: branch.branch.id,
           publishedBy: USER_2,
         },
       });
@@ -1192,13 +1192,13 @@ describe('notification triggers', () => {
 
       const { mr } = await setupMergeRequestContext(cms, USER_1);
 
-      await requestAndApproveMerge(cms, mr.mergeRequestId);
+      await requestAndApproveMerge(cms, mr.mergeRequest.id);
 
       received.length = 0;
 
       await cms.api.pages.executeMerge({
         body: {
-          mergeRequestId: mr.mergeRequestId,
+          mergeRequestId: mr.mergeRequest.id,
           mergedBy: USER_1,
         },
       });
@@ -1237,7 +1237,7 @@ describe('notification triggers', () => {
       await cms.api.pages.createBlock({
         body: {
           rootId: root.rootId,
-          branchId: branch.branchId,
+          branchId: branch.branch.id,
           parentBlockId: root.rootId,
           type: 'paragraph',
           properties: { text: 'Content' },
@@ -1249,7 +1249,7 @@ describe('notification triggers', () => {
       await cms.api.pages.publishBranch({
         body: {
           rootId: root.rootId,
-          branchId: branch.branchId,
+          branchId: branch.branch.id,
           publishedBy: USER_1,
         },
       });

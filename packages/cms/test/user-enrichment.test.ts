@@ -388,7 +388,7 @@ describe('withUser integration', () => {
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'New content' },
@@ -397,7 +397,7 @@ describe('withUser integration', () => {
 
     await cms.api.pages.createMergeRequest({
       body: {
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         title: 'Test MR',
         createdBy: USER_ID,
@@ -439,7 +439,7 @@ describe('withUser integration', () => {
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: draft.branchId,
+        branchId: draft.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'Some content' },
@@ -448,7 +448,7 @@ describe('withUser integration', () => {
 
     await cms.api.pages.createMergeRequest({
       body: {
-        sourceBranchId: draft.branchId,
+        sourceBranchId: draft.branch.id,
         targetBranchId: root.branchId,
         title: 'Test MR',
         createdBy: USER_ID,

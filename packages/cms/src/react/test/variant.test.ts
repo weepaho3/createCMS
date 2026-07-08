@@ -119,15 +119,15 @@ async function twoVariantRoot(
   await cms.api[collection].updateRoot({
     body: {
       rootId: root.rootId,
-      branchId: variant.branchId,
+      branchId: variant.branch.id,
       properties: { [prop]: variantVal },
     },
   });
-  await publish(cms, collection, root.rootId, variant.branchId);
+  await publish(cms, collection, root.rootId, variant.branch.id);
   return {
     rootId: root.rootId,
     mainBranchId: root.branchId,
-    variantBranchId: variant.branchId,
+    variantBranchId: variant.branch.id,
   };
 }
 

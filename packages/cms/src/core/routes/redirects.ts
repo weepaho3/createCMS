@@ -103,6 +103,36 @@ async function assertSourceUnique(
 }
 
 /**
+ * Enrich a redirect row with the resolved CURRENT path for page references.
+ * A 'page' source/target stores a rootId whose slug can move over time, so the
+ * live path is resolved on read; a 'path' endpoint is already its own path.
+ * Shared by listRedirects and the create/update returns so they carry identical
+ * fields.
+ */
+async function enrichRedirect(
+  db: DrizzleInstance,
+  slugCfg: EnabledSlugConfig,
+  r: typeof redirects.$inferSelect,
+): Promise<
+  typeof redirects.$inferSelect & {
+    sourceCurrentPath: string | null;
+    targetCurrentPath: string | null;
+  }
+> {
+  return {
+    ...r,
+    sourceCurrentPath:
+      r.sourceType === 'page' && r.sourceRootId
+        ? await resolveRootCurrentPath(db, slugCfg, r.sourceRootId)
+        : r.sourcePath,
+    targetCurrentPath:
+      r.targetType === 'page' && r.targetRootId
+        ? await resolveRootCurrentPath(db, slugCfg, r.targetRootId)
+        : r.targetPath,
+  };
+}
+
+/**
  * Redirect read path + management. `resolveRedirect` is the consumer's public
  * routing call; the rest is the admin CRUD that backs the UI. See
  * REDIRECTS_DESIGN.md.
@@ -166,7 +196,7 @@ export function createRedirectEndpoints<TDef extends CollectionWithName>(
      * @param targetRootId The root id of the target page (required if targetType is 'page').
      * @param targetPath The target path or URL (required if targetType is 'path').
      * @param statusCode HTTP status code for the redirect (301, 302, 307, or 308; defaults to 301).
-     * @returns The created redirect object.
+     * @returns An object with a `redirect` field: the created redirect enriched with resolved `sourceCurrentPath`/`targetCurrentPath` (matching listRedirects rows).
      * @throws SLUG_NOT_ENABLED if slugs are not enabled for this collection.
      * @throws REDIRECT_INVALID if a source page root does not exist or a required field is missing.
      * @throws REDIRECT_SOURCE_EXISTS if an active redirect with the same source already exists.
@@ -250,7 +280,7 @@ export function createRedirectEndpoints<TDef extends CollectionWithName>(
           .from(redirects)
           .where(eq(redirects.id, inserted.id))
           .limit(1);
-        return { redirect: created };
+        return { redirect: await enrichRedirect(db, slugCfg, created) };
       },
     ),
 
@@ -265,7 +295,7 @@ export function createRedirectEndpoints<TDef extends CollectionWithName>(
      * @param targetRootId The root id of the target page (required if targetType is 'page').
      * @param targetPath The target path or URL (required if targetType is 'path').
      * @param statusCode HTTP status code for the redirect (301, 302, 307, or 308; defaults to 301).
-     * @returns The updated redirect object.
+     * @returns An object with a `redirect` field: the updated redirect enriched with resolved `sourceCurrentPath`/`targetCurrentPath` (matching listRedirects rows).
      * @throws SLUG_NOT_ENABLED if slugs are not enabled for this collection.
      * @throws REDIRECT_NOT_FOUND if the redirect does not exist or is not in scope.
      * @throws REDIRECT_INVALID if a source page root does not exist or a required field is missing.
@@ -359,7 +389,7 @@ export function createRedirectEndpoints<TDef extends CollectionWithName>(
           })
           .where(and(eq(redirects.id, b.redirectId), redirectScope?.where))
           .returning();
-        return { redirect: updated };
+        return { redirect: await enrichRedirect(db, slugCfg, updated) };
       },
     ),
 
@@ -453,17 +483,7 @@ export function createRedirectEndpoints<TDef extends CollectionWithName>(
 
         // Resolve page references to their CURRENT path for display.
         const items = await Promise.all(
-          rows.map(async (r) => ({
-            ...r,
-            sourceCurrentPath:
-              r.sourceType === 'page' && r.sourceRootId
-                ? await resolveRootCurrentPath(db, slugCfg, r.sourceRootId)
-                : r.sourcePath,
-            targetCurrentPath:
-              r.targetType === 'page' && r.targetRootId
-                ? await resolveRootCurrentPath(db, slugCfg, r.targetRootId)
-                : r.targetPath,
-          })),
+          rows.map((r) => enrichRedirect(db, slugCfg, r)),
         );
 
         return {

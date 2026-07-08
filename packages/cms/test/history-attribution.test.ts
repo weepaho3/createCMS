@@ -10,7 +10,7 @@ async function historyByMessage(
 ): Promise<Map<string, string>> {
   const hist = await cms.api.pages.getRootHistory({ query: { rootId } });
   return new Map(
-    (hist.data as unknown as HistoryItem[]).map((d) => [d.message, d.branch]),
+    (hist.commits as unknown as HistoryItem[]).map((d) => [d.message, d.branch]),
   );
 }
 
@@ -45,7 +45,7 @@ describe('getRootHistory — branch attribution is stored, not heuristic', () =>
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: feat.branchId,
+        branchId: feat.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'f' },
@@ -85,7 +85,7 @@ describe('getRootHistory — branch attribution is stored, not heuristic', () =>
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: feat.branchId,
+        branchId: feat.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'f' },
@@ -94,7 +94,7 @@ describe('getRootHistory — branch attribution is stored, not heuristic', () =>
     });
 
     await cms.api.pages.renameBranch({
-      body: { branchId: feat.branchId, newName: 'feat-renamed' },
+      body: { branchId: feat.branch.id, newName: 'feat-renamed' },
     });
 
     const branchOf = await historyByMessage(cms, root.rootId);
@@ -116,7 +116,7 @@ describe('getRootHistory — branch attribution is stored, not heuristic', () =>
     await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
-        branchId: feat.branchId,
+        branchId: feat.branch.id,
         parentBlockId: root.rootId,
         type: 'paragraph',
         properties: { text: 'f' },
@@ -124,7 +124,7 @@ describe('getRootHistory — branch attribution is stored, not heuristic', () =>
       },
     });
 
-    await cms.api.pages.deleteBranch({ body: { branchId: feat.branchId } });
+    await cms.api.pages.deleteBranch({ body: { branchId: feat.branch.id } });
 
     // The branch row is gone (live join misses) → falls back to the snapshot.
     const branchOf = await historyByMessage(cms, root.rootId);

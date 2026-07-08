@@ -179,18 +179,18 @@ describe('A/B server fan-out (F2)', () => {
     await cms.api.reusableBlocks.updateRoot({
       body: {
         rootId: block.rootId,
-        branchId: variant.branchId,
+        branchId: variant.branch.id,
         properties: { label: 'Variant' },
       },
     });
-    await publish(cms, 'reusableBlocks', block.rootId, variant.branchId);
+    await publish(cms, 'reusableBlocks', block.rootId, variant.branch.id);
 
     const testId = await startTest(
       cms,
       'reusableBlocks',
       block.rootId,
       block.branchId,
-      variant.branchId,
+      variant.branch.id,
     );
 
     // A page that embeds the block.
@@ -229,7 +229,7 @@ describe('A/B server fan-out (F2)', () => {
     const other = ref.abTest.variants.find((v: any) => !v.isControl);
     expect(control.branchId).toBe(block.branchId);
     expect(control.properties.label).toBe('Control');
-    expect(other.branchId).toBe(variant.branchId);
+    expect(other.branchId).toBe(variant.branch.id);
     expect(other.properties.label).toBe('Variant');
   });
 
@@ -301,18 +301,18 @@ describe('A/B server fan-out (F2)', () => {
     await cms.api.reusableBlocks.updateRoot({
       body: {
         rootId: block.rootId,
-        branchId: variant.branchId,
+        branchId: variant.branch.id,
         properties: { label: 'B-variant' },
       },
     });
-    await publish(cms, 'reusableBlocks', block.rootId, variant.branchId);
+    await publish(cms, 'reusableBlocks', block.rootId, variant.branch.id);
 
     await startTest(
       cms,
       'reusableBlocks',
       block.rootId,
       block.branchId,
-      variant.branchId,
+      variant.branch.id,
     );
 
     const page = await cms.api.pages.createRoot({
@@ -370,17 +370,17 @@ describe('A/B server fan-out (F2)', () => {
     await cms.api.reusableBlocks.updateRoot({
       body: {
         rootId: block.rootId,
-        branchId: variant.branchId,
+        branchId: variant.branch.id,
         properties: { label: '{{promo}} variant' },
       },
     });
-    await publish(cms, 'reusableBlocks', block.rootId, variant.branchId);
+    await publish(cms, 'reusableBlocks', block.rootId, variant.branch.id);
     await startTest(
       cms,
       'reusableBlocks',
       block.rootId,
       block.branchId,
-      variant.branchId,
+      variant.branch.id,
     );
 
     const page = await cms.api.pages.createRoot({

@@ -452,8 +452,8 @@ describe('media.createSignedUpload', () => {
     expect(result.assets[0].signedUrl).toContain('X-Amz-');
     expect(result.assets[0].headers).toBeDefined();
     expect(result.assets[0].headers['Content-Type']).toBe('image/jpeg');
-    expect(result.expiresAt).toBeDefined();
-    expect(result.expiresAt).toBeGreaterThan(Date.now());
+    expect(result.expiresAt).toBeInstanceOf(Date);
+    expect(result.expiresAt.getTime()).toBeGreaterThan(Date.now());
   });
 
   it('creates asset records in the database with private status', async () => {

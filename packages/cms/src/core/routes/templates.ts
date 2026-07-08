@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, count, eq, ilike } from 'drizzle-orm';
 import * as z from 'zod';
 
 import type { CMSProcedureCtx } from '../types';
@@ -47,11 +47,14 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
 
   return {
     /**
-     * Lists all templates, optionally filtered by collection and blockType.
+     * Lists templates, optionally filtered by collection and blockType, with pagination and search.
      * @param collection - Filter templates by collection name.
      * @param blockType - Filter templates by block type.
-     * @returns The list of matching template records.
-     * @example await cmsClient.templates.listTemplates({ collection: 'pages', blockType: 'hero' })
+     * @param search - Optional case-insensitive substring match on the template string.
+     * @param limit - Optional page size.
+     * @param offset - Optional number of rows to skip.
+     * @returns A page of matching template records: { templates, total, hasMore }.
+     * @example await cmsClient.templates.listTemplates({ collection: 'pages', blockType: 'hero', limit: 20 })
      */
     listTemplates: createCMSEndpoint(
       '/templates/listTemplates',
@@ -61,6 +64,9 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
           .object({
             collection: z.string().optional(),
             blockType: z.string().optional(),
+            search: z.string().optional(),
+            limit: z.coerce.number().optional(),
+            offset: z.coerce.number().optional(),
           })
           .optional(),
         metadata: cmsMeta(
@@ -69,6 +75,9 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
               query: {} as {
                 collection?: string;
                 blockType?: string;
+                search?: string;
+                limit?: number;
+                offset?: number;
               },
             },
           },
@@ -76,27 +85,38 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
         ),
       },
       async (ctx) => {
-        const { collection, blockType } = ctx.query ?? {};
+        const { collection, blockType, search } = ctx.query ?? {};
+        const limit = ctx.query?.limit ?? 50;
+        const offset = ctx.query?.offset ?? 0;
         const scopeWhere = ctx.context.scope?.templates?.where;
 
         const conditions = [];
         if (collection) conditions.push(eq(templates.collection, collection));
         if (blockType) conditions.push(eq(templates.blockType, blockType));
+        if (search) conditions.push(ilike(templates.template, `%${search}%`));
         if (scopeWhere) conditions.push(scopeWhere);
 
-        const rows =
-          conditions.length > 0
-            ? await db
-                .select()
-                .from(templates)
-                .where(and(...conditions))
-                .orderBy(templates.collection, templates.blockType)
-            : await db
-                .select()
-                .from(templates)
-                .orderBy(templates.collection, templates.blockType);
+        const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-        return { templates: rows };
+        const [countResult] = await db
+          .select({ count: count() })
+          .from(templates)
+          .where(where);
+        const total = countResult?.count ?? 0;
+
+        const rows = await db
+          .select()
+          .from(templates)
+          .where(where)
+          .orderBy(templates.collection, templates.blockType)
+          .limit(limit)
+          .offset(offset);
+
+        return {
+          templates: rows,
+          total,
+          hasMore: offset + rows.length < total,
+        };
       },
     ),
 
@@ -305,7 +325,7 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
     /**
      * Deletes a template by ID.
      * @param id - The template ID.
-     * @returns An object with deleted: true.
+     * @returns The id of the deleted template: { templateId }.
      * @throws TEMPLATE_NOT_FOUND if the template does not exist.
      * @example await cmsClient.templates.deleteTemplate({ id: 'tpl_abc123' })
      */
@@ -330,7 +350,7 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureCtx) {
         await db
           .delete(templates)
           .where(and(eq(templates.id, ctx.body.id), scopeWhere));
-        return { deleted: true };
+        return { templateId: ctx.body.id };
       },
     ),
 

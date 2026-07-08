@@ -1393,7 +1393,7 @@ describe('reference resolution determinism (F0)', () => {
     await cms.api.reusableBlocks.createBlock({
       body: {
         rootId: reusable.rootId,
-        branchId: variant.branchId,
+        branchId: variant.branch.id,
         parentBlockId: reusable.rootId,
         type: 'emailForm',
         properties: { heading: 'Variant-only block' },
@@ -1401,7 +1401,7 @@ describe('reference resolution determinism (F0)', () => {
     });
     await publishBranch(cms.api.reusableBlocks, {
       rootId: reusable.rootId,
-      branchId: variant.branchId,
+      branchId: variant.branch.id,
     });
 
     // Embed it in a page and publish.

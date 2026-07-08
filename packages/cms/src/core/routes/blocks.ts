@@ -8,13 +8,14 @@ import type {
   InferCreateBlockInput,
   InferUpdateBlockInput,
   ListRootsResult,
-  RootSummary,
+  RootListItem,
 } from '../types';
 import type { ResolvedSlugConfig } from '../types/definitions';
 
 import { newId } from '../../utils/nanoid';
 import {
   createInitialCommit,
+  fetchCommitSummary,
   writeCommit,
   type ChangedVersion,
 } from '../blocks/commit-writer';
@@ -53,7 +54,7 @@ import {
   getReferenceUsageDetails,
   isReferencedByLiveContent,
 } from '../references';
-import { batchFetchRoots } from '../root/batch-fetch';
+import { batchFetchRootListItems } from '../root/batch-fetch';
 import {
   type ListRootsQuery,
   type RootInput,
@@ -259,7 +260,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           const rootProps =
             (ctx.body.properties as Record<string, unknown> | undefined) ?? {};
 
-          const { commitId, branchId } = await createInitialCommit(tx, def, {
+          const { commit, branchId } = await createInitialCommit(tx, def, {
             rootId: root.id,
             branchName: branchPolicy.defaultBranchName,
             message: commitMessage(message, 'Initial commit'),
@@ -274,10 +275,21 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             ],
           });
 
+          const path = slugCfg?.enabled
+            ? ((await resolveRootCurrentPath(
+                tx as any,
+                slugCfg,
+                root.id,
+                scope.roots,
+              )) ?? undefined)
+            : undefined;
+
           return {
+            commit,
             rootId: root.id,
             branchId,
-            commitId,
+            slug: slug ?? undefined,
+            path,
           };
         });
       },
@@ -680,7 +692,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           const insertPosition = position ?? newChildrenArray.length;
           newChildrenArray.splice(insertPosition, 0, childBlockId);
 
-          const { commitId } = await writeCommit(tx, def, {
+          const { commit } = await writeCommit(tx, def, {
             rootId,
             branchId,
             parentCommitId: oldHeadId,
@@ -703,7 +715,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           });
 
           return {
-            commitId,
+            commit,
             blockId: childBlockId,
           };
         });
@@ -1052,7 +1064,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             );
           }
 
-          const { commitId } = await writeCommit(tx, def, {
+          const { commit } = await writeCommit(tx, def, {
             rootId: input.rootId,
             branchId: input.branchId,
             parentCommitId: oldHeadId,
@@ -1064,7 +1076,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             changed,
           });
 
-          return { commitId };
+          return { commit };
         });
       },
     ),
@@ -1235,7 +1247,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             });
           }
 
-          const { commitId } = await writeCommit(tx, def, {
+          const { commit } = await writeCommit(tx, def, {
             rootId: input.rootId,
             branchId: input.branchId,
             parentCommitId: oldHeadId,
@@ -1247,7 +1259,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             changed,
           });
 
-          return { commitId };
+          return { commit, deletedBlockIds: [...deletedBlockIds] };
         });
       },
     ),
@@ -1263,7 +1275,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
      * @param targetSlug Slug for duplicated root (optional; validated for uniqueness).
      * @param targetIndex Index in parent's children for child duplication.
      * @param message Optional commit message.
-     * @returns Object with mode ('root' or 'child'), commitId, blockId, and (for root) rootId and branchId.
+     * @returns Object with `mode` ('root' or 'child') and `commit` ({ id, message, createdAt, createdBy }); child mode also returns `blockId`, root mode also returns `rootId`, `branchId`, `slug`, and `path`.
      * @throws MISSING_TARGET_PROPERTIES when root duplication but targetProperties not provided.
      * @throws BLOCK_NOT_FOUND when source blockId does not exist.
      * @throws BLOCK_ALREADY_DELETED when source block is marked deleted.
@@ -1439,7 +1451,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
               };
             });
 
-            const { commitId, branchId } = await createInitialCommit(tx, def, {
+            const { commit, branchId } = await createInitialCommit(tx, def, {
               rootId: newRoot.id,
               branchName: branchPolicy.defaultBranchName,
               message: commitMessage(input.message, 'Duplicated root'),
@@ -1447,11 +1459,22 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
               versions,
             });
 
+            const dupPath = slugCfg?.enabled
+              ? ((await resolveRootCurrentPath(
+                  tx as any,
+                  slugCfg,
+                  newRoot.id,
+                  ctx.context.scope.roots,
+                )) ?? undefined)
+              : undefined;
+
             return {
               mode: 'root' as const,
+              commit,
               rootId: newRoot.id,
               branchId,
-              commitId,
+              slug: dupSlug ?? undefined,
+              path: dupPath,
             };
           }
 
@@ -1501,7 +1524,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             },
           ];
 
-          const { commitId } = await writeCommit(tx, def, {
+          const { commit } = await writeCommit(tx, def, {
             rootId: input.rootId,
             branchId: input.branchId,
             parentCommitId: oldHeadId,
@@ -1515,7 +1538,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
 
           return {
             mode: 'child' as const,
-            commitId,
+            commit,
             blockId: topLevelCopyId,
           };
         });
@@ -1617,7 +1640,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             (properties ?? {}) as Record<string, unknown>,
           );
 
-          const { commitId } = await writeCommit(tx, def, {
+          const { commit } = await writeCommit(tx, def, {
             rootId,
             branchId,
             parentCommitId: oldHeadId,
@@ -1633,7 +1656,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             ],
           });
 
-          return { commitId };
+          return { commit };
         });
       },
     ),
@@ -1752,7 +1775,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             (properties ?? {}) as Record<string, unknown>,
           );
 
-          const { commitId } = await writeCommit(tx, def, {
+          const { commit } = await writeCommit(tx, def, {
             rootId,
             branchId,
             parentCommitId: oldHeadId,
@@ -1769,6 +1792,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           });
 
           // Update slug on roots table if provided
+          let redirectsCreated = 0;
           const slugCfg = def.slug as ResolvedSlugConfig | undefined;
           if (slugCfg?.enabled && newSlug !== undefined) {
             const normalized = slugCfg.normalize
@@ -1810,7 +1834,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
                 .set({ slug: normalized })
                 .where(eq(roots.id, rootId));
 
-              await recordSubtreeRedirects(
+              redirectsCreated = await recordSubtreeRedirects(
                 tx as any,
                 collectionName,
                 captured,
@@ -1819,7 +1843,27 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             }
           }
 
-          return { commitId };
+          // The canonical slug/path after the update (so the client needn't
+          // refetch to learn the server-normalized values).
+          const [updatedRoot] = await tx
+            .select({ slug: roots.slug })
+            .from(roots)
+            .where(eq(roots.id, rootId));
+          const path = slugCfg?.enabled
+            ? ((await resolveRootCurrentPath(
+                tx as any,
+                slugCfg,
+                rootId,
+                ctx.context.scope.roots,
+              )) ?? undefined)
+            : undefined;
+
+          return {
+            commit,
+            slug: updatedRoot?.slug ?? undefined,
+            path,
+            redirectsCreated,
+          };
         });
       },
     ),
@@ -1908,7 +1952,11 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             diff.updated.length === 0 &&
             diff.deleted.length === 0
           ) {
-            return { commitId: oldHeadId };
+            // No-op save: the head is unchanged. Return it with changed:false so
+            // the caller can distinguish "nothing to save" from a real commit
+            // (the payload is otherwise identical to a fresh commit).
+            const headCommit = await fetchCommitSummary(tx, oldHeadId);
+            return { commit: headCommit!, changed: false };
           }
 
           const changed: ChangedVersion[] = [
@@ -1939,7 +1987,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
               .filter((v): v is NonNullable<typeof v> => v !== null),
           ];
 
-          const { commitId } = await writeCommit(tx, def, {
+          const { commit } = await writeCommit(tx, def, {
             rootId,
             branchId,
             parentCommitId: oldHeadId,
@@ -1948,7 +1996,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             changed,
           });
 
-          return { commitId };
+          return { commit, changed: true };
         });
       },
     ),
@@ -2055,16 +2103,18 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             ? await captureSubtreePaths(tx as any, slugCfg, rootId)
             : [];
 
+          const effectiveSortOrder = sortOrder ?? 0;
           await tx
             .update(roots)
             .set({
               parentRootId: newParentRootId,
-              sortOrder: sortOrder ?? 0,
+              sortOrder: effectiveSortOrder,
             })
             .where(eq(roots.id, rootId));
 
+          let redirectsCreated = 0;
           if (reparented) {
-            await recordSubtreeRedirects(
+            redirectsCreated = await recordSubtreeRedirects(
               tx as any,
               collectionName,
               captured,
@@ -2072,7 +2122,22 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             );
           }
 
-          return { rootId, newParentRootId };
+          const path = slugCfg?.enabled
+            ? ((await resolveRootCurrentPath(
+                tx as any,
+                slugCfg,
+                rootId,
+                ctx.context.scope.roots,
+              )) ?? undefined)
+            : undefined;
+
+          return {
+            rootId,
+            newParentRootId,
+            path,
+            sortOrder: effectiveSortOrder,
+            redirectsCreated,
+          };
         });
       },
     ),
@@ -2116,15 +2181,15 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           ctx.context.scope.roots,
         );
 
-        const map = await batchFetchRoots(
-          db,
-          [rootId],
-          branchPolicy.defaultBranchName,
-        );
+        const map = await batchFetchRootListItems(db, [rootId], {
+          collectionName,
+          defaultBranchName: branchPolicy.defaultBranchName,
+          slugConfig: def.slug as ResolvedSlugConfig | undefined,
+        });
         const root = map.get(rootId);
         if (!root) throw new CMSError('ROOT_NOT_FOUND');
 
-        return root as unknown as RootSummary<TDef['root']['properties']>;
+        return root as unknown as RootListItem<TDef['root']['properties']>;
       },
     ),
 
@@ -2190,15 +2255,15 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
         if (matches.length > 1) throw new CMSError('AMBIGUOUS_SLUG');
 
         const rootId = matches[0].rootId;
-        const map = await batchFetchRoots(
-          db,
-          [rootId],
-          branchPolicy.defaultBranchName,
-        );
+        const map = await batchFetchRootListItems(db, [rootId], {
+          collectionName,
+          defaultBranchName: branchPolicy.defaultBranchName,
+          slugConfig: def.slug as ResolvedSlugConfig | undefined,
+        });
         const root = map.get(rootId);
         if (!root) throw new CMSError('ROOT_NOT_FOUND');
 
-        return root as unknown as RootSummary<TDef['root']['properties']>;
+        return root as unknown as RootListItem<TDef['root']['properties']>;
       },
     ),
 
@@ -2304,7 +2369,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             .set({ archivedAt: new Date() })
             .where(eq(roots.id, rootId));
 
-          await recordArchiveRedirect(
+          const redirectsCreated = await recordArchiveRedirect(
             tx as any,
             collectionName,
             oldPath,
@@ -2312,7 +2377,13 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             ctx.context.scope.redirects,
           );
 
-          return { rootId };
+          // `path` is the now-archived URL (for a "removed /x" confirmation);
+          // `redirectsCreated` is 1 when an archive redirect was written.
+          return {
+            rootId,
+            path: oldPath ?? undefined,
+            redirectsCreated,
+          };
         });
       },
     ),
@@ -2435,36 +2506,39 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
         // origin_branch_name), set at write time — deterministic, no heuristic.
         // Join the live branch for its current name (follows renames) and fall
         // back to the deletion-proof snapshot if the branch was removed.
-        const result = await db.execute(sql`
-          WITH total AS (
+        // Total from a separate count (not a per-row CROSS JOIN), so it stays
+        // correct — and `hasMore` with it — even when a page past the end returns
+        // zero rows.
+        const [countResult, result] = await Promise.all([
+          db.execute(sql`
             SELECT COUNT(*)::int AS cnt FROM cms.commits WHERE root_id = ${rootId}
-          )
-          SELECT
-            c.id,
-            c.parent_commit_id,
-            c.merge_source_commit_id,
-            c.message,
-            c.created_by,
-            c.created_at,
-            EXISTS (SELECT 1 FROM cms.publications p WHERE p.commit_id = c.id) AS is_published,
-            COALESCE(b.name, c.origin_branch_name) AS branch_name,
-            t.cnt AS total
-            ${enrich.select}
-          FROM cms.commits c
-          CROSS JOIN total t
-          LEFT JOIN cms.branches b ON b.id = c.branch_id
-          ${enrich.join}
-          WHERE c.root_id = ${rootId}
-          GROUP BY c.id, c.parent_commit_id, c.merge_source_commit_id,
-                   c.message, c.created_by, c.created_at,
-                   b.name, c.origin_branch_name, t.cnt
-                   ${enrich.groupBy}
-          ORDER BY c.created_at DESC
-          LIMIT ${limit} OFFSET ${offset}
-        `);
+          `),
+          db.execute(sql`
+            SELECT
+              c.id,
+              c.parent_commit_id,
+              c.merge_source_commit_id,
+              c.message,
+              c.created_by,
+              c.created_at,
+              EXISTS (SELECT 1 FROM cms.publications p WHERE p.commit_id = c.id) AS is_published,
+              COALESCE(b.name, c.origin_branch_name) AS branch_name
+              ${enrich.select}
+            FROM cms.commits c
+            LEFT JOIN cms.branches b ON b.id = c.branch_id
+            ${enrich.join}
+            WHERE c.root_id = ${rootId}
+            GROUP BY c.id, c.parent_commit_id, c.merge_source_commit_id,
+                     c.message, c.created_by, c.created_at,
+                     b.name, c.origin_branch_name
+                     ${enrich.groupBy}
+            ORDER BY c.created_at DESC
+            LIMIT ${limit} OFFSET ${offset}
+          `),
+        ]);
 
         const rows = result.rows as Array<Record<string, unknown>>;
-        const total = (rows[0]?.total as number) ?? 0;
+        const total = (countResult.rows[0] as { cnt: number })?.cnt ?? 0;
 
         const data = rows.map((r) => {
           const parents: string[] = [];
@@ -2482,7 +2556,9 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             id: r.id,
             message: r.message,
             createdBy: r.created_by,
-            createdAt: new Date(r.created_at as string).toISOString(),
+            // A Date, like every other list endpoint (listRoots, listBranches,
+            // comments, approvals) — not an ISO string (ret-15).
+            createdAt: new Date(r.created_at as string),
             branch: r.branch_name as string,
             parents,
             type,
@@ -2494,7 +2570,11 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           return item;
         });
 
-        return { data, total, offset, limit };
+        return {
+          commits: data,
+          total,
+          hasMore: offset + data.length < total,
+        };
       },
     ),
   };

@@ -196,7 +196,7 @@ export function createMediaUploadAtom(
           })),
           folderId: options?.folderId,
         },
-      })) as { assets: SignedAsset[]; expiresAt: number };
+      })) as { assets: SignedAsset[]; expiresAt: Date };
 
       if (signal.aborted) return;
 

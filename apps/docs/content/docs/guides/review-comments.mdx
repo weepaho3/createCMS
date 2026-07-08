@@ -13,7 +13,7 @@ When you open a [merge request](/docs/concepts/merges), reviewers can discuss it
 const { thread } = await cms.api.pages.createCommentThread({
   body: {
     targetType: 'mergeRequest',
-    mergeRequestId: mr.mergeRequestId,
+    mergeRequestId: mr.mergeRequest.id,
     body: 'The hero copy reads a bit long. @editor-2 thoughts?',
     mentions: ['editor-2'],
   },

@@ -92,7 +92,7 @@ export function createSearchHooks(defaultBranchName: string): CMSAfterHook[] {
     createSearchAfterHook(
       'createMergeRequest',
       (_input, result) =>
-        (result as { mergeRequestId?: string })?.mergeRequestId,
+        (result as { mergeRequest?: { id?: string } })?.mergeRequest?.id,
       indexMergeRequest,
     ),
     createSearchAfterHook(
@@ -114,7 +114,8 @@ export function createSearchHooks(defaultBranchName: string): CMSAfterHook[] {
     // ---- Comments ----
     createSearchAfterHook(
       'createCommentMessage',
-      (_input, result) => (result as { id?: string })?.id,
+      (_input, result) =>
+        (result as { message?: { id?: string } })?.message?.id,
       indexComment,
     ),
     createSearchAfterHook(

@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, count, eq, ilike } from 'drizzle-orm';
 import * as z from 'zod';
 
 import type { RevalidationRunner } from '../revalidation';
@@ -33,25 +33,65 @@ export function createVariableEndpoints(
 
   return {
     /**
-     * Retrieve all variables ordered by key.
-     * @returns An array of all variables with their keys, values, descriptions, and metadata.
+     * Retrieve variables ordered by key, paginated and optionally filtered by key search.
+     * @param limit Pagination limit (default 50, max 100).
+     * @param offset Pagination offset (default 0).
+     * @param search Optional case-insensitive substring match against the variable key.
+     * @returns Paginated result with variables array, total count, and hasMore flag.
      */
     listVariables: createCMSEndpoint(
       '/variables/listVariables',
       {
         method: 'GET',
+        query: z
+          .object({
+            limit: z.coerce.number().min(1).max(100).optional(),
+            offset: z.coerce.number().min(0).optional(),
+            search: z.string().optional(),
+          })
+          .optional(),
         metadata: cmsMeta(
-          { $Infer: { query: {} } },
+          {
+            $Infer: {
+              query: {} as
+                | {
+                    limit?: number;
+                    offset?: number;
+                    search?: string;
+                  }
+                | undefined,
+            },
+          },
           { ...META, operation: 'read' },
         ),
       },
       async (ctx) => {
+        const limit = ctx.query?.limit ?? 50;
+        const offset = ctx.query?.offset ?? 0;
+        const search = ctx.query?.search;
+
+        const conditions = [...cellConditions(ctx.context.scope)];
+        if (search) conditions.push(ilike(variables.key, `%${search}%`));
+
+        const [countResult] = await db
+          .select({ count: count() })
+          .from(variables)
+          .where(and(...conditions));
+        const total = countResult?.count ?? 0;
+
         const rows = await db
           .select()
           .from(variables)
-          .where(and(...cellConditions(ctx.context.scope)))
-          .orderBy(variables.key);
-        return { variables: rows };
+          .where(and(...conditions))
+          .orderBy(variables.key)
+          .limit(limit)
+          .offset(offset);
+
+        return {
+          variables: rows,
+          total,
+          hasMore: offset + rows.length < total,
+        };
       },
     ),
 
@@ -248,7 +288,7 @@ export function createVariableEndpoints(
     /**
      * Delete a variable; fails if it is currently referenced in live content or templates.
      * @param key The unique variable key to delete.
-     * @returns A boolean confirming deletion.
+     * @returns The id of the deleted variable.
      * @throws VARIABLE_NOT_FOUND if no variable exists with the given key.
      * @throws VARIABLE_IN_USE if the variable is referenced in any live content or template.
      * @example await cmsClient.variables.deleteVariable({ key: 'deprecated_var' })
@@ -281,7 +321,7 @@ export function createVariableEndpoints(
           .delete(variables)
           .where(and(eq(variables.key, key), ...cellConditions(scope)));
 
-        return { deleted: true };
+        return { variableId: existing.id };
       },
     ),
 

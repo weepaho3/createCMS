@@ -350,7 +350,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
      * @param body Comment text; non-empty required.
      * @param parentMessageId Optional parent message ID for nested replies.
      * @param mentions Array of user IDs to mention in this message (optional).
-     * @returns Message output with resolved mentions; notifies thread creator and all mentioned users.
+     * @returns { message } envelope with resolved mentions; notifies thread creator and all mentioned users.
      * @throws USER_ID_REQUIRED if userId is not present.
      * @throws COMMENT_THREAD_NOT_FOUND if thread does not exist in this collection.
      * @throws COMMENT_MESSAGE_NOT_FOUND if parentMessageId does not exist in this thread.
@@ -486,7 +486,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
               });
             }
 
-            return mapMessage(message, resolved);
+            return { message: mapMessage(message, resolved) };
           })
           .then((result) => {
             flushNotifications(cmsCtx.notificationService, pending);
@@ -870,7 +870,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
     /**
      * Marks a comment thread as resolved and inserts a system message.
      * @param threadId Required thread ID.
-     * @returns Updated thread object and the system message indicating resolution.
+     * @returns { thread, message } — the updated thread and the system message indicating resolution.
      * @throws USER_ID_REQUIRED if userId is not present.
      * @throws COMMENT_THREAD_NOT_FOUND if thread does not exist.
      * @throws COMMENT_THREAD_ALREADY_RESOLVED if thread is already resolved.
@@ -961,7 +961,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
 
             return {
               thread: mapThread(updated),
-              systemMessage: mapMessage(systemMsg),
+              message: mapMessage(systemMsg),
             };
           })
           .then((result) => {
@@ -1049,7 +1049,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
     /**
      * Reopens a resolved comment thread and inserts a system message.
      * @param threadId Required thread ID.
-     * @returns Updated thread object and the system message indicating reopening.
+     * @returns { thread, message } — the updated thread and the system message indicating reopening.
      * @throws USER_ID_REQUIRED if userId is not present.
      * @throws COMMENT_THREAD_NOT_FOUND if thread does not exist.
      * @throws COMMENT_THREAD_NOT_RESOLVED if thread is not currently resolved.
@@ -1144,7 +1144,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
 
             return {
               thread: mapThread(updated),
-              systemMessage: mapMessage(systemMsg),
+              message: mapMessage(systemMsg),
             };
           })
           .then((result) => {
@@ -1160,7 +1160,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
      * @param messageId Required message ID.
      * @param body New comment text; non-empty required.
      * @param mentions Optional array of user IDs to re-mention (replaces old mentions).
-     * @returns Updated message output with current mentions.
+     * @returns { message } envelope with the updated message and current mentions.
      * @throws USER_ID_REQUIRED if userId is not present.
      * @throws COMMENT_MESSAGE_NOT_FOUND if message does not exist.
      * @throws COMMENT_MESSAGE_DELETED if message is already deleted.
@@ -1254,10 +1254,12 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
             .from(commentMentions)
             .where(eq(commentMentions.messageId, msg.id));
 
-          return mapMessage(
-            updated,
-            mentionRows.map((r) => r.mentionedUserId),
-          );
+          return {
+            message: mapMessage(
+              updated,
+              mentionRows.map((r) => r.mentionedUserId),
+            ),
+          };
         });
       },
     ),
@@ -1266,7 +1268,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
      * Soft-deletes a comment message (body masked on retrieval).
      * Only the original author may delete; system messages cannot be deleted.
      * @param messageId Required message ID.
-     * @returns Deleted message output.
+     * @returns { message } envelope with the soft-deleted message (body masked).
      * @throws USER_ID_REQUIRED if userId is not present.
      * @throws COMMENT_MESSAGE_NOT_FOUND if message does not exist.
      * @throws COMMENT_MESSAGE_DELETED if message is already deleted.
@@ -1338,7 +1340,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
           .where(eq(commentMessages.id, msg.id))
           .returning();
 
-        return mapMessage(updated);
+        return { message: mapMessage(updated) };
       },
     ),
 
@@ -1425,13 +1427,20 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
           .limit(limit)
           .offset(offset);
 
+        // Batch-load mentions for the page's messages so each returned message
+        // carries its full mention list (a mention row proves >=1 exists).
+        const mentionsMap = await loadMentionsByMessageIds(
+          db,
+          rows.map((r) => r.message.id),
+        );
+
         return {
           mentions: rows.map((r) => ({
             id: r.mention.id,
             mentionedUserId: r.mention.mentionedUserId,
             mentionedBy: r.mention.mentionedBy,
             createdAt: new Date(r.mention.createdAt),
-            message: mapMessage(r.message),
+            message: mapMessage(r.message, mentionsMap.get(r.message.id) ?? []),
             thread: mapThread(r.thread),
           })),
           total: count,

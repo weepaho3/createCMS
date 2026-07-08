@@ -94,8 +94,8 @@ export async function recordSubtreeRedirects(
   collection: string,
   captured: Array<{ rootId: string; oldPath: string }>,
   scope?: TableScope,
-): Promise<void> {
-  if (captured.length === 0) return;
+): Promise<number> {
+  if (captured.length === 0) return 0;
   const taken = await existingPathSources(
     tx,
     collection,
@@ -103,7 +103,7 @@ export async function recordSubtreeRedirects(
     scope,
   );
   const fresh = captured.filter((c) => !taken.has(c.oldPath));
-  if (fresh.length === 0) return;
+  if (fresh.length === 0) return 0;
   await scopedInsertBatch(
     tx,
     'cms.redirects',
@@ -117,6 +117,7 @@ export async function recordSubtreeRedirects(
     })),
     scope,
   );
+  return fresh.length;
 }
 
 /**
@@ -129,10 +130,10 @@ export async function recordArchiveRedirect(
   oldPath: string | null,
   parentRootId: string | null,
   scope?: TableScope,
-): Promise<void> {
-  if (!oldPath || !parentRootId) return;
+): Promise<number> {
+  if (!oldPath || !parentRootId) return 0;
   const taken = await existingPathSources(tx, collection, [oldPath], scope);
-  if (taken.has(oldPath)) return;
+  if (taken.has(oldPath)) return 0;
   await scopedInsert(
     tx,
     'cms.redirects',
@@ -146,4 +147,5 @@ export async function recordArchiveRedirect(
     },
     scope,
   );
+  return 1;
 }

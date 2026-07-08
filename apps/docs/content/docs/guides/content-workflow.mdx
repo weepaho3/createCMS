@@ -27,7 +27,7 @@ Add and update blocks on the draft branch. Each change is a commit:
 await cms.api.pages.createBlock({
   body: {
     rootId: root.rootId,
-    branchId: draft.branchId,
+    branchId: draft.branch.id,
     parentBlockId: root.rootId,
     type: 'hero',
     properties: { headline: 'Welcome' },
@@ -58,7 +58,7 @@ Every merge requires an approval. Request sign-off, have a reviewer approve, the
 ```ts
 const { approvals } = await cms.api.pages.requestApproval({
   body: {
-    mergeRequestId: mr.mergeRequestId,
+    mergeRequestId: mr.mergeRequest.id,
     requestedBy: 'editor-1',
     requestedReviewers: ['reviewer-1'],
   },
@@ -69,7 +69,7 @@ await cms.api.pages.approve({
 });
 
 await cms.api.pages.executeMerge({
-  body: { mergeRequestId: mr.mergeRequestId },
+  body: { mergeRequestId: mr.mergeRequest.id },
 });
 ```
 
