@@ -13,13 +13,16 @@ import type { MediaConfig } from './s3';
 // ============================================================================
 
 /**
- * One published branch of a root, as a snapshot. Shared by the page-level
- * variant shape and the block-level A/B `variants` (below) so the two can't
- * drift. `properties` mirrors the (depth-1 typed) reference `properties`.
+ * One published NON-CONTROL branch of a referenced root, as a snapshot. Used by
+ * the block-level A/B `variants` (below). The CONTROL branch is NOT in this list
+ * — it fills the top-level `tree`/`properties` of the `ResolvedReference` (the
+ * no-JS / AB-off fallback), so re-embedding it here would serialize its subtree
+ * twice. `variants` therefore carries only the ALTERNATIVE branches the client
+ * pre-render pass can swap in. `properties` mirrors the (depth-1 typed)
+ * reference `properties`.
  */
 export type PublishedBranchSnapshot<TProps = Record<string, unknown>> = {
   branchId: string;
-  isControl: boolean;
   properties: TProps;
   tree: BlockTreeNode;
 };
@@ -34,7 +37,10 @@ export type ResolvedReference<TProps = Record<string, unknown>> = {
    * fan-out). The server stays a pure, cacheable function: top-level
    * `tree`/`properties` are the CONTROL branch (a no-JS / AB-disabled client
    * renders it as-is), and the client pre-render pass picks the visitor's
-   * variant from `variants` and swaps it in. `variants` includes the control.
+   * variant from `variants` and swaps it in. `variants` lists ONLY the
+   * non-control ALTERNATIVE branches — the control is the top-level
+   * `tree`/`properties`, so it is NOT duplicated here. A pick that matches no
+   * `variants` entry (or the control branch) leaves the control tree in place.
    * An OPTIONAL field (not a discriminated union) so `isResolvedReference` —
    * which narrows on `tree`/`properties` — keeps matching.
    */

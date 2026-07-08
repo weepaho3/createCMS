@@ -223,17 +223,22 @@ describe('A/B server fan-out (F2)', () => {
     // Control fills top-level (no-JS fallback).
     expect(ref.properties.label).toBe('Control');
 
-    // The full A/B descriptor for the client pre-render pass.
+    // The full A/B descriptor for the client pre-render pass. `variants` carries
+    // ONLY the non-control branch(es) — the control is the top-level tree, not
+    // re-embedded here (no duplicate control subtree per reference).
     expect(ref.abTest).toBeDefined();
     expect(ref.abTest.testId).toBe(testId);
     expect(ref.abTest.trafficPercentage).toBe(100);
-    expect(ref.abTest.variants).toHaveLength(2);
-    const control = ref.abTest.variants.find((v: any) => v.isControl);
-    const other = ref.abTest.variants.find((v: any) => !v.isControl);
-    expect(control.branchId).toBe(block.branchId);
-    expect(control.properties.label).toBe('Control');
+    expect(ref.abTest.variants).toHaveLength(1);
+    // The control is NOT in `variants` — it fills the top-level tree/properties.
+    expect(
+      ref.abTest.variants.some((v: any) => v.branchId === block.branchId),
+    ).toBe(false);
+    const other = ref.abTest.variants[0];
     expect(other.branchId).toBe(variant.branch.id);
     expect(other.properties.label).toBe('Variant');
+    // The control still fills top-level (asserted above via ref.properties).
+    expect(ref.tree.properties.label).toBe('Control');
   });
 
   it('embeds a non-running block as a single reference (no abTest)', async () => {

@@ -7,8 +7,8 @@ import type { S3Client } from '../types/s3';
 
 import { newId } from '../../utils/nanoid';
 import {
+  assetsReferencedByLiveContent,
   getAssetUsageDetails,
-  isAssetReferencedByLiveContent,
 } from '../media/usage';
 import { assetFolders, assets } from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
@@ -898,16 +898,15 @@ export function createMediaEndpoints(
         // page. The check is authoritative against branch-head block versions
         // (the version-keyed content_usages index joined to branch heads). In-use
         // assets are skipped, not failed, so a batch still archives the rest.
+        const referenced = await assetsReferencedByLiveContent(
+          db,
+          existingIds,
+          crossScopeColumns(scope.roots),
+        );
         const toArchive: string[] = [];
         const skipped: string[] = [];
         for (const id of existingIds) {
-          if (
-            await isAssetReferencedByLiveContent(
-              db,
-              id,
-              crossScopeColumns(scope.roots),
-            )
-          ) {
+          if (referenced.has(id)) {
             skipped.push(id);
           } else {
             toArchive.push(id);

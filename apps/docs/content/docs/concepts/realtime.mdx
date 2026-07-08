@@ -48,6 +48,15 @@ Authentication reuses your [`authMiddleware`](/docs/reference/configuration#auth
   Because auth is cookie-based, the realtime route must be **same-origin** with your app (the common case — your app calls its own `/api/cms`). Cross-origin cookie auth over SSE is not supported.
 </Callout>
 
+## Cost and scaling
+
+The delivery model has two cost dimensions worth knowing before you scale it:
+
+- **Connections.** Each subscriber holds one serverless invocation open for the life of its SSE stream. The platform or `@upstash/realtime` caps that stream's duration, and the client reconnects when it ends, so concurrent connections, not total users, drive invocation count.
+- **Fan-out.** Each notification is one Upstash REST publish **per recipient**. Delivering an event to N users is N publishes, so a broad notification scales linearly with its audience.
+
+Neither is a bottleneck for typical inboxes, but both are worth sizing for high concurrency or large broadcast audiences.
+
 ## Notifications
 
 Real-time notifications are **realtime-only** and ride **one shared connection**. Wrap your app once in the `RealtimeProvider` (it points the connection at your CMS route with credentials), then call `useNotifications` anywhere:

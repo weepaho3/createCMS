@@ -127,7 +127,6 @@ export const blockVersions = cms.table(
     index("bv_commit_id_idx").on(table.commitId),
     index("bv_root_id_idx").on(table.rootId),
     uniqueIndex("bv_block_commit_unique").on(table.blockId, table.commitId),
-    index("bv_properties_gin").using("gin", table.properties),
   ],
 );
 
@@ -420,6 +419,7 @@ export const roots = cms.table(
     index("roots_collection_idx").on(table.collection),
     index("roots_parent_root_idx").on(table.parentRootId),
     index("roots_slug_idx").on(table.collection, table.parentRootId, table.slug),
+    index("roots_collection_slug_idx").on(table.collection, table.slug),
     index("roots_archived_at_idx").on(table.archivedAt),
     index("roots_last_pruned_at_idx").on(table.lastPrunedAt),
   ],

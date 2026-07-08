@@ -177,3 +177,7 @@ By default the client forwards events to the browser `dataLayer` (for GTM/GA4). 
 <Callout type="info">
   For edge variant assignment in middleware, use the Next.js A/B primitives from `@createcms/core/next/middleware` and `@createcms/core/ab-edge` (see [Edge A/B](/docs/reference/edge)).
 </Callout>
+
+### Edge resolution cost
+
+By default the edge middleware resolves the active tests with one `fetch` per request, and a middleware fetch bypasses the Next.js Data Cache, so it is not cached. This is intentional: edge runs as many short-lived isolates with no shared memory, and an uncached read keeps assignment correct the moment a test starts or stops. For high-traffic apps, pass the `resolve` option to swap in your own source (back it with Edge Config or KV) so the per-request read is served close to the edge instead of hitting your origin.

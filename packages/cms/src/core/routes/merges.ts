@@ -1213,6 +1213,42 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
               scopeWhere: ctx.context.scope.roots?.where,
             });
 
+            // Compute the common ancestor OFF the branch-row locks' critical
+            // path. `findCommonAncestor` walks the append-only, immutable
+            // `commits` DAG (it never reads the `branches` rows), and its result
+            // is a pure function of the two head commit ids — so it does not
+            // need the FOR UPDATE locks for correctness. Materializing both
+            // heads' ancestry can be O(history); running it while holding the
+            // two branch locks would block concurrent edits for that whole walk.
+            //
+            // Instead we read the current heads WITHOUT locking, run the walk
+            // (and the approval query) while other writers can still proceed,
+            // then take the locks and re-verify the heads. Under READ COMMITTED
+            // (the transaction default here) the FOR UPDATE reads below observe
+            // the latest committed head; if a concurrent merge/commit moved
+            // either head between the unlocked read and the lock, we recompute
+            // the ancestor under the lock — rare, and always correct.
+            const [preSource] = await tx
+              .select({ headCommitId: branches.headCommitId })
+              .from(branches)
+              .where(eq(branches.id, mr.sourceBranchId));
+            if (!preSource) throw new CMSError('BRANCH_NOT_FOUND');
+
+            const [preTarget] = await tx
+              .select({ headCommitId: branches.headCommitId })
+              .from(branches)
+              .where(eq(branches.id, mr.targetBranchId));
+            if (!preTarget) throw new CMSError('BRANCH_NOT_FOUND');
+
+            const [preAncestor, approvalState] = await Promise.all([
+              findCommonAncestor(
+                tx,
+                preSource.headCommitId,
+                preTarget.headCommitId,
+              ),
+              getApprovalStateForMergeRequest(tx, mr.id),
+            ]);
+
             const [sourceBranch] = await tx
               .select({
                 id: branches.id,
@@ -1245,14 +1281,17 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
 
             const liveSourceCommitId = sourceBranch.headCommitId;
 
-            const [ancestor, approvalState] = await Promise.all([
-              findCommonAncestor(
-                tx,
-                liveSourceCommitId,
-                targetBranch.headCommitId,
-              ),
-              getApprovalStateForMergeRequest(tx, mr.id),
-            ]);
+            // Reuse the pre-lock walk unless a concurrent writer moved a head
+            // out from under us between the unlocked read and the lock.
+            const ancestor =
+              liveSourceCommitId === preSource.headCommitId &&
+              targetBranch.headCommitId === preTarget.headCommitId
+                ? preAncestor
+                : await findCommonAncestor(
+                    tx,
+                    liveSourceCommitId,
+                    targetBranch.headCommitId,
+                  );
 
             if (!ancestor) throw new CMSError('NO_COMMON_ANCESTOR');
             const baseCommitId = ancestor.commonAncestorCommitId;

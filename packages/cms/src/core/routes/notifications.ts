@@ -256,6 +256,12 @@ export function createNotificationEndpoints(cmsCtx: CMSProcedureCtx) {
           return { markedCount: updated.length };
         }
 
+        // Bulk update: count comes from the returned rows so it stays
+        // driver-agnostic across the wide `DrizzleInstance` supertype. A driver
+        // rowCount (`await db.execute(sql\`UPDATE …\`)`) would avoid pulling the
+        // ids back, but is exposed inconsistently across pg drivers (e.g. the
+        // PGlite test driver reports `affectedRows`, node-postgres `rowCount`)
+        // and the CMS uses rowCount nowhere — a possible future optimization.
         const result = await db
           .update(notifications)
           .set({ readAt: now })
@@ -342,6 +348,12 @@ export function createNotificationEndpoints(cmsCtx: CMSProcedureCtx) {
           return { markedCount: updated.length };
         }
 
+        // Bulk update: count comes from the returned rows so it stays
+        // driver-agnostic across the wide `DrizzleInstance` supertype. A driver
+        // rowCount (`await db.execute(sql\`UPDATE …\`)`) would avoid pulling the
+        // ids back, but is exposed inconsistently across pg drivers (e.g. the
+        // PGlite test driver reports `affectedRows`, node-postgres `rowCount`)
+        // and the CMS uses rowCount nowhere — a possible future optimization.
         const result = await db
           .update(notifications)
           .set({ readAt: null })

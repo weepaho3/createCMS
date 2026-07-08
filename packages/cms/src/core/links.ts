@@ -130,17 +130,25 @@ export async function resolveLinkPaths(
       collection,
       [...rootIds],
     );
-    for (const [storedRootId, targetRootId] of valueToRootId) {
-      const path = slug?.enabled
-        ? await resolveRootCurrentPath(
-            db,
-            slug as EnabledSlug,
-            targetRootId,
-            rootScope,
-          )
-        : null;
-      resolved.set(`${collection}:${storedRootId}`, { targetRootId, path });
-    }
+    const entries = [...valueToRootId];
+    const paths = await Promise.all(
+      entries.map(([, targetRootId]): Promise<string | null> =>
+        slug?.enabled
+          ? resolveRootCurrentPath(
+              db,
+              slug as EnabledSlug,
+              targetRootId,
+              rootScope,
+            )
+          : Promise.resolve(null),
+      ),
+    );
+    entries.forEach(([storedRootId, targetRootId], i) => {
+      resolved.set(`${collection}:${storedRootId}`, {
+        targetRootId,
+        path: paths[i] ?? null,
+      });
+    });
   }
 
   // 3. Replace each link value in place.
