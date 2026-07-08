@@ -34,14 +34,32 @@ export function createNotificationService(
   handlers: OnNotificationHandler[],
   resolvedUser?: ResolvedUserConfig,
 ) {
+  // Test/flush seam: every floated handler promise (Seam B) and every floated
+  // `flushNotifications` batch (Seam A, registered via the exposed `track`) is
+  // added here so `flush()` can await them deterministically instead of tests
+  // racing a real `setTimeout`.
+  const inFlight = new Set<Promise<unknown>>();
+  function track<T>(p: Promise<T>): Promise<T> {
+    inFlight.add(p);
+    // `.catch(() => {})` on the cleanup chain (NOT on `p`): callers still get the
+    // original `p` to await/catch, but the internal bookkeeping chain must never
+    // surface an unhandled rejection when `p` is a not-yet-caught promise (Seam C:
+    // `notify` tracks the raw `notifyOne` before the caller attaches `.catch`).
+    void p.finally(() => inFlight.delete(p)).catch(() => {});
+    return p;
+  }
+
   function dispatch(payload: NotificationPayload): void {
     for (const handler of handlers) {
       try {
         const result = handler(payload);
         if (result instanceof Promise) {
-          result.catch((err) => {
-            console.error('[cms] onNotification handler failed:', err);
-          });
+          // Seam B: floated async-handler rejection. Tracked so `flush()` waits.
+          track(
+            result.catch((err) => {
+              console.error('[cms] onNotification handler failed:', err);
+            }),
+          );
         }
       } catch (err) {
         console.error('[cms] onNotification handler failed:', err);
@@ -76,30 +94,50 @@ export function createNotificationService(
     }
   }
 
-  return {
-    async notify(input: NotificationInput): Promise<NotificationPayload> {
-      const [row] = await db
-        .insert(notifications)
-        .values({
-          recipientId: input.recipientId,
-          actorId: input.actorId,
-          // Widened to allow plugin/app type strings; the generated enum is the
-          // runtime authority (core-only in this package, core+plugin in apps).
-          type: input.type as (typeof notifications.$inferInsert)['type'],
-          title: input.title,
-          body: input.body,
-          resourceType: input.resourceType,
-          resourceId: input.resourceId,
-          collection: input.collection,
-          meta: input.meta,
-        })
-        .returning();
+  async function notifyOne(
+    input: NotificationInput,
+  ): Promise<NotificationPayload> {
+    const [row] = await db
+      .insert(notifications)
+      .values({
+        recipientId: input.recipientId,
+        actorId: input.actorId,
+        // Widened to allow plugin/app type strings; the generated enum is the
+        // runtime authority (core-only in this package, core+plugin in apps).
+        type: input.type as (typeof notifications.$inferInsert)['type'],
+        title: input.title,
+        body: input.body,
+        resourceType: input.resourceType,
+        resourceId: input.resourceId,
+        collection: input.collection,
+        meta: input.meta,
+      })
+      .returning();
 
-      const payload = mapRowToPayload(row);
-      await enrichActors([payload]);
-      dispatch(payload);
-      return payload;
+    const payload = mapRowToPayload(row);
+    await enrichActors([payload]);
+    dispatch(payload);
+    return payload;
+  }
+
+  return {
+    // Register a floated promise into the in-flight set so `flush()` awaits it.
+    // Exposed for `flushNotifications` (Seam A) below.
+    track,
+    // Awaits every currently-floated notification promise (batched flushes,
+    // async handler side effects, and floated single `notify` calls),
+    // re-checking after each round because a settling batch dispatches handlers
+    // that add fresh in-flight promises.
+    async flush(): Promise<void> {
+      while (inFlight.size) await Promise.allSettled([...inFlight]);
     },
+
+    // Self-registers into the in-flight set so a floated
+    // `notificationService.notify(...).catch(...)` (e.g. publishBranch's
+    // publish notification) is awaited by `flush()`, not only the
+    // flushNotifications/notifyMany path. Awaited callers see identical behavior.
+    notify: (input: NotificationInput): Promise<NotificationPayload> =>
+      track(notifyOne(input)),
 
     async notifyMany(
       inputs: NotificationInput[],
@@ -152,7 +190,11 @@ export function flushNotifications(
   inputs: NotificationInput[],
 ): void {
   if (!service || inputs.length === 0) return;
-  void service.notifyMany(inputs).catch((err) => {
-    console.error('[cms] notification dispatch failed:', err);
-  });
+  // Seam A: register the floated batch so `service.flush()` (via
+  // `cms.$flushNotifications()`) can await it deterministically.
+  void service.track(
+    service.notifyMany(inputs).catch((err) => {
+      console.error('[cms] notification dispatch failed:', err);
+    }),
+  );
 }

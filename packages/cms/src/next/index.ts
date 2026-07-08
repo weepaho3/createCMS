@@ -48,21 +48,19 @@ export function createRevalidateHandler(
     const tags = event.tags ?? [];
 
     if (paths.length > 0 || tags.length > 0) {
-      // Dynamic import avoids compile-time resolution of next/cache
-      // which is only available when next is installed as a peer dependency.
-      const nextCache = await (Function(
-        'return import("next/cache")',
-      )() as Promise<{
-        revalidatePath: (path: string) => void;
-        revalidateTag: (tag: string) => void;
-      }>);
+      // Runtime dynamic import: next/cache is only resolvable when next is
+      // installed as a peer dependency, so it must not be resolved at build
+      // time. bunchee externalizes next (a peer dep) and preserves this import.
+      const { revalidatePath, revalidateTag } = await import('next/cache');
       for (const path of paths) {
-        nextCache.revalidatePath(path);
+        revalidatePath(path);
       }
       // Tags invalidate a root's control + all its variant-coded cache entries
       // (AB_FANOUT FA3b); the A/B render routes tag their fetch by rootRevalidateTag.
+      // 'max' is next 16's required second arg (equivalent to the legacy single-
+      // arg immediate invalidation; the tag is marked stale regardless of profile).
       for (const tag of tags) {
-        nextCache.revalidateTag(tag);
+        revalidateTag(tag, 'max');
       }
     }
 

@@ -670,7 +670,7 @@ describe('listPublications', () => {
   });
 
   it('supports sorting by publishedAt in both directions', async () => {
-    const { cms } = await setupTestCMS();
+    const { cms, db } = await setupTestCMS();
 
     const root = await cms.api.pages.createRoot({
       body: { slug: '/sort', properties: { title: 'Page' } },
@@ -691,8 +691,18 @@ describe('listPublications', () => {
       publishedBy: 'user-1',
     });
 
-    // Wait a bit then publish draft
-    await new Promise((resolve) => setTimeout(resolve, 1100));
+    // Backdate main's publication so the draft publish below is deterministically
+    // newer, without a real sleep. (rootId, branchId) is the publications PK, so
+    // this targets exactly the main row.
+    await db
+      .update(publications)
+      .set({ publishedAt: new Date(Date.now() - 60_000) })
+      .where(
+        and(
+          eq(publications.rootId, root.rootId),
+          eq(publications.branchId, root.branchId),
+        ),
+      );
 
     await publishApprovedBranch(cms, {
       rootId: root.rootId,
@@ -716,7 +726,7 @@ describe('listPublications', () => {
   });
 
   it('filters by publishedAfter and publishedBefore', async () => {
-    const { cms } = await setupTestCMS();
+    const { cms, db } = await setupTestCMS();
 
     const root = await cms.api.pages.createRoot({
       body: { slug: '/date-filters', properties: { title: 'Page' } },
@@ -728,13 +738,24 @@ describe('listPublications', () => {
       publishedBy: 'user-1',
     });
 
+    // Backdate main's publication so it is deterministically older than the
+    // draft publish below, without a real sleep. The ±1ms boundary filters
+    // asserted on later only partition the two rows if their timestamps differ.
+    await db
+      .update(publications)
+      .set({ publishedAt: new Date(Date.now() - 60_000) })
+      .where(
+        and(
+          eq(publications.rootId, root.rootId),
+          eq(publications.branchId, root.branchId),
+        ),
+      );
+
     const firstPublication = await cms.api.pages.listPublications({
       query: { rootId: root.rootId },
     });
     const firstPublishedAt = firstPublication.publications[0]
       .publishedAt as Date;
-
-    await new Promise((resolve) => setTimeout(resolve, 10));
 
     const draft = await cms.api.pages.createBranch({
       body: {

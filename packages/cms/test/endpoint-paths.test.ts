@@ -60,4 +60,52 @@ describe('endpoint path convention', () => {
       expect(pathMethods[path]).toBe('POST');
     }
   });
+
+  // Locks the client's authoritative override map (`cms.$pathMethods`, built in
+  // factory.ts and handed to createCMSClient) to the server's DECLARED method for
+  // every endpoint. WHY this matters: the client proxy dispatches each call by
+  // looking up `pathMethods[path]` and only falls back to body-presence inference
+  // when the path is absent. So if a server endpoint flips POST->GET (or vice
+  // versa) without the generated map updating in lockstep, the client keeps
+  // issuing the old verb and the server answers 405 Method Not Allowed at runtime.
+  // Handler-level tests never see this — they invoke `cms.api.<ns>.<method>()`
+  // directly and bypass HTTP method routing entirely — so this contract is the
+  // only place a method drift is caught.
+  it('server $pathMethods matches each endpoint\'s declared HTTP method', async () => {
+    const { cms } = await setupTestCMS();
+    const pathMethods = (cms as unknown as { $pathMethods: Record<string, string> })
+      .$pathMethods;
+
+    const offenders: string[] = [];
+    for (const [ns, methods] of Object.entries(
+      cms.api as Record<
+        string,
+        Record<string, { path?: unknown; options?: { method?: string | string[] } }>
+      >,
+    )) {
+      for (const [method, endpoint] of Object.entries(methods)) {
+        const path = endpoint?.path;
+        if (typeof path !== 'string') continue;
+        // Same skip as the path test: param/direct-URL routes aren't RPC-proxied,
+        // so the client never consults `$pathMethods` for them.
+        if (path.includes('{') || path.includes(':')) continue;
+
+        // Normalize exactly like the factory (factory.ts): an endpoint may declare
+        // `method` as a string or an array; prefer the first non-GET verb, else the
+        // first entry. This is the value the client's override map is derived from.
+        const m = endpoint?.options?.method;
+        const declared = Array.isArray(m) ? (m.find((x) => x !== 'GET') ?? m[0]) : m;
+
+        if (pathMethods[path] !== declared) {
+          offenders.push(
+            `${ns}.${method} ("${path}") declares method ${JSON.stringify(declared)} ` +
+              `but $pathMethods has ${JSON.stringify(pathMethods[path])} ` +
+              `(client would dispatch the wrong verb -> 405)`,
+          );
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
 });
