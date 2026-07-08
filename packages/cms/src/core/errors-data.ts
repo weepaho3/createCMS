@@ -32,7 +32,7 @@ export const CMS_ERRORS = {
     message: 'Root block not found in snapshot',
   },
   ROOT_HAS_CHILDREN: {
-    status: 400 as const,
+    status: 409 as const,
     message:
       'Cannot delete a page that has child pages; archive or move the children first',
   },
@@ -44,7 +44,7 @@ export const CMS_ERRORS = {
   COMMIT_NOT_FOUND: { status: 404 as const, message: 'Commit not found' },
   FOLDER_NOT_FOUND: { status: 404 as const, message: 'Folder not found' },
   FOLDER_HAS_CONTENT: {
-    status: 400 as const,
+    status: 409 as const,
     message: 'Cannot delete folder that contains assets or subfolders',
   },
   EMPTY_SNAPSHOT: {
@@ -81,7 +81,7 @@ export const CMS_ERRORS = {
     message: 'targetProperties is required when duplicating a root',
   },
   BRANCH_NAME_ALREADY_EXISTS: {
-    status: 400 as const,
+    status: 409 as const,
     message: 'A branch with this name already exists for this root',
   },
   CANNOT_RENAME_MAIN_BRANCH: {
@@ -93,11 +93,11 @@ export const CMS_ERRORS = {
     message: 'The main branch cannot be deleted',
   },
   BRANCH_HAS_PUBLICATIONS: {
-    status: 400 as const,
+    status: 409 as const,
     message: 'Cannot delete a branch that has active publications',
   },
   BRANCH_HAS_OPEN_MERGE_REQUESTS: {
-    status: 400 as const,
+    status: 409 as const,
     message: 'Cannot delete a branch that is part of open merge requests',
   },
   NO_COMMON_ANCESTOR: {
@@ -121,14 +121,9 @@ export const CMS_ERRORS = {
     message: 'Merge request has already been merged and cannot be reopened',
   },
   MERGE_REQUEST_ALREADY_EXISTS: {
-    status: 400 as const,
+    status: 409 as const,
     message:
       'An open merge request already exists for this source and target branch',
-  },
-  MERGE_REQUEST_OUTDATED: {
-    status: 400 as const,
-    message:
-      'Merge request is outdated because the source branch changed after it was opened',
   },
   UNRESOLVED_CONFLICTS: {
     status: 400 as const,
@@ -320,10 +315,6 @@ export const CMS_ERRORS = {
   COMMENT_MESSAGE_DELETED: {
     status: 400 as const,
     message: 'Comment message has been deleted',
-  },
-  COMMENT_BODY_REQUIRED: {
-    status: 400 as const,
-    message: 'Body is required for comment messages',
   },
   COMMENT_AUTHOR_MISMATCH: {
     status: 403 as const,

@@ -16,16 +16,21 @@ export type CMSAPIError = APIError & {
   };
 };
 
-export function getCMSErrorCode(error: unknown): CMSErrorCode | undefined {
+export function getCMSErrorCode(
+  error: unknown,
+): CMSErrorCode | (string & {}) | undefined {
   if (error instanceof CMSError) {
     return error.cmsCode;
   }
 
   if (error instanceof APIError) {
     const code = (error as CMSAPIError).body?.code;
-    if (code && code in CMS_ERRORS) {
-      return code as CMSErrorCode;
+    if (!code) {
+      return undefined;
     }
+    // Recognized core code (literal-typed for autocomplete); otherwise surface
+    // the raw plugin/unknown code so callers can still match on it.
+    return code in CMS_ERRORS ? (code as CMSErrorCode) : code;
   }
 
   return undefined;
@@ -60,6 +65,9 @@ export class CMSError extends APIError {
     super(def.status, {
       message: overrides?.message ?? def.message,
       code,
+      // better-call serializes the whole body to the wire, so structured
+      // `data` reaches the client (read back via `CMSClientError.data`).
+      ...(overrides?.data ? { data: overrides.data } : {}),
     });
     this.cmsCode = code;
   }

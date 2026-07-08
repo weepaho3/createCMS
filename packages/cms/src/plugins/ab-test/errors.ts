@@ -7,10 +7,6 @@ export const $ERROR_CODES = {
     status: 400 as const,
     message: 'Invalid status transition for this A/B test',
   },
-  AB_TEST_WEIGHTS_INVALID: {
-    status: 400 as const,
-    message: 'Variant weights must sum to 100',
-  },
   AB_TEST_DUPLICATE_RUNNING: {
     status: 409 as const,
     message: 'Another test is already running for this root',

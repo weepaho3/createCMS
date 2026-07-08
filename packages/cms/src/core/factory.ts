@@ -28,6 +28,7 @@ import type {
 } from './types/plugin';
 
 import { DEFAULT_BRANCH_NAME } from './branch-policy';
+import { CMS_ERRORS } from './errors-data';
 import {
   createCMSContext,
   processCollections,
@@ -482,14 +483,26 @@ function validateCollectionNames(
 
 function mergeErrorCodes<TPlugins extends CMSPlugin[]>(
   plugins: TPlugins,
-): InferPluginErrorCodes<TPlugins> {
-  return plugins.reduce(
-    (acc, plugin) => {
-      if (plugin.$ERROR_CODES) Object.assign(acc, plugin.$ERROR_CODES);
-      return acc;
-    },
-    {} as Record<string, { status: number; message: string }>,
-  ) as InferPluginErrorCodes<TPlugins>;
+): typeof CMS_ERRORS & InferPluginErrorCodes<TPlugins> {
+  // Seed with the core codes so `cms.$ERROR_CODES` is the COMPLETE registry (not
+  // plugin-only) — mirrors the client's `$ERROR_CODES` (err-02). Warn on
+  // collisions instead of silently letting the last writer win (err-16).
+  const acc: Record<string, { status: number; message: string }> = {
+    ...CMS_ERRORS,
+  };
+  for (const plugin of plugins) {
+    if (!plugin.$ERROR_CODES) continue;
+    for (const key of Object.keys(plugin.$ERROR_CODES)) {
+      if (key in acc) {
+        console.warn(
+          `[cms] plugin "${plugin.id}" error code "${key}" shadows an existing ` +
+            `${key in CMS_ERRORS ? 'core' : 'plugin'} code`,
+        );
+      }
+    }
+    Object.assign(acc, plugin.$ERROR_CODES);
+  }
+  return acc as typeof CMS_ERRORS & InferPluginErrorCodes<TPlugins>;
 }
 
 function validateCollectionReferences(
@@ -872,8 +885,15 @@ export const createCMS = <
   const router = createRouter(wrappedEndpoints, {
     basePath: definition.basePath ?? '/api/cms',
     routerMiddleware,
-    onError: (error) => {
-      console.error(error);
+    onError: (error, request) => {
+      // Fires for errors that reach the router: unexpected (non-APIError)
+      // throws, validation failures, and middleware/auth failures. A user
+      // `onAPIError` hook takes over (for Sentry/Datadog/etc.); otherwise we log.
+      if (definition.onAPIError) {
+        definition.onAPIError(error, request);
+      } else {
+        console.error(error);
+      }
     },
     async onRequest(request) {
       await ensureInit();

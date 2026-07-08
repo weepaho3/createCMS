@@ -1114,6 +1114,14 @@ export type CMSDefinition<
     | RevalidateConfig<TCollections>;
   onNotification?: OnNotificationHandler;
   /**
+   * Called for errors that reach the router: unexpected (non-`APIError`) throws,
+   * schema-validation failures, and middleware/auth failures. Attach your own
+   * logging/monitoring (Sentry, Datadog, …) here. Note: handler-thrown 4xx
+   * `CMSError`s are converted to HTTP responses by better-call and do NOT reach
+   * this hook. When set, it replaces the default `console.error`.
+   */
+  onAPIError?: (error: unknown, request: Request) => void;
+  /**
    * Set `false` to fully disable the notifications feature: the tables are not
    * generated, the routes do not register or execute, and `client.notifications`
    * (plus `cms.notify`) are absent from the inferred types. Default: enabled.

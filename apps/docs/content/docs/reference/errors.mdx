@@ -54,7 +54,7 @@ try {
 | `EMPTY_SNAPSHOT` | 400 | Empty snapshot — no versions found |
 | `BLOCK_ALREADY_DELETED` | 400 | Block is already deleted |
 | `TYPE_MISMATCH` | 400 | Block type does not match the expected type |
-| `ROOT_HAS_CHILDREN` | 400 | Cannot delete a page that has child pages; archive or move the children first |
+| `ROOT_HAS_CHILDREN` | 409 | Cannot delete a page that has child pages; archive or move the children first |
 | `ROOT_IN_USE` | 409 | Cannot delete: this root is embedded as a reusable block on live pages; remove those references first |
 | `CANNOT_MOVE_ROOT` | 400 | Cannot move the root block |
 | `CANNOT_MOVE_INTO_SELF` | 400 | Cannot move an item into itself |
@@ -69,11 +69,11 @@ try {
 | Code | Status | Message |
 | --- | --- | --- |
 | `BRANCH_NOT_FOUND` | 404 | Branch not found |
-| `BRANCH_NAME_ALREADY_EXISTS` | 400 | A branch with this name already exists for this root |
+| `BRANCH_NAME_ALREADY_EXISTS` | 409 | A branch with this name already exists for this root |
 | `CANNOT_RENAME_MAIN_BRANCH` | 400 | The main branch cannot be renamed |
 | `CANNOT_DELETE_MAIN_BRANCH` | 400 | The main branch cannot be deleted |
-| `BRANCH_HAS_PUBLICATIONS` | 400 | Cannot delete a branch that has active publications |
-| `BRANCH_HAS_OPEN_MERGE_REQUESTS` | 400 | Cannot delete a branch that is part of open merge requests |
+| `BRANCH_HAS_PUBLICATIONS` | 409 | Cannot delete a branch that has active publications |
+| `BRANCH_HAS_OPEN_MERGE_REQUESTS` | 409 | Cannot delete a branch that is part of open merge requests |
 | `BRANCHES_NOT_SAME_ROOT` | 400 | Source and target branches must belong to the same root |
 | `NO_COMMON_ANCESTOR` | 400 | The two branches share no common ancestor |
 
@@ -85,8 +85,7 @@ try {
 | `MERGE_REQUEST_NOT_OPEN` | 400 | Merge request is not open |
 | `MERGE_REQUEST_NOT_CLOSED` | 400 | Merge request is not closed |
 | `MERGE_REQUEST_ALREADY_MERGED` | 400 | Merge request has already been merged and cannot be reopened |
-| `MERGE_REQUEST_ALREADY_EXISTS` | 400 | An open merge request already exists for this source and target branch |
-| `MERGE_REQUEST_OUTDATED` | 400 | Merge request is outdated because the source branch changed after it was opened |
+| `MERGE_REQUEST_ALREADY_EXISTS` | 409 | An open merge request already exists for this source and target branch |
 | `UNRESOLVED_CONFLICTS` | 400 | Cannot merge: there are unresolved conflicts |
 | `CONFLICT_NOT_FOUND` | 404 | Merge conflict not found |
 | `RESOLVED_VERSION_NOT_FOUND` | 404 | The provided resolvedVersionId does not reference an existing block version |
@@ -127,7 +126,7 @@ try {
 | `ASSET_NOT_FOUND` | 404 | Asset not found |
 | `ASSET_ACCESS_DENIED` | 403 | This asset is private and requires authentication |
 | `FOLDER_NOT_FOUND` | 404 | Folder not found |
-| `FOLDER_HAS_CONTENT` | 400 | Cannot delete folder that contains assets or subfolders |
+| `FOLDER_HAS_CONTENT` | 409 | Cannot delete folder that contains assets or subfolders |
 | `TOO_MANY_FILES` | 400 | Too many files in upload batch |
 | `FILE_TOO_LARGE` | 400 | One or more files exceed the maximum allowed size |
 | `INVALID_FILE_TYPE` | 400 | One or more files have a disallowed MIME type |
@@ -155,7 +154,6 @@ try {
 | `COMMENT_THREAD_NOT_RESOLVED` | 400 | Comment thread is not resolved |
 | `COMMENT_MESSAGE_NOT_FOUND` | 404 | Comment message not found |
 | `COMMENT_MESSAGE_DELETED` | 400 | Comment message has been deleted |
-| `COMMENT_BODY_REQUIRED` | 400 | Body is required for comment messages |
 | `COMMENT_AUTHOR_MISMATCH` | 403 | Only the author can edit or delete this message |
 
 ## Notifications and system
@@ -167,6 +165,14 @@ try {
 | `USER_ID_REQUIRED` | 400 | userId is required for this route when neither the request nor middleware provides one |
 | `DATA_RETENTION_NOT_CONFIGURED` | 400 | dataRetention is not configured for this CMS instance |
 
+## Validation
+
+| Code | Status | Message |
+| --- | --- | --- |
+| `VALIDATION_ERROR` | 400 | Request body/query failed schema validation (the response body includes an `issues` array). |
+
+Unlike the codes above, `VALIDATION_ERROR` is not in `CMS_ERRORS` — it is produced by the framework (better-call) whenever a request fails its Zod schema, and its response body carries the Zod `issues` array describing what failed.
+
 <Callout type="info">
-  Plugins add their own codes (for example `TENANT_SLUG_REQUIRED`, `OPTIMIZATION_FAILED`). See each [plugin page](/docs/plugins).
+  Plugins add their own codes (for example `TENANT_SLUG_REQUIRED`, `AB_TEST_NOT_FOUND`). See each [plugin page](/docs/plugins).
 </Callout>
