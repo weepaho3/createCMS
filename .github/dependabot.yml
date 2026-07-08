@@ -1,0 +1,10 @@
+version: 2
+updates:
+  # Keep the GitHub Actions used by CI (checkout, setup-bun, changesets/action, …)
+  # up to date. npm dependencies are updated manually while the project is pre-1.0.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci

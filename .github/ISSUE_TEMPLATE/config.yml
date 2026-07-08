@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & ideas (GitHub Discussions)
+    url: https://github.com/weepaho3/createCMS/discussions
+    about: Ask questions, share ideas, and discuss usage here instead of opening an issue.
+  - name: Documentation
+    url: https://github.com/weepaho3/createCMS/tree/main/apps/docs/content/docs
+    about: Read the docs first — your question may already be answered.

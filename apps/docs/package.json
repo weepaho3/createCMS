@@ -7,7 +7,7 @@
     "dev": "next dev --port=4000",
     "postinstall": "fumadocs-mdx",
     "start": "next start",
-    "types:check": "fumadocs-mdx && tsc --noEmit"
+    "check-types": "fumadocs-mdx && tsc --noEmit"
   },
   "dependencies": {
     "@base-ui/react": "^1.0.0",

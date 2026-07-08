@@ -2,12 +2,26 @@
 
 Thanks for your interest in contributing! 🎉
 
+This project has a [Code of Conduct](./CODE_OF_CONDUCT.md) — by participating, you
+agree to uphold it.
+
+## Where to start
+
+New to the project? Browse issues labelled
+[`good first issue`](https://github.com/weepaho3/createCMS/labels/good%20first%20issue)
+and [`help wanted`](https://github.com/weepaho3/createCMS/labels/help%20wanted).
+For questions, ideas, and design discussion, use
+[GitHub Discussions](https://github.com/weepaho3/createCMS/discussions) rather than
+opening an issue.
+
 ## Development setup
 
-createCMS is a [bun](https://bun.sh) + [turbo](https://turbo.build) monorepo.
+createCMS is a [bun](https://bun.sh) + [turbo](https://turbo.build) monorepo. It
+pins **bun 1.2.23** (see `packageManager` in `package.json`); install that version
+or newer.
 
 ```bash
-git clone https://github.com/weepaho3/createCMS.git
+git clone https://github.com/weepaho3/createCMS.git createcms
 cd createcms
 bun install
 ```
@@ -16,15 +30,25 @@ bun install
 
 ```bash
 bun run build         # build all packages (bunchee)
-bun run check-types   # type-check (tsc --noEmit)
-bun run test          # run the test suite (vitest + PGlite — no external DB needed)
+bun run check-types   # type-check every workspace (tsc --noEmit)
+bun run test          # run the test suite once (vitest + PGlite — no external DB needed)
 bun run lint          # oxlint
 bun run format        # oxfmt --write
 ```
 
-The package under active development lives in [`packages/cms`](./packages/cms)
-(`@createcms/core`). Its tests run against an in-memory Postgres (PGlite), so
-you do not need a database to run them.
+Run the tests in watch mode from the package itself:
+
+```bash
+bun run --filter=@createcms/core test:watch
+```
+
+### Repo map
+
+| Path | What it is | Run it |
+| --- | --- | --- |
+| [`packages/cms`](./packages/cms) | `@createcms/core` — the package under active development. Tests run against an in-memory Postgres (PGlite), so no database is needed. | `bun run --filter=@createcms/core test` |
+| [`apps/docs`](./apps/docs) | The documentation site (Fumadocs); content lives in [`apps/docs/content/docs`](./apps/docs/content/docs). | `bun run --filter=docs dev` → <http://localhost:4000> |
+| [`examples/minimal`](./examples/minimal), [`examples/blog`](./examples/blog) | Runnable example apps (PGlite in-memory, no DB setup). | `bun run --filter=<name> dev` |
 
 ## Submitting changes
 
