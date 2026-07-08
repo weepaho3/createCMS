@@ -1,6 +1,6 @@
 import type { ReadableAtom, WritableAtom } from 'nanostores';
 
-import { CMS_ERRORS } from '../core/errors';
+import { CMS_ERRORS } from '../core/errors-data';
 
 // ============================================================================
 // Fetch
@@ -37,7 +37,8 @@ export type CMSAtomListener = {
 
 export interface CMSClientStore {
   notify: (signal: string) => void;
-  listen: (signal: string, listener: () => void) => void;
+  /** Subscribe to a signal; returns an unsubscribe (react-10). */
+  listen: (signal: string, listener: () => void) => () => void;
   atoms: Record<string, WritableAtom<unknown>>;
 }
 

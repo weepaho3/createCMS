@@ -1,3 +1,4 @@
+import { NOTIFICATION_TYPES } from '../notifications/constants';
 import { defineCoreSchema } from './define';
 
 export const coreSchema = defineCoreSchema({
@@ -36,20 +37,8 @@ export const coreSchema = defineCoreSchema({
     },
     notificationType: {
       enumName: 'notification_type',
-      values: [
-        'mention',
-        'comment',
-        'threadResolved',
-        'approvalRequested',
-        'approvalApproved',
-        'approvalRejected',
-        'mergeRequestOpened',
-        'mergeRequestMerged',
-        'mergeRequestClosed',
-        'mergeRequestReopened',
-        'published',
-        'custom',
-      ],
+      // Single source of truth shared with the browser-safe Zod wire schema.
+      values: [...NOTIFICATION_TYPES],
     },
     // A redirect endpoint (source or target) is either a page REFERENCE (rootId,
     // resolves to the page's current path — follows moves) or a literal PATH.

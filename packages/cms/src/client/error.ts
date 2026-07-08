@@ -1,6 +1,6 @@
-import type { CMSErrorCode } from '../core/errors';
+import type { CMSErrorCode } from '../core/errors-data';
 
-import { CMS_ERRORS } from '../core/errors';
+import { CMS_ERRORS } from '../core/errors-data';
 
 /**
  * Client-side CMS error thrown by `$fetch` when the server returns an error

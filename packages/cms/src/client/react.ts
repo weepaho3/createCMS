@@ -1,3 +1,5 @@
+'use client';
+
 import type { ReadableAtom } from 'nanostores';
 
 import type {
@@ -13,9 +15,10 @@ import { useStore } from './react-store';
 /**
  * Creates a type-safe React CMS client with plugin support.
  *
- * Plugin `init` functions run asynchronously on creation. The returned
- * client is usable immediately — API calls will await init completion
- * transparently.
+ * Plugin `init` functions run asynchronously in the background on creation
+ * for side effects only. The client is built synchronously and is usable
+ * immediately — the config is ready before init completes, so calls do not
+ * block on it.
  *
  * Atom hooks are wrapped in `useStore()` so they work as React hooks:
  *
@@ -60,7 +63,9 @@ export function createCMSClient<TCMS = unknown>(
 ) {
   if (options) {
     const config = getClientConfigSync(options);
-    runPluginInit(options, config);
+    runPluginInit(options, config).catch((err) =>
+      console.error('[cms] plugin init failed:', err),
+    );
     return buildClient<CMSClientInstance<TCMS, CMSClientPlugin[]>>(config, {
       useUploadAssets: () =>
         useStore(config.pluginsAtoms.uploadAssets as ReadableAtom),
@@ -70,7 +75,9 @@ export function createCMSClient<TCMS = unknown>(
     opts: CMSClientOptions & { plugins?: TPlugins },
   ): CMSClientInstance<TCMS, TPlugins> => {
     const config = getClientConfigSync(opts);
-    runPluginInit(opts, config);
+    runPluginInit(opts, config).catch((err) =>
+      console.error('[cms] plugin init failed:', err),
+    );
     return buildClient<CMSClientInstance<TCMS, TPlugins>>(config, {
       useUploadAssets: () =>
         useStore(config.pluginsAtoms.uploadAssets as ReadableAtom),

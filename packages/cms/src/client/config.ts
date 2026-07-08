@@ -10,7 +10,7 @@ import type {
   CMSFetch,
 } from './types';
 
-import { CMS_ERRORS } from '../core/errors';
+import { CMS_ERRORS } from '../core/errors-data';
 import { CMSClientError } from './error';
 import { createMediaUploadAtom } from './media-upload';
 import { createStore } from './store';

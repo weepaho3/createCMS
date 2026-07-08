@@ -1,3 +1,5 @@
+'use client';
+
 import type { ReadableAtom } from 'nanostores';
 
 import { useCallback, useRef, useSyncExternalStore } from 'react';
