@@ -139,8 +139,11 @@ export function isFileTypeAllowed(
 ): boolean {
   return allowedFileTypes.some((type) => {
     if (type.endsWith('/*')) {
+      // Match on the FULL `type/` prefix, not the bare group: comparing against
+      // `'image'` would let `'imagexml/evil'` slip through `startsWith`. The
+      // trailing slash pins the match to the real MIME group boundary.
       const prefix = type.slice(0, type.indexOf('/*'));
-      return prefix && fileType.startsWith(prefix);
+      return prefix.length > 0 && fileType.startsWith(`${prefix}/`);
     }
     return type === fileType;
   });

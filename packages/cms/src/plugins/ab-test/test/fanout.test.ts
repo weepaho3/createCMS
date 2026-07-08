@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import { setupTestDB } from '../../../test-utils/db';
 import { DUMMY_MEDIA_CONFIG } from '../../../test-utils/fixtures';
+import { allowAnonymous } from '../../../core/define';
 import { createCMS } from '../../../core/factory';
 import { abTest } from '../index';
 import { buildSchema } from '../schema';
@@ -85,6 +86,7 @@ async function setupFanoutCMS() {
   schemaCleanups.push(cleanup);
   const cms = createCMS({
     db,
+    authMiddleware: allowAnonymous(),
     media: DUMMY_MEDIA_CONFIG,
     collections: FANOUT_COLLECTIONS,
     plugins: [abTest()],

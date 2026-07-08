@@ -10,7 +10,7 @@ import {
   splitPath,
   validateSlugUniqueness,
 } from '../src/core/slug';
-import { createCMS } from '../src/index';
+import { allowAnonymous, createCMS } from '../src/index';
 import { setupTestDB } from '../src/test-utils/db';
 import { DUMMY_MEDIA_CONFIG } from '../src/test-utils/fixtures';
 import { publishApprovedBranch } from '../src/test-utils/helpers';
@@ -74,6 +74,7 @@ async function setupNestedCMS(collections: any = NESTED_COLLECTIONS) {
   const { db } = await setupTestDB();
   const cms = createCMS({
     db,
+    authMiddleware: allowAnonymous(),
     media: DUMMY_MEDIA_CONFIG,
     collections,
     plugins: [] as CMSPlugin<any>[],

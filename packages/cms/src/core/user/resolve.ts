@@ -3,6 +3,28 @@ import type { AnyPgTable } from 'drizzle-orm/pg-core';
 
 import { getTableColumns, getTableName } from 'drizzle-orm';
 
+/**
+ * Defense-in-depth guards for identifiers that get spliced into raw SQL
+ * (`sql.raw(...)`) by the user-enrichment JOIN helpers. Mirrors the guard in
+ * `core/scope.ts`: table/schema/column names are developer-controlled today, but
+ * validate them anyway so a name can never break out of the raw fragment.
+ */
+const SAFE_SQL_IDENTIFIER = /^[a-z_][a-z0-9_]*$/i;
+// A fully-quoted table reference: `"table"` or `"schema"."table"`.
+const SAFE_SQL_TABLE_REF = /^"[a-z_][a-z0-9_]*"(\."[a-z_][a-z0-9_]*")?$/i;
+
+export function assertSafeSqlIdentifier(name: string, kind: string): void {
+  if (!SAFE_SQL_IDENTIFIER.test(name)) {
+    throw new Error(`[cms] unsafe SQL identifier rejected (${kind}): "${name}"`);
+  }
+}
+
+export function assertSafeSqlTableRef(ref: string): void {
+  if (!SAFE_SQL_TABLE_REF.test(ref)) {
+    throw new Error(`[cms] unsafe SQL table reference rejected: "${ref}"`);
+  }
+}
+
 export type ResolvedUserConfig = {
   table: AnyPgTable;
   tableName: string;
@@ -21,11 +43,12 @@ export type ResolvedUserConfig = {
 /**
  * Resolves a user config into runtime metadata.
  *
- * `exposeColumns` is the security boundary for `withUser`. The public
- * `CMSUserConfig` requires it; here it is optional only so internal/test
- * callers can resolve table metadata without one — in that case it defaults
- * to every non-id column (the resolver itself enforces nothing; the public
- * API does).
+ * `exposeColumns` is the security boundary for `withUser`: it is the allowlist
+ * of columns that may ever be returned to a client. It is REQUIRED — omitting it
+ * would silently expose every user column (password hashes, tokens, …), so the
+ * resolver throws rather than defaulting to a permissive "all columns". The
+ * public `CMSUserConfig` also requires it at the type level; this runtime check
+ * closes the gap for untyped (JS) consumers.
  */
 export function resolveUserConfig(config: {
   table: AnyPgTable;
@@ -35,8 +58,12 @@ export function resolveUserConfig(config: {
   const table = config.table;
 
   const tableName = getTableName(table);
+  assertSafeSqlIdentifier(tableName, 'user table name');
   const schemaName: string | undefined =
     (table as any)[Symbol.for('drizzle:Schema')] ?? undefined;
+  if (schemaName !== undefined) {
+    assertSafeSqlIdentifier(schemaName, 'user table schema');
+  }
   const columns: Record<string, AnyColumn> = getTableColumns(table);
 
   const idColumn = config.idColumn;
@@ -50,17 +77,31 @@ export function resolveUserConfig(config: {
         `Available columns: ${Object.keys(columns).join(', ')}`,
     );
   }
+  assertSafeSqlIdentifier(idColumn.name, 'user id column');
 
   const sqlTableRef = schemaName
     ? `"${schemaName}"."${tableName}"`
     : `"${tableName}"`;
 
+  // `exposeColumns` is the security allowlist for `withUser`. Never default it —
+  // an omitted list must fail loudly, not silently expose every column.
+  if (config.exposeColumns === undefined) {
+    throw new Error(
+      '[cms] user.exposeColumns is required — it is the security allowlist for ' +
+        '`withUser`; list only the columns safe to return (never password ' +
+        'hashes/tokens).',
+    );
+  }
+
   // Restrict the allowlist to columns that actually exist, excluding the id
-  // column. When no allowlist is provided (internal/test callers), default to
-  // every non-id column.
-  const exposeColumns = (config.exposeColumns ?? Object.keys(columns)).filter(
+  // column, and validate every resolved db column name that will be spliced
+  // into raw SQL by the JOIN helpers.
+  const exposeColumns = config.exposeColumns.filter(
     (c) => c !== idColumnKey && c in columns,
   );
+  for (const c of exposeColumns) {
+    assertSafeSqlIdentifier(columns[c]!.name, `user column "${c}"`);
+  }
 
   return {
     table: config.table,

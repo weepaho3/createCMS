@@ -55,11 +55,8 @@ export function processCollections<
   ) as { [K in keyof TCollections]: TCollections[K] & { name: string } };
 }
 
-export function resolveAuthMiddleware(
-  authMiddleware?: CMSMiddleware,
-  middleware?: CMSMiddleware,
-) {
-  return authMiddleware ?? middleware;
+export function resolveAuthMiddleware(authMiddleware: CMSMiddleware) {
+  return authMiddleware;
 }
 
 export function createCMSContext(input: {

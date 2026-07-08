@@ -3,6 +3,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import { setupTestDB } from '../../../test-utils/db';
 import { DUMMY_MEDIA_CONFIG } from '../../../test-utils/fixtures';
+import { allowAnonymous } from '../../../core/define';
 import { createCMS } from '../../../core/factory';
 import { i18n } from '../../i18n/index';
 import { i18nSchema } from '../../i18n/schema';
@@ -71,6 +72,7 @@ async function setupXorCMS() {
   schemaCleanups.push(cleanup);
   const cms = createCMS({
     db,
+    authMiddleware: allowAnonymous(),
     media: DUMMY_MEDIA_CONFIG,
     collections: XOR_COLLECTIONS,
     plugins: [abTest()],
@@ -272,7 +274,7 @@ describe('A/B XOR cross-embed guard', () => {
       db,
       media: DUMMY_MEDIA_CONFIG,
       collections: I18N_COLLECTIONS,
-      middleware: async () => ({ language }),
+      authMiddleware: async () => ({ language }),
       plugins: [
         i18n({
           languages: ['en', 'de'] as const,

@@ -233,7 +233,8 @@ collectionEndpoints: (collection, ctx) => ({
 ```ts
 async onRequest(request, ctx) {
   const url = new URL(request.url);
-  if (request.method === 'POST' && url.pathname.endsWith('/pageViews/recordView')) {
+  // The A/B plugin caps its one anonymous write path, POST /abTest/trackEvent.
+  if (request.method === 'POST' && url.pathname.endsWith('/abTest/trackEvent')) {
     const limited = await rateLimit(request);
     if (limited) return { response: limited }; // 429, pipeline stops here
   }

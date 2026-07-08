@@ -748,6 +748,81 @@ describe('upload validation', () => {
     ).rejects.toThrow(/disallowed MIME type/i);
   });
 
+  it('uploadAssets rejects an SVG payload smuggled in as image/png (magic-byte sniff)', async () => {
+    const { cms, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+
+    // Declared as an allowed raster type, but the bytes are a script-bearing
+    // SVG — the exact stored-XSS vector the server-side sniff must catch.
+    const svg = new TextEncoder().encode(
+      '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
+    );
+
+    await expect(
+      cms.api.media.uploadAssets({
+        body: {
+          files: [
+            {
+              name: 'evil.png',
+              size: svg.byteLength,
+              type: 'image/png',
+              buffer: new Blob([svg]),
+            },
+          ],
+        },
+      }),
+    ).rejects.toThrow(/disallowed MIME type/i);
+  });
+
+  it('uploadAssets rejects declared image/png whose bytes are actually JPEG', async () => {
+    const { cms, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+
+    // Real JPEG magic bytes (FF D8 FF) declared as image/png → content mismatch.
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+
+    await expect(
+      cms.api.media.uploadAssets({
+        body: {
+          files: [
+            {
+              name: 'mislabeled.png',
+              size: jpeg.byteLength,
+              type: 'image/png',
+              buffer: new Blob([jpeg]),
+            },
+          ],
+        },
+      }),
+    ).rejects.toThrow(/disallowed MIME type/i);
+  });
+
+  it('uploadAssets accepts a real JPEG declared as image/jpeg', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+
+    const result = await cms.api.media.uploadAssets({
+      body: {
+        files: [
+          {
+            name: 'real.jpg',
+            size: jpeg.byteLength,
+            type: 'image/jpeg',
+            buffer: new Blob([jpeg]),
+          },
+        ],
+      },
+    });
+
+    const [asset] = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.id, result.assets[0].id));
+    expect(asset.mimeType).toBe('image/jpeg');
+  });
+
   it('createSignedUpload rejects empty files array', async () => {
     const { cms, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
@@ -1621,5 +1696,35 @@ describe('media.replaceAsset', () => {
         },
       }),
     ).rejects.toThrow();
+  });
+
+  it('rejects a declared image whose bytes contradict it (magic-byte sniff)', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const [orig] = await insertAsset(db, 'o.png');
+
+    // Script-bearing SVG declared as image/png — must be rejected before the
+    // replacement object is minted, so the stored image is never swapped for it.
+    const svg = new TextEncoder().encode(
+      '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
+    );
+
+    await expect(
+      cms.api.media.replaceAsset({
+        body: {
+          assetId: orig.id,
+          file: {
+            name: 'evil.png',
+            size: svg.byteLength,
+            type: 'image/png',
+            buffer: new Blob([svg]),
+          },
+        },
+      }),
+    ).rejects.toThrow(/disallowed MIME type/i);
+
+    // The row still points at the original object — nothing was replaced.
+    const [row] = await db.select().from(assets).where(eq(assets.id, orig.id));
+    expect(row.slug).toBe('o.png');
   });
 });

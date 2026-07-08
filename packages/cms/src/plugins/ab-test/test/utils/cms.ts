@@ -6,6 +6,7 @@ import {
   TEST_COLLECTIONS,
 } from '../../../../test-utils/fixtures';
 import { createCMS } from '../../../../core/factory';
+import { allowAnonymous } from '../../../../core/define';
 import { multiTenant } from '../../../multi-tenant/index';
 import { multiTenantSchema } from '../../../multi-tenant/schema';
 import { abTest } from '../../index';
@@ -18,7 +19,7 @@ import { buildSchema } from '../../schema';
  * and enums match the real-world output.
  */
 export const setupABTestCMS = async (options?: {
-  middleware?: CMSMiddleware;
+  authMiddleware?: CMSMiddleware;
   onRevalidate?: {
     handler: (event: {
       rootId: string;
@@ -39,7 +40,7 @@ export const setupABTestCMS = async (options?: {
     db,
     media: DUMMY_MEDIA_CONFIG,
     collections: TEST_COLLECTIONS,
-    middleware: options?.middleware,
+    authMiddleware: options?.authMiddleware ?? allowAnonymous(),
     onRevalidate: options?.onRevalidate,
     plugins: [abTest({ ga4: options?.ga4 })],
   });
@@ -66,7 +67,7 @@ export const setupMultiTenantABTestCMS = async () => {
     db,
     media: DUMMY_MEDIA_CONFIG,
     collections: TEST_COLLECTIONS,
-    middleware: async () => ({ tenantSlug: currentTenant }),
+    authMiddleware: async () => ({ tenantSlug: currentTenant }),
     plugins: [multiTenant(), abTest()],
   });
 

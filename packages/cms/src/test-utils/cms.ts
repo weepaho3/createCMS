@@ -8,7 +8,7 @@ import type {
   MergeStrategy,
 } from '../index';
 
-import { createCMS } from '../index';
+import { allowAnonymous, createCMS } from '../index';
 import { setupTestDB } from './db';
 import { DUMMY_MEDIA_CONFIG, TEST_COLLECTIONS } from './fixtures';
 import { type TestS3, setupTestS3 } from './s3';
@@ -23,7 +23,6 @@ import { type TestS3, setupTestS3 } from './s3';
 export const setupTestCMS = async (options?: {
   dataRetention?: DataRetentionConfig;
   authMiddleware?: CMSMiddleware;
-  middleware?: CMSMiddleware;
   plugins?: CMSPlugin<any>[];
   withS3?: boolean;
   user?: CMSUserConfig;
@@ -53,8 +52,7 @@ export const setupTestCMS = async (options?: {
     media: mediaConfig,
     collections: TEST_COLLECTIONS,
     dataRetention: options?.dataRetention,
-    authMiddleware: options?.authMiddleware,
-    middleware: options?.middleware,
+    authMiddleware: options?.authMiddleware ?? allowAnonymous(),
     plugins,
     forceCommitMessage: options?.forceCommitMessage,
     defaultBranchName: options?.defaultBranchName,

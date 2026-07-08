@@ -142,8 +142,11 @@ export {
   defineUserConfig,
   definePlugin,
   defineAuthMiddleware,
+  allowAnonymous,
   trackingId,
 } from './core/define';
+
+export type { AllowAnonymousSentinel } from './core/define';
 
 export type { SchemaModule, TableMap, EnumMap } from './core/db/types';
 

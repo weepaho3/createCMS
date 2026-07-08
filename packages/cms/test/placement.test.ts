@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createCMS } from '../src/index';
+import { allowAnonymous, createCMS } from '../src/index';
 import { setupTestDB } from '../src/test-utils/db';
 import { DUMMY_MEDIA_CONFIG } from '../src/test-utils/fixtures';
 
@@ -48,6 +48,7 @@ async function setupCMS() {
   const { db } = await setupTestDB();
   const cms = createCMS({
     db,
+    authMiddleware: allowAnonymous(),
     media: { ...DUMMY_MEDIA_CONFIG },
     collections: COLLECTIONS,
   });

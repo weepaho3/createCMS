@@ -1687,7 +1687,7 @@ describe('i18n — delete guard is anchor-only (RB4)', () => {
 
 describe('i18n — config & middleware guards', () => {
   it('throws LANGUAGE_REQUIRED when the middleware provides no language', async () => {
-    const { cms } = await setupI18nTestCMS({ middleware: async () => ({}) });
+    const { cms } = await setupI18nTestCMS({ authMiddleware: async () => ({}) });
     await expect(
       cms.api.pages.createRoot({
         body: { slug: 'x', properties: { title: 'X' } },

@@ -4,6 +4,7 @@ import type { RevalidateEvent } from '../types/definitions';
 
 import { setupTestDB } from '../../test-utils/db';
 import { DUMMY_MEDIA_CONFIG } from '../../test-utils/fixtures';
+import { allowAnonymous } from '../define';
 import { createCMS } from '../factory';
 import { rootRevalidateTag } from '../revalidation';
 
@@ -63,6 +64,7 @@ describe('revalidation tags (FA3b)', () => {
 
     const cms = createCMS({
       db,
+      authMiddleware: allowAnonymous(),
       media: DUMMY_MEDIA_CONFIG,
       collections: COLLECTIONS,
       onRevalidate: (event) => {
@@ -100,6 +102,7 @@ describe('revalidation tags (FA3b)', () => {
 
     const cms = createCMS({
       db,
+      authMiddleware: allowAnonymous(),
       media: DUMMY_MEDIA_CONFIG,
       collections: COLLECTIONS,
       onRevalidate: (event) => {
@@ -153,6 +156,7 @@ describe('revalidation tags (FA3b)', () => {
 
     const cms = createCMS({
       db,
+      authMiddleware: allowAnonymous(),
       media: DUMMY_MEDIA_CONFIG,
       collections: COLLECTIONS,
       onRevalidate: (event) => {
@@ -194,6 +198,7 @@ describe('revalidation tags (FA3b)', () => {
 
     const cms = createCMS({
       db,
+      authMiddleware: allowAnonymous(),
       media: DUMMY_MEDIA_CONFIG,
       collections: NESTED_COLLECTIONS,
       onRevalidate: (event) => {
