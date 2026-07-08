@@ -8,7 +8,7 @@ import type {
 import type { CustomMediaConfig } from '../src/core/types/s3';
 
 import { isReferencedByLiveContent } from '../src/core/references';
-import { createCMS } from '../src/index';
+import { allowAnonymous, createCMS } from '../src/index';
 import { contentUsages } from '../src/schema';
 import { setupTestDB } from '../src/test-utils/db';
 
@@ -54,6 +54,7 @@ async function setupReferenceCMS() {
 
   const cms = createCMS({
     db,
+    authMiddleware: allowAnonymous(),
     media: DUMMY_MEDIA,
     collections: {
       authors: {
@@ -157,6 +158,7 @@ describe('reference validation', () => {
     expect(() =>
       createCMS({
         db,
+        authMiddleware: allowAnonymous(),
         media: DUMMY_MEDIA,
         collections: {
           pages: {
@@ -195,6 +197,7 @@ describe('reference validation', () => {
     expect(() =>
       createCMS({
         db,
+        authMiddleware: allowAnonymous(),
         media: DUMMY_MEDIA,
         collections: {
           authors: {
@@ -245,6 +248,7 @@ describe('reference validation', () => {
     expect(() =>
       createCMS({
         db,
+        authMiddleware: allowAnonymous(),
         media: DUMMY_MEDIA,
         collections: {
           pages: {
@@ -893,6 +897,7 @@ describe('data-only collections (no blocks)', () => {
 
     const cms = createCMS({
       db,
+      authMiddleware: allowAnonymous(),
       media: DUMMY_MEDIA,
       collections: {
         tags: {
@@ -925,6 +930,7 @@ describe('data-only collections (no blocks)', () => {
 
     const cms = createCMS({
       db,
+      authMiddleware: allowAnonymous(),
       media: DUMMY_MEDIA,
       collections: {
         tags: {
@@ -960,6 +966,7 @@ describe('data-only collections (no blocks)', () => {
 
     const cms = createCMS({
       db,
+      authMiddleware: allowAnonymous(),
       media: DUMMY_MEDIA,
       collections: {
         tags: {
@@ -1011,6 +1018,7 @@ describe('cascade revalidation', () => {
 
     const cms = createCMS({
       db,
+      authMiddleware: allowAnonymous(),
       media: DUMMY_MEDIA,
       collections: {
         authors: {

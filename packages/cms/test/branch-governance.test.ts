@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createCMS } from '../src/index';
+import { allowAnonymous, createCMS } from '../src/index';
 import { setupTestCMS } from '../src/test-utils/cms';
 import { setupTestDB } from '../src/test-utils/db';
 import { DUMMY_MEDIA_CONFIG } from '../src/test-utils/fixtures';
@@ -244,6 +244,7 @@ describe('branch protection — per-collection override', () => {
     const { db } = await setupTestDB();
     return createCMS({
       db,
+      authMiddleware: allowAnonymous(),
       media: { ...DUMMY_MEDIA_CONFIG },
       // Global: protect published branches everywhere…
       branchProtection: { protectPublishedBranches: true },

@@ -22,7 +22,7 @@ import { multiTenantSchema } from '../../schema';
  * API calls.
  */
 export const setupMultiTenantTestCMS = async (options?: {
-  middleware?: CMSMiddleware;
+  authMiddleware?: CMSMiddleware;
   withS3?: boolean;
 }) => {
   const { db, cleanup: cleanupSchema } = await setupTestDB({
@@ -49,7 +49,7 @@ export const setupMultiTenantTestCMS = async (options?: {
     db,
     media: mediaConfig,
     collections: TEST_COLLECTIONS,
-    middleware: options?.middleware ?? defaultMiddleware,
+    authMiddleware: options?.authMiddleware ?? defaultMiddleware,
     plugins: [multiTenant()],
   });
 

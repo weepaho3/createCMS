@@ -34,6 +34,7 @@ describe('resolveUserConfig', () => {
     const resolved = resolveUserConfig({
       table: testUserTable,
       idColumn: testUserTable.id,
+      exposeColumns: ['name', 'email', 'image', 'role', 'createdAt'],
     });
 
     expect(resolved.tableName).toBe('user');
@@ -54,6 +55,7 @@ describe('resolveUserConfig', () => {
     const resolved = resolveUserConfig({
       table: tableWithMappedId,
       idColumn: tableWithMappedId.accountId,
+      exposeColumns: ['name'],
     });
     expect(resolved.idColumnKey).toBe('accountId');
     expect(resolved.idColumnDbName).toBe('account_id');
@@ -66,6 +68,17 @@ describe('resolveUserConfig', () => {
     expect(() =>
       resolveUserConfig({ table: testUserTable, idColumn: otherTable.otherId }),
     ).toThrow(/idColumn "other_id" not found/);
+  });
+
+  it('throws when exposeColumns is omitted (security allowlist is required)', () => {
+    // Omitting `exposeColumns` must fail loudly rather than silently exposing
+    // every user column (e.g. password hashes/tokens) via `withUser`.
+    expect(() =>
+      resolveUserConfig({
+        table: testUserTable,
+        idColumn: testUserTable.id,
+      }),
+    ).toThrow(/exposeColumns is required/);
   });
 });
 
@@ -80,6 +93,7 @@ describe('resolveUserColumns', () => {
     uc = resolveUserConfig({
       table: testUserTable,
       idColumn: testUserTable.id,
+      exposeColumns: ['name', 'email', 'image', 'role', 'createdAt'],
     });
     const cols = resolveUserColumns(uc, true);
     expect(cols).not.toContain('id');
@@ -94,6 +108,7 @@ describe('resolveUserColumns', () => {
     uc = resolveUserConfig({
       table: testUserTable,
       idColumn: testUserTable.id,
+      exposeColumns: ['name', 'email', 'image', 'role', 'createdAt'],
     });
     const cols = resolveUserColumns(uc, { name: true, image: true });
     expect(cols).toEqual(['name', 'image']);
@@ -103,6 +118,7 @@ describe('resolveUserColumns', () => {
     uc = resolveUserConfig({
       table: testUserTable,
       idColumn: testUserTable.id,
+      exposeColumns: ['name', 'email', 'image', 'role', 'createdAt'],
     });
     const cols = resolveUserColumns(uc, {
       name: true,
@@ -115,6 +131,7 @@ describe('resolveUserColumns', () => {
     uc = resolveUserConfig({
       table: testUserTable,
       idColumn: testUserTable.id,
+      exposeColumns: ['name', 'email', 'image', 'role', 'createdAt'],
     });
     const cols = resolveUserColumns(uc, {});
     expect(cols).toEqual([]);
@@ -128,6 +145,7 @@ describe('resolveUserColumns', () => {
     uc = resolveUserConfig({
       table: tableWithDifferentIdName,
       idColumn: tableWithDifferentIdName.accountId,
+      exposeColumns: ['displayName'],
     });
     const cols = resolveUserColumns(uc, true);
     expect(cols).not.toContain('accountId');
@@ -188,6 +206,7 @@ describe('userJoinFragments', () => {
     uc = resolveUserConfig({
       table: testUserTable,
       idColumn: testUserTable.id,
+      exposeColumns: ['name', 'email', 'image', 'role', 'createdAt'],
     });
     const frags = userJoinFragments(
       uc,
@@ -213,6 +232,7 @@ describe('userJoinFragments', () => {
     uc = resolveUserConfig({
       table: testUserTable,
       idColumn: testUserTable.id,
+      exposeColumns: ['name', 'email', 'image', 'role', 'createdAt'],
     });
     const frags = userJoinFragments(uc, 'x', 'y', {});
 
@@ -226,6 +246,7 @@ describe('userJoinFragments', () => {
     uc = resolveUserConfig({
       table: testUserTable,
       idColumn: testUserTable.id,
+      exposeColumns: ['name', 'email', 'image', 'role', 'createdAt'],
     });
     const frags = userJoinFragments(uc, 'tbl.user_id', 'u', {
       name: true,
@@ -251,6 +272,7 @@ describe('extractUserFromRow', () => {
     uc = resolveUserConfig({
       table: testUserTable,
       idColumn: testUserTable.id,
+      exposeColumns: ['name', 'email', 'image', 'role', 'createdAt'],
     });
     const row = {
       id: 'mr-1',
@@ -272,6 +294,7 @@ describe('extractUserFromRow', () => {
     uc = resolveUserConfig({
       table: testUserTable,
       idColumn: testUserTable.id,
+      exposeColumns: ['name', 'email', 'image', 'role', 'createdAt'],
     });
     const row = {
       id: 'mr-1',
@@ -289,6 +312,7 @@ describe('extractUserFromRow', () => {
     uc = resolveUserConfig({
       table: testUserTable,
       idColumn: testUserTable.id,
+      exposeColumns: ['name', 'email', 'image', 'role', 'createdAt'],
     });
     const row = {
       mr_user_name: 'Bob',
@@ -305,6 +329,7 @@ describe('extractUserFromRow', () => {
     uc = resolveUserConfig({
       table: testUserTable,
       idColumn: testUserTable.id,
+      exposeColumns: ['name', 'email', 'image', 'role', 'createdAt'],
     });
     const row = { id: 'mr-1' };
     const user = extractUserFromRow(row, 'mr_user', uc, {
@@ -318,6 +343,7 @@ describe('extractUserFromRow', () => {
     uc = resolveUserConfig({
       table: testUserTable,
       idColumn: testUserTable.id,
+      exposeColumns: ['name', 'email', 'image', 'role', 'createdAt'],
     });
     const row = {
       u_name: 'Charlie',

@@ -186,7 +186,7 @@ describe('runPruning', () => {
 
     const { cms } = await setupTestCMS({
       dataRetention: { keepDays: 7, keepMinCommits: 3 },
-      middleware: async (ctx) => {
+      authMiddleware: async (ctx) => {
         capturedScope = ctx.scope;
         capturedPermissionResource = ctx.permissionResource;
         capturedOperation = ctx.operation;

@@ -75,7 +75,14 @@ type BaseMediaConfig = {
   maxFileSize?: number;
   /** Maximum number of files per upload batch. @default 10 */
   maxFiles?: number;
-  /** Allowed MIME type patterns. @default ['image/*', 'video/*', 'application/pdf'] */
+  /**
+   * Allowed MIME types. Exact matches, or a `type/*` wildcard prefix (e.g.
+   * `image/*`). The default is an EXPLICIT raster/document allowlist that
+   * deliberately excludes `image/svg+xml` — an uploaded SVG can carry inline
+   * script and, served same-origin, becomes stored XSS. Re-add SVG only if you
+   * sanitize it and serve it from a separate origin.
+   * @default ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'video/mp4', 'video/webm', 'application/pdf']
+   */
   allowedMimeTypes?: string[];
 
   // URL generation
@@ -139,6 +146,16 @@ export type MediaConfig =
 export const MEDIA_DEFAULTS = {
   maxFileSize: 4 * 1024 * 1024, // 4MB
   maxFiles: 10,
-  allowedMimeTypes: ['image/*', 'video/*', 'application/pdf'],
+  // Explicit allowlist — no `image/*` wildcard, so `image/svg+xml` (a stored-XSS
+  // vector) is excluded by default. Widen via `allowedMimeTypes` if you need more.
+  allowedMimeTypes: [
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+    'image/gif',
+    'video/mp4',
+    'video/webm',
+    'application/pdf',
+  ],
   signedUrlExpiresIn: 120,
 } as const;

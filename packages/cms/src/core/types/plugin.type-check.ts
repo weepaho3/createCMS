@@ -14,7 +14,7 @@
 
 import type { Endpoint } from 'better-call';
 
-import { defineCollections, definePlugin } from '../define';
+import { allowAnonymous, defineCollections, definePlugin } from '../define';
 import { createCMS } from '../factory';
 import type { DrizzleInstance } from './drizzle';
 import type { MediaConfig } from './s3';
@@ -63,7 +63,13 @@ export const _rejectsUnknownKey = definePlugin({
 });
 
 // --- the literal `id` surfaces as a real `cms.api.<id>` namespace key -------
-const cms = createCMS({ db, media, collections, plugins: [abPlugin] });
+const cms = createCMS({
+  db,
+  media,
+  collections,
+  plugins: [abPlugin],
+  authMiddleware: allowAnonymous(),
+});
 void cms.api.abTest;
 
 // --- …and there is NO `string` index signature: an arbitrary namespace key

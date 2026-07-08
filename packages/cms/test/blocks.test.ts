@@ -3072,7 +3072,7 @@ describe('middleware', () => {
         forcePathStyle: true,
       },
       collections,
-      middleware: async (ctx) => {
+      authMiddleware: async (ctx) => {
         middlewareCallCount++;
         capturedCtx = ctx;
 
@@ -3133,7 +3133,7 @@ describe('middleware', () => {
     let capturedPermissionResource: string | undefined;
 
     const { cms } = await setupTestCMS({
-      middleware: async (ctx) => {
+      authMiddleware: async (ctx) => {
         capturedPermissionResource = ctx.permissionResource;
         return {};
       },

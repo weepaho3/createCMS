@@ -23,8 +23,7 @@ export const cms = createCMS({
 | `db` | `DrizzleInstance` | yes | | Your Drizzle (PostgreSQL) database instance. |
 | `collections` | `Record<string, CollectionDefinition>` | yes | | The collections, usually grouped with `defineCollections`. |
 | `media` | `MediaConfig` | yes | | S3-compatible storage config (see below). |
-| `authMiddleware` | `CMSMiddleware` | no | | Resolves the user and permissions per request. |
-| `middleware` | `CMSMiddleware` | no | | Alias for `authMiddleware`. |
+| `authMiddleware` | `CMSMiddleware` | yes | | Resolves the user and permissions per request. `createCMS` throws without it; pass [`allowAnonymous()`](/docs/resources/security#authentication-is-required) to run with no auth on purpose. |
 | `plugins` | `CMSPlugin[]` | no | `[]` | Server plugins. |
 | `basePath` | `string` | no | `'/api/cms'` | Base path the router mounts under. |
 | `dataRetention` | `DataRetentionConfig` | no | | Pruning policy for old commits and archived roots. |
@@ -53,7 +52,7 @@ export const cms = createCMS({
 | `publicUrl` | `string` | | Public base URL assets are served from. |
 | `maxFileSize` | `number` | `4194304` (4 MB) | Maximum upload size in bytes. |
 | `maxFiles` | `number` | `10` | Maximum files per upload batch. |
-| `allowedMimeTypes` | `string[]` | `['image/*', 'video/*', 'application/pdf']` | Allowed MIME patterns. |
+| `allowedMimeTypes` | `string[]` | `['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'video/mp4', 'video/webm', 'application/pdf']` | Allowed MIME types (exact match, no wildcards). `image/svg+xml` is **excluded** by default — SVG can carry inline script (stored-XSS risk). Add it (or any other type) explicitly only if you serve assets cross-origin. See [Security → Media privacy](/docs/resources/security#media-privacy). |
 | `signedUrlExpiresIn` | `number` | `120` | Signed URL lifetime in seconds. |
 
 Each provider adds its own fields:
@@ -77,6 +76,8 @@ const media = {
 ## `authMiddleware`
 
 A function that receives the request context and returns a result object. `userId` is optional (anonymous requests omit it); any extra fields you return extend the context available to scoping and hooks.
+
+`authMiddleware` is **required** — `createCMS` throws at construction without it, so auth is never silently absent. To run public/dev with no auth on purpose, pass `allowAnonymous()` (exported from `@createcms/core`), which authorizes every request; see [Security → Authentication is required](/docs/resources/security#authentication-is-required).
 
 ```ts
 import { defineAuthMiddleware } from '@createcms/core';

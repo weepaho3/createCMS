@@ -3,6 +3,8 @@ import { sql, type SQL } from 'drizzle-orm';
 import type { DrizzleInstance } from '../types/drizzle';
 import type { ResolvedUserConfig } from './resolve';
 
+import { assertSafeSqlIdentifier, assertSafeSqlTableRef } from './resolve';
+
 /**
  * Resolves which user-table columns to include based on the `withUser` value.
  * Returns camelCase column keys (matching the Drizzle table definition).
@@ -46,9 +48,18 @@ export function userJoinFragments(
     };
   }
 
+  // Defense-in-depth: everything below is spliced into raw SQL via `sql.raw`,
+  // so validate every identifier that originates from the (developer-provided)
+  // user config before it lands in a fragment. `resolveUserConfig` already
+  // validates these at construction; re-assert here so a hand-built
+  // `ResolvedUserConfig` can never bypass the guard.
+  assertSafeSqlTableRef(userConfig.sqlTableRef);
+  assertSafeSqlIdentifier(userConfig.idColumnDbName, 'user id column');
+
   const selectParts = columns
     .map((c) => {
       const dbName = userConfig.allColumns[c]!.name;
+      assertSafeSqlIdentifier(dbName, `user column "${c}"`);
       return `${alias}.${dbName} AS ${alias}_${c}`;
     })
     .join(', ');
@@ -133,6 +144,12 @@ export async function batchFetchUsers(
 ): Promise<Map<string, Record<string, unknown>>> {
   const map = new Map<string, Record<string, unknown>>();
   if (userIds.length === 0) return map;
+
+  // `idColumnDbName` and `sqlTableRef` are spliced into the raw SELECT/FROM
+  // below independently of `userJoinFragments` (which skips validation when no
+  // columns match), so guard them here too.
+  assertSafeSqlIdentifier(uc.idColumnDbName, 'user id column');
+  assertSafeSqlTableRef(uc.sqlTableRef);
 
   const frags = userJoinFragments(uc, `u.${uc.idColumnDbName}`, 'u', withUser);
   const userRows = await db.execute(

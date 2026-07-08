@@ -307,6 +307,13 @@ type CMSDefinitionDataKeys =
   | 'schema'
   | 'basePath'
   | 'user'
+  // Picked from TDef alongside the other data keys. `authMiddleware` is a
+  // REQUIRED field; leaving it to the non-generic `Omit<CMSDefinition, 'hooks'>`
+  // conjunct alone perturbs how TS infers `TDef`, widening the literal
+  // `notifications: false` back to `boolean` and breaking the notify/realtime
+  // type gates. Picking it here keeps the whole definition inferred from one
+  // consistent source.
+  | 'authMiddleware'
   // Picked from TDef so the literal `notifications: false` survives inference
   // (a widened `boolean` would not gate the type) and `realtime` is captured.
   | 'notifications'
@@ -590,10 +597,12 @@ export const createCMS = <
     },
 ) => {
   const plugins = (definition.plugins ?? []) as TPlugins;
-  const authMiddleware = resolveAuthMiddleware(
-    definition.authMiddleware,
-    definition.middleware,
-  );
+  const authMiddleware = resolveAuthMiddleware(definition.authMiddleware);
+  if (!authMiddleware) {
+    throw new Error(
+      '[cms] createCMS requires `authMiddleware`. Pass one that resolves the request identity, or `allowAnonymous()` to run the API with no auth (public/dev only).',
+    );
+  }
 
   validateCollectionReferences(definition.collections);
   validateCollectionNames(definition.collections, plugins);

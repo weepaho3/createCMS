@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { CMSPlugin } from '../src/index';
 
 import { splitPath } from '../src/core/slug';
-import { createCMS } from '../src/index';
+import { allowAnonymous, createCMS } from '../src/index';
 import { redirects, roots } from '../src/schema';
 import { setupTestCMS } from '../src/test-utils/cms';
 import { setupTestDB } from '../src/test-utils/db';
@@ -29,6 +29,7 @@ async function setupNestedCMS() {
   const { db } = await setupTestDB();
   const cms = createCMS({
     db,
+    authMiddleware: allowAnonymous(),
     media: DUMMY_MEDIA_CONFIG,
     collections: NESTED_COLLECTIONS,
     plugins: [] as CMSPlugin<any>[],

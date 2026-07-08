@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 
-import { createCMS } from '../src/index';
+import { allowAnonymous, createCMS } from '../src/index';
 import { contentUsages } from '../src/schema';
 import { setupTestDB } from '../src/test-utils/db';
 import { DUMMY_MEDIA_CONFIG } from '../src/test-utils/fixtures';
@@ -10,6 +10,7 @@ async function setupLinkCMS() {
   const { db } = await setupTestDB();
   const cms = createCMS({
     db,
+    authMiddleware: allowAnonymous(),
     media: { ...DUMMY_MEDIA_CONFIG },
     collections: {
       pages: {
@@ -244,6 +245,7 @@ async function setupRefLinkCMS() {
   const { db } = await setupTestDB();
   const cms = createCMS({
     db,
+    authMiddleware: allowAnonymous(),
     media: { ...DUMMY_MEDIA_CONFIG },
     collections: {
       // Reusable blocks have NO slug; their links target the slugged `pages`.
