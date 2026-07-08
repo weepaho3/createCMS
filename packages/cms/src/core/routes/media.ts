@@ -1,5 +1,5 @@
 import { createEndpoint } from 'better-call';
-import { and, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, ilike, inArray, isNull, or, type SQL, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
 import type { CMSProcedureCtx, MediaConfig } from '../types';
@@ -318,13 +318,13 @@ export function createMediaEndpoints(
         // Children of `parentFolderId`, or the root level when omitted. The scope
         // predicate is applied to the CHILDREN, so an out-of-scope `parentFolderId`
         // simply yields no rows (no cross-tenant leak).
-        const conditions: ReturnType<typeof eq>[] = [
+        const conditions: SQL[] = [
           parentFolderId
             ? eq(assetFolders.parentId, parentFolderId)
             : isNull(assetFolders.parentId),
         ];
         if (scope.assetFolders?.where)
-          conditions.push(scope.assetFolders.where as any);
+          conditions.push(scope.assetFolders.where);
 
         const folderRows = await db
           .select({
@@ -416,8 +416,8 @@ export function createMediaEndpoints(
           sortDirection = 'desc',
         } = ctx.query ?? {};
 
-        const conditions: ReturnType<typeof eq>[] = [isNull(assets.archivedAt)];
-        if (scope.assets?.where) conditions.push(scope.assets.where as any);
+        const conditions: SQL[] = [isNull(assets.archivedAt)];
+        if (scope.assets?.where) conditions.push(scope.assets.where);
 
         if (folderId) {
           conditions.push(eq(assets.folderId, folderId));
@@ -616,12 +616,12 @@ export function createMediaEndpoints(
 
         // Exclude archived (soft-deleted) assets, matching moveAssets/archiveAssets:
         // an archived id is reported in `skipped`, never silently counted as updated.
-        const selectConditions = [
+        const selectConditions: SQL[] = [
           inArray(assets.id, assetIds),
           isNull(assets.archivedAt),
         ];
         if (scope.assets?.where)
-          selectConditions.push(scope.assets.where as any);
+          selectConditions.push(scope.assets.where);
 
         const existing = await db
           .select({ id: assets.id })
@@ -635,9 +635,9 @@ export function createMediaEndpoints(
         }
 
         const existingIds = existing.map((a) => a.id);
-        const updateConditions = [inArray(assets.id, existingIds)];
+        const updateConditions: SQL[] = [inArray(assets.id, existingIds)];
         if (scope.assets?.where)
-          updateConditions.push(scope.assets.where as any);
+          updateConditions.push(scope.assets.where);
 
         await db
           .update(assets)
@@ -689,12 +689,12 @@ export function createMediaEndpoints(
         }
 
         // Live, in-scope assets among the requested ids.
-        const selectConditions = [
+        const selectConditions: SQL[] = [
           inArray(assets.id, assetIds),
           isNull(assets.archivedAt),
         ];
         if (scope.assets?.where)
-          selectConditions.push(scope.assets.where as any);
+          selectConditions.push(scope.assets.where);
 
         const existing = await db
           .select({ id: assets.id, variantOf: assets.variantOf })
@@ -717,7 +717,7 @@ export function createMediaEndpoints(
 
         if (movedIds.length > 0) {
           // Move the assets AND their variants (co-located), scoped + non-archived.
-          const updateConditions = [
+          const updateConditions: SQL[] = [
             or(
               inArray(assets.id, movedIds),
               inArray(assets.variantOf, movedIds),
@@ -725,7 +725,7 @@ export function createMediaEndpoints(
             isNull(assets.archivedAt),
           ];
           if (scope.assets?.where)
-            updateConditions.push(scope.assets.where as any);
+            updateConditions.push(scope.assets.where);
 
           await db
             .update(assets)
@@ -760,12 +760,12 @@ export function createMediaEndpoints(
         const { scope } = ctx.context;
         const { assetIds } = ctx.body;
 
-        const selectConditions = [
+        const selectConditions: SQL[] = [
           inArray(assets.id, assetIds),
           isNull(assets.archivedAt),
         ];
         if (scope.assets?.where)
-          selectConditions.push(scope.assets.where as any);
+          selectConditions.push(scope.assets.where);
 
         const existing = await db
           .select({ id: assets.id })
@@ -810,7 +810,7 @@ export function createMediaEndpoints(
         // never left orphaned without its original. The stored S3 object is kept
         // until the pruning layer reclaims unreferenced, archived, old assets.
         const now = new Date();
-        const archiveConditions = [
+        const archiveConditions: SQL[] = [
           or(
             inArray(assets.id, toArchive),
             inArray(assets.variantOf, toArchive),
@@ -818,7 +818,7 @@ export function createMediaEndpoints(
           isNull(assets.archivedAt),
         ];
         if (scope.assets?.where)
-          archiveConditions.push(scope.assets.where as any);
+          archiveConditions.push(scope.assets.where);
 
         const archived = await db
           .update(assets)
@@ -857,8 +857,8 @@ export function createMediaEndpoints(
         const { assetId } = ctx.query;
 
         // Scope/IDOR guard: only report usage for an asset in the caller's scope.
-        const conditions = [eq(assets.id, assetId)];
-        if (scope.assets?.where) conditions.push(scope.assets.where as any);
+        const conditions: SQL[] = [eq(assets.id, assetId)];
+        if (scope.assets?.where) conditions.push(scope.assets.where);
         const [asset] = await db
           .select({ id: assets.id })
           .from(assets)
@@ -1140,11 +1140,11 @@ export function createMediaEndpoints(
         const { assetId, file } = ctx.body;
 
         // 1. Load the target (live, in scope).
-        const loadConditions = [
+        const loadConditions: SQL[] = [
           eq(assets.id, assetId),
           isNull(assets.archivedAt),
         ];
-        if (scope.assets?.where) loadConditions.push(scope.assets.where as any);
+        if (scope.assets?.where) loadConditions.push(scope.assets.where);
 
         const [target] = await db
           .select({ id: assets.id, variantOf: assets.variantOf })
@@ -1196,12 +1196,12 @@ export function createMediaEndpoints(
         //    status, variantOf are unchanged. Old object is left for pruning.
         const now = new Date();
         const repointedRow = await db.transaction(async (tx) => {
-          const updateConditions = [
+          const updateConditions: SQL[] = [
             eq(assets.id, assetId),
             isNull(assets.archivedAt),
           ];
           if (scope.assets?.where)
-            updateConditions.push(scope.assets.where as any);
+            updateConditions.push(scope.assets.where);
 
           const repointed = await tx
             .update(assets)
@@ -1224,12 +1224,12 @@ export function createMediaEndpoints(
             });
           }
 
-          const variantConditions = [
+          const variantConditions: SQL[] = [
             eq(assets.variantOf, assetId),
             isNull(assets.archivedAt),
           ];
           if (scope.assets?.where)
-            variantConditions.push(scope.assets.where as any);
+            variantConditions.push(scope.assets.where);
 
           await tx
             .update(assets)

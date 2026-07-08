@@ -59,7 +59,6 @@ export type {
   CMSAfterHookContext,
   CMSEndpointContext,
   InferPluginEndpoints,
-  InferPluginRealtimeEvents,
   InferPluginErrorCodes,
   InferPluginContext,
 } from './core/types/plugin';
@@ -140,6 +139,8 @@ export {
   defineRoot,
   defineCollection,
   defineCollections,
+  defineUserConfig,
+  definePlugin,
   defineAuthMiddleware,
   trackingId,
 } from './core/define';
@@ -157,6 +158,17 @@ export type {
 export type { NotificationService } from './core/notifications/service';
 export { notificationEvent } from './core/notifications/events';
 export type { NotificationEvent } from './core/notifications/events';
+
+// Media config — `media` is a required `createCMS` field, so consumers need these
+// to type it (rather than reaching for `Parameters<typeof createCMS>[0]['media']`).
+export type {
+  MediaConfig,
+  OptimizationConfig,
+  AWSMediaConfig,
+  DigitalOceanMediaConfig,
+  CloudflareMediaConfig,
+  CustomMediaConfig,
+} from './core/types/s3';
 
 // Realtime (optional, Upstash-only). Configure with `realtime: { url, token }`
 // on createCMS to enable the shared `/realtime` SSE route + per-user push; both

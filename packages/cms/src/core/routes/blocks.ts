@@ -254,7 +254,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
       // raw constraint error; now it throws SLUG_ALREADY_EXISTS cleanly.
       if (dupSlug !== null) {
         await validateSlugUniqueness(
-          tx as any,
+          tx,
           collectionName,
           null,
           dupSlug,
@@ -264,7 +264,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
       }
 
       const newRoot = await scopedInsert(
-        tx as any,
+        tx,
         'cms.roots',
         {
           id: newId('root'),
@@ -301,7 +301,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
 
       const dupPath = slugCfg?.enabled
         ? ((await resolveRootCurrentPath(
-            tx as any,
+            tx,
             slugCfg,
             newRoot.id,
             scope.roots,
@@ -453,7 +453,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
 
           if (slugCfg?.enabled && slug !== null) {
             await validateSlugUniqueness(
-              tx as any,
+              tx,
               collectionName,
               parentRootId,
               slug,
@@ -463,7 +463,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           }
 
           const root = await scopedInsert(
-            tx as any,
+            tx,
             'cms.roots',
             {
               id: newId('root'),
@@ -500,7 +500,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
 
           const path = slugCfg?.enabled
             ? ((await resolveRootCurrentPath(
-                tx as any,
+                tx,
                 slugCfg,
                 root.id,
                 scope.roots,
@@ -722,27 +722,45 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           10,
         );
 
-        const rootRows = (result.rows as Array<Record<string, unknown>>).map(
-          (row) => {
-            const item: Record<string, unknown> = {
-              rootId: row.root_id,
-              createdAt: new Date(row.created_at as string),
-              createdBy: (row.created_by as string | null) ?? undefined,
-              parentRootId: (row.parent_root_id as string | null) ?? undefined,
-              slug: (row.slug as string | null) ?? undefined,
-              sortOrder: row.sort_order,
-              properties: row.properties,
-              hasPublications: parseInt(String(row.publication_count), 10) > 0,
-              publicationCount: parseInt(String(row.publication_count), 10),
-              branchCount: parseInt(String(row.branch_count), 10),
-              openMergeRequestCount: parseInt(String(row.open_mr_count), 10),
-            };
+        // Raw-SQL row: the hand-selected column shape. Typing it lets the mapper
+        // below be structurally checked against RootListItem rather than blindly
+        // asserted. `properties` (JSON column) and the numeric/timestamp columns
+        // stay wide — they are the coerced/dynamic leaves.
+        const resultRows = result.rows as Array<{
+          root_id: string;
+          created_at: unknown;
+          created_by: string | null;
+          parent_root_id: string | null;
+          slug: string | null;
+          sort_order: number;
+          properties: unknown;
+          publication_count: unknown;
+          branch_count: unknown;
+          open_mr_count: unknown;
+        }>;
 
-            enrich.apply(item, row);
+        const rootRows = resultRows.map((row) => {
+          const item: RootListItem<TDef['root']['properties']> = {
+            rootId: row.root_id,
+            createdAt: new Date(row.created_at as string),
+            createdBy: row.created_by ?? undefined,
+            parentRootId: row.parent_root_id ?? undefined,
+            slug: row.slug ?? undefined,
+            sortOrder: row.sort_order,
+            // JSON column — the one genuinely-dynamic leaf.
+            properties: row.properties as RootListItem<
+              TDef['root']['properties']
+            >['properties'],
+            hasPublications: parseInt(String(row.publication_count), 10) > 0,
+            publicationCount: parseInt(String(row.publication_count), 10),
+            branchCount: parseInt(String(row.branch_count), 10),
+            openMergeRequestCount: parseInt(String(row.open_mr_count), 10),
+          };
 
-            return item;
-          },
-        );
+          enrich.apply(item, row);
+
+          return item;
+        });
 
         // Full URL path per row: resolve each listed root's ancestor chain UP to
         // the top (an anchored recursive CTE — pagination-safe, unlike building
@@ -783,11 +801,12 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           }
         }
 
-        return {
+        const response: ListRootsResult<TDef['root']['properties']> = {
           roots: rootRows,
           total,
           hasMore: offset + rootRows.length < total,
-        } as unknown as ListRootsResult<TDef['root']['properties']>;
+        };
+        return response;
       },
     ),
     /**
@@ -1884,7 +1903,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             // paths, apply the change, then auto-create redirects (old → page).
             if (currentRoot.slug !== normalized) {
               await validateSlugUniqueness(
-                tx as any,
+                tx,
                 collectionName,
                 currentRoot.parentRootId,
                 normalized,
@@ -1893,7 +1912,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
               );
 
               const captured = await captureSubtreePaths(
-                tx as any,
+                tx,
                 slugCfg,
                 rootId,
               );
@@ -1904,7 +1923,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
                 .where(eq(roots.id, rootId));
 
               redirectsCreated = await recordSubtreeRedirects(
-                tx as any,
+                tx,
                 collectionName,
                 captured,
                 ctx.context.scope.redirects,
@@ -1920,7 +1939,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             .where(eq(roots.id, rootId));
           const path = slugCfg?.enabled
             ? ((await resolveRootCurrentPath(
-                tx as any,
+                tx,
                 slugCfg,
                 rootId,
                 ctx.context.scope.roots,
@@ -2009,7 +2028,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           const oldHeadId = branch.headCommitId;
 
           const { blocks: currentBlocks } = await loadBlocksAtCommit(
-            tx as any,
+            tx,
             oldHeadId,
             rootId,
           );
@@ -2148,14 +2167,14 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
               );
             if (!parent) throw new CMSError('PARENT_ROOT_NOT_FOUND');
 
-            if (await isAncestorOf(tx as any, newParentRootId, rootId)) {
+            if (await isAncestorOf(tx, newParentRootId, rootId)) {
               throw new CMSError('CIRCULAR_REFERENCE');
             }
           }
 
           if (root.slug) {
             await validateSlugUniqueness(
-              tx as any,
+              tx,
               collectionName,
               newParentRootId,
               root.slug,
@@ -2169,7 +2188,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           // then auto-create redirects (every descendant's URL shifts too).
           const reparented = newParentRootId !== root.parentRootId;
           const captured = reparented
-            ? await captureSubtreePaths(tx as any, slugCfg, rootId)
+            ? await captureSubtreePaths(tx, slugCfg, rootId)
             : [];
 
           const effectiveSortOrder = position ?? 0;
@@ -2184,7 +2203,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           let redirectsCreated = 0;
           if (reparented) {
             redirectsCreated = await recordSubtreeRedirects(
-              tx as any,
+              tx,
               collectionName,
               captured,
               ctx.context.scope.redirects,
@@ -2193,7 +2212,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
 
           const path = slugCfg?.enabled
             ? ((await resolveRootCurrentPath(
-                tx as any,
+                tx,
                 slugCfg,
                 rootId,
                 ctx.context.scope.roots,
@@ -2435,7 +2454,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
               .from(roots)
               .where(eq(roots.id, rootId));
             parentRootId = r?.parentRootId ?? null;
-            oldPath = await resolveRootCurrentPath(tx as any, slugCfg, rootId);
+            oldPath = await resolveRootCurrentPath(tx, slugCfg, rootId);
           }
 
           // Soft-archive: history (branches/commits/blockVersions) is preserved;
@@ -2446,7 +2465,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             .where(eq(roots.id, rootId));
 
           const redirectsCreated = await recordArchiveRedirect(
-            tx as any,
+            tx,
             collectionName,
             oldPath,
             parentRootId,

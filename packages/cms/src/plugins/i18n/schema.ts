@@ -23,7 +23,7 @@ type CoreTables = (typeof coreSchema)['tables'] & TableMap;
  * per-language uniqueness is enforced by validateSlugUniqueness alone (which
  * matches `parent_root_id IS NULL` explicitly) — exactly as it always was.
  */
-export const i18nSchema = definePluginSchema<CoreTables>({
+export const i18nSchema = definePluginSchema<CoreTables>()({
   extend: {
     roots: {
       columns: {

@@ -10,7 +10,7 @@ type CoreTables = (typeof coreSchema)['tables'] & TableMap;
  * to the core tables. The column does not exist in the core schema — it is
  * entirely owned by this plugin.
  */
-export const multiTenantSchema = definePluginSchema<CoreTables>({
+export const multiTenantSchema = definePluginSchema<CoreTables>()({
   extend: {
     roots: {
       columns: {

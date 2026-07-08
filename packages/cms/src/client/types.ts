@@ -122,7 +122,39 @@ export interface CMSClientOptions {
 // Type Inference Utilities
 // ============================================================================
 
-type InferApi<T> = T extends { api: infer A } ? A : {};
+/**
+ * Maps a SERVER return type to its over-the-wire (JSON) shape as seen by the
+ * HTTP client: a `Date` becomes the ISO `string` that `JSON.parse` actually
+ * yields. (Server-side `cms.api.*` calls return real `Date`s and are unaffected;
+ * this only rewrites the client's typed surface, so `client.pages.getRoot()`'s
+ * `createdAt` is typed `string` — call `new Date(...)` to revive it.)
+ */
+export type Serialize<T> = T extends Date
+  ? string
+  : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    T extends (...args: any[]) => any
+    ? T
+    : T extends Array<infer U>
+      ? Serialize<U>[]
+      : T extends ReadonlyArray<infer U>
+        ? ReadonlyArray<Serialize<U>>
+        : T extends object
+          ? { [K in keyof T]: Serialize<T[K]> }
+          : T;
+
+// Apply `Serialize` to every endpoint method's RESOLVED return, leaving the
+// input `opts` exactly as the server declares them.
+type SerializeApi<A> = {
+  [NS in keyof A]: {
+    [M in keyof A[NS]]: A[NS][M] extends (...args: infer Args) => infer R
+      ? (
+          ...args: Args
+        ) => R extends Promise<infer RR> ? Promise<Serialize<RR>> : Serialize<R>
+      : A[NS][M];
+  };
+};
+
+type InferApi<T> = T extends { api: infer A } ? SerializeApi<A> : {};
 
 type UnionToIntersection<U> = (
   U extends unknown ? (k: U) => void : never

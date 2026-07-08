@@ -1,7 +1,11 @@
 import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
-import type { ListNotificationsResult } from '../notifications/types';
+import type {
+  ListNotificationsResult,
+  NotificationListItem,
+  NotificationType,
+} from '../notifications/types';
 import type { CMSProcedureCtx } from '../types';
 
 import { notifications, notificationTypeEnum } from '../db/schema.generated';
@@ -133,11 +137,28 @@ export function createNotificationEndpoints(cmsCtx: CMSProcedureCtx) {
           `),
         ]);
 
-        const rows = dataResult.rows as Array<Record<string, unknown>>;
+        // Raw-SQL row: the hand-selected column shape (snake_case aliases). Typing
+        // it here lets the mapper below be structurally checked against
+        // NotificationListItem instead of blindly asserted. `meta` stays `unknown`
+        // — it is a JSON column, the one genuinely-dynamic leaf.
+        const rows = dataResult.rows as Array<{
+          id: string;
+          recipient_id: string;
+          actor_id: string | null;
+          type: NotificationType;
+          title: string;
+          body: string | null;
+          resource_type: string | null;
+          resource_id: string | null;
+          collection: string | null;
+          meta: unknown;
+          read_at: unknown;
+          created_at: unknown;
+        }>;
 
-        return {
+        const result: ListNotificationsResult = {
           notifications: rows.map((row) => {
-            const item: Record<string, unknown> = {
+            const item: NotificationListItem = {
               id: row.id,
               recipientId: row.recipient_id,
               actorId: row.actor_id,
@@ -147,7 +168,8 @@ export function createNotificationEndpoints(cmsCtx: CMSProcedureCtx) {
               resourceType: row.resource_type,
               resourceId: row.resource_id,
               collection: row.collection,
-              meta: row.meta,
+              // JSON column — the one genuinely-dynamic leaf.
+              meta: row.meta as Record<string, unknown> | null,
               readAt: parseTimestampOrNull(row.read_at),
               createdAt: parseTimestamp(row.created_at),
             };
@@ -157,7 +179,8 @@ export function createNotificationEndpoints(cmsCtx: CMSProcedureCtx) {
           total: count,
           hasMore: offset + rows.length < count,
           unreadCount,
-        } as unknown as ListNotificationsResult;
+        };
+        return result;
       },
     ),
 

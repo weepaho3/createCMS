@@ -39,12 +39,18 @@ import { useStore } from './react-store';
  * }
  * ```
  */
-export function createCMSClient<TCMS = unknown>(
-  options: CMSClientOptions & { plugins?: CMSClientPlugin[] },
-): CMSClientInstance<TCMS, CMSClientPlugin[]>;
+// TPlugins is INFERRED from `options.plugins`, default `[]` (not `CMSClientPlugin[]`)
+// so a no-plugins client never gets a `Record<string,unknown>` action index
+// signature (which would make `client.anyTypo` type-check). See vanilla.ts.
+export function createCMSClient<
+  TCMS = unknown,
+  const TPlugins extends CMSClientPlugin[] = [],
+>(
+  options: CMSClientOptions & { plugins?: TPlugins },
+): CMSClientInstance<TCMS, TPlugins>;
 
 export function createCMSClient<TCMS = unknown>(): <
-  const TPlugins extends CMSClientPlugin[] = CMSClientPlugin[],
+  const TPlugins extends CMSClientPlugin[] = [],
 >(
   options: CMSClientOptions & { plugins?: TPlugins },
 ) => CMSClientInstance<TCMS, TPlugins>;
@@ -60,7 +66,7 @@ export function createCMSClient<TCMS = unknown>(
         useStore(config.pluginsAtoms.uploadAssets as ReadableAtom),
     });
   }
-  return <const TPlugins extends CMSClientPlugin[] = CMSClientPlugin[]>(
+  return <const TPlugins extends CMSClientPlugin[] = []>(
     opts: CMSClientOptions & { plugins?: TPlugins },
   ): CMSClientInstance<TCMS, TPlugins> => {
     const config = getClientConfigSync(opts);

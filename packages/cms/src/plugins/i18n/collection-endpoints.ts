@@ -196,7 +196,7 @@ export function createI18nCollectionEndpoints(
               throw new CMSError('SLUG_EMPTY_NOT_ALLOWED');
             }
             await validateSlugUniqueness(
-              tx as any,
+              tx,
               collectionName,
               targetParentRootId,
               targetSlug,
@@ -221,7 +221,7 @@ export function createI18nCollectionEndpoints(
             },
           };
           const newRoot = await scopedInsert(
-            tx as any,
+            tx,
             'cms.roots',
             {
               id: newId('root'),

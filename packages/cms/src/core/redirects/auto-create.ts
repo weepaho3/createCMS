@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 import type { ResolvedSlugConfig, TableScope } from '../types/definitions';
-import type { DrizzleInstance } from '../types/drizzle';
+import type { DbOrTx, DrizzleInstance } from '../types/drizzle';
 
 import { newId } from '../../utils/nanoid';
 import { redirects } from '../db/schema.generated';
@@ -63,7 +63,7 @@ async function subtreeIds(
  * shifts every node in the subtree, not just the renamed node.
  */
 export async function captureSubtreePaths(
-  tx: DrizzleInstance,
+  tx: DbOrTx,
   slugCfg: EnabledSlugConfig,
   rootId: string,
 ): Promise<Array<{ rootId: string; oldPath: string }>> {
@@ -90,7 +90,7 @@ export async function captureSubtreePaths(
  * global), so dedup is the app's responsibility.
  */
 export async function recordSubtreeRedirects(
-  tx: DrizzleInstance,
+  tx: DbOrTx,
   collection: string,
   captured: Array<{ rootId: string; oldPath: string }>,
   scope?: TableScope,
@@ -125,7 +125,7 @@ export async function recordSubtreeRedirects(
  * page. No-op when there is no parent (top-level) or no old path (slug disabled).
  */
 export async function recordArchiveRedirect(
-  tx: DrizzleInstance,
+  tx: DbOrTx,
   collection: string,
   oldPath: string | null,
   parentRootId: string | null,
