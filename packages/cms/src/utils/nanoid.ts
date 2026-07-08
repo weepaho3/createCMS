@@ -23,6 +23,9 @@ const prefixes = {
   notification: 'ntf',
   si: 'sid',
   redirect: 'rdr',
+  scheduledPublication: 'sph',
+  release: 'rls',
+  releaseItem: 'rli',
 } as const;
 
 type CorePrefix = keyof typeof prefixes;

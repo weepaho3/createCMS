@@ -1,8 +1,9 @@
 import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 
-import { createCMS } from '../src/index';
+import { allowAnonymous, createCMS } from '../src/index';
 import {
+  assets,
   blockVersions,
   branches,
   commitSnapshots,
@@ -11,6 +12,7 @@ import {
 } from '../src/schema';
 import { setupTestCMS } from '../src/test-utils/cms';
 import { setupTestDB } from '../src/test-utils/db';
+import { DUMMY_MEDIA_CONFIG } from '../src/test-utils/fixtures';
 import { publishApprovedBranch } from '../src/test-utils/helpers';
 
 describe('createRoot', () => {
@@ -1859,6 +1861,334 @@ describe('duplicateBlock', () => {
         },
       }),
     ).rejects.toThrow(/Block is already deleted/);
+  });
+});
+
+// ============================================================================
+// duplicateRoot Tests (cms-21)
+// ============================================================================
+
+describe('duplicateRoot', () => {
+  it('clones the whole tree into a new root and returns rootId + branchId', async () => {
+    const { cms, db } = await setupTestCMS();
+
+    // Source: root -> container -> leaf (3 levels).
+    const root = await cms.api.pages.createRoot({
+      body: {
+        slug: '/source',
+        properties: { title: 'Source', description: 'Desc' },
+      },
+    });
+    const container = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container' },
+      },
+    });
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: container.blockId,
+        type: 'paragraph',
+        properties: { text: 'Leaf' },
+      },
+    });
+
+    const dup = await cms.api.pages.duplicateRoot({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        blockId: root.rootId,
+        targetSlug: '/source-copy',
+        targetProperties: { title: 'Source (copy)' },
+      },
+    });
+
+    // Returns a fresh root + branch (like createRoot) — no `mode` discriminant.
+    expect(dup.rootId).not.toBe(root.rootId);
+    expect(typeof dup.branchId).toBe('string');
+    expect(dup.slug).toBe('source-copy');
+
+    const [newRoot] = await db
+      .select()
+      .from(roots)
+      .where(eq(roots.id, dup.rootId));
+    expect(newRoot.collection).toBe('pages');
+    expect(newRoot.slug).toBe('source-copy');
+    expect(newRoot.parentRootId).toBeNull();
+
+    // The new branch is the returned one and points at the duplicate commit.
+    const [newBranch] = await db
+      .select()
+      .from(branches)
+      .where(eq(branches.id, dup.branchId));
+    expect(newBranch.name).toBe('main');
+    expect(newBranch.rootId).toBe(dup.rootId);
+    expect(newBranch.headCommitId).toBe(dup.commit.id);
+
+    // Cloned tree mirrors the source shape with fresh block ids + overridden
+    // root properties.
+    const { tree } = await cms.api.pages.getBlockTree({
+      query: { rootId: dup.rootId, branchId: dup.branchId, raw: true },
+    });
+    expect(tree.blockId).toBe(dup.rootId);
+    expect(tree.properties).toEqual({ title: 'Source (copy)' });
+    expect(tree.children).toHaveLength(1);
+    const newContainer = tree.children[0];
+    expect(newContainer.blockId).not.toBe(container.blockId);
+    expect(newContainer.type).toBe('paragraph');
+    expect(newContainer.properties).toEqual({ text: 'Container' });
+    expect(newContainer.children).toHaveLength(1);
+    expect(newContainer.children[0].properties).toEqual({ text: 'Leaf' });
+
+    // Source root is untouched.
+    const src = await cms.api.pages.getBlockTree({
+      query: { rootId: root.rootId, branchId: root.branchId, raw: true },
+    });
+    expect(src.tree.children).toHaveLength(1);
+  });
+});
+
+// ============================================================================
+// Optimistic concurrency — expectedHeadCommitId (cms-18)
+// ============================================================================
+
+describe('optimistic concurrency (expectedHeadCommitId)', () => {
+  it('rejects a stale head with HEAD_MISMATCH and accepts the current head', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/concurrency', properties: { title: 'Page' } },
+    });
+    const staleHead = root.commit.id;
+
+    // A block create advances the branch head past `staleHead`.
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Hi' },
+      },
+    });
+    const currentHead = block.commit.id;
+    expect(currentHead).not.toBe(staleHead);
+
+    // Deleting on the now-stale head is rejected.
+    await expect(
+      cms.api.pages.deleteBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          blockId: block.blockId,
+          expectedHeadCommitId: staleHead,
+        },
+      }),
+    ).rejects.toThrow(/advanced since/);
+
+    // Deleting on the correct head succeeds.
+    const del = await cms.api.pages.deleteBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        blockId: block.blockId,
+        expectedHeadCommitId: currentHead,
+      },
+    });
+    expect(del.commit.id).not.toBe(currentHead);
+  });
+
+  it('is unchecked when omitted (backward compatible)', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/concurrency-omit', properties: { title: 'Page' } },
+    });
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Hi' },
+      },
+    });
+
+    // No expectedHeadCommitId → succeeds regardless of head movement.
+    const del = await cms.api.pages.deleteBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        blockId: block.blockId,
+      },
+    });
+    expect(typeof del.commit.id).toBe('string');
+  });
+});
+
+// ============================================================================
+// Write-time image existence (cms-04)
+// ============================================================================
+
+describe('write-time image existence (cms-04)', () => {
+  it('rejects an image property pointing at a nonexistent asset id', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/img', properties: { title: 'Page' } },
+    });
+
+    await expect(
+      cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'image',
+          properties: { src: 'ast_doesnotexist0000000' },
+        },
+      }),
+    ).rejects.toThrow(/image asset does not exist/);
+  });
+
+  it('accepts an image property pointing at an existing asset id', async () => {
+    const { cms, db } = await setupTestCMS();
+
+    const [asset] = await db
+      .insert(assets)
+      .values({
+        slug: 'real.png',
+        mimeType: 'image/png',
+        size: 100,
+        objectKey: 'real.png',
+      })
+      .returning();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/img-ok', properties: { title: 'Page' } },
+    });
+
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'image',
+        properties: { src: asset.id },
+      },
+    });
+    expect(typeof block.blockId).toBe('string');
+  });
+
+  it('leaves a legacy path-style image value untouched (not an id)', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/img-path', properties: { title: 'Page' } },
+    });
+
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'image',
+        properties: { src: '/legacy.png' },
+      },
+    });
+    expect(typeof block.blockId).toBe('string');
+  });
+});
+
+// ============================================================================
+// Write-time list existence (cms-03)
+// ============================================================================
+
+// A `list` of `image` / `reference` is walked element-by-element by the
+// write-time existence check, exactly like the scalar image/reference case, so a
+// nonexistent id inside the list is rejected at write time. (Before the fix, the
+// existence check skipped `list` properties entirely.)
+describe('write-time list existence (cms-03)', () => {
+  async function setupListCMS() {
+    const { db } = await setupTestDB();
+    const cms = createCMS({
+      db,
+      media: DUMMY_MEDIA_CONFIG,
+      authMiddleware: allowAnonymous(),
+      collections: {
+        pages: {
+          label: 'Pages',
+          root: {
+            properties: {
+              title: { type: 'string', label: 'Title', required: true },
+            },
+          },
+          blocks: {
+            gallery: {
+              label: 'Gallery',
+              properties: {
+                images: {
+                  type: 'list',
+                  of: { type: 'image' },
+                  label: 'Images',
+                },
+                related: {
+                  type: 'list',
+                  of: { type: 'reference', collection: 'pages' },
+                  label: 'Related',
+                },
+              },
+            },
+          },
+        },
+      } as const,
+    });
+    return { cms: cms as { api: Record<string, any> }, db };
+  }
+
+  it('rejects a list-of-image element pointing at a nonexistent asset id', async () => {
+    const { cms } = await setupListCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { properties: { title: 'Page' } },
+    });
+
+    await expect(
+      cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'gallery',
+          properties: { images: ['ast_doesnotexist0000000'] },
+        },
+      }),
+    ).rejects.toThrow(/image asset does not exist/);
+  });
+
+  it('rejects a list-of-reference element pointing at a nonexistent rootId', async () => {
+    const { cms } = await setupListCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { properties: { title: 'Page' } },
+    });
+
+    await expect(
+      cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'gallery',
+          properties: { related: ['rot_doesnotexist000000'] },
+        },
+      }),
+    ).rejects.toThrow(/pages does not exist/);
   });
 });
 

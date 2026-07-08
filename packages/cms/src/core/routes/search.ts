@@ -3,7 +3,13 @@ import * as z from 'zod';
 
 import type { CMSProcedureCtx } from '../types';
 
-import { searchIndex } from '../db/schema.generated';
+import {
+  assets,
+  roots,
+  searchIndex,
+  templates,
+  variables,
+} from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 
 const SEARCH_META = { scope: 'system' as const, permissionResource: 'search' };
@@ -105,6 +111,102 @@ export function createSearchEndpoints(cmsCtx: CMSProcedureCtx) {
 
         if (rootId) {
           conditions.push(sql`${searchIndex.rootId} = ${rootId}`);
+        }
+
+        // ------------------------------------------------------------------
+        // SECURITY (cms-08): the search index is a SHARED, cross-entity table,
+        // so it must honour the SAME read boundary as the normal endpoints —
+        // otherwise a multi-tenant tenant could find another tenant's content
+        // and a user could read another user's notifications, purely via
+        // full-text search.
+        //
+        // We do NOT store scope columns on `search_index` itself. Instead a row
+        // is visible only if its UNDERLYING entity is visible under the active
+        // plugin scope: we re-apply each `scope.<table>.where` predicate (the
+        // exact same SQL the normal reads use) via a correlated EXISTS against
+        // that entity's source table. When no scoping plugin is active every
+        // `scope.*.where` is absent, so no guard is added and behaviour is
+        // unchanged.
+        // ------------------------------------------------------------------
+        const scope = ctx.context.scope;
+        const userId = ctx.context.userId;
+
+        // (c) Notifications are per-recipient: never surface another user's
+        // notifications. A row of entityType 'notification' is visible only to
+        // its recipient (recorded in `meta.recipientId` at index time). With no
+        // authenticated user, notifications are hidden entirely.
+        conditions.push(
+          userId
+            ? sql`(${searchIndex.entityType} <> 'notification' OR ${searchIndex.meta} ->> 'recipientId' = ${userId})`
+            : sql`${searchIndex.entityType} <> 'notification'`,
+        );
+
+        // (a)+(b) Content scope. root/comment/mergeRequest anchor to a `roots`
+        // row (root via entityId, comment/mergeRequest via rootId); variable /
+        // template / asset anchor to their own scoped table via entityId. Each
+        // guard only restricts its own entity types and is a no-op for the rest.
+        const rootsWhere = scope.roots?.where;
+        if (rootsWhere) {
+          conditions.push(sql`(
+            ${searchIndex.entityType} NOT IN ('root', 'comment', 'mergeRequest')
+            OR (${searchIndex.entityType} = 'root' AND EXISTS (
+              SELECT 1 FROM ${roots}
+              WHERE ${roots.id} = ${searchIndex.entityId} AND (${rootsWhere})
+            ))
+            OR (${searchIndex.entityType} IN ('comment', 'mergeRequest')
+                AND ${searchIndex.rootId} IS NOT NULL
+                AND EXISTS (
+                  SELECT 1 FROM ${roots}
+                  WHERE ${roots.id} = ${searchIndex.rootId} AND (${rootsWhere})
+                ))
+          )`);
+        }
+
+        const variablesWhere = scope.variables?.where;
+        if (variablesWhere) {
+          conditions.push(sql`(
+            ${searchIndex.entityType} <> 'variable'
+            OR EXISTS (
+              SELECT 1 FROM ${variables}
+              WHERE ${variables.id} = ${searchIndex.entityId} AND (${variablesWhere})
+            )
+          )`);
+        }
+
+        const templatesWhere = scope.templates?.where;
+        if (templatesWhere) {
+          conditions.push(sql`(
+            ${searchIndex.entityType} <> 'template'
+            OR EXISTS (
+              SELECT 1 FROM ${templates}
+              WHERE ${templates.id} = ${searchIndex.entityId} AND (${templatesWhere})
+            )
+          )`);
+        }
+
+        const assetsWhere = scope.assets?.where;
+        if (assetsWhere) {
+          conditions.push(sql`(
+            ${searchIndex.entityType} <> 'asset'
+            OR EXISTS (
+              SELECT 1 FROM ${assets}
+              WHERE ${assets.id} = ${searchIndex.entityId} AND (${assetsWhere})
+            )
+          )`);
+        }
+
+        // Defense in depth: the guards above cover every entityType this package
+        // indexes, each keyed off the SAME `scope.*.where` its normal reads use.
+        // But if a scoping plugin is active and a FUTURE (or plugin-added)
+        // entityType were indexed without a matching guard here, it would leak
+        // across scope. So when any scope is active, restrict results to the known
+        // guarded set — an unrecognised entityType fails CLOSED until its guard is
+        // added. With no scoping plugin (all `scope.*.where` absent) nothing is
+        // restricted and behaviour is unchanged.
+        if (rootsWhere || variablesWhere || templatesWhere || assetsWhere) {
+          conditions.push(
+            sql`${searchIndex.entityType} IN ('root', 'comment', 'mergeRequest', 'variable', 'template', 'asset', 'notification')`,
+          );
         }
 
         const whereClause = sql.join(conditions, sql` AND `);

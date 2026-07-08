@@ -36,6 +36,10 @@ export const notificationTypeEnum = cms.enum("notification_type", ["mention", "c
 
 export const redirectEndpointTypeEnum = cms.enum("redirect_endpoint_type", ["page", "path"]);
 
+export const releaseStatusEnum = cms.enum("release_status", ["draft", "published"]);
+
+export const scheduledPublicationActionEnum = cms.enum("scheduled_publication_action", ["publish", "unpublish"]);
+
 export const approvals = cms.table(
   "approvals",
   {
@@ -396,6 +400,38 @@ export const redirects = cms.table(
   ],
 );
 
+export const releaseItems = cms.table(
+  "release_items",
+  {
+    id: text("id").primaryKey().$defaultFn(() => newId("releaseItem")),
+    releaseId: text("release_id").notNull().references(() => releases.id, { onDelete: "cascade" }),
+    rootId: text("root_id").notNull().references(() => roots.id, { onDelete: "cascade" }),
+    branchId: text("branch_id").notNull().references(() => branches.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    index("rli_release_idx").on(table.releaseId),
+    index("rli_root_idx").on(table.rootId),
+    index("rli_branch_idx").on(table.branchId),
+    uniqueIndex("rli_release_root_unique").on(table.releaseId, table.rootId),
+  ],
+);
+
+export const releases = cms.table(
+  "releases",
+  {
+    id: text("id").primaryKey().$defaultFn(() => newId("release")),
+    title: text("title").notNull(),
+    status: releaseStatusEnum("status").notNull().default("draft"),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    publishedAt: timestamp("published_at"),
+  },
+  (table) => [
+    index("rls_status_idx").on(table.status),
+    index("rls_created_at_idx").on(table.createdAt),
+  ],
+);
+
 export const roots = cms.table(
   "roots",
   {
@@ -421,6 +457,25 @@ export const roots = cms.table(
     index("roots_collection_slug_idx").on(table.collection, table.slug),
     index("roots_archived_at_idx").on(table.archivedAt),
     index("roots_last_pruned_at_idx").on(table.lastPrunedAt),
+  ],
+);
+
+export const scheduledPublications = cms.table(
+  "scheduled_publications",
+  {
+    id: text("id").primaryKey().$defaultFn(() => newId("scheduledPublication")),
+    rootId: text("root_id").notNull().references(() => roots.id, { onDelete: "cascade" }),
+    branchId: text("branch_id").notNull().references(() => branches.id, { onDelete: "cascade" }),
+    action: scheduledPublicationActionEnum("action").notNull(),
+    scheduledAt: timestamp("scheduled_at").notNull(),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    processedAt: timestamp("processed_at"),
+  },
+  (table) => [
+    index("sp_due_idx").on(table.processedAt, table.scheduledAt),
+    index("sp_root_idx").on(table.rootId),
+    index("sp_branch_idx").on(table.branchId),
   ],
 );
 
@@ -516,7 +571,10 @@ export const schema = {
   notifications,
   publications,
   redirects,
+  releaseItems,
+  releases,
   roots,
+  scheduledPublications,
   searchIndex,
   templates,
   templateVariableUsages,
@@ -532,6 +590,8 @@ export const schema = {
   mergeRequestStatusEnum,
   notificationTypeEnum,
   redirectEndpointTypeEnum,
+  releaseStatusEnum,
+  scheduledPublicationActionEnum,
 };
 
 export type Approval = typeof approvals.$inferSelect;
@@ -582,8 +642,17 @@ export type NewPublication = typeof publications.$inferInsert;
 export type Redirect = typeof redirects.$inferSelect;
 export type NewRedirect = typeof redirects.$inferInsert;
 
+export type ReleaseItem = typeof releaseItems.$inferSelect;
+export type NewReleaseItem = typeof releaseItems.$inferInsert;
+
+export type Release = typeof releases.$inferSelect;
+export type NewRelease = typeof releases.$inferInsert;
+
 export type Root = typeof roots.$inferSelect;
 export type NewRoot = typeof roots.$inferInsert;
+
+export type ScheduledPublication = typeof scheduledPublications.$inferSelect;
+export type NewScheduledPublication = typeof scheduledPublications.$inferInsert;
 
 export type SearchIndex = typeof searchIndex.$inferSelect;
 export type NewSearchIndex = typeof searchIndex.$inferInsert;

@@ -280,7 +280,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "bunchee && bun scripts/inject-endpoint-docs.mjs",
+    "build": "NODE_OPTIONS=--max-old-space-size=6144 bunchee && bun scripts/inject-endpoint-docs.mjs",
     "prepublishOnly": "bun run build",
     "clean": "rm -rf dist .turbo",
     "generate:schema": "bun run scripts/generate-schema.ts",

@@ -38,6 +38,7 @@ import {
 } from '../blocks/reconstruct-snapshot';
 import { resolveBranchPolicy } from '../branch-policy';
 import {
+  assets,
   blockVersions,
   branches,
   commitSnapshots,
@@ -342,6 +343,105 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
     };
   }
 
+  // cms-04: write-time existence check for `image` and `reference` property
+  // values. Zod validates only the SHAPE (both are stored as strings); it cannot
+  // confirm the id actually resolves. Without this, a nonexistent asset id or
+  // reference rootId is silently stored and only surfaces as a 404 at render.
+  // We verify id-SHAPED values — an `ast_` asset id against the `assets` table,
+  // a `rot_` rootId against the target collection's `roots` — and deliberately
+  // leave every other string untouched: legacy path-style image values
+  // (`/img.png`) and i18n `tgr_` translation-group keys are NOT direct ids, so
+  // this never rejects a value that was never meant to point at a single row.
+  // Array values are checked element-wise (list-of-reference, if a plugin adds
+  // one). Runs inside the write transaction so the check sees uncommitted rows.
+  async function assertPropertyReferencesExist(
+    tx: DrizzleInstance,
+    blockType: string,
+    properties: Record<string, unknown> | undefined,
+  ): Promise<void> {
+    if (!properties) return;
+
+    const specs = (
+      blockType === collectionName || blockType === 'root'
+        ? def.root.properties
+        : def.blocks?.[blockType]?.properties
+    ) as Record<string, { type: string; collection?: string }> | undefined;
+    if (!specs) return;
+
+    const assetIds = new Set<string>();
+    const refIdsByCollection = new Map<string, Set<string>>();
+    const addAsset = (v: unknown) => {
+      if (typeof v === 'string' && v.startsWith('ast_')) assetIds.add(v);
+    };
+    const addRef = (targetCollection: string, v: unknown) => {
+      if (typeof v === 'string' && v.startsWith('rot_')) {
+        let set = refIdsByCollection.get(targetCollection);
+        if (!set) refIdsByCollection.set(targetCollection, (set = new Set()));
+        set.add(v);
+      }
+    };
+
+    for (const [key, spec] of Object.entries(specs)) {
+      const value = properties[key];
+      if (value === undefined || value === null) continue;
+
+      if (spec.type === 'image') {
+        addAsset(value);
+      } else if (spec.type === 'reference' && spec.collection) {
+        addRef(spec.collection, value);
+      } else if (spec.type === 'list') {
+        // list-of-image / list-of-reference: check every element id exists.
+        const of = (spec as { of?: { type?: string; collection?: string } }).of;
+        const elements = Array.isArray(value) ? value : [];
+        if (of?.type === 'image') {
+          for (const el of elements) addAsset(el);
+        } else if (of?.type === 'reference' && of.collection) {
+          for (const el of elements) addRef(of.collection, el);
+        }
+      }
+    }
+
+    if (assetIds.size > 0) {
+      const ids = [...assetIds];
+      const found = await tx
+        .select({ id: assets.id })
+        .from(assets)
+        .where(inArray(assets.id, ids));
+      const foundSet = new Set(found.map((r) => r.id));
+      const missing = ids.find((id) => !foundSet.has(id));
+      if (missing !== undefined)
+        throw new CMSError('INVALID_REFERENCE', {
+          message: `Referenced image asset does not exist: ${missing}`,
+          data: { kind: 'image', id: missing },
+        });
+    }
+
+    for (const [targetCollection, idSet] of refIdsByCollection) {
+      const ids = [...idSet];
+      const found = await tx
+        .select({ id: roots.id })
+        .from(roots)
+        .where(
+          and(
+            inArray(roots.id, ids),
+            eq(roots.collection, targetCollection),
+            isNull(roots.archivedAt),
+          ),
+        );
+      const foundSet = new Set(found.map((r) => r.id));
+      const missing = ids.find((id) => !foundSet.has(id));
+      if (missing !== undefined)
+        throw new CMSError('INVALID_REFERENCE', {
+          message: `Referenced ${targetCollection} does not exist: ${missing}`,
+          data: {
+            kind: 'reference',
+            collection: targetCollection,
+            id: missing,
+          },
+        });
+    }
+  }
+
   // Shared core of `updateBlock` and `updateRoot`: scope-guard, lock the branch,
   // load the single target version, run the deleted/type guards, apply the
   // property patch, and write the one-version commit. The callers differ only in
@@ -360,6 +460,8 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
       message: string | undefined;
       fallbackMessage: string;
       verifyType: (storedType: string) => void;
+      // Optimistic-concurrency precondition (cms-18); undefined → unchecked.
+      expectedHeadCommitId?: string;
     },
   ) {
     await requireRootInScope(tx, input.rootId, collectionName, scope.roots);
@@ -398,6 +500,14 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
 
     input.verifyType(currentVersion.type);
 
+    // cms-04: only the incoming patch values are new, so validate just those
+    // (nulls are deletes — skipped inside the helper).
+    await assertPropertyReferencesExist(
+      tx,
+      currentVersion.type,
+      input.properties,
+    );
+
     const mergedProperties = applyPropertyPatch(
       currentVersion.properties as Record<string, unknown>,
       (input.properties ?? {}) as Record<string, unknown>,
@@ -407,6 +517,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
       rootId: input.rootId,
       branchId: input.branchId,
       parentCommitId: oldHeadId,
+      expectedHeadCommitId: input.expectedHeadCommitId,
       message: commitMessage(input.message, input.fallbackMessage),
       createdBy: userId,
       changed: [
@@ -707,6 +818,19 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
         if (!sortBy || isColumnField(sortBy)) {
           const alias = columnFields[sortBy ?? 'createdAt'].alias;
           orderExpr = sql.raw(alias);
+        } else if (
+          (def.root.properties as Record<string, { type?: string }>)[sortBy]
+            ?.type === 'number'
+        ) {
+          // cms-10: a numeric property must sort as a NUMBER, not as JSONB text
+          // (where "10" < "9"). Number properties validate as `z.number()`, so
+          // fresh data is always a JSON number or absent. Guard the cast against
+          // any non-numeric text (a legacy row, a `string -> number` type change,
+          // or data written outside the API): only cast values matching a numeric
+          // pattern, otherwise sort them as NULL. A bare `::numeric` on "banana"
+          // would raise `invalid input syntax for type numeric` and 500 the whole
+          // list request.
+          orderExpr = sql`CASE WHEN properties->>${sortBy} ~ '^-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' THEN (properties->>${sortBy})::numeric END`;
         } else {
           orderExpr = sql`properties->>${sortBy}`;
         }
@@ -996,6 +1120,9 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             ...(properties as Record<string, unknown> | undefined),
           };
 
+          // cms-04: reject nonexistent image asset / reference ids at write time.
+          await assertPropertyReferencesExist(tx, type, blockProps);
+
           const newChildrenArray = [...(parentVersion.children ?? [])];
           const insertPosition = position ?? newChildrenArray.length;
           newChildrenArray.splice(insertPosition, 0, childBlockId);
@@ -1004,6 +1131,12 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             rootId,
             branchId,
             parentCommitId: oldHeadId,
+            // cms-18: optional optimistic-concurrency head precondition. Field
+            // added to the create-block body schema by the schema-builders; read
+            // defensively so this file is self-contained.
+            expectedHeadCommitId: (
+              ctx.body as { expectedHeadCommitId?: string }
+            ).expectedHeadCommitId,
             message: commitMessage(message, `Add ${type} block`),
             createdBy: userId,
             changed: [
@@ -1191,6 +1324,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           newParentBlockId: z.string(),
           newIndex: z.number().int().min(0),
           message: z.string().optional(),
+          expectedHeadCommitId: z.string().optional(),
         }),
         metadata: cmsMeta(
           {
@@ -1202,6 +1336,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
                 newParentBlockId: string;
                 newIndex: number;
                 message?: string;
+                expectedHeadCommitId?: string;
               },
             },
           },
@@ -1340,6 +1475,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             rootId: input.rootId,
             branchId: input.branchId,
             parentCommitId: oldHeadId,
+            expectedHeadCommitId: input.expectedHeadCommitId,
             message: commitMessage(
               input.message,
               `Move block ${input.blockId}`,
@@ -1375,6 +1511,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           branchId: z.string(),
           blockId: z.string(),
           message: z.string().optional(),
+          expectedHeadCommitId: z.string().optional(),
         }),
         metadata: cmsMeta(
           {
@@ -1384,6 +1521,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
                 branchId: string;
                 blockId: string;
                 message?: string;
+                expectedHeadCommitId?: string;
               },
             },
           },
@@ -1488,6 +1626,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             rootId: input.rootId,
             branchId: input.branchId,
             parentCommitId: oldHeadId,
+            expectedHeadCommitId: input.expectedHeadCommitId,
             message: commitMessage(
               input.message,
               `Delete block ${input.blockId}`,
@@ -1671,6 +1810,13 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             properties,
             message,
             fallbackMessage: `Update ${type} block ${blockId}`,
+            // cms-18: optional optimistic-concurrency head precondition. The
+            // field is added to the update-block body schema by the
+            // schema-builders; read it defensively so this file is self-
+            // contained (undefined when the schema has not yet added it).
+            expectedHeadCommitId: (
+              ctx.body as { expectedHeadCommitId?: string }
+            ).expectedHeadCommitId,
             verifyType: (storedType) => {
               if (storedType !== type)
                 throw new CMSError('TYPE_MISMATCH', {
@@ -1749,6 +1895,12 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
               properties,
               message,
               fallbackMessage: `Update root block ${blockId}`,
+              // cms-18: optional optimistic-concurrency head precondition (see
+              // updateBlock). Field added to the update-root body schema by the
+              // schema-builders; read defensively.
+              expectedHeadCommitId: (
+                ctx.body as { expectedHeadCommitId?: string }
+              ).expectedHeadCommitId,
               verifyType: (storedType) => {
                 if (storedType !== collectionName)
                   throw new CMSError('TYPE_MISMATCH', {
@@ -1864,6 +2016,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           branchId: z.string(),
           tree: z.lazy(() => blockTreeNodeSchema) as z.ZodType<BlockTreeNode>,
           message: z.string().optional(),
+          expectedHeadCommitId: z.string().optional(),
         }),
         metadata: cmsMeta(
           {
@@ -1873,6 +2026,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
                 branchId: string;
                 tree: BlockTreeNode;
                 message?: string;
+                expectedHeadCommitId?: string;
               },
             },
           },
@@ -1886,7 +2040,8 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
       },
       async (ctx) => {
         const { userId } = ctx.context;
-        const { rootId, branchId, tree, message } = ctx.body;
+        const { rootId, branchId, tree, message, expectedHeadCommitId } =
+          ctx.body;
 
         return db.transaction(async (tx) => {
           await requireRootInScope(
@@ -1924,6 +2079,13 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             return { commit: headCommit!, changed: false };
           }
 
+          // cms-04: validate image/reference ids on every block being written
+          // (created or updated) — the batch save path must not bypass the check
+          // the single create/update handlers enforce.
+          for (const b of [...diff.created, ...diff.updated]) {
+            await assertPropertyReferencesExist(tx, b.type, b.properties);
+          }
+
           const changed: ChangedVersion[] = [
             ...diff.created.map((b) => ({
               blockId: b.blockId,
@@ -1956,6 +2118,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             rootId,
             branchId,
             parentCommitId: oldHeadId,
+            expectedHeadCommitId,
             message: commitMessage(message, 'Batch update'),
             createdBy: userId,
             changed,
