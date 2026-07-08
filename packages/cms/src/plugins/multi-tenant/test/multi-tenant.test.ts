@@ -687,7 +687,7 @@ describe('multiTenant — redirect isolation', () => {
 describe('multiTenant — error handling', () => {
   it('throws TENANT_SLUG_REQUIRED when middleware does not provide tenantSlug', async () => {
     const { cms } = await setupMultiTenantTestCMS({
-      middleware: async () => ({}),
+      authMiddleware: async () => ({}),
     });
 
     await expect(
@@ -699,7 +699,7 @@ describe('multiTenant — error handling', () => {
 
   it('throws TENANT_SLUG_REQUIRED when tenantSlug is empty string', async () => {
     const { cms } = await setupMultiTenantTestCMS({
-      middleware: async () => ({ tenantSlug: '' }),
+      authMiddleware: async () => ({ tenantSlug: '' }),
     });
 
     await expect(
@@ -805,7 +805,11 @@ describe('multiTenant — scope conditions DB verification', () => {
 // ============================================================================
 
 describe('resolveTenantSlug', () => {
-  it('returns body.tenantSlug when present', () => {
+  // SECURE DEFAULT: request-supplied tenantSlug (body/query) is IGNORED unless
+  // the caller explicitly opts in with { allowRequestOverride: true } after an
+  // admin check. These tests were updated from the old request-wins default,
+  // which was a cross-tenant access hole (sec-03).
+  it('IGNORES body/query tenantSlug by default, returning the session fallback', () => {
     const result = resolveTenantSlug(
       {
         request: {
@@ -815,21 +819,47 @@ describe('resolveTenantSlug', () => {
       },
       'fallback',
     );
+    expect(result).toBe('fallback');
+  });
+
+  it('returns undefined by default even when body/query supply a tenantSlug (no fallback)', () => {
+    const result = resolveTenantSlug({
+      request: {
+        body: { tenantSlug: 'from-body' },
+        query: { tenantSlug: 'from-query' },
+      },
+    });
+    expect(result).toBeUndefined();
+  });
+
+  it('returns body.tenantSlug when present and override is opted in', () => {
+    const result = resolveTenantSlug(
+      {
+        request: {
+          body: { tenantSlug: 'from-body' },
+          query: { tenantSlug: 'from-query' },
+        },
+      },
+      'fallback',
+      { allowRequestOverride: true },
+    );
     expect(result).toBe('from-body');
   });
 
-  it('falls back to query.tenantSlug when body has none', () => {
+  it('falls back to query.tenantSlug when body has none (override opted in)', () => {
     const result = resolveTenantSlug(
       { request: { body: {}, query: { tenantSlug: 'from-query' } } },
       'fallback',
+      { allowRequestOverride: true },
     );
     expect(result).toBe('from-query');
   });
 
-  it('falls back to the fallback when neither body nor query has tenantSlug', () => {
+  it('falls back to the fallback when neither body nor query has tenantSlug (override opted in)', () => {
     const result = resolveTenantSlug(
       { request: { body: {}, query: {} } },
       'fallback',
+      { allowRequestOverride: true },
     );
     expect(result).toBe('fallback');
   });
@@ -1096,13 +1126,21 @@ describe('multiTenant — special characters in tenant slugs', () => {
 
 // ============================================================================
 // Tenant override via request context
+//
+// NOTE: request-supplied tenantSlug is IGNORED by default (secure default,
+// sec-03). These tests pass { allowRequestOverride: true } to opt in, which in
+// production MUST be gated behind an admin authorization check.
 // ============================================================================
 
 describe('multiTenant — tenant override via request', () => {
   it('overrides tenant via body.tenantSlug when middleware uses resolveTenantSlug', async () => {
     const { cms, db } = await setupMultiTenantTestCMS({
-      middleware: async (ctx) => {
-        const tenantSlug = resolveTenantSlug(ctx, 'default-tenant');
+      authMiddleware: async (ctx) => {
+        // Opt in to request overrides — in real code this MUST be gated behind
+        // an admin check; these tests simulate an admin-authorized override.
+        const tenantSlug = resolveTenantSlug(ctx, 'default-tenant', {
+          allowRequestOverride: true,
+        });
         return { tenantSlug };
       },
     });
@@ -1132,8 +1170,12 @@ describe('multiTenant — tenant override via request', () => {
 
   it('overrides tenant via query.tenantSlug on GET endpoints', async () => {
     const { cms } = await setupMultiTenantTestCMS({
-      middleware: async (ctx) => {
-        const tenantSlug = resolveTenantSlug(ctx, 'default-tenant');
+      authMiddleware: async (ctx) => {
+        // Opt in to request overrides — in real code this MUST be gated behind
+        // an admin check; these tests simulate an admin-authorized override.
+        const tenantSlug = resolveTenantSlug(ctx, 'default-tenant', {
+          allowRequestOverride: true,
+        });
         return { tenantSlug };
       },
     });
@@ -1168,7 +1210,7 @@ describe('multiTenant — tenant override via request', () => {
 
   it('falls back to middleware default when no override in request', async () => {
     const { cms } = await setupMultiTenantTestCMS({
-      middleware: async (ctx) => {
+      authMiddleware: async (ctx) => {
         const tenantSlug = resolveTenantSlug(ctx, 'session-tenant');
         return { tenantSlug };
       },
@@ -1187,8 +1229,12 @@ describe('multiTenant — tenant override via request', () => {
 
   it('middleware can deny access to an overridden tenant', async () => {
     const { cms } = await setupMultiTenantTestCMS({
-      middleware: async (ctx) => {
-        const tenantSlug = resolveTenantSlug(ctx, 'allowed-tenant');
+      authMiddleware: async (ctx) => {
+        // Honor the request override, then enforce the tenant check — this is
+        // the intended admin-gated override pattern.
+        const tenantSlug = resolveTenantSlug(ctx, 'allowed-tenant', {
+          allowRequestOverride: true,
+        });
         if (tenantSlug !== 'allowed-tenant') {
           throw new Error('Forbidden: cross-tenant access denied');
         }

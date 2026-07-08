@@ -122,7 +122,7 @@ describe('publishBranch', () => {
 
   it('uses middleware userId when publishedBy is omitted', async () => {
     const { cms, db } = await setupTestCMS({
-      middleware: async () => ({ userId: 'reviewer-1' }),
+      authMiddleware: async () => ({ userId: 'reviewer-1' }),
     });
 
     const root = await cms.api.pages.createRoot({

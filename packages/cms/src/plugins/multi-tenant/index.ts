@@ -20,6 +20,8 @@ import { multiTenantSchema } from './schema';
  *
  * authMiddleware: async (ctx): Promise<MultiTenantMiddlewareResult> => {
  *   const session = await getSession(ctx);
+ *   // Secure default: the tenant comes from the trusted session, NOT the
+ *   // request. Only pass { allowRequestOverride: true } after an admin check.
  *   const tenantSlug = resolveTenantSlug(ctx, session.organizationSlug);
  *   return {
  *     userId: session.userId,
@@ -33,25 +35,38 @@ export type MultiTenantMiddlewareResult = MiddlewareResult & {
 };
 
 /**
- * Resolves the tenant slug from the incoming request context.
- * Priority: body.tenantSlug -> query.tenantSlug -> fallback.
+ * Resolves the tenant slug for the current request.
  *
- * Use this inside your `authMiddleware` to support per-request tenant
- * overrides (e.g. for admin cross-tenant access) while keeping a
- * sensible default from the user's session.
+ * Secure by default: reads the tenant from the session `fallback` and
+ * IGNORES any request-supplied `tenantSlug` (`body`/`query`). This prevents
+ * a caller from crossing tenant boundaries by putting a `tenantSlug` in the
+ * request. Request-supplied values are only consulted when you explicitly
+ * pass `{ allowRequestOverride: true }`.
+ *
+ * When overrides are enabled the priority is:
+ * `body.tenantSlug -> query.tenantSlug -> fallback`.
  *
  * @param ctx      - The middleware context (must have `request`)
- * @param fallback - Default tenant slug (e.g. `session.organizationSlug`)
+ * @param fallback - Trusted tenant slug from the session (e.g.
+ *                   `session.organizationSlug`)
+ * @param opts     - Pass `{ allowRequestOverride: true }` ONLY after an admin
+ *                   check to honor a request-supplied `tenantSlug`
+ *                   (e.g. admin cross-tenant access). Gate this behind an
+ *                   authorization check — never enable it unconditionally.
  */
 export function resolveTenantSlug(
   ctx: { request?: CMSMiddlewareRequest },
   fallback?: string,
+  opts?: { allowRequestOverride?: boolean },
 ): string | undefined {
-  return (
-    (ctx.request?.body?.tenantSlug as string | undefined) ??
-    (ctx.request?.query?.tenantSlug as string | undefined) ??
-    fallback
-  );
+  if (opts?.allowRequestOverride === true) {
+    return (
+      (ctx.request?.body?.tenantSlug as string | undefined) ??
+      (ctx.request?.query?.tenantSlug as string | undefined) ??
+      fallback
+    );
+  }
+  return fallback;
 }
 
 // A plugin id is an api namespace + URL segment, so it must be a valid JS

@@ -67,7 +67,7 @@ describe('createBranch', () => {
 
   it('uses middleware userId when createdBy is omitted', async () => {
     const { cms, db } = await setupTestCMS({
-      middleware: async () => ({ userId: 'middleware-user' }),
+      authMiddleware: async () => ({ userId: 'middleware-user' }),
     });
 
     const root = await cms.api.pages.createRoot({

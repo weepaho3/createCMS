@@ -211,6 +211,39 @@ export function defineAuthMiddleware(middleware: CMSMiddleware): CMSMiddleware {
   return middleware;
 }
 
+const ANON = Symbol.for('createcms.allowAnonymous');
+
+/**
+ * The branded return type of {@link allowAnonymous}. Structurally a
+ * {@link CMSMiddleware}, but carries a unique symbol so a reviewer (or a lint
+ * rule) can tell an intentional "no auth" decision apart from a real middleware.
+ */
+export type AllowAnonymousSentinel = CMSMiddleware & {
+  readonly [ANON]: true;
+};
+
+/**
+ * Explicit opt-out of authentication for `createCMS({ authMiddleware })`.
+ *
+ * `authMiddleware` is REQUIRED — you either pass a middleware that resolves the
+ * request identity, or you pass `allowAnonymous()` to state, on the record, that
+ * this instance runs with no auth. Use only for public/read-only or local-dev
+ * deployments; never ship it guarding a mutable API.
+ *
+ * The returned middleware yields an empty identity `{}` — byte-identical to the
+ * old behaviour of omitting the middleware entirely — so switching to it changes
+ * nothing at runtime; it only makes the decision visible in the source.
+ *
+ * @example
+ * ```ts
+ * const cms = createCMS({ db, media, collections, authMiddleware: allowAnonymous() });
+ * ```
+ */
+export function allowAnonymous(): AllowAnonymousSentinel {
+  const mw: CMSMiddleware = async () => ({});
+  return Object.assign(mw, { [ANON]: true as const }) as AllowAnonymousSentinel;
+}
+
 /**
  * Identity helper for authoring a plugin. Preserves the literal `id` (so it
  * becomes the `cms.api.<id>` namespace key, not a `string` index signature) and

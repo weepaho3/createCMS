@@ -26,7 +26,7 @@ export const setupI18nTestCMS = async <
   const C extends Record<string, AnyCollectionDefinition> =
     typeof TEST_COLLECTIONS,
 >(options?: {
-  middleware?: CMSMiddleware;
+  authMiddleware?: CMSMiddleware;
   languages?: readonly string[];
   defaultLanguage?: string;
   collections?: C;
@@ -50,7 +50,7 @@ export const setupI18nTestCMS = async <
     // The fallback only runs when no override is passed (default C =
     // typeof TEST_COLLECTIONS), so the cast is sound and keeps cms.api typed.
     collections: (options?.collections ?? TEST_COLLECTIONS) as C,
-    middleware: options?.middleware ?? defaultMiddleware,
+    authMiddleware: options?.authMiddleware ?? defaultMiddleware,
     plugins: [
       i18n({
         languages: options?.languages ?? (['en', 'de', 'fr'] as const),
@@ -98,7 +98,7 @@ export const setupI18nMultiTenantTestCMS = async <
     db,
     media: { ...DUMMY_MEDIA_CONFIG },
     collections: (options?.collections ?? TEST_COLLECTIONS) as C,
-    middleware: async () => ({ tenantSlug: tenant, language }),
+    authMiddleware: async () => ({ tenantSlug: tenant, language }),
     plugins: [
       multiTenant(),
       i18n({ languages: ['en', 'de', 'fr'] as const, defaultLanguage: 'en' }),

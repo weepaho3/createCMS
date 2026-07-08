@@ -9,7 +9,11 @@ import * as z from 'zod';
 import { createCMSClient } from '../../client/vanilla';
 import { createNotificationRouter } from '../../react/notifications-router';
 import { useNotifications } from '../../react/realtime';
-import { defineCollections, defineUserConfig } from '../define';
+import {
+  allowAnonymous,
+  defineCollections,
+  defineUserConfig,
+} from '../define';
 import { createCMS } from '../factory';
 import type { DrizzleInstance } from '../types/drizzle';
 import type { CMSPlugin } from '../types/plugin';
@@ -20,24 +24,47 @@ declare const media: MediaConfig;
 const collections = defineCollections({});
 
 // --- notifications ENABLED (default) -------------------------------------
-const enabled = createCMS({ db, media, collections });
+const enabled = createCMS({
+  db,
+  media,
+  collections,
+  authMiddleware: allowAnonymous(),
+});
 // The inbox namespace and the `notify` helper exist.
 void enabled.api.notifications.list;
 void enabled.notify;
 
 // --- notifications EXPLICITLY enabled ------------------------------------
-const explicit = createCMS({ db, media, collections, notifications: true });
+const explicit = createCMS({
+  db,
+  media,
+  collections,
+  notifications: true,
+  authMiddleware: allowAnonymous(),
+});
 void explicit.api.notifications.list;
 void explicit.notify;
 
 // --- a WIDENED boolean keeps the types ENABLED (documented contract) ------
 declare const flag: boolean;
-const widened = createCMS({ db, media, collections, notifications: flag });
+const widened = createCMS({
+  db,
+  media,
+  collections,
+  notifications: flag,
+  authMiddleware: allowAnonymous(),
+});
 void widened.api.notifications.list;
 void widened.notify;
 
 // --- notifications DISABLED ----------------------------------------------
-const disabled = createCMS({ db, media, collections, notifications: false });
+const disabled = createCMS({
+  db,
+  media,
+  collections,
+  notifications: false,
+  authMiddleware: allowAnonymous(),
+});
 // `notify` AND `notificationService` are typed `undefined` (gated in parallel).
 disabled.notify satisfies undefined;
 disabled.notificationService satisfies undefined;
@@ -86,6 +113,7 @@ const withUserCms = createCMS({
   media,
   collections,
   user: userConfig,
+  authMiddleware: allowAnonymous(),
 });
 
 type ListResult = Awaited<
@@ -143,7 +171,13 @@ const abPlugin = {
   },
 } satisfies CMSPlugin;
 
-const cmsWithPlugin = createCMS({ db, media, collections, plugins: [abPlugin] });
+const cmsWithPlugin = createCMS({
+  db,
+  media,
+  collections,
+  plugins: [abPlugin],
+  authMiddleware: allowAnonymous(),
+});
 
 // A plugin can emit its OWN type (emit side accepts any string).
 export const _pluginCanEmit = () =>

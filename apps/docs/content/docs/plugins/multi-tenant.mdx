@@ -42,13 +42,24 @@ npx drizzle-kit generate && npx drizzle-kit migrate
 
 Tenant isolation is automatic once installed. Reads and inserts on the base tables (`roots`, `assets`, `asset_folders`, `redirects`, `templates`, `variables`) are filtered and stamped by the `tenantSlug` your `authMiddleware` returns; child tables (branches, commits, merge requests, publications) are isolated transitively through their tenant-scoped root. There is no client-side tenant state.
 
-To resolve the tenant from the request yourself, use `resolveTenantSlug`, which reads `tenantSlug` from the request body or query (with an optional fallback):
+To resolve the tenant inside your `authMiddleware`, use `resolveTenantSlug`. By default it is **session-only**: it returns the fallback you pass (the tenant from the session) and ignores any `tenantSlug` in the request body or query, so a caller cannot scope a request to a tenant they don't belong to.
 
 ```ts
 import { resolveTenantSlug } from '@createcms/core/plugins/multi-tenant';
 
-const tenant = resolveTenantSlug(ctx, 'default');
+// Session-only: the request cannot override the tenant.
+const tenant = resolveTenantSlug(ctx, session.organizationSlug);
 ```
+
+To let a request supply the tenant — for admin or cross-tenant tooling — opt in with `{ allowRequestOverride: true }`, and only after you have verified the caller is an admin. Passing it unconditionally lets any user read or write another tenant's data:
+
+```ts
+const tenant = resolveTenantSlug(ctx, session.organizationSlug, {
+  allowRequestOverride: session.isAdmin,
+});
+```
+
+See [Security → Multi-tenant](/docs/resources/security#multi-tenant) for the isolation rationale.
 
 ## Schema
 

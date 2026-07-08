@@ -33,6 +33,118 @@ import { MEDIA_DEFAULTS } from '../types/s3';
 
 const MEDIA_META = { scope: 'system' as const, permissionResource: 'media' };
 
+/**
+ * Declared image MIME types whose magic bytes `sniffImageType` recognizes. Used
+ * to decide when an unrecognizable buffer is a genuine contradiction: a payload
+ * declared as one of these but not matching ANY known signature (e.g. an SVG or
+ * HTML file smuggled in as `image/png`) is rejected, while an exotic-but-legit
+ * declared type outside this set (e.g. a custom-configured `image/avif`) is left
+ * to the declared-type allowlist rather than false-rejected.
+ */
+const SNIFFABLE_IMAGE_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+]);
+
+/**
+ * Dependency-free magic-byte sniff for the raster image types createcms accepts
+ * by default. Returns the detected MIME type, or `undefined` if the leading
+ * bytes match no known image signature.
+ */
+function sniffImageType(bytes: Uint8Array): string | undefined {
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a
+  ) {
+    return 'image/png';
+  }
+  // JPEG: FF D8 FF
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xd8 &&
+    bytes[2] === 0xff
+  ) {
+    return 'image/jpeg';
+  }
+  // GIF: 47 49 46 38 ('GIF8')
+  if (
+    bytes.length >= 4 &&
+    bytes[0] === 0x47 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x38
+  ) {
+    return 'image/gif';
+  }
+  // WebP: 'RIFF' <4-byte size> 'WEBP'
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  ) {
+    return 'image/webp';
+  }
+  return undefined;
+}
+
+/** Read the first `count` bytes of an upload body (Blob or ArrayBuffer). */
+async function readLeadingBytes(
+  buffer: Blob | ArrayBuffer,
+  count: number,
+): Promise<Uint8Array> {
+  if (buffer instanceof Blob) {
+    return new Uint8Array(await buffer.slice(0, count).arrayBuffer());
+  }
+  return new Uint8Array(buffer.slice(0, count));
+}
+
+/**
+ * Content-type validation for the SERVER upload paths, which hold the actual
+ * bytes (the client signed-upload path never does, so it cannot be sniffed
+ * server-side — see createSignedUpload). Runs AFTER the declared-type allowlist:
+ * for a declared `image/*` type it sniffs the buffer's magic bytes and throws
+ * INVALID_FILE_TYPE if they contradict the declared type — blocking a script-
+ * bearing file (e.g. an SVG) smuggled in under an allowed image content-type for
+ * stored XSS. Video/PDF are declared-type-only (not sniffed).
+ */
+async function assertDeclaredTypeMatchesBytes(
+  fileName: string,
+  declaredType: string,
+  buffer: Blob | ArrayBuffer,
+): Promise<void> {
+  if (!declaredType.startsWith('image/')) return;
+
+  const sniffed = sniffImageType(await readLeadingBytes(buffer, 12));
+  if (sniffed === declaredType) return;
+
+  // Reject when the bytes are a recognized-but-different image type, OR when the
+  // declared type is one we CAN sniff yet the bytes match no signature (the
+  // SVG/HTML-as-image case). A declared type outside the sniffable set with
+  // unrecognized bytes is left to the declared-type allowlist.
+  if (sniffed !== undefined || SNIFFABLE_IMAGE_TYPES.has(declaredType)) {
+    throw new CMSError('INVALID_FILE_TYPE', {
+      message: errorMessages.invalidFileType(fileName, declaredType),
+    });
+  }
+}
+
 export function createMediaEndpoints(
   cmsCtx: CMSProcedureCtx,
   mediaConfig: MediaConfig,
@@ -1027,6 +1139,13 @@ export function createMediaEndpoints(
           scope,
         });
 
+        // We hold the bytes here: verify each declared image type against the
+        // buffer's magic bytes and reject a spoof (e.g. SVG-as-PNG) BEFORE any
+        // DB row or S3 object is written.
+        for (const file of ctx.body.files) {
+          await assertDeclaredTypeMatchesBytes(file.name, file.type, file.buffer);
+        }
+
         const client = getS3Client();
 
         const filesByIndex = new Map(ctx.body.files.map((f, i) => [i, f]));
@@ -1165,8 +1284,11 @@ export function createMediaEndpoints(
           throw new CMSError('CANNOT_REPLACE_VARIANT');
         }
 
-        // 3. Validate the new file (size / mime type).
+        // 3. Validate the new file (size / declared mime type), then sniff its
+        //    magic bytes — we hold the buffer, so reject a declared-image spoof
+        //    (e.g. SVG-as-PNG stored XSS) before minting a new object.
         validateFiles([file], { maxFiles, maxFileSize, allowedMimeTypes });
+        await assertDeclaredTypeMatchesBytes(file.name, file.type, file.buffer);
 
         // 4. Mint a NEW slug/objectKey from the new file (cache-bust).
         const slug = await generateUniqueSlug(db, file.name, undefined, scope);

@@ -1101,8 +1101,13 @@ export type CMSDefinition<
    * See {@link MergeStrategy}.
    */
   mergeStrategy?: MergeStrategy;
-  authMiddleware?: CMSMiddleware;
-  middleware?: CMSMiddleware;
+  /**
+   * REQUIRED. Resolves the request identity for every API call — return at
+   * least `{ userId }`. There is no implicit "no auth" default: pass a real
+   * middleware, or pass `allowAnonymous()` to opt out explicitly (public /
+   * read-only / local-dev only). See {@link CMSMiddleware}.
+   */
+  authMiddleware: CMSMiddleware;
   basePath?: string;
   hooks?: CMSHooks;
   plugins?: TPlugins;

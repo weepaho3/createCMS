@@ -1,0 +1,133 @@
+---
+title: Security
+description: What createCMS defends by default, and the responsibilities it leaves to your deployment — auth, media privacy, rate limiting, CSRF, and multi-tenant isolation.
+---
+
+createCMS is defensive by default — every endpoint runs through your auth, the scope resolver, and hooks — but a CMS sits between the public internet and your database, so some defenses only make sense at the edge of *your* deployment. This page lists what the framework does **not** do for you, and how to close each gap.
+
+## Authentication is required
+
+`createCMS` **throws at construction** if you don't pass an `authMiddleware`. There is no implicit "allow everything" default — auth is an explicit decision, not an omission.
+
+Pass a real middleware that resolves the user and permissions from the request:
+
+```ts title="lib/cms.ts"
+import { createCMS } from '@createcms/core';
+
+export const cms = createCMS({
+  db,
+  collections,
+  media,
+  // Resolve the user/permissions per request (from a cookie, token, etc.).
+  authMiddleware: async (ctx) => {
+    const session = await getSession(ctx);
+    return { userId: session.userId };
+  },
+});
+```
+
+Or, to run public/dev with **no** auth, opt out explicitly with `allowAnonymous()`:
+
+```ts title="lib/cms.ts"
+import { createCMS, allowAnonymous } from '@createcms/core';
+
+export const cms = createCMS({
+  db,
+  collections,
+  media,
+  // Every request runs unauthenticated. This authorizes writes too, so use
+  // it only for a public-read demo or local dev — never a production app
+  // that accepts mutations.
+  authMiddleware: allowAnonymous(),
+});
+```
+
+<Callout type="warn">
+  `allowAnonymous()` is not "public read-only" — it lets every request through, including authoring mutations. Reach for it only when the whole surface is meant to be open (a local sandbox, a static export). Anything with real writes needs a real `authMiddleware`. See [`authMiddleware`](/docs/reference/configuration#authmiddleware).
+</Callout>
+
+## Media privacy
+
+Uploaded objects are stored **`public-read`** in your bucket. The `status: 'private'` flag is enforced by the CMS gate (`GET /media/asset/{id}` returns `ASSET_ACCESS_DENIED` for a private asset) — **not** by the object store. Anyone who knows or guesses the direct `${publicUrl}/${objectKey}` URL can fetch a "private" object straight from the bucket, bypassing the gate.
+
+So `private` is a **"should this be shown"** flag, not a hard-privacy boundary. Do not put secrets or regulated data behind it; if bytes must be truly access-controlled, keep them out of public object storage entirely. See [Media → Private vs public](/docs/concepts/media#private-vs-public).
+
+**Serve assets from a cross-origin host.** Point `publicUrl` at a domain that is *not* your app's origin (a dedicated asset/CDN host), so an uploaded file can never execute as same-origin against your app — it can't read your app's cookies or ride a logged-in session. This is defense in depth: even a malicious upload that slips past validation runs in an origin with nothing to steal.
+
+```ts title="lib/cms.ts"
+const media = {
+  provider: 'cloudflare',
+  // …bucket + credentials…
+  // A separate host, not https://your-app.com — so assets are cross-origin.
+  publicUrl: 'https://assets.example-cdn.net',
+};
+```
+
+<Callout type="warn">
+  The default `allowedMimeTypes` is an explicit allowlist (`image/png`, `image/jpeg`, `image/webp`, `image/gif`, `video/mp4`, `video/webm`, `application/pdf`) with **no wildcards**, so `image/svg+xml` is **excluded**. SVG is XML that can carry inline `<script>`, so a same-origin SVG is a stored-XSS vector. Uploads are also checked against their real magic bytes server-side, so a file declared as `image/png` but containing SVG/HTML is rejected. If you must accept SVG, add it explicitly *and* serve it from the cross-origin host above (and/or force a download), never from your app's origin.
+</Callout>
+
+## Rate limiting
+
+The framework does **not** throttle anything on its own. The public read paths — `getPublishedContent`, the `/media/asset/{id}` gate — and every mutation run as fast as the caller sends them. Throttling is a **deployment-layer** concern: put a CDN, WAF, or reverse proxy in front and rate-limit there.
+
+If you want it in-process instead, use the plugin **`onRequest`** seam — it runs before routing, so you can 429 a request before any DB work. The A/B plugin's public event ingest uses exactly this, exposed as an option:
+
+```ts title="lib/cms.ts"
+import { abTest } from '@createcms/core/plugins/ab-test';
+
+abTest({
+  rateLimit: {
+    limit: 60,
+    windowMs: 60_000,
+    // store: myDistributedStore,  // see the caveats below
+  },
+});
+```
+
+To rate-limit your *own* endpoints, build the same seam into a plugin — see [`onRequest`](/docs/plugins/building#intercept-requests) in the plugin guide, and [`abTest({ rateLimit })`](/docs/plugins/ab-test) for the reference implementation.
+
+<Callout type="warn">
+  Two caveats on the built-in limiter's defaults:
+
+  - **The default store is in-memory and per-instance.** It resets on cold start and only bounds a single instance, so on serverless or behind multiple instances it barely limits anything — inject a distributed store (Redis/Upstash) via `rateLimit.store`.
+  - **The default key fails *open*.** It derives the client IP from `x-forwarded-for` / `x-real-ip`; a request with neither header (a directly-exposed server, not behind a proxy) is **not** limited. Provide a `getKey` that reads your real client IP if you don't sit behind a trusted proxy.
+</Callout>
+
+## CSRF
+
+The realtime SSE route and every mutation authenticate through your `authMiddleware`. **If that middleware reads cookies**, the browser attaches them automatically on cross-site requests — so a cookie-session app is CSRF-exposed unless you defend it:
+
+- Set your session cookie `SameSite=Strict` (or `Lax`), and
+- verify an `Origin`/`Referer` header or a CSRF token **inside your `authMiddleware`**, rejecting requests that fail the check.
+
+Token-in-header auth (e.g. an `Authorization: Bearer …` header your client sets explicitly) is **not** CSRF-exposed — browsers don't auto-attach custom headers on cross-site requests, so a forged request can't carry the credential.
+
+<Callout type="info">
+  The realtime route authenticates by cookie/session specifically because the browser's `EventSource` can only send cookies, not headers — which is also why it must be same-origin with your app. See [Realtime → Security model](/docs/concepts/realtime#security-model).
+</Callout>
+
+## Multi-tenant
+
+With the [multi-tenant plugin](/docs/plugins/multi-tenant), `resolveTenantSlug` is **session-only by default**: it returns the tenant from your session fallback and ignores any `tenantSlug` in the request body or query. That default is what keeps one tenant from reading or writing another's data.
+
+```ts
+import { resolveTenantSlug } from '@createcms/core/plugins/multi-tenant';
+
+// Session-only: the request cannot pick the tenant.
+const tenantSlug = resolveTenantSlug(ctx, session.organizationSlug);
+```
+
+Only opt into request-supplied overrides — and only **after** an admin check:
+
+```ts
+const tenantSlug = resolveTenantSlug(ctx, session.organizationSlug, {
+  // Let body/query.tenantSlug override the session — gated on an admin check.
+  // Without this gate, any user could scope a request to another tenant.
+  allowRequestOverride: session.isAdmin,
+});
+```
+
+<Callout type="warn">
+  Never pass `{ allowRequestOverride: true }` unconditionally. It moves tenant selection from the trusted session to the untrusted request, so an unprivileged caller could set `tenantSlug` to a tenant they don't belong to. Gate it on a verified admin/impersonation check.
+</Callout>

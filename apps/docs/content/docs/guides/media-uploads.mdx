@@ -44,7 +44,7 @@ export function Uploader() {
 }
 ```
 
-`upload(files, options?)` takes a `File[]` and an optional `{ folderId }`. Uploads are validated server-side against the limits (defaults: `maxFiles` 10, `maxFileSize` 4 MB, `allowedMimeTypes` `['image/*', 'video/*', 'application/pdf']`); a rejected file surfaces as `FILE_TOO_LARGE`, `TOO_MANY_FILES`, or `INVALID_FILE_TYPE`. New assets are created **private**.
+`upload(files, options?)` takes a `File[]` and an optional `{ folderId }`. Uploads are validated server-side against the limits (defaults: `maxFiles` 10, `maxFileSize` 4 MB, `allowedMimeTypes` an explicit image/video/PDF allowlist that **excludes SVG**, see [Configuration](/docs/reference/configuration#media)); a rejected file surfaces as `FILE_TOO_LARGE`, `TOO_MANY_FILES`, or `INVALID_FILE_TYPE`. New assets are created **private**.
 
 | Field | Type | Description |
 | --- | --- | --- |

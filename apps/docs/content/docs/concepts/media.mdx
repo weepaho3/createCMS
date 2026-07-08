@@ -25,7 +25,7 @@ Folders are a nested tree (`asset_folders`, each with a `parentId`). `listFolder
 
 `status` is a **visibility flag**. An asset is created `private`, and a private asset is not served by the public redirect (`GET /media/asset/{id}` returns `ASSET_ACCESS_DENIED`). To expose one, flip it to `public` with `updateAssetsStatus` — publishing content that references an asset does this automatically.
 
-The gate is enforced by the CMS endpoints, not by the object store — uploaded objects are `public-read`, so `status` is not a hard-privacy boundary. Treat it as "should this be shown," not "is this secret."
+The gate is enforced by the CMS endpoints, not by the object store — uploaded objects are `public-read`, so `status` is not a hard-privacy boundary. Treat it as "should this be shown," not "is this secret." As defense in depth, serve assets from a **cross-origin** host (a `publicUrl` that isn't your app's origin) so an uploaded file can't run as same-origin; the default `allowedMimeTypes` excludes SVG for the same reason. See [Security → Media privacy](/docs/resources/security#media-privacy).
 
 ## Uploading: signed URL vs server
 
@@ -34,7 +34,7 @@ There are two upload paths:
 - **`createSignedUpload` (default).** The CMS creates the asset rows and returns presigned PUT URLs; the browser uploads each file straight to the bucket. No file bytes pass through your server, so there are no serverless body-size limits and less egress. Use this for browser uploads.
 - **`uploadAssets`.** You send the file bytes (a `buffer: Blob | ArrayBuffer` per file) to the CMS, which PUTs them to the bucket. Use this for server-side sources.
 
-Both validate against the limits (defaults: `maxFiles` 10, `maxFileSize` 4 MB, `allowedMimeTypes` `['image/*', 'video/*', 'application/pdf']`), and signed URLs expire after 120s by default. The browser hook is in [Upload and serve media](/docs/guides/media-uploads).
+Both validate against the limits (defaults: `maxFiles` 10, `maxFileSize` 4 MB, `allowedMimeTypes` an explicit image/video/PDF allowlist that **excludes SVG**, see [Configuration](/docs/reference/configuration#media)), and signed URLs expire after 120s by default. The browser hook is in [Upload and serve media](/docs/guides/media-uploads).
 
 ## Serving assets
 
