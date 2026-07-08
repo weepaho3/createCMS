@@ -82,6 +82,51 @@ const { results, isLive } = useLiveResults({
   Live delivery is decoupled from the analytics storage adapter — it works with the Postgres or Upstash adapter, as long as [`realtime`](/docs/reference/configuration#realtime) is configured on the server. Without it the stream never connects and `initial` (+ any `getResults` reconcile) stands.
 </Callout>
 
+## Server endpoints
+
+The plugin registers ten endpoints under the `abTest` namespace: `cms.api.abTest.<name>` on the server and `client.abTest.<name>` on the client. The client [convenience actions](#usage) build on these, and every endpoint also surfaces as a fully typed fetcher through `typeof cms`, so the input and return shapes below are inferred end to end.
+
+| Endpoint | Method | Input | Returns |
+| --- | --- | --- | --- |
+| `createTest` | POST | `rootId`, `collection`, `name`, `variants`, `trafficPercentage?`, `goalHandle?`, `goalEvent?` | `{ testId }` |
+| `updateTest` | POST | `testId` + optional `name`, `status`, `trafficPercentage`, `goalHandle`, `goalEvent`, `variants` | `{ testId }` |
+| `listTests` | GET | `collection?`, `status?`, `limit?`, `offset?` | `{ tests, total, hasMore }` |
+| `getResults` | GET | `testId`, `from?`, `to?` | `AggregatedResults` |
+| `trackEvent` | POST | `eventType` + optional `testId`, `variantId`, `branchId`, `visitorId`, `anonymous`, `metadata`, `consent` | `{}` |
+
+`createTest` opens a test in `draft`. Each entry in `variants` is `{ branchId, name, weight, isControl? }`, and its branch must already be published:
+
+```ts
+const { testId } = await cms.api.abTest.createTest({
+  body: {
+    rootId,
+    collection: 'pages',
+    name: 'Hero copy test',
+    trafficPercentage: 50, // optional, defaults to 100
+    variants: [
+      { branchId: control, name: 'Control', weight: 50, isControl: true },
+      { branchId: variantB, name: 'Bold headline', weight: 50 },
+    ],
+  },
+});
+```
+
+<Callout type="info">
+  `variants` needs at least two entries whose `weight` values sum to 100, with exactly one flagged `isControl`. `updateTest` follows the status machine `draft → running`, `running → paused`/`completed`, `paused → running`/`completed`, and only replaces `variants` while a test is `draft` or `paused`; passing `null` for `goalHandle`/`goalEvent` clears the goal. `listTests` defaults `limit` to 50 (max 100) and `offset` to 0.
+</Callout>
+
+`getResults` returns `AggregatedResults` — `{ testId, variants, totalImpressions, totalConversions, goalEvent? }`, where each variant carries its own impressions, conversions, and rates. `trackEvent` is the public ingest (a distinct `abTestEvent` permission resource, so it can be opened to anonymous visitors); A/B-attributed events must resolve to a variant of the given test via `variantId` or `branchId`, and it also accepts the optional analytics-stitching fields `source`, `interactionId`, and `transport`.
+
+The remaining endpoints round out the admin surface:
+
+| Endpoint | Method | Input | Returns |
+| --- | --- | --- | --- |
+| `getTest` | GET | `testId` | The test with its `variants` |
+| `deleteTest` | POST | `testId` | `{ testId }` |
+| `listGoalEvents` | GET | `rootId` | `{ rootId, goals }` |
+| `assignVariant` | POST | `testId`, `context` | `{ variantId, branchId, inTest }` |
+| `flushEvents` | POST | `testId?` | Adapter flush result |
+
 ## Schema
 
 | Table | Purpose |

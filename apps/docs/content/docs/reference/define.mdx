@@ -91,7 +91,7 @@ Identity helper for the auth middleware, for full inference. The middleware rece
 
 ## Block properties
 
-Every property is one of eight field types. The common shape:
+Every property is one of nine field types. The common shape:
 
 ```ts
 {
@@ -115,6 +115,7 @@ Every property is one of eight field types. The common shape:
 | `image` | `string` (asset reference) | |
 | `select` | one of `options[].value` | `options: { label, value }[]` |
 | `reference` | target `rootId` string | `collection: string` |
+| `link` | `LinkValue` (internal / external / email / phone) | `allowedKinds?`, `allowedCollections?` |
 
 ## Slug config
 

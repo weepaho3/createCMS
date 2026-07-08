@@ -62,7 +62,7 @@ Returns the editing view of an entry's block tree. `GET`, input via `query`.
 | `rootId` | `string` | yes | The entry. |
 | `branchId` | `string` | yes | The branch to read. |
 | `commitId` | `string` | no | A specific commit (defaults to branch head). |
-| `raw` | `boolean` | no | Keep stored values for editing: skip variable, link, and image resolution. |
+| `raw` | `boolean` | no | Keep stored values for editing: skip variable and link resolution. |
 | `includeReferencePreviews` | `boolean` | no | Also return a `references` sidecar (see below). |
 
 Returns `{ tree, reconstructed }`. The `tree` is a discriminated union over `type`, and the top node is `type: 'root'`.
@@ -156,11 +156,11 @@ Returns one branch. `GET`, `query: { branchId }`.
 
 ### `renameBranch`
 
-Renames a branch (`main` cannot be renamed). `POST`, `body: { branchId, newName }`.
+Renames a branch (the default branch (`defaultBranchName`, `main` by default) cannot be renamed). `POST`, `body: { branchId, newName }`.
 
 ### `deleteBranch`
 
-Deletes a branch. `main`, published branches, and branches with open merge requests cannot be deleted. `POST`, `body: { branchId }`.
+Deletes a branch. The default branch (`defaultBranchName`, `main` by default), published branches, and branches with open merge requests cannot be deleted. `POST`, `body: { branchId }`.
 
 ### `publishBranch`
 
@@ -200,11 +200,12 @@ Rebuilds the full-text search index across all entities. `POST`, empty body. Ret
 
 Each collection also exposes the rest of the versioning and review surface. The remaining methods, all under `cms.api.<collection>`:
 
+- **Roots**: `getRoot`, `getRootBySlug`, `archiveRoot`, `moveRoot`, `duplicateRoot`, `getReferenceUsages`, `getRootHistory`.
 - **Blocks**: `moveBlock`, `deleteBlock`, `duplicateBlock`, `updateBlocks`, `updateRoot`.
 - **Branches**: `revertBranch`, `checkDivergence` (plus the branch methods above).
 - **Merges**: `createMergeRequest`, `getDiff`, `checkConflicts`, `resolveConflicts`, `createMergeBlockVersion`, `executeMerge`, `listMergeRequests`, `updateMergeRequest`, `closeMergeRequest`, `reopenMergeRequest`.
 - **Approvals**: `requestApproval`, `approve`, `reject`, `cancelApproval`, `getApproval`, `listApprovals`.
-- **Comments**: `createCommentThread`, `createCommentMessage`, `listCommentThreads`, `getCommentThread`, `resolveCommentThread`, `reopenCommentThread`, `updateCommentMessage`, `deleteCommentMessage`, `listMentions`.
+- **Comments**: `createCommentThread`, `createCommentMessage`, `listCommentThreads`, `getCommentThread`, `resolveCommentThread`, `reopenCommentThread`, `updateCommentMessage`, `deleteCommentThread`, `deleteCommentMessage`, `listMentions`.
 - **Publications**: `unpublishBranch`, `listPublications` (plus `publishBranch` and `getPublishedContent`).
 - **Redirects**: `createRedirect`, `updateRedirect`, `archiveRedirect`, `listRedirects`, and `resolveRedirect` (call this in routing to follow a redirect).
 
