@@ -47,31 +47,23 @@ export async function findCommonAncestor(
     };
   }
 
+  const chainFor = (id: string) =>
+    db.execute(sql`
+      WITH RECURSIVE chain AS (
+        SELECT id, parent_commit_id, merge_source_commit_id, 0 AS depth
+        FROM cms.commits WHERE id = ${id}
+        UNION ALL
+        SELECT c.id, c.parent_commit_id, c.merge_source_commit_id, chain.depth + 1
+        FROM cms.commits c JOIN chain ON c.id = chain.parent_commit_id
+           OR c.id = chain.merge_source_commit_id
+        WHERE chain.depth < 10000
+      )
+      SELECT DISTINCT id, MIN(depth) AS depth FROM chain GROUP BY id ORDER BY depth
+    `);
+
   const [sourceResult, targetResult] = await Promise.all([
-    db.execute(sql`
-      WITH RECURSIVE chain AS (
-        SELECT id, parent_commit_id, merge_source_commit_id, 0 AS depth
-        FROM cms.commits WHERE id = ${sourceHeadCommitId}
-        UNION ALL
-        SELECT c.id, c.parent_commit_id, c.merge_source_commit_id, chain.depth + 1
-        FROM cms.commits c JOIN chain ON c.id = chain.parent_commit_id
-           OR c.id = chain.merge_source_commit_id
-        WHERE chain.depth < 10000
-      )
-      SELECT DISTINCT id, MIN(depth) AS depth FROM chain GROUP BY id ORDER BY depth
-    `),
-    db.execute(sql`
-      WITH RECURSIVE chain AS (
-        SELECT id, parent_commit_id, merge_source_commit_id, 0 AS depth
-        FROM cms.commits WHERE id = ${targetHeadCommitId}
-        UNION ALL
-        SELECT c.id, c.parent_commit_id, c.merge_source_commit_id, chain.depth + 1
-        FROM cms.commits c JOIN chain ON c.id = chain.parent_commit_id
-           OR c.id = chain.merge_source_commit_id
-        WHERE chain.depth < 10000
-      )
-      SELECT DISTINCT id, MIN(depth) AS depth FROM chain GROUP BY id ORDER BY depth
-    `),
+    chainFor(sourceHeadCommitId),
+    chainFor(targetHeadCommitId),
   ]);
   const sourceChain = sourceResult.rows as AncestorRow[];
   const targetChain = targetResult.rows as AncestorRow[];

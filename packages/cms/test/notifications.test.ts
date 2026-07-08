@@ -847,7 +847,7 @@ describe('notification triggers', () => {
       expect(resolved[0].recipientId).toBe(USER_1);
     });
 
-    it('sends threadResolved with reopened meta when reopening', async () => {
+    it('sends threadReopened with reopened meta when reopening', async () => {
       const received: NotificationPayload[] = [];
       const { db } = await setupTestCMS();
 
@@ -880,7 +880,7 @@ describe('notification triggers', () => {
 
       const reopened = received.filter(
         (n) =>
-          n.type === 'threadResolved' && (n.meta as any)?.reopened === true,
+          n.type === 'threadReopened' && (n.meta as any)?.reopened === true,
       );
       expect(reopened).toHaveLength(1);
       expect(reopened[0].recipientId).toBe(USER_1);

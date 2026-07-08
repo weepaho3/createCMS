@@ -26,7 +26,7 @@ type NormalizedConfig<
  * The Next.js cache tag for a root's published content. The A/B variant-coded
  * render routes tag their getPublishedContent fetch with this, so a single
  * `revalidateTag` invalidates the root's control + every variant cache entry on
- * a content change (AB_FANOUT FA3b). Exported so consumers tag identically.
+ * a content change. Exported so consumers tag identically.
  */
 export function rootRevalidateTag(rootId: string): string {
   return `cms_root_${rootId}`;

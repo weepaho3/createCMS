@@ -33,7 +33,7 @@ export const contentUsageTargetEnum = cms.enum("content_usage_target", ["asset",
 
 export const mergeRequestStatusEnum = cms.enum("merge_request_status", ["open", "merged", "closed"]);
 
-export const notificationTypeEnum = cms.enum("notification_type", ["mention", "comment", "threadResolved", "approvalRequested", "approvalApproved", "approvalRejected", "mergeRequestOpened", "mergeRequestMerged", "mergeRequestClosed", "mergeRequestReopened", "published", "custom"]);
+export const notificationTypeEnum = cms.enum("notification_type", ["mention", "comment", "threadResolved", "threadReopened", "approvalRequested", "approvalApproved", "approvalRejected", "mergeRequestOpened", "mergeRequestMerged", "mergeRequestClosed", "mergeRequestReopened", "published", "custom"]);
 
 export const redirectEndpointTypeEnum = cms.enum("redirect_endpoint_type", ["page", "path"]);
 

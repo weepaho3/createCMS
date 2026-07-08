@@ -1,7 +1,6 @@
 import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
-import type { NotificationInput } from '../notifications/types';
 import type { CollectionWithName, CMSProcedureCtx } from '../types';
 import type { DrizzleInstance } from '../types/drizzle';
 
@@ -14,7 +13,7 @@ import {
 } from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
-import { flushNotifications } from '../notifications/service';
+import { withNotifications } from '../notifications/service';
 import { userEnrichment, type EnrichField } from '../user/enrichment';
 import { parseTimestampOrNull } from '../utils/parse-timestamp';
 
@@ -213,10 +212,10 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
         const actor = ctx.context.userId;
         if (!actor) throw new CMSError('USER_ID_REQUIRED');
 
-        const pending: NotificationInput[] = [];
-
-        return db
-          .transaction(async (tx) => {
+        return withNotifications(
+          db,
+          cmsCtx.notificationService,
+          async (tx, pending) => {
             let mergeRequestId: string | null = null;
             let branchId: string;
             let commitId: string;
@@ -349,11 +348,8 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
             return {
               approvals: inserted.map(mapApproval),
             };
-          })
-          .then((result) => {
-            flushNotifications(cmsCtx.notificationService, pending);
-            return result;
-          });
+          },
+        );
       },
     ),
 
@@ -395,10 +391,10 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
         const actor = ctx.context.userId;
         if (!actor) throw new CMSError('USER_ID_REQUIRED');
 
-        const pending: NotificationInput[] = [];
-
-        return db
-          .transaction(async (tx) => {
+        return withNotifications(
+          db,
+          cmsCtx.notificationService,
+          async (tx, pending) => {
             const [approval] = await tx
               .select({
                 id: approvals.id,
@@ -489,11 +485,8 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
             }
 
             return { approval: mapApproval(updated) };
-          })
-          .then((result) => {
-            flushNotifications(cmsCtx.notificationService, pending);
-            return result;
-          });
+          },
+        );
       },
     ),
 
@@ -538,10 +531,10 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
         const actor = ctx.context.userId;
         if (!actor) throw new CMSError('USER_ID_REQUIRED');
 
-        const pending: NotificationInput[] = [];
-
-        return db
-          .transaction(async (tx) => {
+        return withNotifications(
+          db,
+          cmsCtx.notificationService,
+          async (tx, pending) => {
             const [approval] = await tx
               .select({
                 id: approvals.id,
@@ -633,11 +626,8 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
             }
 
             return { approval: mapApproval(updated) };
-          })
-          .then((result) => {
-            flushNotifications(cmsCtx.notificationService, pending);
-            return result;
-          });
+          },
+        );
       },
     ),
 

@@ -80,11 +80,7 @@ export type TableLevelForeignKey<ColumnName extends string = string> = {
   onUpdate?: ForeignKeyAction;
 };
 
-export type TableDefinition<
-  Columns extends TableColumns = TableColumns,
-  ReferenceTarget extends string = string,
-  EnumTarget extends string = string,
-> = {
+export type TableDefinition<Columns extends TableColumns = TableColumns> = {
   tableName?: string;
   indexPrefix?: string;
   columns: Columns;
@@ -114,7 +110,7 @@ export type EnumMap = Record<string, EnumDefinition>;
 export type TableMap = Record<string, TableDefinition>;
 
 export type TableColumnsOf<TTable> =
-  TTable extends TableDefinition<infer TColumns, any, any> ? TColumns : never;
+  TTable extends TableDefinition<infer TColumns> ? TColumns : never;
 
 export type TableName<TTables extends TableMap> = Extract<
   keyof TTables,

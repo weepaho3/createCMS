@@ -9,10 +9,10 @@ import type { DrizzleInstance } from '../../core/types/drizzle';
 import { rootScopeConditions } from '../../core/scope';
 
 /**
- * The ab-test plugin's implementation of the core {@link AbTestResolver} seam
- * (Seam F): given a set of already render-resolved root ids, report which have a
+ * The ab-test plugin's implementation of the core {@link AbTestResolver} seam:
+ * given a set of already render-resolved root ids, report which have a
  * RUNNING test, with that test's variant branches. The read path uses this to
- * fan a varying block's published branches out to the client (AB_FANOUT F2).
+ * fan a varying block's published branches out to the client.
  *
  * Stateless — one instance is registered once via a scope factory in the
  * plugin's `init`. Raw SQL (like {@link assertNoCoRenderConflictOnPublish}'s

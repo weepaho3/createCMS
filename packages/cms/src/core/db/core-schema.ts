@@ -51,7 +51,7 @@ export const coreSchema = defineCoreSchema({
     // (version-keyed, insert-only, branch-head liveness) backs all three: assets
     // (GC reclaim + media-library UI), variables (in-use guard + revalidation),
     // and reusable-block references (delete guard + usage UI). 'reference' is
-    // populated from RB1 on; the enum carries it now so RB1 needs no enum change.
+    // populated later; the enum carries it now so that later work needs no enum change.
     contentUsageTarget: {
       enumName: 'content_usage_target',
       // 'link' is the language-aware link property's INTERNAL target (a rootId),

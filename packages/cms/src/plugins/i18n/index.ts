@@ -71,7 +71,7 @@ export type I18nContext = {
 /**
  * Read the resolved i18n context (active language + fallback chain + configured
  * universe) from a ResolvedScope. The plugin's own accessor for the OPAQUE
- * `pluginContext.i18n` slot it stashes per request (Seam C); core never names
+ * `pluginContext.i18n` slot it stashes per request; core never names
  * i18n. Undefined when the i18n plugin did not scope the request.
  */
 export function getI18nContext(
@@ -161,7 +161,7 @@ export function i18n<const L extends readonly string[]>(config: I18nConfig<L>) {
 
     $ERROR_CODES,
 
-    // Per-collection endpoints (Seam A): createTranslation / listTranslations
+    // Per-collection endpoints: createTranslation / listTranslations
     // surface at cms.api.<collection>.x only because this plugin is installed.
     // The configured language universe is closed in here so the endpoints
     // validate a target language without reading per-request scope.
@@ -201,14 +201,14 @@ export function i18n<const L extends readonly string[]>(config: I18nConfig<L>) {
           roots: {
             where: sql`"cms"."roots"."language" = ${language}`,
             insertColumns: { language },
-            // A new logical entry mints a FRESH translation group id (Seam D);
+            // A new logical entry mints a FRESH translation group id;
             // sibling-language roots inherit it later via createTranslation.
             newEntryColumns: () => ({
               translation_key: newId('translationGroup'),
             }),
             // `language` is stamped on insert but is a CROSS-SCOPE column for
             // reads: a reference/host/usage in any sibling language still counts,
-            // so cross-scope read queries must NOT filter by it (Seam D6).
+            // so cross-scope read queries must NOT filter by it.
             crossScopeExclude: ['language'],
           },
           // Redirects are per-language too: a redirect created for `en` must not
@@ -237,7 +237,7 @@ export function i18n<const L extends readonly string[]>(config: I18nConfig<L>) {
           // Active-language-with-fallback variable resolution for content reads.
           variableResolver: buildI18nVariableResolver(language, fallback),
           // The reference resolver core's read path + co-render walk ride through
-          // the Seam B handle (translation-group aware: tgr_ -> best fallback
+          // the handle (translation-group aware: tgr_ -> best fallback
           // sibling; rot_ -> active-language sibling, else anchor). P1 still
           // imports the impl from core; it MOVES into this plugin in P2.
           referenceResolver: buildI18nReferenceResolver(language, fallback),

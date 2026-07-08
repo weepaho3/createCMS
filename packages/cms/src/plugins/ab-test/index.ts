@@ -99,7 +99,7 @@ export function abTest(options?: ABTestPluginOptions) {
     id: PLUGIN_ID,
     schema,
     endpoints,
-    // FA1 (AB_FANOUT Pattern A): the edge-readable resolve seam, per collection.
+    // The edge-readable resolve seam, per collection (Pattern A).
     collectionEndpoints: (def) => createAbResolveEndpoints(def),
     $ERROR_CODES,
 
@@ -124,7 +124,7 @@ export function abTest(options?: ABTestPluginOptions) {
         },
         {
           // XOR TOCTOU backstop: reject a publish that would make two running
-          // tests co-render (AB_FANOUT_DESIGN §2.2).
+          // tests co-render.
           action: 'publishBranch',
           handler: async (ctx) => {
             const rootId = ctx.input.rootId as string | undefined;
@@ -144,8 +144,8 @@ export function abTest(options?: ABTestPluginOptions) {
       pluginCollections = ctx.collections;
       if (adapter.init) await adapter.init(ctx.db);
 
-      // Register the read-path running-test resolver (AB_FANOUT F2 server
-      // fan-out, Seam F). Stateless + request-independent, so a constant scope
+      // Register the read-path running-test resolver (server
+      // fan-out). Stateless + request-independent, so a constant scope
       // factory just hands the same instance to every request's resolved scope.
       const abTestResolver = buildAbTestResolver();
       return {

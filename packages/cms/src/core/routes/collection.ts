@@ -24,7 +24,7 @@ const BLOCK_ONLY_ENDPOINTS = new Set([
 export function createCollectionEndpoints<
   TDef extends CollectionWithName,
   // The full collections map, threaded so the publication endpoint can type a
-  // resolved reference's `properties` from its TARGET collection (RB6②). Defaults
+  // resolved reference's `properties` from its TARGET collection. Defaults
   // to `{}` (references resolve to untyped ResolvedReference) when not supplied.
   TCollections extends Record<string, AnyCollectionDefinition> = {},
 >(def: TDef, ctx: CMSProcedureCtx) {

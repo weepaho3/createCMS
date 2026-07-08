@@ -97,7 +97,7 @@ export const createCMSEndpoint: typeof cmsEndpointFactory = ((
 ) =>
   cmsEndpointFactory(
     path,
-    { ...(options ?? {}), onValidationError: cmsOnValidationError },
+    { ...options, onValidationError: cmsOnValidationError },
     handler,
   )) as unknown as typeof cmsEndpointFactory;
 
@@ -147,13 +147,13 @@ function computeScope(
             ...tableScope.insertColumns,
           };
         }
-        // `roots` may carry a per-new-entry column contributor (Seam D); carry
+        // `roots` may carry a per-new-entry column contributor; carry
         // it through the merge too (last-writer-wins) — otherwise a second
         // factory contributing `roots` would silently drop it. The first-writer
         // branch already preserves it via the spread above.
         const newEntry = (tableScope as RootTableScope).newEntryColumns;
         if (newEntry) (existing as RootTableScope).newEntryColumns = newEntry;
-        // `roots.crossScopeExclude` (Seam D6) must be UNIONed across factories,
+        // `roots.crossScopeExclude` must be UNIONed across factories,
         // NOT last-writer-wins: a factory that declares none (e.g. multi-tenant)
         // must not erase one declared by another (e.g. i18n's ['language']).
         // Order-independent, so cross-scope reads exclude the right columns

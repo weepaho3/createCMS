@@ -12,6 +12,7 @@ export interface CoreNotificationMetaMap {
   mention: { messageId: string; threadId: string; rootId: string };
   comment: { messageId: string; threadId: string; rootId: string };
   threadResolved: { threadId: string; rootId: string };
+  threadReopened: { threadId: string; rootId: string };
   mergeRequestOpened: {
     mergeRequestId: string;
     rootId: string;

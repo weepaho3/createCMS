@@ -74,7 +74,7 @@ export function getClientConfigSync(options: CMSClientOptions): ClientConfig {
     '/admin/runPruning': 'POST',
     '/notifications/markNotificationsRead': 'POST',
     '/notifications/markNotificationsUnread': 'POST',
-    ...(options.pathMethods ?? {}),
+    ...options.pathMethods,
   };
   const atomListeners: CMSAtomListener[] = [
     { matcher: (path) => path.startsWith('/media/'), signal: '$mediaSignal' },

@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql, type AnyColumn } from 'drizzle-orm';
 import * as z from 'zod';
 
 import type {
@@ -23,9 +23,9 @@ import {
   writeCommit,
   type ChangedVersion,
 } from '../blocks/commit-writer';
-import { deepCopySubtree, type BlockVersionRow } from '../blocks/copy-subtree';
+import { collectDescendantIds, deepCopySubtree } from '../blocks/copy-subtree';
 import { diffTree } from '../blocks/diff-tree';
-import { assertBranchWritable, requireRootInScope } from '../blocks/guards';
+import { lockWritableBranch, requireRootInScope } from '../blocks/guards';
 import {
   assertPlacementAllowed,
   buildPlacementIndex,
@@ -33,6 +33,7 @@ import {
 import {
   assembleBlockTree,
   loadBlocksAtCommit,
+  loadVersionMapAtCommit,
   type BlockTreeNode,
 } from '../blocks/reconstruct-snapshot';
 import { resolveBranchPolicy } from '../branch-policy';
@@ -79,6 +80,7 @@ import {
 } from '../slug';
 import { loadTemplateStrings } from '../templates';
 import { userEnrichment } from '../user/enrichment';
+import { parseTimestamp } from '../utils/parse-timestamp';
 import { loadVariables, substituteVariables } from '../variables';
 import { buildReferencePreviews } from './publications';
 
@@ -138,9 +140,10 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
 
   // Branch-protection policy. When `protectPublishedBranches` is on, a branch is
   // read-only for direct content mutations exactly while it is published; the
-  // mutation routes below call the shared `assertBranchWritable` guard.
-  // `createRoot` seeds a fresh, unpublished branch and is never gated. The
-  // collection's own `branchProtection` (if any) overrides the global config.
+  // mutation routes below lock the branch via the shared `lockWritableBranch`
+  // guard, which enforces `assertBranchWritable`. `createRoot` seeds a fresh,
+  // unpublished branch and is never gated. The collection's own
+  // `branchProtection` (if any) overrides the global config.
   const branchPolicy = resolveBranchPolicy(cmsCtx, def.branchProtection);
 
   // When `forceCommitMessage` is on, a commit-producing route must be given a
@@ -178,49 +181,15 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
   ) {
     await requireRootInScope(tx, input.rootId, collectionName, scope.roots);
 
-    const [sourceBranch] = await tx
-      .select({
-        id: branches.id,
-        name: branches.name,
-        headCommitId: branches.headCommitId,
-      })
-      .from(branches)
-      .where(
-        and(eq(branches.id, input.branchId), eq(branches.rootId, input.rootId)),
-      )
-      .for('update');
-    if (!sourceBranch) throw new CMSError('BRANCH_NOT_FOUND');
-    await assertBranchWritable(tx, branchPolicy, input.rootId, sourceBranch.id);
-
-    const oldHeadId = sourceBranch.headCommitId;
-    const allSnaps = await tx
-      .select({
-        blockId: commitSnapshots.blockId,
-        blockVersionId: commitSnapshots.blockVersionId,
-      })
-      .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, oldHeadId));
-
-    const snapVersionIds = allSnaps.map((s) => s.blockVersionId);
-    if (snapVersionIds.length === 0) throw new CMSError('EMPTY_SNAPSHOT');
-
-    const allVersions = await tx
-      .select()
-      .from(blockVersions)
-      .where(inArray(blockVersions.id, snapVersionIds));
-
-    const versionByBlockId = new Map<string, BlockVersionRow>(
-      allVersions.map((v) => [
-        v.blockId,
-        {
-          blockId: v.blockId,
-          type: v.type,
-          properties: v.properties,
-          children: (v.children ?? []) as string[],
-          deleted: v.deleted,
-        },
-      ]),
+    const sourceBranch = await lockWritableBranch(
+      tx,
+      branchPolicy,
+      input.rootId,
+      input.branchId,
     );
+    const oldHeadId = sourceBranch.headCommitId;
+
+    const versionByBlockId = await loadVersionMapAtCommit(tx, oldHeadId);
 
     const sourceVersion = versionByBlockId.get(input.blockId);
     if (!sourceVersion)
@@ -248,10 +217,9 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           : input.targetSlug;
       }
 
-      // A duplicated root is created top-level (parent_root_id NULL). The
-      // core slug index is no longer unique, so this app-level check is the
-      // authority — previously this path leaned on the DB unique and threw a
-      // raw constraint error; now it throws SLUG_ALREADY_EXISTS cleanly.
+      // A duplicated root is created top-level (parent_root_id NULL). The core
+      // slug index does not enforce uniqueness here, so this app-level check is
+      // the authority and throws SLUG_ALREADY_EXISTS on a collision.
       if (dupSlug !== null) {
         await validateSlugUniqueness(
           tx,
@@ -271,10 +239,10 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           collection: collectionName,
           slug: dupSlug,
           created_by: userId,
-          // Plugin-contributed per-new-entry columns (Seam D): a duplicate
+          // Plugin-contributed per-new-entry columns: a duplicate
           // is a NEW logical entry, so the i18n plugin mints a fresh
           // translation_key here.
-          ...(scope.roots?.newEntryColumns?.() ?? {}),
+          ...scope.roots?.newEntryColumns?.(),
         },
         scope.roots,
       );
@@ -372,6 +340,86 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
       commit,
       blockId: topLevelCopyId,
     };
+  }
+
+  // Shared core of `updateBlock` and `updateRoot`: scope-guard, lock the branch,
+  // load the single target version, run the deleted/type guards, apply the
+  // property patch, and write the one-version commit. The callers differ only in
+  // which type they require the stored block to have — and how they frame a
+  // mismatch — supplied via `verifyType`, plus the fallback commit message.
+  // `updateRoot` runs its slug/redirect epilogue AFTER this returns.
+  async function patchSingleVersion(
+    tx: DrizzleInstance,
+    scope: ResolvedScope,
+    userId: string | undefined,
+    input: {
+      rootId: string;
+      branchId: string;
+      blockId: string;
+      properties: Record<string, unknown> | undefined;
+      message: string | undefined;
+      fallbackMessage: string;
+      verifyType: (storedType: string) => void;
+    },
+  ) {
+    await requireRootInScope(tx, input.rootId, collectionName, scope.roots);
+
+    const branch = await lockWritableBranch(
+      tx,
+      branchPolicy,
+      input.rootId,
+      input.branchId,
+    );
+    const oldHeadId = branch.headCommitId;
+
+    const [blockSnap] = await tx
+      .select({ blockVersionId: commitSnapshots.blockVersionId })
+      .from(commitSnapshots)
+      .where(
+        and(
+          eq(commitSnapshots.commitId, oldHeadId),
+          eq(commitSnapshots.blockId, input.blockId),
+        ),
+      );
+    if (!blockSnap)
+      throw new CMSError('BLOCK_NOT_FOUND', {
+        message: errorMessages.blockNotFound(input.blockId),
+      });
+
+    const [currentVersion] = await tx
+      .select()
+      .from(blockVersions)
+      .where(eq(blockVersions.id, blockSnap.blockVersionId));
+
+    if (currentVersion.deleted)
+      throw new CMSError('BLOCK_ALREADY_DELETED', {
+        message: errorMessages.blockAlreadyDeleted(input.blockId),
+      });
+
+    input.verifyType(currentVersion.type);
+
+    const mergedProperties = applyPropertyPatch(
+      currentVersion.properties as Record<string, unknown>,
+      (input.properties ?? {}) as Record<string, unknown>,
+    );
+
+    const { commit } = await writeCommit(tx, def, {
+      rootId: input.rootId,
+      branchId: input.branchId,
+      parentCommitId: oldHeadId,
+      message: commitMessage(input.message, input.fallbackMessage),
+      createdBy: userId,
+      changed: [
+        {
+          blockId: currentVersion.blockId,
+          type: currentVersion.type,
+          properties: mergedProperties,
+          children: currentVersion.children,
+        },
+      ],
+    });
+
+    return { commit };
   }
 
   return {
@@ -472,10 +520,10 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
               slug: slug,
               sort_order: 0,
               created_by: actor,
-              // Plugin-contributed per-new-entry columns (Seam D): a new root is
+              // Plugin-contributed per-new-entry columns: a new root is
               // a new logical entry, so the i18n plugin mints a fresh
               // translation_key here; none are added without such a plugin.
-              ...(scope.roots?.newEntryColumns?.() ?? {}),
+              ...scope.roots?.newEntryColumns?.(),
             },
             scope.roots,
           );
@@ -583,7 +631,10 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           parentRootId: parentFilter,
         } = query;
 
-        const columnFields: Record<string, { column: any; alias: string }> = {
+        const columnFields: Record<
+          string,
+          { column: AnyColumn; alias: string }
+        > = {
           rootId: { column: roots.id, alias: 'root_id' },
           slug: { column: roots.slug, alias: 'slug' },
           createdAt: { column: roots.createdAt, alias: 'created_at' },
@@ -742,7 +793,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
         const rootRows = resultRows.map((row) => {
           const item: RootListItem<TDef['root']['properties']> = {
             rootId: row.root_id,
-            createdAt: new Date(row.created_at as string),
+            createdAt: parseTimestamp(row.created_at),
             createdBy: row.created_by ?? undefined,
             parentRootId: row.parent_root_id ?? undefined,
             slug: row.slug ?? undefined,
@@ -870,18 +921,12 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             ctx.context.scope.roots,
           );
 
-          const [branch] = await tx
-            .select({
-              id: branches.id,
-              name: branches.name,
-              headCommitId: branches.headCommitId,
-            })
-            .from(branches)
-            .where(and(eq(branches.id, branchId), eq(branches.rootId, rootId)))
-            .for('update');
-          if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
-          await assertBranchWritable(tx, branchPolicy, rootId, branch.id);
-
+          const branch = await lockWritableBranch(
+            tx,
+            branchPolicy,
+            rootId,
+            branchId,
+          );
           const oldHeadId = branch.headCommitId;
 
           const [parentSnap] = await tx
@@ -1021,7 +1066,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
         // Scope gate: reject a root outside the caller's scope before resolving
         // any commit (closes IDOR via rootId on both resolution paths). It also
         // confirms the root belongs to this collection, so the branch lookup
-        // below no longer needs to join roots.
+        // below does not join roots.
         await requireRootInScope(
           db,
           rootId,
@@ -1162,44 +1207,15 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             ctx.context.scope.roots,
           );
 
-          const [branch] = await tx
-            .select({
-              id: branches.id,
-              name: branches.name,
-              headCommitId: branches.headCommitId,
-            })
-            .from(branches)
-            .where(
-              and(
-                eq(branches.id, input.branchId),
-                eq(branches.rootId, input.rootId),
-              ),
-            )
-            .for('update');
-          if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
-          await assertBranchWritable(tx, branchPolicy, input.rootId, branch.id);
-
+          const branch = await lockWritableBranch(
+            tx,
+            branchPolicy,
+            input.rootId,
+            input.branchId,
+          );
           const oldHeadId = branch.headCommitId;
 
-          const allSnaps = await tx
-            .select({
-              blockId: commitSnapshots.blockId,
-              blockVersionId: commitSnapshots.blockVersionId,
-            })
-            .from(commitSnapshots)
-            .where(eq(commitSnapshots.commitId, oldHeadId));
-
-          const snapVersionIds = allSnaps.map((s) => s.blockVersionId);
-          if (snapVersionIds.length === 0) throw new CMSError('EMPTY_SNAPSHOT');
-
-          const allVersions = await tx
-            .select()
-            .from(blockVersions)
-            .where(inArray(blockVersions.id, snapVersionIds));
-
-          const versionByBlockId = new Map(
-            allVersions.map((v) => [v.blockId, v]),
-          );
+          const versionByBlockId = await loadVersionMapAtCommit(tx, oldHeadId);
 
           const movedBlock = versionByBlockId.get(input.blockId);
           if (!movedBlock)
@@ -1223,16 +1239,9 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           if (input.newParentBlockId === input.blockId)
             throw new CMSError('CANNOT_MOVE_INTO_SELF');
 
-          const descendants = new Set<string>();
-          const collectDescendants = (id: string) => {
-            const v = versionByBlockId.get(id);
-            if (!v) return;
-            for (const childId of v.children ?? []) {
-              descendants.add(childId);
-              collectDescendants(childId);
-            }
-          };
-          collectDescendants(input.blockId);
+          const descendants = new Set(
+            collectDescendantIds(versionByBlockId, input.blockId),
+          );
 
           if (descendants.has(input.newParentBlockId))
             throw new CMSError('CANNOT_MOVE_INTO_DESCENDANT');
@@ -1380,44 +1389,15 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             ctx.context.scope.roots,
           );
 
-          const [branch] = await tx
-            .select({
-              id: branches.id,
-              name: branches.name,
-              headCommitId: branches.headCommitId,
-            })
-            .from(branches)
-            .where(
-              and(
-                eq(branches.id, input.branchId),
-                eq(branches.rootId, input.rootId),
-              ),
-            )
-            .for('update');
-          if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
-          await assertBranchWritable(tx, branchPolicy, input.rootId, branch.id);
-
+          const branch = await lockWritableBranch(
+            tx,
+            branchPolicy,
+            input.rootId,
+            input.branchId,
+          );
           const oldHeadId = branch.headCommitId;
 
-          const allSnaps = await tx
-            .select({
-              blockId: commitSnapshots.blockId,
-              blockVersionId: commitSnapshots.blockVersionId,
-            })
-            .from(commitSnapshots)
-            .where(eq(commitSnapshots.commitId, oldHeadId));
-
-          const snapVersionIds = allSnaps.map((s) => s.blockVersionId);
-          if (snapVersionIds.length === 0) throw new CMSError('EMPTY_SNAPSHOT');
-
-          const allVersions = await tx
-            .select()
-            .from(blockVersions)
-            .where(inArray(blockVersions.id, snapVersionIds));
-
-          const versionByBlockId = new Map(
-            allVersions.map((v) => [v.blockId, v]),
-          );
+          const versionByBlockId = await loadVersionMapAtCommit(tx, oldHeadId);
 
           const targetBlock = versionByBlockId.get(input.blockId);
           if (!targetBlock)
@@ -1446,16 +1426,10 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
               });
           }
 
-          const deletedBlockIds = new Set<string>([input.blockId]);
-          const collectDescendants = (blockId: string) => {
-            const version = versionByBlockId.get(blockId);
-            if (!version) return;
-            for (const childId of version.children ?? []) {
-              deletedBlockIds.add(childId);
-              collectDescendants(childId);
-            }
-          };
-          collectDescendants(input.blockId);
+          const deletedBlockIds = new Set<string>([
+            input.blockId,
+            ...collectDescendantIds(versionByBlockId, input.blockId),
+          ]);
 
           const tombstones = [...deletedBlockIds]
             .map((deletedId) => {
@@ -1671,81 +1645,23 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
         const { rootId, branchId, blockId, type, properties, message } =
           ctx.body;
 
-        return db.transaction(async (tx) => {
-          await requireRootInScope(
-            tx,
-            rootId,
-            collectionName,
-            ctx.context.scope.roots,
-          );
-
-          const [branch] = await tx
-            .select({
-              id: branches.id,
-              name: branches.name,
-              headCommitId: branches.headCommitId,
-            })
-            .from(branches)
-            .where(and(eq(branches.id, branchId), eq(branches.rootId, rootId)))
-            .for('update');
-          if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
-          await assertBranchWritable(tx, branchPolicy, rootId, branch.id);
-
-          const oldHeadId = branch.headCommitId;
-
-          const [blockSnap] = await tx
-            .select({ blockVersionId: commitSnapshots.blockVersionId })
-            .from(commitSnapshots)
-            .where(
-              and(
-                eq(commitSnapshots.commitId, oldHeadId),
-                eq(commitSnapshots.blockId, blockId),
-              ),
-            );
-          if (!blockSnap)
-            throw new CMSError('BLOCK_NOT_FOUND', {
-              message: errorMessages.blockNotFound(blockId),
-            });
-
-          const [currentVersion] = await tx
-            .select()
-            .from(blockVersions)
-            .where(eq(blockVersions.id, blockSnap.blockVersionId));
-
-          if (currentVersion.deleted)
-            throw new CMSError('BLOCK_ALREADY_DELETED', {
-              message: errorMessages.blockAlreadyDeleted(blockId),
-            });
-
-          if (currentVersion.type !== type)
-            throw new CMSError('TYPE_MISMATCH', {
-              message: errorMessages.typeMismatch(currentVersion.type, type),
-              data: { expected: currentVersion.type, actual: type },
-            });
-
-          const mergedProperties = applyPropertyPatch(
-            currentVersion.properties as Record<string, unknown>,
-            (properties ?? {}) as Record<string, unknown>,
-          );
-
-          const { commit } = await writeCommit(tx, def, {
+        return db.transaction((tx) =>
+          patchSingleVersion(tx, ctx.context.scope, userId, {
             rootId,
             branchId,
-            parentCommitId: oldHeadId,
-            message: commitMessage(message, `Update ${type} block ${blockId}`),
-            createdBy: userId,
-            changed: [
-              {
-                blockId: currentVersion.blockId,
-                type: currentVersion.type,
-                properties: mergedProperties,
-                children: currentVersion.children,
-              },
-            ],
-          });
-
-          return { commit };
-        });
+            blockId,
+            properties,
+            message,
+            fallbackMessage: `Update ${type} block ${blockId}`,
+            verifyType: (storedType) => {
+              if (storedType !== type)
+                throw new CMSError('TYPE_MISMATCH', {
+                  message: errorMessages.typeMismatch(storedType, type),
+                  data: { expected: storedType, actual: type },
+                });
+            },
+          }),
+        );
       },
     ),
 
@@ -1804,80 +1720,29 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
         const blockId = rootId;
 
         return db.transaction(async (tx) => {
-          await requireRootInScope(
+          const { commit } = await patchSingleVersion(
             tx,
-            rootId,
-            collectionName,
-            ctx.context.scope.roots,
-          );
-
-          const [branch] = await tx
-            .select({
-              id: branches.id,
-              name: branches.name,
-              headCommitId: branches.headCommitId,
-            })
-            .from(branches)
-            .where(and(eq(branches.id, branchId), eq(branches.rootId, rootId)))
-            .for('update');
-          if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
-          await assertBranchWritable(tx, branchPolicy, rootId, branch.id);
-
-          const oldHeadId = branch.headCommitId;
-
-          const [blockSnap] = await tx
-            .select({ blockVersionId: commitSnapshots.blockVersionId })
-            .from(commitSnapshots)
-            .where(
-              and(
-                eq(commitSnapshots.commitId, oldHeadId),
-                eq(commitSnapshots.blockId, blockId),
-              ),
-            );
-          if (!blockSnap)
-            throw new CMSError('BLOCK_NOT_FOUND', {
-              message: errorMessages.blockNotFound(blockId),
-            });
-
-          const [currentVersion] = await tx
-            .select()
-            .from(blockVersions)
-            .where(eq(blockVersions.id, blockSnap.blockVersionId));
-
-          if (currentVersion.deleted)
-            throw new CMSError('BLOCK_ALREADY_DELETED', {
-              message: errorMessages.blockAlreadyDeleted(blockId),
-            });
-
-          if (currentVersion.type !== collectionName)
-            throw new CMSError('TYPE_MISMATCH', {
-              message: errorMessages.typeMismatch(
-                collectionName,
-                currentVersion.type,
-              ),
-              data: { expected: collectionName, actual: currentVersion.type },
-            });
-
-          const mergedProperties = applyPropertyPatch(
-            currentVersion.properties as Record<string, unknown>,
-            (properties ?? {}) as Record<string, unknown>,
-          );
-
-          const { commit } = await writeCommit(tx, def, {
-            rootId,
-            branchId,
-            parentCommitId: oldHeadId,
-            message: commitMessage(message, `Update root block ${blockId}`),
-            createdBy: userId,
-            changed: [
-              {
-                blockId: currentVersion.blockId,
-                type: currentVersion.type,
-                properties: mergedProperties,
-                children: currentVersion.children,
+            ctx.context.scope,
+            userId,
+            {
+              rootId,
+              branchId,
+              blockId,
+              properties,
+              message,
+              fallbackMessage: `Update root block ${blockId}`,
+              verifyType: (storedType) => {
+                if (storedType !== collectionName)
+                  throw new CMSError('TYPE_MISMATCH', {
+                    message: errorMessages.typeMismatch(
+                      collectionName,
+                      storedType,
+                    ),
+                    data: { expected: collectionName, actual: storedType },
+                  });
               },
-            ],
-          });
+            },
+          );
 
           // Update slug on roots table if provided
           let redirectsCreated = 0;
@@ -2013,18 +1878,12 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             ctx.context.scope.roots,
           );
 
-          const [branch] = await tx
-            .select({
-              id: branches.id,
-              name: branches.name,
-              headCommitId: branches.headCommitId,
-            })
-            .from(branches)
-            .where(and(eq(branches.id, branchId), eq(branches.rootId, rootId)))
-            .for('update');
-          if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
-          await assertBranchWritable(tx, branchPolicy, rootId, branch.id);
-
+          const branch = await lockWritableBranch(
+            tx,
+            branchPolicy,
+            rootId,
+            branchId,
+          );
           const oldHeadId = branch.headCommitId;
 
           const { blocks: currentBlocks } = await loadBlocksAtCommit(
@@ -2428,7 +2287,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           // Refuse to archive a root that is the DIRECTLY-referenced ANCHOR of any
           // live reference (a reusable block embedded on a live page) — archiving
           // it would make the block VANISH from those pages. ANCHOR-only: a
-          // translation SIBLING reached only via read-time auto-upgrade (RB3) is
+          // translation SIBLING reached only via read-time auto-upgrade is
           // NOT protected here, so removing a translation degrades hosts gracefully
           // to the stored anchor rather than being blocked. This protects EVERY
           // referenced root regardless of the `reusableBlock` flag (the flag is
@@ -2484,7 +2343,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
     ),
 
     // "Which pages embed this reusable block?" — group-level usage for the editor.
-    // Reads the content_usages reference index (populated dark in RB1).
+    // Reads the content_usages reference index (populated dark).
     /**
      * List all pages that embed this reusable block (usage details for editor).
      * Under i18n, expands to all translation siblings to report cross-language usage.
@@ -2526,7 +2385,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
         // instead of 0. Via the scope's reference resolver: identity (just the
         // one root) without i18n; the whole translation group with it. A group is
         // single-collection (a unique key per logical entry), so the resolver's
-        // collection-agnostic expansion matches the old collection-scoped query.
+        // collection-agnostic expansion matches a plain collection-scoped query.
         const resolver = scope.referenceResolver ?? coreReferenceResolver;
         const crossCols = crossScopeColumns(scope.roots);
         const rootIds = await resolver.expandGroup(db, crossCols, [
@@ -2653,7 +2512,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             createdBy: r.created_by,
             // A Date, like every other list endpoint (listRoots, listBranches,
             // comments, approvals) — not an ISO string (ret-15).
-            createdAt: new Date(r.created_at as string),
+            createdAt: parseTimestamp(r.created_at),
             branch: r.branch_name as string,
             parents,
             type,
