@@ -1,5 +1,17 @@
-import { createEndpoint } from 'better-call';
-import { and, eq, ilike, inArray, isNull, or, type SQL, sql } from 'drizzle-orm';
+import { APIError, createEndpoint } from 'better-call';
+import {
+  and,
+  eq,
+  getTableColumns,
+  gt,
+  ilike,
+  inArray,
+  isNull,
+  lt,
+  or,
+  type SQL,
+  sql,
+} from 'drizzle-orm';
 import * as z from 'zod';
 
 import type { CMSProcedureCtx, MediaConfig } from '../types';
@@ -143,6 +155,102 @@ async function assertDeclaredTypeMatchesBytes(
       message: errorMessages.invalidFileType(fileName, declaredType),
     });
   }
+}
+
+/** The public-facing shape of an asset row (listAssets / getAssets / upload). */
+type AssetRow = typeof assets.$inferSelect;
+
+/**
+ * Maps a raw `assets` row to the public list-item shape shared by listAssets,
+ * getAssets, uploadAssets and replaceAsset, including the ready-to-use direct
+ * object `url` for internal/admin display (see listAssets for why this URL is
+ * NOT for embedding in content).
+ */
+function toAssetListItem(asset: AssetRow, publicUrl: string) {
+  return {
+    id: asset.id,
+    slug: asset.slug,
+    mimeType: asset.mimeType,
+    size: asset.size,
+    objectKey: asset.objectKey,
+    url: buildPublicObjectUrl(publicUrl, asset.objectKey),
+    status: asset.status,
+    folderId: asset.folderId ?? null,
+    variantOf: asset.variantOf ?? null,
+    uploadedBy: asset.uploadedBy ?? null,
+    createdAt: asset.createdAt,
+    updatedAt: asset.updatedAt,
+  };
+}
+
+// ----------------------------------------------------------------------------
+// Cursor-based (keyset) pagination for listAssets.
+//
+// A cursor is the opaque, stable position of the LAST row of a page: the value
+// of the active sort column plus the row id as a tie-breaker. Keyset paging
+// (WHERE (sortCol, id) </> the cursor) lets the media library page PAST the
+// 100-row offset ceiling without the drift/duplication a large OFFSET causes.
+// It is encoded as base64url JSON so callers treat it as opaque.
+// ----------------------------------------------------------------------------
+
+type AssetSortBy = 'createdAt' | 'slug' | 'size';
+
+/** The decoded position: the sort-column value and the id tie-breaker. */
+type CursorPosition = { v: string | number; id: string };
+
+/**
+ * A fetched list row plus `createdAtCursor` — the `createdAt` column rendered at
+ * FULL (microsecond) precision as text. drizzle maps `timestamp('created_at')`
+ * to a MILLISECOND-precision JS Date, so a cursor encoded from `row.createdAt`
+ * truncates the keyset boundary and can skip/duplicate rows that share a
+ * millisecond but differ in microseconds. The text value round-trips exactly and
+ * is what the seek predicate compares against (see listAssets).
+ */
+type AssetCursorRow = AssetRow & { createdAtCursor: string };
+
+function encodeAssetCursor(row: AssetCursorRow, sortBy: AssetSortBy): string {
+  const v =
+    sortBy === 'createdAt'
+      ? row.createdAtCursor
+      : sortBy === 'size'
+        ? row.size
+        : row.slug;
+  const payload: CursorPosition = { v, id: row.id };
+  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+}
+
+function decodeAssetCursor(cursor: string): CursorPosition {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+  } catch {
+    throw new APIError(400, {
+      code: 'VALIDATION_ERROR',
+      message: 'Invalid cursor',
+    });
+  }
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    !('v' in parsed) ||
+    !('id' in parsed)
+  ) {
+    throw new APIError(400, {
+      code: 'VALIDATION_ERROR',
+      message: 'Invalid cursor',
+    });
+  }
+  const { v, id } = parsed as Record<string, unknown>;
+  if (
+    (typeof v !== 'string' && typeof v !== 'number') ||
+    typeof id !== 'string'
+  ) {
+    throw new APIError(400, {
+      code: 'VALIDATION_ERROR',
+      message: 'Invalid cursor',
+    });
+  }
+  return { v, id };
 }
 
 export function createMediaEndpoints(
@@ -465,15 +573,26 @@ export function createMediaEndpoints(
     /**
      * Lists assets in the media library with optional filtering and pagination.
      *
-     * @param folderId - Optional folder id to filter by.
+     * Supports two pagination modes: legacy `offset` (bounded to the first 100
+     * rows overall — the media library outgrows it) and stable, unbounded
+     * `cursor` (keyset) paging that can walk the whole library. Pass `cursor`
+     * (the previous page's `nextCursor`) to continue; it takes precedence over
+     * `offset` and stays valid as rows are inserted/removed. The direct-object
+     * `url` on each row is for INTERNAL/admin display only (see below).
+     *
+     * @param folderId - Optional folder filter: a folder id to list that folder's assets. Omit for no folder filter.
+     * @param unfiled - Set `true` to list ROOT-level (unfiled) assets — those with no folder. Wire-safe replacement for `folderId: null`; takes precedence over `folderId`.
      * @param status - Optional status filter ('private' or 'public').
      * @param search - Optional substring search by asset slug.
      * @param limit - Max results per page (1–100, default 20).
-     * @param offset - Pagination offset (default 0).
+     * @param offset - Pagination offset (default 0); ignored when `cursor` is given.
+     * @param cursor - Opaque keyset cursor from a previous page's `nextCursor`; pages past the offset ceiling.
      * @param sortBy - Sort field: 'createdAt', 'slug', or 'size' (default 'createdAt').
      * @param sortDirection - Sort direction: 'asc' or 'desc' (default 'desc').
-     * @returns Paginated list of assets (each with a ready-to-use public `url`) plus total count and hasMore flag.
+     * @returns Paginated list of assets (each with a ready-to-use public `url`), the full `total`, a `hasMore` flag, and `nextCursor` (the cursor for the next page, or `null` at the end).
      * @example await cmsClient.media.listAssets({ limit: 20, status: 'public' })
+     * @example await cmsClient.media.listAssets({ unfiled: true })  // root-level (unfiled) assets
+     * @example const p1 = await cmsClient.media.listAssets({ limit: 50 }); const p2 = await cmsClient.media.listAssets({ limit: 50, cursor: p1.nextCursor })
      */
     listAssets: createCMSEndpoint(
       '/media/listAssets',
@@ -482,6 +601,12 @@ export function createMediaEndpoints(
         query: z
           .object({
             folderId: z.string().optional(),
+            // Wire-safe root-level filter. A `null` query param never survives
+            // URL serialization (@better-fetch/fetch drops null values), so
+            // `folderId: null` could never request unfiled assets over HTTP.
+            // A boolean flag coerces cleanly over the wire: `unfiled: true` →
+            // `folder_id IS NULL`, and it takes precedence over `folderId`.
+            unfiled: z.coerce.boolean().optional(),
             status: z.enum(['private', 'public']).optional(),
             search: z.string().optional(),
             limit: z.coerce
@@ -492,6 +617,7 @@ export function createMediaEndpoints(
               .optional()
               .default(20),
             offset: z.coerce.number().int().min(0).optional().default(0),
+            cursor: z.string().optional(),
             sortBy: z
               .enum(['createdAt', 'slug', 'size'])
               .optional()
@@ -504,10 +630,12 @@ export function createMediaEndpoints(
             $Infer: {
               query: {} as {
                 folderId?: string;
+                unfiled?: boolean;
                 status?: 'private' | 'public';
                 search?: string;
                 limit?: number;
                 offset?: number;
+                cursor?: string;
                 sortBy?: 'createdAt' | 'slug' | 'size';
                 sortDirection?: 'asc' | 'desc';
               },
@@ -520,10 +648,12 @@ export function createMediaEndpoints(
         const { scope } = ctx.context;
         const {
           folderId,
+          unfiled,
           status,
           search,
           limit = 20,
           offset = 0,
+          cursor,
           sortBy = 'createdAt',
           sortDirection = 'desc',
         } = ctx.query ?? {};
@@ -531,7 +661,13 @@ export function createMediaEndpoints(
         const conditions: SQL[] = [isNull(assets.archivedAt)];
         if (scope.assets?.where) conditions.push(scope.assets.where);
 
-        if (folderId) {
+        // Root-level filtering is wire-safe via the `unfiled` boolean rather
+        // than a `null` folderId (which never survives URL serialization — see
+        // the query schema): `unfiled: true` → `folder_id IS NULL`; else a
+        // `folderId` string → that folder; else (both omitted) no folder filter.
+        if (unfiled === true) {
+          conditions.push(isNull(assets.folderId));
+        } else if (folderId !== undefined) {
           conditions.push(eq(assets.folderId, folderId));
         }
 
@@ -544,9 +680,6 @@ export function createMediaEndpoints(
           conditions.push(ilike(assets.slug, `%${escaped}%`));
         }
 
-        const whereClause =
-          conditions.length > 0 ? and(...conditions) : undefined;
-
         const sortColumn =
           sortBy === 'slug'
             ? assets.slug
@@ -554,47 +687,137 @@ export function createMediaEndpoints(
               ? assets.size
               : assets.createdAt;
 
+        // Keyset seek: when a cursor is supplied, restrict to rows strictly
+        // AFTER it in sort order — `(sortColumn, id) </> (v, id)` — matching the
+        // ORDER BY below (id is the deterministic tie-breaker). asc → later rows
+        // are GREATER; desc → later rows are LESSER.
+        if (cursor) {
+          const pos = decodeAssetCursor(cursor);
+          const cmp = sortDirection === 'asc' ? gt : lt;
+          // For createdAt, the cursor value is the FULL-precision (microsecond)
+          // column text (see the created_at_cursor select). Cast it back to
+          // `timestamp` and compare the column directly so a row sharing a
+          // millisecond but differing in microseconds is seeked exactly — a JS
+          // Date boundary truncates to ms and would skip/duplicate such rows.
+          // slug/size cursor values are exact primitives already.
+          const boundary =
+            sortBy === 'createdAt' ? sql`${pos.v}::timestamp` : pos.v;
+          conditions.push(
+            or(
+              cmp(sortColumn, boundary),
+              and(eq(sortColumn, boundary), cmp(assets.id, pos.id)),
+            )!,
+          );
+        }
+
+        const whereClause = and(...conditions);
+        // The full-count query must NOT see the keyset seek predicate (that would
+        // shrink `total` to just the remaining rows) — count the whole filtered set.
+        const countConditions = cursor ? conditions.slice(0, -1) : conditions;
+        const countWhere = and(...countConditions);
+
+        // id is appended as a stable, unique tie-breaker so the order is total
+        // (createdAt/size are non-unique) — this is what makes the cursor stable.
         const orderBy =
           sortDirection === 'asc'
-            ? sql`${sortColumn} ASC`
-            : sql`${sortColumn} DESC`;
+            ? sql`${sortColumn} ASC, ${assets.id} ASC`
+            : sql`${sortColumn} DESC, ${assets.id} DESC`;
 
-        const [assetRows, [{ count }]] = await Promise.all([
+        // Over-fetch one row to detect a following page precisely (independent of
+        // the offset/total math), then trim back to `limit`.
+        const [fetched, [{ count }]] = await Promise.all([
           db
-            .select()
+            .select({
+              ...getTableColumns(assets),
+              // Full-precision (microsecond) createdAt as text for exact cursor
+              // encoding — `assets.createdAt` itself maps to a ms-truncated JS
+              // Date, which is not precise enough for a stable keyset boundary.
+              createdAtCursor: sql<string>`${assets.createdAt}::text`.as(
+                'created_at_cursor',
+              ),
+            })
             .from(assets)
             .where(whereClause)
             .orderBy(orderBy)
-            .limit(limit)
-            .offset(offset),
+            .limit(limit + 1)
+            .offset(cursor ? 0 : offset),
           db
             .select({ count: sql<number>`count(*)::int` })
             .from(assets)
-            .where(whereClause),
+            .where(countWhere),
         ]);
 
+        const hasNextPage = fetched.length > limit;
+        const assetRows = hasNextPage ? fetched.slice(0, limit) : fetched;
+        const lastRow = assetRows[assetRows.length - 1];
+
         return {
-          assets: assetRows.map((asset) => ({
-            id: asset.id,
-            slug: asset.slug,
-            mimeType: asset.mimeType,
-            size: asset.size,
-            objectKey: asset.objectKey,
-            // Direct object URL (`${publicUrl}/${objectKey}`) for INTERNAL/admin
-            // display — e.g. thumbnails in a media-library UI. It needs no helper
-            // and never exposes `publicUrl`. Do NOT persist this into content:
-            // content references the asset by id and is served through the gate
-            // (`GET /media/asset/{slug}`), which enforces status and transforms.
-            url: buildPublicObjectUrl(mediaConfig.publicUrl, asset.objectKey),
-            status: asset.status,
-            folderId: asset.folderId ?? null,
-            variantOf: asset.variantOf ?? null,
-            uploadedBy: asset.uploadedBy ?? null,
-            createdAt: asset.createdAt,
-            updatedAt: asset.updatedAt,
-          })),
+          assets: assetRows.map((asset) =>
+            toAssetListItem(asset, mediaConfig.publicUrl),
+          ),
           total: count,
-          hasMore: offset + assetRows.length < count,
+          // Cursor mode reports liveness from the over-fetch; offset mode keeps
+          // the historical offset/total comparison.
+          hasMore: cursor ? hasNextPage : offset + assetRows.length < count,
+          nextCursor:
+            hasNextPage && lastRow ? encodeAssetCursor(lastRow, sortBy) : null,
+        };
+      },
+    ),
+
+    /**
+     * Bulk-resolves assets by id — the id→asset counterpart to listAssets, for
+     * previewing assets that fall OUTSIDE the newest listAssets page (e.g. an
+     * editor canvas rendering assets referenced by content but not on the
+     * current media-library page). Same permission gate, scope, and row shape as
+     * listAssets; archived assets and out-of-scope/unknown ids are simply absent
+     * from the result (no error, no leak). Order is not guaranteed — callers key
+     * by id.
+     *
+     * @param ids - Asset ids to resolve (at least one).
+     * @returns `{ assets }` — the matching live, in-scope assets, each with the same fields a listAssets row carries.
+     * @example await cmsClient.media.getAssets({ ids: ['ast_...', 'ast_...'] })
+     */
+    getAssets: createCMSEndpoint(
+      '/media/getAssets',
+      {
+        method: 'GET',
+        query: z.object({
+          // A single-occurrence query param (`?ids=ast_x`) arrives as a bare
+          // string, not an array — better-call only builds an array when a key
+          // repeats. Normalize a lone value to a one-element array before the
+          // array validation, so a single id is accepted over HTTP instead of
+          // failing `z.array(...)`. `null`/`undefined` pass through so the
+          // required `.min(1)` still rejects a missing/empty `ids`.
+          ids: z.preprocess(
+            (v) => (Array.isArray(v) ? v : v == null ? v : [v]),
+            z.array(z.string().min(1)).min(1),
+          ),
+        }),
+        metadata: cmsMeta(
+          { $Infer: { query: {} as { ids: string[] } } },
+          { operation: 'read', ...MEDIA_META },
+        ),
+      },
+      async (ctx) => {
+        const { scope } = ctx.context;
+        const { ids } = ctx.query;
+
+        const conditions: SQL[] = [
+          inArray(assets.id, ids),
+          isNull(assets.archivedAt),
+        ];
+        if (scope.assets?.where) conditions.push(scope.assets.where);
+
+        const rows = await db
+          .select()
+          .from(assets)
+          .where(and(...conditions));
+
+        return {
+          assets: rows.map((asset) =>
+            toAssetListItem(asset, mediaConfig.publicUrl),
+          ),
         };
       },
     ),
@@ -948,8 +1171,15 @@ export function createMediaEndpoints(
     /**
      * Returns page-centric usage details for an asset across all live content.
      *
+     * Each page carries `storedSlug` — the page's OWN bare stored slug segment
+     * (e.g. `about`), NOT a full URL path. It is a single ancestor-relative
+     * segment (root pages are `null`), so it is deliberately named `storedSlug`
+     * rather than exposed as a leading-slash `path`: assembling the full path
+     * would require walking the ancestor chain, which this usage query does not
+     * do (toe-int-14).
+     *
      * @param assetId - The asset id to query.
-     * @returns Page count and a list of each live (non-archived) page using the asset, with per-block occurrences.
+     * @returns Page count and a list of each live (non-archived) page using the asset (each with its bare `storedSlug`), with per-block occurrences.
      * @throws ASSET_NOT_FOUND if the asset does not exist.
      * @example await cmsClient.media.getAssetUsages({ assetId: 'ast_...' })
      */
@@ -980,11 +1210,24 @@ export function createMediaEndpoints(
           });
         }
 
-        return getAssetUsageDetails(
+        const usage = await getAssetUsageDetails(
           db,
           assetId,
           crossScopeColumns(scope.roots),
         );
+
+        // Rename the bare page slug to `storedSlug` (per the slug/path
+        // convention): the value is a single stored slug segment, never a
+        // URL-shaped leading-slash path, so it must not masquerade as one.
+        return {
+          pageCount: usage.pageCount,
+          pages: usage.pages.map((page) => ({
+            rootId: page.rootId,
+            collection: page.collection,
+            storedSlug: page.slug,
+            occurrences: page.occurrences,
+          })),
+        };
       },
     ),
 

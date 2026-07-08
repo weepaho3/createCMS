@@ -1,4 +1,4 @@
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { assetFolders, assets } from '../src/schema';
@@ -425,6 +425,305 @@ describe('media.listAssets', () => {
 
     expect(page3.assets).toHaveLength(1);
     expect(page3.hasMore).toBe(false);
+  });
+
+  it('lists only root-level (unfiled) assets via { unfiled: true }', async () => {
+    const { cms, db } = await setupTestCMS();
+
+    const folder = await cms.api.media.createFolder({
+      body: { name: 'Filed' },
+    });
+
+    await db.insert(assets).values({
+      slug: 'in-folder.png',
+      mimeType: 'image/png',
+      size: 1024,
+      objectKey: 'in-folder.png',
+      folderId: folder.folder.id,
+      status: 'private',
+    });
+    await db.insert(assets).values({
+      slug: 'at-root.png',
+      mimeType: 'image/png',
+      size: 2048,
+      objectKey: 'at-root.png',
+      status: 'private',
+    });
+
+    // `unfiled: true` → `folder_id IS NULL`. This is the WIRE-SAFE replacement
+    // for `folderId: null`: a null query param is dropped by URL serialization,
+    // so it could never request root-level assets over HTTP — a boolean flag
+    // coerces cleanly over the wire.
+    const rootLevel = await cms.api.media.listAssets({
+      query: { unfiled: true },
+    });
+
+    expect(rootLevel.assets.map((a) => a.slug)).toEqual(['at-root.png']);
+    expect(rootLevel.total).toBe(1);
+    expect(rootLevel.hasMore).toBe(false);
+
+    // A `folderId` string still filters to exactly that folder (unfiled omitted).
+    const inFolder = await cms.api.media.listAssets({
+      query: { folderId: folder.folder.id },
+    });
+    expect(inFolder.assets.map((a) => a.slug)).toEqual(['in-folder.png']);
+    expect(inFolder.total).toBe(1);
+  });
+
+  it('omitting folderId (undefined) applies no folder filter', async () => {
+    const { cms, db } = await setupTestCMS();
+
+    const folder = await cms.api.media.createFolder({ body: { name: 'F' } });
+    await db.insert(assets).values({
+      slug: 'a.png',
+      mimeType: 'image/png',
+      size: 1,
+      objectKey: 'a.png',
+      folderId: folder.folder.id,
+      status: 'private',
+    });
+    await db.insert(assets).values({
+      slug: 'b.png',
+      mimeType: 'image/png',
+      size: 1,
+      objectKey: 'b.png',
+      status: 'private',
+    });
+
+    const result = await cms.api.media.listAssets();
+    expect(result.total).toBe(2);
+  });
+
+  it('pages the whole library with keyset cursors (past the offset ceiling)', async () => {
+    const { cms, db } = await setupTestCMS();
+
+    for (let i = 0; i < 5; i++) {
+      await db.insert(assets).values({
+        slug: `cursor-${i}.png`,
+        mimeType: 'image/png',
+        size: 1000 + i,
+        objectKey: `cursor-${i}.png`,
+        status: 'private',
+      });
+    }
+
+    const seen: string[] = [];
+    let cursor: string | null | undefined;
+    let pages = 0;
+
+    for (let guard = 0; guard < 20; guard++) {
+      const page = await cms.api.media.listAssets({
+        query: { limit: 2, ...(cursor ? { cursor } : {}) },
+      });
+      pages++;
+      seen.push(...page.assets.map((a) => a.slug));
+      // total is the FULL filtered count on every page, not the remainder.
+      expect(page.total).toBe(5);
+      if (!page.nextCursor) {
+        expect(page.hasMore).toBe(false);
+        cursor = null;
+        break;
+      }
+      expect(page.hasMore).toBe(true);
+      cursor = page.nextCursor;
+    }
+
+    expect(cursor).toBeNull(); // walked to the end
+    expect(pages).toBe(3); // 2 + 2 + 1
+    expect(seen).toHaveLength(5);
+    expect(new Set(seen).size).toBe(5); // no dupes, no gaps
+  });
+
+  it('keyset cursor is stable under a non-unique sort key (size)', async () => {
+    const { cms, db } = await setupTestCMS();
+
+    // All the same size → the id tie-breaker is what keeps paging deterministic.
+    for (let i = 0; i < 4; i++) {
+      await db.insert(assets).values({
+        slug: `same-${i}.png`,
+        mimeType: 'image/png',
+        size: 500,
+        objectKey: `same-${i}.png`,
+        status: 'private',
+      });
+    }
+
+    const page1 = await cms.api.media.listAssets({
+      query: { limit: 2, sortBy: 'size', sortDirection: 'asc' },
+    });
+    expect(page1.assets).toHaveLength(2);
+    expect(page1.nextCursor).toBeTruthy();
+
+    const page2 = await cms.api.media.listAssets({
+      query: {
+        limit: 2,
+        sortBy: 'size',
+        sortDirection: 'asc',
+        cursor: page1.nextCursor!,
+      },
+    });
+
+    const ids = [...page1.assets, ...page2.assets].map((a) => a.id);
+    expect(new Set(ids).size).toBe(4); // every row seen exactly once
+    expect(page2.nextCursor).toBeNull();
+  });
+
+  it('pages exactly across a createdAt boundary when rows share a millisecond (microsecond-precise cursor)', async () => {
+    const { cms, db } = await setupTestCMS();
+
+    const [a] = await db
+      .insert(assets)
+      .values({
+        slug: 'micro-a.png',
+        mimeType: 'image/png',
+        size: 1,
+        objectKey: 'micro-a.png',
+        status: 'private',
+      })
+      .returning();
+    const [b] = await db
+      .insert(assets)
+      .values({
+        slug: 'micro-b.png',
+        mimeType: 'image/png',
+        size: 1,
+        objectKey: 'micro-b.png',
+        status: 'private',
+      })
+      .returning();
+
+    // Same MILLISECOND (…123) but different MICROSECONDS. drizzle maps createdAt
+    // to a ms-precision JS Date, so a cursor truncated to …123000 would seek PAST
+    // (skip) the row stored at …123500 on the default createdAt-desc sort. The
+    // fix encodes/compares the cursor at full precision so neither row is lost.
+    await db.execute(
+      sql`UPDATE cms.assets SET created_at = '2026-01-01 00:00:00.123500' WHERE id = ${a.id}`,
+    );
+    await db.execute(
+      sql`UPDATE cms.assets SET created_at = '2026-01-01 00:00:00.123999' WHERE id = ${b.id}`,
+    );
+
+    const seen: string[] = [];
+    let cursor: string | null | undefined;
+    for (let guard = 0; guard < 10; guard++) {
+      const page = await cms.api.media.listAssets({
+        query: { limit: 1, ...(cursor ? { cursor } : {}) },
+      });
+      seen.push(...page.assets.map((x) => x.id));
+      if (!page.nextCursor) break;
+      cursor = page.nextCursor;
+    }
+
+    // Both rows appear exactly once — the microsecond row is neither skipped nor
+    // duplicated at the page boundary.
+    expect(seen).toHaveLength(2);
+    expect(new Set(seen)).toEqual(new Set([a.id, b.id]));
+  });
+
+  it('rejects a malformed cursor', async () => {
+    const { cms } = await setupTestCMS();
+    await expect(
+      cms.api.media.listAssets({ query: { cursor: 'not-a-real-cursor' } }),
+    ).rejects.toThrow(/cursor/i);
+  });
+});
+
+// ============================================================================
+// getAssets (bulk id -> asset resolve)
+// ============================================================================
+
+describe('media.getAssets', () => {
+  it('resolves assets by id with the listAssets row shape', async () => {
+    const { cms, db } = await setupTestCMS();
+
+    const [a] = await db
+      .insert(assets)
+      .values({
+        slug: 'g1.png',
+        mimeType: 'image/png',
+        size: 1024,
+        objectKey: 'g1.png',
+        status: 'public',
+      })
+      .returning();
+    const [b] = await db
+      .insert(assets)
+      .values({
+        slug: 'g2.png',
+        mimeType: 'image/png',
+        size: 2048,
+        objectKey: 'g2.png',
+        status: 'private',
+      })
+      .returning();
+
+    const result = await cms.api.media.getAssets({
+      query: { ids: [a.id, b.id] },
+    });
+
+    expect(new Set(result.assets.map((x) => x.id))).toEqual(
+      new Set([a.id, b.id]),
+    );
+    const g1 = result.assets.find((x) => x.id === a.id)!;
+    expect(g1.slug).toBe('g1.png');
+    expect(g1.url).toBe('https://cdn.test.local/g1.png');
+  });
+
+  it('accepts a SINGLE id as a bare query param over HTTP (?ids=ast_x)', async () => {
+    const { cms, db } = await setupTestCMS();
+
+    const [a] = await db
+      .insert(assets)
+      .values({
+        slug: 'solo.png',
+        mimeType: 'image/png',
+        size: 1024,
+        objectKey: 'solo.png',
+        status: 'public',
+      })
+      .returning();
+
+    // Over the wire a single-occurrence query param arrives as a bare STRING,
+    // not an array (better-call only builds an array when a key repeats). The
+    // schema's preprocess normalizes it to a one-element array, so a single id
+    // resolves instead of failing z.array(...) with a VALIDATION_ERROR (400).
+    const res = await cms.router.handler(
+      new Request(`http://localhost/api/cms/media/getAssets?ids=${a.id}`),
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { assets: { id: string }[] };
+    expect(body.assets.map((x) => x.id)).toEqual([a.id]);
+  });
+
+  it('omits archived and unknown ids (no error, no leak)', async () => {
+    const { cms, db } = await setupTestCMS();
+
+    const [live] = await db
+      .insert(assets)
+      .values({
+        slug: 'live.png',
+        mimeType: 'image/png',
+        size: 1,
+        objectKey: 'live.png',
+      })
+      .returning();
+    const [archived] = await db
+      .insert(assets)
+      .values({
+        slug: 'arch.png',
+        mimeType: 'image/png',
+        size: 1,
+        objectKey: 'arch.png',
+        archivedAt: new Date(),
+      })
+      .returning();
+
+    const result = await cms.api.media.getAssets({
+      query: { ids: [live.id, archived.id, 'ast_nope00000000000000'] },
+    });
+
+    expect(result.assets.map((x) => x.id)).toEqual([live.id]);
   });
 });
 

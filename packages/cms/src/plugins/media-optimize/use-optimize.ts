@@ -7,6 +7,13 @@ import type { OptimizeResult } from './optimize';
 
 import { optimizeImage } from './optimize';
 
+/**
+ * Config accepted by {@link useOptimize}: the raw {@link OptimizationConfig}
+ * plus an `enabled` switch. When `enabled` is `false`, files pass through
+ * untouched (`optimized: false`) without running the canvas/WebP pipeline.
+ */
+export type UseOptimizeConfig = OptimizationConfig & { enabled?: boolean };
+
 export type OptimizeState = {
   results: OptimizeResult[] | null;
   isOptimizing: boolean;
@@ -35,7 +42,7 @@ const INITIAL_STATE: OptimizeState = {
  */
 export function useOptimize(
   input: File | File[],
-  config: OptimizationConfig,
+  config: UseOptimizeConfig,
 ): OptimizeState {
   const [state, setState] = useState<OptimizeState>(INITIAL_STATE);
   const abortRef = useRef(false);
@@ -74,7 +81,13 @@ export function useOptimize(
 
     setState({ results: null, isOptimizing: true, error: null });
 
-    Promise.all(files.map((file) => optimizeImage(file, configRef.current)))
+    Promise.all(
+      files.map((file) =>
+        configRef.current.enabled === false
+          ? Promise.resolve<OptimizeResult>({ file, optimized: false })
+          : optimizeImage(file, configRef.current),
+      ),
+    )
       .then((results) => {
         if (abortRef.current || runIdRef.current !== currentRun) return;
         setState({ results, isOptimizing: false, error: null });

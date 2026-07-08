@@ -60,7 +60,11 @@ function resolvePaths(
   const patternFn = config.pathPatterns?.[collection];
   if (patternFn && slug) return patternFn(slug);
   if (fullPath) return [fullPath];
-  if (slug) return [slug];
+  // No slug-config full path resolved (collection has slug disabled): fall back
+  // to the bare stored slug, but as a LEADING-SLASH path so every entry in
+  // `paths` is a genuine URL, never a bare slug that would silently mis-key a
+  // cache tag.
+  if (slug) return [`/${slug.replace(/^\/+/, '')}`];
   return [];
 }
 
@@ -309,7 +313,7 @@ export function createRevalidationRunner<
 
   async function fireEvent(event: RevalidateEvent<TCollections>) {
     debugLog(
-      `${event.action} on ${event.collection} (rootId=${event.rootId}) -> slug=${event.slug ?? '(none)'} -> revalidating [${event.paths.join(', ')}]`,
+      `${event.action} on ${event.collection} (rootId=${event.rootId}) -> storedSlug=${event.storedSlug ?? '(none)'} -> revalidating [${event.paths.join(', ')}]`,
     );
     try {
       await config.handler(event);
@@ -362,7 +366,7 @@ export function createRevalidationRunner<
       collection: collection as keyof TCollections & string,
       rootId,
       branchId,
-      slug,
+      storedSlug: slug,
       paths,
       tags: [rootRevalidateTag(rootId)],
     });
