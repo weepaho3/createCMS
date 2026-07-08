@@ -45,6 +45,10 @@ bun run dev      # http://localhost:3000
 > No env vars are required to run the demo — see `.env.example` for the
 > optional media/database variables.
 
+> Copying this example out of the monorepo? Replace `"@createcms/core":
+> "workspace:*"` in `package.json` with a published range like `"^0.2.x"`;
+> the `workspace:*` protocol only resolves inside this repo.
+
 ## Regenerating the schema
 
 `db/schema.ts` is committed so the build works out of the box. The schema is
