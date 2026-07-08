@@ -5,7 +5,7 @@ import {
   createInMemoryRateLimitStore,
   defaultRateLimitKey,
   enforceTrackEventRateLimit,
-  type ABTestRateLimitOptions,
+  type AbTestRateLimitOptions,
   type RateLimitStore,
 } from '../rate-limit';
 
@@ -73,7 +73,7 @@ describe('M-followup — defaultRateLimitKey', () => {
 });
 
 describe('M-followup — enforceTrackEventRateLimit', () => {
-  const opts: ABTestRateLimitOptions = { limit: 2, windowMs: 1000 };
+  const opts: AbTestRateLimitOptions = { limit: 2, windowMs: 1000 };
 
   it('allows up to the limit, then returns a 429 with Retry-After', async () => {
     const store = createInMemoryRateLimitStore();
@@ -105,7 +105,7 @@ describe('M-followup — enforceTrackEventRateLimit', () => {
         return 99; // always over any sane limit
       },
     };
-    const custom: ABTestRateLimitOptions = {
+    const custom: AbTestRateLimitOptions = {
       limit: 5,
       windowMs: 1000,
       getKey: () => 'tenant-A',

@@ -30,14 +30,14 @@ registerIdPrefix('translationGroup', 'tgr');
  * ```ts
  * import { resolveLanguage } from '@createcms/core/plugins/i18n';
  *
- * authMiddleware: async (ctx): Promise<MultilingualMiddlewareResult<'en' | 'de'>> => {
+ * authMiddleware: async (ctx): Promise<I18nMiddlewareResult<'en' | 'de'>> => {
  *   const session = await getSession(ctx);
  *   const language = resolveLanguage(ctx, session.locale) ?? 'en';
  *   return { userId: session.userId, language };
  * }
  * ```
  */
-export type MultilingualMiddlewareResult<L extends string = string> =
+export type I18nMiddlewareResult<L extends string = string> =
   MiddlewareResult & {
     language: L;
   };

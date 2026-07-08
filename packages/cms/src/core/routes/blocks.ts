@@ -3,7 +3,7 @@ import * as z from 'zod';
 
 import type {
   AnyBlockDefinition,
-  CMSProcedureCtx,
+  CMSProcedureContext,
   CollectionWithName,
   InferBlockTreeNode,
   InferCreateBlockInput,
@@ -136,7 +136,7 @@ function applyPropertyPatch(
 
 export function createBlocksEndpoints<TDef extends CollectionWithName>(
   def: TDef,
-  cmsCtx: CMSProcedureCtx,
+  cmsCtx: CMSProcedureContext,
 ) {
   const { db } = cmsCtx;
   const collectionName = def.name;
@@ -577,7 +577,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           const rawSlug = (ctx.body.slug as string | undefined) ?? '';
           slug = slugCfg.normalize ? normalizeSlug(rawSlug) : rawSlug;
 
-          if (!slug && !slugCfg.allowRoot) {
+          if (!slug && !slugCfg.allowIndex) {
             throw new CMSError('SLUG_EMPTY_NOT_ALLOWED');
           }
 
@@ -916,7 +916,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
 
         const rootRows = resultRows.map((row) => {
           const item: RootListItem<TDef['root']['properties']> = {
-            rootId: row.root_id,
+            id: row.root_id,
             createdAt: parseTimestamp(row.created_at),
             createdBy: row.created_by ?? undefined,
             parentRootId: row.parent_root_id ?? undefined,
@@ -946,7 +946,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
         // config. Parents are same-scope by construction, so no extra scope gate.
         const slugCfg = def.slug as ResolvedSlugConfig | undefined;
         if (slugCfg?.enabled && rootRows.length > 0) {
-          const ids = rootRows.map((r) => r.rootId as string);
+          const ids = rootRows.map((r) => r.id as string);
           const pathRes = await db.execute(sql`
             WITH RECURSIVE ancestry AS (
               SELECT ${roots.id} AS leaf_id, ${roots.id} AS id,
@@ -975,7 +975,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             pathByRoot.set(row.leaf_id, buildFullPath(slugCfg, segs));
           }
           for (const item of rootRows) {
-            item.path = pathByRoot.get(item.rootId as string) ?? '/';
+            item.path = pathByRoot.get(item.id as string) ?? '/';
           }
         }
 
@@ -1882,12 +1882,12 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
         // version's reserved `__slug` property and committed to THIS branch, so
         // it no longer touches roots.slug (the live URL) until publish. Redirects
         // and uniqueness therefore move to the publish path; here we keep only
-        // the cheap empty/format check. Clearing the slug (empty, allowRoot) sends
+        // the cheap empty/format check. Clearing the slug (empty, allowIndex) sends
         // `__slug: null`, which the merge-patch deletes.
         let patch = properties as Record<string, unknown> | undefined;
         if (slugCfg?.enabled && newSlug !== undefined) {
           const normalized = slugCfg.normalize ? normalizeSlug(newSlug) : newSlug;
-          if (!normalized && !slugCfg.allowRoot) {
+          if (!normalized && !slugCfg.allowIndex) {
             throw new CMSError('SLUG_EMPTY_NOT_ALLOWED');
           }
           patch = {

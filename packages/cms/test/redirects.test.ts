@@ -15,7 +15,7 @@ import { publishApprovedBranch } from '../src/test-utils/helpers';
 const NESTED_COLLECTIONS = {
   pages: {
     label: 'Pages',
-    slug: { enabled: true, root: '/docs', nested: true, normalize: true },
+    slug: { enabled: true, prefix: '/docs', nested: true, normalize: true },
     root: {
       properties: {
         title: { type: 'string', label: 'Title', required: true },
@@ -424,7 +424,7 @@ describe('redirect resolution — chains, published, boundary (R2 hardening)', (
   });
 
   it('splitPath strips the collection root only at a path boundary', () => {
-    const cfg = { enabled: true, root: '/pages', normalize: false } as never;
+    const cfg = { enabled: true, prefix: '/pages', normalize: false } as never;
     // Sibling path sharing the root string prefix must NOT be mangled.
     expect(splitPath(cfg, '/pages-archive/x')).toEqual(['pages-archive', 'x']);
     // Genuine in-collection paths still strip correctly.

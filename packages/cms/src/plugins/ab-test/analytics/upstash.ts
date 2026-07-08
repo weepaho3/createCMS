@@ -3,10 +3,10 @@ import { sql } from 'drizzle-orm';
 import type { TableDefinition } from '../../../core/db/types';
 import type { DrizzleInstance } from '../../../core/types';
 import type {
-  ABTestAnalyticsAdapter,
+  AbTestAnalyticsAdapter,
   AggregatedResults,
   AggregatedVariantResult,
-  CMSEvent,
+  AnalyticsEvent,
   UpstashAnalyticsOptions,
 } from './types';
 
@@ -80,11 +80,11 @@ const aggregationsTable: TableDefinition = {
  */
 export function upstashAnalytics(
   options: UpstashAnalyticsOptions,
-): ABTestAnalyticsAdapter {
+): AbTestAnalyticsAdapter {
   let db: DrizzleInstance;
   let redis: any;
 
-  const adapter: ABTestAnalyticsAdapter = {
+  const adapter: AbTestAnalyticsAdapter = {
     tables: { abTestAggregations: aggregationsTable } satisfies Record<
       string,
       TableDefinition
@@ -100,7 +100,7 @@ export function upstashAnalytics(
       });
     },
 
-    async track(event: CMSEvent) {
+    async track(event: AnalyticsEvent) {
       // The Upstash adapter is the A/B-dashboard sink: it streams per-test
       // events (keyed by testId) for live deltas + flush-to-aggregations, and
       // it does NOT provision an ab_test_events table. A non-A/B analytics

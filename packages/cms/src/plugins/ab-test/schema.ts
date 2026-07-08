@@ -1,6 +1,6 @@
 import type { coreSchema } from '../../core/db/core-schema';
 import type { TableDefinition, TableMap } from '../../core/db/types';
-import type { ABTestAnalyticsAdapter } from './analytics/types';
+import type { AbTestAnalyticsAdapter } from './analytics/types';
 
 import { definePluginSchema } from '../../core/db/define';
 
@@ -140,7 +140,7 @@ export const defaultAdapterTables: Record<string, TableDefinition> = {
   },
 };
 
-export function buildSchema(adapter?: ABTestAnalyticsAdapter) {
+export function buildSchema(adapter?: AbTestAnalyticsAdapter) {
   const tables: Record<string, TableDefinition> = {
     ...coreTables,
     ...(adapter?.tables ?? defaultAdapterTables),

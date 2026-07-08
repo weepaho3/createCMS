@@ -2,7 +2,7 @@ import type {
   AnyCollectionDefinition,
   BranchProtectionConfig,
   CMSMiddleware,
-  CMSProcedureCtx,
+  CMSProcedureContext,
   CollectionDefinition,
   CollectionWithName,
   DataRetentionConfig,
@@ -19,7 +19,7 @@ import type {
 
 const SLUG_DISABLED: ResolvedSlugConfig = { enabled: false } as const;
 const SLUG_DEFAULTS = {
-  allowRoot: true,
+  allowIndex: true,
   normalize: true,
   nested: false,
 } as const;
@@ -67,7 +67,7 @@ export function createCMSContext(input: {
   defaultBranchName?: string;
   branchProtection?: BranchProtectionConfig;
   mergeStrategy?: MergeStrategy;
-}): CMSProcedureCtx {
+}): CMSProcedureContext {
   return input;
 }
 

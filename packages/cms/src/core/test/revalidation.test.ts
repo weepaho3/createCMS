@@ -18,7 +18,7 @@ import { rootRevalidateTag } from '../revalidation';
 const COLLECTIONS = {
   pages: {
     label: 'Pages',
-    slug: { enabled: true, root: '/' },
+    slug: { enabled: true, prefix: '/' },
     root: {
       properties: {
         title: {
@@ -34,7 +34,7 @@ const COLLECTIONS = {
 const NESTED_COLLECTIONS = {
   pages: {
     label: 'Pages',
-    slug: { enabled: true, root: '/', nested: true },
+    slug: { enabled: true, prefix: '/', nested: true },
     root: {
       properties: {
         title: {
@@ -82,7 +82,7 @@ describe('revalidation tags (FA3b)', () => {
       },
       context: { userId: 'r' },
     });
-    await cms.api.pages.approve({
+    await cms.api.pages.submitApproval({
       body: { approvalId: req.approvals[0].id },
       context: { userId: 'rev' },
     });
@@ -120,7 +120,7 @@ describe('revalidation tags (FA3b)', () => {
       },
       context: { userId: 'r' },
     });
-    await cms.api.pages.approve({
+    await cms.api.pages.submitApproval({
       body: { approvalId: req.approvals[0].id },
       context: { userId: 'rev' },
     });
@@ -179,7 +179,7 @@ describe('revalidation tags (FA3b)', () => {
       },
       context: { userId: 'r' },
     });
-    await cms.api.pages.approve({
+    await cms.api.pages.submitApproval({
       body: { approvalId: req.approvals[0].id },
       context: { userId: 'rev' },
     });

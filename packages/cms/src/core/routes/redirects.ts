@@ -1,7 +1,7 @@
 import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
-import type { CMSProcedureCtx, CollectionWithName } from '../types';
+import type { CMSProcedureContext, CollectionWithName } from '../types';
 import type { ResolvedSlugConfig, TableScope } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
 
@@ -16,6 +16,9 @@ import { buildFullPath, splitPath } from '../slug';
 
 type EnabledSlugConfig = Extract<ResolvedSlugConfig, { enabled: true }>;
 
+// redirect_endpoint_type: 'page' = a root reference (a sourceRootId/targetRootId
+// that resolves to that root's current published path — follows moves); 'path' =
+// a literal URL path. The enum value stays 'page' even though the entity is a root.
 const ENDPOINT_TYPE = z.enum(['page', 'path']);
 const STATUS_CODE = z.union([
   z.literal(301),
@@ -35,7 +38,7 @@ type RedirectInput = {
 };
 
 const REDIRECT_META = {
-  permissionResource: 'redirect',
+  permissionResource: 'redirect' as const,
   scope: 'collection' as const,
 };
 
@@ -139,7 +142,7 @@ async function enrichRedirect(
  */
 export function createRedirectEndpoints<TDef extends CollectionWithName>(
   def: TDef,
-  cmsCtx: CMSProcedureCtx,
+  cmsCtx: CMSProcedureContext,
 ) {
   const { db } = cmsCtx;
   const collectionName = def.name;

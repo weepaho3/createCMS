@@ -45,7 +45,7 @@ const seedItem = {
   createdAt: '2026-07-01T00:00:00.000Z',
 } satisfies SeededList['notifications'][number];
 
-// A full wire item satisfying the `notificationEvent` zod schema — anything that
+// A full wire item satisfying the `notificationEventSchema` zod schema — anything that
 // fails `safeParse` (or targets another recipient) is dropped by `onData`.
 function wireItem(over: Record<string, unknown>) {
   return {

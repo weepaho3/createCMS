@@ -37,7 +37,7 @@ const SS_IMPRESSIONS_KEY = 'ab_test_impressions';
 const COOKIE_VID = 'ab_test_vid';
 const ONE_YEAR_SEC = 31_536_000;
 
-type ABTestContext = {
+type AbTestContext = {
   key: string;
   anonymous?: boolean;
 };
@@ -181,7 +181,7 @@ function readStoredImpressions(): string[] {
 // Client Plugin
 // ============================================================================
 
-export type ABTestClientOptions = {
+export type AbTestClientOptions = {
   /**
    * Drop the client-side dataLayer/GTM sink (M5). Enable this when the SAME
    * goals are forwarded server-side via the plugin's `ga4` (server-MP) config —
@@ -192,7 +192,7 @@ export type ABTestClientOptions = {
   disableDataLayerSink?: boolean;
 };
 
-export function abTestClient(options?: ABTestClientOptions) {
+export function abTestClient(options?: AbTestClientOptions) {
   return {
     id: PLUGIN_ID,
 
@@ -222,7 +222,7 @@ export function abTestClient(options?: ABTestClientOptions) {
         ...(options?.disableDataLayerSink ? [] : [createGtmClientSink()]),
       ];
 
-      let context: ABTestContext | null = null;
+      let context: AbTestContext | null = null;
       let memKey: string | null = null;
       // In-memory until consent is granted; hydrated from storage on grant.
       const assignmentCache: Record<string, CachedAssignment> = {};
@@ -337,7 +337,7 @@ export function abTestClient(options?: ABTestClientOptions) {
         setTimeout(() => gate.resolve(), CONSENT_WAIT_MS);
       }
 
-      function getContext(): ABTestContext {
+      function getContext(): AbTestContext {
         if (context) return context;
         throw new Error($ERROR_CODES.AB_TEST_NO_CONTEXT.message);
       }
@@ -494,7 +494,7 @@ export function abTestClient(options?: ABTestClientOptions) {
             );
           },
 
-          identify(ctx: ABTestContext) {
+          identify(ctx: AbTestContext) {
             if (ctx.anonymous && !ctx.key) {
               context = { key: visitorKey(), anonymous: true };
             } else {

@@ -40,9 +40,11 @@ export const coreSchema = defineCoreSchema({
       // Single source of truth shared with the browser-safe Zod wire schema.
       values: [...NOTIFICATION_TYPES],
     },
-    // A redirect endpoint (source or target) is either a page REFERENCE (rootId,
-    // resolves to the page's current path — follows moves) or a literal PATH.
-    // 'regex' is reserved for a later version (unindexed ordered scan).
+    // A redirect endpoint (source or target) is either a 'page' — a root
+    // REFERENCE (rootId, resolves to that root's current path — follows moves) —
+    // or a literal PATH. The enum value 'page' names a root reference, not a
+    // separate "page" entity. 'regex' is reserved for a later version
+    // (unindexed ordered scan).
     redirectEndpointType: {
       enumName: 'redirect_endpoint_type',
       values: ['page', 'path'],

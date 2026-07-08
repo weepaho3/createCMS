@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import * as z from 'zod';
 
-import type { CMSProcedureCtx } from '../types';
+import type { CMSProcedureContext } from '../types';
 import type { DrizzleInstance } from '../types/drizzle';
 import type { ResolvedUserConfig } from '../user/resolve';
 
@@ -13,7 +13,7 @@ import { assertSafeSqlIdentifier, assertSafeSqlTableRef } from '../user/resolve'
 // middleware decides who may call these (e.g. anyone who can pick a reviewer);
 // `permissionResource` is a plain string threaded to that middleware, so 'user'
 // needs no core-side registration.
-const META = { scope: 'system' as const, permissionResource: 'user' };
+const META = { scope: 'system' as const, permissionResource: 'user' as const };
 
 /**
  * A single user record crossing the API: the id plus the configured
@@ -72,7 +72,7 @@ async function fetchExposedUsers(
  * same enrichment allowlist as `withUser`, and degrade sensibly when no
  * `user` config is present (whoami → `{ user: null }`, listReviewers → `[]`).
  */
-export function createUserEndpoints(cmsCtx: CMSProcedureCtx) {
+export function createUserEndpoints(cmsCtx: CMSProcedureContext) {
   const { db } = cmsCtx;
 
   return {

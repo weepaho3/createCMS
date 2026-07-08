@@ -124,8 +124,8 @@ type SlugConfig =
   | { enabled: false }
   | {
       enabled: true;
-      root: string;
-      allowRoot?: boolean;
+      prefix: string;
+      allowIndex?: boolean;
       normalize?: boolean;
       nested?: boolean;
     };

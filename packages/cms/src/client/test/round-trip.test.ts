@@ -54,8 +54,8 @@ describe('vanilla client — HTTP round-trip against the in-memory router', () =
       query: { rootId: created.rootId },
     });
 
-    expect(clientRead.rootId).toBe(created.rootId);
-    expect(serverRead.rootId).toBe(created.rootId);
+    expect(clientRead.id).toBe(created.rootId);
+    expect(serverRead.id).toBe(created.rootId);
     // The wire (client) result and the direct server call agree on identity and
     // the plain-JSON properties (no Date fields on `title`).
     expect(clientRead.properties).toEqual(serverRead.properties);

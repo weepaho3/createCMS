@@ -1,4 +1,4 @@
-import type { CMSMiddleware, CMSProcedureCtx } from '../types/definitions';
+import type { CMSMiddleware, CMSProcedureContext } from '../types/definitions';
 import { defaultAuthorizeChannels } from './channels';
 import type { RealtimeRuntime } from './types';
 
@@ -18,7 +18,7 @@ export type RealtimeRouteOptions = {
    */
   path: string;
   /** Procedure ctx used to invoke the auth middleware (db/collections/…). */
-  cmsCtx: CMSProcedureCtx;
+  cmsCtx: CMSProcedureContext;
   /** The resolved auth middleware (authMiddleware ?? middleware), or undefined. */
   authMiddleware: CMSMiddleware | undefined;
   /** Override the default per-user channel-authorization policy. */
@@ -77,7 +77,7 @@ export function createRealtimeRouteHandler(options: RealtimeRouteOptions) {
  */
 async function resolveRealtimeUserId(
   authMiddleware: CMSMiddleware | undefined,
-  cmsCtx: CMSProcedureCtx,
+  cmsCtx: CMSProcedureContext,
   request: Request,
 ): Promise<string | undefined> {
   if (!authMiddleware) return undefined;

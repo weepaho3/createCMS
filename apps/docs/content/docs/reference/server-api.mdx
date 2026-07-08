@@ -32,7 +32,7 @@ Lists the entries (roots) of a collection. `GET`, input via `query` (all fields 
 | `createdBefore` | `Date` | | Entries created before this time. |
 | `parentRootId` | `string` | | Filter by parent entry. |
 
-Returns `{ roots, total, hasMore }`. Each root has `rootId`, `createdAt`, `createdBy`, `parentRootId`, `sortOrder`, `slug`, `properties` (typed), `hasPublications`, `publicationCount`, `branchCount`, and `openMergeRequestCount`. `path` (the full ancestor-resolved URL) is present only for slug-enabled collections, and `createdByUser` only when called with `query.withUser`.
+Returns `{ roots, total, hasMore }`. Each root has `id`, `createdAt`, `createdBy`, `parentRootId`, `sortOrder`, `slug`, `properties` (typed), `hasPublications`, `publicationCount`, `branchCount`, and `openMergeRequestCount`. `path` (the full ancestor-resolved URL) is present only for slug-enabled collections, and `createdByUser` only when called with `query.withUser`.
 
 <Callout type="info">
   `search` here does a substring match over the chosen field, which is a sequential scan. It is fine for the bounded, filtered admin listings this endpoint serves. For full-text search across a large corpus, use [`search.query`](/docs/reference/search) instead, which is backed by a `tsvector` GIN index.
@@ -238,8 +238,8 @@ Each collection also exposes the rest of the versioning and review surface. The 
 - **Roots**: `getRoot`, `getRootBySlug`, `archiveRoot`, `moveRoot`, `duplicateRoot`, `getReferenceUsages`, `getRootHistory`.
 - **Blocks**: `moveBlock`, `deleteBlock`, `duplicateBlock`, `updateRoot`.
 - **Branches**: `revertBranch`, `checkDivergence` (plus the branch methods above).
-- **Merges**: `createMergeRequest`, `getDiff`, `checkConflicts`, `resolveConflicts`, `createMergeBlockVersion`, `executeMerge`, `listMergeRequests`, `updateMergeRequest`, `closeMergeRequest`, `reopenMergeRequest`.
-- **Approvals**: `requestApproval`, `approve`, `reject`, `cancelApproval`, `getApproval`, `listApprovals`.
+- **Merges**: `createMergeRequest`, `getDiff`, `checkConflicts`, `applyConflictResolutions`, `createMergeBlockVersion`, `executeMerge`, `listMergeRequests`, `updateMergeRequest`, `closeMergeRequest`, `reopenMergeRequest`.
+- **Approvals**: `requestApproval`, `submitApproval`, `submitRejection`, `cancelApproval`, `getApproval`, `listApprovals`.
 - **Comments**: `createCommentThread`, `createCommentMessage`, `listCommentThreads`, `getCommentThread`, `resolveCommentThread`, `reopenCommentThread`, `updateCommentMessage`, `deleteCommentThread`, `deleteCommentMessage`, `listMentions`.
 - **Publications**: `unpublishBranch`, `listPublications` (plus `publishBranch` and `getPublishedContent`).
 - **Redirects**: `createRedirect`, `updateRedirect`, `archiveRedirect`, `listRedirects`, and `resolveRedirect` (call this in routing to follow a redirect).

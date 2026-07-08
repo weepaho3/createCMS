@@ -39,7 +39,7 @@ export const ROOT_SLUG_PROP = '__slug';
 
 /**
  * Typed accessor for the draft slug stored on a root block version's properties.
- * Returns `null` when the key is absent or not a string (e.g. an allowRoot home
+ * Returns `null` when the key is absent or not a string (e.g. an allowIndex home
  * page carries no draft slug).
  */
 export function readRootSlug(
@@ -52,7 +52,7 @@ export function readRootSlug(
 /**
  * Fold a draft slug into a root version's properties. A non-empty string is
  * stored under {@link ROOT_SLUG_PROP}; an empty string / null / undefined strips
- * the key (an empty draft slug means "no slug", e.g. an allowRoot home page).
+ * the key (an empty draft slug means "no slug", e.g. an allowIndex home page).
  * Non-mutating — returns a new object.
  */
 export function withRootSlug(

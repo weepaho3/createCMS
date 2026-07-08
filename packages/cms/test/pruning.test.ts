@@ -613,7 +613,7 @@ describe('runPruning', () => {
     });
 
     // Approve one, leave the other pending
-    await cms.api.pages.approve({
+    await cms.api.pages.submitApproval({
       body: {
         approvalId: result1.approvals.find(
           (a: any) => a.requestedReviewer === 'reviewer-1',
@@ -745,7 +745,7 @@ describe('runPruning', () => {
       },
       context: { userId: 'requester-1' },
     });
-    await cms.api.pages.approve({
+    await cms.api.pages.submitApproval({
       body: {
         approvalId: approvalResult.approvals[0].id,
       },
@@ -827,7 +827,7 @@ describe('runPruning', () => {
       },
       context: { userId: 'requester-1' },
     });
-    await cms.api.pages.approve({
+    await cms.api.pages.submitApproval({
       body: {
         approvalId: req.approvals[0].id,
       },

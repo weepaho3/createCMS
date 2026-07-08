@@ -13,7 +13,6 @@ export {
   createBlocksMap,
   extractBlockEvents,
   BlocksRenderer,
-  createBlocksRenderer,
   createContentRenderer,
 } from './blocks';
 export type { BlocksMap, BlockComponentProps, BlockProps } from './blocks';
@@ -26,7 +25,7 @@ export type {
   CMSClientStore,
   CMSAtomListener,
   CMSFetch,
-  QueryState,
+  CMSQueryState,
 } from '../client/types';
 export { createNotificationRouter } from './notifications-router';
 export type {

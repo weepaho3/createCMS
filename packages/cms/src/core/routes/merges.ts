@@ -4,7 +4,7 @@ import * as z from 'zod';
 import type { NotificationInput } from '../notifications/types';
 import type {
   CollectionWithName,
-  CMSProcedureCtx,
+  CMSProcedureContext,
   InferMergeBlockVersionInput,
   ListMergeRequestsResult,
   MergeRequestListItem,
@@ -350,7 +350,7 @@ function buildMergedSnapshot(
 
 export function createMergeEndpoints<TDef extends CollectionWithName>(
   def: TDef,
-  cmsCtx: CMSProcedureCtx,
+  cmsCtx: CMSProcedureContext,
 ) {
   const { db } = cmsCtx;
   const collectionName = def.name;
@@ -1698,10 +1698,10 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * @throws MERGE_REQUEST_NOT_OPEN if the merge request is not open.
      * @throws CONFLICT_NOT_FOUND if any conflict id does not belong to this MR.
      * @throws RESOLVED_VERSION_NOT_FOUND if a manual resolution references a non-existent version.
-     * @example await cmsClient.pages.resolveConflicts({ mergeRequestId: 'mr-id', resolutions: [{ conflictId: 'c-id', resolution: 'source', resolvedBy: 'user-id' }] })
+     * @example await cmsClient.pages.applyConflictResolutions({ mergeRequestId: 'mr-id', resolutions: [{ conflictId: 'c-id', resolution: 'source', resolvedBy: 'user-id' }] })
      */
-    resolveConflicts: createCMSEndpoint(
-      `/${collectionName}/resolveConflicts`,
+    applyConflictResolutions: createCMSEndpoint(
+      `/${collectionName}/applyConflictResolutions`,
       {
         method: 'POST',
         body: z.object({

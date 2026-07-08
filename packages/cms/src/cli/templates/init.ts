@@ -34,7 +34,7 @@ const pagesCollection =
 export const pagesCollection = {
   label: 'Pages',
   description: 'Marketing and content pages.',
-  slug: { enabled: true, root: '/' },
+  slug: { enabled: true, prefix: '/' },
   root: {
     properties: {
       title: {
@@ -65,7 +65,7 @@ const postsCollection =
 export const postsCollection = {
   label: 'Blog Posts',
   description: 'Articles and updates.',
-  slug: { enabled: true, root: '/blog' },
+  slug: { enabled: true, prefix: '/blog' },
   root: {
     properties: {
       title: {
@@ -112,7 +112,7 @@ const docsCollection =
 export const docsCollection = {
   label: 'Docs',
   description: 'Nested documentation pages.',
-  slug: { enabled: true, root: '/docs', nested: true, normalize: true },
+  slug: { enabled: true, prefix: '/docs', nested: true, normalize: true },
   root: {
     properties: {
       title: {

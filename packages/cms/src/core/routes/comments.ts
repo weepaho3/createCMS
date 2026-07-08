@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
-import type { CollectionWithName, CMSProcedureCtx } from '../types';
+import type { CollectionWithName, CMSProcedureContext } from '../types';
 import type { DrizzleInstance } from '../types/drizzle';
 
 import { requireRootInScope } from '../blocks/guards';
@@ -240,7 +240,7 @@ async function loadBoundaryMessages(
 
 export function createCommentEndpoints<TDef extends CollectionWithName>(
   def: TDef,
-  cmsCtx: CMSProcedureCtx,
+  cmsCtx: CMSProcedureContext,
 ) {
   const { db } = cmsCtx;
   const collectionName = def.name;

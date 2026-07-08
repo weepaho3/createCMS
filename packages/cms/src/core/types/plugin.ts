@@ -3,7 +3,7 @@ import type { Endpoint, Middleware } from 'better-call';
 import type { SchemaModule } from '../db/types';
 import type { OnNotificationHandler } from '../notifications/types';
 import type {
-  CMSProcedureCtx,
+  CMSProcedureContext,
   CollectionWithName,
   DataRetentionConfig,
 } from './definitions';
@@ -66,6 +66,20 @@ export type CMSAfterHook = {
 // Inline Hooks (for createCMS config, without writing a plugin)
 // ============================================================================
 
+/**
+ * Loose hooks bag: `before`/`after` arrays whose `action` is the OPEN
+ * {@link CMSHookAction} (core endpoint keys ∪ `(string & {})`). Use this shape
+ * when authoring a standalone plugin, or any code that must accept hooks without
+ * knowing the full installed-plugin set — it accepts any endpoint key, including
+ * ones contributed by other plugins.
+ *
+ * For inline `createCMS({ hooks })` config, prefer {@link CMSConfigHooks}
+ * (factory.ts): it narrows `action` to the CLOSED union of core + installed-
+ * plugin endpoint keys, so a misspelled action is a compile error rather than a
+ * hook that silently never fires. The two are intentionally NOT merged — this
+ * loose form is the plugin-authoring contract; the narrowed form is the
+ * end-user config contract.
+ */
 export type CMSHooks = {
   before?: CMSBeforeHook[];
   after?: CMSAfterHook[];
@@ -75,7 +89,7 @@ export type CMSHooks = {
 // Plugin Definition
 // ============================================================================
 
-export type CMSPluginContext = CMSProcedureCtx & {
+export type CMSPluginContext = CMSProcedureContext & {
   collections: Record<string, CollectionWithName>;
 };
 
@@ -233,8 +247,13 @@ export type CMSEndpointContext = {
   userId?: string;
   collection: string;
   scope: import('./definitions').ResolvedScope;
-  withUser?: true | Record<string, true>;
+  withUser?: import('../with-flags').WithUserValue;
   userConfig?: import('../user/resolve').ResolvedUserConfig;
+  withRoot?: boolean;
+  revalidationRunner?: import('../revalidation').RevalidationRunner | null;
+  /** Realtime transport (when configured) — lets a handler publish live events
+   *  (e.g. the A/B ingest pushing live result deltas). */
+  realtime?: import('../realtime/types').RealtimeRuntime;
 };
 
 // ============================================================================

@@ -6,7 +6,7 @@ import type { ConsentState } from '../../consent';
 // Context
 // ============================================================================
 
-export type ABTestContext = {
+export type AbTestContext = {
   key: string;
   anonymous?: boolean;
 };
@@ -38,9 +38,9 @@ export type CMSEventSource = {
  * (`ab`), so non-A/B events (page views, form submits) are first-class and can
  * flow to non-A/B sinks (GA4, GTM) without inventing a fake test/variant.
  *
- * `ABTestEvent` is the derived view where `ab` is mandatory.
+ * `AbTestEvent` is the derived view where `ab` is mandatory.
  */
-export type CMSEvent = {
+export type AnalyticsEvent = {
   /**
    * Optional id used as the storage row key. When absent, the sink mints one.
    * Dedup behaviour is **sink-specific**: the postgres sink dedups on it via
@@ -90,8 +90,8 @@ export type CMSEvent = {
   timestamp: Date;
 };
 
-/** A {@link CMSEvent} that carries mandatory A/B attribution (the A/B view). */
-export type ABTestEvent = CMSEvent & {
+/** A {@link AnalyticsEvent} that carries mandatory A/B attribution (the A/B view). */
+export type AbTestEvent = AnalyticsEvent & {
   ab: { testId: string; variantId: string };
 };
 
@@ -136,7 +136,7 @@ export type AggregatedResults = {
 // Adapter Interface
 // ============================================================================
 
-export type ABTestAnalyticsAdapter = {
+export type AbTestAnalyticsAdapter = {
   /** Adapter-specific Postgres tables to merge into the plugin schema. */
   tables?: Record<string, TableDefinition>;
 
@@ -144,11 +144,11 @@ export type ABTestAnalyticsAdapter = {
   init?(db: DrizzleInstance): Promise<void> | void;
 
   /**
-   * Record a single event. Accepts any {@link CMSEvent}: A/B-attributed events
+   * Record a single event. Accepts any {@link AnalyticsEvent}: A/B-attributed events
    * (impression/conversion) carry `ab`, non-A/B analytics events (form_submit,
    * page_view) omit it.
    */
-  track(event: CMSEvent): Promise<void>;
+  track(event: AnalyticsEvent): Promise<void>;
 
   /** Query aggregated results for a test. */
   query(

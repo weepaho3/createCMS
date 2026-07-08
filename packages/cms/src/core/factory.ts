@@ -11,7 +11,7 @@ import type {
   AnyCollectionDefinition,
   CMSDefinition,
   CMSMiddleware,
-  CMSProcedureCtx,
+  CMSProcedureContext,
   CMSUserConfig,
   CollectionWithName,
 } from './types';
@@ -121,7 +121,15 @@ type CMSConfigAfterHook<TPlugins extends CMSPlugin[]> = Omit<
   'action'
 > & { action: CMSEndpointKey<TPlugins> | '*' };
 
-/** Inline `createCMS({ hooks })` config, plugin-endpoint-aware for autocomplete. */
+/**
+ * Inline `createCMS({ hooks })` config, plugin-endpoint-aware for autocomplete.
+ * The narrowed counterpart of {@link CMSHooks} (plugin.ts): `action` is the
+ * CLOSED union of core + installed-plugin endpoint keys (plus `'*'`), so a typo
+ * is a compile error at the `createCMS` call site instead of a hook that never
+ * fires. Prefer {@link CMSHooks} instead when authoring a standalone plugin,
+ * where the full plugin set is unknown and `action` must stay open. Kept
+ * separate on purpose — do not merge.
+ */
 export type CMSConfigHooks<TPlugins extends CMSPlugin[] = []> = {
   before?: CMSConfigBeforeHook<TPlugins>[];
   after?: CMSConfigAfterHook<TPlugins>[];
@@ -617,7 +625,7 @@ export const createCMS = <
     [K in keyof TCollections]: TCollections[K] & { name: string };
   };
 
-  const cmsContext: CMSProcedureCtx = createCMSContext({
+  const cmsContext: CMSProcedureContext = createCMSContext({
     db: definition.db,
     collections: collections as Record<string, CollectionWithName>,
     dataRetention: definition.dataRetention,
@@ -991,9 +999,9 @@ export const createCMS = <
     // `$ERROR_CODES` / `$pathMethods` (real objects), this is a PHANTOM field: it
     // exists purely so `createNotificationRouter<typeof cms>` can read the
     // plugin-contributed notification `meta` shapes + the `user`-config actor-user
-    // shape off `typeof cms`. NEVER access `cms.$notifications` as a value — it
-    // will throw `TypeError: Cannot read properties of undefined`.
-    $notifications: undefined as unknown as {
+    // shape off `typeof cms`. NEVER access `cms.$InferNotifications` as a value —
+    // it will throw `TypeError: Cannot read properties of undefined`.
+    $InferNotifications: undefined as unknown as {
       meta: InferPluginNotificationMeta<TPlugins>;
       actorUser: TDef extends {
         user: CMSUserConfig<infer U extends AnyPgTable>;

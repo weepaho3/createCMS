@@ -200,51 +200,6 @@ export function BlocksRenderer({
 }
 
 // ============================================================================
-// createBlocksRenderer (convenience shorthand)
-// ============================================================================
-
-/**
- * Creates a type-safe block renderer component for a CMS collection.
- * Convenience shorthand that combines `createBlocksMap` + `BlocksRenderer`.
- *
- * @example
- * ```tsx
- * import { createBlocksRenderer } from '@createcms/core/react';
- * import { pagesCollection } from '@/cms/collections/pages/definition';
- *
- * const PageBlocks = createBlocksRenderer(pagesCollection, {
- *   headline: ({ properties }) => <h1>{properties.text}</h1>,
- *   hero: ({ properties, children }) => (
- *     <section>
- *       <h1>{properties.headline}</h1>
- *       {children}
- *     </section>
- *   ),
- * });
- *
- * // In a page component:
- * <PageBlocks tree={tree} />
- * ```
- */
-export function createBlocksRenderer<
-  TProps extends Record<string, BlockProperty>,
-  TBlocks extends Record<string, AnyBlockDefinition>,
->(
-  collection: CollectionDefinition<TProps, TBlocks>,
-  components: BlockComponentMap<TBlocks>,
-) {
-  const blocksMap = createBlocksMap(collection, components);
-
-  function Renderer({ tree }: { tree: BlockTreeNode }): ReactNode {
-    return <BlocksRenderer blocks={blocksMap} tree={tree} />;
-  }
-
-  Renderer.displayName = `BlocksRenderer(${collection.label})`;
-
-  return Renderer;
-}
-
-// ============================================================================
 // ContentRenderer (reference-aware tree rendering)
 // ============================================================================
 

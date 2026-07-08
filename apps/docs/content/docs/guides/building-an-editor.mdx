@@ -97,21 +97,21 @@ const mr = await cmsClient.pages.createMergeRequest({
 });
 ```
 
-If `mr.hasConflicts` is true, drive a conflict UI from `getDiff` and settle each one through `resolveConflicts` (as `source`, `target`, or a `manual` version) before merging.
+If `mr.hasConflicts` is true, drive a conflict UI from `getDiff` and settle each one through `applyConflictResolutions` (as `source`, `target`, or a `manual` version) before merging.
 
 ### 6. Request and grant approval
 
-Every merge needs an approval. `requestApproval` notifies the reviewers you name and returns the pending `approvals`; a reviewer clears theirs with `approve` (or turns it back with `reject`):
+Every merge needs an approval. `requestApproval` notifies the reviewers you name and returns the pending `approvals`; a reviewer clears theirs with `submitApproval` (or turns it back with `submitRejection`):
 
 ```ts
 const { approvals } = await cmsClient.pages.requestApproval({
   body: { mergeRequestId: mr.mergeRequest.id, requestedReviewers: ['editor-2'] },
 });
 
-await cmsClient.pages.approve({ body: { approvalId: approvals[0].id } });
+await cmsClient.pages.submitApproval({ body: { approvalId: approvals[0].id } });
 ```
 
-The reviewer identity comes from the request's auth context, so build `approve` behind whatever session your app already has.
+The reviewer identity comes from the request's auth context, so build `submitApproval` behind whatever session your app already has.
 
 ### 7. Merge
 
@@ -147,7 +147,7 @@ The loop above decomposes into four reusable surfaces. Each is a component (or s
 
 - **Block editor.** Renders the tree from `getBlockTree` (with `raw: true`) and mutates it with `createBlock`, `updateBlock`, `moveBlock`, `deleteBlock`, and `duplicateBlock`. Every edit is a commit, so undo is a branch/revert concern, not editor state.
 - **Media library.** Uploads from the browser with the `media.useUploadAssets()` hook (or `media.createSignedUpload` server-side), browses with `listAssets` and `listFolders`, and organizes with `createFolder`, `moveAssets`, and `updateAssetsStatus`. Picking an asset stores its id in an `image` property; serve it through the gate at `/media/asset/{id}` (see [Upload and serve media](/docs/guides/media-uploads)).
-- **Branch, merge request, and approval views.** Lists work in flight with `listBranches` and `listMergeRequests`, shows a diff with `getDiff` and `checkConflicts`, and drives the review with `createMergeRequest`, `resolveConflicts`, `requestApproval`, `approve`, `reject`, and `executeMerge`. Thread discussion on top with `createCommentThread` and `listCommentThreads` (see [Review with comments](/docs/guides/review-comments)).
+- **Branch, merge request, and approval views.** Lists work in flight with `listBranches` and `listMergeRequests`, shows a diff with `getDiff` and `checkConflicts`, and drives the review with `createMergeRequest`, `applyConflictResolutions`, `requestApproval`, `submitApproval`, `submitRejection`, and `executeMerge`. Thread discussion on top with `createCommentThread` and `listCommentThreads` (see [Review with comments](/docs/guides/review-comments)).
 - **Notification inbox.** Reads with `notifications.list` and clears with `markNotificationsRead`, `markNotificationsUnread`, and `archiveNotification`.
 
 <Callout type="info">

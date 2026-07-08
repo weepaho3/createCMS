@@ -15,7 +15,7 @@ async function setupLinkCMS() {
     collections: {
       pages: {
         label: 'Pages',
-        slug: { enabled: true, root: '/pages' },
+        slug: { enabled: true, prefix: '/pages' },
         root: {
           properties: {
             title: { type: 'string', label: 'Title', required: true },
@@ -249,7 +249,7 @@ async function publishBranch(
     },
     context: { userId: 'requester-1' },
   });
-  await api.approve({
+  await api.submitApproval({
     body: { approvalId: request.approvals[0].id },
     context: { userId: 'reviewer-1' },
   });
@@ -280,7 +280,7 @@ async function setupRefLinkCMS() {
       },
       pages: {
         label: 'Pages',
-        slug: { enabled: true, root: '/pages' },
+        slug: { enabled: true, prefix: '/pages' },
         root: {
           properties: {
             title: { type: 'string', label: 'Title', required: true },

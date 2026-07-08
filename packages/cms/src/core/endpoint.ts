@@ -12,7 +12,8 @@ import type {
   CMSMiddleware,
   CMSMiddlewareRequest,
   CMSOperation,
-  CMSProcedureCtx,
+  CMSPermissionResource,
+  CMSProcedureContext,
   MiddlewareResult,
   ResolvedScope,
   RootTableScope,
@@ -29,7 +30,7 @@ import {
 } from './with-flags';
 
 export type CMSEndpointMeta = {
-  permissionResource?: string;
+  permissionResource?: CMSPermissionResource;
   operation: CMSOperation;
   scope: 'collection' | 'system';
   collection?: string;
@@ -55,20 +56,6 @@ export const cmsContext = createMiddleware(async () => {
     realtime?: import('./realtime/types').RealtimeRuntime;
   };
 });
-
-export type CMSEndpointCtx = {
-  db: DrizzleInstance;
-  userId: string | undefined;
-  collection: string;
-  scope: ResolvedScope;
-  withUser?: WithUserValue;
-  userConfig?: import('./user/resolve').ResolvedUserConfig;
-  withRoot?: boolean;
-  revalidationRunner?: RevalidationRunner | null;
-  /** Realtime transport (when configured) — lets a handler publish live events
-   *  (e.g. the A/B ingest pushing live result deltas). */
-  realtime?: import('./realtime/types').RealtimeRuntime;
-};
 
 const cmsEndpointFactory: ReturnType<
   typeof createEndpoint.create<{ use: [typeof cmsContext] }>
@@ -114,7 +101,7 @@ export function cmsMeta<T extends Record<string, unknown>>(
  * per-table WHERE conditions and INSERT values.
  */
 function computeScope(
-  factories: CMSProcedureCtx['scopeConditions'],
+  factories: CMSProcedureContext['scopeConditions'],
   mwResult: MiddlewareResult,
 ): ResolvedScope {
   if (!factories || factories.length === 0) return {};
@@ -217,7 +204,7 @@ async function resolveBranchName(
 
 export function toCMSEndpoints(
   endpoints: Record<string, Endpoint>,
-  cmsCtx: CMSProcedureCtx,
+  cmsCtx: CMSProcedureContext,
   userMiddleware: CMSMiddleware | undefined,
   hookRunner: HookRunner,
   revalidationRunner?: RevalidationRunner | null,
@@ -397,7 +384,7 @@ export function toCMSEndpoints(
 
 async function runUserMiddleware(
   userMiddleware: CMSMiddleware | undefined,
-  cmsCtx: CMSProcedureCtx,
+  cmsCtx: CMSProcedureContext,
   meta: CMSEndpointMeta,
   reqCtx?: CMSMiddlewareRequest,
   branchName?: string,

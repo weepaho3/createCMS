@@ -7,7 +7,7 @@ import { defineCollection, defineCollections } from '@createcms/core';
  */
 const posts = defineCollection({
   label: 'Posts',
-  slug: { enabled: true, root: '/blog', nested: false },
+  slug: { enabled: true, prefix: '/blog', nested: false },
   root: {
     properties: {
       title: { type: 'string', required: true, label: 'Title' },

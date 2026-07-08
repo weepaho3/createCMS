@@ -18,7 +18,7 @@ import { buildSchema } from '../../schema';
  * codegen pipeline (core + ab-test plugin merged), so tables, indexes,
  * and enums match the real-world output.
  */
-export const setupABTestCMS = async (options?: {
+export const setupAbTestCMS = async (options?: {
   authMiddleware?: CMSMiddleware;
   onRevalidate?: {
     handler: (event: {
@@ -53,7 +53,7 @@ export const setupABTestCMS = async (options?: {
  * backed by an in-memory PGlite database. A `setTenant` helper lets
  * tests switch the active tenant between API calls.
  */
-export const setupMultiTenantABTestCMS = async () => {
+export const setupMultiTenantAbTestCMS = async () => {
   const { db, cleanup } = await setupTestDB({
     plugins: [
       { name: 'multi-tenant', schema: multiTenantSchema },

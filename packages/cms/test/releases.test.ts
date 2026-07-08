@@ -64,7 +64,7 @@ describe('releases — atomic multi-page publish', () => {
       body: { branchId: r1.branchId, requestedReviewers: ['reviewer-1'] },
       context: { userId: 'requester-1' },
     });
-    await cms.api.pages.approve({
+    await cms.api.pages.submitApproval({
       body: { approvalId: req.approvals[0].id },
       context: { userId: 'reviewer-1' },
     });

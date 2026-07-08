@@ -2,16 +2,16 @@ import { sql } from 'drizzle-orm';
 
 import type { DrizzleInstance } from '../../../core/types';
 import type {
-  ABTestAnalyticsAdapter,
+  AbTestAnalyticsAdapter,
   AggregatedResults,
   AggregatedVariantResult,
-  CMSEvent,
+  AnalyticsEvent,
 } from './types';
 
 import { newId } from '../../../utils/nanoid';
 import { defaultAdapterTables } from '../schema';
 
-export function postgresAnalytics(): ABTestAnalyticsAdapter {
+export function postgresAnalytics(): AbTestAnalyticsAdapter {
   let db: DrizzleInstance;
 
   return {
@@ -21,7 +21,7 @@ export function postgresAnalytics(): ABTestAnalyticsAdapter {
       db = instance;
     },
 
-    async track(event: CMSEvent) {
+    async track(event: AnalyticsEvent) {
       // Mint when no usable id is supplied. Guard against a blank id too: `??`
       // would let "" through and a second "" would be swallowed by ON CONFLICT,
       // silently dropping a distinct event.

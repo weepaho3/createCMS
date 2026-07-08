@@ -42,7 +42,7 @@ The slug is versioned. Editing an entry's slug stores it on the draft (the branc
 
 Two current limitations follow from how the draft slug is stored:
 
-- **Clearing a slug is not materialized.** If you clear a draft slug back to empty (for example, promoting an `allowRoot` page to the home page), publishing does not reset `roots.slug`; it keeps its last published value. Telling an explicitly cleared slug apart from one that was never set is a future enhancement.
+- **Clearing a slug is not materialized.** If you clear a draft slug back to empty (for example, promoting an `allowIndex` page to the home page), publishing does not reset `roots.slug`; it keeps its last published value. Telling an explicitly cleared slug apart from one that was never set is a future enhancement.
 - **Uniqueness is checked in the active scope.** Publish-time slug uniqueness is scoped to the active request scope. Under [i18n](/docs/plugins/i18n), publish a translation within its own language context. Publishing it from a different language would check uniqueness against that active language, not the branch's own.
 
 ## Revalidation

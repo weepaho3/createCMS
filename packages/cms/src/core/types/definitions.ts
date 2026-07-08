@@ -781,14 +781,14 @@ export type CommitSummary = {
 };
 
 export type RootListItem<TRootProps extends Record<string, BlockProperty>> = {
-  rootId: string;
+  id: string;
   createdAt: Date;
   createdBy?: string;
   parentRootId?: string;
   slug?: string;
   /**
    * The full, ancestor-resolved URL path (e.g. `/blog/post`), with the
-   * collection's slug-config root prefix applied. Present for slug-enabled
+   * collection's slug-config prefix applied. Present for slug-enabled
    * collections; `slug` alone is only the last segment.
    */
   path?: string;
@@ -814,7 +814,7 @@ export type ListRootsResult<TRootProps extends Record<string, BlockProperty>> =
 /** Root summary attached to list responses via the `withRoot` query flag
  *  (e.g. `listMergeRequests`). `properties` is typed from the root definition. */
 export type RootSummary<TRootProps extends Record<string, BlockProperty>> = {
-  rootId: string;
+  id: string;
   slug: string | null;
   parentRootId: string | null;
   sortOrder: number;
@@ -946,8 +946,8 @@ type SlugConfig =
   | { enabled: false }
   | {
       enabled: true;
-      root: string;
-      allowRoot?: boolean;
+      prefix: string;
+      allowIndex?: boolean;
       normalize?: boolean;
       nested?: boolean;
     };
@@ -956,8 +956,8 @@ export type ResolvedSlugConfig =
   | { enabled: false }
   | {
       enabled: true;
-      root: string;
-      allowRoot: boolean;
+      prefix: string;
+      allowIndex: boolean;
       normalize: boolean;
       nested: boolean;
     };
@@ -1021,7 +1021,7 @@ export type DataRetentionConfig = {
   /**
    * Grace period (days) before a soft-archived root (`archivedAt`) is physically
    * hard-deleted by pruning. Defaults to `keepDays` when omitted — a trash
-   * window after which the page and its whole history are reclaimed.
+   * window after which the root and its whole history are reclaimed.
    */
   archiveKeepDays?: number;
 };
@@ -1057,8 +1057,40 @@ type CMSSystemScopeContext = {
   collection?: never;
 };
 
+/**
+ * Every permission-gated resource the CMS guards, as a closed union of the
+ * `permissionResource` string an endpoint declares in its `cmsMeta(...)`. This
+ * is the single source of truth used to type {@link CMSEndpointMeta.permissionResource}
+ * (endpoint.ts), so a mistyped resource (e.g. `'variabl'`) is a compile error at
+ * the route-definition site rather than a silently-unmatched permission check.
+ * User middleware receives the resolved value as a plain `string` (it may also
+ * be the `'unknown'` fallback for endpoints that declare none), so match against
+ * these literals when writing a permission matrix.
+ */
+export type CMSPermissionResource =
+  | 'root'
+  | 'block'
+  | 'branch'
+  | 'mergeRequest'
+  | 'approval'
+  | 'comment'
+  | 'publication'
+  | 'publishedContent'
+  | 'redirect'
+  | 'notification'
+  | 'media'
+  | 'search'
+  | 'variable'
+  | 'template'
+  | 'realtime'
+  | 'release'
+  | 'admin'
+  | 'abTest'
+  | 'abTestEvent'
+  | 'user';
+
 /** Ctx available to user-defined middleware */
-export type CMSMiddlewareCtx = CMSProcedureCtx &
+export type CMSMiddlewareContext = CMSProcedureContext &
   (CMSCollectionScopeContext | CMSSystemScopeContext) & {
     permissionResource: string;
     operation: CMSOperation;
@@ -1074,7 +1106,7 @@ export type MiddlewareResult = {
 
 /** User-defined middleware function type */
 export type CMSMiddleware = (
-  ctx: CMSMiddlewareCtx,
+  ctx: CMSMiddlewareContext,
 ) => Promise<MiddlewareResult> | MiddlewareResult;
 
 // ============================================================================
@@ -1289,7 +1321,7 @@ export type CMSDefinition<
 // ============================================================================
 
 /** Base ctx injected by withCMSContext middleware. */
-export type CMSProcedureCtx = {
+export type CMSProcedureContext = {
   db: DrizzleInstance;
   collections: Record<string, CollectionWithName>;
   dataRetention?: DataRetentionConfig;
@@ -1312,18 +1344,18 @@ export type CMSProcedureCtx = {
  * Built up through the middleware chain:
  *   withCMSContext → withCollection → withAction → withUserMiddleware
  */
-export type CMSHandlerCtx<
+export type CMSHandlerContext<
   TExtensions extends Record<string, unknown> = Record<string, unknown>,
-> = CMSProcedureCtx & {
+> = CMSProcedureContext & {
   scope: 'collection';
   collection: CollectionWithName;
   permissionResource: string;
   operation: CMSOperation;
 } & TExtensions;
 
-export type CMSSystemHandlerCtx<
+export type CMSSystemHandlerContext<
   TExtensions extends Record<string, unknown> = Record<string, unknown>,
-> = CMSProcedureCtx & {
+> = CMSProcedureContext & {
   scope: 'system';
   permissionResource: string;
   operation: CMSOperation;

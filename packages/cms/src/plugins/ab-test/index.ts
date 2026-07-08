@@ -1,27 +1,27 @@
 import type { CollectionWithName } from '../../core/types/definitions';
 import type { CMSPlugin } from '../../core/types/plugin';
-import type { GA4ServerConfig } from './analytics/ga4-server';
-import type { ABTestAnalyticsAdapter } from './analytics/types';
+import type { Ga4ServerConfig } from './analytics/ga4-server';
+import type { AbTestAnalyticsAdapter } from './analytics/types';
 
 import { registerIdPrefix } from '../../utils/nanoid';
 import { postgresAnalytics } from './analytics/postgres';
-import { createABTestEndpoints } from './endpoints';
+import { createAbTestEndpoints } from './endpoints';
 import { $ERROR_CODES } from './errors';
 import { buildAbTestResolver } from './fanout';
 import {
   createInMemoryRateLimitStore,
   enforceTrackEventRateLimit,
-  type ABTestRateLimitOptions,
+  type AbTestRateLimitOptions,
 } from './rate-limit';
 import { createAbResolveEndpoints } from './resolve';
 import { buildSchema } from './schema';
 import { assertTrackingIntegrity } from './tracking-guard';
 import { assertNoCoRenderConflictOnPublish } from './xor-guard';
 
-export type { ABTestAnalyticsAdapter } from './analytics/types';
-export type { GA4ServerConfig, GA4Payload } from './analytics/ga4-server';
+export type { AbTestAnalyticsAdapter } from './analytics/types';
+export type { Ga4ServerConfig, Ga4Payload } from './analytics/ga4-server';
 export { buildGa4Payload, forwardToGa4 } from './analytics/ga4-server';
-export type { ABTestRateLimitOptions, RateLimitStore } from './rate-limit';
+export type { AbTestRateLimitOptions, RateLimitStore } from './rate-limit';
 export {
   createInMemoryRateLimitStore,
   defaultRateLimitKey,
@@ -30,11 +30,11 @@ export {
 export type { PrivacyNoticeItem } from './privacy-notice';
 export { getPrivacyNoticeItems } from './privacy-notice';
 export type {
-  ABTestContext,
-  ABTestEvent,
+  AbTestContext,
+  AbTestEvent,
   AggregatedResults,
   AggregatedVariantResult,
-  CMSEvent,
+  AnalyticsEvent,
   CMSEventSource,
   ConsentPurpose,
   ConsentSignal,
@@ -53,27 +53,27 @@ registerIdPrefix('abTestVariant', 'abv');
 registerIdPrefix('abTestEvent', 'abe');
 registerIdPrefix('abTestAgg', 'aba');
 
-export type ABTestPluginOptions = {
-  analytics?: ABTestAnalyticsAdapter;
+export type AbTestPluginOptions = {
+  analytics?: AbTestAnalyticsAdapter;
   /**
    * Opt-in server-side GA4 forwarding (M5). When set, each consenting,
    * client_id-bearing event is POSTed to your GA4 Measurement Protocol / sGTM
    * endpoint server-side (ad-blocker-resistant). Omit to use only the
-   * client-side dataLayer path. See {@link GA4ServerConfig}.
+   * client-side dataLayer path. See {@link Ga4ServerConfig}.
    */
-  ga4?: GA4ServerConfig;
+  ga4?: Ga4ServerConfig;
   /**
    * Opt-in rate-limit for the anonymous `/abTest/trackEvent` ingest — the one
    * unauthenticated write path. Strongly recommended before production: an open
    * ingest can skew the A/B aggregate, bloat the events table, and (with `ga4`)
    * amplify into outbound GA4 POSTs. Default key = client IP; default counter =
    * in-memory (per instance — inject a distributed `store` for serverless /
-   * multi-instance). See {@link ABTestRateLimitOptions}.
+   * multi-instance). See {@link AbTestRateLimitOptions}.
    */
-  rateLimit?: ABTestRateLimitOptions;
+  rateLimit?: AbTestRateLimitOptions;
 };
 
-export function abTest(options?: ABTestPluginOptions) {
+export function abTest(options?: AbTestPluginOptions) {
   const adapter = options?.analytics ?? postgresAnalytics();
   const schema = buildSchema(adapter);
 
@@ -89,7 +89,7 @@ export function abTest(options?: ABTestPluginOptions) {
   // block's declared `events`). A getter is threaded into the endpoint factory
   // because the endpoints are built here, before init() populates this.
   let pluginCollections: Record<string, CollectionWithName> = {};
-  const endpoints = createABTestEndpoints(
+  const endpoints = createAbTestEndpoints(
     adapter,
     () => pluginCollections,
     options?.ga4,

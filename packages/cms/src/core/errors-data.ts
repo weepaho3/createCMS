@@ -34,12 +34,12 @@ export const CMS_ERRORS = {
   ROOT_HAS_CHILDREN: {
     status: 409 as const,
     message:
-      'Cannot delete a page that has child pages; archive or move the children first',
+      'Cannot delete a root that has child roots; archive or move the children first',
   },
   ROOT_IN_USE: {
     status: 409 as const,
     message:
-      'Cannot delete: this root is embedded as a reusable block on live pages; remove those references first',
+      'Cannot delete: this root is embedded as a reusable block on live roots; remove those references first',
   },
   COMMIT_NOT_FOUND: { status: 404 as const, message: 'Commit not found' },
   HEAD_MISMATCH: {
@@ -234,7 +234,7 @@ export const CMS_ERRORS = {
   PUBLISH_SLUG_CONFLICT: {
     status: 409 as const,
     message:
-      'Cannot publish: another live page in this scope already uses this slug. Drafts may hold colliding slugs, but a published slug must be unique — change this slug (or unpublish the other page) before publishing.',
+      'Cannot publish: another live root in this scope already uses this slug. Drafts may hold colliding slugs, but a published slug must be unique — change this slug (or unpublish the other root) before publishing.',
   },
   SLUG_NOT_ENABLED: {
     status: 400 as const,
@@ -256,16 +256,16 @@ export const CMS_ERRORS = {
   SLUG_EMPTY_NOT_ALLOWED: {
     status: 400 as const,
     message:
-      'Empty slug is not allowed for this collection (allowRoot is false)',
+      'Empty slug is not allowed for this collection (allowIndex is false)',
   },
   NESTING_NOT_ENABLED: {
     status: 400 as const,
     message:
-      'parentRootId is not allowed — this collection does not have nested pages enabled',
+      'parentRootId is not allowed — this collection does not have nested roots enabled',
   },
   CIRCULAR_REFERENCE: {
     status: 400 as const,
-    message: 'Cannot move a page under itself or one of its descendants',
+    message: 'Cannot move a root under itself or one of its descendants',
   },
   PARENT_ROOT_NOT_FOUND: {
     status: 404 as const,

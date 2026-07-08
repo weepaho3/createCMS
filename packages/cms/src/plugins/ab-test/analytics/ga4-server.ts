@@ -1,4 +1,4 @@
-import type { CMSEvent } from './types';
+import type { AnalyticsEvent } from './types';
 
 // ============================================================================
 // M5 — ga4ServerSink: opt-in server-side GA4 forwarding (Measurement Protocol /
@@ -18,7 +18,7 @@ import type { CMSEvent } from './types';
  * URL (https://www.google-analytics.com/mp/collect) or your sGTM container URL,
  * so a regional/proxy endpoint is a config change, not a code change.
  */
-export type GA4ServerConfig =
+export type Ga4ServerConfig =
   | {
       type: 'measurementProtocol';
       endpointUrl: string;
@@ -56,20 +56,20 @@ function sanitizeMetadata(
 }
 
 /** The GA4 Measurement Protocol request body (the shape MP/sGTM expects). */
-export type GA4Payload = {
+export type Ga4Payload = {
   client_id: string;
   events: Array<{ name: string; params: Record<string, unknown> }>;
   consent?: { ad_user_data: string; ad_personalization: string };
 };
 
 /**
- * Builds the MP payload from a {@link CMSEvent}. Pure (no I/O) + exported so the
+ * Builds the MP payload from a {@link AnalyticsEvent}. Pure (no I/O) + exported so the
  * mapping is unit-testable. Returns null when the event cannot be a valid MP hit
  * — no consent (analytics_storage not granted) or no client_id — so the caller
  * simply does not forward. The A/B attribution rides as GA4's
  * `experiment_id`/`experiment_variant` convention (event-scoped custom dims).
  */
-export function buildGa4Payload(event: CMSEvent): GA4Payload | null {
+export function buildGa4Payload(event: AnalyticsEvent): Ga4Payload | null {
   if (event.consent?.analytics_storage !== 'granted') return null;
   const clientId = event.transport?.clientId;
   if (!clientId) return null;
@@ -114,7 +114,7 @@ export function buildGa4Payload(event: CMSEvent): GA4Payload | null {
 }
 
 /** Resolves the POST URL for a config (MP appends measurement_id + api_secret). */
-function resolveUrl(config: GA4ServerConfig): string {
+function resolveUrl(config: Ga4ServerConfig): string {
   if (config.type === 'sgtm') return config.endpointUrl;
   const sep = config.endpointUrl.includes('?') ? '&' : '?';
   return `${config.endpointUrl}${sep}measurement_id=${encodeURIComponent(
@@ -135,8 +135,8 @@ const FORWARD_TIMEOUT_MS = 2000;
  * public response — the abort surfaces as a caught error and the ingest returns.
  */
 export async function forwardToGa4(
-  event: CMSEvent,
-  config: GA4ServerConfig,
+  event: AnalyticsEvent,
+  config: Ga4ServerConfig,
   fetchImpl: typeof fetch = fetch,
 ): Promise<void> {
   const payload = buildGa4Payload(event);

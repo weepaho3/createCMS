@@ -18,27 +18,27 @@ export function buildFullPath(
   slugConfig: Extract<ResolvedSlugConfig, { enabled: true }>,
   segments: string[],
 ): string {
-  const root = slugConfig.root.replace(/\/+$/, '');
+  const prefix = slugConfig.prefix.replace(/\/+$/, '');
   const joined = segments.filter(Boolean).join('/');
-  if (!joined) return root || '/';
-  return root ? `${root}/${joined}` : `/${joined}`;
+  if (!joined) return prefix || '/';
+  return prefix ? `${prefix}/${joined}` : `/${joined}`;
 }
 
 /**
- * Strip the collection root prefix from a URL path and split into segments.
+ * Strip the collection prefix from a URL path and split into segments.
  * Optionally normalizes each segment when `slugConfig.normalize` is true.
  */
 export function splitPath(
   slugConfig: Extract<ResolvedSlugConfig, { enabled: true }>,
   path: string,
 ): string[] {
-  const root = slugConfig.root.replace(/\/+$/, '');
+  const prefix = slugConfig.prefix.replace(/\/+$/, '');
   let relative = path;
-  // Strip the collection root prefix only at a path boundary, so a sibling top
-  // path that merely string-starts with the root (e.g. '/pages-archive' vs root
-  // '/pages') is not mangled into '-archive'.
-  if (root && (relative === root || relative.startsWith(`${root}/`))) {
-    relative = relative.slice(root.length);
+  // Strip the collection prefix only at a path boundary, so a sibling top
+  // path that merely string-starts with the prefix (e.g. '/pages-archive' vs
+  // prefix '/pages') is not mangled into '-archive'.
+  if (prefix && (relative === prefix || relative.startsWith(`${prefix}/`))) {
+    relative = relative.slice(prefix.length);
   }
   relative = relative.replace(/^\/+/, '').replace(/\/+$/, '');
   if (!relative) return [];

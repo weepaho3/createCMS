@@ -4,7 +4,7 @@ import * as z from 'zod';
 import type {
   AbTestResolver,
   AnyCollectionDefinition,
-  CMSProcedureCtx,
+  CMSProcedureContext,
   CollectionWithName,
   InferBlockTreeNode,
   PublishedBranchSnapshot,
@@ -632,10 +632,10 @@ export async function publishBranchInTx(
           : draftSlug;
 
       // Only act on an ACTUAL published-slug change. A null draft slug (an
-      // allowRoot home page, or never-set) leaves roots.slug untouched.
+      // allowIndex home page, or never-set) leaves roots.slug untouched.
       //
       // KNOWN LIMITATION (cms-05 #3): clearing a draft slug back to null — e.g.
-      // an allowRoot page being demoted to the home page — is NOT materialized on
+      // an allowIndex page being demoted to the home page — is NOT materialized on
       // republish; roots.slug keeps its last published value. Distinguishing an
       // "explicitly cleared" draft from a "never set" one is a future enhancement.
       //
@@ -829,7 +829,7 @@ async function queueScheduledAction(
 export function createPublicationEndpoints<
   TDef extends CollectionWithName,
   TCollections extends Record<string, AnyCollectionDefinition> = {},
->(def: TDef, cmsCtx: CMSProcedureCtx) {
+>(def: TDef, cmsCtx: CMSProcedureContext) {
   const { db } = cmsCtx;
   const collectionName = def.name;
   const branchPolicy = resolveBranchPolicy(cmsCtx, def.branchProtection);
