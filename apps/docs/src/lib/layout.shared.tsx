@@ -2,6 +2,7 @@ import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
 
 export function baseOptions(): BaseLayoutProps {
   return {
+    githubUrl: 'https://github.com/weepaho3/createCMS',
     nav: {
       // Theme-aware wordmark: the light file (dark ink) shows on light
       // backgrounds, the dark file (light ink) on dark — toggled purely by the

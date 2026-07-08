@@ -60,6 +60,10 @@ See the **[docs](./apps/docs/content/docs)** — start with
 [reference](./apps/docs/content/docs/reference) for collections, branches,
 publishing, and plugins.
 
+The docs site lives under [`apps/docs`](./apps/docs) and renders locally with
+`bun run --filter=docs dev`. A hosted URL will be linked here once the site is
+deployed.
+
 ## Repository
 
 This is a bun + turbo monorepo:
