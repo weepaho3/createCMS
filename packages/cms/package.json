@@ -28,7 +28,7 @@
     "typescript"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "bin": {
     "createcms": "dist/bin/createcms.js"
@@ -44,6 +44,7 @@
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
+    "./package.json": "./package.json",
     ".": {
       "import": {
         "types": "./dist/index.d.ts",
@@ -280,6 +281,7 @@
   },
   "scripts": {
     "build": "bunchee && bun scripts/inject-endpoint-docs.mjs",
+    "prepublishOnly": "bun run build",
     "clean": "rm -rf dist .turbo",
     "generate:schema": "bun run scripts/generate-schema.ts",
     "lint": "oxlint",
