@@ -1,6 +1,7 @@
 import { and, asc, eq, isNull, lte } from 'drizzle-orm';
 
 import type { CMSProcedureCtx } from '../types';
+import type { ResolvedScope, ResolvedSlugConfig } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
 
 import { resolveBranchPolicy } from '../branch-policy';
@@ -58,32 +59,58 @@ const DEFAULT_LIMIT = 100;
  *
  * Designed for periodic cron invocation via `admin.runScheduled`, mirroring how
  * `admin.runPruning` drives {@link runPruningPass}.
+ *
+ * `scope` is the caller's request scope (multi-tenant / i18n). When it carries a
+ * roots predicate, the due query is joined to `roots` and filtered by it so a
+ * SCOPED cron (e.g. a per-tenant invocation) only processes ITS scope's rows, and
+ * each publish materializes the slug within that scope (uniqueness + redirects).
+ * When absent (unscoped/single-tenant cron), the query and behavior are unchanged.
  */
 export async function runScheduledPass(
   db: DrizzleInstance,
   cmsCtx: CMSProcedureCtx,
   opts: RunScheduledOptions = {},
+  scope?: ResolvedScope,
 ): Promise<RunScheduledResult> {
   const now = opts.now ?? new Date();
   const limit = opts.limit ?? DEFAULT_LIMIT;
 
-  const due = await db
-    .select({
-      id: scheduledPublications.id,
-      rootId: scheduledPublications.rootId,
-      branchId: scheduledPublications.branchId,
-      action: scheduledPublications.action,
-      createdBy: scheduledPublications.createdBy,
-    })
-    .from(scheduledPublications)
-    .where(
-      and(
-        isNull(scheduledPublications.processedAt),
-        lte(scheduledPublications.scheduledAt, now),
-      ),
-    )
-    .orderBy(asc(scheduledPublications.scheduledAt))
-    .limit(limit);
+  const rootWhere = scope?.roots?.where;
+
+  const dueWhere = and(
+    isNull(scheduledPublications.processedAt),
+    lte(scheduledPublications.scheduledAt, now),
+    // Scoped cron: restrict to this scope's rows (the join below supplies the
+    // `cms.roots` columns the predicate references). Unscoped: `rootWhere` is
+    // undefined and `and` drops it — the WHERE is identical to before.
+    rootWhere,
+  );
+
+  const dueSelect = {
+    id: scheduledPublications.id,
+    rootId: scheduledPublications.rootId,
+    branchId: scheduledPublications.branchId,
+    action: scheduledPublications.action,
+    createdBy: scheduledPublications.createdBy,
+  };
+
+  // Only JOIN `roots` when a scope predicate needs it — an unscoped pass keeps the
+  // exact original single-table query (a due row whose root was deleted is still
+  // picked up, fails ROOT_NOT_FOUND, and is stamped permanent, as before).
+  const due = rootWhere
+    ? await db
+        .select(dueSelect)
+        .from(scheduledPublications)
+        .innerJoin(roots, eq(roots.id, scheduledPublications.rootId))
+        .where(dueWhere)
+        .orderBy(asc(scheduledPublications.scheduledAt))
+        .limit(limit)
+    : await db
+        .select(dueSelect)
+        .from(scheduledPublications)
+        .where(dueWhere)
+        .orderBy(asc(scheduledPublications.scheduledAt))
+        .limit(limit);
 
   const result: RunScheduledResult = {
     processed: 0,
@@ -129,6 +156,15 @@ export async function runScheduledPass(
             branchId: row.branchId,
             actor: row.createdBy ?? 'system',
             branchPolicy,
+            // cms-05: materialize the versioned draft slug on scheduled publish,
+            // within the caller's scope. Forwarding the scope keeps slug
+            // uniqueness per-tenant and stamps the tenant_slug on any redirect
+            // (a NOT-NULL column under multi-tenant); undefined for an unscoped
+            // cron leaves the single-tenant behavior unchanged.
+            slugConfig: def?.slug as ResolvedSlugConfig | undefined,
+            scopeWhere: scope?.roots?.where,
+            rootScope: scope?.roots,
+            redirectScope: scope?.redirects,
           });
           return { status: 'published' as const, commitId: res.commitId };
         }

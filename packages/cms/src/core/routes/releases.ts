@@ -3,6 +3,7 @@ import { and, asc, desc, eq } from 'drizzle-orm';
 import * as z from 'zod';
 
 import type { CMSProcedureCtx } from '../types';
+import type { ResolvedSlugConfig } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
 
 import { resolveBranchPolicy } from '../branch-policy';
@@ -424,6 +425,18 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureCtx) {
               branchId: item.branchId,
               actor,
               branchPolicy,
+              // cms-05: materialize the versioned draft slug on publish. A
+              // PUBLISH_SLUG_CONFLICT here rolls the whole atomic release back.
+              slugConfig: def?.slug as ResolvedSlugConfig | undefined,
+              // A release publishes WITHIN the caller's request scope, so forward
+              // it for every item exactly like the single publishBranch endpoint.
+              // Without it, slug uniqueness is checked across ALL tenants (a false
+              // cross-tenant PUBLISH_SLUG_CONFLICT) and the old→new redirect insert
+              // omits the tenant_slug scope column (a NOT-NULL violation) under the
+              // multi-tenant plugin.
+              scopeWhere: ctx.context.scope.roots?.where,
+              rootScope: ctx.context.scope.roots,
+              redirectScope: ctx.context.scope.redirects,
             });
             publications.push(publication);
             synced.push({ commitId, rootId: item.rootId });

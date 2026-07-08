@@ -36,6 +36,15 @@ The two differ in what they assemble:
 - `getBlockTree` returns a branch's tree as stored. A `reference` property stays a raw `rootId` string, and there are no variants.
 - `getPublishedContent` returns the live tree with embedded references **resolved inline** and **variables substituted**. Calling it on an entry with no publication throws `PUBLISHED_CONTENT_NOT_FOUND`; read an unpublished draft with `getBlockTree` instead.
 
+## Slugs go live at publish
+
+The slug is versioned. Editing an entry's slug stores it on the draft (the branch's root version) and does not change the live URL until you publish. On publish, the draft slug is promoted to the live `roots.slug`, uniqueness is checked, and a slug change records a redirect from the old path (see [Redirects](/docs/guides/redirects)). The same promotion runs whether you publish through `publishBranch`, a [release](/docs/reference/server-api), or a scheduled publish.
+
+Two current limitations follow from how the draft slug is stored:
+
+- **Clearing a slug is not materialized.** If you clear a draft slug back to empty (for example, promoting an `allowRoot` page to the home page), publishing does not reset `roots.slug`; it keeps its last published value. Telling an explicitly cleared slug apart from one that was never set is a future enhancement.
+- **Uniqueness is checked in the active scope.** Publish-time slug uniqueness is scoped to the active request scope. Under [i18n](/docs/plugins/i18n), publish a translation within its own language context. Publishing it from a different language would check uniqueness against that active language, not the branch's own.
+
 ## Revalidation
 
 When content changes, the CMS can tell your framework to revalidate. Pass `onRevalidate` to `createCMS` to receive an event (with the affected paths and cache tags), or mount `createRevalidateHandler` to accept a revalidation webhook. See [Use with Next.js](/docs/guides/nextjs).

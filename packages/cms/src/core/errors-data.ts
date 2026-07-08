@@ -231,6 +231,11 @@ export const CMS_ERRORS = {
     message:
       'A root with this slug on this collection with this parentRootId already exists',
   },
+  PUBLISH_SLUG_CONFLICT: {
+    status: 409 as const,
+    message:
+      'Cannot publish: another live page in this scope already uses this slug. Drafts may hold colliding slugs, but a published slug must be unique — change this slug (or unpublish the other page) before publishing.',
+  },
   SLUG_NOT_ENABLED: {
     status: 400 as const,
     message: 'This collection does not have slugs enabled',

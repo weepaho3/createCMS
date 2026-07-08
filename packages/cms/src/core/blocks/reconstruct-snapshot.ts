@@ -27,9 +27,49 @@ export type BlockTreeNode = {
   children: BlockTreeNode[];
 };
 
+/**
+ * cms-05: reserved property key that stores a root's per-branch DRAFT slug on the
+ * ROOT block version's `properties`. Namespaced with a `__` prefix so it can never
+ * collide with a user-defined root property. Because it rides `properties`, the
+ * draft slug survives revertBranch / merge / history for free, and it is promoted
+ * to the global `roots.slug` only at publish time. It MUST be stripped from any
+ * public/rendered output (see `assembleBlockTree`'s `stripReservedProps`).
+ */
+export const ROOT_SLUG_PROP = '__slug';
+
+/**
+ * Typed accessor for the draft slug stored on a root block version's properties.
+ * Returns `null` when the key is absent or not a string (e.g. an allowRoot home
+ * page carries no draft slug).
+ */
+export function readRootSlug(
+  properties: Record<string, unknown>,
+): string | null {
+  const value = properties[ROOT_SLUG_PROP];
+  return typeof value === 'string' ? value : null;
+}
+
+/**
+ * Fold a draft slug into a root version's properties. A non-empty string is
+ * stored under {@link ROOT_SLUG_PROP}; an empty string / null / undefined strips
+ * the key (an empty draft slug means "no slug", e.g. an allowRoot home page).
+ * Non-mutating — returns a new object.
+ */
+export function withRootSlug(
+  properties: Record<string, unknown>,
+  slug: string | null | undefined,
+): Record<string, unknown> {
+  if (typeof slug === 'string' && slug.length > 0) {
+    return { ...properties, [ROOT_SLUG_PROP]: slug };
+  }
+  const { [ROOT_SLUG_PROP]: _omit, ...rest } = properties;
+  return rest;
+}
+
 export function assembleBlockTree(
   blocks: Map<string, ReconstructedBlock>,
   rootId: string,
+  options?: { stripReservedProps?: boolean },
 ): BlockTreeNode | null {
   const deletedBlockIds = new Set<string>();
   const nodeMap = new Map<string, BlockTreeNode>();
@@ -72,6 +112,17 @@ export function assembleBlockTree(
     // so every consumer (editor read, published render, reference resolution)
     // sees a consistent `type: 'root'` top node.
     rootNode.type = 'root';
+    // cms-05 public boundary: the reserved `__slug` draft-slug key must never
+    // leak into rendered/published output. Callers on the PUBLIC path
+    // (getPublishedContent + embedded-reference loads) pass `stripReservedProps`;
+    // the editor read (getBlockTree) omits it so the slug field round-trips.
+    if (
+      options?.stripReservedProps &&
+      ROOT_SLUG_PROP in rootNode.properties
+    ) {
+      const { [ROOT_SLUG_PROP]: _omit, ...rest } = rootNode.properties;
+      rootNode.properties = rest;
+    }
   }
   return rootNode ?? null;
 }
