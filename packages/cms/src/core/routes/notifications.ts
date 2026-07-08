@@ -6,7 +6,7 @@ import type {
   NotificationListItem,
   NotificationType,
 } from '../notifications/types';
-import type { CMSProcedureCtx } from '../types';
+import type { CMSProcedureContext } from '../types';
 
 import { notifications, notificationTypeEnum } from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
@@ -16,7 +16,7 @@ import { parseTimestamp, parseTimestampOrNull } from '../utils/parse-timestamp';
 
 const notificationTypeSchema = z.enum(notificationTypeEnum.enumValues);
 
-export function createNotificationEndpoints(cmsCtx: CMSProcedureCtx) {
+export function createNotificationEndpoints(cmsCtx: CMSProcedureContext) {
   const { db } = cmsCtx;
 
   return {

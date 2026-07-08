@@ -14,7 +14,7 @@ export async function publishApprovedBranch(
     context: { userId: 'requester-1' },
   });
 
-  await cms.api.pages.approve({
+  await cms.api.pages.submitApproval({
     body: {
       approvalId: request.approvals[0].id,
     },
@@ -38,7 +38,7 @@ export async function requestAndApproveMerge(
   });
 
   for (const approval of request.approvals) {
-    await cms.api.pages.approve({
+    await cms.api.pages.submitApproval({
       body: {
         approvalId: approval.id,
       },

@@ -13,7 +13,7 @@ import { DUMMY_MEDIA_CONFIG } from '../src/test-utils/fixtures';
 const COLLECTIONS = {
   pages: {
     label: 'Pages',
-    slug: { enabled: true, root: '/pages' },
+    slug: { enabled: true, prefix: '/pages' },
     root: {
       properties: { title: { type: 'string', label: 'Title', required: true } },
     },

@@ -4,13 +4,13 @@ import type { CMSClientStore } from './types';
 
 /**
  * Creates a `CMSClientStore` from a map of atoms.
- * Provides `notify` (toggle a signal) and `listen` (subscribe to a signal).
+ * Provides `invalidate` (toggle a signal) and `listen` (subscribe to a signal).
  */
 export function createStore(
   atoms: Record<string, WritableAtom<unknown>>,
 ): CMSClientStore {
   return {
-    notify(signal: string) {
+    invalidate(signal: string) {
       const atom = atoms[signal];
       if (atom) {
         const current = atom.get();

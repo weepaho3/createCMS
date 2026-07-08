@@ -8,7 +8,7 @@ import { pickVariant } from '../../../react/variant';
 import { postgresAnalytics } from '../analytics/postgres';
 import { resolveVariant } from '../assignment';
 import { assertTrackingIntegrity } from '../tracking-guard';
-import { setupABTestCMS, setupMultiTenantABTestCMS } from './utils/cms';
+import { setupAbTestCMS, setupMultiTenantAbTestCMS } from './utils/cms';
 
 const GUARD_COLLECTIONS = {
   pages: { ...TEST_COLLECTIONS.pages, name: 'pages' },
@@ -20,7 +20,7 @@ afterAll(async () => {
 });
 
 async function createTestCMS() {
-  const { cms, db, cleanupSchema } = await setupABTestCMS();
+  const { cms, db, cleanupSchema } = await setupAbTestCMS();
   schemaCleanups.push(cleanupSchema);
   return { cms, db };
 }
@@ -726,7 +726,7 @@ describe('A/B Test Analytics', () => {
 
   it('fires a root revalidation when a test toggles in/out of running (FA5 render-cache bust)', async () => {
     const events: Array<{ rootId: string; storedSlug: string | null }> = [];
-    const { cms, cleanupSchema } = await setupABTestCMS({
+    const { cms, cleanupSchema } = await setupAbTestCMS({
       onRevalidate: { handler: (event) => void events.push(event) },
     });
     schemaCleanups.push(cleanupSchema);
@@ -945,7 +945,7 @@ describe('A/B Test Update', () => {
 
 describe('multi-tenant isolation', () => {
   async function createMultiTenantTestCMS() {
-    const result = await setupMultiTenantABTestCMS();
+    const result = await setupMultiTenantAbTestCMS();
     schemaCleanups.push(result.cleanupSchema);
     return result;
   }
@@ -1401,7 +1401,7 @@ describe('A/B Test trackingId guard', () => {
   });
 
   it('does not leak / fire across tenants (ownership check skips the guard)', async () => {
-    const { cms, setTenant, cleanupSchema } = await setupMultiTenantABTestCMS();
+    const { cms, setTenant, cleanupSchema } = await setupMultiTenantAbTestCMS();
     schemaCleanups.push(cleanupSchema);
 
     // tenant-a: a root whose branch has a functional block MISSING its trackingId
@@ -1749,7 +1749,7 @@ describe('A/B Test funnel completion_rate (M4d)', () => {
 
 describe('A/B Test server-MP forward (M5)', () => {
   async function runningTest(ga4: { type: 'sgtm'; endpointUrl: string }) {
-    const { cms, cleanupSchema } = await setupABTestCMS({ ga4 });
+    const { cms, cleanupSchema } = await setupAbTestCMS({ ga4 });
     schemaCleanups.push(cleanupSchema);
     const page = await createPageWithBranches(cms);
     const { testId } = await cms.api.abTest.createTest({

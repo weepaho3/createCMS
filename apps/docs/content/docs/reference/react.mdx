@@ -25,23 +25,15 @@ The returned `BlocksMap` also carries the collection definition it was built fro
 
 ### `BlocksRenderer`
 
-Renders a block `tree` with a block map.
+The low-level renderer. Renders a block `tree` with a `BlocksMap` built by `createBlocksMap`. Use it when you want to build the map once (to share with editor tooling) and render it in several places.
 
 ```ts
 function BlocksRenderer(props: { blocks: BlocksMap; tree: BlockTreeNode }): ReactNode;
 ```
 
-### `createBlocksRenderer`
-
-Shorthand that combines `createBlocksMap` and `BlocksRenderer` into one component.
-
-```ts
-function createBlocksRenderer(collection, components): (props: { tree: BlockTreeNode }) => ReactNode;
-```
-
 ### `createContentRenderer`
 
-Like `BlocksRenderer`, but accepts a **partial** component map (provide components only for the block types you render). Both renderers resolve inline references; this one differs by the partial map.
+The convenience factory: pass a collection and a **partial** component map (components only for the block types you render) and get back a ready `({ tree }) => ReactNode` component in one step — no separate `createBlocksMap` call. This is the recommended entry point. Both paths resolve inline references; this one differs by accepting a partial map.
 
 ```ts
 function createContentRenderer(collection, components): (props: { tree: BlockTreeNode }) => ReactNode;
@@ -188,8 +180,8 @@ Each item carries `type`, `actorId`, `resourceType`, `resourceId`, `collection`,
 Imported from `@createcms/core/react` (pure — no realtime peer, so it works even without realtime). Maps each notification `type` to a resolver that builds a deep link (and optional display data) from the item's fields. Each resolver receives `meta` narrowed to that type; the required `fallback` keeps routing total for `custom` and any future type.
 
 ```ts
-function createNotificationRouter<TCms>(routes: {
-  [type]?: (n: TypedNotification<type, TCms>) => NotificationRoute;
+function createNotificationRouter<TCMS>(routes: {
+  [type]?: (n: TypedNotification<type, TCMS>) => NotificationRoute;
   fallback: (n: NotificationListItem) => NotificationRoute;
 }): { resolve: (n: NotificationListItem) => NotificationRoute };
 

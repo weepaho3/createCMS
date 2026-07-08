@@ -24,7 +24,7 @@ import type {
 
 import type { Serialize } from '../client/types';
 
-import { notificationEvent } from '../core/notifications/events';
+import { notificationEventSchema } from '../core/notifications/events';
 import {
   mergePolledNotifications,
   mergePushedNotification,
@@ -162,7 +162,7 @@ export type UseNotificationsResult<TActorUser = Record<string, unknown>> =
   };
 
 const { useRealtime } = createRealtime<{
-  notification: typeof notificationEvent;
+  notification: typeof notificationEventSchema;
 }>();
 
 /**
@@ -254,15 +254,15 @@ export function useNotifications<TActorUser = Record<string, unknown>>(
     channels: [`notif:${userId}`],
     events: ['notification'],
     onData({ data }) {
-      // `createdAt` is a string on the wire — `notificationEvent` coerces it —
+      // `createdAt` is a string on the wire — `notificationEventSchema` coerces it —
       // and the recipient check is defense-in-depth over the server's authz.
-      const parsed = notificationEvent.safeParse(data);
+      const parsed = notificationEventSchema.safeParse(data);
       if (!parsed.success || parsed.data.recipientId !== userId) return;
       // The wire event carries `actorUser`, so a live push shows the actor
       // immediately — no wait for the next reconcile poll.
       const pushed = {
         ...parsed.data,
-        // `notificationEvent` coerces the wire string to a Date; normalise it
+        // `notificationEventSchema` coerces the wire string to a Date; normalise it
         // back to the ISO string the poll (Serialize) uses, so the list never
         // mixes string and Date timestamps.
         createdAt: parsed.data.createdAt.toISOString(),

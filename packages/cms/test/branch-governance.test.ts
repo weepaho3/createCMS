@@ -151,7 +151,7 @@ describe('branch protection — publish approval gate', () => {
       },
       context: { userId: 'author' },
     });
-    await cms.api.pages.approve({
+    await cms.api.pages.submitApproval({
       body: { approvalId: req.approvals[0].id },
       context: { userId: 'rev-1' },
     });
@@ -180,7 +180,7 @@ describe('branch protection — publish approval gate', () => {
       },
       context: { userId: 'author' },
     });
-    await cms.api.pages.approve({
+    await cms.api.pages.submitApproval({
       body: {
         approvalId: req.approvals[0].id,
       },
@@ -194,7 +194,7 @@ describe('branch protection — publish approval gate', () => {
       }),
     ).rejects.toThrow(/approval/i);
 
-    await cms.api.pages.approve({
+    await cms.api.pages.submitApproval({
       body: {
         approvalId: req.approvals[1].id,
       },
@@ -222,7 +222,7 @@ describe('defaultBranchName', () => {
     // listRoots joins on the configured default branch — the root must be found
     // (it wouldn't be if the SQL still hard-coded 'main').
     const roots = await cms.api.pages.listRoots({});
-    expect(roots.roots.some((r) => r.rootId === root.rootId)).toBe(true);
+    expect(roots.roots.some((r) => r.id === root.rootId)).toBe(true);
   });
 
   it('protects the configured default branch from rename', async () => {

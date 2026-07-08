@@ -25,7 +25,7 @@ Each conflict is resolved by choosing one of three resolutions, after which the 
 | `target` | Keep the target branch's version. |
 | `manual` | Use any existing block version id, whether preexisting or created with `createMergeBlockVersion`. |
 
-`resolveConflicts` records the choices; `executeMerge` refuses to run while any conflict is unresolved (`UNRESOLVED_CONFLICTS`).
+`applyConflictResolutions` records the choices; `executeMerge` refuses to run while any conflict is unresolved (`UNRESOLVED_CONFLICTS`).
 
 ## Fast-forward vs merge commit
 
@@ -50,7 +50,7 @@ graph RL
 
 ## Approvals
 
-Every merge requires sign-off. You request approval from reviewers with `requestApproval`; each reviewer calls `approve` or `reject`. `executeMerge` throws `MERGE_APPROVAL_REQUIRED` when no approval was ever requested, and `APPROVALS_NOT_FULLY_APPROVED` while any requested approval is still pending. The merge runs only once every requested approval is granted.
+Every merge requires sign-off. You request approval from reviewers with `requestApproval`; each reviewer calls `submitApproval` or `submitRejection`. `executeMerge` throws `MERGE_APPROVAL_REQUIRED` when no approval was ever requested, and `APPROVALS_NOT_FULLY_APPROVED` while any requested approval is still pending. The merge runs only once every requested approval is granted.
 
 <Callout type="info">
   To run the full flow, see [Draft, review, and publish](/docs/guides/content-workflow). For signatures, see the [Server API](/docs/reference/server-api).

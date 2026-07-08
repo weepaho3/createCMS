@@ -2,7 +2,7 @@ import type { WritableAtom } from 'nanostores';
 
 import { atom, onMount } from 'nanostores';
 
-import type { CMSFetch, QueryState } from './types';
+import type { CMSFetch, CMSQueryState } from './types';
 
 const isServer = () => typeof window === 'undefined';
 
@@ -22,8 +22,8 @@ export function createCMSQuery<T = unknown>(
   path: string,
   $fetch: CMSFetch,
   options?: CMSQueryOptions | (() => CMSQueryOptions),
-): WritableAtom<QueryState<T>> {
-  const value = atom<QueryState<T>>({
+): WritableAtom<CMSQueryState<T>> {
+  const value = atom<CMSQueryState<T>>({
     data: null,
     error: null,
     isPending: true,

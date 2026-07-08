@@ -1,6 +1,6 @@
 import * as z from 'zod';
 
-import type { CMSProcedureCtx, MediaConfig } from '../types';
+import type { CMSProcedureContext, MediaConfig } from '../types';
 import type { CMSPlugin } from '../types/plugin';
 
 import { runPruningPass } from '../admin/pruning';
@@ -14,10 +14,13 @@ import { reindexAll } from '../search/index-builder';
 // Endpoint factory
 // ============================================================================
 
-const ADMIN_META = { scope: 'system' as const, permissionResource: 'admin' };
+const ADMIN_META = {
+  scope: 'system' as const,
+  permissionResource: 'admin' as const,
+};
 
 export function createAdminEndpoints(
-  cmsCtx: CMSProcedureCtx,
+  cmsCtx: CMSProcedureContext,
   plugins: CMSPlugin[] = [],
   mediaConfig: MediaConfig,
 ) {

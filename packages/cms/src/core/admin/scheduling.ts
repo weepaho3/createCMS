@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull, lte } from 'drizzle-orm';
 
-import type { CMSProcedureCtx } from '../types';
+import type { CMSProcedureContext } from '../types';
 import type { ResolvedScope, ResolvedSlugConfig } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
 
@@ -68,7 +68,7 @@ const DEFAULT_LIMIT = 100;
  */
 export async function runScheduledPass(
   db: DrizzleInstance,
-  cmsCtx: CMSProcedureCtx,
+  cmsCtx: CMSProcedureContext,
   opts: RunScheduledOptions = {},
   scope?: ResolvedScope,
 ): Promise<RunScheduledResult> {

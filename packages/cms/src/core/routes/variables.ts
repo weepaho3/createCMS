@@ -2,7 +2,7 @@ import { and, count, eq, ilike } from 'drizzle-orm';
 import * as z from 'zod';
 
 import type { RevalidationRunner } from '../revalidation';
-import type { CMSProcedureCtx } from '../types';
+import type { CMSProcedureContext } from '../types';
 import type { ResolvedScope } from '../types/definitions';
 
 import { newId } from '../../utils/nanoid';
@@ -16,10 +16,13 @@ import {
   isVariableInUse,
 } from '../variables';
 
-const META = { scope: 'system' as const, permissionResource: 'variables' };
+const META = {
+  scope: 'system' as const,
+  permissionResource: 'variable' as const,
+};
 
 export function createVariableEndpoints(
-  cmsCtx: CMSProcedureCtx,
+  cmsCtx: CMSProcedureContext,
   revalidationRunner: RevalidationRunner | null,
 ) {
   const { db } = cmsCtx;

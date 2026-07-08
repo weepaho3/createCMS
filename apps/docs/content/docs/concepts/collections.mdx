@@ -10,7 +10,7 @@ import { defineCollection } from '@createcms/core';
 
 const posts = defineCollection({
   label: 'Posts',
-  slug: { enabled: true, root: '/blog', nested: false },
+  slug: { enabled: true, prefix: '/blog', nested: false },
   root: {
     properties: {
       title: { type: 'string', required: true, label: 'Title' },
@@ -34,19 +34,19 @@ Each entry in a collection is a **root**. The root carries the collection's top-
 
 ## Slugs
 
-The optional `slug` config gives entries a URL path. When `enabled`, you set the `root` prefix and choose how paths behave:
+The optional `slug` config gives entries a URL path. When `enabled`, you set the `prefix` and choose how paths behave:
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `enabled` | `boolean` | | Turns slug handling on or off. |
-| `root` | `string` | | Path prefix for the collection (for example `/blog`). |
+| `prefix` | `string` | | Path prefix for the collection (for example `/blog`). |
 | `nested` | `boolean` | `false` | Whether entries can nest under one another to form paths. |
-| `allowRoot` | `boolean` | `true` | Whether an entry may occupy the collection root path. |
+| `allowIndex` | `boolean` | `true` | Whether an entry may occupy the collection root path. |
 | `normalize` | `boolean` | `true` | Whether slugs are slugified on write. |
 
 ### Slugs vs paths
 
-A root's `slug` is a single segment (for example `hello-world`), not a full URL. The collection's `root` prefix and any ancestors are joined into the **path**:
+A root's `slug` is a single segment (for example `hello-world`), not a full URL. The collection's `prefix` and any ancestors are joined into the **path**:
 
 ```
 slug:  hello-world

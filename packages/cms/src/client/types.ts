@@ -36,7 +36,7 @@ export type CMSAtomListener = {
 // ============================================================================
 
 export interface CMSClientStore {
-  notify: (signal: string) => void;
+  invalidate: (signal: string) => void;
   /** Subscribe to a signal; returns an unsubscribe (react-10). */
   listen: (signal: string, listener: () => void) => () => void;
   atoms: Record<string, WritableAtom<unknown>>;
@@ -66,7 +66,7 @@ export interface CMSClientPlugin {
 // Media Upload State
 // ============================================================================
 
-export type MediaUploadFileState = {
+export type CMSMediaUploadFileState = {
   name: string;
   progress: number;
   status: 'pending' | 'uploading' | 'done' | 'error';
@@ -76,17 +76,17 @@ export type MediaUploadFileState = {
   result?: { id: string; slug: string; objectKey: string };
 };
 
-export type MediaUploadOptions = {
+export type CMSMediaUploadOptions = {
   folderId?: string;
 };
 
-export type MediaUploadState = {
+export type CMSMediaUploadState = {
   isUploading: boolean;
   isAborted: boolean;
-  files: MediaUploadFileState[];
+  files: CMSMediaUploadFileState[];
   totalProgress: number;
   error: unknown;
-  upload: (files: File[], options?: MediaUploadOptions) => Promise<void>;
+  upload: (files: File[], options?: CMSMediaUploadOptions) => Promise<void>;
   abort: () => void;
   reset: () => void;
 };
@@ -95,7 +95,7 @@ export type MediaUploadState = {
 // Query Atom State
 // ============================================================================
 
-export type QueryState<T = unknown> = {
+export type CMSQueryState<T = unknown> = {
   data: T | null;
   error: unknown;
   isPending: boolean;
@@ -189,17 +189,17 @@ type InferClientPluginErrorCodes<P extends CMSClientPlugin[]> =
 // React entrypoint: `media.useUploadAssets` is a hook thunk.
 type WithMedia<T> = T extends { media: infer M }
   ? Omit<T, 'media'> & {
-      media: M & { useUploadAssets: () => MediaUploadState };
+      media: M & { useUploadAssets: () => CMSMediaUploadState };
     }
-  : T & { media: { useUploadAssets: () => MediaUploadState } };
+  : T & { media: { useUploadAssets: () => CMSMediaUploadState } };
 
 // Vanilla entrypoint: `media.uploadState` is the raw nanostores atom
 // (consumers call `.get()` / `.subscribe()` themselves).
 type WithMediaAtom<T> = T extends { media: infer M }
   ? Omit<T, 'media'> & {
-      media: M & { uploadState: ReadableAtom<MediaUploadState> };
+      media: M & { uploadState: ReadableAtom<CMSMediaUploadState> };
     }
-  : T & { media: { uploadState: ReadableAtom<MediaUploadState> } };
+  : T & { media: { uploadState: ReadableAtom<CMSMediaUploadState> } };
 
 type CMSClientBase<TPlugins extends CMSClientPlugin[]> =
   InferPluginActions<TPlugins> & {

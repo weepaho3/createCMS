@@ -9,11 +9,11 @@ import type {
   ResolvedScope,
 } from '../../core/types/definitions';
 import type { DrizzleInstance } from '../../core/types/drizzle';
-import type { GA4ServerConfig } from './analytics/ga4-server';
+import type { Ga4ServerConfig } from './analytics/ga4-server';
 import type {
-  ABTestAnalyticsAdapter,
-  ABTestContext,
-  CMSEvent,
+  AbTestAnalyticsAdapter,
+  AbTestContext,
+  AnalyticsEvent,
   ConsentState,
 } from './analytics/types';
 
@@ -34,7 +34,7 @@ import { publishLiveDelta } from './realtime';
 
 const AB_TEST_META = {
   scope: 'system' as const,
-  permissionResource: 'abTest',
+  permissionResource: 'abTest' as const,
 };
 
 // The PUBLIC event ingest (trackEvent) uses a DISTINCT resource from the admin
@@ -43,7 +43,7 @@ const AB_TEST_META = {
 // conversions without a session — while keeping the admin mutations gated.
 const AB_EVENT_META = {
   scope: 'system' as const,
-  permissionResource: 'abTestEvent',
+  permissionResource: 'abTestEvent' as const,
 };
 
 // ============================================================================
@@ -331,10 +331,10 @@ async function loadRootPublishedTree(
  * by the CMS endpoint wrapper at runtime -- just like better-auth does
  * with `ctx.context.db`. No closure or holder needed.
  */
-export function createABTestEndpoints(
-  adapter: ABTestAnalyticsAdapter,
+export function createAbTestEndpoints(
+  adapter: AbTestAnalyticsAdapter,
   getCollections: () => Record<string, CollectionWithName>,
-  ga4Config?: GA4ServerConfig,
+  ga4Config?: Ga4ServerConfig,
 ) {
   return {
     createTest: createCMSEndpoint(
@@ -801,7 +801,7 @@ export function createABTestEndpoints(
         metadata: cmsMeta(
           {
             $Infer: {
-              body: {} as { testId: string; context: ABTestContext },
+              body: {} as { testId: string; context: AbTestContext },
             },
           },
           { operation: 'read', ...AB_TEST_META },
@@ -993,7 +993,7 @@ export function createABTestEndpoints(
         // The storage PK is always server-minted in M0 (id omitted here). A
         // client-supplied, tenant-namespaced idempotency key — distinct from
         // the PK — is an M3 concern (see AB_MEASUREMENT_DESIGN §9 carry-forward).
-        const event: CMSEvent = {
+        const event: AnalyticsEvent = {
           name: eventType,
           visitorId,
           anonymous: anonymous ?? false,

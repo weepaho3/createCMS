@@ -4,7 +4,7 @@ import { createRealtimeRouteHandler } from '../src/core/realtime/sse';
 import type { RealtimeRuntime } from '../src/core/realtime/types';
 import type {
   CMSMiddleware,
-  CMSProcedureCtx,
+  CMSProcedureContext,
 } from '../src/core/types/definitions';
 
 /**
@@ -19,7 +19,7 @@ import type {
 const cmsCtx = {
   db: {} as never,
   collections: {},
-} as unknown as CMSProcedureCtx;
+} as unknown as CMSProcedureContext;
 
 /** Resolves userId from an `x-user` header (stand-in for a session cookie). */
 const headerAuth: CMSMiddleware = (ctx) => {

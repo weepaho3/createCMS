@@ -130,6 +130,21 @@ The remaining endpoints round out the admin surface:
 | `assignVariant` | POST | `testId`, `context` | `{ variantId, branchId, inTest }` |
 | `flushEvents` | POST | `testId?` | Adapter flush result |
 
+## Variant selection
+
+Several functions and endpoints all "pick a variant", at different layers. Reading the ladder from the lowest-level primitive up to the entry points you actually call:
+
+| Verb | Layer / import | What it does |
+| --- | --- | --- |
+| `resolveVariant` | primitive — `@createcms/core/ab-edge` | Pure deterministic hash-bucketing: `(contextKey, testId, trafficPercentage, variants) → { variantId, inTest }`. Everything else is built on it; you rarely call it directly. |
+| `resolveAbVariant` | endpoint — `cms.api.<collection>.resolveAbVariant({ query: { path } })` | Looks up which test (if any) attaches to a path and returns its variants (`AbResolveResult`). Feeds the edge deciders; the middleware calls it for you. |
+| `pickEdgeVariant` | edge — `@createcms/core/ab-edge` | Pure edge bucketing over an `AbResolveResult` + a one-shot key → `{ branchId }` (null = control). Consent-free, no persistence. Reach for it only when hand-rolling edge logic. |
+| **`decideEdgeVariant`** | edge — `@createcms/core/ab-edge` | The full framework-agnostic edge decision: reuse a prior cookie assignment or roll a fresh one, and return the rewrite path. **The edge entry point** — the Next.js `abTestMiddleware` is a thin adapter over it. |
+| **`assignVariant`** | endpoint — `cms.api.abTest.assignVariant` | Server-side deterministic assignment for a `testId` + `context` → `{ variantId, branchId, inTest }`. **The entry point for a client/server pipeline** (non-edge). |
+| **`pickVariant`** | React — `@createcms/core/react` | Not assignment but the *render* step: given the fetched `variants` and an already-resolved `branchId`, returns the block tree to render (control fallback, strips A/B metadata). **The rendering entry point.** |
+
+The three bold verbs are the intended entry points: `decideEdgeVariant` at the edge, `assignVariant` in a client/server pipeline, and `pickVariant` when rendering. See [Edge A/B](/docs/reference/edge) for the full edge primitive list and [React](/docs/reference/react#pickvariant) for the renderer.
+
 ## Schema
 
 | Table | Purpose |
@@ -160,9 +175,9 @@ The remaining endpoints round out the admin surface:
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| `analytics` | `ABTestAnalyticsAdapter` | `postgresAnalytics()` | Where events are stored or forwarded. |
-| `ga4` | `GA4ServerConfig` | | Server-side GA4 Measurement Protocol forwarding. |
-| `rateLimit` | `ABTestRateLimitOptions` | | Rate-limit the anonymous event ingest. |
+| `analytics` | `AbTestAnalyticsAdapter` | `postgresAnalytics()` | Where events are stored or forwarded. |
+| `ga4` | `Ga4ServerConfig` | | Server-side GA4 Measurement Protocol forwarding. |
+| `rateLimit` | `AbTestRateLimitOptions` | | Rate-limit the anonymous event ingest. |
 
 ### Client, `abTestClient(options)`
 

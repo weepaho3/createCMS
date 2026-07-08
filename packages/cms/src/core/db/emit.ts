@@ -64,7 +64,7 @@ function emitDefault(defaultValue: DefaultValue): {
 
 function emitEnum(enumDef: ResolvedEnum): string {
   const values = `[${enumDef.values.map(quote).join(', ')}]`;
-  return `export const ${enumDef.key}Enum = cms.enum(${quote(enumDef.dbName)}, ${values});`;
+  return `export const ${enumDef.key}Enum = cmsSchema.enum(${quote(enumDef.dbName)}, ${values});`;
 }
 
 function emitColumn(
@@ -272,7 +272,7 @@ function emitTable(table: ResolvedTable): {
     emitTableLevelForeignKeys(table);
   needsForeignKeyImport = needsFK;
 
-  const tableFactory = 'cms.table';
+  const tableFactory = 'cmsSchema.table';
 
   const callbackLines = [
     ...(compositePK ? [compositePK] : []),
@@ -407,7 +407,7 @@ ${enums.map((enumDef) => `  ${enumDef.key}Enum,`).join('\n')}
 
 ${imports.join('\n')}
 
-export const cms = pgSchema('cms');
+export const cmsSchema = pgSchema('cms');
 ${tsvectorDef}${enumBlocks.join('\n\n')}
 ${enumBlocks.length > 0 && tableBlocks.length > 0 ? '\n' : ''}${tableBlocks.join('\n\n')}
 

@@ -1296,7 +1296,7 @@ describe('listMergeRequests', () => {
     expect(result.mergeRequests).toHaveLength(1);
     const mr = result.mergeRequests[0];
     expect(mr.root).toBeDefined();
-    expect(mr.root!.rootId).toBe(root.rootId);
+    expect(mr.root!.id).toBe(root.rootId);
     // cms-05: enrichment reflects the PUBLISHED slug (roots.slug), which is null
     // until publish; the versioned draft slug lives on the block tree instead.
     expect(mr.root!.slug).toBeNull();
@@ -1622,7 +1622,7 @@ describe('executeMerge', () => {
     expect(stillOpen.status).toBe('open');
 
     // Approve it, and the same merge now proceeds.
-    await cms.api.pages.approve({
+    await cms.api.pages.submitApproval({
       body: { approvalId: request.approvals[0].id },
       context: { userId: request.approvals[0].requestedReviewer },
     });
@@ -1921,7 +1921,7 @@ describe('executeMerge', () => {
       context: { userId: 'requester-1' },
     });
 
-    await cms.api.pages.approve({
+    await cms.api.pages.submitApproval({
       body: {
         approvalId: pendingRequest.approvals[0].id,
       },
@@ -1936,7 +1936,7 @@ describe('executeMerge', () => {
       }),
     ).rejects.toThrow(/not all requested approvals are approved/i);
 
-    await cms.api.pages.reject({
+    await cms.api.pages.submitRejection({
       body: {
         approvalId: pendingRequest.approvals[1].id,
         rejectionReason: 'Needs changes',
@@ -2536,7 +2536,7 @@ describe('delete-vs-modify conflicts', () => {
 });
 
 // ============================================================================
-// resolveConflicts
+// applyConflictResolutions
 // ============================================================================
 
 let conflictCounter = 0;
@@ -2602,12 +2602,12 @@ async function createConflictingMR(cms: any, db: any) {
   return { root, block, feature, mr, dbConflicts };
 }
 
-describe('resolveConflicts', () => {
+describe('applyConflictResolutions', () => {
   it('resolves a conflict with source resolution', async () => {
     const { cms, db } = await setupTestCMS();
     const { mr, dbConflicts } = await createConflictingMR(cms, db);
 
-    const result = await cms.api.pages.resolveConflicts({
+    const result = await cms.api.pages.applyConflictResolutions({
       body: {
         mergeRequestId: mr.mergeRequest.id,
         resolutions: [
@@ -2633,7 +2633,7 @@ describe('resolveConflicts', () => {
     const { cms, db } = await setupTestCMS();
     const { mr, dbConflicts } = await createConflictingMR(cms, db);
 
-    const result = await cms.api.pages.resolveConflicts({
+    const result = await cms.api.pages.applyConflictResolutions({
       body: {
         mergeRequestId: mr.mergeRequest.id,
         resolutions: [
@@ -2660,7 +2660,7 @@ describe('resolveConflicts', () => {
     // Use the base version as the manual resolution
     const manualVersionId = dbConflicts[0].baseVersionId!;
 
-    const result = await cms.api.pages.resolveConflicts({
+    const result = await cms.api.pages.applyConflictResolutions({
       body: {
         mergeRequestId: mr.mergeRequest.id,
         resolutions: [
@@ -2771,7 +2771,7 @@ describe('resolveConflicts', () => {
     expect(dbConflicts.length).toBeGreaterThanOrEqual(2);
 
     // Resolve only the first conflict
-    const result = await cms.api.pages.resolveConflicts({
+    const result = await cms.api.pages.applyConflictResolutions({
       body: {
         mergeRequestId: mr.mergeRequest.id,
         resolutions: [
@@ -2799,7 +2799,7 @@ describe('resolveConflicts', () => {
       .where(eq(mergeRequests.id, mr.mergeRequest.id));
 
     await expect(
-      cms.api.pages.resolveConflicts({
+      cms.api.pages.applyConflictResolutions({
         body: {
           mergeRequestId: mr.mergeRequest.id,
           resolutions: [
@@ -2835,7 +2835,7 @@ describe('resolveConflicts', () => {
       );
 
     await expect(
-      cms.api.pages.resolveConflicts({
+      cms.api.pages.applyConflictResolutions({
         body: {
           mergeRequestId: mr2.mergeRequest.id,
           resolutions: [
@@ -2855,7 +2855,7 @@ describe('resolveConflicts', () => {
     const { mr, dbConflicts } = await createConflictingMR(cms, db);
 
     await expect(
-      cms.api.pages.resolveConflicts({
+      cms.api.pages.applyConflictResolutions({
         body: {
           mergeRequestId: mr.mergeRequest.id,
           resolutions: [
@@ -2875,7 +2875,7 @@ describe('resolveConflicts', () => {
     const { mr, dbConflicts } = await createConflictingMR(cms, db);
 
     await expect(
-      cms.api.pages.resolveConflicts({
+      cms.api.pages.applyConflictResolutions({
         body: {
           mergeRequestId: mr.mergeRequest.id,
           resolutions: [
@@ -2896,7 +2896,7 @@ describe('resolveConflicts', () => {
     const { mr, dbConflicts } = await createConflictingMR(cms, db);
 
     // First resolution: source
-    await cms.api.pages.resolveConflicts({
+    await cms.api.pages.applyConflictResolutions({
       body: {
         mergeRequestId: mr.mergeRequest.id,
         resolutions: [
@@ -2910,7 +2910,7 @@ describe('resolveConflicts', () => {
     });
 
     // Re-resolve: target
-    const result = await cms.api.pages.resolveConflicts({
+    const result = await cms.api.pages.applyConflictResolutions({
       body: {
         mergeRequestId: mr.mergeRequest.id,
         resolutions: [
@@ -2935,7 +2935,7 @@ describe('resolveConflicts', () => {
     const { mr, dbConflicts } = await createConflictingMR(cms, db);
 
     // Resolve all conflicts
-    await cms.api.pages.resolveConflicts({
+    await cms.api.pages.applyConflictResolutions({
       body: {
         mergeRequestId: mr.mergeRequest.id,
         resolutions: dbConflicts.map((c: any) => ({
@@ -3047,7 +3047,7 @@ describe('createMergeBlockVersion', () => {
       (c: any) => c.blockId !== block.blockId,
     );
 
-    await cms.api.pages.resolveConflicts({
+    await cms.api.pages.applyConflictResolutions({
       body: {
         mergeRequestId: mr.mergeRequest.id,
         resolutions: [
@@ -3136,7 +3136,7 @@ describe('createMergeBlockVersion', () => {
     const otherConflicts = dbConflicts.filter(
       (c: any) => c.blockId !== block.blockId,
     );
-    await cms.api.pages.resolveConflicts({
+    await cms.api.pages.applyConflictResolutions({
       body: {
         mergeRequestId: mr.mergeRequest.id,
         resolutions: [

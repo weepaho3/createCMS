@@ -51,7 +51,7 @@ export function Uploader() {
 | `upload` | `(files: File[], options?: { folderId?: string }) => Promise<void>` | Start an upload. |
 | `isUploading` | `boolean` | Whether an upload is in progress. |
 | `totalProgress` | `number` | Overall progress, 0 to 100. |
-| `files` | `MediaUploadFileState[]` | Per-file `name`, `progress`, `status`, and `result` (`{ id, slug, objectKey }`). |
+| `files` | `CMSMediaUploadFileState[]` | Per-file `name`, `progress`, `status`, and `result` (`{ id, slug, objectKey }`). |
 | `abort` / `reset` | `() => void` | Cancel or clear. |
 
 ### Optimize before upload

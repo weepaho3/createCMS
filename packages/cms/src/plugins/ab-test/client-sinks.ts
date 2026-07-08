@@ -46,7 +46,7 @@ export type SinkConsentGate = {
 };
 
 /**
- * The client-side event a sink receives. Decoupled from the server `CMSEvent`
+ * The client-side event a sink receives. Decoupled from the server `AnalyticsEvent`
  * (no `timestamp`/storage `id` — those are minted server-side): this is what the
  * browser knows at fire time.
  */

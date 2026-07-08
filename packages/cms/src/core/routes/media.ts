@@ -14,7 +14,7 @@ import {
 } from 'drizzle-orm';
 import * as z from 'zod';
 
-import type { CMSProcedureCtx, MediaConfig } from '../types';
+import type { CMSProcedureContext, MediaConfig } from '../types';
 import type { S3Client } from '../types/s3';
 
 import { newId } from '../../utils/nanoid';
@@ -43,7 +43,10 @@ import {
 } from '../storage/s3/utils';
 import { MEDIA_DEFAULTS } from '../types/s3';
 
-const MEDIA_META = { scope: 'system' as const, permissionResource: 'media' };
+const MEDIA_META = {
+  scope: 'system' as const,
+  permissionResource: 'media' as const,
+};
 
 /**
  * Declared image MIME types whose magic bytes `sniffImageType` recognizes. Used
@@ -254,7 +257,7 @@ function decodeAssetCursor(cursor: string): CursorPosition {
 }
 
 export function createMediaEndpoints(
-  cmsCtx: CMSProcedureCtx,
+  cmsCtx: CMSProcedureContext,
   mediaConfig: MediaConfig,
 ) {
   const { db } = cmsCtx;

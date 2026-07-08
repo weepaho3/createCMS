@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import * as z from 'zod';
 
-import type { CMSProcedureCtx } from '../types';
+import type { CMSProcedureContext } from '../types';
 
 import {
   assets,
@@ -12,7 +12,10 @@ import {
 } from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 
-const SEARCH_META = { scope: 'system' as const, permissionResource: 'search' };
+const SEARCH_META = {
+  scope: 'system' as const,
+  permissionResource: 'search' as const,
+};
 
 const ENTITY_TYPES = [
   'root',
@@ -24,7 +27,7 @@ const ENTITY_TYPES = [
   'notification',
 ] as const;
 
-export function createSearchEndpoints(cmsCtx: CMSProcedureCtx) {
+export function createSearchEndpoints(cmsCtx: CMSProcedureContext) {
   const { db } = cmsCtx;
 
   return {

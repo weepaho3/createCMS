@@ -202,7 +202,7 @@ export function createI18nCollectionEndpoints(
           if (slugCfg?.enabled) {
             const rawSlug = ctx.body.targetSlug ?? src.slug ?? '';
             targetSlug = slugCfg.normalize ? normalizeSlug(rawSlug) : rawSlug;
-            if (!targetSlug && !slugCfg.allowRoot) {
+            if (!targetSlug && !slugCfg.allowIndex) {
               throw new CMSError('SLUG_EMPTY_NOT_ALLOWED');
             }
           }
@@ -410,7 +410,7 @@ export function createI18nCollectionEndpoints(
  * cms-05: reads a root's versioned DRAFT slug — the reserved `__slug` on its
  * default-branch head ROOT block version — for listTranslations' fallback when
  * `roots.slug` is still null (an unpublished translation). Returns `null` when the
- * root has no default branch or carries no draft slug (e.g. an allowRoot page).
+ * root has no default branch or carries no draft slug (e.g. an allowIndex page).
  */
 async function readDraftRootSlug(
   db: DbOrTx,

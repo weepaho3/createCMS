@@ -8,7 +8,7 @@ import { setupI18nMultiTenantTestCMS, setupI18nTestCMS } from './utils/cms';
 const REF_I18N = {
   pages: {
     label: 'Pages',
-    slug: { enabled: true, root: '/pages' },
+    slug: { enabled: true, prefix: '/pages' },
     root: {
       properties: { title: { type: 'string', label: 'Title', required: true } },
     },
@@ -32,7 +32,7 @@ const REF_I18N = {
 const NESTED_I18N = {
   pages: {
     label: 'Pages',
-    slug: { enabled: true, root: '/docs', nested: true, normalize: true },
+    slug: { enabled: true, prefix: '/docs', nested: true, normalize: true },
     root: {
       properties: { title: { type: 'string', label: 'Title', required: true } },
     },

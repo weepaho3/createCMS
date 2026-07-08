@@ -14,7 +14,7 @@ import * as z from 'zod';
  * render the actor immediately (no second poll). It is `.nullish()` — absent
  * when there is no `user` config, `null` when the actor has no matching row.
  */
-export const notificationEvent = z.object({
+export const notificationEventSchema = z.object({
   id: z.string(),
   recipientId: z.string(),
   actorId: z.string().nullable(),
@@ -33,4 +33,4 @@ export const notificationEvent = z.object({
   createdAt: z.coerce.date(),
 });
 
-export type NotificationEvent = z.infer<typeof notificationEvent>;
+export type NotificationEvent = z.infer<typeof notificationEventSchema>;

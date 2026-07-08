@@ -44,8 +44,8 @@ The extra fields you return (beyond `userId`) extend the context available to sc
 | `root` | Entries: `createRoot`, `updateRoot`, `moveRoot`, `archiveRoot`, `listRoots`, history, translations. |
 | `block` | The block tree: `getBlockTree`, `createBlock`, `updateBlock`, `deleteBlock`, `moveBlock`, `duplicateBlock`, `updateBlocks`. |
 | `branch` | Branches: `createBranch`, `deleteBranch`, `renameBranch`, `revertBranch`, `listBranches`, `checkDivergence`. |
-| `mergeRequest` | Merge requests: `createMergeRequest`, `executeMerge`, `resolveConflicts`, `getDiff`, close/reopen. |
-| `approval` | Sign-off: `requestApproval`, `approve`, `reject`, `cancelApproval`, `listApprovals`. |
+| `mergeRequest` | Merge requests: `createMergeRequest`, `executeMerge`, `applyConflictResolutions`, `getDiff`, close/reopen. |
+| `approval` | Sign-off: `requestApproval`, `submitApproval`, `submitRejection`, `cancelApproval`, `listApprovals`. |
 | `comment` | Review threads: `createCommentThread`, `createCommentMessage`, resolve/reopen, delete, mentions. |
 | `publication` | Publish state: `publishBranch`, `unpublishBranch`, `listPublications`. |
 | `publishedContent` | Public reads: `getPublishedContent`, `resolveRedirect`. |
@@ -53,10 +53,12 @@ The extra fields you return (beyond `userId`) extend the context available to sc
 | `notification` | Notifications: `list`, mark read/unread, archive. |
 | `media` | Assets: `createSignedUpload`, `uploadAssets`, `listAssets`, `updateAssetsStatus`. |
 | `search` | Search index and query. |
-| `variables` | Reusable variables. |
-| `templates` | Block templates. |
+| `variable` | Reusable variables. |
+| `template` | Block templates. |
 | `realtime` | The `/realtime` SSE connection (present when `realtime` is configured). |
+| `release` | Scheduled/grouped releases. |
 | `admin` | Maintenance operations such as `reindexSearch`. |
+| `user` | Actor-user lookups. |
 | `abTest` | A/B tests (added by the [A/B testing plugin](/docs/plugins/ab-test)). |
 | `abTestEvent` | Public A/B event ingest (A/B testing plugin). |
 

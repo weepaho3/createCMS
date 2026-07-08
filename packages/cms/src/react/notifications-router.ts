@@ -76,13 +76,13 @@ export interface NotificationMetaMap {}
  *  plugin `meta` shapes + the actor-user shape. Matched structurally so the
  *  router needs no value import of the CMS. */
 type CmsNotificationMarker = {
-  $notifications: { meta: Record<string, unknown>; actorUser: unknown };
+  $InferNotifications: { meta: Record<string, unknown>; actorUser: unknown };
 };
 
 /** Default when `createNotificationRouter` is called without a `typeof cms` —
  *  core types + app-augmented `NotificationMetaMap` only, loose actor. */
 type DefaultMarker = {
-  $notifications: { meta: Record<never, never>; actorUser: Record<string, unknown> };
+  $InferNotifications: { meta: Record<never, never>; actorUser: Record<string, unknown> };
 };
 
 /**
@@ -103,31 +103,31 @@ type RemoveIndex<T> = {
         : K]: T[K];
 };
 
-type PluginMetaOf<TCms> = TCms extends {
-  $notifications: { meta: infer M };
+type PluginMetaOf<TCMS> = TCMS extends {
+  $InferNotifications: { meta: infer M };
 }
   ? RemoveIndex<M>
   : Record<never, never>;
 
-type ActorOf<TCms> = TCms extends {
-  $notifications: { actorUser: infer A };
+type ActorOf<TCMS> = TCMS extends {
+  $InferNotifications: { actorUser: infer A };
 }
   ? A
   : Record<string, unknown>;
 
 /** Every notification `type` the router knows: core + plugin (from `typeof cms`)
  *  + app (`NotificationMetaMap`). */
-type KnownNotificationType<TCms> =
+type KnownNotificationType<TCMS> =
   | NotificationType
-  | Extract<keyof PluginMetaOf<TCms>, string>
+  | Extract<keyof PluginMetaOf<TCMS>, string>
   | Extract<keyof NotificationMetaMap, string>;
 
 /** The `meta` type for one notification `type`: core, then plugin, then app,
  *  then the open fallback. */
-type MetaOf<TCms, T extends string> = T extends keyof CoreNotificationMetaMap
+type MetaOf<TCMS, T extends string> = T extends keyof CoreNotificationMetaMap
   ? CoreNotificationMetaMap[T]
-  : T extends keyof PluginMetaOf<TCms>
-    ? PluginMetaOf<TCms>[T]
+  : T extends keyof PluginMetaOf<TCMS>
+    ? PluginMetaOf<TCMS>[T]
     : T extends keyof NotificationMetaMap
       ? NotificationMetaMap[T]
       : Record<string, unknown> | null;
@@ -136,10 +136,10 @@ type MetaOf<TCms, T extends string> = T extends keyof CoreNotificationMetaMap
  *  for that type + CMS. */
 export type TypedNotification<
   T extends string,
-  TCms = DefaultMarker,
-> = Omit<NotificationListItem<ActorOf<TCms>>, 'type' | 'meta'> & {
+  TCMS = DefaultMarker,
+> = Omit<NotificationListItem<ActorOf<TCMS>>, 'type' | 'meta'> & {
   type: T;
-  meta: MetaOf<TCms, T>;
+  meta: MetaOf<TCMS, T>;
 };
 
 /** What a route resolver returns for one notification. Every field optional, so
@@ -158,16 +158,16 @@ export type NotificationRoute = {
  * total: `custom` and any future/plugin type without an explicit resolver always
  * resolve to something.
  */
-export type NotificationRoutes<TCms = DefaultMarker> = {
-  [T in KnownNotificationType<TCms>]?: (
-    n: TypedNotification<T, TCms>,
+export type NotificationRoutes<TCMS = DefaultMarker> = {
+  [T in KnownNotificationType<TCMS>]?: (
+    n: TypedNotification<T, TCMS>,
   ) => NotificationRoute;
 } & {
-  fallback: (n: NotificationListItem<ActorOf<TCms>>) => NotificationRoute;
+  fallback: (n: NotificationListItem<ActorOf<TCMS>>) => NotificationRoute;
 };
 
-export type NotificationRouter<TCms = DefaultMarker> = {
-  resolve: (n: NotificationListItem<ActorOf<TCms>>) => NotificationRoute;
+export type NotificationRouter<TCMS = DefaultMarker> = {
+  resolve: (n: NotificationListItem<ActorOf<TCMS>>) => NotificationRoute;
 };
 
 /**
@@ -194,13 +194,13 @@ export type NotificationRouter<TCms = DefaultMarker> = {
  * Without a `typeof cms`, core types are typed and `NotificationMetaMap` covers
  * your `custom`/app types. See {@link NotificationMetaMap}.
  */
-export function createNotificationRouter<TCms extends CmsNotificationMarker = DefaultMarker>(
-  routes: NotificationRoutes<TCms>,
-): NotificationRouter<TCms> {
+export function createNotificationRouter<TCMS extends CmsNotificationMarker = DefaultMarker>(
+  routes: NotificationRoutes<TCMS>,
+): NotificationRouter<TCMS> {
   return {
     resolve(n) {
       const handler = (routes as Record<string, unknown>)[n.type] as
-        | ((item: NotificationListItem<ActorOf<TCms>>) => NotificationRoute)
+        | ((item: NotificationListItem<ActorOf<TCMS>>) => NotificationRoute)
         | undefined;
       return (handler ?? routes.fallback)(n);
     },

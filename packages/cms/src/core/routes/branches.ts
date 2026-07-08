@@ -4,7 +4,7 @@ import * as z from 'zod';
 import type {
   BranchListItem,
   CollectionWithName,
-  CMSProcedureCtx,
+  CMSProcedureContext,
   ListBranchesResult,
 } from '../types';
 import type { DrizzleInstance } from '../types/drizzle';
@@ -101,7 +101,7 @@ function withIsDeletable(
 
 export function createBranchEndpoints<TDef extends CollectionWithName>(
   def: TDef,
-  cmsCtx: CMSProcedureCtx,
+  cmsCtx: CMSProcedureContext,
 ) {
   const { db } = cmsCtx;
   const collectionName = def.name;

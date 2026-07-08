@@ -11,7 +11,7 @@ import {
   sql,
 } from 'drizzle-orm';
 
-import type { CMSProcedureCtx, MediaConfig } from '../types';
+import type { CMSProcedureContext, MediaConfig } from '../types';
 import type { DataRetentionConfig } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
 import type {
@@ -127,7 +127,7 @@ function normalizePluginPlan(
 
 async function collectPluginPruningPlans(
   db: DrizzleInstance,
-  cmsCtx: CMSProcedureCtx,
+  cmsCtx: CMSProcedureContext,
   dataRetention: DataRetentionConfig,
   plugins: CMSPlugin[],
   rootPlan: RootPruningPlan,
@@ -157,7 +157,7 @@ async function collectPluginPruningPlans(
 
 export async function collectRootExecutionPlans(
   db: DrizzleInstance,
-  cmsCtx: CMSProcedureCtx,
+  cmsCtx: CMSProcedureContext,
   dataRetention: DataRetentionConfig,
   plugins: CMSPlugin[],
 ): Promise<Map<string, RootPruningExecutionPlan>> {
@@ -706,7 +706,7 @@ const DEFAULT_MAX_ASSETS = 100;
  */
 export async function runPruningPass(
   db: DrizzleInstance,
-  cmsCtx: CMSProcedureCtx,
+  cmsCtx: CMSProcedureContext,
   dataRetention: DataRetentionConfig,
   plugins: CMSPlugin[],
   mediaConfig: MediaConfig,
@@ -807,7 +807,7 @@ export async function runPruningPass(
       }
     } else {
       await db.transaction(async (tx) => {
-        const txCtx: CMSProcedureCtx = { ...cmsCtx, db: tx };
+        const txCtx: CMSProcedureContext = { ...cmsCtx, db: tx };
         const plan = await planRootPruning(tx, root.id, dataRetention);
         if (plan) {
           addCorePlanTotals(totals, plan);

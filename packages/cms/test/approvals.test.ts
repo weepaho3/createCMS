@@ -102,7 +102,7 @@ describe('approvals', () => {
     });
 
     await expect(
-      cms.api.pages.approve({
+      cms.api.pages.submitApproval({
         body: {
           approvalId: request.approvals[0].id,
         },
@@ -110,7 +110,7 @@ describe('approvals', () => {
       }),
     ).rejects.toThrow(/only the requested reviewer/i);
 
-    const approved = await cms.api.pages.approve({
+    const approved = await cms.api.pages.submitApproval({
       body: {
         approvalId: request.approvals[0].id,
       },
@@ -120,7 +120,7 @@ describe('approvals', () => {
     expect(approved.approval.status).toBe('approved');
     expect(approved.approval.reviewedBy).toBe('reviewer-1');
 
-    const rejected = await cms.api.pages.reject({
+    const rejected = await cms.api.pages.submitRejection({
       body: {
         approvalId: request.approvals[1].id,
         rejectionReason: 'Needs work',
@@ -150,7 +150,7 @@ describe('approvals', () => {
 
     expect(cancelled.approvalId).toBe(request.approvals[0].id);
 
-    await cms.api.pages.approve({
+    await cms.api.pages.submitApproval({
       body: {
         approvalId: request.approvals[1].id,
       },
@@ -204,7 +204,7 @@ describe('approvals', () => {
       context: { userId: 'author-1' },
     });
 
-    await cms.api.pages.approve({
+    await cms.api.pages.submitApproval({
       body: {
         approvalId: request.approvals[0].id,
       },
@@ -212,7 +212,7 @@ describe('approvals', () => {
     });
 
     await expect(
-      cms.api.pages.approve({
+      cms.api.pages.submitApproval({
         body: {
           approvalId: request.approvals[0].id,
         },
@@ -242,7 +242,7 @@ describe('approvals', () => {
       },
     });
 
-    const approved = await cms.api.pages.approve({
+    const approved = await cms.api.pages.submitApproval({
       body: {
         approvalId: request.approvals[0].id,
       },
@@ -273,7 +273,7 @@ describe('approvals', () => {
       },
     });
 
-    const rejected = await cms.api.pages.reject({
+    const rejected = await cms.api.pages.submitRejection({
       body: {
         approvalId: request.approvals[0].id,
         rejectionReason: 'needs work',
@@ -309,7 +309,7 @@ describe('approvals', () => {
     });
 
     await expect(
-      cms.api.pages.approve({
+      cms.api.pages.submitApproval({
         body: {
           approvalId: request.approvals[0].id,
         },

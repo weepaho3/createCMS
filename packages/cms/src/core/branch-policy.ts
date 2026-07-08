@@ -1,6 +1,6 @@
 import type {
   BranchProtectionConfig,
-  CMSProcedureCtx,
+  CMSProcedureContext,
   MergeStrategy,
 } from './types';
 
@@ -24,13 +24,13 @@ export type ResolvedBranchPolicy = {
 };
 
 /**
- * Resolves {@link CMSProcedureCtx} branch settings into a policy with defaults.
+ * Resolves {@link CMSProcedureContext} branch settings into a policy with defaults.
  * A per-collection `override` (the collection's own `branchProtection`) wins over
  * the global config field-by-field; an unset field inherits the global value,
  * then the default. Read once per route from the closure context.
  */
 export function resolveBranchPolicy(
-  ctx: CMSProcedureCtx,
+  ctx: CMSProcedureContext,
   override?: Partial<BranchProtectionConfig>,
 ): ResolvedBranchPolicy {
   const global = ctx.branchProtection ?? {};

@@ -22,14 +22,14 @@ export type {
   CMSClientStore,
   CMSAtomListener,
   CMSFetch,
-  QueryState,
-  MediaUploadState,
-  MediaUploadFileState,
-  MediaUploadOptions,
+  CMSQueryState,
+  CMSMediaUploadState,
+  CMSMediaUploadFileState,
+  CMSMediaUploadOptions,
 } from './client/types';
 
 export { cmsMeta, cmsContext, createCMSEndpoint } from './core/endpoint';
-export type { CMSEndpointMeta, CMSEndpointCtx } from './core/endpoint';
+export type { CMSEndpointMeta } from './core/endpoint';
 
 export {
   CMSError,
@@ -68,11 +68,12 @@ export type {
   CMSDefinition,
   CMSSchemaConfig,
   CMSMiddleware,
-  CMSMiddlewareCtx,
+  CMSMiddlewareContext,
   CMSMiddlewareRequest,
-  CMSProcedureCtx,
-  CMSHandlerCtx,
-  CMSSystemHandlerCtx,
+  CMSPermissionResource,
+  CMSProcedureContext,
+  CMSHandlerContext,
+  CMSSystemHandlerContext,
   CollectionDefinition,
   AnyCollectionDefinition,
   CollectionWithName,
@@ -178,7 +179,7 @@ export type {
   OnNotificationHandler,
 } from './core/notifications/types';
 export type { NotificationService } from './core/notifications/service';
-export { notificationEvent } from './core/notifications/events';
+export { notificationEventSchema } from './core/notifications/events';
 export type { NotificationEvent } from './core/notifications/events';
 
 // Media config — `media` is a required `createCMS` field, so consumers need these

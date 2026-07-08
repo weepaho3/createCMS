@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { CMSEvent } from '../analytics/types';
+import type { AnalyticsEvent } from '../analytics/types';
 
 import { buildGa4Payload, forwardToGa4 } from '../analytics/ga4-server';
 
@@ -11,7 +11,7 @@ const GRANTED = {
   ad_personalization: 'denied',
 } as const;
 
-function evt(over: Partial<CMSEvent> = {}): CMSEvent {
+function evt(over: Partial<AnalyticsEvent> = {}): AnalyticsEvent {
   return {
     name: 'cms_cta_click',
     anonymous: false,
