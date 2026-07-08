@@ -5,6 +5,10 @@ description: Reusable values substituted into content on read.
 
 A variable is a named value you set once and reference from many places in your content. You write `{{key}}` in any string property, and the CMS substitutes the variable's current value when content is read.
 
+<Callout type="warn">
+  **Variables are instantly live and unversioned.** A variable is a single mutable row substituted at read time, so editing its value changes **every live page that uses it, on the next read**, with no draft, approval, history, or rollback outside the [branch](/docs/concepts/branches) model. `updateVariable` overwrites the value in place (the previous value is not kept) and automatically revalidates the published entries that reference it. [Templates](/docs/concepts/templates) are the same kind of flat mutable row. Treat a variable edit as a site-wide publish, not a draft.
+</Callout>
+
 ## How substitution works
 
 Variables are resolved on read, not on write. `getBlockTree` and `getPublishedContent` replace every `{{key}}` in string properties with the variable's value; pass `raw: true` to skip substitution and see the literal template. An unknown key is left as-is.

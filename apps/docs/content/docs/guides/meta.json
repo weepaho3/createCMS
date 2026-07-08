@@ -1,5 +1,5 @@
 {
   "title": "Guides",
   "icon": "BookMarked",
-  "pages": ["nextjs", "rendering-content", "client-usage", "media-uploads", "redirects", "content-workflow", "review-comments", "build-a-blog", "..."]
+  "pages": ["nextjs", "draft-preview", "rendering-content", "client-usage", "media-uploads", "redirects", "content-workflow", "building-an-editor", "permissions", "review-comments", "build-a-blog", "..."]
 }
