@@ -55,6 +55,37 @@ jobs:
       - name: Build
         run: bun run build
 
+      # env-10: `next build` never connects to the database, so a stale generated
+      # schema (env-01) compiles green yet 500s at runtime. Boot the built example
+      # — it runs on in-process PGlite and seeds on first request, so no database
+      # service is needed — and assert GET / renders the seeded content. This is
+      # the guard that turns that runtime regression red.
+      - name: Smoke-test example (boot & assert runtime)
+        run: |
+          port=3100
+          cd examples/minimal
+          bun run build
+          PORT="$port" bun run start -- --port "$port" &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          # Poll until the server accepts a connection (covers the boot gap).
+          # curl exits 0 for any HTTP response, so a live-but-500 server also
+          # breaks the loop and the assertion below then fails fast on it.
+          for _ in $(seq 1 60); do
+            curl --silent --output /dev/null "http://localhost:$port/" && break
+            sleep 1
+          done
+          # Assert GET / is 200 AND contains the seeded content; fail otherwise.
+          body="$(mktemp)"
+          code="$(curl --silent --output "$body" --write-out '%{http_code}' "http://localhost:$port/" || true)"
+          echo "GET / -> HTTP $code"
+          if [ "$code" != "200" ] || ! grep -q "Hello from @createcms/core" "$body"; then
+            echo "::error::Example smoke test failed (HTTP $code): runtime is broken (env-01/env-10)."
+            cat "$body"
+            exit 1
+          fi
+          echo "Example smoke test passed: GET / returned 200 with seeded content."
+
       - name: Validate published package
         run: |
           bunx --yes publint packages/cms

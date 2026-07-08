@@ -25,7 +25,7 @@ function constantTimeEqual(a: string, b: string): boolean {
  * import { createRevalidateHandler } from '@createcms/core/next';
  *
  * export const POST = createRevalidateHandler({
- *   secret: process.env.REVALIDATION_SECRET!,
+ *   secret: process.env.CMS_REVALIDATE_SECRET!,
  * });
  * ```
  */
