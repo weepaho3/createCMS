@@ -65,9 +65,9 @@ await cms.api.pages.getPublishedContent({ query: { rootId } });
 
 **Fix.** Publish a branch first with `publishBranch`, or read the editing view with `getBlockTree`.
 
-## `WEBP_NOT_SUPPORTED`
+## WebP optimization unavailable
 
-**Cause.** The media optimize plugin tried to encode WebP in a browser without native support, and `@jsquash/webp` is not installed.
+**Cause.** The media optimize plugin tried to encode WebP in a browser without native support, and `@jsquash/webp` is not installed. Optimization is best-effort, so the original file still uploads; the failure surfaces as a string in `useOptimize`'s `state.error` (there is no error code).
 
 **Fix.** Install the optional fallback:
 

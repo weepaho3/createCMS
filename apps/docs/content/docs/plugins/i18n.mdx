@@ -72,6 +72,19 @@ await cms.api.pages.createTranslation({
 | `roots` | `translationKey` | Stable group id tying sibling-language entries together. |
 | `redirects` | `language` | Per-language redirect routing. |
 
+## Error codes
+
+| Code | Status | When |
+| --- | --- | --- |
+| `LANGUAGE_REQUIRED` | 400 | `authMiddleware` did not return a `language` while the plugin is active. |
+| `LANGUAGE_NOT_ENABLED` | 400 | The resolved request language is not one of the configured `languages`. |
+| `TRANSLATION_SOURCE_NOT_FOUND` | 404 | The `sourceRootId` has no entry in this collection / active language. |
+| `TRANSLATION_EXISTS` | 409 | A translation in the target language already exists for this entry. |
+| `TRANSLATION_PARENT_NOT_TRANSLATED` | 409 | The parent has no translation in the target language — translate the parent first. |
+| `TRANSLATION_LANGUAGE_NOT_ENABLED` | 400 | `targetLanguage` is not one of the configured `languages`. |
+
+There is intentionally no `I18N_NOT_ENABLED` code: `createTranslation` / `listTranslations` only exist when the plugin is installed, so "i18n not enabled" is the structural absence of the endpoint, not a runtime error.
+
 ## Options
 
 | Option | Type | Description |

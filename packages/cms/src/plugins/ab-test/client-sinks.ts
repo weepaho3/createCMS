@@ -2,6 +2,22 @@ import type { CMSFetch } from '../../client/types';
 import type { ConsentPurpose, ConsentState } from '../consent';
 
 // ============================================================================
+// Dev-only drop observability
+// ============================================================================
+//
+// Analytics events are fire-and-forget: a failed send is swallowed so it never
+// breaks the page (fail-silent / fail-open). That silence hides a misconfigured
+// ingest in development, so warn ONCE per process on the FIRST drop in dev —
+// production stays fully silent and the fail-silent guarantee is unchanged.
+let abWarned = false;
+export function warnAbDrop(err: unknown): void {
+  if (process.env.NODE_ENV !== 'production' && !abWarned) {
+    abWarned = true;
+    console.warn('[cms:ab] analytics event dropped:', err);
+  }
+}
+
+// ============================================================================
 // M3a — client-side event-bus: sinks + dispatch (consent-aware fan-out)
 // ============================================================================
 //
@@ -90,8 +106,9 @@ export type ClientEventSink = {
 function safeSend(sink: ClientEventSink, event: ClientCMSEvent): void {
   try {
     sink.send(event);
-  } catch {
+  } catch (err) {
     // A sink must never break the page or its sibling sinks.
+    warnAbDrop(err);
   }
 }
 
@@ -151,7 +168,7 @@ export function createAbTestStoreSink($fetch: CMSFetch): ClientEventSink {
           ...(event.consent ? { consent: event.consent } : {}),
           ...(event.metadata ? { metadata: event.metadata } : {}),
         },
-      }).catch(() => {});
+      }).catch(warnAbDrop);
     },
   };
 }

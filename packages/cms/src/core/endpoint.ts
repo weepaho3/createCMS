@@ -1,4 +1,9 @@
-import { createEndpoint, createMiddleware, type Endpoint } from 'better-call';
+import {
+  APIError,
+  createEndpoint,
+  createMiddleware,
+  type Endpoint,
+} from 'better-call';
 import { eq, sql } from 'drizzle-orm';
 
 import type { HookRunner } from './hooks';
@@ -65,11 +70,36 @@ export type CMSEndpointCtx = {
   realtime?: import('./realtime/types').RealtimeRuntime;
 };
 
-export const createCMSEndpoint: ReturnType<
+const cmsEndpointFactory: ReturnType<
   typeof createEndpoint.create<{ use: [typeof cmsContext] }>
-> = createEndpoint.create({
-  use: [cmsContext],
-});
+> = createEndpoint.create({ use: [cmsContext] });
+
+// better-call's default VALIDATION_ERROR response drops the zod `issues`; re-throw
+// with them so clients get actionable per-field errors (err-06).
+function cmsOnValidationError({
+  issues,
+  message,
+}: {
+  message: string;
+  issues: readonly unknown[];
+}): never {
+  throw new APIError(400, { code: 'VALIDATION_ERROR', message, issues });
+}
+
+// `createEndpoint.create({...})` only forwards `use` — per-endpoint hooks like
+// `onValidationError` are dropped there. So wrap the factory to inject the hook
+// into EVERY endpoint's own options (where better-call actually invokes it),
+// keeping the public factory type identical so callers' inference is unchanged.
+export const createCMSEndpoint: typeof cmsEndpointFactory = ((
+  path: any,
+  options: any,
+  handler: any,
+) =>
+  cmsEndpointFactory(
+    path,
+    { ...(options ?? {}), onValidationError: cmsOnValidationError },
+    handler,
+  )) as unknown as typeof cmsEndpointFactory;
 
 export function cmsMeta<T extends Record<string, unknown>>(
   base: T,

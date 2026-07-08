@@ -17,6 +17,7 @@ import {
   createAbTestStoreSink,
   createGtmClientSink,
   dispatchEvent as dispatchToSinks,
+  warnAbDrop,
   type ClientCMSEvent,
   type ClientEventSink,
 } from './client-sinks';
@@ -359,7 +360,7 @@ export function abTestClient(options?: ABTestClientOptions) {
             ...body,
             consent: gate.getState() as ConsentState,
           },
-        }).catch(() => {});
+        }).catch(warnAbDrop);
       }
 
       function fireImpression(testId: string, variantId: string) {

@@ -64,10 +64,4 @@ All options are optional; omit a section to skip that step.
 
 ## Failures
 
-This plugin runs entirely in the browser, so there are no HTTP errors. When optimization fails, `useOptimize` surfaces it as an `error` string (and `optimizeImage` throws). The plugin declares these codes as metadata in the client's `$ERROR_CODES`:
-
-| Code | When |
-| --- | --- |
-| `OPTIMIZATION_FAILED` | Image optimization failed. |
-| `WEBP_NOT_SUPPORTED` | WebP encoding unavailable and `@jsquash/webp` is not installed. |
-| `CANVAS_CONTEXT_FAILED` | Could not acquire a canvas 2D context. |
+This plugin runs entirely in the browser, so there are no HTTP errors. When optimization fails, `useOptimize` surfaces it as an `error` string, and the standalone `optimizeImage` throws. Common causes are a failed WebP encode (the browser lacks native encoding and `@jsquash/webp` is not installed) or being unable to acquire a canvas 2D context.

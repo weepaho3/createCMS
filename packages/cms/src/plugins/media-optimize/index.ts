@@ -14,22 +14,6 @@ export type { OptimizeState } from './use-optimize';
 
 const PLUGIN_ID = 'media-optimize' as const;
 
-const $ERROR_CODES = {
-  OPTIMIZATION_FAILED: {
-    status: 422,
-    message: 'Image optimization failed',
-  },
-  WEBP_NOT_SUPPORTED: {
-    status: 422,
-    message:
-      'WebP encoding is not supported in this browser and @jsquash/webp is not installed',
-  },
-  CANVAS_CONTEXT_FAILED: {
-    status: 500,
-    message: 'Failed to acquire canvas 2D context for image processing',
-  },
-} as const;
-
 /**
  * Client plugin that adds image optimization under its own namespace.
  *
@@ -58,8 +42,6 @@ const $ERROR_CODES = {
 export function mediaOptimizeClient(config: OptimizationConfig) {
   return {
     id: PLUGIN_ID,
-
-    $ERROR_CODES,
 
     async init(_$fetch: CMSFetch, _$store: CMSClientStore) {
       return {
