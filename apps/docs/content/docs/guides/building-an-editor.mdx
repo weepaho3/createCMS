@@ -65,6 +65,16 @@ await cmsClient.pages.updateBlock({
 
 `updateBlock` is a patch: supplied fields overwrite, omitted fields stay, `null` deletes. Reorder and reparent with `moveBlock` (`body: { blockId, newParentBlockId, newIndex }`), and remove with `deleteBlock` (`body: { blockId }`). Both take the same `rootId` and `branchId`. After each mutation, re-read `getBlockTree` (or apply the returned `commit` optimistically) to refresh the canvas.
 
+If you batch edits client-side and save the whole tree at once instead of one mutation per change, use `updateBlocks` (`body: { rootId, branchId, tree }`). It diffs the tree against the branch head and creates, updates, and deletes blocks in a single commit; pass `expectedHeadCommitId` (the commit you loaded the tree at) so a concurrent write fails with `HEAD_MISMATCH` rather than clobbering it. See [`updateBlocks`](/docs/reference/server-api#updateblocks) for the full contract.
+
+<Callout type="info">
+  When you mint block ids on the client (for optimistic inserts, or to build a tree before saving with `updateBlocks`), use the package's id helper so ids share the `blk_` namespace: `import { newId } from '@createcms/core/nanoid'` then `newId('block')`. `updateBlocks` accepts any string id, but staying on the convention keeps ids consistent with server-created blocks.
+</Callout>
+
+To seed a new block's properties, resolve its template defaults on the server rather than reimplementing them in the editor. `cmsClient.templates.getTemplateDefaults({ collection: 'pages', blockType })` returns a `{ propertyKey: value }` map with every configured template resolved (its `{{variables}}` substituted through the active scope). Use it as the starting `properties` for a `createBlock` call or a new node in a batch `updateBlocks` save. See [Templates](/docs/reference/templates) for the full method.
+
+The placement rules an editor enforces (which block types may nest under which) live in your collection's `structure` map. To inspect them at runtime instead of fighting the compile-time `BlockStructureEntry` types, use the exported helpers: `buildPlacementIndex(structure)` builds a lookup once, and `isPlacementAllowed` / `allowedChildTypes` answer "can this child go under this parent?" and "what may I offer in the add-block menu here?". Drive your palette and drag-drop validation from those so the UI matches what the server will accept. See [Block placement](/docs/concepts/blocks).
+
 ### 4. Preview the draft
 
 To render a live-accurate preview, read the tree with references resolved. `getBlockTree` with `includeReferencePreviews: true` returns a `references` sidecar (the published render tree of every embedded reference) alongside the raw editable tree, so you preview and edit from one call:

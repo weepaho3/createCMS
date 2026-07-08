@@ -3377,6 +3377,393 @@ describe('updateBlocks', () => {
     expect(tree.children[0].children[0].children).toHaveLength(1);
     expect(tree.children[0].children[0].children[0].blockId).toBe(level3Id);
   });
+
+  it('toe-ed-01: rejects an unknown block type', async () => {
+    const { newId } = await import('../src/utils/nanoid');
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/page', properties: { title: 'Page' } },
+    });
+
+    await expect(
+      cms.api.pages.updateBlocks({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          tree: {
+            blockId: root.rootId,
+            type: 'pages',
+            properties: { title: 'Page' },
+            children: [
+              {
+                blockId: newId('block'),
+                type: 'notARealBlockType',
+                properties: {},
+                children: [],
+              },
+            ],
+          },
+        },
+      }),
+    ).rejects.toThrow(/Unknown block type/i);
+  });
+
+  it('toe-ed-01: rejects invalid properties for a known block type', async () => {
+    const { newId } = await import('../src/utils/nanoid');
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/page', properties: { title: 'Page' } },
+    });
+
+    await expect(
+      cms.api.pages.updateBlocks({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          tree: {
+            blockId: root.rootId,
+            type: 'pages',
+            properties: { title: 'Page' },
+            children: [
+              {
+                blockId: newId('block'),
+                // `paragraph.text` is a required richText (string) — a number
+                // must be rejected, mirroring createBlock's body-schema check.
+                type: 'paragraph',
+                properties: { text: 123 },
+                children: [],
+              },
+            ],
+          },
+        },
+      }),
+    ).rejects.toThrow(/Invalid properties/i);
+  });
+
+  it('toe-ed-01: rejects a disallowed placement (leaf block given children)', async () => {
+    const { newId } = await import('../src/utils/nanoid');
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/page', properties: { title: 'Page' } },
+    });
+
+    // `image` is a leaf (no allowChildren) — nesting a child under it must be
+    // rejected by the placement walk, exactly like createBlock/moveBlock.
+    await expect(
+      cms.api.pages.updateBlocks({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          tree: {
+            blockId: root.rootId,
+            type: 'pages',
+            properties: { title: 'Page' },
+            children: [
+              {
+                blockId: newId('block'),
+                type: 'image',
+                properties: { src: '/a.png' },
+                children: [
+                  {
+                    blockId: newId('block'),
+                    type: 'paragraph',
+                    properties: { text: 'nested' },
+                    children: [],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    ).rejects.toThrow(/does not accept child blocks/i);
+  });
+
+  it('toe-ed-01: rejects a mismatched root blockId (would tombstone the real root)', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/page', properties: { title: 'Page' } },
+    });
+
+    await expect(
+      cms.api.pages.updateBlocks({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          tree: {
+            // Root node's blockId does NOT equal rootId.
+            blockId: 'not-the-root-id',
+            type: 'pages',
+            properties: { title: 'Page' },
+            children: [],
+          },
+        },
+      }),
+    ).rejects.toThrow(/does not match rootId/i);
+  });
+
+  it('toe-ed-01: rejects invalid ROOT properties (defect 1 — the root is no longer skipped)', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/page', properties: { title: 'Page' } },
+    });
+
+    // The root's `title` is a required string. updateRoot rejects a numeric
+    // title; updateBlocks (which diffs the root `updated` and persists its
+    // changed props) must reject it too. The old whole-tree validator early-
+    // returned for the root, letting invalid root props slip straight through.
+    await expect(
+      cms.api.pages.updateBlocks({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          tree: {
+            blockId: root.rootId,
+            type: 'pages',
+            properties: { title: 123 },
+            children: [],
+          },
+        },
+      }),
+    ).rejects.toThrow(/Invalid root properties/i);
+  });
+
+  it('toe-ed-01: does NOT re-validate an UNCHANGED, now-strict-invalid sibling (defect 2)', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/page', properties: { title: 'Page' } },
+    });
+
+    // P1: a paragraph whose required `text` is later null-deleted via a PATCH,
+    // so its STORED props ({}) no longer satisfy the strict (create) schema.
+    const p1 = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'original' },
+      },
+    });
+    await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        blockId: p1.blockId,
+        type: 'paragraph',
+        properties: { text: null },
+      },
+    });
+
+    // P2: the sibling the user actually edits in this batch save.
+    const p2 = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'sibling' },
+      },
+    });
+
+    // Load the live tree (P1 now carries {}), edit ONLY P2, and post it back —
+    // the editor's real batch-save flow. The old whole-tree validator threw on
+    // P1's missing required `text`; the diff-based validator skips P1 (unchanged)
+    // and the save of P2 goes through.
+    const { tree } = await cms.api.pages.getBlockTree({
+      query: { rootId: root.rootId, branchId: root.branchId, raw: true },
+    });
+    const p2Node = tree.children.find((c) => c.blockId === p2.blockId)!;
+    p2Node.properties = { text: 'sibling edited' };
+
+    const result = await cms.api.pages.updateBlocks({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        tree: tree as unknown as Parameters<
+          typeof cms.api.pages.updateBlocks
+        >[0]['body']['tree'],
+      },
+    });
+    expect(result.changed).toBe(true);
+
+    const { tree: after } = await cms.api.pages.getBlockTree({
+      query: { rootId: root.rootId, branchId: root.branchId },
+    });
+    const p2After = after.children.find((c) => c.blockId === p2.blockId)!;
+    expect(p2After.properties).toEqual({ text: 'sibling edited' });
+    // P1 is untouched — still present, still empty (the invalid sibling survived).
+    const p1After = after.children.find((c) => c.blockId === p1.blockId)!;
+    expect(p1After.properties).toEqual({});
+  });
+
+  it('toe-ed-01: still rejects a CREATED block missing required properties (strict create semantics)', async () => {
+    const { newId } = await import('../src/utils/nanoid');
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/page', properties: { title: 'Page' } },
+    });
+
+    // A brand-new paragraph MUST carry its required `text`: a CREATE is held to
+    // the full required-enforcing schema even though UPDATES are patch-tolerant.
+    await expect(
+      cms.api.pages.updateBlocks({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          tree: {
+            blockId: root.rootId,
+            type: 'pages',
+            properties: { title: 'Page' },
+            children: [
+              {
+                blockId: newId('block'),
+                type: 'paragraph',
+                properties: {},
+                children: [],
+              },
+            ],
+          },
+        },
+      }),
+    ).rejects.toThrow(/Invalid properties/i);
+  });
+
+  it('toe-ed-02: a round-tripped getBlockTree -> updateBlocks does not corrupt the root type', async () => {
+    const { cms, db } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/page', properties: { title: 'Page' } },
+    });
+
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Hi' },
+      },
+    });
+
+    // getBlockTree emits the root with the logical marker `type: 'root'`.
+    const { tree } = await cms.api.pages.getBlockTree({
+      query: { rootId: root.rootId, branchId: root.branchId, raw: true },
+    });
+    expect(tree.type).toBe('root');
+
+    // Posting the freshly-loaded tree straight back must be a lossless NO-OP:
+    // the `'root'` marker normalizes back to the collection name, so nothing
+    // diffs. Without the fix this both persists `type: 'root'` AND reports a
+    // phantom change.
+    const result = await cms.api.pages.updateBlocks({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        tree: tree as unknown as Parameters<
+          typeof cms.api.pages.updateBlocks
+        >[0]['body']['tree'],
+      },
+    });
+    expect(result.changed).toBe(false);
+
+    // The STORED root version keeps the collection name, not the literal 'root'.
+    const [branch] = await db
+      .select()
+      .from(branches)
+      .where(eq(branches.id, root.branchId));
+    const [rootSnap] = await db
+      .select({ blockVersionId: commitSnapshots.blockVersionId })
+      .from(commitSnapshots)
+      .where(
+        and(
+          eq(commitSnapshots.commitId, branch.headCommitId),
+          eq(commitSnapshots.blockId, root.rootId),
+        ),
+      );
+    const [rootBv] = await db
+      .select()
+      .from(blockVersions)
+      .where(eq(blockVersions.id, rootSnap.blockVersionId));
+    expect(rootBv.type).toBe('pages');
+  });
+});
+
+describe('createBlock property defaults (toe-ed-09)', () => {
+  const collections = {
+    pages: {
+      label: 'Pages',
+      root: {
+        properties: {
+          title: { type: 'string', label: 'Title', required: true },
+        },
+      },
+      blocks: {
+        callout: {
+          label: 'Callout',
+          properties: {
+            tone: { type: 'string', label: 'Tone', defaultValue: 'info' },
+            text: { type: 'string', label: 'Text' },
+          },
+        },
+      },
+    },
+  } as const;
+
+  it('seeds a property defaultValue when the caller omits it, and lets the caller win', async () => {
+    const { db } = await setupTestDB();
+    const cms = createCMS({
+      db,
+      media: { ...DUMMY_MEDIA_CONFIG },
+      collections,
+      authMiddleware: allowAnonymous(),
+    });
+
+    const root = await cms.api.pages.createRoot({
+      body: { properties: { title: 'P' } },
+    });
+
+    // (1) default fills the gap the caller left.
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'callout',
+        properties: { text: 'filled' },
+      },
+    });
+
+    // (2) a caller-provided value overrides the default.
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'callout',
+        properties: { tone: 'warning', text: 'overridden' },
+      },
+    });
+
+    const { tree } = await cms.api.pages.getBlockTree({
+      query: { rootId: root.rootId, branchId: root.branchId, raw: true },
+    });
+
+    const [first, second] = tree.children;
+    const firstProps = first.properties as Record<string, unknown>;
+    const secondProps = second.properties as Record<string, unknown>;
+    expect(firstProps.tone).toBe('info'); // default seeded
+    expect(firstProps.text).toBe('filled');
+    expect(secondProps.tone).toBe('warning'); // caller wins over default
+    expect(secondProps.text).toBe('overridden');
+  });
 });
 
 describe('middleware', () => {
