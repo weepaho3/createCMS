@@ -1,0 +1,52 @@
+---
+title: Environment variables
+description: The conventional env vars a createcms app wires up, and what actually reads them.
+---
+
+`@createcms/core` reads exactly one environment variable at runtime: `process.env.NODE_ENV`, and only to gate dev-time warnings (in `next/middleware.ts`, `plugins/ab-test/client-sinks.ts`, `react/blocks.tsx`, and `react/tracking.tsx`). The package reads **no credentials** from the environment.
+
+Every credential is passed **explicitly** through your [`createCMS`](/docs/reference/configuration) config or handler options, never pulled from `process.env` by the package:
+
+- Media S3 credentials come from the [`media`](/docs/reference/configuration#media) config.
+- Realtime `url` and `token` come from the [`realtime`](/docs/reference/configuration#realtime) config.
+- The revalidation secret comes from [`createRevalidateHandler`](/docs/reference/edge)'s `options.secret`.
+
+So the variable **names** below are yours to choose. They are conventions the `createcms init` template, the examples, and these docs follow; the package does not bind them. You read each one and wire it into config yourself.
+
+## Database
+
+| Variable | Used by | Notes |
+| --- | --- | --- |
+| `DATABASE_URL` | Drizzle / `drizzle-kit` | Postgres connection string. Your Drizzle instance and `drizzle-kit` migrations read it; the instance is passed to `createCMS` as `db`. |
+
+## Media
+
+S3-compatible storage credentials, passed to the [`media`](/docs/reference/configuration#media) config. The names below match the `createcms init` template and the examples.
+
+| Variable | Used by | Notes |
+| --- | --- | --- |
+| `S3_ACCESS_KEY_ID` | `media.accessKeyId` | Access key id. |
+| `S3_SECRET_ACCESS_KEY` | `media.secretAccessKey` | Secret access key. |
+| `S3_REGION` | `media.region` | Bucket region. |
+| `S3_BUCKET` | `media.bucketName` | Bucket for stored assets. |
+| `S3_PUBLIC_URL` | `media.publicUrl` | Public base URL assets are served from. |
+| `S3_HOSTNAME` | `media.hostname` | Endpoint host, for the `custom` (non-AWS) provider. |
+
+## Realtime
+
+Upstash Redis credentials, passed to the [`realtime`](/docs/reference/configuration#realtime) config. See [Realtime](/docs/concepts/realtime).
+
+| Variable | Used by | Notes |
+| --- | --- | --- |
+| `UPSTASH_REDIS_REST_URL` | `realtime.url` | Upstash Redis REST URL. |
+| `UPSTASH_REDIS_REST_TOKEN` | `realtime.token` | Upstash Redis REST token. Server-side only; the browser never sees it. |
+
+## Revalidation
+
+| Variable | Used by | Notes |
+| --- | --- | --- |
+| `CMS_REVALIDATE_SECRET` | `createRevalidateHandler({ secret })` | Shared secret that authenticates the revalidation webhook (see [Edge](/docs/reference/edge)). |
+
+## No client-exposed variables
+
+There are **zero** `NEXT_PUBLIC_*` variables in createcms, so nothing is inlined into the client bundle. Credentials live only in server config, and the realtime `token` never leaves the server: the browser talks only to your same-origin `/realtime` route, which brokers the Upstash connection with server-side credentials. See [Realtime → Security model](/docs/concepts/realtime#security-model).

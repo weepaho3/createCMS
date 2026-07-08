@@ -15,6 +15,7 @@
   "dependencies": {
     "@createcms/core": "workspace:*",
     "@electric-sql/pglite": "^0.3.15",
+    "drizzle-kit": "^0.31.9",
     "drizzle-orm": "^0.45.0",
     "next": "^16.2.0",
     "react": "^19.2.4",
@@ -24,7 +25,6 @@
     "@types/node": "^22.13.11",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
-    "drizzle-kit": "^0.31.9",
     "typescript": "^5.7.2"
   }
 }
