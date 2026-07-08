@@ -112,9 +112,18 @@ export function createAdminEndpoints(
         ),
       },
       async (ctx) => {
-        return runScheduledPass(db, cmsCtx, {
-          limit: ctx.body?.limit,
-        });
+        // Thread the caller's request scope so a SCOPED runScheduled (e.g. a
+        // per-tenant cron) only processes ITS scope's due rows and materializes
+        // each slug within that scope. An unscoped/single-tenant cron passes an
+        // empty scope → unchanged (all due rows).
+        return runScheduledPass(
+          db,
+          cmsCtx,
+          {
+            limit: ctx.body?.limit,
+          },
+          ctx.context.scope,
+        );
       },
     ),
 

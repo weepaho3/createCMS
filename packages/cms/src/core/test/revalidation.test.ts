@@ -128,7 +128,8 @@ describe('revalidation tags (FA3b)', () => {
       body: { rootId: root.rootId, branchId: root.branchId, publishedBy: 'a' },
     });
 
-    // Rename the published page: auto-creates the OLD-path → page redirect.
+    // cms-05: the draft rename is not live yet — it materializes on publish, which
+    // is where the OLD-path → page redirect is auto-created.
     await cms.api.pages.updateRoot({
       body: {
         rootId: root.rootId,
@@ -137,8 +138,12 @@ describe('revalidation tags (FA3b)', () => {
         properties: { title: 'Home' },
       },
     });
+    await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId, publishedBy: 'a' },
+    });
 
-    const ev = events.find((e) => e.action === 'updateRoot');
+    // The publish that materialized the rename revalidates old + new paths.
+    const ev = [...events].reverse().find((e) => e.action === 'publishBranch');
     expect(ev).toBeDefined();
     // The new path is revalidated …
     expect(ev!.paths.some((p) => p.includes('home-2'))).toBe(true);
@@ -219,24 +224,13 @@ describe('revalidation tags (FA3b)', () => {
         properties: { title: 'C' },
       },
     });
-    const req = await cms.api.pages.requestApproval({
-      body: {
-        branchId: child.branchId,
-        requestedReviewers: ['rev'],
-      },
-      context: { userId: 'r' },
-    });
-    await cms.api.pages.approve({
-      body: { approvalId: req.approvals[0].id },
-      context: { userId: 'rev' },
-    });
-    await cms.api.pages.publishBranch({
-      body: {
-        rootId: child.rootId,
-        branchId: child.branchId,
-        publishedBy: 'a',
-      },
-    });
+    // cms-05: publish the whole chain so its slugs materialize into the live
+    // /docs/a/c path before the reparent (moveRoot reads roots.slug).
+    for (const r of [parentA, parentB, child]) {
+      await cms.api.pages.publishBranch({
+        body: { rootId: r.rootId, branchId: r.branchId, publishedBy: 'a' },
+      });
+    }
 
     // Reparent A→B: old path /a/c, new path /b/c; auto-creates the /a/c → page redirect.
     await cms.api.pages.moveRoot({

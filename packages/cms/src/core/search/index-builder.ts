@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 
 import type { DrizzleInstance } from '../types/drizzle';
 
+import { ROOT_SLUG_PROP } from '../blocks/reconstruct-snapshot';
 import { DEFAULT_BRANCH_NAME } from '../branch-policy';
 import {
   assets,
@@ -187,6 +188,9 @@ export async function indexRoot(
     const isRootBlock = row.block_id === rootId;
 
     for (const [key, value] of Object.entries(props)) {
+      // cms-05: the reserved `__slug` draft key is not user content — never index
+      // it. (The published `roots.slug` is indexed separately below.)
+      if (key === ROOT_SLUG_PROP) continue;
       if (typeof value !== 'string' || value.trim().length === 0) continue;
 
       if (isRootBlock) {

@@ -54,6 +54,10 @@ describe('link property type', () => {
     const about = await cms.api.pages.createRoot({
       body: { slug: 'about', properties: { title: 'About' } },
     });
+    // cms-05: internal links resolve to the target's PUBLISHED path.
+    await cms.api.pages.publishBranch({
+      body: { rootId: about.rootId, branchId: about.branchId },
+    });
     const home = await cms.api.pages.createRoot({
       body: { slug: 'home', properties: { title: 'Home' } },
     });
@@ -85,10 +89,13 @@ describe('link property type', () => {
     });
   });
 
-  it('follows the target slug when it changes', async () => {
+  it('follows the target slug when it changes — but only once published', async () => {
     const { cms } = await setupLinkCMS();
     const about = await cms.api.pages.createRoot({
       body: { slug: 'about', properties: { title: 'About' } },
+    });
+    await cms.api.pages.publishBranch({
+      body: { rootId: about.rootId, branchId: about.branchId },
     });
     const home = await cms.api.pages.createRoot({
       body: { slug: 'home', properties: { title: 'Home' } },
@@ -105,6 +112,7 @@ describe('link property type', () => {
       },
     });
 
+    // cms-05: a DRAFT slug edit does NOT change the resolved href.
     await cms.api.pages.updateRoot({
       body: {
         rootId: about.rootId,
@@ -113,7 +121,14 @@ describe('link property type', () => {
         properties: { title: 'About' },
       },
     });
+    expect((await linkOf(cms, home.rootId, home.branchId, false)).href).toBe(
+      '/pages/about',
+    );
 
+    // Publishing the rename moves the live URL, and the link follows it.
+    await cms.api.pages.publishBranch({
+      body: { rootId: about.rootId, branchId: about.branchId },
+    });
     expect((await linkOf(cms, home.rootId, home.branchId, false)).href).toBe(
       '/pages/about-us',
     );
@@ -294,6 +309,11 @@ async function setupRefLinkCMS() {
 async function seedEmbeddedLink(cms: { api: any }) {
   const about = await cms.api.pages.createRoot({
     body: { slug: 'about', properties: { title: 'About' } },
+  });
+  // cms-05: the link target resolves to its PUBLISHED path, so publish `about`.
+  await publishBranch(cms.api.pages, {
+    rootId: about.rootId,
+    branchId: about.branchId,
   });
   const reusable = await cms.api.reusableBlocks.createRoot({
     body: { properties: { label: 'Footer CTA' } },

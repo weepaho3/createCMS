@@ -1,7 +1,13 @@
 import { eq, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 
-import { assetFolders, assets, roots } from '../../../schema';
+import {
+  assetFolders,
+  assets,
+  publications,
+  roots,
+  scheduledPublications,
+} from '../../../schema';
 import { resolveTenantSlug } from '../index';
 import { setupMultiTenantTestCMS } from './utils/cms';
 
@@ -154,25 +160,35 @@ describe('multiTenant — by-id endpoint IDOR protection', () => {
     const { cms, setTenant } = await setupMultiTenantTestCMS();
 
     setTenant('acme');
-    await cms.api.pages.createRoot({
+    const acme = await cms.api.pages.createRoot({
       body: { slug: '/blog', properties: { title: 'Acme Blog' } },
     });
+    await cms.api.pages.publishBranch({
+      body: { rootId: acme.rootId, branchId: acme.branchId },
+    });
 
-    // globex can use /blog too — validateSlugUniqueness is now per-tenant (the
+    // globex can use /blog too — cms-05 publish-time uniqueness is per-tenant (the
     // old global "two tenants can't share a slug" quirk is fixed).
     setTenant('globex');
+    const globex = await cms.api.pages.createRoot({
+      body: { slug: '/blog', properties: { title: 'Globex Blog' } },
+    });
     await expect(
-      cms.api.pages.createRoot({
-        body: { slug: '/blog', properties: { title: 'Globex Blog' } },
+      cms.api.pages.publishBranch({
+        body: { rootId: globex.rootId, branchId: globex.branchId },
       }),
     ).resolves.toBeDefined();
 
-    // But WITHIN a tenant the same slug is still rejected.
+    // But WITHIN a tenant the same slug is still rejected — at publish (drafts may
+    // collide).
+    const globexDup = await cms.api.pages.createRoot({
+      body: { slug: '/blog', properties: { title: 'Dup' } },
+    });
     await expect(
-      cms.api.pages.createRoot({
-        body: { slug: '/blog', properties: { title: 'Dup' } },
+      cms.api.pages.publishBranch({
+        body: { rootId: globexDup.rootId, branchId: globexDup.branchId },
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/PUBLISH_SLUG_CONFLICT|already uses this slug/i);
   });
 
   it("rejects cross-tenant publish/unpublish of another tenant's root by id", async () => {
@@ -583,6 +599,11 @@ describe('multiTenant — redirect isolation', () => {
     const page = await cms.api.pages.createRoot({
       body: { slug: 'movers', properties: { title: 'Movers' } },
     });
+    // cms-05: publish the live slug, then publish the rename — the tenant-scoped
+    // redirect is auto-created at publish.
+    await cms.api.pages.publishBranch({
+      body: { rootId: page.rootId, branchId: page.branchId },
+    });
     await cms.api.pages.updateRoot({
       body: {
         rootId: page.rootId,
@@ -590,6 +611,9 @@ describe('multiTenant — redirect isolation', () => {
         slug: 'shakers',
         properties: { title: 'Movers' },
       },
+    });
+    await cms.api.pages.publishBranch({
+      body: { rootId: page.rootId, branchId: page.branchId },
     });
 
     // The auto-created redirect (old path → page) is tagged acme.
@@ -1375,5 +1399,151 @@ describe('multiTenant — variables are per-tenant', () => {
     expect((tree.tree.children[0].properties as { text: string }).text).toBe(
       'Acme Inc',
     );
+  });
+});
+
+describe('multiTenant — publishRelease materializes slugs in the tenant scope', () => {
+  it('a release slug change: no cross-tenant conflict, redirect tagged with the tenant', async () => {
+    const { cms, db, setTenant } = await setupMultiTenantTestCMS();
+
+    // globex already holds the published slug "shared".
+    setTenant('globex');
+    const globex = await cms.api.pages.createRoot({
+      body: { slug: 'shared', properties: { title: 'Globex Shared' } },
+    });
+    await cms.api.pages.publishBranch({
+      body: { rootId: globex.rootId, branchId: globex.branchId },
+    });
+
+    // acme publishes a DIFFERENT slug, then renames its draft to "shared"
+    // (a change from "original") and publishes the rename through a RELEASE.
+    setTenant('acme');
+    const acme = await cms.api.pages.createRoot({
+      body: { slug: 'original', properties: { title: 'Acme' } },
+    });
+    await cms.api.pages.publishBranch({
+      body: { rootId: acme.rootId, branchId: acme.branchId },
+    });
+    await cms.api.pages.updateRoot({
+      body: {
+        rootId: acme.rootId,
+        branchId: acme.branchId,
+        slug: 'shared',
+        properties: { title: 'Acme' },
+      },
+    });
+
+    const { release } = await cms.api.releases.createRelease({
+      body: { title: 'Rename' },
+    });
+    await cms.api.releases.addToRelease({
+      body: {
+        releaseId: release.id,
+        rootId: acme.rootId,
+        branchId: acme.branchId,
+      },
+    });
+
+    // Before the scope-threading fix this threw a cross-tenant
+    // PUBLISH_SLUG_CONFLICT (globex also holds "shared") and, past that, a
+    // redirects.tenant_slug NOT-NULL violation on the rename redirect.
+    await expect(
+      cms.api.releases.publishRelease({ body: { releaseId: release.id } }),
+    ).resolves.toBeDefined();
+
+    // acme's live slug is now "shared" — the SAME as globex's (per-tenant unique).
+    const [acmeRow] = await db
+      .select()
+      .from(roots)
+      .where(eq(roots.id, acme.rootId));
+    expect(acmeRow.slug).toBe('shared');
+    const [globexRow] = await db
+      .select()
+      .from(roots)
+      .where(eq(roots.id, globex.rootId));
+    expect(globexRow.slug).toBe('shared');
+
+    // The auto-created rename redirect (old path → acme page) is tagged acme.
+    const redirectRows = await db.execute(
+      sql`SELECT tenant_slug, source_path FROM cms.redirects
+          WHERE collection = 'pages' AND target_root_id = ${acme.rootId}`,
+    );
+    expect(redirectRows.rows).toHaveLength(1);
+    expect(redirectRows.rows[0].tenant_slug).toBe('acme');
+    expect(redirectRows.rows[0].source_path).toBe('/pages/original');
+
+    // globex sees no cross-tenant redirect leak.
+    setTenant('globex');
+    expect((await cms.api.pages.listRedirects()).redirects).toHaveLength(0);
+  });
+});
+
+describe('multiTenant — scheduled publishing is scoped per tenant', () => {
+  it('a scoped runScheduled processes only its own tenant\'s due rows', async () => {
+    const { cms, db, setTenant } = await setupMultiTenantTestCMS();
+
+    // Each tenant queues a DUE publish.
+    setTenant('acme');
+    const acme = await cms.api.pages.createRoot({
+      body: { slug: 'acme-sched', properties: { title: 'Acme' } },
+    });
+    await cms.api.pages.schedulePublication({
+      body: {
+        rootId: acme.rootId,
+        branchId: acme.branchId,
+        scheduledAt: new Date(Date.now() - 60_000),
+      },
+    });
+
+    setTenant('globex');
+    const globex = await cms.api.pages.createRoot({
+      body: { slug: 'globex-sched', properties: { title: 'Globex' } },
+    });
+    const globexSched = await cms.api.pages.schedulePublication({
+      body: {
+        rootId: globex.rootId,
+        branchId: globex.branchId,
+        scheduledAt: new Date(Date.now() - 60_000),
+      },
+    });
+
+    // Run the queue AS acme: only acme's row is due within its scope.
+    setTenant('acme');
+    const result = await cms.api.admin.runScheduled({ body: {} });
+    expect(result.processed).toBe(1);
+    expect(result.published).toBe(1);
+
+    // acme's page is live; globex's is untouched.
+    expect(
+      await db
+        .select()
+        .from(publications)
+        .where(eq(publications.rootId, acme.rootId)),
+    ).toHaveLength(1);
+    expect(
+      await db
+        .select()
+        .from(publications)
+        .where(eq(publications.rootId, globex.rootId)),
+    ).toHaveLength(0);
+
+    // globex's scheduled row is still pending (acme's cron never claimed it).
+    const [globexRow] = await db
+      .select()
+      .from(scheduledPublications)
+      .where(eq(scheduledPublications.id, globexSched.scheduled.id));
+    expect(globexRow.processedAt).toBeNull();
+
+    // Running AS globex now drains its own row.
+    setTenant('globex');
+    const globexResult = await cms.api.admin.runScheduled({ body: {} });
+    expect(globexResult.processed).toBe(1);
+    expect(globexResult.published).toBe(1);
+    expect(
+      await db
+        .select()
+        .from(publications)
+        .where(eq(publications.rootId, globex.rootId)),
+    ).toHaveLength(1);
   });
 });

@@ -492,13 +492,28 @@ export function createRevalidationRunner<
         const branchId = input.branchId as string;
         if (rootId && branchId) {
           const pub = await checkPublication(db, rootId, branchId);
+          // cms-05: the slug materializes into roots.slug AND the OLD→page
+          // redirects are created at PUBLISH (not at the draft updateRoot). So a
+          // publish that renames the live slug must revalidate the OLD inbound-
+          // redirect paths here too — else their cached ISR entry keeps shadowing
+          // the freshly-created redirect until the route's TTL. On a fresh publish
+          // (no prior redirects) this is an empty set, so nothing changes.
+          const oldPaths = await subtreeInboundRedirectPaths(
+            db,
+            collection,
+            rootId,
+          );
           await buildAndFire(
             action,
             collection,
             rootId,
             branchId,
             pub?.slug ?? null,
+            oldPaths,
           );
+          // A published slug change also shifts every published descendant's full
+          // path (nested); flat collections early-return here.
+          await cascadeDescendantRevalidation(action, collection, rootId);
           await cascadeRevalidation(action, collection, rootId);
         }
         return;

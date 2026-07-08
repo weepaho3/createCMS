@@ -34,6 +34,9 @@ import {
   assembleBlockTree,
   loadBlocksAtCommit,
   loadVersionMapAtCommit,
+  readRootSlug,
+  withRootSlug,
+  ROOT_SLUG_PROP,
   type BlockTreeNode,
 } from '../blocks/reconstruct-snapshot';
 import { resolveBranchPolicy } from '../branch-policy';
@@ -218,27 +221,17 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           : input.targetSlug;
       }
 
-      // A duplicated root is created top-level (parent_root_id NULL). The core
-      // slug index does not enforce uniqueness here, so this app-level check is
-      // the authority and throws SLUG_ALREADY_EXISTS on a collision.
-      if (dupSlug !== null) {
-        await validateSlugUniqueness(
-          tx,
-          collectionName,
-          null,
-          dupSlug,
-          undefined,
-          scope.roots?.insertColumns,
-        );
-      }
-
+      // cms-05: the slug is VERSIONED — seed it as the new root version's draft
+      // `__slug`, NOT onto roots.slug (which stays null until this root is first
+      // published). Drafts may collide, so there is no write-time uniqueness
+      // check here; publish enforces it (PUBLISH_SLUG_CONFLICT).
       const newRoot = await scopedInsert(
         tx,
         'cms.roots',
         {
           id: newId('root'),
           collection: collectionName,
-          slug: dupSlug,
+          slug: null,
           created_by: userId,
           // Plugin-contributed per-new-entry columns: a duplicate
           // is a NEW logical entry, so the i18n plugin mints a fresh
@@ -254,7 +247,10 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           blockId: isTopLevel ? newRoot.id : copy.newBlockId,
           type: isTopLevel ? collectionName : copy.type,
           properties: isTopLevel
-            ? (input.targetProperties as Record<string, unknown>)
+            ? withRootSlug(
+                input.targetProperties as Record<string, unknown>,
+                dupSlug,
+              )
             : copy.properties,
           children: copy.newChildren,
         };
@@ -268,22 +264,16 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
         versions,
       });
 
-      const dupPath = slugCfg?.enabled
-        ? ((await resolveRootCurrentPath(
-            tx,
-            slugCfg,
-            newRoot.id,
-            scope.roots,
-          )) ?? undefined)
-        : undefined;
-
+      // cms-05: `slug` is the DRAFT slug just seeded; `path` is a PUBLISHED
+      // concern (roots.slug is still null), so it is undefined until this root is
+      // published and the slug materializes.
       return {
         mode: 'root' as const,
         commit,
         rootId: newRoot.id,
         branchId,
         slug: dupSlug ?? undefined,
-        path: dupPath,
+        path: undefined as string | undefined,
       };
     }
 
@@ -610,17 +600,11 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             if (!parent) throw new CMSError('PARENT_ROOT_NOT_FOUND');
           }
 
-          if (slugCfg?.enabled && slug !== null) {
-            await validateSlugUniqueness(
-              tx,
-              collectionName,
-              parentRootId,
-              slug,
-              undefined,
-              scope.roots?.insertColumns,
-            );
-          }
-
+          // cms-05: the slug is VERSIONED. It is seeded as the root version's
+          // draft `__slug` (below) and left OFF roots.slug — the global slug
+          // stays null until this root is first published. Drafts may collide,
+          // so there is no blocking write-time uniqueness check; publish enforces
+          // it (PUBLISH_SLUG_CONFLICT). The cheap empty check above stays.
           const root = await scopedInsert(
             tx,
             'cms.roots',
@@ -628,7 +612,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
               id: newId('root'),
               collection: collectionName,
               parent_root_id: parentRootId,
-              slug: slug,
+              slug: null,
               sort_order: 0,
               created_by: actor,
               // Plugin-contributed per-new-entry columns: a new root is
@@ -651,27 +635,22 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
               {
                 blockId: root.id,
                 type: collectionName,
-                properties: rootProps,
+                properties: slugCfg?.enabled
+                  ? withRootSlug(rootProps, slug)
+                  : rootProps,
                 children: [],
               },
             ],
           });
 
-          const path = slugCfg?.enabled
-            ? ((await resolveRootCurrentPath(
-                tx,
-                slugCfg,
-                root.id,
-                scope.roots,
-              )) ?? undefined)
-            : undefined;
-
+          // `slug` is the DRAFT slug just seeded; `path` is a PUBLISHED concern
+          // (roots.slug is still null), so it is undefined until publish.
           return {
             commit,
             rootId: root.id,
             branchId,
-            slug: slug ?? undefined,
-            path,
+            slug: slug || undefined,
+            path: undefined as string | undefined,
           };
         });
       },
@@ -940,10 +919,13 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             parentRootId: row.parent_root_id ?? undefined,
             slug: row.slug ?? undefined,
             sortOrder: row.sort_order,
-            // JSON column — the one genuinely-dynamic leaf.
-            properties: row.properties as RootListItem<
-              TDef['root']['properties']
-            >['properties'],
+            // JSON column — the one genuinely-dynamic leaf. Strip the reserved
+            // `__slug` draft key (cms-05) so it never leaks into list output;
+            // this raw query bypasses the batchFetch helpers that strip elsewhere.
+            properties: withRootSlug(
+              (row.properties ?? {}) as Record<string, unknown>,
+              null,
+            ) as RootListItem<TDef['root']['properties']>['properties'],
             hasPublications: parseInt(String(row.publication_count), 10) > 0,
             publicationCount: parseInt(String(row.publication_count), 10),
             branchCount: parseInt(String(row.branch_count), 10),
@@ -1882,6 +1864,25 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           message,
         } = ctx.body;
         const blockId = rootId;
+        const slugCfg = def.slug as ResolvedSlugConfig | undefined;
+
+        // cms-05: the slug is VERSIONED — a slug edit is folded into the root
+        // version's reserved `__slug` property and committed to THIS branch, so
+        // it no longer touches roots.slug (the live URL) until publish. Redirects
+        // and uniqueness therefore move to the publish path; here we keep only
+        // the cheap empty/format check. Clearing the slug (empty, allowRoot) sends
+        // `__slug: null`, which the merge-patch deletes.
+        let patch = properties as Record<string, unknown> | undefined;
+        if (slugCfg?.enabled && newSlug !== undefined) {
+          const normalized = slugCfg.normalize ? normalizeSlug(newSlug) : newSlug;
+          if (!normalized && !slugCfg.allowRoot) {
+            throw new CMSError('SLUG_EMPTY_NOT_ALLOWED');
+          }
+          patch = {
+            ...patch,
+            [ROOT_SLUG_PROP]: normalized === '' ? null : normalized,
+          };
+        }
 
         return db.transaction(async (tx) => {
           const { commit } = await patchSingleVersion(
@@ -1892,7 +1893,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
               rootId,
               branchId,
               blockId,
-              properties,
+              properties: patch,
               message,
               fallbackMessage: `Update root block ${blockId}`,
               // cms-18: optional optimistic-concurrency head precondition (see
@@ -1914,78 +1915,34 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             },
           );
 
-          // Update slug on roots table if provided
-          let redirectsCreated = 0;
-          const slugCfg = def.slug as ResolvedSlugConfig | undefined;
-          if (slugCfg?.enabled && newSlug !== undefined) {
-            const normalized = slugCfg.normalize
-              ? normalizeSlug(newSlug)
-              : newSlug;
-
-            if (!normalized && !slugCfg.allowRoot) {
-              throw new CMSError('SLUG_EMPTY_NOT_ALLOWED');
-            }
-
-            const [currentRoot] = await tx
-              .select({
-                slug: roots.slug,
-                parentRootId: roots.parentRootId,
-              })
-              .from(roots)
-              .where(eq(roots.id, rootId));
-
-            // Only on an ACTUAL slug change: validate, capture the subtree's OLD
-            // paths, apply the change, then auto-create redirects (old → page).
-            if (currentRoot.slug !== normalized) {
-              await validateSlugUniqueness(
-                tx,
-                collectionName,
-                currentRoot.parentRootId,
-                normalized,
-                rootId,
-                ctx.context.scope.roots?.insertColumns,
+          // Read the committed DRAFT slug back from the new head root version, so
+          // the client learns the server-normalized value without a refetch. This
+          // is the per-branch draft slug — NOT the live roots.slug, which only
+          // changes on publish.
+          let draftSlug: string | undefined;
+          if (slugCfg?.enabled) {
+            const [rv] = await tx
+              .select({ properties: blockVersions.properties })
+              .from(commitSnapshots)
+              .innerJoin(
+                blockVersions,
+                eq(blockVersions.id, commitSnapshots.blockVersionId),
+              )
+              .where(
+                and(
+                  eq(commitSnapshots.commitId, commit.id),
+                  eq(commitSnapshots.blockId, rootId),
+                ),
               );
-
-              const captured = await captureSubtreePaths(
-                tx,
-                slugCfg,
-                rootId,
-              );
-
-              await tx
-                .update(roots)
-                .set({ slug: normalized })
-                .where(eq(roots.id, rootId));
-
-              redirectsCreated = await recordSubtreeRedirects(
-                tx,
-                collectionName,
-                captured,
-                ctx.context.scope.redirects,
-              );
-            }
+            draftSlug = rv
+              ? (readRootSlug(rv.properties as Record<string, unknown>) ??
+                undefined)
+              : undefined;
           }
-
-          // The canonical slug/path after the update (so the client needn't
-          // refetch to learn the server-normalized values).
-          const [updatedRoot] = await tx
-            .select({ slug: roots.slug })
-            .from(roots)
-            .where(eq(roots.id, rootId));
-          const path = slugCfg?.enabled
-            ? ((await resolveRootCurrentPath(
-                tx,
-                slugCfg,
-                rootId,
-                ctx.context.scope.roots,
-              )) ?? undefined)
-            : undefined;
 
           return {
             commit,
-            slug: updatedRoot?.slug ?? undefined,
-            path,
-            redirectsCreated,
+            slug: draftSlug,
           };
         });
       },
@@ -2329,14 +2286,19 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
     ),
 
     /**
-     * Lookup a root by slug (and optional parent); returns root summary if unique.
-     * Slugs are normalized if normalization is enabled in collection definition.
-     * @param slug Slug to search for.
+     * Lookup a root by its DRAFT slug (and optional parent); returns root summary
+     * if unique. This is a DRAFT read (companion to `getRoot` by id): under cms-05
+     * the slug is versioned, so it matches the per-branch `__slug` stored on the
+     * default branch's head root version — NOT the published `roots.slug` (which
+     * `getPublishedContent` resolves). An unpublished page is therefore findable by
+     * the slug the editor is about to publish. Slugs are normalized if
+     * normalization is enabled in the collection definition.
+     * @param slug Draft slug to search for.
      * @param parentRootId Parent id for nested lookup (omit for top-level roots).
      * @returns Root summary (same fields as getRoot).
      * @throws SLUG_NOT_ENABLED when slug feature is disabled in collection definition.
      * @throws ROOT_NOT_FOUND when no root matches the slug.
-     * @throws AMBIGUOUS_SLUG when multiple roots match (should not occur with proper uniqueness).
+     * @throws AMBIGUOUS_SLUG when multiple roots match (drafts may collide).
      */
     getRootBySlug: createCMSEndpoint(
       `/${collectionName}/getRootBySlug`,
@@ -2369,27 +2331,39 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           : ctx.query.slug;
         const parent = ctx.query.parentRootId ?? null;
 
-        const conditions = [
-          eq(roots.collection, collectionName),
-          eq(roots.slug, lookupSlug),
-          isNull(roots.archivedAt),
+        // Match the DRAFT slug on the default branch's head root version
+        // (block_versions.properties->>'__slug'). `roots` is left un-aliased so
+        // an active scope `where` (which references "cms"."roots") still binds.
+        const parentCond =
           parent === null
-            ? isNull(roots.parentRootId)
-            : eq(roots.parentRootId, parent),
-        ];
-        if (ctx.context.scope.roots?.where) {
-          conditions.push(ctx.context.scope.roots.where);
-        }
-
-        const matches = await db
-          .select({ rootId: roots.id })
-          .from(roots)
-          .where(and(...conditions));
+            ? sql`cms.roots.parent_root_id IS NULL`
+            : sql`cms.roots.parent_root_id = ${parent}`;
+        const scopeCond = ctx.context.scope.roots?.where
+          ? sql`AND ${ctx.context.scope.roots.where}`
+          : sql``;
+        const matchResult = await db.execute(sql`
+          SELECT cms.roots.id
+          FROM cms.roots
+          JOIN cms.branches b
+            ON b.root_id = cms.roots.id
+           AND b.name = ${branchPolicy.defaultBranchName}
+          JOIN cms.commit_snapshots cs
+            ON cs.commit_id = b.head_commit_id
+           AND cs.block_id = cms.roots.id
+          JOIN cms.block_versions bv
+            ON bv.id = cs.block_version_id
+          WHERE cms.roots.collection = ${collectionName}
+            AND cms.roots.archived_at IS NULL
+            AND (bv.properties->>${ROOT_SLUG_PROP}) = ${lookupSlug}
+            AND ${parentCond}
+            ${scopeCond}
+        `);
+        const matches = matchResult.rows as Array<{ id: string }>;
 
         if (matches.length === 0) throw new CMSError('ROOT_NOT_FOUND');
         if (matches.length > 1) throw new CMSError('AMBIGUOUS_SLUG');
 
-        const rootId = matches[0].rootId;
+        const rootId = matches[0].id;
         const map = await batchFetchRootListItems(db, [rootId], {
           collectionName,
           defaultBranchName: branchPolicy.defaultBranchName,

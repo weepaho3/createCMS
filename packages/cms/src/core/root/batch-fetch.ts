@@ -3,6 +3,7 @@ import { inArray, sql } from 'drizzle-orm';
 import type { ResolvedSlugConfig } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
 
+import { withRootSlug } from '../blocks/reconstruct-snapshot';
 import { DEFAULT_BRANCH_NAME } from '../branch-policy';
 import {
   blockVersions,
@@ -69,7 +70,13 @@ export async function batchFetchRoots(
       slug: (row.slug as string) ?? null,
       parentRootId: (row.parent_root_id as string) ?? null,
       sortOrder: row.sort_order as number,
-      properties: (row.properties ?? {}) as Record<string, unknown>,
+      // cms-05: strip the reserved `__slug` draft key — root `properties` here is
+      // the user-facing property bag (listRoots / withRoot enrichment); the draft
+      // slug is surfaced only via getBlockTree's root node.
+      properties: withRootSlug(
+        (row.properties ?? {}) as Record<string, unknown>,
+        null,
+      ),
       hasPublications: parseInt(String(row.publication_count), 10) > 0,
     });
   }
@@ -153,7 +160,12 @@ export async function batchFetchRootListItems(
       parentRootId: (row.parent_root_id as string | null) ?? undefined,
       slug: (row.slug as string | null) ?? undefined,
       sortOrder: row.sort_order as number,
-      properties: (row.properties ?? {}) as Record<string, unknown>,
+      // cms-05: strip the reserved `__slug` draft key from the user-facing
+      // property bag (see batchFetchRoots).
+      properties: withRootSlug(
+        (row.properties ?? {}) as Record<string, unknown>,
+        null,
+      ),
       hasPublications: parseInt(String(row.publication_count), 10) > 0,
       publicationCount: parseInt(String(row.publication_count), 10),
       branchCount: parseInt(String(row.branch_count), 10),

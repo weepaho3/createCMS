@@ -139,11 +139,16 @@ describe('listRoots', () => {
       },
     });
 
-    await cms.api.pages.createRoot({
+    // cms-05: the slug column (roots.slug) only materializes on publish, so a
+    // filter on the `slug` column below needs a published page.
+    const about = await cms.api.pages.createRoot({
       body: {
         slug: '/about',
         properties: { title: 'About Us', description: 'plain' },
       },
+    });
+    await cms.api.pages.publishBranch({
+      body: { rootId: about.rootId, branchId: about.branchId },
     });
 
     const bySlug = await cms.api.pages.listRoots({
@@ -530,7 +535,8 @@ describe('getBlockTree', () => {
     expect(result.reconstructed).toBe(false);
     const tree = result.tree;
     expect(tree.blockId).toBe(root.rootId);
-    expect(tree.properties).toEqual({ title: 'Page' });
+    // cms-05: the editor read keeps the versioned draft slug on the root node.
+    expect(tree.properties).toEqual({ title: 'Page', __slug: 'page' });
     expect(tree.children).toHaveLength(2);
 
     expect(tree.children[0].blockId).toBe(first.blockId);
@@ -582,7 +588,7 @@ describe('getBlockTree', () => {
       },
     });
     expect(old.tree.blockId).toBe(root.rootId);
-    expect(old.tree.properties).toEqual({ title: 'Page' });
+    expect(old.tree.properties).toEqual({ title: 'Page', __slug: 'page' });
     expect(old.tree.children).toHaveLength(0);
   });
   it('reconstructs the tree when snapshots have been pruned for an intermediate commit', async () => {
@@ -1695,8 +1701,11 @@ describe('duplicateBlock', () => {
           eq(blockVersions.blockId, dup.rootId),
         ),
       );
+    // cms-05: the duplicate seeds its slug as the versioned draft `__slug` on the
+    // new root version (roots.slug stays null until publish).
     expect(rootBv.properties).toEqual({
       title: 'Copy of Original',
+      __slug: 'copy',
     });
     expect(rootBv.children).toHaveLength(1);
 
@@ -1911,6 +1920,7 @@ describe('duplicateRoot', () => {
     // Returns a fresh root + branch (like createRoot) — no `mode` discriminant.
     expect(dup.rootId).not.toBe(root.rootId);
     expect(typeof dup.branchId).toBe('string');
+    // cms-05: `slug` is the DRAFT slug; roots.slug stays null until publish.
     expect(dup.slug).toBe('source-copy');
 
     const [newRoot] = await db
@@ -1918,7 +1928,7 @@ describe('duplicateRoot', () => {
       .from(roots)
       .where(eq(roots.id, dup.rootId));
     expect(newRoot.collection).toBe('pages');
-    expect(newRoot.slug).toBe('source-copy');
+    expect(newRoot.slug).toBeNull();
     expect(newRoot.parentRootId).toBeNull();
 
     // The new branch is the returned one and points at the duplicate commit.
@@ -1936,7 +1946,11 @@ describe('duplicateRoot', () => {
       query: { rootId: dup.rootId, branchId: dup.branchId, raw: true },
     });
     expect(tree.blockId).toBe(dup.rootId);
-    expect(tree.properties).toEqual({ title: 'Source (copy)' });
+    // cms-05: editor read keeps the versioned draft slug on the root node.
+    expect(tree.properties).toEqual({
+      title: 'Source (copy)',
+      __slug: 'source-copy',
+    });
     expect(tree.children).toHaveLength(1);
     const newContainer = tree.children[0];
     expect(newContainer.blockId).not.toBe(container.blockId);
@@ -2415,8 +2429,9 @@ describe('updateBlock', () => {
           eq(blockVersions.blockId, root.rootId),
         ),
       );
-    // title updated
-    expect(rootBv.properties).toEqual({ title: 'New Title' });
+    // title updated; cms-05: the draft slug seeded at createRoot ('old') rides the
+    // root version's `__slug` and is preserved through this property patch.
+    expect(rootBv.properties).toEqual({ title: 'New Title', __slug: 'old' });
 
     const [updateCommit] = await db
       .select()
@@ -3108,7 +3123,9 @@ describe('updateBlocks', () => {
         tree: {
           blockId: root.rootId,
           type: 'pages',
-          properties: { title: 'Page' },
+          // cms-05: the stored root version carries the versioned draft slug, so
+          // an identical round-trip must include it to stay a no-op.
+          properties: { title: 'Page', __slug: 'page' },
           children: [
             {
               blockId: a.blockId,
@@ -3515,19 +3532,18 @@ describe('getRoot', () => {
 });
 
 describe('getRootBySlug', () => {
-  it('resolves a top-level root by its slug', async () => {
+  it('resolves a top-level root by its DRAFT slug (unpublished)', async () => {
     const { cms } = await setupTestCMS();
     const created = await cms.api.pages.createRoot({
       body: { slug: '/about', properties: { title: 'About' } },
     });
-    // Read the stored slug back so the test does not couple to normalization.
-    const viaId = await cms.api.pages.getRoot({
-      query: { rootId: created.rootId },
-    });
-    expect(viaId.slug).toBeTruthy();
+    // cms-05: getRootBySlug is a DRAFT read — it matches the versioned draft slug
+    // (`created.slug`) even before publish, whereas getRoot().slug (published
+    // roots.slug) is still null here.
+    expect(created.slug).toBe('about');
 
     const root = await cms.api.pages.getRootBySlug({
-      query: { slug: viaId.slug! },
+      query: { slug: created.slug! },
     });
     expect(root.rootId).toBe(created.rootId);
   });
@@ -3536,6 +3552,115 @@ describe('getRootBySlug', () => {
     const { cms } = await setupTestCMS();
     await expect(
       cms.api.pages.getRootBySlug({ query: { slug: 'does-not-exist' } }),
+    ).rejects.toThrow(/not found/i);
+  });
+});
+
+// ============================================================================
+// cms-05 — versioned slug (draft slug isolated per branch, materialized on publish)
+// ============================================================================
+
+describe('cms-05 versioned slug (write path)', () => {
+  const dbSlug = async (db: any, rootId: string): Promise<string | null> => {
+    const [r] = await db.select().from(roots).where(eq(roots.id, rootId));
+    return r.slug;
+  };
+
+  it('createRoot leaves roots.slug null pre-publish and returns the draft slug', async () => {
+    const { cms, db } = await setupTestCMS();
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/about', properties: { title: 'About' } },
+    });
+    expect(root.slug).toBe('about');
+    expect(await dbSlug(db, root.rootId)).toBeNull();
+  });
+
+  it('updateRoot does not mutate roots.slug and returns the DRAFT slug', async () => {
+    const { cms, db } = await setupTestCMS();
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/one', properties: { title: 'P' } },
+    });
+    const upd = await cms.api.pages.updateRoot({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        slug: 'two',
+        properties: { title: 'P' },
+      },
+    });
+    // Returned slug is the new DRAFT slug…
+    expect(upd.slug).toBe('two');
+    // …but the live roots.slug is untouched (still null — never published).
+    expect(await dbSlug(db, root.rootId)).toBeNull();
+    // The draft slug rides the editor tree's root node.
+    const tree = await cms.api.pages.getBlockTree({
+      query: { rootId: root.rootId, branchId: root.branchId, raw: true },
+    });
+    expect((tree.tree.properties as { __slug?: string }).__slug).toBe('two');
+  });
+
+  it('a slug edit on a NON-default branch is invisible to roots.slug', async () => {
+    const { cms, db } = await setupTestCMS();
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/base', properties: { title: 'P' } },
+    });
+    // Publish the default branch first → roots.slug materializes to 'base'.
+    await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId },
+    });
+    expect(await dbSlug(db, root.rootId)).toBe('base');
+
+    // Edit the slug on a NON-default variant branch.
+    const variant = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'variant-b',
+        sourceBranchId: root.branchId,
+      },
+    });
+    await cms.api.pages.updateRoot({
+      body: {
+        rootId: root.rootId,
+        branchId: variant.branch.id,
+        slug: 'variant-slug',
+        properties: { title: 'P' },
+      },
+    });
+    // roots.slug is unchanged — a draft-branch slug edit does not touch it.
+    expect(await dbSlug(db, root.rootId)).toBe('base');
+  });
+
+  it('the draft slug survives revertBranch (rides the root version properties)', async () => {
+    const { cms } = await setupTestCMS();
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/first', properties: { title: 'P' } },
+    });
+    const atFirst = root.commit.id;
+
+    // Rename the draft slug → 'second'.
+    await cms.api.pages.updateRoot({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        slug: 'second',
+        properties: { title: 'P' },
+      },
+    });
+    const beforeRevert = await cms.api.pages.getRootBySlug({
+      query: { slug: 'second' },
+    });
+    expect(beforeRevert.rootId).toBe(root.rootId);
+
+    // Revert the branch back to the initial commit → draft slug is 'first' again.
+    await cms.api.pages.revertBranch({
+      body: { branchId: root.branchId, targetCommitId: atFirst },
+    });
+    const afterRevert = await cms.api.pages.getRootBySlug({
+      query: { slug: 'first' },
+    });
+    expect(afterRevert.rootId).toBe(root.rootId);
+    await expect(
+      cms.api.pages.getRootBySlug({ query: { slug: 'second' } }),
     ).rejects.toThrow(/not found/i);
   });
 });

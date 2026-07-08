@@ -13,12 +13,18 @@ import type {
   RunningAbTest,
 } from '../types';
 import type { ResolvedBranchPolicy } from '../branch-policy';
-import type { ResolvedSlugConfig } from '../types/definitions';
+import type {
+  ResolvedSlugConfig,
+  RootTableScope,
+  TableScope,
+} from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
 
 import {
   assembleBlockTree,
   loadBlocksAtCommit,
+  readRootSlug,
+  withRootSlug,
   type BlockTreeNode,
 } from '../blocks/reconstruct-snapshot';
 import { approvalGatePasses, resolveBranchPolicy } from '../branch-policy';
@@ -38,12 +44,17 @@ import {
   coreReferenceResolver,
   getReferencePropertyNames,
 } from '../references';
+import {
+  captureSubtreePaths,
+  recordSubtreeRedirects,
+} from '../redirects/auto-create';
 import { crossScopeColumns, rootScopeConditions } from '../scope';
 import {
   normalizeSlug,
   resolveAncestors,
   resolvePathToRootId,
   splitPath,
+  validateSlugUniqueness,
 } from '../slug';
 import { userEnrichment } from '../user/enrichment';
 import { parseTimestampOrNull } from '../utils/parse-timestamp';
@@ -194,7 +205,9 @@ async function loadPublishedRoots(
     commitId: string,
   ): Promise<BlockTreeNode | null> => {
     const { blocks } = await loadBlocksAtCommit(db, commitId, rootId);
-    return assembleBlockTree(blocks, rootId);
+    // cms-05: this feeds public/rendered output (embedded references + A/B
+    // variants), so strip the reserved `__slug` draft key.
+    return assembleBlockTree(blocks, rootId, { stripReservedProps: true });
   };
 
   await Promise.all(
@@ -506,7 +519,18 @@ type PublishedContentQuery =
  * publications row. Returns the publication (with `branchName`) and the published
  * `commitId` so the caller can run asset sync / notifications after commit.
  *
+ * cms-05: this is ALSO where the versioned slug is materialized. The draft slug
+ * rides the head root version's reserved `__slug` property; on publish it is
+ * promoted to the global `roots.slug` (the live URL) — but ONLY for the default/
+ * identity branch, or the first publish of ANY branch while `roots.slug` is still
+ * null. Uniqueness is enforced here (drafts may collide) and a live collision
+ * throws PUBLISH_SLUG_CONFLICT, rolling back an atomic release. A materialized
+ * slug change also records the old→new subtree redirects. Pass `slugConfig` (and,
+ * for scoping plugins, `rootScope`/`redirectScope`) to enable this; without them
+ * (system callers with no collection def) the slug step is skipped.
+ *
  * @throws ROOT_NOT_FOUND / BRANCH_NOT_FOUND / PUBLICATION_APPROVAL_REQUIRED
+ *   / PUBLISH_SLUG_CONFLICT
  */
 export async function publishBranchInTx(
   tx: DrizzleInstance,
@@ -518,13 +542,32 @@ export async function publishBranchInTx(
     branchPolicy: ResolvedBranchPolicy;
     /** Optional plugin scope predicate (multi-tenant); omit for system callers. */
     scopeWhere?: SQL | undefined;
+    /** The collection's resolved slug config; omit to skip slug materialization. */
+    slugConfig?: ResolvedSlugConfig;
+    /** Roots scope for slug-uniqueness / path resolution (per-tenant columns). */
+    rootScope?: RootTableScope;
+    /** Redirects scope for the old→new redirects written on a slug change. */
+    redirectScope?: TableScope;
   },
 ) {
-  const { collectionName, rootId, branchId, actor, branchPolicy, scopeWhere } =
-    params;
+  const {
+    collectionName,
+    rootId,
+    branchId,
+    actor,
+    branchPolicy,
+    scopeWhere,
+    slugConfig,
+    rootScope,
+    redirectScope,
+  } = params;
 
   const [root] = await tx
-    .select({ id: roots.id })
+    .select({
+      id: roots.id,
+      slug: roots.slug,
+      parentRootId: roots.parentRootId,
+    })
     .from(roots)
     .where(
       and(eq(roots.id, rootId), eq(roots.collection, collectionName), scopeWhere),
@@ -559,6 +602,82 @@ export async function publishBranchInTx(
   ) {
     // Conditional (existing) behavior: only gate when approvals exist.
     throw new CMSError('PUBLICATION_APPROVAL_REQUIRED');
+  }
+
+  // cms-05: materialize the versioned draft slug (see the function doc).
+  if (slugConfig?.enabled) {
+    const isDefaultBranch = branch.name === branchPolicy.defaultBranchName;
+    const seedNullSlug = root.slug === null;
+    if (isDefaultBranch || seedNullSlug) {
+      // The draft slug lives on the head ROOT block version's `__slug` property.
+      const [rootVersion] = await tx
+        .select({ properties: blockVersions.properties })
+        .from(commitSnapshots)
+        .innerJoin(
+          blockVersions,
+          eq(blockVersions.id, commitSnapshots.blockVersionId),
+        )
+        .where(
+          and(
+            eq(commitSnapshots.commitId, branch.headCommitId),
+            eq(commitSnapshots.blockId, rootId),
+          ),
+        );
+      const draftSlug = rootVersion
+        ? readRootSlug(rootVersion.properties as Record<string, unknown>)
+        : null;
+      const publishedSlug =
+        draftSlug !== null && slugConfig.normalize
+          ? normalizeSlug(draftSlug)
+          : draftSlug;
+
+      // Only act on an ACTUAL published-slug change. A null draft slug (an
+      // allowRoot home page, or never-set) leaves roots.slug untouched.
+      //
+      // KNOWN LIMITATION (cms-05 #3): clearing a draft slug back to null — e.g.
+      // an allowRoot page being demoted to the home page — is NOT materialized on
+      // republish; roots.slug keeps its last published value. Distinguishing an
+      // "explicitly cleared" draft from a "never set" one is a future enhancement.
+      //
+      // KNOWN LIMITATION (cms-05 #4): the uniqueness check below is scoped to the
+      // ACTIVE request scope (rootScope). Under i18n, publish a translation within
+      // its own language context — a cross-language publish would check uniqueness
+      // against the active language, not the branch's own.
+      if (publishedSlug !== null && publishedSlug !== root.slug) {
+        // Capture the subtree's OLD paths BEFORE the change — but only when the
+        // page already had a live slug (a seed had no prior URL to redirect).
+        const captured =
+          root.slug !== null
+            ? await captureSubtreePaths(tx, slugConfig, rootId)
+            : [];
+
+        // Uniqueness against the LIVE scoped set: drafts may collide, so this is
+        // the authority. Throws PUBLISH_SLUG_CONFLICT on a live collision.
+        await validateSlugUniqueness(
+          tx,
+          collectionName,
+          root.parentRootId,
+          publishedSlug,
+          rootId,
+          rootScope?.insertColumns,
+          { conflictError: 'PUBLISH_SLUG_CONFLICT' },
+        );
+
+        await tx
+          .update(roots)
+          .set({ slug: publishedSlug })
+          .where(eq(roots.id, rootId));
+
+        if (captured.length > 0) {
+          await recordSubtreeRedirects(
+            tx,
+            collectionName,
+            captured,
+            redirectScope,
+          );
+        }
+      }
+    }
   }
 
   const [existing] = await tx
@@ -775,6 +894,10 @@ export function createPublicationEndpoints<
             actor,
             branchPolicy,
             scopeWhere: ctx.context.scope.roots?.where,
+            // cms-05: materialize the versioned draft slug on publish.
+            slugConfig: def.slug as ResolvedSlugConfig | undefined,
+            rootScope: ctx.context.scope.roots,
+            redirectScope: ctx.context.scope.redirects,
           }),
         );
 
@@ -1181,7 +1304,12 @@ export function createPublicationEndpoints<
               resolvedRootId,
             );
 
-            const tree = assembleBlockTree(blocks, resolvedRootId);
+            // cms-05: public render path — strip the reserved `__slug` draft key
+            // so it never reaches the rendered tree, variable substitution, or
+            // link/reference resolution below.
+            const tree = assembleBlockTree(blocks, resolvedRootId, {
+              stripReservedProps: true,
+            });
             if (!tree) throw new CMSError('ROOT_NOT_FOUND');
 
             await resolveTreeReferences(
@@ -1454,7 +1582,12 @@ export function createPublicationEndpoints<
             publishedBy: row.published_by,
             publishedAt: parseTimestampOrNull(row.published_at),
             branchName: row.branch_name,
-            rootProperties: row.root_properties,
+            // cms-05: strip the reserved `__slug` draft key from the user-facing
+            // root property bag.
+            rootProperties: withRootSlug(
+              (row.root_properties ?? {}) as Record<string, unknown>,
+              null,
+            ),
           };
           enrich.apply(item, row);
           return item;
