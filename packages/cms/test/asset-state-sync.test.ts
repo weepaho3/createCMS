@@ -2,8 +2,8 @@ import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 
 import { assets } from '../src/schema';
-import { setupTestCMS } from './utils/cms';
-import { publishApprovedBranch } from './utils/helpers';
+import { setupTestCMS } from '../src/test-utils/cms';
+import { publishApprovedBranch } from '../src/test-utils/helpers';
 
 // ============================================================================
 // Asset State Synchronization

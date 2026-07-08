@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { setupTestCMS } from './utils/cms';
+import { setupTestCMS } from '../src/test-utils/cms';
 
 /**
  * Guards the client/server path contract.

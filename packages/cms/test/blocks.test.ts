@@ -9,9 +9,9 @@ import {
   commits,
   roots,
 } from '../src/schema';
-import { setupTestCMS } from './utils/cms';
-import { setupTestDB } from './utils/db';
-import { publishApprovedBranch } from './utils/helpers';
+import { setupTestCMS } from '../src/test-utils/cms';
+import { setupTestDB } from '../src/test-utils/db';
+import { publishApprovedBranch } from '../src/test-utils/helpers';
 
 describe('createRoot', () => {
   it('creates root, commit, branch, block version, and snapshot via the handler', async () => {

@@ -6,10 +6,10 @@ import type { CMSPlugin } from '../src/index';
 import { splitPath } from '../src/core/slug';
 import { createCMS } from '../src/index';
 import { redirects, roots } from '../src/schema';
-import { setupTestCMS } from './utils/cms';
-import { setupTestDB } from './utils/db';
-import { DUMMY_MEDIA_CONFIG } from './utils/fixtures';
-import { publishApprovedBranch } from './utils/helpers';
+import { setupTestCMS } from '../src/test-utils/cms';
+import { setupTestDB } from '../src/test-utils/db';
+import { DUMMY_MEDIA_CONFIG } from '../src/test-utils/fixtures';
+import { publishApprovedBranch } from '../src/test-utils/helpers';
 
 // A nested collection (root '/docs') for parent-fallback resolution tests.
 const NESTED_COLLECTIONS = {

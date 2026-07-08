@@ -15,8 +15,8 @@ import {
   templates,
   templateVariableUsages,
 } from '../src/schema';
-import { setupTestCMS } from './utils/cms';
-import { publishApprovedBranch } from './utils/helpers';
+import { setupTestCMS } from '../src/test-utils/cms';
+import { publishApprovedBranch } from '../src/test-utils/helpers';
 
 // ============================================================================
 // Unit tests for variable utility functions

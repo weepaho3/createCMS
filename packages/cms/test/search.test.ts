@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { indexRoot } from '../src/core/search/index-builder';
-import { setupTestCMS } from './utils/cms';
+import { setupTestCMS } from '../src/test-utils/cms';
 
 describe('search', () => {
   it('indexes a root and finds it via full-text search', async () => {

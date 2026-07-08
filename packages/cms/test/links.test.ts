@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 
 import { createCMS } from '../src/index';
 import { contentUsages } from '../src/schema';
-import { setupTestDB } from './utils/db';
-import { DUMMY_MEDIA_CONFIG } from './utils/fixtures';
+import { setupTestDB } from '../src/test-utils/db';
+import { DUMMY_MEDIA_CONFIG } from '../src/test-utils/fixtures';
 
 async function setupLinkCMS() {
   const { db } = await setupTestDB();

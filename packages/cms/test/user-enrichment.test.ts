@@ -10,7 +10,7 @@ import {
   userJoinFragments,
 } from '../src/core/user/join-helpers';
 import { resolveUserConfig } from '../src/core/user/resolve';
-import { setupTestCMS } from './utils/cms';
+import { setupTestCMS } from '../src/test-utils/cms';
 
 // ---------------------------------------------------------------------------
 // Test user table (Drizzle definition — used for metadata resolution)

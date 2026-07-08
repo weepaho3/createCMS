@@ -1,13 +1,13 @@
-import type { TestS3 } from '../../../../../test/utils/s3';
+import type { TestS3 } from '../../../../test-utils/s3';
 import type { CMSMiddleware } from '../../../../core/types/definitions';
 import type { CustomMediaConfig } from '../../../../core/types/s3';
 
-import { setupTestDB } from '../../../../../test/utils/db';
+import { setupTestDB } from '../../../../test-utils/db';
 import {
   DUMMY_MEDIA_CONFIG,
   TEST_COLLECTIONS,
-} from '../../../../../test/utils/fixtures';
-import { setupTestS3 } from '../../../../../test/utils/s3';
+} from '../../../../test-utils/fixtures';
+import { setupTestS3 } from '../../../../test-utils/s3';
 import { createCMS } from '../../../../core/factory';
 import { multiTenant } from '../../index';
 import { multiTenantSchema } from '../../schema';

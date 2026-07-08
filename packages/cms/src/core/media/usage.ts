@@ -1,8 +1,9 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 
-import type { DrizzleInstance } from './types/drizzle';
+import type { VersionToIndex } from '../content-index';
+import type { DrizzleInstance } from '../types/drizzle';
 
-import { newId } from '../utils/nanoid';
+import { newId } from '../../utils/nanoid';
 import {
   assets,
   blockVersions,
@@ -10,8 +11,8 @@ import {
   commitSnapshots,
   contentUsages,
   roots,
-} from './db/schema.generated';
-import { rootScopeConditions } from './scope';
+} from '../db/schema.generated';
+import { rootScopeConditions } from '../scope';
 
 // Asset ids are nanoids like `ast_<20 chars>`; the generic id shape is matched
 // then validated against the assets table (assetId is a real FK), so other ids
@@ -66,21 +67,6 @@ export function extractAssetIdsFromProperties(
   }
   return result;
 }
-
-/**
- * A freshly-inserted block version to index. Block versions are immutable and
- * append-only, so references are inserted exactly ONCE here (never re-synced)
- * and removed only when the version itself is pruned (FK cascade).
- */
-export type VersionToIndex = {
-  blockVersionId: string;
-  blockId: string;
-  // The block's type — needed by the reference indexer to look up which
-  // properties are `reference`-typed in the collection def (asset/variable
-  // extraction is type-agnostic and ignores it).
-  type: string;
-  properties: Record<string, unknown>;
-};
 
 /**
  * Inserts content_usages asset rows for newly-created block versions, within the same

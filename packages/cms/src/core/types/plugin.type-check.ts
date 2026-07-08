@@ -14,10 +14,10 @@
 
 import type { Endpoint } from 'better-call';
 
-import { defineCollections, definePlugin } from './define';
-import { createCMS } from './factory';
-import type { DrizzleInstance } from './types/drizzle';
-import type { MediaConfig } from './types/s3';
+import { defineCollections, definePlugin } from '../define';
+import { createCMS } from '../factory';
+import type { DrizzleInstance } from './drizzle';
+import type { MediaConfig } from './s3';
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B
   ? 1

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { createCMS } from '../src/index';
-import { setupTestCMS } from './utils/cms';
-import { setupTestDB } from './utils/db';
-import { DUMMY_MEDIA_CONFIG } from './utils/fixtures';
+import { setupTestCMS } from '../src/test-utils/cms';
+import { setupTestDB } from '../src/test-utils/db';
+import { DUMMY_MEDIA_CONFIG } from '../src/test-utils/fixtures';
 
 describe('branch protection — protectPublishedBranches', () => {
   const createParagraph = (

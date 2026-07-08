@@ -2,6 +2,7 @@
 
 import { cac } from 'cac';
 
+import { version } from '../../package.json';
 import { registerGenerateCommand } from './commands/generate';
 import { registerInitCommand } from './commands/init';
 
@@ -11,7 +12,9 @@ registerInitCommand(cli);
 registerGenerateCommand(cli);
 
 cli.help();
-cli.version('0.0.1');
+// Inlined at build time from package.json (bunchee → @rollup/plugin-json), so
+// `createcms --version` always matches the published version. (struct-13)
+cli.version(version);
 cli.parse(process.argv, { run: false });
 
 const result = cli.runMatchedCommand();

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { createCMS } from '../src/index';
-import { setupTestCMS } from './utils/cms';
-import { setupTestDB } from './utils/db';
-import { DUMMY_MEDIA_CONFIG, TEST_COLLECTIONS } from './utils/fixtures';
+import { setupTestCMS } from '../src/test-utils/cms';
+import { setupTestDB } from '../src/test-utils/db';
+import { DUMMY_MEDIA_CONFIG, TEST_COLLECTIONS } from '../src/test-utils/fixtures';
 
 const USER_1 = 'user-1';
 const USER_2 = 'user-2';

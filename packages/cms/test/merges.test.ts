@@ -12,8 +12,8 @@ import {
   mergeConflicts,
   mergeRequests,
 } from '../src/schema';
-import { setupTestCMS } from './utils/cms';
-import { requestAndApproveMerge } from './utils/helpers';
+import { setupTestCMS } from '../src/test-utils/cms';
+import { requestAndApproveMerge } from '../src/test-utils/helpers';
 
 // ============================================================================
 // getDiff

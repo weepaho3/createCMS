@@ -2,7 +2,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import type { DrizzleInstance } from '../types/drizzle';
 
-import { collectAssetIdsFromProperties } from '../assets';
+import { collectAssetIdsFromProperties } from './usage';
 import { loadBlocksAtCommit } from '../blocks/reconstruct-snapshot';
 import { assets, branches, publications } from '../db/schema.generated';
 

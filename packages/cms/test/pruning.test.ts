@@ -17,7 +17,7 @@ import {
   publications,
   roots,
 } from '../src/schema';
-import { setupTestCMS } from './utils/cms';
+import { setupTestCMS } from '../src/test-utils/cms';
 
 const pluginPruningRecords = pgTable('plugin_pruning_records', {
   id: text('id').primaryKey(),

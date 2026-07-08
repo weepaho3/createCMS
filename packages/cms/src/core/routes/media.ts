@@ -9,7 +9,7 @@ import { newId } from '../../utils/nanoid';
 import {
   getAssetUsageDetails,
   isAssetReferencedByLiveContent,
-} from '../assets';
+} from '../media/usage';
 import { assetFolders, assets } from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError, errorMessages } from '../errors';

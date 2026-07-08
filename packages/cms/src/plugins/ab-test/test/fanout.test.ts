@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { setupTestDB } from '../../../../test/utils/db';
-import { DUMMY_MEDIA_CONFIG } from '../../../../test/utils/fixtures';
+import { setupTestDB } from '../../../test-utils/db';
+import { DUMMY_MEDIA_CONFIG } from '../../../test-utils/fixtures';
 import { createCMS } from '../../../core/factory';
 import { abTest } from '../index';
 import { buildSchema } from '../schema';
