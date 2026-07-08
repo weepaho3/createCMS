@@ -311,7 +311,7 @@ type BlockTypes = {
 /** Reference inference mode: `raw` (write input + getBlockTree editor read) keeps
  *  a `reference` as its stored rootId string; `resolved` (getPublishedContent)
  *  surfaces the inlined `ResolvedReference`. */
-type RefMode = 'raw' | 'resolved';
+export type RefMode = 'raw' | 'resolved';
 
 export type BlockPropertyType = keyof BlockTypes;
 

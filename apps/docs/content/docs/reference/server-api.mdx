@@ -104,6 +104,37 @@ Updates a block with patch semantics: supplied fields overwrite, omitted fields 
 
 Returns `{ commit }` (the new-head envelope; see `createRoot`).
 
+### `updateBlocks`
+
+Saves a whole tree in one commit: it diffs the tree you send against the branch head and creates, updates, and deletes blocks to match. This is the batch save path an editor calls after local edits, rather than one `createBlock`/`updateBlock`/`moveBlock` per change. `POST`, input via `body`. See [Build your own editor](/docs/guides/building-an-editor) for how it fits an editor's save loop.
+
+| Body field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `rootId` | `string` | yes | The entry. |
+| `branchId` | `string` | yes | The branch to write. |
+| `tree` | block tree node | yes | The desired final tree, root node first. |
+| `message` | `string` | no | Commit message (defaults to `'Batch update'`). |
+| `expectedHeadCommitId` | `string` | no | Optimistic-concurrency guard (see below). |
+
+The `tree` has the same shape `getBlockTree` returns: a node is `{ blockId, type, properties, children }`. The top node is the root. `getBlockTree` emits it as `type: 'root'`; you may post that value straight back, because `updateBlocks` normalizes the root node's type to the collection's own type before writing. The root node's `blockId` must be the `rootId`.
+
+Returns `{ commit, changed }`. `commit` is the new-head envelope (see `createRoot`). When the diff is empty (the tree already matches the head), no commit is created: the call returns the current head commit with `changed: false`, so you can tell a no-op save from a real one.
+
+Every created or updated block is validated before the commit, matching what the single-block handlers enforce: the block `type` must exist in the collection, its `properties` must satisfy that type's schema, [placement](/docs/concepts/blocks) (allowed parent/child) must be legal, and the root node's `blockId` must be the `rootId`. Any violation rejects the whole batch with no partial write.
+
+Pass `expectedHeadCommitId` to make the save conditional: if the branch head has moved since you loaded the tree, the write is rejected with `HEAD_MISMATCH` instead of clobbering the newer commit. Set it to the `commitId` you read the tree at, then refetch and retry (or surface a conflict) on mismatch.
+
+```ts
+const { commit, changed } = await cms.api.pages.updateBlocks({
+  body: {
+    rootId,
+    branchId,
+    tree, // the edited tree from getBlockTree, root node included
+    expectedHeadCommitId: headCommitId,
+  },
+});
+```
+
 ### `getPublishedContent`
 
 Returns the published view of an entry, with references resolved. `GET`, input via `query`. Provide at least one of `rootId`, `slug`, or `path`.
@@ -205,7 +236,7 @@ Rebuilds the full-text search index across all entities. `POST`, empty body. Ret
 Each collection also exposes the rest of the versioning and review surface. The remaining methods, all under `cms.api.<collection>`:
 
 - **Roots**: `getRoot`, `getRootBySlug`, `archiveRoot`, `moveRoot`, `duplicateRoot`, `getReferenceUsages`, `getRootHistory`.
-- **Blocks**: `moveBlock`, `deleteBlock`, `duplicateBlock`, `updateBlocks`, `updateRoot`.
+- **Blocks**: `moveBlock`, `deleteBlock`, `duplicateBlock`, `updateRoot`.
 - **Branches**: `revertBranch`, `checkDivergence` (plus the branch methods above).
 - **Merges**: `createMergeRequest`, `getDiff`, `checkConflicts`, `resolveConflicts`, `createMergeBlockVersion`, `executeMerge`, `listMergeRequests`, `updateMergeRequest`, `closeMergeRequest`, `reopenMergeRequest`.
 - **Approvals**: `requestApproval`, `approve`, `reject`, `cancelApproval`, `getApproval`, `listApprovals`.

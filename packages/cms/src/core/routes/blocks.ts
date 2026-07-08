@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull, sql, type AnyColumn } from 'drizzle-orm';
 import * as z from 'zod';
 
 import type {
+  AnyBlockDefinition,
   CMSProcedureCtx,
   CollectionWithName,
   InferBlockTreeNode,
@@ -17,6 +18,7 @@ import type {
 import type { DrizzleInstance } from '../types/drizzle';
 
 import { newId } from '../../utils/nanoid';
+import { defaultPropertiesFor } from '../block-defaults';
 import {
   createInitialCommit,
   fetchCommitSummary,
@@ -71,6 +73,7 @@ import {
   ROOT_COLUMN_FIELDS,
   buildBlockInputSchema,
   buildListRootsQuerySchema,
+  buildPropertiesSchema,
   buildRootInputSchema,
   buildUpdateBlockInputSchema,
   buildUpdateRootInputSchema,
@@ -1097,7 +1100,16 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             type,
             ctx.context.scope?.templates?.where,
           );
+          // toe-ed-09: seed the new block's properties from its definition's
+          // per-property `defaultValue`s as the LOWEST-priority base. Precedence
+          // (lowest → highest): schema defaults < template prefill < caller
+          // values. Defaults only fill gaps a caller/template left unset.
+          const blockDef = def.blocks?.[type];
+          const propertyDefaults = blockDef
+            ? defaultPropertiesFor(blockDef as AnyBlockDefinition)
+            : {};
           const blockProps = {
+            ...propertyDefaults,
             ...templateDefaults,
             ...(properties as Record<string, unknown> | undefined),
           };
@@ -2022,7 +2034,46 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             rootId,
           );
 
-          const diff = diffTree(tree, currentBlocks);
+          // toe-ed-01(a): the posted tree's root node MUST be this root. Do this
+          // FIRST — it is the cheapest guard and the highest-stakes: a mismatched
+          // root blockId makes diffTree treat the posted node as a fresh "create"
+          // and the real root as a "delete", tombstoning the live root.
+          if (tree.blockId !== rootId)
+            throw new CMSError('TYPE_MISMATCH', {
+              message: `updateBlocks tree root blockId '${tree.blockId}' does not match rootId '${rootId}'`,
+              data: {
+                reason: 'root-blockid-mismatch',
+                expected: rootId,
+                actual: tree.blockId,
+              },
+            });
+
+          // toe-ed-02: getBlockTree emits the root node with the logical marker
+          // `type: 'root'` (assembleBlockTree), but the store keys the root
+          // version on the collection name. Map `'root'` back to the collection
+          // name BEFORE diffing (mirroring routes/merges.ts), so a tree loaded via
+          // getBlockTree and posted straight back is a lossless no-op instead of
+          // persisting the literal `'root'` and type-flipping the root every read.
+          const normalizedTree: BlockTreeNode =
+            tree.type === 'root' ? { ...tree, type: collectionName } : tree;
+
+          // toe-ed-01(b,c,d): the batch save is the visual editor's ONLY write
+          // path, so it must enforce the same structural guarantees createBlock
+          // does per-insert. The request body uses the generic blockTreeNodeSchema
+          // (any type, any properties), so validate the desired tree here:
+          //  (b) every written node's `type` is a known block type,
+          //  (c) its properties satisfy that type's schema, and
+          //  (d) every parent→child edge being (re)written is a legal placement.
+          //
+          // Crucially, validation keys off the DIFF, not the raw posted tree:
+          // only CREATED and UPDATED nodes are rewritten by writeCommit, so only
+          // those are checked. Re-validating UNCHANGED pre-existing blocks was the
+          // source of two defects — it (1) bypassed the root (skipping it wholesale
+          // let updateBlocks persist root props updateRoot would reject) and (2)
+          // let ONE stale sibling (e.g. a prior PATCH null-deleted a now-required
+          // prop, schema drift, or a link `.min(1)` over links stored empty) brick
+          // the editor's only batch-save path even when the user never touched it.
+          const diff = diffTree(normalizedTree, currentBlocks);
 
           if (
             diff.created.length === 0 &&
@@ -2031,9 +2082,112 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           ) {
             // No-op save: the head is unchanged. Return it with changed:false so
             // the caller can distinguish "nothing to save" from a real commit
-            // (the payload is otherwise identical to a fresh commit).
+            // (the payload is otherwise identical to a fresh commit). A no-op has
+            // nothing to (re)write, so structural validation is skipped entirely.
             const headCommit = await fetchCommitSummary(tx, oldHeadId);
             return { commit: headCommit!, changed: false };
+          }
+
+          // The diff carries child IDs, not typed child nodes; index the posted
+          // tree once so placement can resolve each child's `type`.
+          const nodesById = new Map<string, BlockTreeNode>();
+          const indexNodes = (node: BlockTreeNode): void => {
+            nodesById.set(node.blockId, node);
+            for (const child of node.children) indexNodes(child);
+          };
+          indexNodes(normalizedTree);
+
+          // A non-root written node's type must resolve to a known block type;
+          // the collection root type is accepted too (mirrors
+          // assertPropertyReferencesExist, which treats it as root-typed).
+          const validBlockTypes = new Set<string>([
+            collectionName,
+            ...Object.keys(def.blocks ?? {}),
+          ]);
+          // Build each type's property schema once (create + patch variants) and
+          // reuse it across every node of that type.
+          const strictSchemas = new Map<string, z.ZodType>();
+          const patchSchemas = new Map<string, z.ZodType>();
+          const propertiesSchemaFor = (
+            type: string,
+            allOptional: boolean,
+          ): z.ZodType => {
+            const cache = allOptional ? patchSchemas : strictSchemas;
+            const cached = cache.get(type);
+            if (cached) return cached;
+            const specs =
+              type === collectionName
+                ? def.root.properties
+                : def.blocks![type].properties;
+            const built = buildPropertiesSchema(specs, allOptional);
+            cache.set(type, built);
+            return built;
+          };
+
+          // (b) + (c): validate a node writeCommit will (re)write. CREATED nodes
+          // are STRICT (required props enforced, exactly like createBlock). UPDATED
+          // nodes — INCLUDING the ROOT — are PATCH-tolerant (`allOptional`): only
+          // the props actually present are type-checked, so the save mirrors
+          // updateBlock/updateRoot and neither the root (defect 1) nor a
+          // now-invalid untouched sibling (defect 2) is mis-handled.
+          const validateWrittenNode = (
+            node: BlockTreeNode,
+            strict: boolean,
+          ): void => {
+            const isRoot = node.blockId === rootId;
+
+            // (b) block-type existence. The root's type is collection-scoped
+            // (validated against def.root below); every other written node must
+            // name a known block type.
+            if (!isRoot && !validBlockTypes.has(node.type))
+              throw new CMSError('TYPE_MISMATCH', {
+                message: `Unknown block type '${node.type}' for block ${node.blockId}`,
+                data: {
+                  reason: 'unknown-type',
+                  type: node.type,
+                  blockId: node.blockId,
+                },
+              });
+
+            // (c) property validation — the ROOT validates against def.root, every
+            // other node against its block type. `allOptional` is inverted from
+            // `strict` (created → strict/required-enforcing, updated → patch).
+            const schema = propertiesSchemaFor(
+              isRoot ? collectionName : node.type,
+              /* allOptional */ !strict,
+            );
+            const parsed = schema.safeParse(node.properties);
+            if (!parsed.success)
+              throw new CMSError('TYPE_MISMATCH', {
+                message: isRoot
+                  ? `Invalid root properties (block ${node.blockId}): ${parsed.error.message}`
+                  : `Invalid properties for block type '${node.type}' (block ${node.blockId}): ${parsed.error.message}`,
+                data: {
+                  reason: isRoot
+                    ? 'invalid-root-properties'
+                    : 'invalid-properties',
+                  type: node.type,
+                  blockId: node.blockId,
+                  issues: parsed.error.issues,
+                },
+              });
+          };
+
+          for (const b of diff.created)
+            validateWrittenNode(nodesById.get(b.blockId)!, /* strict */ true);
+          for (const b of diff.updated)
+            validateWrittenNode(nodesById.get(b.blockId)!, /* strict */ false);
+
+          // (d) placement: assert every parent→child edge writeCommit will
+          // (re)write — i.e. the child list of every CREATED or UPDATED node.
+          // Edges among purely-unchanged nodes are left untouched (skipping them
+          // is the other half of the defect-2 fix). Root's stored type normalizes
+          // to the literal 'root' the structure map keys on, mirroring createBlock.
+          for (const b of [...diff.created, ...diff.updated]) {
+            const node = nodesById.get(b.blockId)!;
+            const parentType = node.blockId === rootId ? 'root' : node.type;
+            for (const child of node.children)
+              assertPlacementAllowed(placementIndex, child.type, parentType);
           }
 
           // cms-04: validate image/reference ids on every block being written

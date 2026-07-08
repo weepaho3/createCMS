@@ -20,10 +20,13 @@ type AcceptRule =
  *   absent from this map are open.
  * - `containers` — block types whose `allowChildren` is `true`. The root is NOT
  *   listed (it always accepts children) and is keyed as the literal `'root'`.
+ * - `blockTypes` — every block type declared by the collection (the full child
+ *   universe {@link allowedChildTypes} filters over).
  */
 export type PlacementIndex = {
   rules: Map<string, AcceptRule>;
   containers: Set<string>;
+  blockTypes: Set<string>;
 };
 
 /** Builds the {@link PlacementIndex} from a collection's `structure` + blocks. */
@@ -49,12 +52,54 @@ export function buildPlacementIndex(
     }
   }
   const containers = new Set<string>();
+  const blockTypes = new Set<string>();
   if (blocks) {
     for (const [name, def] of Object.entries(blocks)) {
+      blockTypes.add(name);
       if (def.allowChildren === true) containers.add(name);
     }
   }
-  return { rules, containers };
+  return { rules, containers, blockTypes };
+}
+
+/**
+ * Non-throwing predicate mirror of {@link assertPlacementAllowed}: returns
+ * `true` when placing a `childType` block under `parentType` is allowed, `false`
+ * otherwise. `parentType` must be the literal `'root'` when the parent is the
+ * collection root. Applies the same two gates (container, then acceptance) —
+ * use it for editor affordances (enable/disable a drop target) where an
+ * exception would be the wrong control-flow.
+ */
+export function isPlacementAllowed(
+  index: PlacementIndex,
+  childType: string,
+  parentType: string,
+): boolean {
+  if (parentType !== 'root' && !index.containers.has(parentType)) return false;
+
+  const rule = index.rules.get(parentType);
+  if (!rule) return true;
+
+  if (rule.mode === 'only') return rule.set.has(childType);
+  return !rule.set.has(childType);
+}
+
+/**
+ * Enumerates the block types `parentType` accepts as children. Filters the
+ * collection's full `blockTypes` universe (captured in the index) through
+ * {@link isPlacementAllowed}, so it honours both the container gate and the
+ * parent's `accepts`/`excludes` rule. `parentType` must be the literal `'root'`
+ * for the collection root. A non-container parent yields `[]`.
+ */
+export function allowedChildTypes(
+  index: PlacementIndex,
+  parentType: string,
+): string[] {
+  const out: string[] = [];
+  for (const childType of index.blockTypes) {
+    if (isPlacementAllowed(index, childType, parentType)) out.push(childType);
+  }
+  return out;
 }
 
 /**

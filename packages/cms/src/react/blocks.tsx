@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Fragment } from 'react';
 
 import type { BlockTreeNode } from '../core/blocks/reconstruct-snapshot';
+import { isResolvedReference } from '../core/references-guard';
 import type {
   AnyBlockDefinition,
   AnyCollectionDefinition,
@@ -9,22 +10,34 @@ import type {
   CollectionDefinition,
   EventDeclaration,
   InferBlockProperties,
-  ResolvedReference,
+  RefMode,
 } from '../core/types/definitions';
 
 import { BlockTracker } from './tracking';
+
+// Re-export the canonical resolved-reference guard from its pure module, so
+// `@createcms/core/react` keeps exposing `isResolvedReference` unchanged.
+export { isResolvedReference } from '../core/references-guard';
+
+// `RefMode` — which side of the reference seam a component's props reflect:
+// `raw` (store values — the editor canvas) or `resolved` (published read) — is
+// imported from `../core/types/definitions` (re-exported from the package root).
 
 // ============================================================================
 // Type-level utilities
 // ============================================================================
 
-/** Props passed to each block component in the renderer map. The renderer
- *  consumes RESOLVED content (getPublishedContent), so `reference` properties
- *  surface as `ResolvedReference` objects — the `resolved` inference mode. */
+/** Props passed to each block component in the renderer map. The default
+ *  renderer consumes RESOLVED content (getPublishedContent), so `reference`
+ *  properties surface as `ResolvedReference` objects — hence `M` defaults to
+ *  `'resolved'`. Pass `M = 'raw'` to type a dual-use component against the raw
+ *  store values the editor canvas holds (`reference` → stored rootId string),
+ *  instead of falling back to `any`. */
 export type BlockComponentProps<
   TProps extends Record<string, BlockProperty> = Record<string, BlockProperty>,
+  M extends RefMode = 'resolved',
 > = {
-  properties: InferBlockProperties<TProps, 'resolved'>;
+  properties: InferBlockProperties<TProps, M>;
   children: ReactNode;
   blockId: string;
   node: BlockTreeNode;
@@ -47,19 +60,6 @@ type BlockComponentMap<TBlocks extends Record<string, AnyBlockDefinition>> = {
   ) => ReactNode;
 };
 
-export function isResolvedReference(
-  value: unknown,
-): value is ResolvedReference {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'rootId' in value &&
-    'collection' in value &&
-    'tree' in value &&
-    'properties' in value
-  );
-}
-
 // ============================================================================
 // BlocksMap
 // ============================================================================
@@ -81,6 +81,30 @@ export type BlocksMap<TCollection = AnyCollectionDefinition> = {
   readonly _events: Record<string, Record<string, EventDeclaration>>;
   readonly _collection: TCollection;
 };
+
+/**
+ * Blessed accessor for the collection definition a `BlocksMap` carries. Use
+ * this instead of reaching into the `_collection` underscore internal: editors
+ * consuming the map for schema/placement/grouping go through here, so the
+ * `BlocksMap` shape can evolve without breaking them. The `TCollection` type
+ * parameter is preserved, so `getCollection(pageBlocks)` stays fully typed.
+ */
+export function getCollection<TCollection>(
+  map: BlocksMap<TCollection>,
+): TCollection {
+  return map._collection;
+}
+
+/**
+ * Blessed accessor for the React component map a `BlocksMap` carries. Use this
+ * instead of reaching into the `_components` underscore internal — e.g. an
+ * editor canvas that renders blocks itself rather than via `<BlocksRenderer>`.
+ */
+export function getComponents(
+  map: BlocksMap<unknown>,
+): Record<string, (props: any) => ReactNode> {
+  return map._components;
+}
 
 /**
  * Extracts the per-block-type event declarations from a collection definition —
