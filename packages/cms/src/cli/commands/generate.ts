@@ -88,7 +88,15 @@ export function registerGenerateCommand(cli: CAC) {
       'Generate the Drizzle schema from your CMS config',
     )
     .option('--output <path>', 'Override the output file path')
-    .action(async (configArg?: string, options?: { output?: string }) => {
+    .option(
+      '--force, --yes',
+      'Overwrite an existing schema without prompting (required in CI/non-interactive shells)',
+    )
+    .action(
+      async (
+        configArg?: string,
+        options?: { output?: string; force?: boolean; yes?: boolean },
+      ) => {
       const cwd = process.cwd();
 
       const spinner = createSpinner('Looking for config');
@@ -145,7 +153,24 @@ export function registerGenerateCommand(cli: CAC) {
         );
       }
 
-      if (await fileExists(outputPath)) {
+      const forced = options?.force === true || options?.yes === true;
+
+      if (!forced && (await fileExists(outputPath))) {
+        const interactive =
+          process.stdin.isTTY === true && process.stdout.isTTY === true;
+
+        if (!interactive) {
+          // Non-interactive (CI): never silently cancel. Regenerating would
+          // require confirmation we can't collect, so fail loudly instead of
+          // leaving a stale schema in place with a success exit code.
+          console.error(
+            `\n  ${kleur.red('Error:')} Output file already exists and no interactive terminal is available.`,
+          );
+          printMeta('file', outputPath);
+          printMeta('hint', 'Pass --force (alias --yes) to overwrite it in CI.');
+          process.exit(1);
+        }
+
         const shouldOverwrite = await confirmOverwrite(outputPath);
         if (!shouldOverwrite) {
           console.log(`\n  ${kleur.yellow('Generation cancelled.')}`);
