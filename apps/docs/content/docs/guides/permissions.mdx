@@ -1,0 +1,160 @@
+---
+title: Restrict access by role
+description: Map each resource and operation to a role, and enforce it in a single authMiddleware.
+---
+
+This guide enforces role-based access control in `authMiddleware`, the one seam every CMS call passes through. It assumes a CMS instance (see [Quickstart](/docs/quickstart)). `authMiddleware` is required: `createCMS` throws without it, so auth is never silently absent (see [Security](/docs/resources/security#authentication-is-required)).
+
+### What authMiddleware receives
+
+Before any endpoint runs, the CMS calls your `authMiddleware` with the resource and operation it is about to perform. Return a result (`{ userId, ...extras }`) to allow the call; throw to deny it:
+
+```ts title="lib/cms.ts"
+import { defineAuthMiddleware } from '@createcms/core';
+
+const authMiddleware = defineAuthMiddleware(async (ctx) => {
+  ctx.permissionResource; // 'block', 'branch', 'mergeRequest', ... (see below)
+  ctx.operation;          // 'read' | 'create' | 'update' | 'delete'
+  ctx.scope;              // 'collection' | 'system'
+  ctx.collection?.name;   // the collection, on collection-scoped calls only
+  ctx.branchName;         // the target branch, when the call names one
+  ctx.request;            // curated request; raw Request at ctx.request?.request
+
+  return { userId: 'usr_1' }; // allow; throw to deny
+});
+```
+
+The extra fields you return (beyond `userId`) extend the context available to scoping and hooks.
+
+### Resources and operations
+
+`ctx.operation` is always one of four values:
+
+| Operation | Meaning |
+| --- | --- |
+| `read` | Fetch, list, or resolve. |
+| `create` | Add a new record. |
+| `update` | Modify an existing record. |
+| `delete` | Remove or archive a record. |
+
+`ctx.permissionResource` names the kind of thing being touched. These are the real values the source assigns:
+
+| Resource | Guards |
+| --- | --- |
+| `root` | Entries: `createRoot`, `updateRoot`, `moveRoot`, `archiveRoot`, `listRoots`, history, translations. |
+| `block` | The block tree: `getBlockTree`, `createBlock`, `updateBlock`, `deleteBlock`, `moveBlock`, `duplicateBlock`, `updateBlocks`. |
+| `branch` | Branches: `createBranch`, `deleteBranch`, `renameBranch`, `revertBranch`, `listBranches`, `checkDivergence`. |
+| `mergeRequest` | Merge requests: `createMergeRequest`, `executeMerge`, `resolveConflicts`, `getDiff`, close/reopen. |
+| `approval` | Sign-off: `requestApproval`, `approve`, `reject`, `cancelApproval`, `listApprovals`. |
+| `comment` | Review threads: `createCommentThread`, `createCommentMessage`, resolve/reopen, delete, mentions. |
+| `publication` | Publish state: `publishBranch`, `unpublishBranch`, `listPublications`. |
+| `publishedContent` | Public reads: `getPublishedContent`, `resolveRedirect`. |
+| `redirect` | Redirect management: `createRedirect`, `updateRedirect`, `archiveRedirect`, `listRedirects`. |
+| `notification` | Notifications: `list`, mark read/unread, archive. |
+| `media` | Assets: `createSignedUpload`, `uploadAssets`, `listAssets`, `updateAssetsStatus`. |
+| `search` | Search index and query. |
+| `variables` | Reusable variables. |
+| `templates` | Block templates. |
+| `realtime` | The `/realtime` SSE connection (present when `realtime` is configured). |
+| `admin` | Maintenance operations such as `reindexSearch`. |
+| `abTest` | A/B tests (added by the [A/B testing plugin](/docs/plugins/ab-test)). |
+| `abTestEvent` | Public A/B event ingest (A/B testing plugin). |
+
+`ctx.scope` is `'collection'` for anything scoped to a collection (`ctx.collection` is set), or `'system'` for instance-wide resources like `notification`, `search`, and `admin`.
+
+### A resource-by-role matrix
+
+An access policy is a decision for each resource and operation: the minimum role that may perform it. This example uses four ranked roles, `viewer` < `editor` < `reviewer` < `admin`, and reads `publishedContent` publicly:
+
+| Resource | `read` | `create` | `update` | `delete` |
+| --- | --- | --- | --- | --- |
+| `root` | viewer | editor | editor | admin |
+| `block` | viewer | editor | editor | editor |
+| `branch` | viewer | editor | editor | admin |
+| `mergeRequest` | viewer | editor | editor | reviewer |
+| `approval` | viewer | reviewer | reviewer | reviewer |
+| `comment` | viewer | editor | editor | reviewer |
+| `publication` | viewer | admin | admin | admin |
+| `redirect` | viewer | admin | admin | admin |
+| `media` | viewer | editor | editor | admin |
+
+Editors draft content and open merge requests; only reviewers approve; only admins publish, manage redirects, and delete pages.
+
+### Enforce the matrix
+
+Encode the matrix as data, then compare the caller's role against it. Anything not listed falls back to a strict default:
+
+```ts title="lib/access-policy.ts"
+import type { CMSOperation } from '@createcms/core';
+
+export type Role = 'viewer' | 'editor' | 'reviewer' | 'admin';
+
+const RANK: Record<Role, number> = { viewer: 0, editor: 1, reviewer: 2, admin: 3 };
+
+type OpMatrix = Partial<Record<CMSOperation, Role>>;
+
+// Unlisted resources use this (read is open to any signed-in user; writes are admin-only).
+const DEFAULT: Required<OpMatrix> = {
+  read: 'viewer',
+  create: 'admin',
+  update: 'admin',
+  delete: 'admin',
+};
+
+const POLICY: Record<string, OpMatrix> = {
+  root: { read: 'viewer', create: 'editor', update: 'editor', delete: 'admin' },
+  block: { read: 'viewer', create: 'editor', update: 'editor', delete: 'editor' },
+  branch: { read: 'viewer', create: 'editor', update: 'editor', delete: 'admin' },
+  mergeRequest: { read: 'viewer', create: 'editor', update: 'editor', delete: 'reviewer' },
+  approval: { read: 'viewer', create: 'reviewer', update: 'reviewer', delete: 'reviewer' },
+  comment: { read: 'viewer', create: 'editor', update: 'editor', delete: 'reviewer' },
+  publication: { read: 'viewer', create: 'admin', update: 'admin', delete: 'admin' },
+  redirect: { read: 'viewer', create: 'admin', update: 'admin', delete: 'admin' },
+  media: { read: 'viewer', create: 'editor', update: 'editor', delete: 'admin' },
+};
+
+/** True if `role` meets the minimum for this resource and operation. */
+export function isAllowed(role: Role, resource: string, operation: CMSOperation): boolean {
+  const required = POLICY[resource]?.[operation] ?? DEFAULT[operation];
+  return RANK[role] >= RANK[required];
+}
+```
+
+Wire it into `authMiddleware`. Published reads stay public; every other call resolves the caller's role and checks it:
+
+```ts title="lib/cms.ts"
+import { createCMS, defineAuthMiddleware } from '@createcms/core';
+import { isAllowed, type Role } from '@/lib/access-policy';
+
+const authMiddleware = defineAuthMiddleware(async (ctx) => {
+  // Published content is meant to be public: allow it without a session.
+  if (ctx.permissionResource === 'publishedContent') return {};
+
+  const session = await getSession(ctx.request); // your session resolver
+  if (!session) throw new Error('Unauthorized'); // no identity: deny
+
+  const role = session.role as Role;
+  if (!isAllowed(role, ctx.permissionResource, ctx.operation)) {
+    throw new Error(
+      `Forbidden: ${role} cannot ${ctx.operation} ${ctx.permissionResource}`,
+    );
+  }
+
+  return { userId: session.userId };
+});
+
+export const cms = createCMS({ db, media, collections, authMiddleware });
+```
+
+To vary the policy by collection, branch on `ctx.collection?.name` (set only when `ctx.scope === 'collection'`); for example, lock a `settings` collection to admins while `pages` stays open to editors.
+
+### What is not enforced
+
+The check runs once per call, at resource-and-operation granularity (optionally narrowed by collection or branch). Two things are deliberately out of scope, by design:
+
+- **Field-level permissions.** `authMiddleware` authorizes a whole `block` `update`, not individual properties. You cannot let a role edit one block property but not another here; enforce field rules in your own validation layer.
+- **Per-branch roles.** `ctx.branchName` is exposed so you can add your own branch gate (say, only admins may write to `main`), but createcms ships no role-per-branch model. That logic, if you want it, is yours to write on top of `branchName`.
+
+<Callout type="info">
+  For the deployment-level defenses around this (CSRF, rate limiting, multi-tenant isolation), see [Security](/docs/resources/security). For the `authMiddleware` field-by-field reference, see [Configuration](/docs/reference/configuration#authmiddleware).
+</Callout>

@@ -1,0 +1,169 @@
+---
+title: Preview drafts with Next.js draft mode
+description: Render an unpublished branch behind a signed, expiring, branch-scoped preview token.
+---
+
+This guide renders an unpublished branch in your app using Next.js [draft mode](https://nextjs.org/docs/app/guides/draft-mode), gated by a signed token that resolves to exactly one branch. It assumes the CMS router is mounted (see [Use with Next.js](/docs/guides/nextjs)) and that you branch and publish with the [editorial workflow](/docs/guides/content-workflow).
+
+`@createcms/core/next` exports only `createRevalidateHandler`; the A/B middleware lives at `@createcms/core/next/middleware`. Neither previews content, so this is a recipe you assemble from Next.js primitives and the typed API. Published pages read `getPublishedContent`, which is public. A draft branch is not published, so a preview reads `getBlockTree`, which your `authMiddleware` gates as `block` / `read` (see [Restrict access by role](/docs/guides/permissions)).
+
+### Sign a branch-scoped token
+
+createcms does not issue or verify preview tokens: that code is yours. The token is what lets someone without an editor session read one unpublished branch, so it has to be forgery-proof and short-lived. This example signs the claims with an HMAC using Node's `crypto`, the same constant-time primitive `createRevalidateHandler` uses for its secret:
+
+```ts title="lib/preview-token.ts"
+import { createHmac, timingSafeEqual } from 'crypto';
+
+// Server-only. Never expose this to the client bundle.
+const SECRET = process.env.CMS_PREVIEW_SECRET!;
+
+export type PreviewClaims = { rootId: string; branchId: string; exp: number };
+
+/** Sign a token scoped to ONE branch, valid for `ttlMs` (default 10 minutes). */
+export function signPreviewToken(
+  claims: Omit<PreviewClaims, 'exp'>,
+  ttlMs = 10 * 60_000,
+): string {
+  const payload: PreviewClaims = { ...claims, exp: Date.now() + ttlMs };
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = createHmac('sha256', SECRET).update(body).digest('base64url');
+  return `${body}.${sig}`;
+}
+
+/** Returns the claims only if the signature is valid AND the token is unexpired. */
+export function verifyPreviewToken(token: string): PreviewClaims | null {
+  const [body, sig] = token.split('.');
+  if (!body || !sig) return null;
+  const expected = createHmac('sha256', SECRET).update(body).digest('base64url');
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  const claims = JSON.parse(
+    Buffer.from(body, 'base64url').toString(),
+  ) as PreviewClaims;
+  if (Date.now() > claims.exp) return null;
+  return claims;
+}
+```
+
+Mint a token when an editor opens a branch (for example, from a "Share preview" action that already knows the `rootId` and `branchId`), then hand it to the reviewer as `?token=...`.
+
+<Callout type="warn">
+  A preview token is a bearer credential for unpublished content. Enforce three rules or it becomes a hole:
+
+  - **Scope it to one branch.** Sign `rootId` and `branchId`, never a blanket "any draft" flag. The read below rejects a token whose claims do not match the branch it is asked to render.
+  - **Expire it.** Keep the TTL short (minutes) so a leaked link stops working quickly.
+  - **Sign it and verify in constant time.** The secret is server-only, and `verifyPreviewToken` uses `timingSafeEqual` so the check does not leak the signature byte by byte.
+</Callout>
+
+### Enable draft mode behind the token
+
+A Route Handler verifies the token, turns on draft mode, and stashes the raw (still signed) token in an `httpOnly` cookie so the page can re-verify it. On a bad or expired token it returns `401` and does nothing:
+
+```ts title="app/api/preview/route.ts"
+import { cookies, draftMode } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { verifyPreviewToken } from '@/lib/preview-token';
+
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const token = url.searchParams.get('token') ?? '';
+  const claims = verifyPreviewToken(token);
+  if (!claims) {
+    return new Response('Invalid or expired preview token', { status: 401 });
+  }
+
+  (await draftMode()).enable();
+  // Carry the verified token to the page. httpOnly keeps client JS from forging it,
+  // and maxAge matches the token so the cookie dies when the token does.
+  (await cookies()).set('cms-preview-token', token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: true,
+    maxAge: Math.floor((claims.exp - Date.now()) / 1000),
+  });
+
+  redirect(url.searchParams.get('to') ?? '/');
+}
+```
+
+### Authorize the draft read
+
+`getBlockTree` runs through your `authMiddleware` with `permissionResource: 'block'` and `operation: 'read'`, so the preview only works if that call is authorized. Teach the middleware to accept a valid preview token for exactly the branch it names, and keep published reads public:
+
+```ts title="lib/cms.ts"
+import { verifyPreviewToken } from '@/lib/preview-token';
+import { readCookie } from '@/lib/http'; // your own header/cookie parser
+
+authMiddleware: async (ctx) => {
+  // Signed-in editors keep going through your normal session check.
+  const session = await getSession(ctx.request);
+  if (session) return { userId: session.userId };
+
+  // No session: allow a scoped, unexpired preview token to read ONE branch.
+  if (ctx.permissionResource === 'block' && ctx.operation === 'read') {
+    const token = readCookie(ctx.request?.headers, 'cms-preview-token');
+    const claims = token ? verifyPreviewToken(token) : null;
+    if (
+      claims &&
+      claims.rootId === ctx.request?.query?.rootId &&
+      claims.branchId === ctx.request?.query?.branchId
+    ) {
+      return { userId: `preview:${claims.branchId}` };
+    }
+  }
+
+  // Published content stays public.
+  if (ctx.permissionResource === 'publishedContent') return {};
+
+  throw new Error('Unauthorized');
+},
+```
+
+Matching the token's `rootId` and `branchId` against `ctx.request?.query` is what keeps a token minted for one branch from reading another.
+
+### Read the draft, fall back to published
+
+In the page, branch on `draftMode()`. When it is on and the cookie holds a valid token, read that branch with `getBlockTree` and forward the incoming headers so the middleware above sees the cookie. Otherwise read the published tree by slug. Both trees render through the same [`BlocksRenderer`](/docs/guides/rendering-content):
+
+```tsx title="app/[slug]/page.tsx"
+import { cookies, draftMode, headers } from 'next/headers';
+import { BlocksRenderer } from '@createcms/core/react/blocks';
+import { cms } from '@/lib/cms';
+import { pageBlocks } from '@/lib/blocks';
+import { verifyPreviewToken } from '@/lib/preview-token';
+
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+  const { isEnabled } = await draftMode();
+
+  if (isEnabled) {
+    const token = (await cookies()).get('cms-preview-token')?.value;
+    const claims = token ? verifyPreviewToken(token) : null;
+    if (claims) {
+      // Unpublished branch content, straight from the editable tree.
+      const { tree } = await cms.api.pages.getBlockTree({
+        query: { rootId: claims.rootId, branchId: claims.branchId },
+        headers: await headers(), // carries the preview cookie to authMiddleware
+      });
+      return <BlocksRenderer blocks={pageBlocks} tree={tree} />;
+    }
+  }
+
+  // Normal visitors: the published tree, resolved by slug.
+  const { variants } = await cms.api.pages.getPublishedContent({
+    query: { slug: `/${slug}` },
+  });
+  return <BlocksRenderer blocks={pageBlocks} tree={variants[0].tree} />;
+}
+```
+
+To exit preview later, clear draft mode from a Route Handler with `(await draftMode()).disable()` and delete the `cms-preview-token` cookie.
+
+<Callout type="info">
+  Background on branches and publishing is in [Branches](/docs/concepts/branches) and [Publishing](/docs/concepts/publishing). For the render map, see [Render content](/docs/guides/rendering-content); for the access check, see [Restrict access by role](/docs/guides/permissions).
+</Callout>

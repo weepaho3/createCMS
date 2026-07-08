@@ -40,6 +40,17 @@ The two differ in what they assemble:
 
 When content changes, the CMS can tell your framework to revalidate. Pass `onRevalidate` to `createCMS` to receive an event (with the affected paths and cache tags), or mount `createRevalidateHandler` to accept a revalidation webhook. See [Use with Next.js](/docs/guides/nextjs).
 
+## Limitations
+
+Publishing records that a branch is live, not a timeline of what was live. Two boundaries follow from that, and both are deliberate for now:
+
+- **No publication history.** A publication row is keyed by `(rootId, branchId)`, and re-publishing **updates that same row in place**, so `commitId`, `publishedBy`, and `publishedAt` only ever reflect the most recent publish of that branch. There is no per-publish event log, so "what was live at time T" is not answerable from the CMS.
+- **Reads follow the branch head, not the published commit.** `getPublishedContent` (and `listPublications`) resolve the branch's current head (`branches.headCommitId`); the `commitId` stored on the publication row is recorded but not read on the render path. So a publish cannot be pinned to a specific commit: any later commit to a published branch goes live on the next read. To take a change back, move the branch head (revert on the branch), not the publication.
+
+<Callout type="warn">
+  Pinned publishing (freezing a publication to an exact commit) and a publication-event history (an auditable log of every publish) are **under consideration for a later rebuild**. Until then, do not rely on the publication row as an audit trail or a rollback point: treat the branch and its [commits](/docs/concepts/commits) as the source of truth for history.
+</Callout>
+
 <Callout type="info">
   For `publishBranch`, `unpublishBranch`, `getPublishedContent`, and `listPublications`, see the [Server API](/docs/reference/server-api).
 </Callout>
