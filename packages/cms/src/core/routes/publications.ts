@@ -106,9 +106,11 @@ type LoadedRoot = {
   properties: Record<string, unknown>;
   tree: BlockTreeNode;
   /**
-   * Set when this root has a running A/B test: top-level
-   * `tree`/`properties` are the CONTROL branch, and `abTest.variants` carries
-   * every published variant branch (incl. the control) for the client to pick.
+   * Set when this root has a running A/B test: top-level `tree`/`properties`
+   * are the CONTROL branch, and `abTest.variants` carries the published
+   * NON-CONTROL variant branches for the client to pick. The control is NOT
+   * re-listed in `variants` — it is already the top-level tree, so embedding it
+   * there would serialize the control subtree twice per reference.
    */
   abTest?: {
     testId: string;
@@ -204,33 +206,37 @@ async function loadPublishedRoots(
       if (!test) return single();
 
       // Running test → fan out: load the published tree of every variant branch.
+      // The control fills top-level tree/properties; the NON-CONTROL branches go
+      // into `variants` (the control is deliberately NOT re-embedded there — see
+      // LoadedRoot.abTest / PublishedBranchSnapshot — to avoid serializing the
+      // control subtree twice per reference).
       const commitByBranch = new Map(pubs.map((p) => [p.branchId, p.commitId]));
       const variants: PublishedBranchSnapshot[] = [];
-      let control: PublishedBranchSnapshot | undefined;
+      let control: { properties: Record<string, unknown>; tree: BlockTreeNode } | undefined;
       let controlCommitId: string | undefined;
       for (const v of test.variants) {
         const commitId = commitByBranch.get(v.branchId);
         if (!commitId) continue; // a declared variant that isn't published → skip
         const tree = await loadBranch(rootId, commitId);
         if (!tree) continue;
-        const snapshot: PublishedBranchSnapshot = {
-          branchId: v.branchId,
-          isControl: v.isControl,
-          properties: tree.properties,
-          tree,
-        };
-        variants.push(snapshot);
         if (v.isControl) {
-          control = snapshot;
+          control = { properties: tree.properties, tree };
           controlCommitId = commitId;
+        } else {
+          variants.push({
+            branchId: v.branchId,
+            properties: tree.properties,
+            tree,
+          });
         }
       }
 
       // The control branch fills top-level tree/properties (the no-JS / AB-off
-      // fallback, and what `isResolvedReference` narrows on). If the control
-      // isn't published — or fewer than two variants are — degrade to the
-      // deterministic single pick (no fan-out) so top-level stays populated.
-      if (!control || !controlCommitId || variants.length < 2) {
+      // fallback, and what `isResolvedReference` narrows on). Fanning out needs
+      // the control PLUS at least one published non-control variant (≥2 branches
+      // total); otherwise degrade to the deterministic single pick (no fan-out)
+      // so top-level stays populated.
+      if (!control || !controlCommitId || variants.length < 1) {
         return single();
       }
 
@@ -278,6 +284,15 @@ async function resolveTreeReferences(
   // so replaceReferencesInTree can look it up by what's actually in the block.
   const resolvedMap = new Map<string, ResolvedReference>();
 
+  // INTENTIONALLY SERIAL — do NOT turn this (or the inner `valueToRootId` loop)
+  // into a Promise.all. Both awaits mutate the SHARED `visited` cycle-guard Set
+  // (added to here, and extended by the recursive descent below), which both
+  // de-dupes references that appear more than once across sibling subtrees AND
+  // prevents infinite recursion on reference cycles. Running the iterations
+  // concurrently would race that Set: two branches could each load the same
+  // sub-reference before either records it in `visited`, re-doing work and, on a
+  // cycle, recursing until MAX_REFERENCE_DEPTH throws. The serial loop lets each
+  // iteration observe the prior iterations' `visited` writes.
   for (const [targetCollectionName, valueSet] of refValues) {
     const targetDef = allCollections[targetCollectionName];
     if (!targetDef) continue;
@@ -335,9 +350,10 @@ async function resolveTreeReferences(
       );
 
       if (data.abTest && branchVisited) {
+        // `variants` holds only the NON-CONTROL branches (the control IS
+        // data.tree, already resolved above), so every entry here is a distinct
+        // variant subtree that needs its own reference resolution.
         for (const variant of data.abTest.variants) {
-          // The control variant's tree IS data.tree — already resolved above.
-          if (variant.tree === data.tree) continue;
           await resolveTreeReferences(
             db,
             variant.tree,
@@ -446,18 +462,21 @@ type PublishedContentQuery =
       slug?: string;
       path?: string;
       raw?: boolean;
+      branchName?: string;
     }
   | {
       rootId?: string;
       slug: string;
       path?: string;
       raw?: boolean;
+      branchName?: string;
     }
   | {
       rootId?: string;
       slug?: string;
       path: string;
       raw?: boolean;
+      branchName?: string;
     };
 
 export function createPublicationEndpoints<
@@ -754,6 +773,7 @@ export function createPublicationEndpoints<
      * @param slug Optional slug to resolve to a root; must be unique within the active scope.
      * @param path Optional path (for nested slugs) to resolve to a root.
      * @param raw If true, skip variable substitution; otherwise variables are inlined into block properties.
+     * @param branchName Optional published-branch selector. When provided, only that branch is resolved and returned (a length-1 `variants` array, identical shape); the page-level `abTest` descriptor is omitted. When omitted, every published branch is returned (unchanged contract). Throws PUBLISHED_CONTENT_NOT_FOUND if the named branch has no published content.
      *
      * @returns Object with rootId, collection, variants (each with branchId, branchName, commitId, publishedAt, publishedBy, and a resolved block tree), and optionally ancestors (for nested slugs).
      *
@@ -775,18 +795,21 @@ export function createPublicationEndpoints<
             slug: z.string().optional(),
             path: z.string().optional(),
             raw: z.coerce.boolean().optional(),
+            branchName: z.string().optional(),
           }),
           z.object({
             rootId: z.string().optional(),
             slug: z.string(),
             path: z.string().optional(),
             raw: z.coerce.boolean().optional(),
+            branchName: z.string().optional(),
           }),
           z.object({
             rootId: z.string().optional(),
             slug: z.string().optional(),
             path: z.string(),
             raw: z.coerce.boolean().optional(),
+            branchName: z.string().optional(),
           }),
         ]),
         // Published content is read through the full chain so plugin scope
@@ -805,7 +828,7 @@ export function createPublicationEndpoints<
         ),
       },
       async (ctx) => {
-        const { rootId, slug, path, raw } = ctx.query;
+        const { rootId, slug, path, raw, branchName } = ctx.query;
         const scope = ctx.context.scope;
         const slugCfg = def.slug as ResolvedSlugConfig | undefined;
 
@@ -883,7 +906,19 @@ export function createPublicationEndpoints<
           })
           .from(publications)
           .innerJoin(branches, eq(branches.id, publications.branchId))
-          .where(eq(publications.rootId, resolvedRootId))
+          // Optional single-branch selector: when `branchName` is given, resolve
+          // ONLY that published branch (still returned as a length-1 `variants[]`
+          // — identical shape) instead of materializing every published branch.
+          // Omitted → unchanged contract (all published branches). Branch names
+          // are unique per root, so this yields at most one row.
+          .where(
+            branchName
+              ? and(
+                  eq(publications.rootId, resolvedRootId),
+                  eq(branches.name, branchName),
+                )
+              : eq(publications.rootId, resolvedRootId),
+          )
           // Deterministic variant order (oldest publish first, branchId as the
           // stable tiebreak) — so `variants[0]` is a stable control default and
           // the cache key for a variant render is reproducible.
@@ -958,7 +993,10 @@ export function createPublicationEndpoints<
               controlBranchId: string;
             }
           | undefined;
-        if (scope.abTestResolver) {
+        // Skipped when a single branch was explicitly selected: the caller asked
+        // for one specific branch, so the page-level A/B descriptor is moot (and
+        // the filtered `pubs` no longer reflects the full published-variant set).
+        if (scope.abTestResolver && !branchName) {
           const running = await scope.abTestResolver.runningTests(
             db,
             crossScopeColumns(scope.roots),

@@ -528,40 +528,17 @@ export async function executeRootPruning(
   }
 
   if (deletableCommitIds.length > 0) {
-    const deletableCommits = allCommitsForRoot.filter((commit) =>
-      deletableSet.has(commit.id),
-    );
-
-    const childCount = new Map<string, number>();
-    for (const id of deletableCommitIds) {
-      childCount.set(id, 0);
-    }
-
-    for (const commit of deletableCommits) {
-      if (commit.parentCommitId && deletableSet.has(commit.parentCommitId)) {
-        childCount.set(
-          commit.parentCommitId,
-          (childCount.get(commit.parentCommitId) ?? 0) + 1,
-        );
-      }
-    }
-
-    const queue: string[] = [];
-    for (const [id, count] of childCount) {
-      if (count === 0) queue.push(id);
-    }
-
-    while (queue.length > 0) {
-      const id = queue.shift()!;
-      await tx.delete(commits).where(eq(commits.id, id));
-
-      const commit = deletableCommits.find((candidate) => candidate.id === id);
-      if (commit?.parentCommitId && deletableSet.has(commit.parentCommitId)) {
-        const newCount = (childCount.get(commit.parentCommitId) ?? 1) - 1;
-        childCount.set(commit.parentCommitId, newCount);
-        if (newCount === 0) queue.push(commit.parentCommitId);
-      }
-    }
+    // The commits self-FKs (parent_commit_id / merge_source_commit_id) are
+    // NO ACTION, checked at statement END, so the whole deletable set MUST be
+    // removed in a SINGLE statement: by construction no surviving commit
+    // references a deletable one, and every intra-set parent/merge-source edge
+    // is resolved together when the one statement commits. Chunking into several
+    // statements would be unsafe — a not-yet-deleted commit in a later chunk
+    // still referencing an already-deleted commit from an earlier chunk would
+    // fail the FK check at that earlier statement's end. This mirrors the
+    // sibling deletes above (commitSnapshots / blockVersions by
+    // deletableCommitIds) and hardDeleteRoot, which also delete in one statement.
+    await tx.delete(commits).where(inArray(commits.id, deletableCommitIds));
   }
 }
 

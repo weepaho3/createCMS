@@ -35,6 +35,8 @@ This makes history cheap: a small edit on a large page writes one new block vers
 
 Storing each commit as copy-on-write block versions plus a materialized snapshot trades a little extra write cost and storage for cheap, direct reads of any commit, without walking a diff chain. Snapshots make the common case (reading the head of a branch) fast; the replay path below exists only as a fallback.
 
+Every commit copies the parent's snapshot rows forward, so a write touches one snapshot row per block regardless of how few blocks changed. That write amplification is bounded by the entry's size (its block count), and its accumulated storage is bounded by [retention](/docs/concepts/data-retention): `keepDays` and `keepMinCommits` cap how many old snapshots survive. The reader already tolerates missing snapshots (it replays from the nearest survivor), so this is a deliberate lean toward fast reads.
+
 ## Reading a commit
 
 Every reachable commit is written with a full `commit_snapshots` materialization, so a normal read loads it directly. A commit loses its snapshot only after retention pruning removes it (along with unreferenced `block_versions`); reading such a pruned commit reconstructs it by replaying versions from the nearest surviving snapshot, which can be lossy. The `getBlockTree` response includes a `reconstructed` boolean: `false` when the snapshot was read directly, `true` when it was rebuilt.

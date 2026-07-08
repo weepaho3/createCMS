@@ -171,7 +171,9 @@ type ReferencingRoot = {
 
 /**
  * Finds all published roots whose block tree contains a reference property
- * pointing to `targetRootId`. Uses the JSONB GIN index on block_versions.properties.
+ * pointing to `targetRootId`. The predicate is `properties->>key = value`
+ * (scalar equality), which a jsonb_ops GIN index cannot serve — this query
+ * does a scan filtered by the join to branch-head published versions.
  */
 async function findReferencingPublishedRoots(
   db: DrizzleInstance,

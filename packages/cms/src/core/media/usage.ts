@@ -186,6 +186,48 @@ export async function isAssetReferencedByLiveContent(
 }
 
 /**
+ * Batch counterpart of {@link isAssetReferencedByLiveContent}: given a set of
+ * asset ids, returns the SUBSET that is still referenced by live content, in a
+ * SINGLE query (rather than one liveness EXISTS per id). Same liveness
+ * semantics and scoping as the single-id check — a version keyed by an
+ * immutable blockVersionId that sits in the HEAD snapshot of any branch of any
+ * non-archived, in-scope root, with a non-deleted block version.
+ *
+ * Callers partition their id list against the returned set in memory: ids IN
+ * the set are in-use (skip), ids NOT in it are free to archive.
+ */
+export async function assetsReferencedByLiveContent(
+  db: DrizzleInstance,
+  assetIds: string[],
+  scopeColumns?: Record<string, unknown>,
+): Promise<Set<string>> {
+  if (assetIds.length === 0) return new Set();
+  const rows = await db
+    .selectDistinct({ assetId: contentUsages.targetKey })
+    .from(contentUsages)
+    .innerJoin(
+      commitSnapshots,
+      eq(commitSnapshots.blockVersionId, contentUsages.blockVersionId),
+    )
+    .innerJoin(branches, eq(branches.headCommitId, commitSnapshots.commitId))
+    .innerJoin(roots, eq(roots.id, branches.rootId))
+    .innerJoin(
+      blockVersions,
+      eq(blockVersions.id, contentUsages.blockVersionId),
+    )
+    .where(
+      and(
+        eq(contentUsages.targetKind, 'asset'),
+        inArray(contentUsages.targetKey, assetIds),
+        isNull(roots.archivedAt),
+        eq(blockVersions.deleted, false),
+        ...rootScopeConditions(scopeColumns),
+      ),
+    );
+  return new Set(rows.map((r) => r.assetId));
+}
+
+/**
  * Page-centric usage for the media library — "this image is used on these N
  * pages". Returns each distinct live (non-archived) page that references the
  * asset, with its per-block occurrences. A page counts once even when the asset

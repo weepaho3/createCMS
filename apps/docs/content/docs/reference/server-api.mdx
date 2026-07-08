@@ -34,6 +34,10 @@ Lists the entries (roots) of a collection. `GET`, input via `query` (all fields 
 
 Returns `{ roots, total, hasMore }`. Each root has `rootId`, `createdAt`, `createdBy`, `parentRootId`, `sortOrder`, `slug`, `properties` (typed), `hasPublications`, `publicationCount`, `branchCount`, and `openMergeRequestCount`. `path` (the full ancestor-resolved URL) is present only for slug-enabled collections, and `createdByUser` only when called with `query.withUser`.
 
+<Callout type="info">
+  `search` here does a substring match over the chosen field, which is a sequential scan. It is fine for the bounded, filtered admin listings this endpoint serves. For full-text search across a large corpus, use [`search.query`](/docs/reference/search) instead, which is backed by a `tsvector` GIN index.
+</Callout>
+
 ### `createRoot`
 
 Creates a new entry. `POST`, input via `body`.
