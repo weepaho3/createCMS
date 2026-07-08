@@ -36,12 +36,6 @@ function createCMSWithUser(
 }
 
 /**
- * Notification triggers use fire-and-forget (`.catch()`), so we need to
- * yield the event loop to let floating promises settle before asserting.
- */
-const tick = () => new Promise((r) => setTimeout(r, 50));
-
-/**
  * Sets up a root, branch, block, and merge request — the common prerequisite
  * for all trigger tests that need a merge request context.
  */
@@ -268,7 +262,7 @@ describe('notification service', () => {
       meta: null,
     });
 
-    await tick();
+    await cms.$flushNotifications();
 
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       '[cms] onNotification handler failed:',
@@ -773,7 +767,7 @@ describe('notification triggers', () => {
         },
       });
 
-      await tick();
+      await cms.$flushNotifications();
 
       const mentions = received.filter((n) => n.type === 'mention');
       expect(mentions).toHaveLength(1);
@@ -809,7 +803,7 @@ describe('notification triggers', () => {
         },
       });
 
-      await tick();
+      await cms2.$flushNotifications();
 
       const replies = received.filter((n) => n.type === 'comment');
       expect(replies).toHaveLength(1);
@@ -844,7 +838,7 @@ describe('notification triggers', () => {
         body: { threadId: thread.thread.id },
       });
 
-      await tick();
+      await cms2.$flushNotifications();
 
       const resolved = received.filter(
         (n) => n.type === 'threadResolved' && !(n.meta as any)?.reopened,
@@ -882,7 +876,7 @@ describe('notification triggers', () => {
         body: { threadId: thread.thread.id },
       });
 
-      await tick();
+      await cms2.$flushNotifications();
 
       const reopened = received.filter(
         (n) =>
@@ -915,7 +909,7 @@ describe('notification triggers', () => {
         },
       });
 
-      await tick();
+      await cms.$flushNotifications();
 
       const approvalNotifs = received.filter(
         (n) => n.type === 'approvalRequested',
@@ -961,7 +955,7 @@ describe('notification triggers', () => {
         },
       });
 
-      await tick();
+      await cms2.$flushNotifications();
 
       const approved = received.filter((n) => n.type === 'approvalApproved');
       expect(approved).toHaveLength(1);
@@ -998,7 +992,7 @@ describe('notification triggers', () => {
         },
       });
 
-      await tick();
+      await cms2.$flushNotifications();
 
       const rejected = received.filter((n) => n.type === 'approvalRejected');
       expect(rejected).toHaveLength(1);
@@ -1052,7 +1046,7 @@ describe('notification triggers', () => {
         },
       });
 
-      await tick();
+      await cms2.$flushNotifications();
 
       const opened = received.filter((n) => n.type === 'mergeRequestOpened');
       expect(opened).toHaveLength(1);
@@ -1092,7 +1086,7 @@ describe('notification triggers', () => {
         },
       });
 
-      await tick();
+      await cms2.$flushNotifications();
 
       const merged = received.filter((n) => n.type === 'mergeRequestMerged');
       expect(merged).toHaveLength(1);
@@ -1150,7 +1144,7 @@ describe('notification triggers', () => {
         },
       });
 
-      await tick();
+      await cms2.$flushNotifications();
 
       const published = received.filter((n) => n.type === 'published');
       expect(published).toHaveLength(1);
@@ -1172,7 +1166,7 @@ describe('notification triggers', () => {
 
       await setupMergeRequestContext(cms, USER_1);
 
-      await tick();
+      await cms.$flushNotifications();
 
       const opened = received.filter((n) => n.type === 'mergeRequestOpened');
       expect(opened).toHaveLength(0);
@@ -1203,7 +1197,7 @@ describe('notification triggers', () => {
         },
       });
 
-      await tick();
+      await cms.$flushNotifications();
 
       const merged = received.filter((n) => n.type === 'mergeRequestMerged');
       expect(merged).toHaveLength(0);
@@ -1254,7 +1248,7 @@ describe('notification triggers', () => {
         },
       });
 
-      await tick();
+      await cms.$flushNotifications();
 
       const published = received.filter((n) => n.type === 'published');
       expect(published).toHaveLength(0);
