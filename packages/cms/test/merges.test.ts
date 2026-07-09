@@ -3713,6 +3713,409 @@ describe('executeMerge', () => {
 });
 
 // ============================================================================
+// executeMerge — one-side additions survive a three-way merge
+// ============================================================================
+
+// Regression tests for buildMergedSnapshot's delete-vs-edit exclusion: a block
+// with NO live version at the common ancestor is NEW on whichever side carries
+// it. The exclusion used to read "absent on the other side" as "the other side
+// deleted it" and silently dropped one-side additions whenever the three-way
+// path ran (diverged target). It is now gated on a LIVE base version.
+describe('executeMerge — one-side additions survive a three-way merge', () => {
+  it('keeps a block the target added after the branch point', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/target-add', properties: { title: 'Page' } },
+    });
+
+    const blockA = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Block A' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    // Target (main) diverges by ADDING block B after the branch point.
+    const blockB = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Block B (added on main)' },
+      },
+    });
+
+    // Source edits block A's properties only — the root's children are
+    // untouched on the draft, so nothing conflicts, but the target HAS
+    // diverged: the merge must take the real three-way path.
+    await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: blockA.blockId,
+        type: 'paragraph',
+        properties: { text: 'Block A (draft edit)' },
+      },
+    });
+
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        title: 'Test MR',
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        createdBy: 'user-1',
+      },
+    });
+    expect(mr.hasConflicts).toBe(false);
+
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
+
+    const result = await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequest.id, mergedBy: 'user-1' },
+    });
+    expect(result.fastForward).toBe(false);
+
+    const { tree } = await cms.api.pages.getBlockTree({
+      query: { rootId: root.rootId, branchId: root.branchId },
+    });
+
+    // Both the source edit AND the target-side addition must survive.
+    const mergedA = tree.children.find(
+      (c: any) => c.blockId === blockA.blockId,
+    );
+    expect(mergedA).toBeDefined();
+    expect((mergedA!.properties as { text: string }).text).toBe(
+      'Block A (draft edit)',
+    );
+
+    const mergedB = tree.children.find(
+      (c: any) => c.blockId === blockB.blockId,
+    );
+    expect(mergedB).toBeDefined();
+    expect((mergedB!.properties as { text: string }).text).toBe(
+      'Block B (added on main)',
+    );
+  });
+
+  it('keeps a block the source added when the target diverged', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/source-add', properties: { title: 'Page' } },
+    });
+
+    const blockA = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Block A' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    // Source adds block C.
+    const blockC = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Block C (added on draft)' },
+      },
+    });
+
+    // Diverge the TARGET with a property edit of block A — deliberately not a
+    // structural change, so the root's children stay conflict-free. The
+    // un-diverged variant is masked by the fast-forward shortcut (the merged
+    // snapshot is copied wholesale from the source); only a diverged target
+    // sends a source-side addition through buildMergedSnapshot.
+    await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        blockId: blockA.blockId,
+        type: 'paragraph',
+        properties: { text: 'Block A (main edit)' },
+      },
+    });
+
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        title: 'Test MR',
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        createdBy: 'user-1',
+      },
+    });
+    expect(mr.hasConflicts).toBe(false);
+
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
+
+    const result = await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequest.id, mergedBy: 'user-1' },
+    });
+    expect(result.fastForward).toBe(false);
+
+    const { tree } = await cms.api.pages.getBlockTree({
+      query: { rootId: root.rootId, branchId: root.branchId },
+    });
+
+    // The source-side addition survives with its content...
+    const mergedC = tree.children.find(
+      (c: any) => c.blockId === blockC.blockId,
+    );
+    expect(mergedC).toBeDefined();
+    expect((mergedC!.properties as { text: string }).text).toBe(
+      'Block C (added on draft)',
+    );
+
+    // ...and the target-side edit of block A landed too.
+    const mergedA = tree.children.find(
+      (c: any) => c.blockId === blockA.blockId,
+    );
+    expect(mergedA).toBeDefined();
+    expect((mergedA!.properties as { text: string }).text).toBe(
+      'Block A (main edit)',
+    );
+  });
+
+  it('keeps additions from both sides when they land under different parents', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/both-add', properties: { title: 'Page' } },
+    });
+
+    // Two pre-existing containers (paragraph has allowChildren: true).
+    const container1 = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container 1' },
+      },
+    });
+
+    const container2 = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container 2' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    // Each side adds its child under a DIFFERENT container, so each container's
+    // version changes on exactly one side and nothing conflicts. (Additions
+    // under the SAME parent are out of scope here: both sides would rewrite
+    // that parent's children — a legitimate conflict whose resolution can
+    // orphan one addition, the documented orphan case in buildMergedSnapshot.)
+    const draftChild = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: container1.blockId,
+        type: 'paragraph',
+        properties: { text: 'Draft child' },
+      },
+    });
+
+    const mainChild = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: container2.blockId,
+        type: 'paragraph',
+        properties: { text: 'Main child' },
+      },
+    });
+
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        title: 'Test MR',
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        createdBy: 'user-1',
+      },
+    });
+    expect(mr.hasConflicts).toBe(false);
+
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
+
+    const result = await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequest.id, mergedBy: 'user-1' },
+    });
+    expect(result.fastForward).toBe(false);
+
+    const { tree } = await cms.api.pages.getBlockTree({
+      query: { rootId: root.rootId, branchId: root.branchId },
+    });
+
+    const mergedContainer1 = tree.children.find(
+      (c: any) => c.blockId === container1.blockId,
+    );
+    expect(mergedContainer1).toBeDefined();
+    const mergedDraftChild = mergedContainer1!.children.find(
+      (c: any) => c.blockId === draftChild.blockId,
+    );
+    expect(mergedDraftChild).toBeDefined();
+    expect((mergedDraftChild!.properties as { text: string }).text).toBe(
+      'Draft child',
+    );
+
+    const mergedContainer2 = tree.children.find(
+      (c: any) => c.blockId === container2.blockId,
+    );
+    expect(mergedContainer2).toBeDefined();
+    const mergedMainChild = mergedContainer2!.children.find(
+      (c: any) => c.blockId === mainChild.blockId,
+    );
+    expect(mergedMainChild).toBeDefined();
+    expect((mergedMainChild!.properties as { text: string }).text).toBe(
+      'Main child',
+    );
+  });
+
+  it('still drops the block when a delete-vs-edit conflict is resolved to the deletion', async () => {
+    // Guard the guard: the live-base gate must NOT weaken the genuine
+    // delete-vs-edit path. Block A WAS live at the common ancestor, so the
+    // draft's deletion vs main's edit is a real conflict, and resolving it to
+    // the source (the deletion) must remove A from the merged tree.
+    const { cms, db } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/del-vs-edit', properties: { title: 'Page' } },
+    });
+
+    const blockA = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Block A' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    // Source DELETES block A; target EDITS it.
+    await cms.api.pages.deleteBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: blockA.blockId,
+      },
+    });
+
+    await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        blockId: blockA.blockId,
+        type: 'paragraph',
+        properties: { text: 'Block A (edited on main)' },
+      },
+    });
+
+    // The delete-vs-edit pair is still detected as a conflict.
+    const check = await cms.api.pages.checkConflicts({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+      },
+    });
+    expect(check.hasConflicts).toBe(true);
+    expect(
+      check.conflicts.find((c: any) => c.blockId === blockA.blockId),
+    ).toBeDefined();
+
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        title: 'Test MR',
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        createdBy: 'user-1',
+      },
+    });
+    expect(mr.hasConflicts).toBe(true);
+
+    const dbConflicts = await db
+      .select()
+      .from(mergeConflicts)
+      .where(eq(mergeConflicts.mergeRequestId, mr.mergeRequest.id));
+    const conflict = dbConflicts.find((c) => c.blockId === blockA.blockId);
+    expect(conflict).toBeDefined();
+
+    // Resolve to SOURCE — the deletion wins.
+    await cms.api.pages.applyConflictResolutions({
+      body: {
+        mergeRequestId: mr.mergeRequest.id,
+        resolutions: [
+          {
+            conflictId: conflict!.id,
+            resolution: 'source',
+            resolvedBy: 'user-1',
+          },
+        ],
+      },
+    });
+
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
+
+    const result = await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequest.id, mergedBy: 'user-1' },
+    });
+    expect(result.fastForward).toBe(false);
+
+    const { tree } = await cms.api.pages.getBlockTree({
+      query: { rootId: root.rootId, branchId: root.branchId },
+    });
+    expect(
+      tree.children.find((c: any) => c.blockId === blockA.blockId),
+    ).toBeUndefined();
+  });
+});
+
+// ============================================================================
 // Merge strategy: fast-forward vs merge-commit
 // ============================================================================
 

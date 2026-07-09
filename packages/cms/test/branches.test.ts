@@ -1746,11 +1746,11 @@ describe('getRootHistory', () => {
         },
       });
 
-      // Diverge: edit Block B on main. Deliberately an EDIT of a pre-branch
-      // block, not a post-branch ADD — buildMergedSnapshot currently drops
-      // blocks the target added after the branch point (its delete-vs-edit
-      // exclusion treats "absent on source" as a source deletion), and that
-      // separate merge bug would leak into these counts as a deletion.
+      // Diverge: edit Block B on main — the EDIT-divergence variant. (This
+      // used to be the only workable variant: buildMergedSnapshot dropped
+      // blocks the target ADDED after the branch point. That is fixed — the
+      // delete-vs-edit exclusion is now gated on a live base version — and the
+      // ADD-divergence variant is covered by the next test; both are kept.)
       await cms.api.pages.updateBlock({
         body: {
           rootId: root.rootId,
@@ -1793,6 +1793,104 @@ describe('getRootHistory', () => {
       // main-side edit) and the root already existed there with the same
       // versions.
       expect(mergeCommit.changes).toEqual({ added: 0, modified: 1, deleted: 0 });
+    });
+
+    it('computes merge-commit counts when the target diverged by adding a block', async () => {
+      // ADD-divergence variant of the previous test: main ADDS Block B after
+      // the branch point instead of editing a pre-branch block. Before
+      // buildMergedSnapshot gated its delete-vs-edit exclusion on a live base
+      // version, the merge dropped Block B from the merged snapshot, so it
+      // leaked into these counts as a spurious deletion (and vanished from
+      // the tree).
+      const { cms } = await setupTestCMS();
+
+      const root = await cms.api.pages.createRoot({
+        body: { slug: '/p', properties: { title: 'Page' } },
+      });
+
+      const blockA = await cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'paragraph',
+          properties: { text: 'Block A' },
+        },
+      });
+
+      const draft = await cms.api.pages.createBranch({
+        body: {
+          rootId: root.rootId,
+          name: 'draft',
+          sourceBranchId: root.branchId,
+        },
+      });
+
+      // Diverge: edit Block A on draft (property-only).
+      await cms.api.pages.updateBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: draft.branch.id,
+          blockId: blockA.blockId,
+          type: 'paragraph',
+          properties: { text: 'Block A (draft)' },
+        },
+      });
+
+      // Diverge: ADD Block B on main after the branch point.
+      const blockB = await cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'paragraph',
+          properties: { text: 'Block B (added on main)' },
+        },
+      });
+
+      const mr = await cms.api.pages.createMergeRequest({
+        body: {
+          sourceBranchId: draft.branch.id,
+          targetBranchId: root.branchId,
+          title: 'Test MR',
+          createdBy: 'user-1',
+        },
+      });
+
+      await requestAndApproveMerge(cms, mr.mergeRequest.id);
+
+      const mergeResult = await cms.api.pages.executeMerge({
+        body: {
+          mergeRequestId: mr.mergeRequest.id,
+          mergedBy: 'user-1',
+        },
+      });
+
+      const result = await cms.api.pages.getRootHistory({
+        query: { rootId: root.rootId, withChanges: true },
+      });
+
+      const mergeCommit = result.commits.find(
+        (c) => c.id === mergeResult.commit.id,
+      )!;
+      expect(mergeCommit).toBeDefined();
+      expect(mergeCommit.type).toBe('merge');
+      // Diffed against the target-side parent, which already held Block B and
+      // the root version listing it: the merge landed only the draft edit of
+      // Block A. Block B must NOT read as a deletion.
+      expect(mergeCommit.changes).toEqual({ added: 0, modified: 1, deleted: 0 });
+
+      // And Block B is still in the merged tree.
+      const { tree } = await cms.api.pages.getBlockTree({
+        query: { rootId: root.rootId, branchId: root.branchId },
+      });
+      const survivor = tree.children.find(
+        (c: any) => c.blockId === blockB.blockId,
+      );
+      expect(survivor).toBeDefined();
+      expect((survivor!.properties as { text: string }).text).toBe(
+        'Block B (added on main)',
+      );
     });
 
     it('counts a merge-landed deletion as deleted', async () => {

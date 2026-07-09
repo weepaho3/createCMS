@@ -399,7 +399,10 @@ type MergeResolution = {
  *
  * - Blocks that one side deleted while the other left untouched are excluded.
  *   This is correct — the block really is gone — and `assembleBlockTree` simply
- *   drops the now-dangling child reference on its (surviving) parent.
+ *   drops the now-dangling child reference on its (surviving) parent. The
+ *   delete-vs-edit exclusion only applies to blocks that were LIVE at the
+ *   common ancestor: a block with no live base version is NEW on whichever
+ *   side carries it and is kept (absence on the other side is not a deletion).
  * - Any block that BOTH sides changed differently (including delete/modify, as
  *   deleted blocks carry a `deleted: true` version) is a conflict. `executeMerge`
  *   refuses to merge until every such conflict has a resolution (throws
@@ -442,6 +445,11 @@ function buildMergedSnapshot(
 
     const sourceDeleted = !source || source.deleted;
     const targetDeleted = !target || target.deleted;
+    // A block ABSENT from a side is only a deletion when it actually existed
+    // (live) at the common ancestor. A block with no live base version is NEW
+    // on whichever side carries it — "absent on the other side" must not read
+    // as "the other side deleted it", or one-side additions get dropped.
+    const baseAlive = !!base && !base.deleted;
 
     if (resolutionMap.has(blockId)) {
       merged.set(blockId, resolutionMap.get(blockId)!);
@@ -453,8 +461,9 @@ function buildMergedSnapshot(
     if (targetDeleted && !sourceDeleted && sourceVid === baseVid) continue;
 
     if (
-      (sourceDeleted && !targetDeleted && targetVid !== baseVid) ||
-      (targetDeleted && !sourceDeleted && sourceVid !== baseVid)
+      baseAlive &&
+      ((sourceDeleted && !targetDeleted && targetVid !== baseVid) ||
+        (targetDeleted && !sourceDeleted && sourceVid !== baseVid))
     ) {
       continue;
     }
@@ -476,16 +485,6 @@ function buildMergedSnapshot(
 
     if (sourceVid === baseVid && targetVid === baseVid && baseVid) {
       merged.set(blockId, baseVid);
-      continue;
-    }
-
-    if (!base && !target && source && !sourceDeleted && sourceVid) {
-      merged.set(blockId, sourceVid);
-      continue;
-    }
-
-    if (!base && !source && target && !targetDeleted && targetVid) {
-      merged.set(blockId, targetVid);
       continue;
     }
 
@@ -1681,10 +1680,10 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
 
             // Build the merge commit's snapshot. When the target has NOT diverged
             // (we only reach here because a merge commit was forced), the result
-            // is exactly the source tree — take it directly. The three-way
-            // `buildMergedSnapshot` must NOT run here: its "block absent on the
-            // target means deleted" heuristic would drop blocks the source added,
-            // since an un-diverged target legitimately lacks them.
+            // is exactly the source tree — take it directly as a shortcut.
+            // (`buildMergedSnapshot` would produce the same answer now that its
+            // delete-vs-edit exclusion is gated on a live base version, but the
+            // wholesale copy skips loading two extra snapshots.)
             let mergedVersionMap: Map<string, string>;
             if (canFastForward) {
               const sourceSnapshot = await loadBlocksAtCommit(
