@@ -1,5 +1,12 @@
 # @createcms/example-blog
 
+## 0.0.14
+
+### Patch Changes
+
+- Updated dependencies [[`db59336`](https://github.com/weepaho3/createCMS/commit/db59336226f7ffa8f71954d0826fd54e5c4a4427), [`bdd6e2a`](https://github.com/weepaho3/createCMS/commit/bdd6e2a2bf9f782b54482b8333d0acd6fab5b15c), [`5f22103`](https://github.com/weepaho3/createCMS/commit/5f2210380010402668cc32121c31cbe55bec0a39), [`30f9bdd`](https://github.com/weepaho3/createCMS/commit/30f9bdd5822f79fafc5ee9c543549ed85c6dd60c), [`a727384`](https://github.com/weepaho3/createCMS/commit/a72738463c340a19f8f037b0c98f1ca6178362ba), [`40f6f35`](https://github.com/weepaho3/createCMS/commit/40f6f355b48842001021f6e4a8509235d771765e), [`0beeb80`](https://github.com/weepaho3/createCMS/commit/0beeb80b3c015de7fa99607546b552ad475070eb), [`20d913a`](https://github.com/weepaho3/createCMS/commit/20d913a0f1547d29d2dd43cf925825fa8c18e9bd), [`2c138a6`](https://github.com/weepaho3/createCMS/commit/2c138a60d3be9745da3bb9e2982571409d93617c), [`359cc8c`](https://github.com/weepaho3/createCMS/commit/359cc8cc88383bb21a09915cf753314b0f8de7d1), [`d3f6406`](https://github.com/weepaho3/createCMS/commit/d3f6406fd7608e55bba74608e9cfc2e8d83e0daa), [`a26143a`](https://github.com/weepaho3/createCMS/commit/a26143ae4f5471d845ffb79ab09ba77b4a99d77f), [`de20deb`](https://github.com/weepaho3/createCMS/commit/de20deb109de341866ca483dbd2b0b0ad7bb3f5e), [`d7c10bd`](https://github.com/weepaho3/createCMS/commit/d7c10bd7b74b304313025578bde869496e6cbb4a), [`fe5e9c5`](https://github.com/weepaho3/createCMS/commit/fe5e9c5e2a6224dd9f2053a56a0d68b09a89af5f), [`3da4035`](https://github.com/weepaho3/createCMS/commit/3da4035fdad32dc01e2736c644537eb4331fe8ad), [`a8196e1`](https://github.com/weepaho3/createCMS/commit/a8196e1578e87f25cc479ba97e59ddea33d1f6a3)]:
+  - @createcms/core@0.2.12
+
 ## 0.0.13
 
 ### Patch Changes

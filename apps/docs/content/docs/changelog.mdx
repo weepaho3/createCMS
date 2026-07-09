@@ -3,6 +3,548 @@ title: Changelog
 description: Release notes for @createcms/core, generated from Changesets.
 ---
 
+## 0.2.12
+
+### Patch Changes
+
+- [#33](https://github.com/weepaho3/createCMS/pull/33) [`db59336`](https://github.com/weepaho3/createCMS/commit/db59336226f7ffa8f71954d0826fd54e5c4a4427) Thanks [@weepaho3](https://github.com/weepaho3)! - API-design consistency + hardening pass (api-02 … api-22). Pre-1.0, breaking
+  changes are applied cleanly (no compat shims).
+
+  **Correctness / hardening**
+
+  - **api-02**: the client now dispatches HTTP methods from a server-generated
+    `$pathMethods` map instead of guessing from body presence, so optional-body
+    POST endpoints (`admin.reindexSearch`, `admin.runPruning`,
+    `notifications.markNotificationsRead`/`Unread`) no longer wrongly send GET.
+  - **api-03**: `createCMS` now throws when a collection name collides with a
+    reserved namespace (`admin`/`media`/`variables`/`templates`/`search`/`notifications`/`realtime`)
+    or a plugin id, or isn't a URL-safe slug — previously such a collection was
+    silently clobbered and its routes 404'd.
+  - **api-09**: plugin ids must be valid JS identifiers and every plugin endpoint
+    path must be `/<id>/<method>` (throws otherwise). The bundled multi-tenant
+    plugin's id changed `multi-tenant` → `multiTenant` to comply.
+  - **api-10**: endpoint-conflict detection now spans the full core+collection+plugin
+    surface and throws on a duplicate path (was plugin-only + `console.warn`).
+  - **api-19**: server-side `cms.api.*` callers accept `{ headers?, context? }`; a
+    `context.userId` is honored as the actor when no auth middleware resolves one
+    (HTTP clients can't set `context`, so this stays a trusted server-side channel).
+  - **api-04** (security): approval endpoints no longer take `reviewedBy`/`requestedBy`
+    from the request body (spoofable). The actor is derived from the auth context;
+    a reviewer must match one of `requestedReviewers`. Corrected the branches/merges
+    JSDoc that described the wrong `createdBy` precedence.
+  - **api-08 / api-16 / api-20**: vanilla client exposes `media.uploadState` (a real
+    atom) instead of a mistyped `useUploadAssets`; `$ERROR_CODES` / `err.cmsCode`
+    now cover core **and** plugin codes; removed the dead `$InferServerPlugin`.
+
+  **Renames (breaking)**
+
+  - `deleteRoot` → `archiveRoot` (it soft-archives).
+  - `search.search` → `search.query` (param `q` → `search`).
+  - `notifications.listNotifications` / `templates.listTemplates` / `variables.listVariables` → `.list`.
+  - `media.archiveAsset` → `archiveAssets`; `media.updateAssetStatus` → `updateAssetsStatus`.
+  - List **direction** param unified to `sortDirection` (was `sortOrder` on `listAssets`/`listPublications`).
+  - `moveRoot` body param `sortOrder` → `position` (the result field stays `sortOrder`).
+  - Template endpoints' `id` param → `templateId`; `listFolders` `parentId` → `parentFolderId`.
+  - `moveFolder` accepts an explicit `null` parent (detach), matching `moveRoot`/`moveAssets`.
+
+  **Smaller items**
+
+  - **api-11**: `resolveTemplate` is now GET. **api-17/18**: documented `listFolders`
+    (intentionally per-level) and `listRoots.filterValue` ILIKE-pattern semantics.
+    **api-21**: added `duplicateRoot` (a thin, statically-typed wrapper over
+    `duplicateBlock`'s root mode). **api-22**: documented the two identifier-lookup
+    conventions.
+
+- [#45](https://github.com/weepaho3/createCMS/pull/45) [`bdd6e2a`](https://github.com/weepaho3/createCMS/commit/bdd6e2a2bf9f782b54482b8333d0acd6fab5b15c) Thanks [@weepaho3](https://github.com/weepaho3)! - Code-cleanup pass (cc-01 … cc-16) — mostly internal (behavior-preserving dedup,
+  dead-code removal, comment cleanup), with three consumer-visible fixes:
+
+  - **Reopening a comment thread now emits a `threadReopened` notification** (was
+    incorrectly `threadResolved`); added to the notification-type enum + router
+    meta map (cc-11).
+  - **`deleteCommentMessage` now reports `operation: 'delete'`** to your
+    `authMiddleware`/permission matrix (was `'update'`, inconsistent with every
+    other delete) (cc-11).
+  - **List endpoints parse raw timestamps as UTC** (`listRoots`, root history,
+    `listMergeRequests`) via `parseTimestamp`, fixing an off-by-timezone `Date` on
+    non-UTC hosts (cc-06).
+
+  Internal: extracted `lockWritableBranch` (7 duplicated branch-lock preambles),
+  `loadVersionMapAtCommit` + `collectDescendantIds`, `patchSingleVersion`
+  (updateBlock/updateRoot shared core), `withNotifications` (11 collect-then-flush
+  sites), `isUniqueViolation` + `chainFor`, `loadBoundaryMessages` +
+  `mapRawThreadRow`, and `toInsertRow`; removed dead code (unused import/var, two
+  unused `TableDefinition` type params, the `blockToOutput` wrapper), tightened a
+  few micro-nits, and stripped undocumented internal design codenames from comments.
+
+- [#54](https://github.com/weepaho3/createCMS/pull/54) [`5f22103`](https://github.com/weepaho3/createCMS/commit/5f2210380010402668cc32121c31cbe55bec0a39) Thanks [@weepaho3](https://github.com/weepaho3)! - CLI hardening (wc-01, wc-04, wc-05).
+
+  - **`createcms generate` no longer silently drops plugin schemas** (wc-01). The
+    subpath alias map is now derived from the package's own `exports` (so any
+    exported plugin subpath, including the documented `@createcms/core/plugins/i18n`,
+    resolves to its real module instead of an inert stub), the loader logs which
+    specifiers were stubbed, and it now HARD-FAILS if a configured plugin resolved
+    to the stub rather than emitting a schema with that plugin's tables missing. The
+    config-loader shim also exposes `definePlugin` / `definePluginSchema`, so a
+    config that authors a local plugin loads during generate instead of crashing.
+  - **`--force` / `--yes` for non-interactive generate** (wc-04). `createcms
+generate` over an existing schema in a non-TTY (CI) previously printed
+    "cancelled" and exited 0, so a `cms:generate && drizzle-kit generate` step
+    silently ran against a stale schema. It now exits non-zero in that case and
+    accepts `--force` (alias `--yes`) to regenerate unattended.
+  - **Per-invocation temp dir for config loading** (wc-05, security). The loader
+    wrote executable stub modules to a fixed shared `os.tmpdir()/createcms-stubs/`
+    path with a silent-swallow on write failure, a local code-execution vector on
+    multi-user hosts (an attacker could pre-plant a stub that runs in the victim's
+    process during generate). It now uses a unique `mkdtemp` directory per run,
+    cleaned up afterward, and fails hard instead of swallowing write errors.
+
+- [#50](https://github.com/weepaho3/createCMS/pull/50) [`30f9bdd`](https://github.com/weepaho3/createCMS/commit/30f9bdd5822f79fafc5ee9c543549ed85c6dd60c) Thanks [@weepaho3](https://github.com/weepaho3)! - Product-capability pass (cms-02, 03, 04, 06, 08, 10, 13, 14, 18). New content
+  features plus a search-scope security fix. Some changes are behavior-affecting;
+  schema-affecting ones need a regenerate + migration.
+
+  - **Search scope (security, cms-08).** `search.query` now applies the SAME read
+    boundary as normal endpoints: a result is returned only if its underlying
+    entity is visible under the active scope (a correlated `EXISTS` per entity
+    type), and notifications are filtered to the requesting user. This closes a
+    cross-tenant content leak and a cross-user notification-title leak. When no
+    scoping plugin is active, behavior is unchanged.
+  - **Scheduled publishing / expiry (cms-02, schema).** New `scheduled_publications`
+    table + endpoints to schedule a publish/unpublish, and `admin.runScheduled`
+    (call it from your cron, like `admin.runPruning`) which processes due rows via
+    the real publish machinery. Claims each row atomically so overlapping cron runs
+    never double-publish.
+  - **Releases / atomic multi-page publish (cms-13, schema).** New `releases` /
+    `release_items` tables + `publishRelease`, which publishes every item in ONE
+    transaction (all-or-nothing), reusing the existing per-root publish path.
+  - **List / multi-reference property type (cms-03).** New `list` property kind
+    (`{ type: 'list', of: <scalar | reference> }`) validated as a JSON array with
+    optional min/max length. List references are indexed for the reusable-block
+    delete guard and resolved at read exactly like a single reference.
+  - **Stricter property validation (cms-04, behavior).** `date` is now validated as
+    an ISO datetime, string/number properties accept declarative
+    `minLength`/`maxLength`/`pattern`/`min`/`max` constraints, and `image` /
+    `reference` ids (including inside lists) are checked to EXIST at write time.
+    Writes that previously stored an invalid date or a dangling id now throw a
+    validation error instead of failing later at render.
+  - **Merge approval gate (cms-06, behavior).** `executeMerge` now blocks a merge by
+    default when an OPEN approval request exists on it (previously only enforced
+    behind the governance flags), mirroring `publishBranch`. A merge with no
+    approval requests is unaffected. Also fixes the content-workflow guide, which
+    wrongly claimed every merge requires an approval.
+  - **Optimistic concurrency (cms-18).** Content mutations accept an optional
+    `expectedHeadCommitId`; if the branch head has moved, the write is rejected with
+    a `HEAD_MISMATCH` (409) conflict instead of silently interleaving. Omitted =
+    unchanged behavior.
+  - **Numeric list sort (cms-10).** `listRoots` sorts numeric properties as numbers
+    (guarded cast, non-numeric values sort last) instead of as text where "10" &lt; "9".
+  - **Typed plugin hook actions (cms-14).** `CMSHookAction` is now the finite union
+    of real endpoint keys (plus an open arm), so plugin hook actions autocomplete.
+
+  Regenerate your Drizzle schema (`createcms generate`) and add a migration to pick
+  up the new `scheduled_publications`, `releases`, and `release_items` tables.
+
+- [#51](https://github.com/weepaho3/createCMS/pull/51) [`a727384`](https://github.com/weepaho3/createCMS/commit/a72738463c340a19f8f037b0c98f1ca6178362ba) Thanks [@weepaho3](https://github.com/weepaho3)! - Versioned slug (cms-05). The root `slug` is now part of the versioned content
+  (isolated per branch) and is materialized to the live URL only on publish, so a
+  draft-branch slug edit no longer changes the live URL immediately, and
+  `revertBranch` restores the slug along with the content.
+
+  Behavior changes:
+
+  - **A draft slug edit is isolated until publish.** `updateRoot` now commits the
+    slug to the branch (stored on the root block version) instead of writing the
+    global `roots.slug`. The live URL only changes when the default/identity branch
+    is published. `createRoot` leaves the entry's live slug unset until its first
+    publish.
+  - **Uniqueness is enforced at publish, not at draft-write.** Draft branches may
+    hold colliding slugs; publishing a colliding slug throws the new typed
+    `PUBLISH_SLUG_CONFLICT` (an atomic `publishRelease` rolls the whole release
+    back on conflict). The cheap empty/format check stays at write time.
+  - **Slug-change redirects are created at publish**, not at the draft edit, so a
+    never-published slug edit creates no redirect.
+  - `revertBranch` (and merge/history) now carry the slug, since it is versioned
+    content; two branches editing the slug produce a normal root-block merge
+    conflict instead of a silent overwrite.
+  - `parentRootId` / `moveRoot` are unchanged (a page move still changes the live
+    URL immediately); only the slug is versioned.
+
+  No schema migration is required (the draft slug rides an existing JSONB column).
+  A `backfillDraftSlugs` script copies each existing entry's current live slug into
+  its draft content so existing pages have a draft slug to edit and re-publish.
+
+  Known limitations (documented): clearing a slug to make an `allowRoot` page the
+  home page is not re-materialized on republish; and publish-time slug uniqueness
+  is scoped to the active request scope, so publish i18n translations within their
+  own language context.
+
+- [#37](https://github.com/weepaho3/createCMS/pull/37) [`40f6f35`](https://github.com/weepaho3/createCMS/commit/40f6f355b48842001021f6e4a8509235d771765e) Thanks [@weepaho3](https://github.com/weepaho3)! - Documentation-accuracy pass (docs-01 … docs-13, readme-01 … readme-14). No API
+  changes; corrects the docs + README to match the shipped code.
+
+  Package-facing (npm) fixes:
+
+  - The `README.md` render sample imports the RSC-safe `@createcms/core/react/blocks`
+    (not the client-only `/react` barrel), imports the collection from the path the
+    scaffolder actually writes (`@/cms/collections/pages`), and orders the quickstart
+    so the `createCMS(...)` config is created before `createcms generate` reads it.
+  - Added a "Requirements" block (Node ≥18, PostgreSQL, `drizzle-orm` + `react` peers,
+    optional `next`), the missing `i18n` and `consent` plugin rows, a docs/examples/
+    changelog/contributing links block, and an MIT license section.
+  - The published tarball now ships `LICENSE` (added to `package.json#files`).
+
+  Docs-site fixes (apps/docs): completed the server-API reference (root methods +
+  `deleteCommentThread`), corrected the `getBlockTree` `raw` note (images are never
+  resolved), the branch guards (configured `defaultBranchName`, not a hardcoded
+  `main`), the multi-tenant scoped-table list (adds `templates`/`variables`), the
+  block field-type count (nine, with `link`) and image-storage note (asset id, not
+  object key), the `withUser`/`recipientId`/`actorUser` notification fields, the
+  `createCMSQuery` signature (reactive function form, `method?: string`), the
+  `atomListeners` client-plugin field, a new "Plugin schema columns" reference plus
+  fixed cross-links, and an A/B-test server-endpoints reference.
+
+- [#52](https://github.com/weepaho3/createCMS/pull/52) [`0beeb80`](https://github.com/weepaho3/createCMS/commit/0beeb80b3c015de7fa99607546b552ad475070eb) Thanks [@weepaho3](https://github.com/weepaho3)! - Editor-DX pass (toe-ed-01 … 13). Hardens the visual-editor write path and exposes
+  the primitives an editor needs, so consumers stop re-implementing package
+  internals.
+
+  - **`updateBlocks` now enforces structural validation** (toe-ed-01), matching the
+    single-block routes: it checks the posted root `blockId` equals the entry root,
+    that every written block type exists, validates each written block's properties
+    against its type schema, and asserts placement over the tree. Validation is
+    diff-scoped: newly-created blocks are validated strictly (required props
+    enforced) while updated blocks and the root use patch semantics, and unchanged
+    blocks are left alone, so a stale sibling can't block an unrelated save.
+  - **Lossless root-type round-trip** (toe-ed-02): posting a tree loaded from
+    `getBlockTree` (whose root node is `type: 'root'`) back through `updateBlocks`
+    no longer persists the literal `'root'`; the root is normalized to the
+    collection type.
+  - **`defaultValue` is now applied** (toe-ed-09): a block property's declared
+    `defaultValue` seeds newly-created blocks (lowest priority: defaults &lt; template
+    prefill &lt; caller values). New `defaultPropertiesFor(blockDef)` export computes a
+    block's initial properties for editor use.
+  - **Required links are enforced** (toe-ed-10): link targets (`url`/`rootId`/
+    `email`/`phone`) must be non-empty, so a `required` link with an empty target is
+    now rejected instead of silently passing.
+  - **New exports for editors:** `buildPlacementIndex`, `isPlacementAllowed`,
+    `allowedChildTypes`, `PlacementIndex` (toe-ed-04); `isResolvedReference` +
+    `toStoredReference` from the root entry, not just `/react` (toe-ed-07);
+    `RefMode`; `getCollection(map)` / `getComponents(map)` accessors so editors stop
+    reaching into `BlocksMap` underscore internals (toe-ed-06).
+  - **`BlockComponentProps<TProps, M extends RefMode = 'resolved'>`** is now
+    parameterized (toe-ed-11), so an editor canvas rendering raw store values can
+    type components instead of falling back to `any`.
+  - **Docs:** an `updateBlocks` reference section (body, root-type rule, validation
+    scope, optimistic concurrency) and editor-guide notes on `getTemplateDefaults`
+    prefill and `blk_` id minting (toe-ed-05/08/12/13).
+
+- [#43](https://github.com/weepaho3/createCMS/pull/43) [`20d913a`](https://github.com/weepaho3/createCMS/commit/20d913a0f1547d29d2dd43cf925825fa8c18e9bd) Thanks [@weepaho3](https://github.com/weepaho3)! - Error-handling hardening (err-01 … err-18).
+
+  Consumer-visible:
+
+  - **`cms.$ERROR_CODES` is now the complete registry** (core codes + plugin codes),
+    matching `client.$ERROR_CODES` — a plugin-free install previously exposed `{}`
+    on the server (err-02). Duplicate/shadowing plugin codes now `console.warn`
+    instead of silently overriding (err-16).
+  - **Validation errors carry their details**: every `VALIDATION_ERROR` (400)
+    response body now includes the Zod `issues` array (err-06). Documented in the
+    errors reference.
+  - **New `onAPIError(error, request)` option** on `createCMS` to attach
+    logging/monitoring for unexpected, validation, and middleware errors (err-07).
+  - **State-conflict codes are now `409`** (were `400`): `BRANCH_NAME_ALREADY_EXISTS`,
+    `MERGE_REQUEST_ALREADY_EXISTS`, `ROOT_HAS_CHILDREN`, `FOLDER_HAS_CONTENT`,
+    `BRANCH_HAS_PUBLICATIONS`, `BRANCH_HAS_OPEN_MERGE_REQUESTS` (err-11).
+  - **`CMSError` `data` now reaches the wire** and is surfaced on
+    `CMSClientError.data` (block-placement + type-mismatch context, err-01).
+  - `getCMSErrorCode`/`isCMSError` now recognize plugin error codes, not just core
+    ones (err-03).
+  - **Network/transport failures** (offline/DNS/CORS) are now wrapped in
+    `CMSClientError` (`status: 0`, `code: 'NETWORK_ERROR'`) so `err instanceof
+CMSClientError` holds (err-14).
+  - Removed never-thrown codes `MERGE_REQUEST_OUTDATED`, `COMMENT_BODY_REQUIRED`,
+    `AB_TEST_WEIGHTS_INVALID`, and the decorative `media-optimize` `$ERROR_CODES`
+    (err-04, err-05).
+  - The Next revalidate webhook now returns the standard `{ message }` error shape
+    and rejects malformed JSON with a clean `400` (err-15).
+
+  Observability: S3 upload failures now log + carry the underlying cause;
+  Upstash realtime distinguishes a missing peer from a real misconfiguration; the
+  A/B middleware and analytics sinks emit a dev-only warning on the first fail-open
+  (err-08, err-12, err-18). Plugin error-code tables added to the ab-test and i18n
+  docs (err-13).
+
+- [#53](https://github.com/weepaho3/createCMS/pull/53) [`2c138a6`](https://github.com/weepaho3/createCMS/commit/2c138a60d3be9745da3bb9e2982571409d93617c) Thanks [@weepaho3](https://github.com/weepaho3)! - Integration-DX pass (toe-int-02 … 15). Fills the gaps consumers had to work
+  around when building on the API.
+
+  - **User discovery endpoints** (toe-int-06/05): `users.listReviewers` returns
+    candidate reviewers as `{ id, ...exposeColumns }` (so an approval UI can build a
+    reviewer picker), and `users.whoami` returns `{ userId, user }`. Both are
+    permission-gated (`user` resource) and only ever expose the configured
+    `user.exposeColumns` (never password hashes/tokens).
+  - **Branch-by-name lookup** (toe-int-02): `getBranch` now accepts
+    `{ rootId, name }` as well as `{ branchId }`, so named-branch URLs no longer
+    page through `listBranches` + `.find` (which broke past 100 branches).
+  - **Root-level asset listing + bulk resolve + cursor paging** (toe-int-03/15):
+    `listAssets({ unfiled: true })` lists assets with no folder (wire-safe boolean,
+    replacing the un-serializable `folderId: null`); new `getAssets({ ids })` bulk
+    resolves assets by id (single id works over HTTP); and `listAssets` gained
+    precision-exact cursor pagination so a media library can page past the 100-item
+    ceiling without skipping or duplicating rows.
+  - **Uploads auto-optimize** (toe-int-04): when the media-optimize client plugin is
+    installed, `useUploadAssets` optimizes images by default (opt out per call with
+    `optimize: false`); previously the registered config was never read.
+  - **Notifications without wiring your auth client** (toe-int-05/08):
+    `useNotifications` resolves the current user via `users.whoami` when `userId` is
+    omitted, and nesting `RealtimeProvider` now shares the single SSE connection
+    (with a dev warning) instead of silently opening a second stream.
+  - **Consistent revalidation paths** (toe-int-14): `RevalidateEvent`'s bare `slug`
+    is renamed `storedSlug` and every URL-shaped value in `paths` is a leading-slash
+    path, so using an event value as a Next.js cache tag no longer silently fails to
+    bust. Consumers reading `event.slug` should read `event.paths` (for tags) or
+    `event.storedSlug` (the bare slug).
+  - **Docs** (toe-int-09): route-mount snippets now show
+    `export const dynamic = 'force-dynamic'` for the realtime SSE stream.
+
+- [#56](https://github.com/weepaho3/createCMS/pull/56) [`359cc8c`](https://github.com/weepaho3/createCMS/commit/359cc8cc88383bb21a09915cf753314b0f8de7d1) Thanks [@weepaho3](https://github.com/weepaho3)! - Naming-consistency pass (naming-01 … 25). Many **breaking** renames (pre-1.0, no
+  aliases) that remove diverged/ambiguous names across the public surface.
+
+  Renamed identifiers:
+
+  - **Context types** standardized on the `Context` suffix: `CMSMiddlewareCtx` →
+    `CMSMiddlewareContext`, `CMSProcedureCtx` → `CMSProcedureContext`,
+    `CMSHandlerCtx` → `CMSHandlerContext`, `CMSSystemHandlerCtx` →
+    `CMSSystemHandlerContext`. The duplicate `CMSEndpointCtx` is removed; use
+    `CMSEndpointContext` (now the complete shape).
+  - **Slug config**: `slug.root` → `slug.prefix`, `slug.allowRoot` →
+    `slug.allowIndex` (avoids colliding with the top-level `basePath` and the many
+    other meanings of "root").
+  - **List rows**: `RootListItem` / `RootSummary` expose their own key as `id`
+    (was `rootId`), matching every other list item.
+  - **Permission resources**: `'variables'` → `'variable'` and `'templates'` →
+    `'template'` (now all singular); new exported `CMSPermissionResource` union so
+    a typo in a permission matrix is a compile error.
+  - **Endpoint keys**: `resolveConflicts` → `applyConflictResolutions`, `approve` →
+    `submitApproval`, `reject` → `submitRejection` (the bare verbs implied a lookup
+    / were ambiguous as hook actions).
+  - **Generated schema**: `createcms generate` now emits
+    `export const cmsSchema = pgSchema('cms')` (was `cms`), so `typeof cms` no longer
+    collides with your `createCMS` instance. Regenerate your schema.
+  - **Client store**: `CMSClientStore.notify(signal)` → `invalidate(signal)` (it
+    toggles a cache-invalidation signal, distinct from `cms.notify` which sends a
+    user notification).
+  - **Inference marker**: `cms.$notifications` → `cms.$InferNotifications` (type-only
+    phantom; joins the `$Infer*` family).
+  - **Renderers**: `createBlocksRenderer` is removed (it was `createBlocksMap` +
+    `BlocksRenderer` inline); use `createContentRenderer` (the one convenience
+    factory) or `createBlocksMap` + `BlocksRenderer` for the low-level path.
+  - **Type-prefix cleanups**: `ABTest*` → `AbTest*`, `GA4Payload`/`GA4ServerConfig`
+    → `Ga4Payload`/`Ga4ServerConfig`, `CMSEvent` → `AnalyticsEvent`,
+    `MultilingualMiddlewareResult` → `I18nMiddlewareResult`, generic param `TCms` →
+    `TCMS`, zod export `notificationEvent` → `notificationEventSchema`, and the
+    unprefixed client types `QueryState` / `MediaUploadState` /
+    `MediaUploadFileState` / `MediaUploadOptions` → `CMS*`-prefixed.
+
+  Docs-only: error messages and JSDoc now say "root"/"entry" instead of "page" for
+  an entry; the variant-selection verb ladder is documented; `CMSHooks` and
+  `CMSConfigHooks` cross-reference each other.
+
+  (naming-06, naming-07, naming-09, naming-19 were already resolved by earlier
+  passes.)
+
+- [#48](https://github.com/weepaho3/createCMS/pull/48) [`d3f6406`](https://github.com/weepaho3/createCMS/commit/d3f6406fd7608e55bba74608e9cfc2e8d83e0daa) Thanks [@weepaho3](https://github.com/weepaho3)! - Performance pass (pf-03 … pf-15). Query, index, and payload optimizations on the
+  hot read/merge/prune paths. Two consumer-visible changes; the rest are internal.
+
+  - **Schema (regenerate after upgrade):** added a `(collection, slug)` index on
+    `roots` for the public `getPublishedContent` slug lookup (pf-03), and removed
+    the unused `bv_properties_gin` GIN index on `block_versions.properties` — it
+    could not serve any existing query (all predicates are `->> ... ILIKE`, which
+    jsonb_ops GIN does not accelerate) and only cost write amplification on the
+    highest-churn table (pf-06). Run `createcms generate` + a migration to pick up
+    both.
+  - **`getPublishedContent` A/B shape + branch selector (pf-07):** added an
+    optional `branchName` query param — when set, only that published branch is
+    resolved (still returned as a length-1 `variants[]`); omitted, behavior is
+    unchanged. Embedded A/B references no longer serialize the control branch
+    **twice**: the control tree is the top-level `tree`/`properties`, and
+    `abTest.variants` now carries only the non-control variants. Consumers that
+    previously read the control snapshot out of `abTest.variants` should read the
+    top-level tree instead.
+
+  Internal (no API change): `resolveLinkPaths` resolves internal link targets in
+  parallel instead of serially on the published-content path (pf-04); `listRoots`
+  uses a slim `COUNT(DISTINCT roots.id)` query for the total instead of re-running
+  the full aggregate/enrichment join twice (pf-05); `executeRootPruning` deletes
+  prunable commits in a single set-based statement instead of one round trip per
+  commit (pf-11); `executeMerge` computes the merge base before taking the branch
+  `FOR UPDATE` locks and reuses it only when the locked heads are unchanged,
+  shortening lock hold time without changing merge-base semantics (pf-08);
+  `archiveAssets` batches the live-reference check across the input instead of one
+  query per asset (pf-12).
+
+  Also documents several intentional cost/scaling tradeoffs (snapshot-per-commit,
+  `listRoots` search vs. the `search` endpoint, the default A/B edge resolver's
+  per-request fetch, and the realtime per-recipient publish model).
+
+- [#35](https://github.com/weepaho3/createCMS/pull/35) [`a26143a`](https://github.com/weepaho3/createCMS/commit/a26143ae4f5471d845ffb79ab09ba77b4a99d77f) Thanks [@weepaho3](https://github.com/weepaho3)! - React / client-layer hardening (react-01 … react-16). Highlights:
+
+  - **react-01**: the browser realtime entry no longer bundles the entire generated
+    Drizzle schema (+ `drizzle-orm/pg-core` + `nanoid`). The notification wire schema
+    used to runtime-import the DB enum from `schema.generated`; the core types now
+    live in a dependency-free `NOTIFICATION_TYPES` constants module (shared with
+    `core-schema`), and the wire `type` accepts any string so plugin notifications
+    still push.
+  - **react-02 / react-03**: added the missing `'use client'` directive to the React
+    client entries (`client/react.ts`, `client/react-store.ts`), `react/realtime.ts`,
+    and the `ab-test` / `media-optimize` hook modules, so importing `@createcms/core/react`
+    (and wrapping your app in `RealtimeProvider`) no longer fails to bundle in an RSC
+    app. JSDoc examples corrected to import the RSC-safe rendering API from
+    `@createcms/core/react/blocks` in Server Components.
+  - **react-14**: split the pure `CMS_ERRORS` data from the `CMSError extends APIError`
+    class so the browser client no longer pulls the `better-call` server lib; added
+    `"sideEffects": false` so bundlers can tree-shake it.
+  - **react-04**: `useOptimize` now keys its memo on a file content-key (name/size/
+    lastModified), so replacing a file array with a same-length one re-runs.
+  - **react-08**: client `runPluginInit` failures are caught + logged (no more
+    unhandled rejection); the docstring matches the synchronous-build reality.
+  - **react-09**: `useNotifications` merges the reconcile poll into state by id
+    (a racing live push is no longer overwritten), re-adding only genuine mid-poll
+    pushes — items newer than the newest polled row — so the unread badge never
+    drifts or reorders when the list is longer than the page size. Polls are
+    guarded with a monotonic request id, and a failed poll now surfaces an `error`
+    instead of being swallowed.
+  - **react-10**: `CMSClientStore.listen` returns its unsubscribe and uses
+    `atom.listen` (was `subscribe`, immediate-fire, and leaked).
+  - **react-13**: proxy atom-listeners fire only on MUTATING calls (a GET read no
+    longer forces subscribed query atoms to refetch); deferral uses `queueMicrotask`.
+  - **react-12**: renderer threads `fromReference` through the whole referenced
+    subtree (no stray "No component mapped" dev warnings on grandchildren) and keys
+    the inlined reference fragments.
+  - **react-11 / react-15**: documented the stable-client / non-referentially-stable
+    proxy constraint; dropped the `resolveWireName` re-export from the `'use client'`
+    tracking module (import it from the core entry server-side).
+
+  react-05/06/07 were already fixed by the earlier api-design client work; react-16
+  (render-test suite) is intentionally out of scope.
+
+- [#32](https://github.com/weepaho3/createCMS/pull/32) [`de20deb`](https://github.com/weepaho3/createCMS/commit/de20deb109de341866ca483dbd2b0b0ad7bb3f5e) Thanks [@weepaho3](https://github.com/weepaho3)! - API return-shape consistency pass (ret-01 … ret-22). Pre-1.0, these replace the old
+  shapes cleanly (no compat shims). Highlights:
+
+  - **Commit envelope.** Every commit-producing mutation (createRoot, createBlock,
+    moveBlock, deleteBlock, duplicateBlock, updateBlock, updateBlocks, updateRoot,
+    revertBranch, executeMerge) now returns `&#123; commit: &#123; id, message, createdAt,
+createdBy }, ... }` — one uniform shape instead of three divergent keys
+    (`commitId` / `newCommitId` / `mergeCommitId`). `executeMerge` fast-forward now
+    returns the resulting head commit instead of `mergeCommitId: null`. `updateBlocks`
+    adds `changed: boolean` so a no-op save is distinguishable from a real commit.
+  - **Entity envelope.** Entity-returning mutations wrap the row as `{ <resource>: row }`:
+    `createBranch`/`renameBranch` → `{ branch, isDeletable }`, `createMergeRequest` →
+    `{ mergeRequest, hasConflicts, conflicts }`, `update`/`close`/`reopenMergeRequest` →
+    `{ mergeRequest }`, `publishBranch` → `{ publication }` (now incl. `branchName`),
+    `approve`/`reject` → `{ approval }`, comment message mutations → `{ message }`.
+  - **Richer reads/mutations.** `getRoot`/`getRootBySlug` now return the full
+    `RootListItem` (counts + path), not a bare summary. `createRoot`/`updateRoot`/
+    `duplicateBlock` return the server-normalized `slug`/`path`; `moveRoot`/`deleteRoot`/
+    `updateRoot` return `redirectsCreated` (and `moveRoot` the effective `sortOrder`);
+    `deleteBlock` returns `deletedBlockIds`; `unpublishBranch` returns
+    `unpublishedCommitId`/`unpublishedAt`.
+  - **List consistency.** `getRootHistory` now returns `{ commits, total, hasMore }`
+    (was `{ data, total, offset, limit }`); `listTemplates`/`listVariables` gain
+    `limit`/`offset`/`search` + `{ …, total, hasMore }`. `updateAssetStatus` returns
+    `{ updated, updatedIds, skipped }`; `uploadAssets`/`replaceAsset` return the full
+    asset row.
+  - **Type fixes.** `getRootHistory.createdAt` and `createSignedUpload.expiresAt` are now
+    `Date` (were an ISO string / epoch-ms). `deleteTemplate`/`deleteVariable` echo the
+    deleted id (`{ templateId }`/`{ variableId }`) instead of `{ deleted: true }`.
+    `getDiff`/`checkConflicts`/`checkDivergence` are now `GET` (were `POST`).
+  - **Bug fix.** `listMentions` now populates each message's `mentions` (was always `[]`).
+
+- [#46](https://github.com/weepaho3/createCMS/pull/46) [`d7c10bd`](https://github.com/weepaho3/createCMS/commit/d7c10bd7b74b304313025578bde869496e6cbb4a) Thanks [@weepaho3](https://github.com/weepaho3)! - Security-hardening pass (sec-01, sec-03 … sec-08). Several **breaking** changes
+  that close real holes; all fail secure by default.
+
+  - **`authMiddleware` is now required** (sec-01). `createCMS` throws at
+    construction if it is missing, so auth can never be silently absent. To run
+    with no auth on purpose (public/dev), pass the new `allowAnonymous()` export,
+    which authorizes every request and is byte-identical to the old omitted-
+    middleware behavior. The undocumented `middleware` alias for `authMiddleware`
+    was removed.
+  - **Default `allowedMimeTypes` is now an explicit allowlist** (sec-04):
+    `image/png`, `image/jpeg`, `image/webp`, `image/gif`, `video/mp4`,
+    `video/webm`, `application/pdf` — no `image/*`/`video/*` wildcards, so
+    `image/svg+xml` (a stored-XSS vector) is excluded by default. Uploads that
+    carry file bytes are additionally checked against their real magic bytes, so
+    a file **declared** as `image/png` but **containing** SVG/HTML is rejected
+    before it reaches storage. Upgraders who relied on wildcard formats (avif,
+    heic, mov, …) must re-add them explicitly via `media.allowedMimeTypes`.
+  - **`user.exposeColumns` is now required when a `user` table is configured**
+    (sec-06). It previously defaulted to _every_ column, which leaked password
+    hashes / tokens through `withUser`. `resolveUserConfig` now throws instead of
+    defaulting to all columns — you must name the safe columns explicitly.
+  - **Multi-tenant slug is no longer taken from the request body/query by
+    default** (sec-03). `resolveTenantSlug` returns the session-derived fallback
+    and ignores request-supplied slugs unless you opt in with
+    `{ allowRequestOverride: true }` (intended only behind an admin check),
+    closing a cross-tenant access path.
+
+  Internal hardening (no API change): magic-byte MIME sniffing helper; fixed a
+  prefix-match bug in `isFileTypeAllowed` (`imagexml/evil` no longer matched the
+  `image` prefix); `SAFE_IDENTIFIER` validation applied to every table/column
+  identifier spliced into `sql.raw()` in the user-join helpers.
+
+  Also adds a **Security** documentation page covering the required-auth model,
+  media privacy and MIME/SVG handling, rate limiting, CSRF, and multi-tenant
+  isolation.
+
+- [#42](https://github.com/weepaho3/createCMS/pull/42) [`fe5e9c5`](https://github.com/weepaho3/createCMS/commit/fe5e9c5e2a6224dd9f2053a56a0d68b09a89af5f) Thanks [@weepaho3](https://github.com/weepaho3)! - Fix `createcms --version` reporting a stale hardcoded `0.0.1` — the CLI now reports
+  the real package version (inlined from `package.json` at build time). The rest of
+  this change is an internal repository cleanup with no API surface change: removed
+  three dead modules, consolidated shared test helpers under `src/test-utils/`, folded
+  `core/assets.ts` into `core/media/`, and added the missing plugin READMEs plus a
+  `packages/cms/src` layout guide in CONTRIBUTING.
+
+- [#44](https://github.com/weepaho3/createCMS/pull/44) [`3da4035`](https://github.com/weepaho3/createCMS/commit/3da4035fdad32dc01e2736c644537eb4331fe8ad) Thanks [@weepaho3](https://github.com/weepaho3)! - Testing-strategy hardening (test-01 … test-17). Mostly internal (coverage tooling,
+  new test suites, a faster test harness), with two shipped changes:
+
+  - **New `cms.$flushNotifications()`** — awaits all in-flight fire-and-forget
+    notification dispatches. Handy in serverless/short-lived contexts (and the
+    deterministic seam the tests now use instead of real `setTimeout` waits).
+  - The Next revalidate webhook loads `next/cache` via a normal `await import(...)`
+    instead of a `Function`-eval'd import — behaviour-identical in a Next app, and
+    now mockable/testable.
+
+  Coverage tooling (`@vitest/coverage-v8`, `bun run test:coverage`) plus new suites
+  for the previously-untested browser client, Next adapter, React render paths
+  (happy-dom), the error contract, and the client/server HTTP-method contract; the
+  notification and publication suites are now deterministic (no real-clock sleeps),
+  and the test DB harness memoizes generated migrations (~23% faster suite).
+
+- [#34](https://github.com/weepaho3/createCMS/pull/34) [`a8196e1`](https://github.com/weepaho3/createCMS/commit/a8196e1578e87f25cc479ba97e59ddea33d1f6a3) Thanks [@weepaho3](https://github.com/weepaho3)! - TypeScript-hardening pass (ts-01 … ts-18). Pre-1.0; the breaking items are applied
+  cleanly. Highlights:
+
+  - **ts-01** (client timestamps): the HTTP client now types every timestamp as the
+    ISO `string` the wire actually delivers, via a `Serialize<T>` mapped type at the
+    client boundary (server-side `cms.api.*` still returns real `Date`s). The
+    `useNotifications` poll and live push are unified on the serialized shape, so a
+    notification item never mixes `string` and `Date`.
+  - **ts-06**: `withUser`-enrichable list endpoints (`listRoots`, `listMergeRequests`,
+    `listBranches`, …) now type `createdByUser` off the user table instead of
+    `unknown`, generalized from the notifications-only path.
+  - **ts-08**: `createCMSClient` infers `TPlugins` (default `[]`) so a no-plugins
+    client no longer gets a `Record<string, unknown>` action index signature
+    (`client.anyTypo` is now a compile error).
+  - **ts-02 / ts-03 / ts-04**: `definePluginSchema` is curried
+    (`definePluginSchema<CoreTables>()({ … })`) so the schema DSL is actually
+    type-checked; new `definePlugin` (keeps a literal `id` + endpoint contributions,
+    rejects typo'd keys) and `defineUserConfig` (checks `exposeColumns` against the
+    real user table) helpers.
+  - **ts-09**: config hook `action` is now the closed union of endpoint keys (dropped
+    the `(string & {})` escape) — a misspelled action is a compile error, not a
+    silent no-op. **ts-05**: `check-types` now type-checks the `test/` suite too.
+  - **ts-17**: `MediaConfig` / `OptimizationConfig` (and provider variants) are
+    exported from the root. **ts-14/15**: replaced unprincipled `tx as any` /
+    `scope.where as any` / `as unknown as` result-shaping casts with a typed
+    `DbOrTx` alias, `SQL[]` condition arrays, and structurally-checked row builders.
+  - Smaller: **ts-07** stop exporting the unused `InferPluginRealtimeEvents`;
+    **ts-10** made the phantom `$notifications` type-only field unmistakable;
+    **ts-12** tightened `DrizzleInstance`'s schema param; **ts-18** corrected the
+    `CMSMiddlewareRequest` JSDoc; **ts-16** added type-check files for the client
+    `Serialize`, block-property inference, the plugin schema DSL, and `definePlugin`.
+
 ## 0.2.11
 
 ### Patch Changes
