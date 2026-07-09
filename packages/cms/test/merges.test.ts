@@ -80,13 +80,14 @@ describe('getDiff', () => {
       },
     });
 
-    const addedBlock = result.diff.find((d) => d.blockId === block.blockId);
+    const addedBlock = result.diff!.find((d) => d.blockId === block.blockId);
     expect(addedBlock).toBeDefined();
     expect(addedBlock!.changeTypes).toContain('added');
 
-    const rootEntry = result.diff.find((d) => d.blockId === root.rootId);
-    expect(rootEntry).toBeDefined();
-    expect(rootEntry!.changeTypes).toContain('childrenReordered');
+    // An insertion does not change the relative order of the parent's
+    // surviving children — the root gets NO entry.
+    const rootEntry = result.diff!.find((d) => d.blockId === root.rootId);
+    expect(rootEntry).toBeUndefined();
   });
 
   it('detects a deleted block', async () => {
@@ -129,13 +130,14 @@ describe('getDiff', () => {
       },
     });
 
-    const deletedEntry = result.diff.find((d) => d.blockId === block.blockId);
+    const deletedEntry = result.diff!.find((d) => d.blockId === block.blockId);
     expect(deletedEntry).toBeDefined();
     expect(deletedEntry!.changeTypes).toContain('deleted');
 
-    const rootEntry = result.diff.find((d) => d.blockId === root.rootId);
-    expect(rootEntry).toBeDefined();
-    expect(rootEntry!.changeTypes).toContain('childrenReordered');
+    // A deletion does not change the relative order of the parent's
+    // surviving children — the root gets NO entry.
+    const rootEntry = result.diff!.find((d) => d.blockId === root.rootId);
+    expect(rootEntry).toBeUndefined();
   });
 
   it('detects a modified block', async () => {
@@ -180,7 +182,7 @@ describe('getDiff', () => {
       },
     });
 
-    const modifiedEntry = result.diff.find((d) => d.blockId === block.blockId);
+    const modifiedEntry = result.diff!.find((d) => d.blockId === block.blockId);
     expect(modifiedEntry).toBeDefined();
     expect(modifiedEntry!.changeTypes).toEqual(['modified']);
     expect(modifiedEntry!.sourceVersion!.properties).toEqual({
@@ -253,17 +255,25 @@ describe('getDiff', () => {
       },
     });
 
-    const movedEntry = result.diff.find((d) => d.blockId === child.blockId);
+    const movedEntry = result.diff!.find((d) => d.blockId === child.blockId);
     expect(movedEntry).toBeDefined();
     expect(movedEntry!.changeTypes).toContain('moved');
+    expect(movedEntry!.moved).toEqual({
+      kind: 'reparented',
+      fromParentId: containerA.blockId,
+      fromIndex: 0,
+      toParentId: containerB.blockId,
+      toIndex: 0,
+    });
 
-    const oldParent = result.diff.find((d) => d.blockId === containerA.blockId);
-    expect(oldParent).toBeDefined();
-    expect(oldParent!.changeTypes).toContain('childrenReordered');
-
-    const newParent = result.diff.find((d) => d.blockId === containerB.blockId);
-    expect(newParent).toBeDefined();
-    expect(newParent!.changeTypes).toContain('childrenReordered');
+    // Neither container's surviving children changed relative order — the
+    // reparenting must not cascade a childrenReordered onto either parent.
+    expect(
+      result.diff!.find((d) => d.blockId === containerA.blockId),
+    ).toBeUndefined();
+    expect(
+      result.diff!.find((d) => d.blockId === containerB.blockId),
+    ).toBeUndefined();
   });
 
   it('detects children reordered within the same parent', async () => {
@@ -318,17 +328,25 @@ describe('getDiff', () => {
       },
     });
 
-    const rootEntry = result.diff.find((d) => d.blockId === root.rootId);
+    const rootEntry = result.diff!.find((d) => d.blockId === root.rootId);
     expect(rootEntry).toBeDefined();
     expect(rootEntry!.changeTypes).toContain('childrenReordered');
     expect(rootEntry!.changeTypes).not.toContain('modified');
 
-    const entryA = result.diff.find((d) => d.blockId === blockA.blockId);
-    const entryB = result.diff.find((d) => d.blockId === blockB.blockId);
-    expect(entryA).toBeDefined();
-    expect(entryA!.changeTypes).toContain('moved');
+    // Only B actually moved; A's index shifted passively and gets NO entry.
+    const entryA = result.diff!.find((d) => d.blockId === blockA.blockId);
+    expect(entryA).toBeUndefined();
+
+    const entryB = result.diff!.find((d) => d.blockId === blockB.blockId);
     expect(entryB).toBeDefined();
     expect(entryB!.changeTypes).toContain('moved');
+    expect(entryB!.moved).toEqual({
+      kind: 'reordered',
+      fromParentId: root.rootId,
+      fromIndex: 1,
+      toParentId: root.rootId,
+      toIndex: 0,
+    });
   });
 
   it('detects modified + childrenReordered on the same block', async () => {
@@ -392,10 +410,347 @@ describe('getDiff', () => {
       },
     });
 
-    const rootEntry = result.diff.find((d) => d.blockId === root.rootId);
+    const rootEntry = result.diff!.find((d) => d.blockId === root.rootId);
     expect(rootEntry).toBeDefined();
     expect(rootEntry!.changeTypes).toContain('modified');
     expect(rootEntry!.changeTypes).toContain('childrenReordered');
+  });
+
+  it('produces exactly one entry when a block is inserted before untouched siblings', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    for (const text of ['One', 'Two', 'Three']) {
+      await cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'paragraph',
+          properties: { text },
+        },
+      });
+    }
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    const inserted = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Zero' },
+        position: 0,
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+      },
+    });
+
+    // The three untouched siblings all shifted index, but none of them moved
+    // relative to each other — the added block is the ONLY entry.
+    expect(result.diff).toHaveLength(1);
+    expect(result.diff![0].blockId).toBe(inserted.blockId);
+    expect(result.diff![0].changeTypes).toEqual(['added']);
+    expect(result.summary).toEqual({
+      added: 1,
+      deleted: 0,
+      modified: 0,
+      moved: 0,
+      reordered: 0,
+    });
+  });
+
+  it('reports granular propertyChanges for a root title change', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.updateRoot({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        properties: { title: 'Renamed Page' },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+      },
+    });
+
+    const rootEntry = result.diff!.find((d) => d.blockId === root.rootId);
+    expect(rootEntry).toBeDefined();
+    expect(rootEntry!.changeTypes).toEqual(['modified']);
+    expect(rootEntry!.propertyChanges).toEqual([
+      expect.objectContaining({
+        path: ['title'],
+        kind: 'changed',
+        from: 'Page',
+        to: 'Renamed Page',
+      }),
+    ]);
+  });
+
+  it('reports slugChange on the root entry without marking it modified', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/original', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.updateRoot({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        slug: '/renamed',
+        properties: {},
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+      },
+    });
+
+    const rootEntry = result.diff!.find((d) => d.blockId === root.rootId);
+    expect(rootEntry).toBeDefined();
+    expect(rootEntry!.slugChange).toBeDefined();
+    expect(rootEntry!.slugChange!.to).toContain('renamed');
+    expect(rootEntry!.slugChange!.from).not.toBe(rootEntry!.slugChange!.to);
+    // A slug-only change is NOT a property modification.
+    expect(rootEntry!.changeTypes).not.toContain('modified');
+    expect(result.summary.modified).toBe(0);
+
+    // The reserved draft-slug key must never leak through the version payloads.
+    for (const version of [
+      rootEntry!.sourceVersion,
+      rootEntry!.targetVersion,
+      rootEntry!.baseVersion,
+    ]) {
+      expect(version).not.toBeNull();
+      expect(version!.properties).not.toHaveProperty('__slug');
+    }
+  });
+
+  it('carries word-level textDiff segments for richText property edits', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Hello world today' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: block.blockId,
+        type: 'paragraph',
+        properties: { text: 'Hello brave world today' },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+      },
+    });
+
+    const entry = result.diff!.find((d) => d.blockId === block.blockId);
+    expect(entry).toBeDefined();
+    expect(entry!.changeTypes).toEqual(['modified']);
+
+    const change = entry!.propertyChanges!.find(
+      (p) => p.path.length === 1 && p.path[0] === 'text',
+    );
+    expect(change).toBeDefined();
+    expect(change!.kind).toBe('changed');
+    expect(change!.textDiff).toBeDefined();
+    expect(change!.textDiff!.some((s) => s.type === 'ins')).toBe(true);
+    expect(change!.textDiff!.some((s) => s.type === 'same')).toBe(true);
+  });
+
+  it('returns only the requested representation via view', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'New paragraph' },
+      },
+    });
+
+    const query = {
+      sourceBranchId: draft.branch.id,
+      targetBranchId: root.branchId,
+    };
+
+    const list = await cms.api.pages.getDiff({
+      query: { ...query, view: 'list' as const },
+    });
+    expect(list.diff).not.toBeNull();
+    expect(list.tree).toBeNull();
+
+    const tree = await cms.api.pages.getDiff({
+      query: { ...query, view: 'tree' as const },
+    });
+    expect(tree.diff).toBeNull();
+    expect(tree.tree).not.toBeNull();
+
+    const both = await cms.api.pages.getDiff({ query });
+    expect(both.diff).not.toBeNull();
+    expect(both.tree).not.toBeNull();
+  });
+
+  it('builds an annotated tree with ghost nodes for deleted blocks', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const blocks: { blockId: string }[] = [];
+    for (const text of ['First', 'Second', 'Third']) {
+      blocks.push(
+        await cms.api.pages.createBlock({
+          body: {
+            rootId: root.rootId,
+            branchId: root.branchId,
+            parentBlockId: root.rootId,
+            type: 'paragraph',
+            properties: { text },
+          },
+        }),
+      );
+    }
+    const [first, second, third] = blocks;
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.deleteBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: second.blockId,
+      },
+    });
+
+    const added = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Fourth' },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+      },
+    });
+
+    const tree = result.tree!;
+    expect(tree.type).toBe('root');
+    expect(tree.blockId).toBe(root.rootId);
+    expect(tree.properties).not.toHaveProperty('__slug');
+    expect(tree.diff).toBeUndefined();
+
+    // The deleted block reappears as a ghost at its OLD position.
+    expect(tree.children.map((c) => c.blockId)).toEqual([
+      first.blockId,
+      second.blockId,
+      third.blockId,
+      added.blockId,
+    ]);
+
+    const ghost = tree.children[1];
+    expect(ghost.diff!.changeTypes).toEqual(['deleted']);
+    expect(ghost.properties).toEqual({ text: 'Second' });
+    expect(ghost.children).toEqual([]);
+
+    // Untouched siblings carry no diff; the added block is annotated.
+    expect(tree.children[0].diff).toBeUndefined();
+    expect(tree.children[2].diff).toBeUndefined();
+    expect(tree.children[3].diff!.changeTypes).toEqual(['added']);
   });
 
   it('rejects when a branch does not exist', async () => {
@@ -1654,7 +2009,7 @@ describe('executeMerge', () => {
       },
     });
 
-    const block = await cms.api.pages.createBlock({
+    await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
         branchId: draft.branch.id,

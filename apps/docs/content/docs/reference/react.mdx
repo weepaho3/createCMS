@@ -28,15 +28,37 @@ The returned `BlocksMap` also carries the collection definition it was built fro
 The low-level renderer. Renders a block `tree` with a `BlocksMap` built by `createBlocksMap`. Use it when you want to build the map once (to share with editor tooling) and render it in several places.
 
 ```ts
-function BlocksRenderer(props: { blocks: BlocksMap; tree: BlockTreeNode }): ReactNode;
+function BlocksRenderer(props: {
+  blocks: BlocksMap;
+  tree: BlockTreeNode;
+  diff?: BlocksDiffOptions;
+}): ReactNode;
 ```
+
+The optional `diff` prop turns on diff-aware rendering for an annotated tree from `getDiff({ view: 'tree' })`: changed blocks get wrapped in a `<div data-diff="added | deleted | modified | moved">` element (or your own `wrap` callback). See [Review changes visually](/docs/guides/visual-diff).
 
 ### `createContentRenderer`
 
 The convenience factory: pass a collection and a **partial** component map (components only for the block types you render) and get back a ready `({ tree }) => ReactNode` component in one step — no separate `createBlocksMap` call. This is the recommended entry point. Both paths resolve inline references; this one differs by accepting a partial map.
 
 ```ts
-function createContentRenderer(collection, components): (props: { tree: BlockTreeNode }) => ReactNode;
+function createContentRenderer(collection, components): (props: { tree: BlockTreeNode; diff?: BlocksDiffOptions }) => ReactNode;
+```
+
+### `getBlockDiff`
+
+Typed accessor for the per-node annotation of a diff tree (`getDiff({ view: 'tree' })`). Returns `null` on unchanged nodes and regular (non-diff) trees. Server-safe when imported from `@createcms/core/react/blocks` — the `@createcms/core/react` barrel is a `'use client'` boundary.
+
+```ts
+function getBlockDiff(node: BlockTreeNode): BlockDiffAnnotation | null;
+```
+
+### `diffSegmentsToHtml`
+
+Renders the word-level `textDiff` segments of a `richText` property change as an HTML string with `<ins>`/`<del>` markers, for the same `dangerouslySetInnerHTML` path you already use for rich text. Style the markers via `ins[data-diff-text]` / `del[data-diff-text]`. Tags are never wrapped and deleted tags are dropped, so a formatting-only change (say, bolding a word) renders as the new HTML with no inline highlight. Server-safe when imported from `@createcms/core/react/blocks` — the `@createcms/core/react` barrel is a `'use client'` boundary.
+
+```ts
+function diffSegmentsToHtml(segments: TextDiffSegment[]): string;
 ```
 
 ### `pickVariant`

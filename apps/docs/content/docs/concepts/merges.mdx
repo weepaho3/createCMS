@@ -13,7 +13,7 @@ A merge compares three snapshots: the **base** (the common ancestor of the two b
 - Unchanged on both, or identical on both: nothing to do.
 - Changed differently on both sides: a **conflict**.
 
-`getDiff` classifies the per-block changes of source against base (a two-way diff). `checkConflicts` is the three-way detector: it returns the conflicting blocks, each with its source, target, and base version ids.
+`getDiff` classifies the per-block changes of source against base (a two-way diff): each changed block gets `changeTypes` of `added`, `deleted`, `modified` (with per-property detail), `moved`, or `childrenReordered`. The move classification is identity-based — a block counts as `moved` only when it was reparented or truly reordered among its surviving siblings, not when its index shifted because another block was inserted or removed around it, and `childrenReordered` marks a parent only when the relative order of its surviving children changed. Alongside the flat list, `getDiff` returns an annotated copy of the draft tree that renders through your normal block components (see [Review changes visually](/docs/guides/visual-diff)). `checkConflicts` is the three-way detector: it returns the conflicting blocks, each with its source, target, and base version ids.
 
 ## Resolving conflicts
 

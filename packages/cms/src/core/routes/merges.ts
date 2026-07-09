@@ -11,9 +11,12 @@ import type {
   RootSummary,
 } from '../types';
 
+import type { BlockChange } from '../diff/types';
+
 import { fetchCommitSummary } from '../blocks/commit-writer';
 import {
   loadBlocksAtCommit,
+  ROOT_SLUG_PROP,
   type ReconstructedBlock,
 } from '../blocks/reconstruct-snapshot';
 import { approvalGatePasses, resolveBranchPolicy } from '../branch-policy';
@@ -27,6 +30,8 @@ import {
   mergeRequests,
   roots,
 } from '../db/schema.generated';
+import { buildAnnotatedTree } from '../diff/annotated-tree';
+import { classifyChanges } from '../diff/classify';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
 import { withNotifications } from '../notifications/service';
@@ -42,153 +47,33 @@ import {
   loadOpenMergeRequest,
 } from './merge-context';
 
-const changeTypeEnum = z.enum([
-  'added',
-  'deleted',
-  'modified',
-  'moved',
-  'childrenReordered',
-]);
-
-type ChangeType = z.infer<typeof changeTypeEnum>;
-
 const conflictResolutionSchema = z.enum(['source', 'target', 'manual']);
-
-type ParentInfo = { parentId: string; index: number };
-
-function buildParentMap(
-  blocks: Map<string, ReconstructedBlock>,
-): Map<string, ParentInfo> {
-  const parentOf = new Map<string, ParentInfo>();
-  for (const block of blocks.values()) {
-    if (block.deleted) continue;
-    for (let i = 0; i < block.children.length; i++) {
-      parentOf.set(block.children[i], { parentId: block.blockId, index: i });
-    }
-  }
-  return parentOf;
-}
-
-function childrenEqual(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
-}
-
-function propertiesEqual(
-  a: Record<string, unknown>,
-  b: Record<string, unknown>,
-): boolean {
-  const keysA = Object.keys(a);
-  const keysB = Object.keys(b);
-  if (keysA.length !== keysB.length) return false;
-  for (const key of keysA) {
-    const valA = a[key];
-    const valB = b[key];
-    if (
-      typeof valA === 'object' &&
-      valA !== null &&
-      typeof valB === 'object' &&
-      valB !== null
-    ) {
-      if (
-        !propertiesEqual(
-          valA as Record<string, unknown>,
-          valB as Record<string, unknown>,
-        )
-      ) {
-        return false;
-      }
-    } else if (valA !== valB) {
-      return false;
-    }
-  }
-  return true;
-}
 
 function isUniqueViolation(err: unknown, constraint: string): boolean {
   const pgErr = err as { code?: string; constraint?: string };
   return pgErr.code === '23505' && !!pgErr.constraint?.includes(constraint);
 }
 
-function classifyChanges(
-  baseBlocks: Map<string, ReconstructedBlock>,
-  sourceBlocks: Map<string, ReconstructedBlock>,
-  targetBlocks: Map<string, ReconstructedBlock>,
-) {
-  const baseParentOf = buildParentMap(baseBlocks);
-  const sourceParentOf = buildParentMap(sourceBlocks);
-
-  const allBlockIds = new Set<string>();
-  for (const id of baseBlocks.keys()) allBlockIds.add(id);
-  for (const id of sourceBlocks.keys()) allBlockIds.add(id);
-
-  const diff: Array<{
-    blockId: string;
-    changeTypes: ChangeType[];
-    sourceVersion: ReconstructedBlock | null;
-    targetVersion: ReconstructedBlock | null;
-    baseVersion: ReconstructedBlock | null;
-  }> = [];
-
-  for (const blockId of allBlockIds) {
-    const base = baseBlocks.get(blockId);
-    const source = sourceBlocks.get(blockId);
-    const changeTypes: ChangeType[] = [];
-
-    const baseAlive = base && !base.deleted;
-    const sourceAlive = source && !source.deleted;
-
-    if (sourceAlive && !baseAlive) changeTypes.push('added');
-    if (baseAlive && !sourceAlive) changeTypes.push('deleted');
-
-    if (baseAlive && sourceAlive) {
-      if (
-        source.type !== base.type ||
-        !propertiesEqual(source.properties, base.properties)
-      ) {
-        changeTypes.push('modified');
-      }
-    }
-
-    if (baseAlive && sourceAlive) {
-      const baseParent = baseParentOf.get(blockId);
-      const sourceParent = sourceParentOf.get(blockId);
-
-      if (baseParent && sourceParent) {
-        if (
-          baseParent.parentId !== sourceParent.parentId ||
-          baseParent.index !== sourceParent.index
-        ) {
-          changeTypes.push('moved');
-        }
-      } else if (baseParent && !sourceParent) {
-        changeTypes.push('moved');
-      } else if (!baseParent && sourceParent) {
-        changeTypes.push('moved');
-      }
-    }
-
-    if (baseAlive && sourceAlive) {
-      if (!childrenEqual(base.children, source.children)) {
-        changeTypes.push('childrenReordered');
-      }
-    }
-
-    if (changeTypes.length > 0) {
-      diff.push({
-        blockId,
-        changeTypes,
-        sourceVersion: source ?? null,
-        targetVersion: targetBlocks.get(blockId) ?? null,
-        baseVersion: base ?? null,
-      });
-    }
-  }
-
-  return diff;
+/**
+ * Clones a change entry with the reserved draft-slug key stripped from every
+ * version payload's properties. Applied to the ROOT entry of the flat diff
+ * list so `__slug` never leaks to consumers — the clones keep the underlying
+ * snapshot maps unmutated.
+ */
+function withoutRootSlug(change: BlockChange): BlockChange {
+  const strip = (
+    version: ReconstructedBlock | null,
+  ): ReconstructedBlock | null => {
+    if (!version || !(ROOT_SLUG_PROP in version.properties)) return version;
+    const { [ROOT_SLUG_PROP]: _omit, ...properties } = version.properties;
+    return { ...version, properties };
+  };
+  return {
+    ...change,
+    sourceVersion: strip(change.sourceVersion),
+    targetVersion: strip(change.targetVersion),
+    baseVersion: strip(change.baseVersion),
+  };
 }
 
 type ConflictEntry = {
@@ -358,14 +243,29 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
 
   return {
     /**
-     * Compares two branches and returns a changeset of blocks that differ between source and target.
+     * Compares two branches and returns the base-to-source changeset in up to
+     * two representations: a flat change list (`diff`) and an annotated render
+     * tree (`tree`), selected via `view`.
+     *
+     * Movement is identity-based: a block is `moved` (kind `reparented` or
+     * `reordered`, with its old/new parent and index) only when it actually
+     * moved, and a parent is `childrenReordered` only when the RELATIVE order
+     * of its surviving children changed — insertions and deletions around
+     * untouched siblings produce no cascade. Modified entries carry granular
+     * `propertyChanges` (with word-level `textDiff` segments for richText
+     * properties), and the root entry carries `slugChange` when the versioned
+     * draft slug differs (a slug-only change is not `modified`).
      *
      * @param sourceBranchId - The source branch id.
      * @param targetBranchId - The target branch id.
-     * @returns A diff array (each entry lists changeTypes: added, deleted, modified, moved, childrenReordered) plus commit ids.
+     * @param view - Which representations to return: 'list', 'tree', or 'both' (default 'both').
+     * @returns `diff` (flat change list, null when view is 'tree'), `tree` (the source tree
+     *   annotated per node, with deleted blocks re-inserted as ghost nodes at their old
+     *   position; null when view is 'list', and also null — for any view — when the source
+     *   branch deleted the root block itself), a per-changeType `summary`, plus commit ids.
      * @throws BRANCH_NOT_FOUND if either branch does not exist in this collection.
      * @throws BRANCHES_NOT_SAME_ROOT if the branches are from different roots.
-     * @example await cmsClient.pages.getDiff({ sourceBranchId: 'src-id', targetBranchId: 'tgt-id' })
+     * @example await cmsClient.pages.getDiff({ sourceBranchId: 'src-id', targetBranchId: 'tgt-id', view: 'tree' })
      */
     getDiff: createCMSEndpoint(
       `/${collectionName}/getDiff`,
@@ -374,11 +274,16 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
         query: z.object({
           sourceBranchId: z.string(),
           targetBranchId: z.string(),
+          view: z.enum(['list', 'tree', 'both']).optional(),
         }),
         metadata: cmsMeta(
           {
             $Infer: {
-              query: {} as { sourceBranchId: string; targetBranchId: string },
+              query: {} as {
+                sourceBranchId: string;
+                targetBranchId: string;
+                view?: 'list' | 'tree' | 'both';
+              },
             },
           },
           {
@@ -391,6 +296,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
       },
       async (ctx) => {
         const { sourceBranchId, targetBranchId } = ctx.query;
+        const view = ctx.query.view ?? 'both';
 
         const { sourceBranch, targetBranch } = await loadBranchPair(db, {
           sourceBranchId,
@@ -402,14 +308,33 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
         const { ancestor, baseSnapshot, sourceSnapshot, targetSnapshot } =
           await loadMergeSnapshots(db, sourceBranch, targetBranch);
 
-        const diff = classifyChanges(
-          baseSnapshot.blocks,
-          sourceSnapshot.blocks,
-          targetSnapshot.blocks,
-        );
+        const rootId = sourceBranch.rootId;
+        const { changes, summary } = classifyChanges({
+          baseBlocks: baseSnapshot.blocks,
+          sourceBlocks: sourceSnapshot.blocks,
+          targetBlocks: targetSnapshot.blocks,
+          rootId,
+          blockDefs: def.blocks,
+          rootProperties: def.root.properties,
+        });
 
         return {
-          diff,
+          diff:
+            view !== 'tree'
+              ? changes.map((change) =>
+                  change.blockId === rootId ? withoutRootSlug(change) : change,
+                )
+              : null,
+          tree:
+            view !== 'list'
+              ? buildAnnotatedTree({
+                  sourceBlocks: sourceSnapshot.blocks,
+                  baseBlocks: baseSnapshot.blocks,
+                  changes,
+                  rootId,
+                })
+              : null,
+          summary,
           sourceCommitId: sourceBranch.headCommitId,
           targetCommitId: targetBranch.headCommitId,
           commonAncestorCommitId: ancestor.commonAncestorCommitId,

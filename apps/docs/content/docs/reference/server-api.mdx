@@ -209,6 +209,24 @@ Publishes a branch as the live content of an entry. `POST`, input via `body`.
 
 Returns `{ publication }`, the publication row (`rootId`, `branchId`, `commitId`, `publishedBy`, `publishedAt`) plus `branchName`.
 
+### `getDiff`
+
+Compares two branches of an entry for review: the source against the common ancestor it shares with the target (the merge base). `GET`, input via `query`.
+
+| Query field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `sourceBranchId` | `string` | yes | The branch under review. |
+| `targetBranchId` | `string` | yes | The branch it would merge into. |
+| `view` | `'list' \| 'tree' \| 'both'` | no | Which representations to return (defaults to `'both'`). |
+
+Returns `{ diff, tree, summary, sourceCommitId, targetCommitId, commonAncestorCommitId }`:
+
+- `diff` (with `view: 'list'` or `'both'`, otherwise `null`): the flat change list. Each entry carries `blockId`, `changeTypes` (`added`, `deleted`, `modified`, `moved`, `childrenReordered`), `propertyChanges` when modified (per-property `path`, `kind`, `from`, `to`, plus word-level `textDiff` segments for `richText` properties), `typeChange` when the block type changed, `slugChange` on the root entry when the draft slug changed, `moved` (`kind: 'reparented' | 'reordered'` with old and new parent id and index) when moved, and the full `sourceVersion` / `targetVersion` / `baseVersion` payloads. `moved` marks only blocks that actually moved — siblings whose index merely shifted are not marked — and `childrenReordered` only parents whose surviving children truly changed relative order. A slug-only change is not `modified`: it surfaces as a root entry with an **empty** `changeTypes` array and only `slugChange` set.
+- `tree` (with `view: 'tree'` or `'both'`): the annotated draft tree — the source branch's block tree where changed nodes carry a `diff` annotation, unchanged nodes carry none, and deleted blocks are re-inserted as ghost nodes at their old position with their last properties. It is structurally a regular block tree, so it renders through the same component maps. `null` when the view is `'list'`, and also when the draft deleted the entry's root block (no source tree remains to annotate) — guard before rendering.
+- `summary`: per-changeType entry counts `{ added, deleted, modified, moved, reordered }`.
+
+See [Review changes visually](/docs/guides/visual-diff) for rendering the annotated tree.
+
 ## Admin methods
 
 System-wide methods live under `cms.api.admin`.
@@ -238,7 +256,7 @@ Each collection also exposes the rest of the versioning and review surface. The 
 - **Roots**: `getRoot`, `getRootBySlug`, `archiveRoot`, `moveRoot`, `duplicateRoot`, `getReferenceUsages`, `getRootHistory`.
 - **Blocks**: `moveBlock`, `deleteBlock`, `duplicateBlock`, `updateRoot`.
 - **Branches**: `revertBranch`, `checkDivergence` (plus the branch methods above).
-- **Merges**: `createMergeRequest`, `getDiff`, `checkConflicts`, `applyConflictResolutions`, `createMergeBlockVersion`, `executeMerge`, `listMergeRequests`, `updateMergeRequest`, `closeMergeRequest`, `reopenMergeRequest`.
+- **Merges**: `createMergeRequest`, `checkConflicts`, `applyConflictResolutions`, `createMergeBlockVersion`, `executeMerge`, `listMergeRequests`, `updateMergeRequest`, `closeMergeRequest`, `reopenMergeRequest` (plus `getDiff` above).
 - **Approvals**: `requestApproval`, `submitApproval`, `submitRejection`, `cancelApproval`, `getApproval`, `listApprovals`.
 - **Comments**: `createCommentThread`, `createCommentMessage`, `listCommentThreads`, `getCommentThread`, `resolveCommentThread`, `reopenCommentThread`, `updateCommentMessage`, `deleteCommentThread`, `deleteCommentMessage`, `listMentions`.
 - **Publications**: `unpublishBranch`, `listPublications` (plus `publishBranch` and `getPublishedContent`).

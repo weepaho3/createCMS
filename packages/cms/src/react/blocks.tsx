@@ -2,6 +2,11 @@ import type { ReactNode } from 'react';
 import { Fragment } from 'react';
 
 import type { BlockTreeNode } from '../core/blocks/reconstruct-snapshot';
+import type {
+  AnnotatedBlockTreeNode,
+  BlockDiffAnnotation,
+  TextDiffSegment,
+} from '../core/diff/types';
 import { isResolvedReference } from '../core/references-guard';
 import type {
   AnyBlockDefinition,
@@ -18,6 +23,15 @@ import { BlockTracker } from './tracking';
 // Re-export the canonical resolved-reference guard from its pure module, so
 // `@createcms/core/react` keeps exposing `isResolvedReference` unchanged.
 export { isResolvedReference } from '../core/references-guard';
+
+// Re-export the diff annotation shapes from the core contract, so render-layer
+// consumers (custom `wrap` callbacks, richText diff rendering) can type against
+// them without importing core internals.
+export type {
+  AnnotatedBlockTreeNode,
+  BlockDiffAnnotation,
+  TextDiffSegment,
+} from '../core/diff/types';
 
 // `RefMode` — which side of the reference seam a component's props reflect:
 // `raw` (store values — the editor canvas) or `resolved` (published read) — is
@@ -54,7 +68,10 @@ export type BlockProps<
   NonNullable<TCollection['blocks']>[TBlock]['properties']
 >;
 
-type BlockComponentMap<TBlocks extends Record<string, AnyBlockDefinition>> = {
+/** A total component map: one React component per block type of a collection. */
+export type BlockComponentMap<
+  TBlocks extends Record<string, AnyBlockDefinition>,
+> = {
   [K in keyof TBlocks & string]: (
     props: BlockComponentProps<TBlocks[K]['properties']>,
   ) => ReactNode;
@@ -167,6 +184,157 @@ export function createBlocksMap<
 }
 
 // ============================================================================
+// Diff-aware rendering
+// ============================================================================
+
+/**
+ * Options for diff-aware rendering. Pass as the `diff` prop of
+ * `<BlocksRenderer>` (or the component returned by `createContentRenderer`)
+ * when rendering the annotated tree produced by `getDiff({ view: 'tree' })`.
+ * Rendering without the prop is byte-identical to a plain render.
+ */
+export type BlocksDiffOptions = {
+  /** Wrap a changed block's rendered element. Default emits <div data-diff=...>. */
+  wrap?: (args: {
+    element: ReactNode;
+    node: AnnotatedBlockTreeNode;
+    annotation: BlockDiffAnnotation;
+  }) => ReactNode;
+};
+
+/**
+ * Typed accessor for the diff annotation an `AnnotatedBlockTreeNode` carries.
+ * Annotated trees are structurally assignable to `BlockTreeNode`, so block
+ * components receive them through the ordinary `node` prop — this reads the
+ * annotation back out without casting. Returns `null` for unchanged nodes and
+ * for plain (non-diff) trees.
+ */
+export function getBlockDiff(node: BlockTreeNode): BlockDiffAnnotation | null {
+  return (node as AnnotatedBlockTreeNode).diff ?? null;
+}
+
+/** A full HTML tag captured as one atomic token — the same tag grammar the
+ *  `diffRichText` tokenizer splits on, so segment boundaries and emission
+ *  boundaries agree. */
+const HTML_TAG_SPLIT = /(<[^>]*>)/;
+const HTML_TAG_TOKEN = /^<[^>]*>$/;
+
+/**
+ * Serializes word-level `richText` diff segments back into one HTML fragment
+ * whose tag structure is exactly the NEW document's. Segments may contain HTML
+ * tags (a formatting or block-tag change diffs as inserted/deleted tag tokens),
+ * and tags must never be wrapped in — or interleaved with — `<ins>`/`<del>`,
+ * so emission is tag-aware:
+ *
+ * - `same` runs pass through raw.
+ * - `ins` runs emit their tag tokens bare (they ARE the new structure) and wrap
+ *   each run of consecutive text tokens in `<ins data-diff-text="ins">`.
+ * - `del` runs DROP their tag tokens entirely (the old structure must not leak
+ *   into the new document) and wrap each run of consecutive text tokens in
+ *   `<del data-diff-text="del">` — deleted text survives tag-stripped, deleted
+ *   tags do not.
+ *
+ * Consequently a formatting-only change (bolding a word, `<p>` → `<div>`)
+ * yields valid output with NO inline highlight: the diff is pure tags, and
+ * tags are never marked. The result feeds the same `dangerouslySetInnerHTML`
+ * path the docs already describe for `richText` properties; consumers style
+ * `ins`/`del` via CSS.
+ */
+export function diffSegmentsToHtml(segments: TextDiffSegment[]): string {
+  let out = '';
+
+  for (const segment of segments) {
+    if (segment.type === 'same') {
+      out += segment.html;
+      continue;
+    }
+
+    const marker = segment.type; // 'ins' | 'del'
+    let textRun = '';
+    const flushTextRun = () => {
+      if (textRun === '') return;
+      out += `<${marker} data-diff-text="${marker}">${textRun}</${marker}>`;
+      textRun = '';
+    };
+
+    for (const token of segment.html.split(HTML_TAG_SPLIT)) {
+      if (token === '') continue;
+      if (HTML_TAG_TOKEN.test(token)) {
+        flushTextRun();
+        // Inserted tags are the new document's structure — emit bare. Deleted
+        // tags are the OLD structure — drop them.
+        if (marker === 'ins') out += token;
+      } else {
+        textRun += token;
+      }
+    }
+    flushTextRun();
+  }
+
+  return out;
+}
+
+// Change types that trigger a wrapper, in `data-diff` priority order. A PURE
+// `childrenReordered` annotation is deliberately excluded — highlighting a
+// parent because its children swapped places is visual noise; the moved
+// children themselves carry `moved`.
+const WRAPPED_CHANGE_TYPES = ['added', 'deleted', 'modified', 'moved'] as const;
+
+/**
+ * Wraps a changed node's rendered element per the diff options. Returns the
+ * element unchanged for unannotated nodes and for pure-`childrenReordered`
+ * annotations.
+ */
+function applyDiffWrapper(
+  element: ReactNode,
+  node: BlockTreeNode,
+  diff: BlocksDiffOptions,
+): ReactNode {
+  const annotation = getBlockDiff(node);
+  if (!annotation) return element;
+
+  const primary = WRAPPED_CHANGE_TYPES.find((type) =>
+    annotation.changeTypes.includes(type),
+  );
+  if (!primary) return element;
+
+  if (diff.wrap) {
+    return (
+      <Fragment key={node.blockId}>
+        {diff.wrap({
+          element,
+          node: node as AnnotatedBlockTreeNode,
+          annotation,
+        })}
+      </Fragment>
+    );
+  }
+
+  // Unique first path segments of the property changes (string keys only —
+  // array indices never appear at the top level of a properties object).
+  const changedTopLevelProps = annotation.propertyChanges
+    ? [
+        ...new Set(
+          annotation.propertyChanges
+            .map((change) => change.path[0])
+            .filter((segment): segment is string => typeof segment === 'string'),
+        ),
+      ].join(' ')
+    : '';
+
+  return (
+    <div
+      key={node.blockId}
+      data-diff={primary}
+      data-diff-types={annotation.changeTypes.join(' ')}
+      data-diff-props={changedTopLevelProps || undefined}
+    >
+      {element}
+    </div>
+  );
+}
+
+// ============================================================================
 // BlocksRenderer
 // ============================================================================
 
@@ -192,11 +360,14 @@ export function createBlocksMap<
 export function BlocksRenderer({
   blocks,
   tree,
+  diff,
 }: {
   blocks: BlocksMap;
   tree: BlockTreeNode;
+  /** Opt-in diff-aware rendering for annotated trees (`getDiff`). */
+  diff?: BlocksDiffOptions;
 }): ReactNode {
-  return renderContentNode(tree, blocks._components, blocks._events);
+  return renderContentNode(tree, blocks._components, blocks._events, diff);
 }
 
 // ============================================================================
@@ -207,10 +378,31 @@ function renderContentNode(
   node: BlockTreeNode,
   components: Record<string, (props: any) => ReactNode>,
   events: Record<string, Record<string, EventDeclaration>>,
+  diff?: BlocksDiffOptions,
   fromReference = false,
 ): ReactNode {
+  const rendered = renderNodeElement(
+    node,
+    components,
+    events,
+    diff,
+    fromReference,
+  );
+  // Diff wrapping is applied OUTSIDE the node's own render: never for the root
+  // (it renders as a bare fragment) and never when the node rendered nothing.
+  if (!diff || node.type === 'root' || rendered === null) return rendered;
+  return applyDiffWrapper(rendered, node, diff);
+}
+
+function renderNodeElement(
+  node: BlockTreeNode,
+  components: Record<string, (props: any) => ReactNode>,
+  events: Record<string, Record<string, EventDeclaration>>,
+  diff: BlocksDiffOptions | undefined,
+  fromReference: boolean,
+): ReactNode {
   const renderedChildren = node.children.map((child) =>
-    renderContentNode(child, components, events, fromReference),
+    renderContentNode(child, components, events, diff, fromReference),
   );
 
   const childrenNode =
@@ -230,7 +422,7 @@ function renderContentNode(
       if (isResolvedReference(value) && value.tree.children.length > 0) {
         const refChildren = value.tree.children.map((child) => (
           <Fragment key={child.blockId}>
-            {renderContentNode(child, components, events, true)}
+            {renderContentNode(child, components, events, diff, true)}
           </Fragment>
         ));
         return <>{refChildren}</>;
@@ -255,7 +447,7 @@ function renderContentNode(
       for (const child of value.tree.children) {
         refRendered.push(
           <Fragment key={child.blockId}>
-            {renderContentNode(child, components, events, true)}
+            {renderContentNode(child, components, events, diff, true)}
           </Fragment>,
         );
       }
@@ -285,7 +477,15 @@ function renderContentNode(
   // events. children-as-props: `element` is server-rendered and just passed
   // through, so presentational subtrees stay RSC. The dispatch + ab-context come
   // from the consumer's <TrackingRuntimeProvider>, not from here.
-  if (node.type in events) {
+  //
+  // EXCEPT ghost nodes: a `deleted`-annotated node only exists in diff trees
+  // (getDiff re-inserts deleted blocks for review), so it is review-only UI —
+  // it must never fire impressions/events. Skipping the tracker leaves any
+  // fire() inside it unscoped (no source, dev-warned), instead of attributing
+  // events to a block the draft removed.
+  const isGhost =
+    getBlockDiff(node)?.changeTypes.includes('deleted') === true;
+  if (node.type in events && !isGhost) {
     const rawTrackingId = node.properties.trackingId;
     return (
       <BlockTracker
@@ -344,10 +544,13 @@ export function createContentRenderer<
 
   function ContentRendererComponent({
     tree,
+    diff,
   }: {
     tree: BlockTreeNode;
+    /** Opt-in diff-aware rendering for annotated trees (`getDiff`). */
+    diff?: BlocksDiffOptions;
   }): ReactNode {
-    return renderContentNode(tree, componentMap, events);
+    return renderContentNode(tree, componentMap, events, diff);
   }
 
   ContentRendererComponent.displayName = `ContentRenderer(${collection.label})`;

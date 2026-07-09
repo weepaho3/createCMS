@@ -14,8 +14,19 @@ export {
   extractBlockEvents,
   BlocksRenderer,
   createContentRenderer,
+  getBlockDiff,
+  diffSegmentsToHtml,
 } from './blocks';
-export type { BlocksMap, BlockComponentProps, BlockProps } from './blocks';
+export type {
+  BlocksMap,
+  BlockComponentMap,
+  BlockComponentProps,
+  BlockProps,
+  BlocksDiffOptions,
+  AnnotatedBlockTreeNode,
+  BlockDiffAnnotation,
+  TextDiffSegment,
+} from './blocks';
 export type { EventDeclaration } from '../core/types/definitions';
 export { pickVariant } from './variant';
 export type {

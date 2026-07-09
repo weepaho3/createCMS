@@ -1,0 +1,218 @@
+---
+title: Review changes visually
+description: Render a merge-request diff with your own block components — change highlights, ghost nodes, and inline rich-text diffs.
+---
+
+Reviewing a merge request means answering "what changed?". `getDiff` answers it twice in one call: as a flat change list for inspection, and as an annotated copy of the draft tree that renders through the same block components as the page itself — so reviewers see the change on the page, not in a JSON dump. This guide assumes the `pages` collection and block map from [Render content](/docs/guides/rendering-content) and a merge request in flight (see [Draft, review, and publish](/docs/guides/content-workflow)).
+
+### Get the diff
+
+`getDiff` compares the source branch against the **common ancestor** it shares with the target (the merge base) — so changes that happened only on the target never show up as noise. See [Merges](/docs/concepts/merges) for the three-way model behind it.
+
+```ts
+const { diff, summary } = await cms.api.pages.getDiff({
+  query: {
+    sourceBranchId: draft.branch.id,
+    targetBranchId: mainBranchId,
+    view: 'list',
+  },
+});
+```
+
+The optional `view` field picks the representation: `'list'` (the flat `diff` only), `'tree'` (the annotated tree only), or `'both'` (the default). For a draft that rewrote the hero headline and deleted a paragraph, the list view returns:
+
+```jsonc
+{
+  "diff": [
+    {
+      "blockId": "blk_wfmy0lhs2c39pkq8x1dr",
+      "changeTypes": ["modified"],
+      "propertyChanges": [
+        {
+          "path": ["headline"],
+          "kind": "changed",
+          "from": "Our story",
+          "to": "The Acme story"
+        }
+      ],
+      "sourceVersion": { /* the block as the draft has it */ },
+      "targetVersion": { /* as the target branch has it */ },
+      "baseVersion": { /* as the common ancestor had it */ }
+    },
+    {
+      "blockId": "blk_51t8gvna6dzej0h4m2ub",
+      "changeTypes": ["deleted"],
+      "sourceVersion": { /* the tombstone on the draft */ },
+      "targetVersion": { /* still alive on the target */ },
+      "baseVersion": { /* as the common ancestor had it */ }
+    }
+  ],
+  "summary": { "added": 0, "deleted": 1, "modified": 1, "moved": 0, "reordered": 0 },
+  "sourceCommitId": "cmt_c3vp9qk27hde5m0s4fy1",
+  "targetCommitId": "cmt_8jrn1xat6bgu3w5z7k2q",
+  "commonAncestorCommitId": "cmt_8jrn1xat6bgu3w5z7k2q"
+}
+```
+
+Every entry carries its full `sourceVersion` / `targetVersion` / `baseVersion` payloads (`null` where the block does not exist on that side), so a side-by-side inspector needs no further reads.
+
+### What counts as a change
+
+Each entry's `changeTypes` array classifies the block (a block can carry several at once):
+
+| `changeTypes` entry | Meaning |
+| --- | --- |
+| `added` | The block exists only on the source branch. |
+| `deleted` | The block was removed on the source branch. |
+| `modified` | Properties or the block type changed. Carries `propertyChanges` (per-property `path`, `kind`, `from`, `to`) and `typeChange` when the type differs. |
+| `moved` | The block itself moved. Carries `moved` with `kind` (`'reparented'` or `'reordered'`), plus the old and new parent id and index. |
+| `childrenReordered` | The relative order of this parent's surviving children changed. |
+
+Moves are **identity-based**: a block is `moved` only when it was reparented or is a true reorder outlier among its surviving siblings. Siblings whose index merely shifted because another block was inserted, removed, or moved around them are not marked — and `childrenReordered` never fires for pure child additions or removals. A change to the entry's draft slug is reported separately as `slugChange` on the root entry and does not count as `modified` — a slug-only change therefore surfaces as a root entry whose `changeTypes` is **empty**, with only `slugChange` set, so check for it explicitly rather than filtering on `changeTypes`.
+
+### Render the annotated tree
+
+The `tree` view returns the draft tree itself, annotated: the same `{ blockId, type, properties, children }` nodes `getBlockTree` produces, where each changed node additionally carries a `diff` field and unchanged nodes carry nothing. For the response above:
+
+```jsonc
+{
+  "blockId": "rot_p2df81hkq6zw40mvs3ct",
+  "type": "root",
+  "properties": { "title": "About" },
+  "children": [
+    {
+      "blockId": "blk_wfmy0lhs2c39pkq8x1dr",
+      "type": "hero",
+      "properties": { "headline": "The Acme story" },
+      "diff": {
+        "changeTypes": ["modified"],
+        "propertyChanges": [
+          { "path": ["headline"], "kind": "changed", "from": "Our story", "to": "The Acme story" }
+        ]
+      },
+      "children": []
+    },
+    {
+      // A ghost node: deleted on the draft, re-inserted at its old position.
+      "blockId": "blk_51t8gvna6dzej0h4m2ub",
+      "type": "richText",
+      "properties": { "content": "<p>Founded in a garage in 2019.</p>" },
+      "diff": { "changeTypes": ["deleted"] },
+      "children": []
+    }
+  ]
+}
+```
+
+Because the annotated tree is structurally a regular block tree, it renders through your existing component map. Pass the `diff` prop to opt into diff-aware rendering (an empty object uses the default wrapper); without it, the render is byte-identical to a plain render:
+
+```tsx title="app/review/page.tsx"
+import { BlocksRenderer } from '@createcms/core/react/blocks';
+import { pageBlocks } from '@/lib/blocks';
+import { cms } from '@/lib/cms';
+
+export default async function ReviewPage() {
+  const { tree } = await cms.api.pages.getDiff({
+    query: { sourceBranchId, targetBranchId, view: 'tree' },
+  });
+  if (!tree) return <p>Nothing to review.</p>;
+  return <BlocksRenderer blocks={pageBlocks} tree={tree} diff={{}} />;
+}
+```
+
+The guard is not decorative: `tree` is `null` when the call asked for `view: 'list'`, and also when the draft deleted the entry's root block — there is no source tree left to annotate.
+
+The default wrapper puts each changed block's element inside a `<div>` you can style:
+
+```html
+<div data-diff="modified" data-diff-types="modified" data-diff-props="headline">
+  <!-- the block's normal render -->
+</div>
+```
+
+`data-diff` is the primary change type (`added` > `deleted` > `modified` > `moved`), `data-diff-types` lists all of them, and `data-diff-props` names the changed top-level properties. The root node is never wrapped, and a parent whose only change is `childrenReordered` is not wrapped either — the moved children themselves carry `moved`. To emit your own markup instead, pass a `wrap` callback:
+
+```tsx
+<BlocksRenderer
+  blocks={pageBlocks}
+  tree={tree}
+  diff={{
+    wrap: ({ element, annotation }) => (
+      <div className={`diff-${annotation.changeTypes[0]}`}>{element}</div>
+    ),
+  }}
+/>
+```
+
+<Callout type="warn">
+  Reference properties in the diff tree are **raw**: `getDiff` does no reference resolution, so a `reference` property holds the stored id string — never the resolved object (with its own `tree`) that `getPublishedContent` produces. A component that renders resolved references must guard (`isResolvedReference` from `@createcms/core/react/blocks`) or fall back to a placeholder in the review render.
+</Callout>
+
+### Style the highlights
+
+A few rules on the `data-diff` attribute turn the wrappers into review highlights:
+
+```css title="app/review/diff.css"
+[data-diff='added'] { outline: 2px solid #16a34a; outline-offset: 2px; }
+[data-diff='modified'] { outline: 2px solid #d97706; outline-offset: 2px; }
+[data-diff='moved'] { outline: 2px dashed #2563eb; outline-offset: 2px; }
+[data-diff='deleted'] { outline: 2px solid #dc2626; outline-offset: 2px; opacity: 0.5; }
+```
+
+### Ghost nodes
+
+A deleted block no longer exists on the draft, so a plain render would silently omit it. The annotated tree re-inserts each deleted block as a **ghost node** at its old position, carrying the type and properties it had at the common ancestor — whole deleted subtrees nest, so a removed section reappears with its children intact. Ghosts render through your normal component for their type, wrapped with `data-diff="deleted"`; the faded style above is usually all they need.
+
+### Inline rich-text diffs
+
+For `richText` properties, `propertyChanges` additionally carries `textDiff`: word-level `same` / `ins` / `del` segments of the HTML. Inside a block component, read the node's annotation with `getBlockDiff` and serialize the segments with `diffSegmentsToHtml`, which wraps insertions in `<ins>` and removals in `<del>`:
+
+```tsx title="lib/blocks.tsx"
+import {
+  createBlocksMap,
+  diffSegmentsToHtml,
+  getBlockDiff,
+} from '@createcms/core/react/blocks';
+import { collections } from '@/lib/collections';
+
+export const pageBlocks = createBlocksMap(collections.pages, {
+  hero: ({ properties }) => <h1>{properties.headline}</h1>,
+  richText: ({ properties, node }) => {
+    const textDiff = getBlockDiff(node)?.propertyChanges?.find(
+      (change) => change.path[0] === 'content',
+    )?.textDiff;
+    return (
+      <div
+        dangerouslySetInnerHTML={{
+          __html: textDiff ? diffSegmentsToHtml(textDiff) : properties.content,
+        }}
+      />
+    );
+  },
+});
+```
+
+`getBlockDiff` returns `null` for unchanged nodes and for plain (non-diff) trees, so the same component keeps working on the live site. Two rules keep the serialized fragment valid HTML: tags are never wrapped in `<ins>`/`<del>` — so a formatting-only change (say, bolding a word) renders as the new HTML with **no inline highlight** — and deleted runs are tag-stripped, keeping only their text inside `<del>` so the old document's structure never leaks into the new one. Style the emitted tags:
+
+```css
+ins[data-diff-text] { background: #dcfce7; text-decoration: none; }
+del[data-diff-text] { background: #fee2e2; }
+```
+
+<Callout type="warn">
+  The segment `html` values are raw fragments of the stored `richText` value, so `diffSegmentsToHtml` output is as unsanitized as the property itself. If the content is not fully trusted, sanitize it exactly as described in [Render content](/docs/guides/rendering-content#sanitize-untrusted-html-before-rendering).
+</Callout>
+
+### Summary badges
+
+`summary` counts entries per change type — `added`, `deleted`, `modified`, `moved`, and `reordered` (parents whose surviving children were truly reordered). An entry with several change types counts in each. It is cheap to render as review badges next to the merge-request title:
+
+```tsx
+<span>
+  +{summary.added} −{summary.deleted} ~{summary.modified}
+</span>
+```
+
+<Callout type="info">
+  The diff feeds the review step of [Draft, review, and publish](/docs/guides/content-workflow); [Build your own editor](/docs/guides/building-an-editor) shows where it sits in a full editor UI. For the exact request and response shape, see [`getDiff` in the Server API](/docs/reference/server-api#getdiff).
+</Callout>
