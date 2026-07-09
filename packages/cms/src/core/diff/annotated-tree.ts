@@ -35,6 +35,7 @@ function toAnnotation(change: BlockChange): BlockDiffAnnotation {
   if (change.typeChange) annotation.typeChange = change.typeChange;
   if (change.slugChange) annotation.slugChange = change.slugChange;
   if (change.moved) annotation.moved = change.moved;
+  if (change.attribution) annotation.attribution = change.attribution;
   return annotation;
 }
 

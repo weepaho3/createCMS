@@ -57,6 +57,34 @@ export type PropertyChange = {
   textDiff?: TextDiffSegment[];
 };
 
+/**
+ * Commit attribution for one diff entry. Only present when `getDiff` is called
+ * with `withAttribution: true` (and only for entries whose authoring commit is
+ * derivable):
+ *
+ * - An entry whose own version changed (added / deleted / modified /
+ *   childrenReordered / slug change) carries the commit that created its
+ *   `sourceVersion`.
+ * - A pure position move (`moved` with an unchanged own version) carries the
+ *   commit that actually repositioned the block under its new parent — the
+ *   last commit on the source side's first-parent chain whose version of the
+ *   new parent changed the block's presence/index in `children` (multiple
+ *   moves → the latest one). Attribution is OMITTED — never guessed — when
+ *   that commit is not derivable, e.g. the move landed via a merge's source
+ *   side.
+ *
+ * Each entry carries its own attribution object (entries authored by the same
+ * commit do not share one).
+ */
+export type ChangeAttribution = {
+  commitId: string;
+  changedAt: Date;
+  changedBy: string | null;
+  /** Present only when called with `query.withUser`. Shape depends on the
+   *  configured user table; left as `unknown` until cross-table inference. */
+  changedByUser?: unknown;
+};
+
 /** Where a `moved` block came from and where it went. */
 export type MovedInfo = {
   /** `reparented` = parent changed; `reordered` = same parent, new position. */
@@ -81,6 +109,12 @@ export type BlockChange = {
   slugChange?: { from: string | null; to: string | null };
   /** Present when `moved`. */
   moved?: MovedInfo;
+  /**
+   * Only present with `withAttribution`, and only when the authoring commit
+   * is derivable (pure moves: the commit that repositioned the block under
+   * its new parent; omitted when not derivable). See {@link ChangeAttribution}.
+   */
+  attribution?: ChangeAttribution;
   sourceVersion: ReconstructedBlock | null;
   targetVersion: ReconstructedBlock | null;
   baseVersion: ReconstructedBlock | null;
@@ -103,6 +137,8 @@ export type BlockDiffAnnotation = {
   typeChange?: { from: string; to: string };
   slugChange?: { from: string | null; to: string | null };
   moved?: MovedInfo;
+  /** Only present with `withAttribution`. See {@link ChangeAttribution}. */
+  attribution?: ChangeAttribution;
 };
 
 /**

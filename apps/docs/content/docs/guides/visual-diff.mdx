@@ -7,7 +7,7 @@ Reviewing a merge request means answering "what changed?". `getDiff` answers it 
 
 ### Get the diff
 
-`getDiff` compares the source branch against the **common ancestor** it shares with the target (the merge base) — so changes that happened only on the target never show up as noise. See [Merges](/docs/concepts/merges) for the three-way model behind it.
+`getDiff` compares the source against the **common ancestor** it shares with the target (the merge base) — so changes that happened only on the target never show up as noise. See [Merges](/docs/concepts/merges) for the three-way model behind it. Each side is a ref: a branch (`sourceBranchId` / `targetBranchId`, resolved to its head commit) or a commit (`sourceCommitId` / `targetCommitId`, used as-is) — and the target can also be the entry's current publication (see [Publish preview](#publish-preview) below). Pass exactly one ref per side; for a merge request that is the two branches:
 
 ```ts
 const { diff, summary } = await cms.api.pages.getDiff({
@@ -55,6 +55,24 @@ The optional `view` field picks the representation: `'list'` (the flat `diff` on
 ```
 
 Every entry carries its full `sourceVersion` / `targetVersion` / `baseVersion` payloads (`null` where the block does not exist on that side), so a side-by-side inspector needs no further reads.
+
+### Publish preview
+
+Not every review runs through a merge request. The question an editor asks before hitting publish is "what will this change on the live page?" — a diff of the draft against the entry's **current publication**. Pass `targetPublished: true` instead of a target branch:
+
+```ts
+const { tree, summary } = await cms.api.pages.getDiff({
+  query: {
+    sourceBranchId: draft.branch.id,
+    targetPublished: true,
+    view: 'tree',
+  },
+});
+```
+
+`targetPublished` resolves to the **live head** of the publication's branch — exactly the commit `getPublishedContent` serves. When nothing landed on the published branch since your draft forked, that head is the common ancestor and the three-way diff degenerates to an exact two-way comparison; when live content moved on (a direct edit or another draft merged in), the common ancestor stays at your fork point and those already-live changes sit on the target side — either way the tree highlights precisely your draft's edits that are not live yet, nothing else. The call throws `PUBLICATION_NOT_FOUND` when the entry has never been published, so fall back to a plain render for unpublished entries.
+
+The same degenerate case powers a per-commit inspector: `getDiff({ sourceCommitId, targetCommitId })` with a commit and its parent yields exactly that commit's changes.
 
 ### What counts as a change
 
@@ -202,6 +220,35 @@ del[data-diff-text] { background: #fee2e2; }
 <Callout type="warn">
   The segment `html` values are raw fragments of the stored `richText` value, so `diffSegmentsToHtml` output is as unsanitized as the property itself. If the content is not fully trusted, sanitize it exactly as described in [Render content](/docs/guides/rendering-content#sanitize-untrusted-html-before-rendering).
 </Callout>
+
+### Who changed what
+
+Pass `withAttribution: true` and every diff entry — and every `diff` annotation in the tree — additionally carries `attribution`: the `commitId`, `changedAt`, and `changedBy` of the commit that made the change, plus `changedByUser` when called with `query.withUser`. A block whose own version changed is attributed to the commit that created its `sourceVersion`; a pure position move is attributed to the commit that actually repositioned the block under its new parent (found by walking the parent's version history) — when that commit is not derivable, for example because the move arrived via a merge, `attribution` is omitted for the entry.
+
+The natural place for it is the wrapper — a hover title (or your own tooltip) on each highlighted block:
+
+```tsx
+<BlocksRenderer
+  blocks={pageBlocks}
+  tree={tree}
+  diff={{
+    wrap: ({ element, annotation }) => (
+      <div
+        className={`diff-${annotation.changeTypes[0]}`}
+        title={
+          annotation.attribution
+            ? `${annotation.attribution.changedBy ?? 'someone'} · ${annotation.attribution.changedAt.toLocaleString()}`
+            : undefined
+        }
+      >
+        {element}
+      </div>
+    ),
+  }}
+/>
+```
+
+Guard the access: `attribution` stays absent even with the flag on entries whose authoring commit is not derivable.
 
 ### Summary badges
 

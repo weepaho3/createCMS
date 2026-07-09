@@ -88,6 +88,10 @@ import {
 import { loadTemplateStrings } from '../templates';
 import { userEnrichment } from '../user/enrichment';
 import { parseTimestamp } from '../utils/parse-timestamp';
+import {
+  wireBooleanIsTrue,
+  wireBooleanSchema,
+} from '../utils/wire-boolean';
 import { loadVariables, substituteVariables } from '../variables';
 import { buildReferencePreviews } from './publications';
 
@@ -2711,6 +2715,25 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
      * @param rootId Root id.
      * @param limit Max commits to return (default 50, max 200).
      * @param offset Offset for pagination (default 0).
+     * @param withChanges When true, each returned commit gains a `changes` field
+     *   with `{ added, modified, deleted }` block counts — a cheap ID-level
+     *   set-diff between the commit's snapshot and its parent commit's snapshot
+     *   (no block properties are loaded). Counts are VERSION-level: any block
+     *   whose stored version changed is counted, so a pure move counts as
+     *   `modified` on the parent whose children array changed — coarser than
+     *   getDiff's classification, intended for history badges. Initial commits
+     *   count every live block as added. Merge commits diff against their FIRST
+     *   parent only (parent_commit_id — the target-side parent), so the counts
+     *   read as "what this merge landed on the target branch". Merge and revert
+     *   snapshots drop deletion-landed blocks entirely instead of carrying
+     *   tombstones; such absence-based deletions count as `deleted` all the
+     *   same (and a revert that restores a dropped block counts it as `added`).
+     *   Commits without a snapshot — or whose parent's snapshot is gone (admin
+     *   pruning) — omit
+     *   `changes` entirely rather than reporting a meaningless diff; in practice
+     *   every commit writer (writeCommit, createInitialCommit, executeMerge,
+     *   revertBranch) writes a full snapshot, so this only guards repaired or
+     *   pruned histories.
      * @returns Array of commit records with total count, offset, and limit.
      * @throws ROOT_NOT_FOUND when rootId does not exist.
      * @example
@@ -2728,6 +2751,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           rootId: z.string(),
           limit: z.coerce.number().min(1).max(200).optional(),
           offset: z.coerce.number().min(0).optional(),
+          withChanges: wireBooleanSchema.optional(),
         }),
         metadata: cmsMeta(
           {
@@ -2736,6 +2760,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
                 rootId: string;
                 limit?: number;
                 offset?: number;
+                withChanges?: boolean;
               },
             },
           },
@@ -2751,6 +2776,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
         const { rootId } = ctx.query;
         const limit = ctx.query.limit ?? 50;
         const offset = ctx.query.offset ?? 0;
+        const withChanges = wireBooleanIsTrue(ctx.query.withChanges);
 
         await requireRootInScope(
           db,
@@ -2803,6 +2829,108 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
         const rows = result.rows as Array<Record<string, unknown>>;
         const total = (countResult.rows[0] as { cnt: number })?.cnt ?? 0;
 
+        // withChanges (opt-in): version-level change counts per commit, computed
+        // as an ID-level set-diff between each commit's snapshot and its parent
+        // commit's snapshot — ONE query for the whole page, no block properties
+        // loaded. Snapshots are complete per-commit maps, but the two sides are
+        // NOT id-subsets of each other: writeCommit copies tombstones forward,
+        // yet merge snapshots EXCLUDE one-side-deleted blocks entirely
+        // (buildMergedSnapshot and the fast-forward path filter tombstones) and
+        // revert snapshots are exactly the target commit's map — so a block
+        // live in the parent can be simply ABSENT from the child. A per-pair
+        // FULL OUTER JOIN between the two snapshots (LATERAL, because the
+        // pairs CTE itself cannot be full-outer-joined) sees both sides.
+        // Per block id, child version C vs parent version P:
+        //   same version id            → unchanged, not counted
+        //   no P row, C live           → added (initial commits hit this for
+        //                                 every live block; only-in-C tombstones
+        //                                 are not counted)
+        //   C live,    P tombstone     → added (re-created block id)
+        //   C live,    P live          → modified
+        //   C tombstone, P live        → deleted
+        //   no C row,  P live          → deleted (merge/revert dropped the id)
+        //   C tombstone, P tombstone   → not counted (nor "no C row, P
+        //                                 tombstone" — already deleted)
+        // Merge commits diff against parent_commit_id only (the target-side
+        // parent) — see the endpoint JSDoc.
+        const changesByCommit = new Map<
+          string,
+          { added: number; modified: number; deleted: number }
+        >();
+        if (withChanges && rows.length > 0) {
+          const pairs = sql.join(
+            rows.map(
+              (r) =>
+                sql`(${r.id as string}::text, ${(r.parent_commit_id as string | null) ?? null}::text)`,
+            ),
+            sql`, `,
+          );
+          const changesResult = await db.execute(sql`
+            WITH pairs(child_id, parent_id) AS (VALUES ${pairs})
+            SELECT
+              p.child_id,
+              -- A side whose snapshot is gone (pruned/repaired history) would
+              -- make every surviving row count as "added" (parent gone) or
+              -- "deleted" (child gone); flag both so the entry omits
+              -- \`changes\` instead of reporting a meaningless diff. A pair
+              -- where NEITHER side has snapshot rows yields no lateral rows,
+              -- so it produces no group and is omitted the same way.
+              (p.parent_id IS NOT NULL AND NOT EXISTS (
+                SELECT 1 FROM cms.commit_snapshots ps WHERE ps.commit_id = p.parent_id
+              )) AS parent_snapshot_missing,
+              NOT EXISTS (
+                SELECT 1 FROM cms.commit_snapshots cs WHERE cs.commit_id = p.child_id
+              ) AS child_snapshot_missing,
+              COUNT(*) FILTER (WHERE
+                d.c_version_id IS NOT NULL AND NOT bv_c.deleted
+                AND (d.p_version_id IS NULL
+                     OR (d.p_version_id <> d.c_version_id AND bv_p.deleted))
+              )::int AS added,
+              COUNT(*) FILTER (WHERE
+                d.c_version_id IS NOT NULL AND d.p_version_id IS NOT NULL
+                AND d.p_version_id <> d.c_version_id
+                AND NOT bv_c.deleted AND NOT bv_p.deleted
+              )::int AS modified,
+              COUNT(*) FILTER (WHERE
+                d.p_version_id IS NOT NULL AND NOT bv_p.deleted
+                AND (d.c_version_id IS NULL
+                     OR (d.p_version_id <> d.c_version_id AND bv_c.deleted))
+              )::int AS deleted
+            FROM pairs p
+            CROSS JOIN LATERAL (
+              SELECT
+                cs_c.block_version_id AS c_version_id,
+                cs_p.block_version_id AS p_version_id
+              FROM (SELECT block_id, block_version_id FROM cms.commit_snapshots
+                    WHERE commit_id = p.child_id) cs_c
+              FULL OUTER JOIN
+                   (SELECT block_id, block_version_id FROM cms.commit_snapshots
+                    WHERE commit_id = p.parent_id) cs_p
+                ON cs_p.block_id = cs_c.block_id
+            ) d
+            LEFT JOIN cms.block_versions bv_c ON bv_c.id = d.c_version_id
+            LEFT JOIN cms.block_versions bv_p ON bv_p.id = d.p_version_id
+            GROUP BY p.child_id, p.parent_id
+          `);
+          for (const row of changesResult.rows as Array<{
+            child_id: string;
+            parent_snapshot_missing: boolean;
+            child_snapshot_missing: boolean;
+            added: number;
+            modified: number;
+            deleted: number;
+          }>) {
+            if (row.parent_snapshot_missing || row.child_snapshot_missing) {
+              continue;
+            }
+            changesByCommit.set(row.child_id, {
+              added: row.added,
+              modified: row.modified,
+              deleted: row.deleted,
+            });
+          }
+        }
+
         const data = rows.map((r) => {
           const parents: string[] = [];
           if (r.parent_commit_id) parents.push(r.parent_commit_id as string);
@@ -2815,7 +2943,11 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
               ? 'initial'
               : 'commit';
 
-          const item: Record<string, unknown> = {
+          // Intersection keeps the enrichment keys open (enrich.apply writes
+          // dynamic columns) while still typing `changes` for callers.
+          const item: Record<string, unknown> & {
+            changes?: { added: number; modified: number; deleted: number };
+          } = {
             id: r.id,
             message: r.message,
             createdBy: r.created_by,
@@ -2827,6 +2959,11 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             type,
             isPublished: r.is_published,
           };
+
+          // Empty map unless withChanges — entries without a computable diff
+          // (missing snapshots) omit the field entirely.
+          const changes = changesByCommit.get(r.id as string);
+          if (changes) item.changes = changes;
 
           enrich.apply(item, r);
 

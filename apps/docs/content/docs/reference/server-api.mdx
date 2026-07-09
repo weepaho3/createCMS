@@ -211,13 +211,19 @@ Returns `{ publication }`, the publication row (`rootId`, `branchId`, `commitId`
 
 ### `getDiff`
 
-Compares two branches of an entry for review: the source against the common ancestor it shares with the target (the merge base). `GET`, input via `query`.
+Compares two refs of an entry for review: the source against the common ancestor it shares with the target (the merge base). `GET`, input via `query`. Provide exactly **one** source ref (`sourceBranchId` or `sourceCommitId`) and exactly **one** target ref (`targetBranchId`, `targetCommitId`, or `targetPublished`).
 
-| Query field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `sourceBranchId` | `string` | yes | The branch under review. |
-| `targetBranchId` | `string` | yes | The branch it would merge into. |
-| `view` | `'list' \| 'tree' \| 'both'` | no | Which representations to return (defaults to `'both'`). |
+| Query field | Type | Description |
+| --- | --- | --- |
+| `sourceBranchId` | `string` | Source branch, resolved to its head commit. |
+| `sourceCommitId` | `string` | Source commit, used as-is. |
+| `targetBranchId` | `string` | Target branch, resolved to its head commit. |
+| `targetCommitId` | `string` | Target commit, used as-is. |
+| `targetPublished` | `boolean` | Target the entry's current publication — resolved to the live head of the publication's branch, exactly what `getPublishedContent` serves. Throws `PUBLICATION_NOT_FOUND` when the entry has no publication. |
+| `view` | `'list' \| 'tree' \| 'both'` | Which representations to return (defaults to `'both'`). |
+| `withAttribution` | `boolean` | Attach per-entry commit attribution (defaults to `false`; see below). |
+
+Both refs must belong to the same entry (`BRANCHES_NOT_SAME_ROOT` otherwise). The base is the common ancestor of the two resolved commits; when one commit is an ancestor of the other, the common ancestor **is** that commit and the diff degenerates to an exact two-way comparison — a commit against its parent yields exactly that commit's changes, and a branch against `targetPublished` yields exactly the draft's edits that are not live yet (see [Publish preview](/docs/guides/visual-diff#publish-preview)).
 
 Returns `{ diff, tree, summary, sourceCommitId, targetCommitId, commonAncestorCommitId }`:
 
@@ -225,7 +231,35 @@ Returns `{ diff, tree, summary, sourceCommitId, targetCommitId, commonAncestorCo
 - `tree` (with `view: 'tree'` or `'both'`): the annotated draft tree — the source branch's block tree where changed nodes carry a `diff` annotation, unchanged nodes carry none, and deleted blocks are re-inserted as ghost nodes at their old position with their last properties. It is structurally a regular block tree, so it renders through the same component maps. `null` when the view is `'list'`, and also when the draft deleted the entry's root block (no source tree remains to annotate) — guard before rendering.
 - `summary`: per-changeType entry counts `{ added, deleted, modified, moved, reordered }`.
 
+With `withAttribution: true`, each `diff` entry and each `tree` annotation additionally carries `attribution` — which commit made the change, and who:
+
+```ts
+attribution?: {
+  commitId: string;
+  changedAt: Date;
+  changedBy: string | null;
+  changedByUser?: { /* your user table's exposed columns */ };
+};
+```
+
+An entry whose own version changed (added, deleted, modified, `childrenReordered`, or a slug change) is attributed to the commit that created its `sourceVersion`; a pure position move is attributed to the commit that actually repositioned the block under its new parent (derived by walking the parent's version history — omitted when the move arrived via a merge). `changedByUser` follows the same rules as `createdByUser` elsewhere: present only when called with `query.withUser`, limited to your `user` config's `exposeColumns` allowlist. Entries whose authoring commit is not derivable omit `attribution`.
+
 See [Review changes visually](/docs/guides/visual-diff) for rendering the annotated tree.
+
+### `getRootHistory`
+
+Fetches an entry's commit history across all branches, newest first. `GET`, input via `query`.
+
+| Query field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `rootId` | `string` | | The entry (required). |
+| `limit` | `number` | `50` | Page size (1 to 200). |
+| `offset` | `number` | `0` | Rows to skip. |
+| `withChanges` | `boolean` | `false` | Add per-commit change counts (see below). |
+
+Returns `{ commits, total, hasMore }`. Each commit has `id`, `message`, `createdBy`, `createdAt`, `branch` (the name of the branch the commit was created on — see [Branch attribution](/docs/concepts/commits#branch-attribution)), `parents` (one commit id, two for a merge commit), `type` (`'initial' | 'commit' | 'merge'`), and `isPublished` — plus `createdByUser` when called with `query.withUser`.
+
+With `withChanges: true`, each commit additionally carries `changes: { added, modified, deleted }` — block counts from a cheap version-id comparison of the commit's snapshot against its parent's (no block properties are loaded). The counts are **version-level**, coarser than `getDiff`'s classification, and meant for history badges: any block whose stored version changed is counted, so a pure move counts as `modified` on the parent whose children array changed. An initial commit counts every block as `added`, and a merge commit is diffed against its **first** parent only, so its counts read as "what this merge landed on the target branch". Blocks that vanish from the snapshot entirely (merge- and revert-landed deletions carry no tombstone) count as `deleted` as well. The field is omitted (not zeroed) on commits whose own or parent snapshot was pruned by [retention](/docs/concepts/data-retention).
 
 ## Admin methods
 
@@ -253,7 +287,7 @@ Rebuilds the full-text search index across all entities. `POST`, empty body. Ret
 
 Each collection also exposes the rest of the versioning and review surface. The remaining methods, all under `cms.api.<collection>`:
 
-- **Roots**: `getRoot`, `getRootBySlug`, `archiveRoot`, `moveRoot`, `duplicateRoot`, `getReferenceUsages`, `getRootHistory`.
+- **Roots**: `getRoot`, `getRootBySlug`, `archiveRoot`, `moveRoot`, `duplicateRoot`, `getReferenceUsages` (plus `getRootHistory` above).
 - **Blocks**: `moveBlock`, `deleteBlock`, `duplicateBlock`, `updateRoot`.
 - **Branches**: `revertBranch`, `checkDivergence` (plus the branch methods above).
 - **Merges**: `createMergeRequest`, `checkConflicts`, `applyConflictResolutions`, `createMergeBlockVersion`, `executeMerge`, `listMergeRequests`, `updateMergeRequest`, `closeMergeRequest`, `reopenMergeRequest` (plus `getDiff` above).

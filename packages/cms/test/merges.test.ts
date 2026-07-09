@@ -12,8 +12,48 @@ import {
   mergeConflicts,
   mergeRequests,
 } from '../src/schema';
+import {
+  allowAnonymous,
+  createCMS,
+  defineCollection,
+  defineCollections,
+} from '../src/index';
 import { setupTestCMS } from '../src/test-utils/cms';
+import { setupTestDB } from '../src/test-utils/db';
+import { DUMMY_MEDIA_CONFIG, pages } from '../src/test-utils/fixtures';
 import { requestAndApproveMerge } from '../src/test-utils/helpers';
+
+/**
+ * Second collection for cross-collection scope tests: a commit that lives in
+ * `posts` must read as not-found from a `pages` endpoint.
+ */
+const posts = defineCollection({
+  label: 'Posts',
+  description: 'Blog posts (cross-collection scope fixture)',
+  slug: { enabled: true, prefix: '/posts' },
+  root: {
+    properties: {
+      title: {
+        type: 'string',
+        label: 'Title',
+        required: true,
+      },
+    },
+  },
+  blocks: {
+    paragraph: {
+      label: 'Paragraph',
+      description: 'A block of text',
+      properties: {
+        text: {
+          type: 'richText',
+          label: 'Text',
+          required: true,
+        },
+      },
+    },
+  },
+});
 
 // ============================================================================
 // getDiff
@@ -768,6 +808,1050 @@ describe('getDiff', () => {
         },
       }),
     ).rejects.toThrow(/Branch not found/);
+  });
+
+  it("diffs a commit against its parent as exactly that commit's changes", async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const first = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'First' },
+      },
+    });
+
+    const second = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Second' },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceCommitId: second.commit.id,
+        targetCommitId: first.commit.id,
+      },
+    });
+
+    // The parent IS the common ancestor — the 3-way diff degenerates to the
+    // exact 2-way comparison, i.e. only the second commit's own change.
+    expect(result.diff).toHaveLength(1);
+    expect(result.diff![0].blockId).toBe(second.blockId);
+    expect(result.diff![0].changeTypes).toEqual(['added']);
+    expect(result.sourceCommitId).toBe(second.commit.id);
+    expect(result.targetCommitId).toBe(first.commit.id);
+    expect(result.commonAncestorCommitId).toBe(first.commit.id);
+  });
+
+  it('accepts a mixed sourceBranchId + targetCommitId form', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'New' },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: root.branchId,
+        targetCommitId: root.commit.id,
+      },
+    });
+
+    expect(result.diff).toHaveLength(1);
+    expect(result.diff![0].blockId).toBe(block.blockId);
+    expect(result.diff![0].changeTypes).toEqual(['added']);
+    expect(result.sourceCommitId).toBe(block.commit.id);
+    expect(result.targetCommitId).toBe(root.commit.id);
+    expect(result.commonAncestorCommitId).toBe(root.commit.id);
+  });
+
+  it("diffs a branch against the published branch's live head via targetPublished", async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Live' },
+      },
+    });
+
+    const published = await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: block.blockId,
+        type: 'paragraph',
+        properties: { text: 'Draft edit' },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: { sourceBranchId: draft.branch.id, targetPublished: true },
+    });
+
+    // Only the pending draft edit — the published content is shared history.
+    expect(result.diff).toHaveLength(1);
+    expect(result.diff![0].blockId).toBe(block.blockId);
+    expect(result.diff![0].changeTypes).toEqual(['modified']);
+    expect(result.diff![0].sourceVersion!.properties).toEqual({
+      text: 'Draft edit',
+    });
+    expect(result.diff![0].targetVersion!.properties).toEqual({
+      text: 'Live',
+    });
+    // The target is the published branch's LIVE head — what the published
+    // render serves. Here nothing landed on the branch since the publish, so
+    // it coincides with the publish-time pin.
+    expect(result.targetCommitId).toBe(block.commit.id);
+    expect(result.targetCommitId).toBe(published.publication.commitId);
+    expect(result.commonAncestorCommitId).toBe(block.commit.id);
+  });
+
+  it("diffs against the published branch's live head, not the stale publish-time pin", async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const liveBlock = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Live' },
+      },
+    });
+
+    const published = await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId },
+    });
+
+    // Land another commit on the published branch AFTER the publish. The
+    // published render serves the branch's live head, so this change is
+    // already live even though the publication row still pins the old commit.
+    const liveEdit = await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        blockId: liveBlock.blockId,
+        type: 'paragraph',
+        properties: { text: 'Already live' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    const pendingBlock = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Pending' },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: { sourceBranchId: draft.branch.id, targetPublished: true },
+    });
+
+    // Resolved to the branch's NEW head — not the stale publish-time pin.
+    expect(result.targetCommitId).toBe(liveEdit.commit.id);
+    expect(result.targetCommitId).not.toBe(published.publication.commitId);
+    expect(result.commonAncestorCommitId).toBe(liveEdit.commit.id);
+
+    // Exactly the edits not yet live: the already-live change must NOT
+    // re-report as pending.
+    expect(result.diff).toHaveLength(1);
+    expect(result.diff![0].blockId).toBe(pendingBlock.blockId);
+    expect(result.diff![0].changeTypes).toEqual(['added']);
+
+    // And the published branch itself has nothing pending against its own
+    // live head.
+    const selfDiff = await cms.api.pages.getDiff({
+      query: { sourceBranchId: root.branchId, targetPublished: true },
+    });
+    expect(selfDiff.diff).toEqual([]);
+  });
+
+  it("treats the wire string 'false' for targetPublished as false, keeping a branch target valid", async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'New' },
+      },
+    });
+
+    // Over HTTP, booleans arrive as strings. 'false' must decode to FALSE —
+    // with z.coerce.boolean() it coerced to true and broke the target XOR.
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        targetPublished: 'false' as unknown as boolean,
+      },
+    });
+
+    expect(result.targetCommitId).toBe(root.commit.id);
+    expect(result.diff).toHaveLength(1);
+    expect(result.diff![0].blockId).toBe(block.blockId);
+  });
+
+  it("accepts the wire string 'true' for targetPublished", async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Live' },
+      },
+    });
+
+    await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: block.blockId,
+        type: 'paragraph',
+        properties: { text: 'Draft edit' },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetPublished: 'true' as unknown as boolean,
+      },
+    });
+
+    expect(result.targetCommitId).toBe(block.commit.id);
+    expect(result.diff).toHaveLength(1);
+    expect(result.diff![0].changeTypes).toEqual(['modified']);
+  });
+
+  it("treats the wire string 'false' for withAttribution as false", async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'New' },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        withAttribution: 'false' as unknown as boolean,
+      },
+    });
+
+    const entry = result.diff!.find((d) => d.blockId === block.blockId);
+    expect(entry).not.toHaveProperty('attribution');
+
+    // The 'true' string still enables attribution.
+    const withResult = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        withAttribution: 'true' as unknown as boolean,
+      },
+    });
+    const withEntry = withResult.diff!.find(
+      (d) => d.blockId === block.blockId,
+    );
+    expect(withEntry!.attribution).toBeDefined();
+    expect(withEntry!.attribution!.commitId).toBe(block.commit.id);
+  });
+
+  it('rejects targetPublished when the root has no publication', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    await expect(
+      cms.api.pages.getDiff({
+        query: { sourceBranchId: root.branchId, targetPublished: true },
+      }),
+    ).rejects.toThrow(/publication not found/i);
+  });
+
+  it('rejects when a side provides no ref or more than one', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    // No source ref.
+    await expect(
+      cms.api.pages.getDiff({
+        query: { targetBranchId: root.branchId },
+      }),
+    ).rejects.toThrow();
+
+    // Both source refs.
+    await expect(
+      cms.api.pages.getDiff({
+        query: {
+          sourceBranchId: root.branchId,
+          sourceCommitId: root.commit.id,
+          targetBranchId: root.branchId,
+        },
+      }),
+    ).rejects.toThrow();
+
+    // No target ref.
+    await expect(
+      cms.api.pages.getDiff({
+        query: { sourceBranchId: root.branchId },
+      }),
+    ).rejects.toThrow();
+
+    // Both target refs.
+    await expect(
+      cms.api.pages.getDiff({
+        query: {
+          sourceBranchId: root.branchId,
+          targetCommitId: root.commit.id,
+          targetPublished: true,
+        },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('rejects a commit ref from a different root', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root1 = await cms.api.pages.createRoot({
+      body: { slug: '/root-1', properties: { title: 'Root 1' } },
+    });
+    const root2 = await cms.api.pages.createRoot({
+      body: { slug: '/root-2', properties: { title: 'Root 2' } },
+    });
+
+    await expect(
+      cms.api.pages.getDiff({
+        query: {
+          sourceBranchId: root1.branchId,
+          targetCommitId: root2.commit.id,
+        },
+      }),
+    ).rejects.toThrow(/same root/i);
+  });
+
+  it("rejects a commit id from another collection's root as COMMIT_NOT_FOUND", async () => {
+    const { db } = await setupTestDB();
+    const cms = createCMS({
+      db,
+      media: { ...DUMMY_MEDIA_CONFIG },
+      collections: defineCollections({ pages, posts }),
+      authMiddleware: allowAnonymous(),
+    });
+
+    const pageRoot = await cms.api.pages.createRoot({
+      body: { slug: '/page', properties: { title: 'Page' } },
+    });
+    const postRoot = await cms.api.posts.createRoot({
+      body: { slug: '/other', properties: { title: 'Post' } },
+    });
+
+    // A commit that exists — but under another collection's root — must read
+    // as not found from this collection's endpoint (no content leak), on
+    // either side of the diff.
+    await expect(
+      cms.api.pages.getDiff({
+        query: {
+          sourceBranchId: pageRoot.branchId,
+          targetCommitId: postRoot.commit.id,
+        },
+      }),
+    ).rejects.toThrow(/commit not found/i);
+
+    await expect(
+      cms.api.pages.getDiff({
+        query: {
+          sourceCommitId: postRoot.commit.id,
+          targetBranchId: pageRoot.branchId,
+        },
+      }),
+    ).rejects.toThrow(/commit not found/i);
+  });
+
+  it('rejects a nonexistent commit ref', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    await expect(
+      cms.api.pages.getDiff({
+        query: {
+          sourceCommitId: 'nonexistent',
+          targetBranchId: root.branchId,
+        },
+      }),
+    ).rejects.toThrow(/commit not found/i);
+  });
+
+  it('attributes each entry to the commit that authored it with withAttribution', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Original' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    const edit = await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: block.blockId,
+        type: 'paragraph',
+        properties: { text: 'Edited' },
+      },
+      context: { userId: 'editor-1' },
+    });
+
+    const addition = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Added' },
+      },
+      context: { userId: 'editor-2' },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        withAttribution: true,
+      },
+    });
+
+    const modifiedEntry = result.diff!.find((d) => d.blockId === block.blockId);
+    expect(modifiedEntry!.attribution).toBeDefined();
+    expect(modifiedEntry!.attribution!.commitId).toBe(edit.commit.id);
+    expect(modifiedEntry!.attribution!.changedAt).toBeInstanceOf(Date);
+    expect(modifiedEntry!.attribution!.changedBy).toBe('editor-1');
+
+    const addedEntry = result.diff!.find((d) => d.blockId === addition.blockId);
+    expect(addedEntry!.attribution!.commitId).toBe(addition.commit.id);
+    expect(addedEntry!.attribution!.changedBy).toBe('editor-2');
+
+    // The tree annotations carry the same attribution.
+    const treeAdded = result.tree!.children.find(
+      (c) => c.blockId === addition.blockId,
+    );
+    expect(treeAdded!.diff!.attribution).toEqual(addedEntry!.attribution);
+  });
+
+  it("attributes a pure position move to the new parent's commit", async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const containerA = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container A' },
+      },
+    });
+
+    const containerB = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container B' },
+      },
+    });
+
+    const child = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: containerA.blockId,
+        type: 'paragraph',
+        properties: { text: 'Child' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    const move = await cms.api.pages.moveBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: child.blockId,
+        newParentBlockId: containerB.blockId,
+        newIndex: 0,
+      },
+      context: { userId: 'mover-1' },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        withAttribution: true,
+      },
+    });
+
+    // The moved block's own version is unchanged — the attribution is the
+    // commit that repositioned it under the new parent.
+    const movedEntry = result.diff!.find((d) => d.blockId === child.blockId);
+    expect(movedEntry!.changeTypes).toEqual(['moved']);
+    expect(movedEntry!.attribution!.commitId).toBe(move.commit.id);
+    expect(movedEntry!.attribution!.changedBy).toBe('mover-1');
+  });
+
+  it('attributes a pure move to the MOVE commit even when the new parent was edited afterwards', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const containerA = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container A' },
+      },
+    });
+
+    const containerB = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container B' },
+      },
+    });
+
+    const child = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: containerA.blockId,
+        type: 'paragraph',
+        properties: { text: 'Child' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    const move = await cms.api.pages.moveBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: child.blockId,
+        newParentBlockId: containerB.blockId,
+        newIndex: 0,
+      },
+      context: { userId: 'mover-1' },
+    });
+
+    // Touch the NEW parent again AFTER the move. The parent's current
+    // sourceVersion now belongs to this edit — the moved child must still be
+    // attributed to the MOVE commit, not the last touch.
+    const parentEdit = await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: containerB.blockId,
+        type: 'paragraph',
+        properties: { text: 'Container B (edited)' },
+      },
+      context: { userId: 'editor-2' },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        withAttribution: true,
+      },
+    });
+
+    const movedEntry = result.diff!.find((d) => d.blockId === child.blockId);
+    expect(movedEntry!.changeTypes).toEqual(['moved']);
+    expect(movedEntry!.attribution!.commitId).toBe(move.commit.id);
+    expect(movedEntry!.attribution!.changedBy).toBe('mover-1');
+
+    // The parent's own entry names the edit commit — attribution stays
+    // per-entry honest.
+    const parentEntry = result.diff!.find(
+      (d) => d.blockId === containerB.blockId,
+    );
+    expect(parentEntry!.attribution!.commitId).toBe(parentEdit.commit.id);
+    expect(parentEntry!.attribution!.changedBy).toBe('editor-2');
+  });
+
+  it("attributes a twice-moved block to the SECOND move's commit", async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const containerA = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container A' },
+      },
+    });
+
+    const containerB = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container B' },
+      },
+    });
+
+    const containerC = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container C' },
+      },
+    });
+
+    const child = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: containerA.blockId,
+        type: 'paragraph',
+        properties: { text: 'Child' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.moveBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: child.blockId,
+        newParentBlockId: containerB.blockId,
+        newIndex: 0,
+      },
+      context: { userId: 'mover-1' },
+    });
+
+    const secondMove = await cms.api.pages.moveBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: child.blockId,
+        newParentBlockId: containerC.blockId,
+        newIndex: 0,
+      },
+      context: { userId: 'mover-2' },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        withAttribution: true,
+      },
+    });
+
+    const movedEntry = result.diff!.find((d) => d.blockId === child.blockId);
+    expect(movedEntry!.changeTypes).toEqual(['moved']);
+    expect(movedEntry!.moved!.toParentId).toBe(containerC.blockId);
+    // Multiple moves → the LATEST repositioning commit wins.
+    expect(movedEntry!.attribution!.commitId).toBe(secondMove.commit.id);
+    expect(movedEntry!.attribution!.changedBy).toBe('mover-2');
+  });
+
+  it('omits attribution for a pure move that landed via a merge', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const containerA = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container A' },
+      },
+    });
+
+    const containerB = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container B' },
+      },
+    });
+
+    const child = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: containerA.blockId,
+        type: 'paragraph',
+        properties: { text: 'Child' },
+      },
+    });
+
+    const mover = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'mover',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    const receiver = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'receiver',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    // The move happens on the mover branch...
+    await cms.api.pages.moveBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: mover.branch.id,
+        blockId: child.blockId,
+        newParentBlockId: containerB.blockId,
+        newIndex: 0,
+      },
+      context: { userId: 'mover-1' },
+    });
+
+    // ...while the receiver diverges with an unrelated commit, so the merge
+    // below produces a real merge commit (no fast-forward) and the move
+    // commit stays OFF the receiver's first-parent chain.
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: receiver.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Unrelated' },
+      },
+    });
+
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        sourceBranchId: mover.branch.id,
+        targetBranchId: receiver.branch.id,
+        title: 'Merge the move',
+        createdBy: 'user-1',
+      },
+    });
+    await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequest.id },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: receiver.branch.id,
+        targetBranchId: root.branchId,
+        withAttribution: true,
+      },
+    });
+
+    // The move is visible in the diff, but its authoring commit is not
+    // derivable from the receiver's first-parent history — attribution is
+    // omitted rather than guessed.
+    const movedEntry = result.diff!.find((d) => d.blockId === child.blockId);
+    expect(movedEntry).toBeDefined();
+    expect(movedEntry!.changeTypes).toContain('moved');
+    expect(movedEntry).not.toHaveProperty('attribution');
+  });
+
+  it('gives entries authored by the same commit their own attribution objects', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const a = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'A' },
+      },
+    });
+
+    const b = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'B' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    // One batch commit editing BOTH blocks.
+    const batch = await cms.api.pages.updateBlocks({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        tree: {
+          blockId: root.rootId,
+          type: 'pages',
+          properties: { title: 'Page' },
+          children: [
+            {
+              blockId: a.blockId,
+              type: 'paragraph',
+              properties: { text: 'A updated' },
+              children: [],
+            },
+            {
+              blockId: b.blockId,
+              type: 'paragraph',
+              properties: { text: 'B updated' },
+              children: [],
+            },
+          ],
+        },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        withAttribution: true,
+      },
+    });
+
+    const entryA = result.diff!.find((d) => d.blockId === a.blockId);
+    const entryB = result.diff!.find((d) => d.blockId === b.blockId);
+    expect(entryA!.attribution!.commitId).toBe(batch.commit.id);
+    expect(entryB!.attribution!.commitId).toBe(batch.commit.id);
+    expect(entryA!.attribution).toEqual(entryB!.attribution);
+    // Same commit, but each entry owns its attribution object — mutating one
+    // must not bleed into the other.
+    expect(entryA!.attribution).not.toBe(entryB!.attribution);
+  });
+
+  it('omits attribution when withAttribution is not set', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'New' },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+      },
+    });
+
+    const entry = result.diff!.find((d) => d.blockId === block.blockId);
+    expect(entry).not.toHaveProperty('attribution');
+
+    const treeNode = result.tree!.children.find(
+      (c) => c.blockId === block.blockId,
+    );
+    expect(treeNode!.diff).not.toHaveProperty('attribution');
   });
 });
 
