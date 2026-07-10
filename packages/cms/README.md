@@ -7,7 +7,7 @@ A composable, block-based **headless CMS** powered by [better-call](https://gith
 > changes, rough edges, and bugs (including possible data-loss edge cases). Use it for
 > prototyping and exploration — **not** for production workloads. Pin an exact version.
 
-**[Documentation](../../apps/docs/content/docs)** · **[Examples](../../examples)** · **[Changelog](./CHANGELOG.md)** · **[Contributing](../../CONTRIBUTING.md)**
+**[Documentation](https://github.com/weepaho3/createCMS/tree/main/apps/docs/content/docs)** · **[Examples](https://github.com/weepaho3/createCMS/tree/main/examples)** · **[Changelog](https://github.com/weepaho3/createCMS/blob/main/packages/cms/CHANGELOG.md)** · **[Contributing](https://github.com/weepaho3/createCMS/blob/main/CONTRIBUTING.md)**
 
 ## Features
 
@@ -28,7 +28,7 @@ npm install drizzle-orm react
 
 ### Requirements
 
-- **Node.js ≥ 18** — per the package `engines`.
+- **Node.js ≥ 20** — per the package `engines`.
 - **PostgreSQL** — the CMS is database-native (Drizzle + Postgres).
 - **Required peers** — `drizzle-orm@^0.45` and `react@>=18`.
 - **Optional** — `next@>=16` for the first-class Next.js integration.
@@ -53,7 +53,7 @@ import { defineCollection, defineCollections } from '@createcms/core';
 
 const pages = defineCollection({
   label: 'Pages',
-  slug: { enabled: true, root: '/', nested: true },
+  slug: { enabled: true, prefix: '/', nested: true },
   root: {
     properties: {
       title: { type: 'string', required: true, label: 'Title' },
