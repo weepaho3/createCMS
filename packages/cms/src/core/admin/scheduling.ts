@@ -8,7 +8,7 @@ import { resolveBranchPolicy } from '../branch-policy';
 import { roots, scheduledPublications } from '../db/schema.generated';
 import { CMSError, getCMSErrorCode } from '../errors';
 import { syncAssetsOnPublish, syncAssetsOnUnpublish } from '../media/discovery';
-import { publishBranchInTx, unpublishBranchInTx } from '../routes/publications';
+import { publishBranchInTx, unpublishBranchInTx } from '../publish/publish-branch';
 
 export type RunScheduledOptions = {
   /** Max due rows processed this pass. Default 100. */

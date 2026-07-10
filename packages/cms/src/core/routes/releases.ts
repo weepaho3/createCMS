@@ -11,7 +11,7 @@ import { branches, releaseItems, releases, roots } from '../db/schema.generated'
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
 import { syncAssetsOnPublish } from '../media/discovery';
-import { publishBranchInTx } from './publications';
+import { publishBranchInTx } from '../publish/publish-branch';
 
 // ============================================================================
 // Release-specific errors. These domain codes are NOT part of the core
