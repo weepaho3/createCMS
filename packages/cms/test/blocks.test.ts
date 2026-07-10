@@ -3949,6 +3949,27 @@ describe('middleware', () => {
     expect(capturedPermissionResource).toBe('root');
   });
 
+  it('authMiddleware denial for operation delete aborts before the write', async () => {
+    const { cms, db } = await setupTestCMS({
+      authMiddleware: async (ctx) => {
+        if (ctx.operation === 'delete') throw new Error('DENIED');
+        return {};
+      },
+    });
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/deny', properties: { title: 'Deny' } },
+    });
+
+    await expect(
+      cms.api.pages.archiveRoot({ body: { rootId: root.rootId } }),
+    ).rejects.toThrow(/denied/i);
+
+    const [row] = await db.select().from(roots).where(eq(roots.id, root.rootId));
+    expect(row).toBeDefined();
+    expect(row.archivedAt).toBeNull();
+  });
+
   it('works without middleware when none is provided', async () => {
     const { cms } = await setupTestCMS();
 
