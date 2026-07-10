@@ -93,7 +93,7 @@ import {
   wireBooleanSchema,
 } from '../utils/wire-boolean';
 import { loadVariables, substituteVariables } from '../variables';
-import { buildReferencePreviews } from './publications';
+import { buildReferencePreviews } from '../references-render';
 
 // ============================================================================
 // Schemas
