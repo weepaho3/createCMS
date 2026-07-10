@@ -34,6 +34,7 @@ npx createcms generate [config] [--output <path>]
 | --- | --- | --- | --- |
 | `config` | path | auto-discovered | Path to your CMS config file. |
 | `--output` | path | `./cms-schema.ts` | Where to write the generated schema. |
+| `--check` | flag | | Verify the on-disk schema matches your config without writing. Exits non-zero on drift. Use in CI. |
 
 When `config` is omitted, the CLI searches these paths in order and uses the first that exists:
 
@@ -59,6 +60,18 @@ After generating, apply the schema with your Drizzle migration workflow. The `dr
 ```bash
 npx drizzle-kit generate && npx drizzle-kit migrate
 ```
+
+### Guard against a stale schema in CI
+
+Fail the build if the committed schema drifted from your config:
+
+```bash
+npx createcms generate --check
+```
+
+It reruns the generator in memory and compares the result to your committed
+schema file — no database or server needed. Exit code 0 when they match,
+non-zero (with a diff hint) when they don't.
 
 <Callout type="info">
   Re-run `createcms generate` after adding or changing a plugin that contributes schema, not when you edit a collection.

@@ -1,11 +1,12 @@
 import type { CAC } from 'cac';
 
 import kleur from 'kleur';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { SchemaSource } from '../../core/db/merge';
 
-import { generateSchema } from '../../core/codegen/generate';
+import { generateSchema, renderSchema } from '../../core/codegen/generate';
 import { coreSchema } from '../../core/db/core-schema';
 import { discoverConfig } from '../utils/discover-config';
 import { fileExists } from '../utils/fs';
@@ -81,6 +82,60 @@ function collectSchemaSources(
   return sources;
 }
 
+export type GenerateCheckResult =
+  | { status: 'match'; expected: string }
+  | { status: 'drift'; expected: string; actual: string; diff: string }
+  | { status: 'missing'; expected: string; outputPath: string };
+
+/** Compact, dependency-free diff hint: first differing line + a little context. */
+function shortDiff(expected: string, actual: string): string {
+  const expectedLines = expected.split('\n');
+  const actualLines = actual.split('\n');
+  const maxLines = Math.max(expectedLines.length, actualLines.length);
+
+  let firstDiff = -1;
+  let differingCount = 0;
+  for (let i = 0; i < maxLines; i++) {
+    if (expectedLines[i] !== actualLines[i]) {
+      if (firstDiff === -1) firstDiff = i;
+      differingCount++;
+    }
+  }
+
+  if (firstDiff === -1) return '';
+
+  const expectedLine = expectedLines[firstDiff] ?? '(nothing — file has fewer lines)';
+  const actualLine = actualLines[firstDiff] ?? '(nothing — file has fewer lines)';
+
+  return [
+    `schema drift at line ${firstDiff + 1}:`,
+    `  expected: ${expectedLine}`,
+    `  on disk:  ${actualLine}`,
+    `(${differingCount} of ${maxLines} lines differ)`,
+  ].join('\n');
+}
+
+/** Re-render the schema from `sources` and compare it against what's on disk
+ *  at `outputPath`, without writing anything. Pure — safe to call from tests
+ *  or from the CLI action. */
+export async function runGenerateCheck(args: {
+  sources: SchemaSource[];
+  outputPath: string;
+}): Promise<GenerateCheckResult> {
+  const { output: expected } = renderSchema({ sources: args.sources });
+
+  let actual: string;
+  try {
+    actual = await readFile(args.outputPath, 'utf8');
+  } catch {
+    return { status: 'missing', expected, outputPath: args.outputPath };
+  }
+
+  if (actual === expected) return { status: 'match', expected };
+
+  return { status: 'drift', expected, actual, diff: shortDiff(expected, actual) };
+}
+
 export function registerGenerateCommand(cli: CAC) {
   cli
     .command(
@@ -92,10 +147,19 @@ export function registerGenerateCommand(cli: CAC) {
       '--force, --yes',
       'Overwrite an existing schema without prompting (required in CI/non-interactive shells)',
     )
+    .option(
+      '--check',
+      'Verify the generated schema is up to date without writing; exit non-zero on drift (for CI)',
+    )
     .action(
       async (
         configArg?: string,
-        options?: { output?: string; force?: boolean; yes?: boolean },
+        options?: {
+          output?: string;
+          force?: boolean;
+          yes?: boolean;
+          check?: boolean;
+        },
       ) => {
       const cwd = process.cwd();
 
@@ -151,6 +215,24 @@ export function registerGenerateCommand(cli: CAC) {
               .join(', '),
           ),
         );
+      }
+
+      if (options?.check) {
+        const result = await runGenerateCheck({ sources, outputPath });
+        if (result.status === 'match') {
+          console.log(`\n  ${kleur.green('✓')} Schema is up to date.`);
+          return;
+        }
+        if (result.status === 'missing') {
+          console.error(
+            `\n  ${kleur.red('Error:')} No generated schema at ${outputPath}. Run \`createcms generate\`.`,
+          );
+          process.exit(1);
+        }
+        console.error(`\n  ${kleur.red('Error:')} Generated schema is out of date.`);
+        console.error(result.diff);
+        console.error(`\n  Run \`createcms generate\` and commit the result.`);
+        process.exit(1);
       }
 
       const forced = options?.force === true || options?.yes === true;

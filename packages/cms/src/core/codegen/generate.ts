@@ -10,9 +10,22 @@ export type GeneratorConfig = {
   emit?: EmitOptions;
 };
 
+export type RenderedSchema = {
+  schema: ReturnType<typeof mergeSchemaSources>;
+  output: string;
+};
+
+/** Merge + emit the schema string. Pure — no filesystem writes. */
+export function renderSchema(
+  config: Pick<GeneratorConfig, 'sources' | 'emit'>,
+): RenderedSchema {
+  const schema = mergeSchemaSources(config.sources);
+  const output = emitDrizzleSchema(schema, config.emit);
+  return { schema, output };
+}
+
 export async function generateSchema(config: GeneratorConfig) {
-  const merged = mergeSchemaSources(config.sources);
-  const output = emitDrizzleSchema(merged, config.emit);
+  const { schema, output } = renderSchema(config);
   const outputPath = path.resolve(config.outputPath);
 
   await mkdir(path.dirname(outputPath), { recursive: true });
@@ -20,7 +33,7 @@ export async function generateSchema(config: GeneratorConfig) {
 
   return {
     outputPath,
-    schema: merged,
+    schema,
     output,
   };
 }

@@ -26,6 +26,8 @@ npx drizzle-kit generate && npx drizzle-kit migrate
 
 The `drizzle-kit` commands need a `drizzle.config.ts` at your project root — see the [Quickstart](/docs/quickstart#3-generate-and-apply-the-schema) for the one to create.
 
+To catch this in CI, run `npx createcms generate --check` — it fails when the committed schema is stale. See the [CLI reference](/docs/reference/cli).
+
 ## `DATA_RETENTION_NOT_CONFIGURED`
 
 **Cause.** You called `admin.runPruning` without configuring retention.
