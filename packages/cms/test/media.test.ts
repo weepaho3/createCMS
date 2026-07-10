@@ -865,7 +865,7 @@ describe('media.createSignedUpload', () => {
     expect(asset.objectKey).toBe('photo.jpg');
   });
 
-  it('uses the signed URL to upload to S3rver successfully', async () => {
+  it('uses the signed URL to upload to the test S3 fake successfully', async () => {
     const { cms, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
 
