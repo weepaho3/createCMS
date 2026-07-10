@@ -24,6 +24,7 @@ import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
 import { userEnrichment } from '../user/enrichment';
 import { parseTimestamp } from '../utils/parse-timestamp';
+import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
 
 type Branch = typeof branches.$inferSelect;
 
@@ -223,9 +224,9 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
           limit: z.coerce.number().min(1).max(100).optional(),
           offset: z.coerce.number().min(0).optional(),
           search: z.string().optional(),
-          isDeletable: z.coerce.boolean().optional(),
-          hasPublications: z.coerce.boolean().optional(),
-          hasOpenMergeRequests: z.coerce.boolean().optional(),
+          isDeletable: wireBooleanSchema.optional(),
+          hasPublications: wireBooleanSchema.optional(),
+          hasOpenMergeRequests: wireBooleanSchema.optional(),
         }),
         metadata: cmsMeta(
           {
@@ -254,6 +255,19 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
         const limit = input.limit ?? 20;
         const offset = input.offset ?? 0;
 
+        const isDeletable =
+          input.isDeletable === undefined
+            ? undefined
+            : wireBooleanIsTrue(input.isDeletable);
+        const hasPublications =
+          input.hasPublications === undefined
+            ? undefined
+            : wireBooleanIsTrue(input.hasPublications);
+        const hasOpenMergeRequests =
+          input.hasOpenMergeRequests === undefined
+            ? undefined
+            : wireBooleanIsTrue(input.hasOpenMergeRequests);
+
         await requireRootInScope(
           db,
           input.rootId,
@@ -278,25 +292,25 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
             AND (${mergeRequests.sourceBranchId} = ${branches.id} OR ${mergeRequests.targetBranchId} = ${branches.id})
         )`;
 
-        if (input.hasPublications === true) {
+        if (hasPublications === true) {
           conditions.push(hasPubSubquery);
-        } else if (input.hasPublications === false) {
+        } else if (hasPublications === false) {
           conditions.push(sql`NOT ${hasPubSubquery}`);
         }
 
-        if (input.hasOpenMergeRequests === true) {
+        if (hasOpenMergeRequests === true) {
           conditions.push(hasOpenMrSubquery);
-        } else if (input.hasOpenMergeRequests === false) {
+        } else if (hasOpenMergeRequests === false) {
           conditions.push(sql`NOT ${hasOpenMrSubquery}`);
         }
 
-        if (input.isDeletable === true) {
+        if (isDeletable === true) {
           conditions.push(
             sql`${branches.name} != ${branchPolicy.defaultBranchName}`,
           );
           conditions.push(sql`NOT ${hasPubSubquery}`);
           conditions.push(sql`NOT ${hasOpenMrSubquery}`);
-        } else if (input.isDeletable === false) {
+        } else if (isDeletable === false) {
           conditions.push(sql`(
             ${branches.name} = ${branchPolicy.defaultBranchName}
             OR ${hasPubSubquery}

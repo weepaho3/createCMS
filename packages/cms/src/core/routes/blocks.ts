@@ -728,6 +728,11 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           parentRootId: parentFilter,
         } = query;
 
+        const hasPublicationsFilter =
+          hasPublications === undefined
+            ? undefined
+            : wireBooleanIsTrue(hasPublications);
+
         const columnFields: Record<
           string,
           { column: AnyColumn; alias: string }
@@ -773,7 +778,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             );
           }
         }
-        if (hasPublications === true) {
+        if (hasPublicationsFilter === true) {
           conditions.push(
             sql`EXISTS (
               SELECT 1
@@ -781,7 +786,7 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
               WHERE ${publications.rootId} = ${roots.id}
             )`,
           );
-        } else if (hasPublications === false) {
+        } else if (hasPublicationsFilter === false) {
           conditions.push(
             sql`NOT EXISTS (
               SELECT 1
@@ -1185,8 +1190,8 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           rootId: z.string(),
           branchId: z.string(),
           commitId: z.string().optional(),
-          raw: z.coerce.boolean().optional(),
-          includeReferencePreviews: z.coerce.boolean().optional(),
+          raw: wireBooleanSchema.optional(),
+          includeReferencePreviews: wireBooleanSchema.optional(),
         }),
         metadata: cmsMeta(
           {
@@ -1209,8 +1214,11 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
         ),
       },
       async (ctx) => {
-        const { rootId, branchId, commitId, raw, includeReferencePreviews } =
-          ctx.query;
+        const { rootId, branchId, commitId } = ctx.query;
+        const raw = wireBooleanIsTrue(ctx.query.raw);
+        const includeReferencePreviews = wireBooleanIsTrue(
+          ctx.query.includeReferencePreviews,
+        );
 
         // Scope gate: reject a root outside the caller's scope before resolving
         // any commit (closes IDOR via rootId on both resolution paths). It also

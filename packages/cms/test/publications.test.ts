@@ -318,6 +318,41 @@ describe('getPublishedContent', () => {
     });
   });
 
+  it('does not invert raw when the wire string "false" is passed', async () => {
+    // Regression guard for the z.coerce.boolean() wire trap: over HTTP a
+    // client serializes booleans to strings, and `Boolean('false') === true`.
+    // The string 'false' must NOT skip variable substitution.
+    const { cms } = await setupTestCMS();
+
+    await cms.api.variables.createVariable({
+      body: { key: 'brandName', value: 'Toerbo' },
+    });
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/raw-wire', properties: { title: '{{brandName}} Home' } },
+    });
+
+    await publishApprovedBranch(cms, {
+      rootId: root.rootId,
+      branchId: root.branchId,
+      publishedBy: 'user-1',
+    });
+
+    const resolved = await cms.api.pages.getPublishedContent({
+      query: { rootId: root.rootId, raw: 'false' as unknown as boolean },
+    });
+    expect(resolved.variants[0].tree.properties).toEqual({
+      title: 'Toerbo Home',
+    });
+
+    const raw = await cms.api.pages.getPublishedContent({
+      query: { rootId: root.rootId, raw: 'true' as unknown as boolean },
+    });
+    expect(raw.variants[0].tree.properties).toEqual({
+      title: '{{brandName}} Home',
+    });
+  });
+
   it('returns the published tree when looked up by slug', async () => {
     const { cms } = await setupTestCMS();
 

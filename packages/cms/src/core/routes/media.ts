@@ -43,6 +43,7 @@ import {
   signPutObject,
 } from '../storage/s3/utils';
 import { MEDIA_DEFAULTS } from '../types/s3';
+import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
 
 const MEDIA_META = {
   scope: 'system' as const,
@@ -610,7 +611,7 @@ export function createMediaEndpoints(
             // `folderId: null` could never request unfiled assets over HTTP.
             // A boolean flag coerces cleanly over the wire: `unfiled: true` →
             // `folder_id IS NULL`, and it takes precedence over `folderId`.
-            unfiled: z.coerce.boolean().optional(),
+            unfiled: wireBooleanSchema.optional(),
             status: z.enum(['private', 'public']).optional(),
             search: z.string().optional(),
             limit: z.coerce
@@ -669,7 +670,7 @@ export function createMediaEndpoints(
         // than a `null` folderId (which never survives URL serialization — see
         // the query schema): `unfiled: true` → `folder_id IS NULL`; else a
         // `folderId` string → that folder; else (both omitted) no folder filter.
-        if (unfiled === true) {
+        if (wireBooleanIsTrue(unfiled)) {
           conditions.push(isNull(assets.folderId));
         } else if (folderId !== undefined) {
           conditions.push(eq(assets.folderId, folderId));
@@ -843,7 +844,7 @@ export function createMediaEndpoints(
         query: z.object({
           format: z.enum(['webp', 'jpeg', 'png']).optional(),
           w: z.coerce.number().int().positive().optional(),
-          download: z.coerce.boolean().optional(),
+          download: wireBooleanSchema.optional(),
         }),
         metadata: cmsMeta(
           {},
@@ -915,7 +916,7 @@ export function createMediaEndpoints(
         // themselves stay long-cached at the CDN (each object key is unique per
         // version). The 302 is bodyless, so re-resolving it is cheap.
         ctx.responseHeaders.set('cache-control', 'public, max-age=300');
-        if (ctx.query?.download) {
+        if (wireBooleanIsTrue(ctx.query?.download)) {
           ctx.responseHeaders.set(
             'content-disposition',
             `attachment; filename="${asset.slug.replace(/["\\\r\n]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(asset.slug)}`,

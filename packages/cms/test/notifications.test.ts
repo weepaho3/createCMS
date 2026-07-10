@@ -354,6 +354,36 @@ describe('notification endpoints', () => {
     expect(unread.total).toBe(2);
   });
 
+  it('does not invert unreadOnly when the wire string "false" is passed', async () => {
+    // Regression guard for the z.coerce.boolean() wire trap: over HTTP a
+    // client serializes booleans to strings, and `Boolean('false') === true`.
+    // The string 'false' must NOT filter to unread-only.
+    const { cms } = await setupTestCMS({
+      authMiddleware: async () => ({ userId: USER_1 }),
+    });
+
+    await seedNotifications(cms, 3);
+
+    const list = await cms.api.notifications.list();
+    await cms.api.notifications.markNotificationsRead({
+      body: { notificationId: list.notifications[0].id },
+    });
+
+    const all = await cms.api.notifications.list({
+      query: { unreadOnly: 'false' as unknown as boolean },
+    });
+
+    expect(all.notifications).toHaveLength(3);
+    expect(all.total).toBe(3);
+
+    const unread = await cms.api.notifications.list({
+      query: { unreadOnly: 'true' as unknown as boolean },
+    });
+
+    expect(unread.notifications).toHaveLength(2);
+    expect(unread.total).toBe(2);
+  });
+
   it('filters by type', async () => {
     const { cms } = await setupTestCMS({
       authMiddleware: async () => ({ userId: USER_1 }),

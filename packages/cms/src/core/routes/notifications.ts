@@ -13,6 +13,7 @@ import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
 import { userEnrichment } from '../user/enrichment';
 import { parseTimestamp, parseTimestampOrNull } from '../utils/parse-timestamp';
+import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
 
 const notificationTypeSchema = z.enum(notificationTypeEnum.enumValues);
 
@@ -43,7 +44,7 @@ export function createNotificationEndpoints(cmsCtx: CMSProcedureContext) {
         query: z
           .object({
             type: notificationTypeSchema.optional(),
-            unreadOnly: z.coerce.boolean().optional(),
+            unreadOnly: wireBooleanSchema.optional(),
             collection: z.string().optional(),
             limit: z.coerce.number().min(1).max(100).optional(),
             offset: z.coerce.number().min(0).optional(),
@@ -84,7 +85,7 @@ export function createNotificationEndpoints(cmsCtx: CMSProcedureContext) {
         if (input.type) {
           conditions.push(eq(notifications.type, input.type));
         }
-        if (input.unreadOnly) {
+        if (wireBooleanIsTrue(input.unreadOnly)) {
           conditions.push(isNull(notifications.readAt));
         }
         if (input.collection) {

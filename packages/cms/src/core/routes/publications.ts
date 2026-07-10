@@ -58,6 +58,7 @@ import {
 } from '../slug';
 import { userEnrichment } from '../user/enrichment';
 import { parseTimestampOrNull } from '../utils/parse-timestamp';
+import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
 import { loadVariables, substituteVariables } from '../variables';
 import { getApprovalStateForPublication } from './approvals';
 
@@ -1162,21 +1163,21 @@ export function createPublicationEndpoints<
             rootId: z.string(),
             slug: z.string().optional(),
             path: z.string().optional(),
-            raw: z.coerce.boolean().optional(),
+            raw: wireBooleanSchema.optional(),
             branchName: z.string().optional(),
           }),
           z.object({
             rootId: z.string().optional(),
             slug: z.string(),
             path: z.string().optional(),
-            raw: z.coerce.boolean().optional(),
+            raw: wireBooleanSchema.optional(),
             branchName: z.string().optional(),
           }),
           z.object({
             rootId: z.string().optional(),
             slug: z.string().optional(),
             path: z.string(),
-            raw: z.coerce.boolean().optional(),
+            raw: wireBooleanSchema.optional(),
             branchName: z.string().optional(),
           }),
         ]),
@@ -1196,7 +1197,8 @@ export function createPublicationEndpoints<
         ),
       },
       async (ctx) => {
-        const { rootId, slug, path, raw, branchName } = ctx.query;
+        const { rootId, slug, path, branchName } = ctx.query;
+        const raw = wireBooleanIsTrue(ctx.query.raw);
         const scope = ctx.context.scope;
         const slugCfg = def.slug as ResolvedSlugConfig | undefined;
 

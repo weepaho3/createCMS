@@ -470,6 +470,48 @@ describe('media.listAssets', () => {
     expect(inFolder.total).toBe(1);
   });
 
+  it('does not invert unfiled when the wire string "false" is passed', async () => {
+    // Regression guard for the z.coerce.boolean() wire trap: over HTTP a
+    // client serializes booleans to strings, and `Boolean('false') === true`.
+    // The string 'false' must NOT filter to unfiled-only.
+    const { cms, db } = await setupTestCMS();
+
+    const folder = await cms.api.media.createFolder({
+      body: { name: 'Filed' },
+    });
+
+    await db.insert(assets).values({
+      slug: 'in-folder.png',
+      mimeType: 'image/png',
+      size: 1024,
+      objectKey: 'in-folder.png',
+      folderId: folder.folder.id,
+      status: 'private',
+    });
+    await db.insert(assets).values({
+      slug: 'at-root.png',
+      mimeType: 'image/png',
+      size: 2048,
+      objectKey: 'at-root.png',
+      status: 'private',
+    });
+
+    const both = await cms.api.media.listAssets({
+      query: { unfiled: 'false' as unknown as boolean },
+    });
+    expect(both.assets.map((a) => a.slug).sort()).toEqual([
+      'at-root.png',
+      'in-folder.png',
+    ]);
+    expect(both.total).toBe(2);
+
+    const rootLevel = await cms.api.media.listAssets({
+      query: { unfiled: 'true' as unknown as boolean },
+    });
+    expect(rootLevel.assets.map((a) => a.slug)).toEqual(['at-root.png']);
+    expect(rootLevel.total).toBe(1);
+  });
+
   it('omitting folderId (undefined) applies no folder filter', async () => {
     const { cms, db } = await setupTestCMS();
 
@@ -1540,6 +1582,34 @@ describe('variant delivery via asset endpoint', () => {
     expect(res.headers.get('content-disposition')).toContain(
       'attachment; filename="report.pdf"',
     );
+  });
+
+  it('does not invert download when the wire string "false" is passed', async () => {
+    // Regression guard for the z.coerce.boolean() wire trap: over HTTP a
+    // client serializes booleans to strings, and `Boolean('false') === true`.
+    // `?download=false` must NOT set the content-disposition header.
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+
+    const [asset] = await db
+      .insert(assets)
+      .values({
+        slug: 'report.pdf',
+        mimeType: 'application/pdf',
+        size: 10000,
+        objectKey: 'report.pdf',
+        status: 'public',
+      })
+      .returning({ id: assets.id });
+
+    const res = await cms.router.handler(
+      new Request(
+        `http://localhost/api/cms/media/asset/${asset.id}?download=false`,
+      ),
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('content-disposition')).toBeNull();
   });
 });
 

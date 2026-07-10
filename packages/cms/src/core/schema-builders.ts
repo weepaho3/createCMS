@@ -12,6 +12,8 @@ import type {
   ListElementSpec,
 } from './types';
 
+import { wireBooleanSchema } from './utils/wire-boolean';
+
 const ALL_LINK_KINDS: readonly LinkKind[] = [
   'internal',
   'external',
@@ -346,7 +348,7 @@ export function buildListRootsQuerySchema<
       sortDirection: z.enum(['asc', 'desc']).optional(),
       filterField: fieldEnum.optional(),
       filterValue: z.string().optional(),
-      hasPublications: z.coerce.boolean().optional(),
+      hasPublications: wireBooleanSchema.optional(),
       createdAfter: z.coerce.date().optional(),
       createdBefore: z.coerce.date().optional(),
       parentRootId: z.string().optional(),

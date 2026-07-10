@@ -686,6 +686,36 @@ describe('listBranches', () => {
 
     expect(result.branches).toHaveLength(0);
   });
+
+  it('does not invert isDeletable when the wire string "false" is passed', async () => {
+    // Regression guard for the z.coerce.boolean() wire trap: over HTTP a
+    // client serializes booleans to strings, and `Boolean('false') === true`.
+    // The string 'false' must resolve to protected branches, not collapse to
+    // the same result as 'true'.
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    const protectedResult = await cms.api.pages.listBranches({
+      query: { rootId: root.rootId, isDeletable: 'false' as unknown as boolean },
+    });
+    expect(protectedResult.branches.map((b) => b.name)).toEqual(['main']);
+
+    const deletableResult = await cms.api.pages.listBranches({
+      query: { rootId: root.rootId, isDeletable: 'true' as unknown as boolean },
+    });
+    expect(deletableResult.branches.map((b) => b.name)).toEqual(['draft']);
+  });
 });
 
 describe('renameBranch', () => {

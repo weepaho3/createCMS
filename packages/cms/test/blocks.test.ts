@@ -220,6 +220,38 @@ describe('listRoots', () => {
     expect(result.roots[0].hasPublications).toBe(true);
   });
 
+  it('does not invert hasPublications when the wire string "false" is passed', async () => {
+    // Regression guard for the z.coerce.boolean() wire trap: over HTTP a
+    // client serializes booleans to strings, and `Boolean('false') === true`.
+    // The string 'false' means "without publications", NOT "with" — and must
+    // stay distinct from string 'true' and from omitted (both).
+    const { cms } = await setupTestCMS();
+
+    const root1 = await cms.api.pages.createRoot({
+      body: { slug: '/pub', properties: { title: 'Published' } },
+    });
+
+    const root2 = await cms.api.pages.createRoot({
+      body: { slug: '/unpub', properties: { title: 'Unpublished' } },
+    });
+
+    await publishApprovedBranch(cms, {
+      rootId: root1.rootId,
+      branchId: root1.branchId,
+      publishedBy: 'user-1',
+    });
+
+    const withoutPubs = await cms.api.pages.listRoots({
+      query: { hasPublications: 'false' as unknown as boolean },
+    });
+    expect(withoutPubs.roots.map((r) => r.id)).toEqual([root2.rootId]);
+
+    const withPubs = await cms.api.pages.listRoots({
+      query: { hasPublications: 'true' as unknown as boolean },
+    });
+    expect(withPubs.roots.map((r) => r.id)).toEqual([root1.rootId]);
+  });
+
   it('applies hasPublications before count and pagination', async () => {
     const { cms } = await setupTestCMS();
 
@@ -548,6 +580,43 @@ describe('getBlockTree', () => {
     expect(tree.children[1].type).toBe('image');
     expect(tree.children[1].properties).toEqual({ src: '/hero.png' });
     expect(tree.children[1].children).toEqual([]);
+  });
+
+  it('does not invert raw when the wire string "false" is passed', async () => {
+    // Regression guard for the z.coerce.boolean() wire trap: over HTTP a
+    // client serializes booleans to strings, and `Boolean('false') === true`.
+    // The string 'false' must NOT skip variable substitution.
+    const { cms } = await setupTestCMS();
+
+    await cms.api.variables.createVariable({
+      body: { key: 'brandName', value: 'Toerbo' },
+    });
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/page', properties: { title: '{{brandName}} Home' } },
+    });
+
+    const resolved = await cms.api.pages.getBlockTree({
+      query: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        raw: 'false' as unknown as boolean,
+      },
+    });
+    expect((resolved.tree.properties as { title?: unknown }).title).toBe(
+      'Toerbo Home',
+    );
+
+    const raw = await cms.api.pages.getBlockTree({
+      query: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        raw: 'true' as unknown as boolean,
+      },
+    });
+    expect((raw.tree.properties as { title?: unknown }).title).toBe(
+      '{{brandName}} Home',
+    );
   });
 
   it('returns the tree at an older commit when commitId is provided', async () => {
