@@ -447,6 +447,56 @@ describe('multiTenantPlugin — asset isolation', () => {
       .where(eq(assets.id, 'asset-globex-1'));
     expect(globexAsset.status).toBe('private');
   });
+
+  it("rejects a variantOf reference to another tenant's asset", async () => {
+    const { cms, db, setTenant } = await setupMultiTenantTestCMS();
+
+    await db.execute(sql`
+      INSERT INTO cms.assets (id, slug, mime_type, size, object_key, status, tenant_slug)
+      VALUES ('asset-globex-1', 'globex-logo', 'image/png', 1024, 'globex/logo.png', 'private', 'globex')
+    `);
+
+    setTenant('acme');
+    await expect(
+      cms.api.media.createSignedUpload({
+        body: {
+          files: [
+            {
+              name: 'v.png',
+              size: 512,
+              type: 'image/png',
+              variantOf: 'asset-globex-1',
+            },
+          ],
+        },
+      }),
+    ).rejects.toThrow(/not found/i);
+  });
+
+  it('allows a variantOf reference to an asset owned by the active tenant', async () => {
+    const { cms, db, setTenant } = await setupMultiTenantTestCMS();
+
+    await db.execute(sql`
+      INSERT INTO cms.assets (id, slug, mime_type, size, object_key, status, tenant_slug)
+      VALUES ('asset-acme-1', 'acme-logo', 'image/png', 1024, 'acme/logo.png', 'private', 'acme')
+    `);
+
+    setTenant('acme');
+    await expect(
+      cms.api.media.createSignedUpload({
+        body: {
+          files: [
+            {
+              name: 'v.png',
+              size: 512,
+              type: 'image/png',
+              variantOf: 'asset-acme-1',
+            },
+          ],
+        },
+      }),
+    ).resolves.toBeDefined();
+  });
 });
 
 // ============================================================================

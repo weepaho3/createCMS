@@ -47,7 +47,7 @@ export async function prepareAssetUpload(
     await assertFolderExists(db, folderId, scope);
   }
 
-  await validateVariantRefs(db, files);
+  await validateVariantRefs(db, files, scope);
 
   const prepared: {
     id: string;
@@ -169,6 +169,7 @@ export async function assertFolderExists(
 async function validateVariantRefs(
   db: DrizzleInstance,
   files: UploadFileInput[],
+  scope: ResolvedScope,
 ) {
   const variantIds = [
     ...new Set(files.map((file) => file.variantOf).filter(Boolean) as string[]),
@@ -176,10 +177,13 @@ async function validateVariantRefs(
 
   if (variantIds.length === 0) return;
 
+  const conditions: SQL[] = [inArray(assets.id, variantIds)];
+  if (scope.assets?.where) conditions.push(scope.assets.where);
+
   const existing = await db
     .select({ id: assets.id })
     .from(assets)
-    .where(inArray(assets.id, variantIds));
+    .where(and(...conditions));
 
   const existingSet = new Set(existing.map((asset) => asset.id));
   for (const id of variantIds) {
