@@ -1749,7 +1749,11 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
             },
           },
           {
-            permissionResource: 'block',
+            // Mints a NEW top-level root (forced root mode below) — the same
+            // privileged act `createRoot` guards as 'root'. Was 'block',
+            // which let a consumer granting block:create while denying
+            // root:create bypass the deny via duplication.
+            permissionResource: 'root',
             operation: 'create',
             scope: 'collection',
             collection: collectionName,
