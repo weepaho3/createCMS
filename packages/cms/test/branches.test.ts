@@ -1509,4 +1509,554 @@ describe('getRootHistory', () => {
     const allBIds = resultB.commits.map((c) => c.id);
     expect(allAIds.filter((id) => allBIds.includes(id))).toHaveLength(0);
   });
+
+  describe('withChanges', () => {
+    it('omits changes when withChanges is absent or false', async () => {
+      const { cms } = await setupTestCMS();
+
+      const root = await cms.api.pages.createRoot({
+        body: { slug: '/p', properties: { title: 'Page' } },
+      });
+
+      await cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'paragraph',
+          properties: { text: 'Content' },
+        },
+      });
+
+      const absent = await cms.api.pages.getRootHistory({
+        query: { rootId: root.rootId },
+      });
+      for (const commit of absent.commits) {
+        expect(commit.changes).toBeUndefined();
+      }
+
+      const explicit = await cms.api.pages.getRootHistory({
+        query: { rootId: root.rootId, withChanges: false },
+      });
+      for (const commit of explicit.commits) {
+        expect(commit.changes).toBeUndefined();
+      }
+    });
+
+    it('counts every seeded block as added on the initial commit', async () => {
+      const { cms } = await setupTestCMS();
+
+      const root = await cms.api.pages.createRoot({
+        body: { slug: '/p', properties: { title: 'Page' } },
+      });
+
+      const result = await cms.api.pages.getRootHistory({
+        query: { rootId: root.rootId, withChanges: true },
+      });
+
+      // createRoot seeds exactly one block version (the root block itself),
+      // so the initial commit's whole snapshot counts as added.
+      const initial = result.commits.find((c) => c.id === root.commit.id)!;
+      expect(initial.changes).toEqual({ added: 1, modified: 0, deleted: 0 });
+    });
+
+    it('counts an added block plus the parent whose children changed', async () => {
+      const { cms } = await setupTestCMS();
+
+      const root = await cms.api.pages.createRoot({
+        body: { slug: '/p', properties: { title: 'Page' } },
+      });
+
+      const block = await cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'paragraph',
+          properties: { text: 'Content' },
+        },
+      });
+
+      const result = await cms.api.pages.getRootHistory({
+        query: { rootId: root.rootId, withChanges: true },
+      });
+
+      // Version-level semantics: createBlock writes the new block version AND
+      // the parent root's version (its children array gained the block), so
+      // the commit counts added:1 (the block) + modified:1 (the root).
+      const entry = result.commits.find((c) => c.id === block.commit.id)!;
+      expect(entry.changes).toEqual({ added: 1, modified: 1, deleted: 0 });
+    });
+
+    it('counts a deletion as deleted plus the modified parent', async () => {
+      const { cms } = await setupTestCMS();
+
+      const root = await cms.api.pages.createRoot({
+        body: { slug: '/p', properties: { title: 'Page' } },
+      });
+
+      const block = await cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'paragraph',
+          properties: { text: 'Content' },
+        },
+      });
+
+      const del = await cms.api.pages.deleteBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          blockId: block.blockId,
+        },
+      });
+
+      const result = await cms.api.pages.getRootHistory({
+        query: { rootId: root.rootId, withChanges: true },
+      });
+
+      // deleteBlock writes a tombstone version for the block (deleted:1) and
+      // the parent root's version with the child ref removed (modified:1).
+      const entry = result.commits.find((c) => c.id === del.commit.id)!;
+      expect(entry.changes).toEqual({ added: 0, modified: 1, deleted: 1 });
+    });
+
+    it('counts a property edit as modified only', async () => {
+      const { cms } = await setupTestCMS();
+
+      const root = await cms.api.pages.createRoot({
+        body: { slug: '/p', properties: { title: 'Page' } },
+      });
+
+      const block = await cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'paragraph',
+          properties: { text: 'Before' },
+        },
+      });
+
+      const edit = await cms.api.pages.updateBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          blockId: block.blockId,
+          type: 'paragraph',
+          properties: { text: 'After' },
+        },
+      });
+
+      const result = await cms.api.pages.getRootHistory({
+        query: { rootId: root.rootId, withChanges: true },
+      });
+
+      // Only the edited block gets a new version — no parent touched.
+      const entry = result.commits.find((c) => c.id === edit.commit.id)!;
+      expect(entry.changes).toEqual({ added: 0, modified: 1, deleted: 0 });
+    });
+
+    it('carries counts onto later pagination pages', async () => {
+      const { cms } = await setupTestCMS();
+
+      const root = await cms.api.pages.createRoot({
+        body: { slug: '/p', properties: { title: 'Page' } },
+      });
+
+      await cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'paragraph',
+          properties: { text: 'Block 1' },
+        },
+      });
+
+      await cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'paragraph',
+          properties: { text: 'Block 2' },
+        },
+      });
+
+      const page2 = await cms.api.pages.getRootHistory({
+        query: { rootId: root.rootId, limit: 2, offset: 2, withChanges: true },
+      });
+
+      // Page 2 (of 3 commits, newest first) holds only the initial commit.
+      expect(page2.commits).toHaveLength(1);
+      expect(page2.commits[0].id).toBe(root.commit.id);
+      expect(page2.commits[0].changes).toEqual({
+        added: 1,
+        modified: 0,
+        deleted: 0,
+      });
+    });
+
+    it('computes merge-commit counts against the first (target-side) parent', async () => {
+      const { cms } = await setupTestCMS();
+
+      const root = await cms.api.pages.createRoot({
+        body: { slug: '/p', properties: { title: 'Page' } },
+      });
+
+      const blockA = await cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'paragraph',
+          properties: { text: 'Block A' },
+        },
+      });
+
+      const blockB = await cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'paragraph',
+          properties: { text: 'Block B' },
+        },
+      });
+
+      const draft = await cms.api.pages.createBranch({
+        body: {
+          rootId: root.rootId,
+          name: 'draft',
+          sourceBranchId: root.branchId,
+        },
+      });
+
+      // Diverge: edit Block A on draft
+      await cms.api.pages.updateBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: draft.branch.id,
+          blockId: blockA.blockId,
+          type: 'paragraph',
+          properties: { text: 'Block A (draft)' },
+        },
+      });
+
+      // Diverge: edit Block B on main — the EDIT-divergence variant. (This
+      // used to be the only workable variant: buildMergedSnapshot dropped
+      // blocks the target ADDED after the branch point. That is fixed — the
+      // delete-vs-edit exclusion is now gated on a live base version — and the
+      // ADD-divergence variant is covered by the next test; both are kept.)
+      await cms.api.pages.updateBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          blockId: blockB.blockId,
+          type: 'paragraph',
+          properties: { text: 'Block B (main)' },
+        },
+      });
+
+      const mr = await cms.api.pages.createMergeRequest({
+        body: {
+          sourceBranchId: draft.branch.id,
+          targetBranchId: root.branchId,
+          title: 'Test MR',
+          createdBy: 'user-1',
+        },
+      });
+
+      await requestAndApproveMerge(cms, mr.mergeRequest.id);
+
+      const mergeResult = await cms.api.pages.executeMerge({
+        body: {
+          mergeRequestId: mr.mergeRequest.id,
+          mergedBy: 'user-1',
+        },
+      });
+
+      const result = await cms.api.pages.getRootHistory({
+        query: { rootId: root.rootId, withChanges: true },
+      });
+
+      const mergeCommit = result.commits.find(
+        (c) => c.id === mergeResult.commit.id,
+      )!;
+      expect(mergeCommit).toBeDefined();
+      expect(mergeCommit.type).toBe('merge');
+      // Diffed against parent_commit_id (the target/main-side parent): the
+      // merge landed the draft edit of Block A on main — Block B (with the
+      // main-side edit) and the root already existed there with the same
+      // versions.
+      expect(mergeCommit.changes).toEqual({ added: 0, modified: 1, deleted: 0 });
+    });
+
+    it('computes merge-commit counts when the target diverged by adding a block', async () => {
+      // ADD-divergence variant of the previous test: main ADDS Block B after
+      // the branch point instead of editing a pre-branch block. Before
+      // buildMergedSnapshot gated its delete-vs-edit exclusion on a live base
+      // version, the merge dropped Block B from the merged snapshot, so it
+      // leaked into these counts as a spurious deletion (and vanished from
+      // the tree).
+      const { cms } = await setupTestCMS();
+
+      const root = await cms.api.pages.createRoot({
+        body: { slug: '/p', properties: { title: 'Page' } },
+      });
+
+      const blockA = await cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'paragraph',
+          properties: { text: 'Block A' },
+        },
+      });
+
+      const draft = await cms.api.pages.createBranch({
+        body: {
+          rootId: root.rootId,
+          name: 'draft',
+          sourceBranchId: root.branchId,
+        },
+      });
+
+      // Diverge: edit Block A on draft (property-only).
+      await cms.api.pages.updateBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: draft.branch.id,
+          blockId: blockA.blockId,
+          type: 'paragraph',
+          properties: { text: 'Block A (draft)' },
+        },
+      });
+
+      // Diverge: ADD Block B on main after the branch point.
+      const blockB = await cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'paragraph',
+          properties: { text: 'Block B (added on main)' },
+        },
+      });
+
+      const mr = await cms.api.pages.createMergeRequest({
+        body: {
+          sourceBranchId: draft.branch.id,
+          targetBranchId: root.branchId,
+          title: 'Test MR',
+          createdBy: 'user-1',
+        },
+      });
+
+      await requestAndApproveMerge(cms, mr.mergeRequest.id);
+
+      const mergeResult = await cms.api.pages.executeMerge({
+        body: {
+          mergeRequestId: mr.mergeRequest.id,
+          mergedBy: 'user-1',
+        },
+      });
+
+      const result = await cms.api.pages.getRootHistory({
+        query: { rootId: root.rootId, withChanges: true },
+      });
+
+      const mergeCommit = result.commits.find(
+        (c) => c.id === mergeResult.commit.id,
+      )!;
+      expect(mergeCommit).toBeDefined();
+      expect(mergeCommit.type).toBe('merge');
+      // Diffed against the target-side parent, which already held Block B and
+      // the root version listing it: the merge landed only the draft edit of
+      // Block A. Block B must NOT read as a deletion.
+      expect(mergeCommit.changes).toEqual({ added: 0, modified: 1, deleted: 0 });
+
+      // And Block B is still in the merged tree.
+      const { tree } = await cms.api.pages.getBlockTree({
+        query: { rootId: root.rootId, branchId: root.branchId },
+      });
+      const survivor = tree.children.find(
+        (c: any) => c.blockId === blockB.blockId,
+      );
+      expect(survivor).toBeDefined();
+      expect((survivor!.properties as { text: string }).text).toBe(
+        'Block B (added on main)',
+      );
+    });
+
+    it('counts a merge-landed deletion as deleted', async () => {
+      const { cms } = await setupTestCMS();
+
+      const root = await cms.api.pages.createRoot({
+        body: { slug: '/p', properties: { title: 'Page' } },
+      });
+
+      const blockA = await cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'paragraph',
+          properties: { text: 'Block A' },
+        },
+      });
+
+      const blockB = await cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'paragraph',
+          properties: { text: 'Block B' },
+        },
+      });
+
+      const draft = await cms.api.pages.createBranch({
+        body: {
+          rootId: root.rootId,
+          name: 'draft',
+          sourceBranchId: root.branchId,
+        },
+      });
+
+      // The whole point of the merge: land a deletion on main.
+      await cms.api.pages.deleteBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: draft.branch.id,
+          blockId: blockA.blockId,
+        },
+      });
+
+      // Diverge main with a property edit that does NOT touch the root block,
+      // so the merge is a real 3-way merge (not a fast-forward) without a
+      // conflict on the root's children.
+      await cms.api.pages.updateBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          blockId: blockB.blockId,
+          type: 'paragraph',
+          properties: { text: 'Block B (main)' },
+        },
+      });
+
+      const mr = await cms.api.pages.createMergeRequest({
+        body: {
+          sourceBranchId: draft.branch.id,
+          targetBranchId: root.branchId,
+          title: 'Land deletion',
+          createdBy: 'user-1',
+        },
+      });
+
+      await requestAndApproveMerge(cms, mr.mergeRequest.id);
+
+      const mergeResult = await cms.api.pages.executeMerge({
+        body: {
+          mergeRequestId: mr.mergeRequest.id,
+          mergedBy: 'user-1',
+        },
+      });
+
+      const result = await cms.api.pages.getRootHistory({
+        query: { rootId: root.rootId, withChanges: true },
+      });
+
+      const mergeCommit = result.commits.find(
+        (c) => c.id === mergeResult.commit.id,
+      )!;
+      expect(mergeCommit.type).toBe('merge');
+      // The merged snapshot EXCLUDES the deleted block instead of carrying a
+      // tombstone (buildMergedSnapshot), so the deletion shows up only as the
+      // block being ABSENT from the merge commit vs live in the target-side
+      // parent — it must still count as deleted. The root is modified (its
+      // children lost Block A on draft); Block B kept the target's version.
+      expect(mergeCommit.changes).toEqual({ added: 0, modified: 1, deleted: 1 });
+    });
+
+    it('counts blocks dropped by a revert as deleted', async () => {
+      const { cms } = await setupTestCMS();
+
+      const root = await cms.api.pages.createRoot({
+        body: { slug: '/p', properties: { title: 'Page' } },
+      });
+
+      await cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'paragraph',
+          properties: { text: 'Content' },
+        },
+      });
+
+      const revert = await cms.api.pages.revertBranch({
+        body: {
+          branchId: root.branchId,
+          targetCommitId: root.commit.id,
+          createdBy: 'user-1',
+        },
+      });
+
+      const result = await cms.api.pages.getRootHistory({
+        query: { rootId: root.rootId, withChanges: true },
+      });
+
+      // The revert snapshot is exactly the target commit's map — the block
+      // created after that commit is simply ABSENT, not tombstoned. Absent in
+      // the revert while live in the parent must count as deleted; the root
+      // block reverts to its pre-block version (modified).
+      const entry = result.commits.find((c) => c.id === revert.commit.id)!;
+      expect(entry.changes).toEqual({ added: 0, modified: 1, deleted: 1 });
+    });
+
+    it('counts blocks restored by reverting past an earlier revert as added', async () => {
+      const { cms } = await setupTestCMS();
+
+      const root = await cms.api.pages.createRoot({
+        body: { slug: '/p', properties: { title: 'Page' } },
+      });
+
+      const block = await cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'paragraph',
+          properties: { text: 'Content' },
+        },
+      });
+
+      // First revert to the initial commit: the branch head's snapshot now
+      // LACKS the block id entirely (no tombstone carried forward).
+      await cms.api.pages.revertBranch({
+        body: { branchId: root.branchId, targetCommitId: root.commit.id },
+      });
+
+      // Revert forward again to the commit that had the block. Relative to
+      // its absence-based parent snapshot the block re-appears — the
+      // re-introduction counts as added (plus the root's version change).
+      const restore = await cms.api.pages.revertBranch({
+        body: { branchId: root.branchId, targetCommitId: block.commit.id },
+      });
+
+      const result = await cms.api.pages.getRootHistory({
+        query: { rootId: root.rootId, withChanges: true },
+      });
+
+      const entry = result.commits.find((c) => c.id === restore.commit.id)!;
+      expect(entry.changes).toEqual({ added: 1, modified: 1, deleted: 0 });
+    });
+  });
 });

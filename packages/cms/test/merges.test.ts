@@ -12,8 +12,48 @@ import {
   mergeConflicts,
   mergeRequests,
 } from '../src/schema';
+import {
+  allowAnonymous,
+  createCMS,
+  defineCollection,
+  defineCollections,
+} from '../src/index';
 import { setupTestCMS } from '../src/test-utils/cms';
+import { setupTestDB } from '../src/test-utils/db';
+import { DUMMY_MEDIA_CONFIG, pages } from '../src/test-utils/fixtures';
 import { requestAndApproveMerge } from '../src/test-utils/helpers';
+
+/**
+ * Second collection for cross-collection scope tests: a commit that lives in
+ * `posts` must read as not-found from a `pages` endpoint.
+ */
+const posts = defineCollection({
+  label: 'Posts',
+  description: 'Blog posts (cross-collection scope fixture)',
+  slug: { enabled: true, prefix: '/posts' },
+  root: {
+    properties: {
+      title: {
+        type: 'string',
+        label: 'Title',
+        required: true,
+      },
+    },
+  },
+  blocks: {
+    paragraph: {
+      label: 'Paragraph',
+      description: 'A block of text',
+      properties: {
+        text: {
+          type: 'richText',
+          label: 'Text',
+          required: true,
+        },
+      },
+    },
+  },
+});
 
 // ============================================================================
 // getDiff
@@ -80,13 +120,14 @@ describe('getDiff', () => {
       },
     });
 
-    const addedBlock = result.diff.find((d) => d.blockId === block.blockId);
+    const addedBlock = result.diff!.find((d) => d.blockId === block.blockId);
     expect(addedBlock).toBeDefined();
     expect(addedBlock!.changeTypes).toContain('added');
 
-    const rootEntry = result.diff.find((d) => d.blockId === root.rootId);
-    expect(rootEntry).toBeDefined();
-    expect(rootEntry!.changeTypes).toContain('childrenReordered');
+    // An insertion does not change the relative order of the parent's
+    // surviving children — the root gets NO entry.
+    const rootEntry = result.diff!.find((d) => d.blockId === root.rootId);
+    expect(rootEntry).toBeUndefined();
   });
 
   it('detects a deleted block', async () => {
@@ -129,13 +170,14 @@ describe('getDiff', () => {
       },
     });
 
-    const deletedEntry = result.diff.find((d) => d.blockId === block.blockId);
+    const deletedEntry = result.diff!.find((d) => d.blockId === block.blockId);
     expect(deletedEntry).toBeDefined();
     expect(deletedEntry!.changeTypes).toContain('deleted');
 
-    const rootEntry = result.diff.find((d) => d.blockId === root.rootId);
-    expect(rootEntry).toBeDefined();
-    expect(rootEntry!.changeTypes).toContain('childrenReordered');
+    // A deletion does not change the relative order of the parent's
+    // surviving children — the root gets NO entry.
+    const rootEntry = result.diff!.find((d) => d.blockId === root.rootId);
+    expect(rootEntry).toBeUndefined();
   });
 
   it('detects a modified block', async () => {
@@ -180,7 +222,7 @@ describe('getDiff', () => {
       },
     });
 
-    const modifiedEntry = result.diff.find((d) => d.blockId === block.blockId);
+    const modifiedEntry = result.diff!.find((d) => d.blockId === block.blockId);
     expect(modifiedEntry).toBeDefined();
     expect(modifiedEntry!.changeTypes).toEqual(['modified']);
     expect(modifiedEntry!.sourceVersion!.properties).toEqual({
@@ -253,17 +295,25 @@ describe('getDiff', () => {
       },
     });
 
-    const movedEntry = result.diff.find((d) => d.blockId === child.blockId);
+    const movedEntry = result.diff!.find((d) => d.blockId === child.blockId);
     expect(movedEntry).toBeDefined();
     expect(movedEntry!.changeTypes).toContain('moved');
+    expect(movedEntry!.moved).toEqual({
+      kind: 'reparented',
+      fromParentId: containerA.blockId,
+      fromIndex: 0,
+      toParentId: containerB.blockId,
+      toIndex: 0,
+    });
 
-    const oldParent = result.diff.find((d) => d.blockId === containerA.blockId);
-    expect(oldParent).toBeDefined();
-    expect(oldParent!.changeTypes).toContain('childrenReordered');
-
-    const newParent = result.diff.find((d) => d.blockId === containerB.blockId);
-    expect(newParent).toBeDefined();
-    expect(newParent!.changeTypes).toContain('childrenReordered');
+    // Neither container's surviving children changed relative order — the
+    // reparenting must not cascade a childrenReordered onto either parent.
+    expect(
+      result.diff!.find((d) => d.blockId === containerA.blockId),
+    ).toBeUndefined();
+    expect(
+      result.diff!.find((d) => d.blockId === containerB.blockId),
+    ).toBeUndefined();
   });
 
   it('detects children reordered within the same parent', async () => {
@@ -318,17 +368,25 @@ describe('getDiff', () => {
       },
     });
 
-    const rootEntry = result.diff.find((d) => d.blockId === root.rootId);
+    const rootEntry = result.diff!.find((d) => d.blockId === root.rootId);
     expect(rootEntry).toBeDefined();
     expect(rootEntry!.changeTypes).toContain('childrenReordered');
     expect(rootEntry!.changeTypes).not.toContain('modified');
 
-    const entryA = result.diff.find((d) => d.blockId === blockA.blockId);
-    const entryB = result.diff.find((d) => d.blockId === blockB.blockId);
-    expect(entryA).toBeDefined();
-    expect(entryA!.changeTypes).toContain('moved');
+    // Only B actually moved; A's index shifted passively and gets NO entry.
+    const entryA = result.diff!.find((d) => d.blockId === blockA.blockId);
+    expect(entryA).toBeUndefined();
+
+    const entryB = result.diff!.find((d) => d.blockId === blockB.blockId);
     expect(entryB).toBeDefined();
     expect(entryB!.changeTypes).toContain('moved');
+    expect(entryB!.moved).toEqual({
+      kind: 'reordered',
+      fromParentId: root.rootId,
+      fromIndex: 1,
+      toParentId: root.rootId,
+      toIndex: 0,
+    });
   });
 
   it('detects modified + childrenReordered on the same block', async () => {
@@ -392,10 +450,347 @@ describe('getDiff', () => {
       },
     });
 
-    const rootEntry = result.diff.find((d) => d.blockId === root.rootId);
+    const rootEntry = result.diff!.find((d) => d.blockId === root.rootId);
     expect(rootEntry).toBeDefined();
     expect(rootEntry!.changeTypes).toContain('modified');
     expect(rootEntry!.changeTypes).toContain('childrenReordered');
+  });
+
+  it('produces exactly one entry when a block is inserted before untouched siblings', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    for (const text of ['One', 'Two', 'Three']) {
+      await cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'paragraph',
+          properties: { text },
+        },
+      });
+    }
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    const inserted = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Zero' },
+        position: 0,
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+      },
+    });
+
+    // The three untouched siblings all shifted index, but none of them moved
+    // relative to each other — the added block is the ONLY entry.
+    expect(result.diff).toHaveLength(1);
+    expect(result.diff![0].blockId).toBe(inserted.blockId);
+    expect(result.diff![0].changeTypes).toEqual(['added']);
+    expect(result.summary).toEqual({
+      added: 1,
+      deleted: 0,
+      modified: 0,
+      moved: 0,
+      reordered: 0,
+    });
+  });
+
+  it('reports granular propertyChanges for a root title change', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.updateRoot({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        properties: { title: 'Renamed Page' },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+      },
+    });
+
+    const rootEntry = result.diff!.find((d) => d.blockId === root.rootId);
+    expect(rootEntry).toBeDefined();
+    expect(rootEntry!.changeTypes).toEqual(['modified']);
+    expect(rootEntry!.propertyChanges).toEqual([
+      expect.objectContaining({
+        path: ['title'],
+        kind: 'changed',
+        from: 'Page',
+        to: 'Renamed Page',
+      }),
+    ]);
+  });
+
+  it('reports slugChange on the root entry without marking it modified', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/original', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.updateRoot({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        slug: '/renamed',
+        properties: {},
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+      },
+    });
+
+    const rootEntry = result.diff!.find((d) => d.blockId === root.rootId);
+    expect(rootEntry).toBeDefined();
+    expect(rootEntry!.slugChange).toBeDefined();
+    expect(rootEntry!.slugChange!.to).toContain('renamed');
+    expect(rootEntry!.slugChange!.from).not.toBe(rootEntry!.slugChange!.to);
+    // A slug-only change is NOT a property modification.
+    expect(rootEntry!.changeTypes).not.toContain('modified');
+    expect(result.summary.modified).toBe(0);
+
+    // The reserved draft-slug key must never leak through the version payloads.
+    for (const version of [
+      rootEntry!.sourceVersion,
+      rootEntry!.targetVersion,
+      rootEntry!.baseVersion,
+    ]) {
+      expect(version).not.toBeNull();
+      expect(version!.properties).not.toHaveProperty('__slug');
+    }
+  });
+
+  it('carries word-level textDiff segments for richText property edits', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Hello world today' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: block.blockId,
+        type: 'paragraph',
+        properties: { text: 'Hello brave world today' },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+      },
+    });
+
+    const entry = result.diff!.find((d) => d.blockId === block.blockId);
+    expect(entry).toBeDefined();
+    expect(entry!.changeTypes).toEqual(['modified']);
+
+    const change = entry!.propertyChanges!.find(
+      (p) => p.path.length === 1 && p.path[0] === 'text',
+    );
+    expect(change).toBeDefined();
+    expect(change!.kind).toBe('changed');
+    expect(change!.textDiff).toBeDefined();
+    expect(change!.textDiff!.some((s) => s.type === 'ins')).toBe(true);
+    expect(change!.textDiff!.some((s) => s.type === 'same')).toBe(true);
+  });
+
+  it('returns only the requested representation via view', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'New paragraph' },
+      },
+    });
+
+    const query = {
+      sourceBranchId: draft.branch.id,
+      targetBranchId: root.branchId,
+    };
+
+    const list = await cms.api.pages.getDiff({
+      query: { ...query, view: 'list' as const },
+    });
+    expect(list.diff).not.toBeNull();
+    expect(list.tree).toBeNull();
+
+    const tree = await cms.api.pages.getDiff({
+      query: { ...query, view: 'tree' as const },
+    });
+    expect(tree.diff).toBeNull();
+    expect(tree.tree).not.toBeNull();
+
+    const both = await cms.api.pages.getDiff({ query });
+    expect(both.diff).not.toBeNull();
+    expect(both.tree).not.toBeNull();
+  });
+
+  it('builds an annotated tree with ghost nodes for deleted blocks', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const blocks: { blockId: string }[] = [];
+    for (const text of ['First', 'Second', 'Third']) {
+      blocks.push(
+        await cms.api.pages.createBlock({
+          body: {
+            rootId: root.rootId,
+            branchId: root.branchId,
+            parentBlockId: root.rootId,
+            type: 'paragraph',
+            properties: { text },
+          },
+        }),
+      );
+    }
+    const [first, second, third] = blocks;
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.deleteBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: second.blockId,
+      },
+    });
+
+    const added = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Fourth' },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+      },
+    });
+
+    const tree = result.tree!;
+    expect(tree.type).toBe('root');
+    expect(tree.blockId).toBe(root.rootId);
+    expect(tree.properties).not.toHaveProperty('__slug');
+    expect(tree.diff).toBeUndefined();
+
+    // The deleted block reappears as a ghost at its OLD position.
+    expect(tree.children.map((c) => c.blockId)).toEqual([
+      first.blockId,
+      second.blockId,
+      third.blockId,
+      added.blockId,
+    ]);
+
+    const ghost = tree.children[1];
+    expect(ghost.diff!.changeTypes).toEqual(['deleted']);
+    expect(ghost.properties).toEqual({ text: 'Second' });
+    expect(ghost.children).toEqual([]);
+
+    // Untouched siblings carry no diff; the added block is annotated.
+    expect(tree.children[0].diff).toBeUndefined();
+    expect(tree.children[2].diff).toBeUndefined();
+    expect(tree.children[3].diff!.changeTypes).toEqual(['added']);
   });
 
   it('rejects when a branch does not exist', async () => {
@@ -413,6 +808,1050 @@ describe('getDiff', () => {
         },
       }),
     ).rejects.toThrow(/Branch not found/);
+  });
+
+  it("diffs a commit against its parent as exactly that commit's changes", async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const first = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'First' },
+      },
+    });
+
+    const second = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Second' },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceCommitId: second.commit.id,
+        targetCommitId: first.commit.id,
+      },
+    });
+
+    // The parent IS the common ancestor — the 3-way diff degenerates to the
+    // exact 2-way comparison, i.e. only the second commit's own change.
+    expect(result.diff).toHaveLength(1);
+    expect(result.diff![0].blockId).toBe(second.blockId);
+    expect(result.diff![0].changeTypes).toEqual(['added']);
+    expect(result.sourceCommitId).toBe(second.commit.id);
+    expect(result.targetCommitId).toBe(first.commit.id);
+    expect(result.commonAncestorCommitId).toBe(first.commit.id);
+  });
+
+  it('accepts a mixed sourceBranchId + targetCommitId form', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'New' },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: root.branchId,
+        targetCommitId: root.commit.id,
+      },
+    });
+
+    expect(result.diff).toHaveLength(1);
+    expect(result.diff![0].blockId).toBe(block.blockId);
+    expect(result.diff![0].changeTypes).toEqual(['added']);
+    expect(result.sourceCommitId).toBe(block.commit.id);
+    expect(result.targetCommitId).toBe(root.commit.id);
+    expect(result.commonAncestorCommitId).toBe(root.commit.id);
+  });
+
+  it("diffs a branch against the published branch's live head via targetPublished", async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Live' },
+      },
+    });
+
+    const published = await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: block.blockId,
+        type: 'paragraph',
+        properties: { text: 'Draft edit' },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: { sourceBranchId: draft.branch.id, targetPublished: true },
+    });
+
+    // Only the pending draft edit — the published content is shared history.
+    expect(result.diff).toHaveLength(1);
+    expect(result.diff![0].blockId).toBe(block.blockId);
+    expect(result.diff![0].changeTypes).toEqual(['modified']);
+    expect(result.diff![0].sourceVersion!.properties).toEqual({
+      text: 'Draft edit',
+    });
+    expect(result.diff![0].targetVersion!.properties).toEqual({
+      text: 'Live',
+    });
+    // The target is the published branch's LIVE head — what the published
+    // render serves. Here nothing landed on the branch since the publish, so
+    // it coincides with the publish-time pin.
+    expect(result.targetCommitId).toBe(block.commit.id);
+    expect(result.targetCommitId).toBe(published.publication.commitId);
+    expect(result.commonAncestorCommitId).toBe(block.commit.id);
+  });
+
+  it("diffs against the published branch's live head, not the stale publish-time pin", async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const liveBlock = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Live' },
+      },
+    });
+
+    const published = await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId },
+    });
+
+    // Land another commit on the published branch AFTER the publish. The
+    // published render serves the branch's live head, so this change is
+    // already live even though the publication row still pins the old commit.
+    const liveEdit = await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        blockId: liveBlock.blockId,
+        type: 'paragraph',
+        properties: { text: 'Already live' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    const pendingBlock = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Pending' },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: { sourceBranchId: draft.branch.id, targetPublished: true },
+    });
+
+    // Resolved to the branch's NEW head — not the stale publish-time pin.
+    expect(result.targetCommitId).toBe(liveEdit.commit.id);
+    expect(result.targetCommitId).not.toBe(published.publication.commitId);
+    expect(result.commonAncestorCommitId).toBe(liveEdit.commit.id);
+
+    // Exactly the edits not yet live: the already-live change must NOT
+    // re-report as pending.
+    expect(result.diff).toHaveLength(1);
+    expect(result.diff![0].blockId).toBe(pendingBlock.blockId);
+    expect(result.diff![0].changeTypes).toEqual(['added']);
+
+    // And the published branch itself has nothing pending against its own
+    // live head.
+    const selfDiff = await cms.api.pages.getDiff({
+      query: { sourceBranchId: root.branchId, targetPublished: true },
+    });
+    expect(selfDiff.diff).toEqual([]);
+  });
+
+  it("treats the wire string 'false' for targetPublished as false, keeping a branch target valid", async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'New' },
+      },
+    });
+
+    // Over HTTP, booleans arrive as strings. 'false' must decode to FALSE —
+    // with z.coerce.boolean() it coerced to true and broke the target XOR.
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        targetPublished: 'false' as unknown as boolean,
+      },
+    });
+
+    expect(result.targetCommitId).toBe(root.commit.id);
+    expect(result.diff).toHaveLength(1);
+    expect(result.diff![0].blockId).toBe(block.blockId);
+  });
+
+  it("accepts the wire string 'true' for targetPublished", async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Live' },
+      },
+    });
+
+    await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: block.blockId,
+        type: 'paragraph',
+        properties: { text: 'Draft edit' },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetPublished: 'true' as unknown as boolean,
+      },
+    });
+
+    expect(result.targetCommitId).toBe(block.commit.id);
+    expect(result.diff).toHaveLength(1);
+    expect(result.diff![0].changeTypes).toEqual(['modified']);
+  });
+
+  it("treats the wire string 'false' for withAttribution as false", async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'New' },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        withAttribution: 'false' as unknown as boolean,
+      },
+    });
+
+    const entry = result.diff!.find((d) => d.blockId === block.blockId);
+    expect(entry).not.toHaveProperty('attribution');
+
+    // The 'true' string still enables attribution.
+    const withResult = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        withAttribution: 'true' as unknown as boolean,
+      },
+    });
+    const withEntry = withResult.diff!.find(
+      (d) => d.blockId === block.blockId,
+    );
+    expect(withEntry!.attribution).toBeDefined();
+    expect(withEntry!.attribution!.commitId).toBe(block.commit.id);
+  });
+
+  it('rejects targetPublished when the root has no publication', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    await expect(
+      cms.api.pages.getDiff({
+        query: { sourceBranchId: root.branchId, targetPublished: true },
+      }),
+    ).rejects.toThrow(/publication not found/i);
+  });
+
+  it('rejects when a side provides no ref or more than one', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    // No source ref.
+    await expect(
+      cms.api.pages.getDiff({
+        query: { targetBranchId: root.branchId },
+      }),
+    ).rejects.toThrow();
+
+    // Both source refs.
+    await expect(
+      cms.api.pages.getDiff({
+        query: {
+          sourceBranchId: root.branchId,
+          sourceCommitId: root.commit.id,
+          targetBranchId: root.branchId,
+        },
+      }),
+    ).rejects.toThrow();
+
+    // No target ref.
+    await expect(
+      cms.api.pages.getDiff({
+        query: { sourceBranchId: root.branchId },
+      }),
+    ).rejects.toThrow();
+
+    // Both target refs.
+    await expect(
+      cms.api.pages.getDiff({
+        query: {
+          sourceBranchId: root.branchId,
+          targetCommitId: root.commit.id,
+          targetPublished: true,
+        },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('rejects a commit ref from a different root', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root1 = await cms.api.pages.createRoot({
+      body: { slug: '/root-1', properties: { title: 'Root 1' } },
+    });
+    const root2 = await cms.api.pages.createRoot({
+      body: { slug: '/root-2', properties: { title: 'Root 2' } },
+    });
+
+    await expect(
+      cms.api.pages.getDiff({
+        query: {
+          sourceBranchId: root1.branchId,
+          targetCommitId: root2.commit.id,
+        },
+      }),
+    ).rejects.toThrow(/same root/i);
+  });
+
+  it("rejects a commit id from another collection's root as COMMIT_NOT_FOUND", async () => {
+    const { db } = await setupTestDB();
+    const cms = createCMS({
+      db,
+      media: { ...DUMMY_MEDIA_CONFIG },
+      collections: defineCollections({ pages, posts }),
+      authMiddleware: allowAnonymous(),
+    });
+
+    const pageRoot = await cms.api.pages.createRoot({
+      body: { slug: '/page', properties: { title: 'Page' } },
+    });
+    const postRoot = await cms.api.posts.createRoot({
+      body: { slug: '/other', properties: { title: 'Post' } },
+    });
+
+    // A commit that exists — but under another collection's root — must read
+    // as not found from this collection's endpoint (no content leak), on
+    // either side of the diff.
+    await expect(
+      cms.api.pages.getDiff({
+        query: {
+          sourceBranchId: pageRoot.branchId,
+          targetCommitId: postRoot.commit.id,
+        },
+      }),
+    ).rejects.toThrow(/commit not found/i);
+
+    await expect(
+      cms.api.pages.getDiff({
+        query: {
+          sourceCommitId: postRoot.commit.id,
+          targetBranchId: pageRoot.branchId,
+        },
+      }),
+    ).rejects.toThrow(/commit not found/i);
+  });
+
+  it('rejects a nonexistent commit ref', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    await expect(
+      cms.api.pages.getDiff({
+        query: {
+          sourceCommitId: 'nonexistent',
+          targetBranchId: root.branchId,
+        },
+      }),
+    ).rejects.toThrow(/commit not found/i);
+  });
+
+  it('attributes each entry to the commit that authored it with withAttribution', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Original' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    const edit = await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: block.blockId,
+        type: 'paragraph',
+        properties: { text: 'Edited' },
+      },
+      context: { userId: 'editor-1' },
+    });
+
+    const addition = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Added' },
+      },
+      context: { userId: 'editor-2' },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        withAttribution: true,
+      },
+    });
+
+    const modifiedEntry = result.diff!.find((d) => d.blockId === block.blockId);
+    expect(modifiedEntry!.attribution).toBeDefined();
+    expect(modifiedEntry!.attribution!.commitId).toBe(edit.commit.id);
+    expect(modifiedEntry!.attribution!.changedAt).toBeInstanceOf(Date);
+    expect(modifiedEntry!.attribution!.changedBy).toBe('editor-1');
+
+    const addedEntry = result.diff!.find((d) => d.blockId === addition.blockId);
+    expect(addedEntry!.attribution!.commitId).toBe(addition.commit.id);
+    expect(addedEntry!.attribution!.changedBy).toBe('editor-2');
+
+    // The tree annotations carry the same attribution.
+    const treeAdded = result.tree!.children.find(
+      (c) => c.blockId === addition.blockId,
+    );
+    expect(treeAdded!.diff!.attribution).toEqual(addedEntry!.attribution);
+  });
+
+  it("attributes a pure position move to the new parent's commit", async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const containerA = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container A' },
+      },
+    });
+
+    const containerB = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container B' },
+      },
+    });
+
+    const child = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: containerA.blockId,
+        type: 'paragraph',
+        properties: { text: 'Child' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    const move = await cms.api.pages.moveBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: child.blockId,
+        newParentBlockId: containerB.blockId,
+        newIndex: 0,
+      },
+      context: { userId: 'mover-1' },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        withAttribution: true,
+      },
+    });
+
+    // The moved block's own version is unchanged — the attribution is the
+    // commit that repositioned it under the new parent.
+    const movedEntry = result.diff!.find((d) => d.blockId === child.blockId);
+    expect(movedEntry!.changeTypes).toEqual(['moved']);
+    expect(movedEntry!.attribution!.commitId).toBe(move.commit.id);
+    expect(movedEntry!.attribution!.changedBy).toBe('mover-1');
+  });
+
+  it('attributes a pure move to the MOVE commit even when the new parent was edited afterwards', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const containerA = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container A' },
+      },
+    });
+
+    const containerB = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container B' },
+      },
+    });
+
+    const child = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: containerA.blockId,
+        type: 'paragraph',
+        properties: { text: 'Child' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    const move = await cms.api.pages.moveBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: child.blockId,
+        newParentBlockId: containerB.blockId,
+        newIndex: 0,
+      },
+      context: { userId: 'mover-1' },
+    });
+
+    // Touch the NEW parent again AFTER the move. The parent's current
+    // sourceVersion now belongs to this edit — the moved child must still be
+    // attributed to the MOVE commit, not the last touch.
+    const parentEdit = await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: containerB.blockId,
+        type: 'paragraph',
+        properties: { text: 'Container B (edited)' },
+      },
+      context: { userId: 'editor-2' },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        withAttribution: true,
+      },
+    });
+
+    const movedEntry = result.diff!.find((d) => d.blockId === child.blockId);
+    expect(movedEntry!.changeTypes).toEqual(['moved']);
+    expect(movedEntry!.attribution!.commitId).toBe(move.commit.id);
+    expect(movedEntry!.attribution!.changedBy).toBe('mover-1');
+
+    // The parent's own entry names the edit commit — attribution stays
+    // per-entry honest.
+    const parentEntry = result.diff!.find(
+      (d) => d.blockId === containerB.blockId,
+    );
+    expect(parentEntry!.attribution!.commitId).toBe(parentEdit.commit.id);
+    expect(parentEntry!.attribution!.changedBy).toBe('editor-2');
+  });
+
+  it("attributes a twice-moved block to the SECOND move's commit", async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const containerA = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container A' },
+      },
+    });
+
+    const containerB = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container B' },
+      },
+    });
+
+    const containerC = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container C' },
+      },
+    });
+
+    const child = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: containerA.blockId,
+        type: 'paragraph',
+        properties: { text: 'Child' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.moveBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: child.blockId,
+        newParentBlockId: containerB.blockId,
+        newIndex: 0,
+      },
+      context: { userId: 'mover-1' },
+    });
+
+    const secondMove = await cms.api.pages.moveBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: child.blockId,
+        newParentBlockId: containerC.blockId,
+        newIndex: 0,
+      },
+      context: { userId: 'mover-2' },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        withAttribution: true,
+      },
+    });
+
+    const movedEntry = result.diff!.find((d) => d.blockId === child.blockId);
+    expect(movedEntry!.changeTypes).toEqual(['moved']);
+    expect(movedEntry!.moved!.toParentId).toBe(containerC.blockId);
+    // Multiple moves → the LATEST repositioning commit wins.
+    expect(movedEntry!.attribution!.commitId).toBe(secondMove.commit.id);
+    expect(movedEntry!.attribution!.changedBy).toBe('mover-2');
+  });
+
+  it('omits attribution for a pure move that landed via a merge', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const containerA = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container A' },
+      },
+    });
+
+    const containerB = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container B' },
+      },
+    });
+
+    const child = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: containerA.blockId,
+        type: 'paragraph',
+        properties: { text: 'Child' },
+      },
+    });
+
+    const mover = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'mover',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    const receiver = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'receiver',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    // The move happens on the mover branch...
+    await cms.api.pages.moveBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: mover.branch.id,
+        blockId: child.blockId,
+        newParentBlockId: containerB.blockId,
+        newIndex: 0,
+      },
+      context: { userId: 'mover-1' },
+    });
+
+    // ...while the receiver diverges with an unrelated commit, so the merge
+    // below produces a real merge commit (no fast-forward) and the move
+    // commit stays OFF the receiver's first-parent chain.
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: receiver.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Unrelated' },
+      },
+    });
+
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        sourceBranchId: mover.branch.id,
+        targetBranchId: receiver.branch.id,
+        title: 'Merge the move',
+        createdBy: 'user-1',
+      },
+    });
+    await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequest.id },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: receiver.branch.id,
+        targetBranchId: root.branchId,
+        withAttribution: true,
+      },
+    });
+
+    // The move is visible in the diff, but its authoring commit is not
+    // derivable from the receiver's first-parent history — attribution is
+    // omitted rather than guessed.
+    const movedEntry = result.diff!.find((d) => d.blockId === child.blockId);
+    expect(movedEntry).toBeDefined();
+    expect(movedEntry!.changeTypes).toContain('moved');
+    expect(movedEntry).not.toHaveProperty('attribution');
+  });
+
+  it('gives entries authored by the same commit their own attribution objects', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const a = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'A' },
+      },
+    });
+
+    const b = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'B' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    // One batch commit editing BOTH blocks.
+    const batch = await cms.api.pages.updateBlocks({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        tree: {
+          blockId: root.rootId,
+          type: 'pages',
+          properties: { title: 'Page' },
+          children: [
+            {
+              blockId: a.blockId,
+              type: 'paragraph',
+              properties: { text: 'A updated' },
+              children: [],
+            },
+            {
+              blockId: b.blockId,
+              type: 'paragraph',
+              properties: { text: 'B updated' },
+              children: [],
+            },
+          ],
+        },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        withAttribution: true,
+      },
+    });
+
+    const entryA = result.diff!.find((d) => d.blockId === a.blockId);
+    const entryB = result.diff!.find((d) => d.blockId === b.blockId);
+    expect(entryA!.attribution!.commitId).toBe(batch.commit.id);
+    expect(entryB!.attribution!.commitId).toBe(batch.commit.id);
+    expect(entryA!.attribution).toEqual(entryB!.attribution);
+    // Same commit, but each entry owns its attribution object — mutating one
+    // must not bleed into the other.
+    expect(entryA!.attribution).not.toBe(entryB!.attribution);
+  });
+
+  it('omits attribution when withAttribution is not set', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'New' },
+      },
+    });
+
+    const result = await cms.api.pages.getDiff({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+      },
+    });
+
+    const entry = result.diff!.find((d) => d.blockId === block.blockId);
+    expect(entry).not.toHaveProperty('attribution');
+
+    const treeNode = result.tree!.children.find(
+      (c) => c.blockId === block.blockId,
+    );
+    expect(treeNode!.diff).not.toHaveProperty('attribution');
   });
 });
 
@@ -1654,7 +3093,7 @@ describe('executeMerge', () => {
       },
     });
 
-    const block = await cms.api.pages.createBlock({
+    await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
         branchId: draft.branch.id,
@@ -2270,6 +3709,409 @@ describe('executeMerge', () => {
       .from(blockVersions)
       .where(eq(blockVersions.id, snapC!.blockVersionId));
     expect(versionC.properties).toEqual({ text: 'C unchanged' });
+  });
+});
+
+// ============================================================================
+// executeMerge — one-side additions survive a three-way merge
+// ============================================================================
+
+// Regression tests for buildMergedSnapshot's delete-vs-edit exclusion: a block
+// with NO live version at the common ancestor is NEW on whichever side carries
+// it. The exclusion used to read "absent on the other side" as "the other side
+// deleted it" and silently dropped one-side additions whenever the three-way
+// path ran (diverged target). It is now gated on a LIVE base version.
+describe('executeMerge — one-side additions survive a three-way merge', () => {
+  it('keeps a block the target added after the branch point', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/target-add', properties: { title: 'Page' } },
+    });
+
+    const blockA = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Block A' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    // Target (main) diverges by ADDING block B after the branch point.
+    const blockB = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Block B (added on main)' },
+      },
+    });
+
+    // Source edits block A's properties only — the root's children are
+    // untouched on the draft, so nothing conflicts, but the target HAS
+    // diverged: the merge must take the real three-way path.
+    await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: blockA.blockId,
+        type: 'paragraph',
+        properties: { text: 'Block A (draft edit)' },
+      },
+    });
+
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        title: 'Test MR',
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        createdBy: 'user-1',
+      },
+    });
+    expect(mr.hasConflicts).toBe(false);
+
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
+
+    const result = await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequest.id, mergedBy: 'user-1' },
+    });
+    expect(result.fastForward).toBe(false);
+
+    const { tree } = await cms.api.pages.getBlockTree({
+      query: { rootId: root.rootId, branchId: root.branchId },
+    });
+
+    // Both the source edit AND the target-side addition must survive.
+    const mergedA = tree.children.find(
+      (c: any) => c.blockId === blockA.blockId,
+    );
+    expect(mergedA).toBeDefined();
+    expect((mergedA!.properties as { text: string }).text).toBe(
+      'Block A (draft edit)',
+    );
+
+    const mergedB = tree.children.find(
+      (c: any) => c.blockId === blockB.blockId,
+    );
+    expect(mergedB).toBeDefined();
+    expect((mergedB!.properties as { text: string }).text).toBe(
+      'Block B (added on main)',
+    );
+  });
+
+  it('keeps a block the source added when the target diverged', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/source-add', properties: { title: 'Page' } },
+    });
+
+    const blockA = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Block A' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    // Source adds block C.
+    const blockC = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Block C (added on draft)' },
+      },
+    });
+
+    // Diverge the TARGET with a property edit of block A — deliberately not a
+    // structural change, so the root's children stay conflict-free. The
+    // un-diverged variant is masked by the fast-forward shortcut (the merged
+    // snapshot is copied wholesale from the source); only a diverged target
+    // sends a source-side addition through buildMergedSnapshot.
+    await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        blockId: blockA.blockId,
+        type: 'paragraph',
+        properties: { text: 'Block A (main edit)' },
+      },
+    });
+
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        title: 'Test MR',
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        createdBy: 'user-1',
+      },
+    });
+    expect(mr.hasConflicts).toBe(false);
+
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
+
+    const result = await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequest.id, mergedBy: 'user-1' },
+    });
+    expect(result.fastForward).toBe(false);
+
+    const { tree } = await cms.api.pages.getBlockTree({
+      query: { rootId: root.rootId, branchId: root.branchId },
+    });
+
+    // The source-side addition survives with its content...
+    const mergedC = tree.children.find(
+      (c: any) => c.blockId === blockC.blockId,
+    );
+    expect(mergedC).toBeDefined();
+    expect((mergedC!.properties as { text: string }).text).toBe(
+      'Block C (added on draft)',
+    );
+
+    // ...and the target-side edit of block A landed too.
+    const mergedA = tree.children.find(
+      (c: any) => c.blockId === blockA.blockId,
+    );
+    expect(mergedA).toBeDefined();
+    expect((mergedA!.properties as { text: string }).text).toBe(
+      'Block A (main edit)',
+    );
+  });
+
+  it('keeps additions from both sides when they land under different parents', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/both-add', properties: { title: 'Page' } },
+    });
+
+    // Two pre-existing containers (paragraph has allowChildren: true).
+    const container1 = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container 1' },
+      },
+    });
+
+    const container2 = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Container 2' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    // Each side adds its child under a DIFFERENT container, so each container's
+    // version changes on exactly one side and nothing conflicts. (Additions
+    // under the SAME parent are out of scope here: both sides would rewrite
+    // that parent's children — a legitimate conflict whose resolution can
+    // orphan one addition, the documented orphan case in buildMergedSnapshot.)
+    const draftChild = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: container1.blockId,
+        type: 'paragraph',
+        properties: { text: 'Draft child' },
+      },
+    });
+
+    const mainChild = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: container2.blockId,
+        type: 'paragraph',
+        properties: { text: 'Main child' },
+      },
+    });
+
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        title: 'Test MR',
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        createdBy: 'user-1',
+      },
+    });
+    expect(mr.hasConflicts).toBe(false);
+
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
+
+    const result = await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequest.id, mergedBy: 'user-1' },
+    });
+    expect(result.fastForward).toBe(false);
+
+    const { tree } = await cms.api.pages.getBlockTree({
+      query: { rootId: root.rootId, branchId: root.branchId },
+    });
+
+    const mergedContainer1 = tree.children.find(
+      (c: any) => c.blockId === container1.blockId,
+    );
+    expect(mergedContainer1).toBeDefined();
+    const mergedDraftChild = mergedContainer1!.children.find(
+      (c: any) => c.blockId === draftChild.blockId,
+    );
+    expect(mergedDraftChild).toBeDefined();
+    expect((mergedDraftChild!.properties as { text: string }).text).toBe(
+      'Draft child',
+    );
+
+    const mergedContainer2 = tree.children.find(
+      (c: any) => c.blockId === container2.blockId,
+    );
+    expect(mergedContainer2).toBeDefined();
+    const mergedMainChild = mergedContainer2!.children.find(
+      (c: any) => c.blockId === mainChild.blockId,
+    );
+    expect(mergedMainChild).toBeDefined();
+    expect((mergedMainChild!.properties as { text: string }).text).toBe(
+      'Main child',
+    );
+  });
+
+  it('still drops the block when a delete-vs-edit conflict is resolved to the deletion', async () => {
+    // Guard the guard: the live-base gate must NOT weaken the genuine
+    // delete-vs-edit path. Block A WAS live at the common ancestor, so the
+    // draft's deletion vs main's edit is a real conflict, and resolving it to
+    // the source (the deletion) must remove A from the merged tree.
+    const { cms, db } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/del-vs-edit', properties: { title: 'Page' } },
+    });
+
+    const blockA = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Block A' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    // Source DELETES block A; target EDITS it.
+    await cms.api.pages.deleteBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: blockA.blockId,
+      },
+    });
+
+    await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        blockId: blockA.blockId,
+        type: 'paragraph',
+        properties: { text: 'Block A (edited on main)' },
+      },
+    });
+
+    // The delete-vs-edit pair is still detected as a conflict.
+    const check = await cms.api.pages.checkConflicts({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+      },
+    });
+    expect(check.hasConflicts).toBe(true);
+    expect(
+      check.conflicts.find((c: any) => c.blockId === blockA.blockId),
+    ).toBeDefined();
+
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        title: 'Test MR',
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        createdBy: 'user-1',
+      },
+    });
+    expect(mr.hasConflicts).toBe(true);
+
+    const dbConflicts = await db
+      .select()
+      .from(mergeConflicts)
+      .where(eq(mergeConflicts.mergeRequestId, mr.mergeRequest.id));
+    const conflict = dbConflicts.find((c) => c.blockId === blockA.blockId);
+    expect(conflict).toBeDefined();
+
+    // Resolve to SOURCE — the deletion wins.
+    await cms.api.pages.applyConflictResolutions({
+      body: {
+        mergeRequestId: mr.mergeRequest.id,
+        resolutions: [
+          {
+            conflictId: conflict!.id,
+            resolution: 'source',
+            resolvedBy: 'user-1',
+          },
+        ],
+      },
+    });
+
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
+
+    const result = await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequest.id, mergedBy: 'user-1' },
+    });
+    expect(result.fastForward).toBe(false);
+
+    const { tree } = await cms.api.pages.getBlockTree({
+      query: { rootId: root.rootId, branchId: root.branchId },
+    });
+    expect(
+      tree.children.find((c: any) => c.blockId === blockA.blockId),
+    ).toBeUndefined();
   });
 });
 

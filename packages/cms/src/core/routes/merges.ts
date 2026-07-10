@@ -1,7 +1,16 @@
-import { and, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  eq,
+  ilike,
+  inArray,
+  isNull,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 import * as z from 'zod';
 
-import type { NotificationInput } from '../notifications/types';
 import type {
   CollectionWithName,
   CMSProcedureContext,
@@ -10,10 +19,14 @@ import type {
   MergeRequestListItem,
   RootSummary,
 } from '../types';
+import type { DrizzleInstance } from '../types/drizzle';
+
+import type { BlockChange, ChangeAttribution } from '../diff/types';
 
 import { fetchCommitSummary } from '../blocks/commit-writer';
 import {
   loadBlocksAtCommit,
+  ROOT_SLUG_PROP,
   type ReconstructedBlock,
 } from '../blocks/reconstruct-snapshot';
 import { approvalGatePasses, resolveBranchPolicy } from '../branch-policy';
@@ -25,15 +38,22 @@ import {
   commits,
   mergeConflicts,
   mergeRequests,
+  publications,
   roots,
 } from '../db/schema.generated';
+import { buildAnnotatedTree } from '../diff/annotated-tree';
+import { classifyChanges } from '../diff/classify';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
 import { withNotifications } from '../notifications/service';
 import { batchFetchRoots } from '../root/batch-fetch';
 import { buildMergeBlockVersionInputSchema } from '../schema-builders';
-import { userEnrichment } from '../user/enrichment';
+import { userEnrichment, type UserEnrichment } from '../user/enrichment';
 import { parseTimestamp } from '../utils/parse-timestamp';
+import {
+  wireBooleanIsTrue,
+  wireBooleanSchema,
+} from '../utils/wire-boolean';
 import { getApprovalStateForMergeRequest } from './approvals';
 import {
   findCommonAncestor,
@@ -42,153 +62,284 @@ import {
   loadOpenMergeRequest,
 } from './merge-context';
 
-const changeTypeEnum = z.enum([
-  'added',
-  'deleted',
-  'modified',
-  'moved',
-  'childrenReordered',
-]);
-
-type ChangeType = z.infer<typeof changeTypeEnum>;
-
 const conflictResolutionSchema = z.enum(['source', 'target', 'manual']);
-
-type ParentInfo = { parentId: string; index: number };
-
-function buildParentMap(
-  blocks: Map<string, ReconstructedBlock>,
-): Map<string, ParentInfo> {
-  const parentOf = new Map<string, ParentInfo>();
-  for (const block of blocks.values()) {
-    if (block.deleted) continue;
-    for (let i = 0; i < block.children.length; i++) {
-      parentOf.set(block.children[i], { parentId: block.blockId, index: i });
-    }
-  }
-  return parentOf;
-}
-
-function childrenEqual(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
-}
-
-function propertiesEqual(
-  a: Record<string, unknown>,
-  b: Record<string, unknown>,
-): boolean {
-  const keysA = Object.keys(a);
-  const keysB = Object.keys(b);
-  if (keysA.length !== keysB.length) return false;
-  for (const key of keysA) {
-    const valA = a[key];
-    const valB = b[key];
-    if (
-      typeof valA === 'object' &&
-      valA !== null &&
-      typeof valB === 'object' &&
-      valB !== null
-    ) {
-      if (
-        !propertiesEqual(
-          valA as Record<string, unknown>,
-          valB as Record<string, unknown>,
-        )
-      ) {
-        return false;
-      }
-    } else if (valA !== valB) {
-      return false;
-    }
-  }
-  return true;
-}
 
 function isUniqueViolation(err: unknown, constraint: string): boolean {
   const pgErr = err as { code?: string; constraint?: string };
   return pgErr.code === '23505' && !!pgErr.constraint?.includes(constraint);
 }
 
-function classifyChanges(
-  baseBlocks: Map<string, ReconstructedBlock>,
-  sourceBlocks: Map<string, ReconstructedBlock>,
-  targetBlocks: Map<string, ReconstructedBlock>,
-) {
-  const baseParentOf = buildParentMap(baseBlocks);
-  const sourceParentOf = buildParentMap(sourceBlocks);
+/**
+ * Clones a change entry with the reserved draft-slug key stripped from every
+ * version payload's properties. Applied to the ROOT entry of the flat diff
+ * list so `__slug` never leaks to consumers — the clones keep the underlying
+ * snapshot maps unmutated.
+ */
+function withoutRootSlug(change: BlockChange): BlockChange {
+  const strip = (
+    version: ReconstructedBlock | null,
+  ): ReconstructedBlock | null => {
+    if (!version || !(ROOT_SLUG_PROP in version.properties)) return version;
+    const { [ROOT_SLUG_PROP]: _omit, ...properties } = version.properties;
+    return { ...version, properties };
+  };
+  return {
+    ...change,
+    sourceVersion: strip(change.sourceVersion),
+    targetVersion: strip(change.targetVersion),
+    baseVersion: strip(change.baseVersion),
+  };
+}
 
-  const allBlockIds = new Set<string>();
-  for (const id of baseBlocks.keys()) allBlockIds.add(id);
-  for (const id of sourceBlocks.keys()) allBlockIds.add(id);
+/** One side of a diff query resolved to a concrete commit within its root. */
+type DiffRef = { commitId: string; rootId: string };
 
-  const diff: Array<{
-    blockId: string;
-    changeTypes: ChangeType[];
-    sourceVersion: ReconstructedBlock | null;
-    targetVersion: ReconstructedBlock | null;
-    baseVersion: ReconstructedBlock | null;
-  }> = [];
+/**
+ * Resolves one side of a diff query to a commit + root. A branch ref resolves
+ * to the branch's head commit; a commit ref is used as-is. Both lookups join
+ * the owning root scoped to the collection AND the caller's root scope
+ * (`scopeWhere`) — the same IDOR boundary `loadBranchPair` applies for branch
+ * pairs — so an out-of-scope branch or commit reads as not found.
+ */
+async function resolveDiffRef(
+  exec: DrizzleInstance,
+  opts: {
+    branchId: string | undefined;
+    commitId: string | undefined;
+    collectionName: string;
+    scopeWhere: SQL | undefined;
+  },
+): Promise<DiffRef> {
+  if (opts.branchId) {
+    const [branch] = await exec
+      .select({ rootId: branches.rootId, headCommitId: branches.headCommitId })
+      .from(branches)
+      .innerJoin(roots, eq(roots.id, branches.rootId))
+      .where(
+        and(
+          eq(branches.id, opts.branchId),
+          eq(roots.collection, opts.collectionName),
+          opts.scopeWhere,
+        ),
+      );
+    if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
+    return { commitId: branch.headCommitId, rootId: branch.rootId };
+  }
 
-  for (const blockId of allBlockIds) {
-    const base = baseBlocks.get(blockId);
-    const source = sourceBlocks.get(blockId);
-    const changeTypes: ChangeType[] = [];
+  const [commit] = await exec
+    .select({ id: commits.id, rootId: commits.rootId })
+    .from(commits)
+    .innerJoin(roots, eq(roots.id, commits.rootId))
+    .where(
+      and(
+        eq(commits.id, opts.commitId!),
+        eq(roots.collection, opts.collectionName),
+        opts.scopeWhere,
+      ),
+    );
+  if (!commit) throw new CMSError('COMMIT_NOT_FOUND');
+  return { commitId: commit.id, rootId: commit.rootId };
+}
 
-    const baseAlive = base && !base.deleted;
-    const sourceAlive = source && !source.deleted;
+/**
+ * Resolves a root's CURRENT publication to the published branch's LIVE head
+ * commit — what the published-render path actually serves:
+ * `getPublishedContent` reads `branches.headCommitId`, NOT the
+ * `publications.commitId` pinned at publish time. The pin goes stale the
+ * moment the published branch advances (e.g. a merge-to-live, the sanctioned
+ * way to update a protected published branch), and diffing against it would
+ * re-report already-live changes as pending. The publication pick stays
+ * getPublishedContent's deterministic one: oldest publish first, branchId as
+ * the stable tiebreak. The caller passes a rootId taken from an already
+ * scope-checked ref, so no separate scope guard is needed here.
+ */
+async function resolvePublishedRef(
+  exec: DrizzleInstance,
+  rootId: string,
+): Promise<DiffRef> {
+  const [publication] = await exec
+    .select({ headCommitId: branches.headCommitId })
+    .from(publications)
+    .innerJoin(branches, eq(branches.id, publications.branchId))
+    .where(eq(publications.rootId, rootId))
+    .orderBy(asc(publications.publishedAt), asc(publications.branchId))
+    .limit(1);
+  if (!publication) throw new CMSError('PUBLICATION_NOT_FOUND');
+  return { commitId: publication.headCommitId, rootId };
+}
 
-    if (sourceAlive && !baseAlive) changeTypes.push('added');
-    if (baseAlive && !sourceAlive) changeTypes.push('deleted');
-
-    if (baseAlive && sourceAlive) {
-      if (
-        source.type !== base.type ||
-        !propertiesEqual(source.properties, base.properties)
-      ) {
-        changeTypes.push('modified');
-      }
+/**
+ * Attaches {@link ChangeAttribution} to each change entry whose authoring
+ * commit is derivable (mutates the entries in place, BEFORE the annotated
+ * tree is built so its annotations carry the attribution too):
+ *
+ * - Own version changed (`sourceVersion.blockVersionId` differs from the
+ *   base's — added / deleted / modified / childrenReordered / slug change):
+ *   the commit that created `sourceVersion`.
+ * - Pure position move (own version unchanged): the commit that actually
+ *   repositioned the block under its new parent. The new parent's CURRENT
+ *   `sourceVersion` is NOT trusted (it names whatever touched the parent
+ *   last, e.g. a later property edit); instead the new parent's versions on
+ *   the source side's first-parent commit chain (common ancestor → source
+ *   head) are walked oldest-to-newest, and the entry is attributed to the
+ *   LAST version where the moved child's presence/index in `children`
+ *   changed relative to the previous version — the actual move commit
+ *   (multiple moves → the latest one). When no such version exists on that
+ *   chain (e.g. the move landed via a merge's source side), attribution is
+ *   OMITTED rather than guessed.
+ *
+ * Batched: one `blockVersions` id → commitId query, one recursive-CTE chain
+ * walk covering ALL affected new parents, and one `commits` query (the latter
+ * carrying the optional `withUser` enrichment onto `changedByUser`). Every
+ * entry receives its OWN attribution object — never shared across entries of
+ * the same commit — so per-entry consumers (and the aliased tree annotations)
+ * can be mutated independently.
+ */
+async function attachAttribution(
+  exec: DrizzleInstance,
+  enrich: UserEnrichment,
+  changes: BlockChange[],
+  opts: {
+    baseBlocks: Map<string, ReconstructedBlock>;
+    sourceCommitId: string;
+    ancestorCommitId: string;
+    rootId: string;
+  },
+): Promise<void> {
+  // Rule 1: own version changed → the commit that created `sourceVersion`.
+  const versionIdByBlockId = new Map<string, string>();
+  // Rule 2: pure position moves, grouped by the NEW parent whose version
+  // history carries the move.
+  const pureMovesByParentId = new Map<string, BlockChange[]>();
+  for (const change of changes) {
+    const { sourceVersion, baseVersion } = change;
+    if (
+      sourceVersion &&
+      sourceVersion.blockVersionId !== baseVersion?.blockVersionId
+    ) {
+      versionIdByBlockId.set(change.blockId, sourceVersion.blockVersionId);
+      continue;
     }
-
-    if (baseAlive && sourceAlive) {
-      const baseParent = baseParentOf.get(blockId);
-      const sourceParent = sourceParentOf.get(blockId);
-
-      if (baseParent && sourceParent) {
-        if (
-          baseParent.parentId !== sourceParent.parentId ||
-          baseParent.index !== sourceParent.index
-        ) {
-          changeTypes.push('moved');
-        }
-      } else if (baseParent && !sourceParent) {
-        changeTypes.push('moved');
-      } else if (!baseParent && sourceParent) {
-        changeTypes.push('moved');
-      }
-    }
-
-    if (baseAlive && sourceAlive) {
-      if (!childrenEqual(base.children, source.children)) {
-        changeTypes.push('childrenReordered');
-      }
-    }
-
-    if (changeTypes.length > 0) {
-      diff.push({
-        blockId,
-        changeTypes,
-        sourceVersion: source ?? null,
-        targetVersion: targetBlocks.get(blockId) ?? null,
-        baseVersion: base ?? null,
-      });
+    const toParentId = change.moved?.toParentId;
+    if (toParentId) {
+      const group = pureMovesByParentId.get(toParentId) ?? [];
+      group.push(change);
+      pureMovesByParentId.set(toParentId, group);
     }
   }
 
-  return diff;
+  const commitIdByBlockId = new Map<string, string>();
+
+  if (versionIdByBlockId.size > 0) {
+    const versionRows = await exec
+      .select({ id: blockVersions.id, commitId: blockVersions.commitId })
+      .from(blockVersions)
+      .where(
+        inArray(blockVersions.id, [...new Set(versionIdByBlockId.values())]),
+      );
+    const commitIdByVersionId = new Map(
+      versionRows.map((row) => [row.id, row.commitId]),
+    );
+    for (const [blockId, versionId] of versionIdByBlockId) {
+      const commitId = commitIdByVersionId.get(versionId);
+      if (commitId) commitIdByBlockId.set(blockId, commitId);
+    }
+  }
+
+  if (pureMovesByParentId.size > 0) {
+    // All versions the affected new parents committed on the source side's
+    // first-parent chain (ancestor excluded — its state is the baseline),
+    // oldest first. The chain mirrors reconstruct-snapshot's recursive CTE:
+    // follow `parent_commit_id` only, never a merge's source side.
+    const walkResult = await exec.execute(sql`
+      WITH RECURSIVE chain AS (
+        SELECT id, parent_commit_id, 0 AS depth
+        FROM cms.commits
+        WHERE id = ${opts.sourceCommitId} AND root_id = ${opts.rootId}
+        UNION ALL
+        SELECT c.id, c.parent_commit_id, chain.depth + 1
+        FROM cms.commits c
+        JOIN chain ON c.id = chain.parent_commit_id
+        WHERE chain.id <> ${opts.ancestorCommitId} AND chain.depth < 10000
+      )
+      SELECT
+        cms.block_versions.block_id,
+        cms.block_versions.commit_id,
+        cms.block_versions.children,
+        chain.depth
+      FROM cms.block_versions
+      JOIN chain ON chain.id = cms.block_versions.commit_id
+      WHERE ${inArray(blockVersions.blockId, [...pureMovesByParentId.keys()])}
+        AND cms.block_versions.root_id = ${opts.rootId}
+        AND chain.id <> ${opts.ancestorCommitId}
+      ORDER BY chain.depth DESC
+    `);
+
+    const versionsByParentId = new Map<
+      string,
+      Array<{ commitId: string; children: string[] }>
+    >();
+    for (const row of walkResult.rows as Array<Record<string, unknown>>) {
+      const parentId = row.block_id as string;
+      const versions = versionsByParentId.get(parentId) ?? [];
+      versions.push({
+        commitId: row.commit_id as string,
+        children: (row.children ?? []) as string[],
+      });
+      versionsByParentId.set(parentId, versions);
+    }
+
+    for (const [parentId, moves] of pureMovesByParentId) {
+      const versions = versionsByParentId.get(parentId);
+      if (!versions) continue; // Not derivable on this chain → omit.
+      const baseChildren = opts.baseBlocks.get(parentId)?.children ?? [];
+      for (const change of moves) {
+        let previousIndex = baseChildren.indexOf(change.blockId);
+        let moveCommitId: string | undefined;
+        for (const version of versions) {
+          const index = version.children.indexOf(change.blockId);
+          if (index !== previousIndex) moveCommitId = version.commitId;
+          previousIndex = index;
+        }
+        if (moveCommitId) commitIdByBlockId.set(change.blockId, moveCommitId);
+      }
+    }
+  }
+
+  if (commitIdByBlockId.size === 0) return;
+
+  const commitIds = [...new Set(commitIdByBlockId.values())];
+  const result = await exec.execute(sql`
+    SELECT
+      cms.commits.id,
+      cms.commits.created_by,
+      cms.commits.created_at
+      ${enrich.select}
+    FROM cms.commits
+    ${enrich.join}
+    WHERE ${inArray(commits.id, commitIds)}
+  `);
+
+  const attributionByCommitId = new Map<string, ChangeAttribution>();
+  for (const row of result.rows as Array<Record<string, unknown>>) {
+    const attribution: ChangeAttribution = {
+      commitId: row.id as string,
+      changedAt: parseTimestamp(row.created_at),
+      changedBy: (row.created_by as string | null) ?? null,
+    };
+    enrich.apply(attribution, row);
+    attributionByCommitId.set(attribution.commitId, attribution);
+  }
+
+  for (const change of changes) {
+    const commitId = commitIdByBlockId.get(change.blockId);
+    const attribution = commitId
+      ? attributionByCommitId.get(commitId)
+      : undefined;
+    // Clone per entry: two entries authored by the same commit must not share
+    // one attribution object.
+    if (attribution) change.attribution = { ...attribution };
+  }
 }
 
 type ConflictEntry = {
@@ -248,7 +399,10 @@ type MergeResolution = {
  *
  * - Blocks that one side deleted while the other left untouched are excluded.
  *   This is correct — the block really is gone — and `assembleBlockTree` simply
- *   drops the now-dangling child reference on its (surviving) parent.
+ *   drops the now-dangling child reference on its (surviving) parent. The
+ *   delete-vs-edit exclusion only applies to blocks that were LIVE at the
+ *   common ancestor: a block with no live base version is NEW on whichever
+ *   side carries it and is kept (absence on the other side is not a deletion).
  * - Any block that BOTH sides changed differently (including delete/modify, as
  *   deleted blocks carry a `deleted: true` version) is a conflict. `executeMerge`
  *   refuses to merge until every such conflict has a resolution (throws
@@ -291,6 +445,11 @@ function buildMergedSnapshot(
 
     const sourceDeleted = !source || source.deleted;
     const targetDeleted = !target || target.deleted;
+    // A block ABSENT from a side is only a deletion when it actually existed
+    // (live) at the common ancestor. A block with no live base version is NEW
+    // on whichever side carries it — "absent on the other side" must not read
+    // as "the other side deleted it", or one-side additions get dropped.
+    const baseAlive = !!base && !base.deleted;
 
     if (resolutionMap.has(blockId)) {
       merged.set(blockId, resolutionMap.get(blockId)!);
@@ -302,8 +461,9 @@ function buildMergedSnapshot(
     if (targetDeleted && !sourceDeleted && sourceVid === baseVid) continue;
 
     if (
-      (sourceDeleted && !targetDeleted && targetVid !== baseVid) ||
-      (targetDeleted && !sourceDeleted && sourceVid !== baseVid)
+      baseAlive &&
+      ((sourceDeleted && !targetDeleted && targetVid !== baseVid) ||
+        (targetDeleted && !sourceDeleted && sourceVid !== baseVid))
     ) {
       continue;
     }
@@ -328,16 +488,6 @@ function buildMergedSnapshot(
       continue;
     }
 
-    if (!base && !target && source && !sourceDeleted && sourceVid) {
-      merged.set(blockId, sourceVid);
-      continue;
-    }
-
-    if (!base && !source && target && !targetDeleted && targetVid) {
-      merged.set(blockId, targetVid);
-      continue;
-    }
-
     if (sourceVid && !sourceDeleted) {
       merged.set(blockId, sourceVid);
     } else if (targetVid && !targetDeleted) {
@@ -358,27 +508,112 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
 
   return {
     /**
-     * Compares two branches and returns a changeset of blocks that differ between source and target.
+     * Compares two refs of one root and returns the base-to-source changeset
+     * in up to two representations: a flat change list (`diff`) and an
+     * annotated render tree (`tree`), selected via `view`.
      *
-     * @param sourceBranchId - The source branch id.
-     * @param targetBranchId - The target branch id.
-     * @returns A diff array (each entry lists changeTypes: added, deleted, modified, moved, childrenReordered) plus commit ids.
-     * @throws BRANCH_NOT_FOUND if either branch does not exist in this collection.
-     * @throws BRANCHES_NOT_SAME_ROOT if the branches are from different roots.
-     * @example await cmsClient.pages.getDiff({ sourceBranchId: 'src-id', targetBranchId: 'tgt-id' })
+     * Each side is a ref: a branch (resolved to its head commit), a commit
+     * (used as-is), or — target only — the root's current publication
+     * (resolved to the published branch's LIVE head commit — exactly what the
+     * published render serves, so a stale publish-time pin never re-reports
+     * already-live changes). The base is the common ancestor of the two
+     * resolved commits; when one commit is an ancestor of the other, the
+     * common ancestor IS that commit and the 3-way diff degenerates to an
+     * exact 2-way comparison (e.g. commit vs. its parent yields exactly that
+     * commit's changes, and a publish preview yields exactly the edits not
+     * yet live).
+     *
+     * Movement is identity-based: a block is `moved` (kind `reparented` or
+     * `reordered`, with its old/new parent and index) only when it actually
+     * moved, and a parent is `childrenReordered` only when the RELATIVE order
+     * of its surviving children changed — insertions and deletions around
+     * untouched siblings produce no cascade. Modified entries carry granular
+     * `propertyChanges` (with word-level `textDiff` segments for richText
+     * properties), and the root entry carries `slugChange` when the versioned
+     * draft slug differs (a slug-only change is not `modified`).
+     *
+     * With `withAttribution: true`, each entry (and its tree annotation)
+     * carries an `attribution` — the commit id, timestamp, and author of the
+     * change, plus `changedByUser` under the `withUser` flag. Attribution
+     * rule: an entry whose own version changed (added / deleted / modified /
+     * childrenReordered / slug change) is attributed to the commit that
+     * created its `sourceVersion`; a pure position move (own version
+     * unchanged) is attributed to the commit that actually repositioned the
+     * block under its new parent (derived by walking the new parent's version
+     * history on the source side's first-parent chain), and is OMITTED when
+     * that commit is not derivable — e.g. the move landed via a merge's
+     * source side.
+     *
+     * Both boolean flags travel strictly on the wire: only `true` / `'true'`
+     * enable them — the HTTP string `'false'` decodes to false (it does NOT
+     * count as a target ref, and does not enable attribution).
+     *
+     * @param sourceBranchId - Source branch ref; exactly one of sourceBranchId or sourceCommitId.
+     * @param sourceCommitId - Source commit ref; exactly one of sourceBranchId or sourceCommitId.
+     * @param targetBranchId - Target branch ref; exactly one of targetBranchId, targetCommitId, or targetPublished.
+     * @param targetCommitId - Target commit ref; exactly one of targetBranchId, targetCommitId, or targetPublished.
+     * @param targetPublished - Target the source root's current publication (the published branch's
+     *   live head); exactly one of targetBranchId, targetCommitId, or targetPublished.
+     * @param view - Which representations to return: 'list', 'tree', or 'both' (default 'both').
+     * @param withAttribution - Attach per-entry commit attribution (default false).
+     * @returns `diff` (flat change list, null when view is 'tree'), `tree` (the source tree
+     *   annotated per node, with deleted blocks re-inserted as ghost nodes at their old
+     *   position; null when view is 'list', and also null — for any view — when the source
+     *   ref deleted the root block itself), a per-changeType `summary`, plus the resolved
+     *   commit ids.
+     * @throws BRANCH_NOT_FOUND if a branch ref does not exist in this collection.
+     * @throws COMMIT_NOT_FOUND if a commit ref does not exist in this collection.
+     * @throws PUBLICATION_NOT_FOUND if targetPublished is set and the source root has no publication.
+     * @throws BRANCHES_NOT_SAME_ROOT if the two refs resolve to different roots.
+     * @example await cmsClient.pages.getDiff({ sourceBranchId: 'src-id', targetBranchId: 'tgt-id', view: 'tree' })
+     * @example
+     * // Publish preview: exactly the edits on the branch that are not yet live.
+     * await cmsClient.pages.getDiff({ sourceBranchId: 'branch-id', targetPublished: true })
      */
     getDiff: createCMSEndpoint(
       `/${collectionName}/getDiff`,
       {
         method: 'GET',
-        query: z.object({
-          sourceBranchId: z.string(),
-          targetBranchId: z.string(),
-        }),
+        query: z
+          .object({
+            sourceBranchId: z.string().optional(),
+            sourceCommitId: z.string().optional(),
+            targetBranchId: z.string().optional(),
+            targetCommitId: z.string().optional(),
+            targetPublished: wireBooleanSchema.optional(),
+            view: z.enum(['list', 'tree', 'both']).optional(),
+            withAttribution: wireBooleanSchema.optional(),
+          })
+          .refine((q) => !!q.sourceBranchId !== !!q.sourceCommitId, {
+            message: 'Provide exactly one of sourceBranchId or sourceCommitId',
+          })
+          .refine(
+            // A decoded-false/absent targetPublished is NOT a ref — so
+            // `targetPublished: false` (or the wire string 'false') alongside
+            // targetBranchId/targetCommitId stays a valid single-ref query.
+            (q) =>
+              [
+                q.targetBranchId,
+                q.targetCommitId,
+                wireBooleanIsTrue(q.targetPublished) || undefined,
+              ].filter((ref) => ref !== undefined).length === 1,
+            {
+              message:
+                'Provide exactly one of targetBranchId, targetCommitId, or targetPublished',
+            },
+          ),
         metadata: cmsMeta(
           {
             $Infer: {
-              query: {} as { sourceBranchId: string; targetBranchId: string },
+              query: {} as {
+                sourceBranchId?: string;
+                sourceCommitId?: string;
+                targetBranchId?: string;
+                targetCommitId?: string;
+                targetPublished?: boolean;
+                view?: 'list' | 'tree' | 'both';
+                withAttribution?: boolean;
+              },
             },
           },
           {
@@ -390,28 +625,80 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
         ),
       },
       async (ctx) => {
-        const { sourceBranchId, targetBranchId } = ctx.query;
+        const view = ctx.query.view ?? 'both';
+        const scopeWhere = ctx.context.scope.roots?.where;
 
-        const { sourceBranch, targetBranch } = await loadBranchPair(db, {
-          sourceBranchId,
-          targetBranchId,
+        const source = await resolveDiffRef(db, {
+          branchId: ctx.query.sourceBranchId,
+          commitId: ctx.query.sourceCommitId,
           collectionName,
-          scopeWhere: ctx.context.scope.roots?.where,
+          scopeWhere,
         });
+        const target = wireBooleanIsTrue(ctx.query.targetPublished)
+          ? await resolvePublishedRef(db, source.rootId)
+          : await resolveDiffRef(db, {
+              branchId: ctx.query.targetBranchId,
+              commitId: ctx.query.targetCommitId,
+              collectionName,
+              scopeWhere,
+            });
+
+        if (source.rootId !== target.rootId) {
+          throw new CMSError('BRANCHES_NOT_SAME_ROOT', {
+            message: 'Source and target refs must belong to the same root',
+          });
+        }
 
         const { ancestor, baseSnapshot, sourceSnapshot, targetSnapshot } =
-          await loadMergeSnapshots(db, sourceBranch, targetBranch);
+          await loadMergeSnapshots(
+            db,
+            { rootId: source.rootId, headCommitId: source.commitId },
+            { rootId: target.rootId, headCommitId: target.commitId },
+          );
 
-        const diff = classifyChanges(
-          baseSnapshot.blocks,
-          sourceSnapshot.blocks,
-          targetSnapshot.blocks,
-        );
+        const rootId = source.rootId;
+        const { changes, summary } = classifyChanges({
+          baseBlocks: baseSnapshot.blocks,
+          sourceBlocks: sourceSnapshot.blocks,
+          targetBlocks: targetSnapshot.blocks,
+          rootId,
+          blockDefs: def.blocks,
+          rootProperties: def.root.properties,
+        });
+
+        if (wireBooleanIsTrue(ctx.query.withAttribution)) {
+          const enrich = userEnrichment(ctx, {
+            cmsColumn: 'cms.commits.created_by',
+            alias: 'commit_user',
+            outputKey: 'changedByUser',
+          });
+          await attachAttribution(db, enrich, changes, {
+            baseBlocks: baseSnapshot.blocks,
+            sourceCommitId: source.commitId,
+            ancestorCommitId: ancestor.commonAncestorCommitId,
+            rootId,
+          });
+        }
 
         return {
-          diff,
-          sourceCommitId: sourceBranch.headCommitId,
-          targetCommitId: targetBranch.headCommitId,
+          diff:
+            view !== 'tree'
+              ? changes.map((change) =>
+                  change.blockId === rootId ? withoutRootSlug(change) : change,
+                )
+              : null,
+          tree:
+            view !== 'list'
+              ? buildAnnotatedTree({
+                  sourceBlocks: sourceSnapshot.blocks,
+                  baseBlocks: baseSnapshot.blocks,
+                  changes,
+                  rootId,
+                })
+              : null,
+          summary,
+          sourceCommitId: source.commitId,
+          targetCommitId: target.commitId,
           commonAncestorCommitId: ancestor.commonAncestorCommitId,
         };
       },
@@ -1393,10 +1680,10 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
 
             // Build the merge commit's snapshot. When the target has NOT diverged
             // (we only reach here because a merge commit was forced), the result
-            // is exactly the source tree — take it directly. The three-way
-            // `buildMergedSnapshot` must NOT run here: its "block absent on the
-            // target means deleted" heuristic would drop blocks the source added,
-            // since an un-diverged target legitimately lacks them.
+            // is exactly the source tree — take it directly as a shortcut.
+            // (`buildMergedSnapshot` would produce the same answer now that its
+            // delete-vs-edit exclusion is gated on a live base version, but the
+            // wholesale copy skips loading two extra snapshots.)
             let mergedVersionMap: Map<string, string>;
             if (canFastForward) {
               const sourceSnapshot = await loadBlocksAtCommit(

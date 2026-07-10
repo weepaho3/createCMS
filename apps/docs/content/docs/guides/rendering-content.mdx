@@ -81,6 +81,10 @@ const Content = createContentRenderer(collections.pages, {
 
 Both renderers resolve embedded references the same way; `createContentRenderer` differs only by accepting a partial map.
 
+### Render a review diff
+
+The same map also renders a merge-request diff: `getDiff` returns an annotated copy of the draft tree, and both renderers take an opt-in `diff` prop that wraps changed blocks in styleable `data-diff` markers. See [Review changes visually](/docs/guides/visual-diff).
+
 ### Choosing a variant
 
 `getPublishedContent` returns one entry per published branch in `variants` (see [Publishing](/docs/concepts/publishing)). With no A/B test there is exactly one, so `variants[0]` is the page. With the A/B testing plugin, resolve the visitor's branch and select it with `pickVariant`:

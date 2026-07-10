@@ -16,6 +16,18 @@ export { newId, registerIdPrefix } from './utils/nanoid';
 export type { IdPrefix } from './utils/nanoid';
 export type { BlockTreeNode } from './core/blocks/reconstruct-snapshot';
 export type {
+  ChangeType,
+  TextDiffSegment,
+  PropertyChange,
+  PropertyChangeKind,
+  MovedInfo,
+  BlockChange,
+  DiffSummary,
+  BlockDiffAnnotation,
+  AnnotatedBlockTreeNode,
+  DiffView,
+} from './core/diff/types';
+export type {
   CMSClientInstance,
   CMSClientOptions,
   CMSClientPlugin,
