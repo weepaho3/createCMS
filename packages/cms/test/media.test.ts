@@ -928,6 +928,58 @@ describe('media.uploadAssets', () => {
 
     expect(result.assets).toHaveLength(2);
   });
+
+  it('rejects an oversized real buffer even when the declared size is small', async () => {
+    const { cms, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+
+    const big = new Uint8Array(5 * 1024 * 1024); // 5 MB > 4 MB default maxFileSize
+
+    await expect(
+      cms.api.media.uploadAssets({
+        body: {
+          files: [
+            {
+              name: 'big.png',
+              size: 10,
+              type: 'image/png',
+              buffer: new Blob([big]),
+            },
+          ],
+        },
+      }),
+    ).rejects.toThrow(/maximum is/i);
+  });
+
+  it('persists the measured byte length, not the declared size', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+
+    const pixel = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ]); // 8-byte PNG signature
+
+    const result = await cms.api.media.uploadAssets({
+      body: {
+        files: [
+          {
+            name: 'measured.png',
+            size: 999999,
+            type: 'image/png',
+            buffer: new Blob([pixel]),
+          },
+        ],
+      },
+    });
+
+    const [asset] = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.id, result.assets[0].id));
+
+    expect(asset.size).toBe(pixel.byteLength); // 8, not 999999
+    expect(result.assets[0].size).toBe(pixel.byteLength);
+  });
 });
 
 // ============================================================================
@@ -1011,15 +1063,20 @@ describe('upload validation', () => {
     const { cms, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
 
+    // The declared `size` is not trusted on this path (see "persists the
+    // measured byte length" below) — the buffer itself must exceed the
+    // limit for this to reject.
+    const huge = new Uint8Array(5 * 1024 * 1024); // 5 MB > 4 MB default maxFileSize
+
     await expect(
       cms.api.media.uploadAssets({
         body: {
           files: [
             {
               name: 'huge.bin',
-              size: 1024 * 1024 * 100,
+              size: huge.byteLength,
               type: 'application/octet-stream',
-              buffer: new Blob([]),
+              buffer: new Blob([huge]),
             },
           ],
         },

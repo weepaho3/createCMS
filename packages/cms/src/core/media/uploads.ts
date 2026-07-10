@@ -112,6 +112,15 @@ export async function generateUniqueSlug(
   return null;
 }
 
+/**
+ * True byte length of an upload buffer. The client-declared `size` is not
+ * trusted on server buffer-upload paths — the actual bytes are what we validate
+ * against `maxFileSize` and persist.
+ */
+export function measureBufferSize(buffer: Blob | ArrayBuffer): number {
+  return buffer instanceof Blob ? buffer.size : buffer.byteLength;
+}
+
 export function validateFiles(
   files: UploadFileInput[],
   config: {

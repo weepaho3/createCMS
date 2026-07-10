@@ -28,6 +28,7 @@ import { CMSError, errorMessages } from '../errors';
 import {
   assertFolderExists,
   generateUniqueSlug,
+  measureBufferSize,
   prepareAssetUpload,
   validateFiles,
 } from '../media/uploads';
@@ -1374,9 +1375,14 @@ export function createMediaEndpoints(
       },
       async (ctx) => {
         const { userId: actor, scope } = ctx.context;
+        // Measure the real bytes; the client-declared `size` is not trusted here.
+        const files = ctx.body.files.map((f) => ({
+          ...f,
+          size: measureBufferSize(f.buffer),
+        }));
         const { folderId, prepared } = await prepareAssetUpload(db, {
           actor,
-          files: ctx.body.files,
+          files,
           folderId: ctx.body.folderId,
           maxFiles,
           maxFileSize,
@@ -1387,13 +1393,13 @@ export function createMediaEndpoints(
         // We hold the bytes here: verify each declared image type against the
         // buffer's magic bytes and reject a spoof (e.g. SVG-as-PNG) BEFORE any
         // DB row or S3 object is written.
-        for (const file of ctx.body.files) {
+        for (const file of files) {
           await assertDeclaredTypeMatchesBytes(file.name, file.type, file.buffer);
         }
 
         const client = getS3Client();
 
-        const filesByIndex = new Map(ctx.body.files.map((f, i) => [i, f]));
+        const filesByIndex = new Map(files.map((f, i) => [i, f]));
 
         const inserted = await scopedInsertBatch(
           db,
@@ -1504,6 +1510,8 @@ export function createMediaEndpoints(
       async (ctx) => {
         const { scope } = ctx.context;
         const { assetId, file } = ctx.body;
+        // Measure the real bytes; the client-declared `size` is not trusted here.
+        const measuredSize = measureBufferSize(file.buffer);
 
         // 1. Load the target (live, in scope).
         const loadConditions: SQL[] = [
@@ -1532,7 +1540,10 @@ export function createMediaEndpoints(
         // 3. Validate the new file (size / declared mime type), then sniff its
         //    magic bytes — we hold the buffer, so reject a declared-image spoof
         //    (e.g. SVG-as-PNG stored XSS) before minting a new object.
-        validateFiles([file], { maxFiles, maxFileSize, allowedMimeTypes });
+        validateFiles(
+          [{ name: file.name, size: measuredSize, type: file.type }],
+          { maxFiles, maxFileSize, allowedMimeTypes },
+        );
         await assertDeclaredTypeMatchesBytes(file.name, file.type, file.buffer);
 
         // 4. Mint a NEW slug/objectKey from the new file (cache-bust).
@@ -1550,7 +1561,7 @@ export function createMediaEndpoints(
             key: objectKey,
             body: file.buffer,
             contentType: file.type,
-            contentLength: file.size,
+            contentLength: measuredSize,
             acl: 'public-read',
           });
         } catch (err) {
@@ -1580,7 +1591,7 @@ export function createMediaEndpoints(
               slug,
               objectKey,
               mimeType: file.type,
-              size: file.size,
+              size: measuredSize,
               updatedAt: now,
             })
             .where(and(...updateConditions))
