@@ -155,36 +155,6 @@ async function collectPluginPruningPlans(
   return planned;
 }
 
-export async function collectRootExecutionPlans(
-  db: DrizzleInstance,
-  cmsCtx: CMSProcedureContext,
-  dataRetention: DataRetentionConfig,
-  plugins: CMSPlugin[],
-): Promise<Map<string, RootPruningExecutionPlan>> {
-  const allRoots = await db.select({ id: roots.id }).from(roots);
-  const plans = new Map<string, RootPruningExecutionPlan>();
-
-  for (const root of allRoots) {
-    const corePlan = await planRootPruning(db, root.id, dataRetention);
-    if (!corePlan) continue;
-
-    const pluginPlans = await collectPluginPruningPlans(
-      db,
-      cmsCtx,
-      dataRetention,
-      plugins,
-      corePlan,
-    );
-
-    plans.set(root.id, {
-      core: corePlan,
-      plugins: pluginPlans,
-    });
-  }
-
-  return plans;
-}
-
 async function planRootPruning(
   db: DrizzleInstance,
   rootId: string,
