@@ -3763,6 +3763,146 @@ describe('updateBlocks', () => {
       .where(eq(blockVersions.id, rootSnap.blockVersionId));
     expect(rootBv.type).toBe('pages');
   });
+
+  // cms-04 perf: the batch save collects image/reference ids across the WHOLE
+  // diff and validates them with one query per collection instead of one
+  // query pair per block. These tests exercise that batched path directly
+  // (as opposed to the single-block createBlock/updateBlock cms-04 tests
+  // above) to prove the collect-then-validate refactor still enforces the
+  // same existence check across multiple blocks in one updateBlocks call.
+  describe('batched reference-existence check (cms-04 perf)', () => {
+    it('accepts multiple image blocks each pointing at a distinct valid asset id', async () => {
+      const { newId } = await import('../src/utils/nanoid');
+      const { cms, db } = await setupTestCMS();
+
+      const [assetA, assetB, assetC] = await db
+        .insert(assets)
+        .values([
+          {
+            slug: 'a.png',
+            mimeType: 'image/png',
+            size: 1,
+            objectKey: 'a.png',
+          },
+          {
+            slug: 'b.png',
+            mimeType: 'image/png',
+            size: 1,
+            objectKey: 'b.png',
+          },
+          {
+            slug: 'c.png',
+            mimeType: 'image/png',
+            size: 1,
+            objectKey: 'c.png',
+          },
+        ])
+        .returning();
+
+      const root = await cms.api.pages.createRoot({
+        body: { slug: '/batch-img-ok', properties: { title: 'Page' } },
+      });
+
+      const blockA = newId('block');
+      const blockB = newId('block');
+      const blockC = newId('block');
+
+      const result = await cms.api.pages.updateBlocks({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          tree: {
+            blockId: root.rootId,
+            type: 'pages',
+            properties: { title: 'Page' },
+            children: [
+              {
+                blockId: blockA,
+                type: 'image',
+                properties: { src: assetA.id },
+                children: [],
+              },
+              {
+                blockId: blockB,
+                type: 'image',
+                properties: { src: assetB.id },
+                children: [],
+              },
+              {
+                blockId: blockC,
+                type: 'image',
+                properties: { src: assetC.id },
+                children: [],
+              },
+            ],
+          },
+        },
+      });
+
+      expect(result.commit.id).toBeDefined();
+      expect(result.changed).toBe(true);
+
+      const { tree } = await cms.api.pages.getBlockTree({
+        query: { rootId: root.rootId, branchId: root.branchId },
+      });
+
+      const bySrc = tree.children
+        .map((c: any) => c.properties.src)
+        .sort();
+      expect(bySrc).toEqual([assetA.id, assetB.id, assetC.id].sort());
+    });
+
+    it('rejects the batch when one of several image blocks points at a nonexistent asset id, naming that exact id', async () => {
+      const { newId } = await import('../src/utils/nanoid');
+      const { cms, db } = await setupTestCMS();
+
+      const [assetA] = await db
+        .insert(assets)
+        .values({
+          slug: 'ok.png',
+          mimeType: 'image/png',
+          size: 1,
+          objectKey: 'ok.png',
+        })
+        .returning();
+
+      const root = await cms.api.pages.createRoot({
+        body: { slug: '/batch-img-bad', properties: { title: 'Page' } },
+      });
+
+      const missingId = newId('asset');
+
+      await expect(
+        cms.api.pages.updateBlocks({
+          body: {
+            rootId: root.rootId,
+            branchId: root.branchId,
+            tree: {
+              blockId: root.rootId,
+              type: 'pages',
+              properties: { title: 'Page' },
+              children: [
+                {
+                  blockId: newId('block'),
+                  type: 'image',
+                  properties: { src: assetA.id },
+                  children: [],
+                },
+                {
+                  blockId: newId('block'),
+                  type: 'image',
+                  properties: { src: missingId },
+                  children: [],
+                },
+              ],
+            },
+          },
+        }),
+      ).rejects.toThrow(
+        new RegExp(`image asset does not exist: ${missingId}`),
+      );
+    });
+  });
 });
 
 describe('createBlock property defaults (toe-ed-09)', () => {

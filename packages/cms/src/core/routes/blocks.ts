@@ -351,11 +351,16 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
   // this never rejects a value that was never meant to point at a single row.
   // Array values are checked element-wise (list-of-reference, if a plugin adds
   // one). Runs inside the write transaction so the check sees uncommitted rows.
-  async function assertPropertyReferencesExist(
-    tx: DrizzleInstance,
+  // Collect the id-shaped image/reference values from ONE block's properties into
+  // shared accumulators, mapping each collected id back to the blockType it came
+  // from so a later batch validation can name the right block. Mirrors the specs
+  // resolution assertPropertyReferencesExist used to do inline, exactly.
+  function collectPropertyReferences(
     blockType: string,
     properties: Record<string, unknown> | undefined,
-  ): Promise<void> {
+    assetIds: Map<string, string>, // assetId -> owning blockType (first seen wins)
+    refIdsByCollection: Map<string, Map<string, string>>, // collection -> (rootId -> owning blockType)
+  ): void {
     if (!properties) return;
 
     const specs = (
@@ -365,16 +370,15 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
     ) as Record<string, { type: string; collection?: string }> | undefined;
     if (!specs) return;
 
-    const assetIds = new Set<string>();
-    const refIdsByCollection = new Map<string, Set<string>>();
     const addAsset = (v: unknown) => {
-      if (typeof v === 'string' && v.startsWith('ast_')) assetIds.add(v);
+      if (typeof v === 'string' && v.startsWith('ast_') && !assetIds.has(v))
+        assetIds.set(v, blockType);
     };
     const addRef = (targetCollection: string, v: unknown) => {
       if (typeof v === 'string' && v.startsWith('rot_')) {
-        let set = refIdsByCollection.get(targetCollection);
-        if (!set) refIdsByCollection.set(targetCollection, (set = new Set()));
-        set.add(v);
+        let map = refIdsByCollection.get(targetCollection);
+        if (!map) refIdsByCollection.set(targetCollection, (map = new Map()));
+        if (!map.has(v)) map.set(v, blockType);
       }
     };
 
@@ -397,9 +401,19 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
         }
       }
     }
+  }
 
+  // Validate a batch of already-collected image/reference ids against the DB:
+  // ONE asset query (if any assetIds) + ONE roots query per distinct target
+  // collection — instead of one query pair per block. Error message + data
+  // payload are byte-for-byte identical to the previous per-block helper.
+  async function assertCollectedReferencesExist(
+    tx: DrizzleInstance,
+    assetIds: Map<string, string>,
+    refIdsByCollection: Map<string, Map<string, string>>,
+  ): Promise<void> {
     if (assetIds.size > 0) {
-      const ids = [...assetIds];
+      const ids = [...assetIds.keys()];
       const found = await tx
         .select({ id: assets.id })
         .from(assets)
@@ -413,8 +427,8 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
         });
     }
 
-    for (const [targetCollection, idSet] of refIdsByCollection) {
-      const ids = [...idSet];
+    for (const [targetCollection, idMap] of refIdsByCollection) {
+      const ids = [...idMap.keys()];
       const found = await tx
         .select({ id: roots.id })
         .from(roots)
@@ -437,6 +451,22 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           },
         });
     }
+  }
+
+  async function assertPropertyReferencesExist(
+    tx: DrizzleInstance,
+    blockType: string,
+    properties: Record<string, unknown> | undefined,
+  ): Promise<void> {
+    const assetIds = new Map<string, string>();
+    const refIdsByCollection = new Map<string, Map<string, string>>();
+    collectPropertyReferences(
+      blockType,
+      properties,
+      assetIds,
+      refIdsByCollection,
+    );
+    await assertCollectedReferencesExist(tx, assetIds, refIdsByCollection);
   }
 
   // Shared core of `updateBlock` and `updateRoot`: scope-guard, lock the branch,
@@ -2207,11 +2237,25 @@ export function createBlocksEndpoints<TDef extends CollectionWithName>(
           }
 
           // cms-04: validate image/reference ids on every block being written
-          // (created or updated) — the batch save path must not bypass the check
-          // the single create/update handlers enforce.
+          // (created or updated). Collect all ids across the diff first, then
+          // validate with ONE asset query + ONE roots query per distinct
+          // collection — instead of two-plus queries per block serialized
+          // under the branch lock.
+          const batchAssetIds = new Map<string, string>();
+          const batchRefIdsByCollection = new Map<string, Map<string, string>>();
           for (const b of [...diff.created, ...diff.updated]) {
-            await assertPropertyReferencesExist(tx, b.type, b.properties);
+            collectPropertyReferences(
+              b.type,
+              b.properties,
+              batchAssetIds,
+              batchRefIdsByCollection,
+            );
           }
+          await assertCollectedReferencesExist(
+            tx,
+            batchAssetIds,
+            batchRefIdsByCollection,
+          );
 
           const changed: ChangedVersion[] = [
             ...diff.created.map((b) => ({
