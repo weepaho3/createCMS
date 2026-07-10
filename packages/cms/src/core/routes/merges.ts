@@ -54,7 +54,7 @@ import {
   wireBooleanIsTrue,
   wireBooleanSchema,
 } from '../utils/wire-boolean';
-import { getApprovalStateForMergeRequest } from './approvals';
+import { getApprovalStateForMergeRequest } from '../approvals/state';
 import {
   findCommonAncestor,
   loadBranchPair,

@@ -60,7 +60,7 @@ import { userEnrichment } from '../user/enrichment';
 import { parseTimestampOrNull } from '../utils/parse-timestamp';
 import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
 import { loadVariables, substituteVariables } from '../variables';
-import { getApprovalStateForPublication } from './approvals';
+import { getApprovalStateForPublication } from '../approvals/state';
 
 // ============================================================================
 // Reference resolution
