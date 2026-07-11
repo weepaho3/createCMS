@@ -15,24 +15,24 @@ The same methods are available on the [client](/docs/reference/client-api), with
 
 ### `listRoots`
 
-Lists the entries (roots) of a collection. `GET`, input via `query` (all fields optional).
+Lists the entries (roots) of a collection. All query fields are optional.
 
-| Query field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `limit` | `number` | `20` | Page size (1 to 100). |
-| `offset` | `number` | `0` | Rows to skip. |
-| `search` | `string` | | Search term. |
-| `searchField` | column or property | | Field to search. |
-| `sortBy` | column or property | `createdAt` | Sort field. |
-| `sortDirection` | `'asc' \| 'desc'` | `desc` | Sort order. |
-| `filterField` | column or property | | Field to filter. |
-| `filterValue` | `string` | | Filter value. |
-| `hasPublications` | `boolean` | | Only entries with or without publications. |
-| `createdAfter` | `Date` | | Entries created after this time. |
-| `createdBefore` | `Date` | | Entries created before this time. |
-| `parentRootId` | `string` | | Filter by parent entry. |
+<APIMethod method="GET" path="/{collection}/listRoots" resource="root" operation="read" returns="{ roots, total, hasMore }" params={{
+  limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
+  offset: { type: 'number', default: '0', description: 'Rows to skip.' },
+  search: { type: 'string', description: 'Substring to match against the chosen field.' },
+  searchField: { type: 'column | property key', description: 'Field the `search` term matches against.' },
+  sortBy: { type: 'column | property key', default: "'createdAt'", description: 'Field to sort by.' },
+  sortDirection: { type: "'asc' | 'desc'", default: "'desc'", description: 'Sort order.' },
+  filterField: { type: 'column | property key', description: 'Field to filter on.' },
+  filterValue: { type: 'string', description: 'Value the `filterField` must equal.' },
+  hasPublications: { type: 'boolean', description: 'Keep only entries with (or without) a publication.' },
+  createdAfter: { type: 'Date', description: 'Only entries created after this time.' },
+  createdBefore: { type: 'Date', description: 'Only entries created before this time.' },
+  parentRootId: { type: 'string', description: "Filter by parent entry. Pass `'null'` for top-level entries." },
+}} />
 
-Returns `{ roots, total, hasMore }`. Each root has `id`, `createdAt`, `createdBy`, `parentRootId`, `sortOrder`, `slug`, `properties` (typed), `hasPublications`, `publicationCount`, `branchCount`, and `openMergeRequestCount`. `path` (the full ancestor-resolved URL) is present only for slug-enabled collections, and `createdByUser` only when called with `query.withUser`.
+Each root has `id`, `createdAt`, `createdBy`, `parentRootId`, `sortOrder`, `slug`, `properties` (typed), `hasPublications`, `publicationCount`, `branchCount`, and `openMergeRequestCount`. `path` (the full ancestor-resolved URL) is present only for slug-enabled collections, and `createdByUser` only when called with `query.withUser`.
 
 <Callout type="info">
   `search` here does a substring match over the chosen field, which is a sequential scan. It is fine for the bounded, filtered admin listings this endpoint serves. For full-text search across a large corpus, use [`search.query`](/docs/reference/search) instead, which is backed by a `tsvector` GIN index.
@@ -40,16 +40,16 @@ Returns `{ roots, total, hasMore }`. Each root has `id`, `createdAt`, `createdBy
 
 ### `createRoot`
 
-Creates a new entry. `POST`, input via `body`.
+Creates a new entry (root) in the collection.
 
-| Body field | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `properties` | typed root properties | yes if the root has required props | | The root's properties. |
-| `slug` | `string` | no | | Slug for the entry. |
-| `parentRootId` | `string` | no | | Parent entry for nesting. |
-| `message` | `string` | no | `'Initial commit'` | Commit message. |
+<APIMethod method="POST" path="/{collection}/createRoot" resource="root" operation="create" returns="{ commit, rootId, branchId, slug?, path? }" params={{
+  properties: { type: 'typed root properties', required: true, description: "The root's properties, typed from the collection's root definition. Required keys depend on that definition." },
+  slug: { type: 'string', description: 'Slug for the entry.' },
+  parentRootId: { type: 'string', description: 'Parent entry, for nesting.' },
+  message: { type: 'string', default: "'Initial commit'", description: 'Commit message.' },
+}} />
 
-Returns `{ commit, rootId, branchId, slug, path }`. `commit` is the new head as `{ id, message, createdAt, createdBy }` — every commit-producing mutation returns this envelope. `slug` and `path` are the server-normalized values (`path` is present for slug-enabled collections).
+`commit` is the new head as `{ id, message, createdAt, createdBy }` — every commit-producing mutation returns this envelope. `slug` and `path` are the server-normalized values (`path` is present for slug-enabled collections).
 
 ```ts
 const { rootId } = await cms.api.pages.createRoot({
