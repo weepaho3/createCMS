@@ -1,5 +1,5 @@
 ---
-'@createcms/core': patch
+'@createcms/core': minor
 ---
 
 feat(diff): visual diff — precise change classification, property-level detail, and a renderable annotated tree

@@ -1,5 +1,5 @@
 ---
-'@createcms/core': patch
+'@createcms/core': minor
 ---
 
 fix(blocks): guard duplicateRoot as root:create, not block:create
