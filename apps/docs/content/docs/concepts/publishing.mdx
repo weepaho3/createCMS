@@ -24,7 +24,7 @@ Publishing is per branch, not per entry, so a single root can have several branc
 - **A/B tests**: the [A/B testing plugin](/docs/plugins/ab-test) publishes a control branch and one or more variant branches; the client picks which a visitor sees.
 - **Gradual rollout** or **previewing a candidate** alongside the current live version.
 
-With no A/B test there is exactly one published branch, so `variants[0]` is simply the page. The consumer decides which variant to render (see [Render content](/docs/guides/rendering-content)).
+With a single published branch, `variants[0]` is simply the page; publishing more branches (a gradual rollout or an A/B test) is what adds variants. The consumer decides which variant to render (see [Render content](/docs/guides/rendering-content)).
 
 ## Reading published content
 
@@ -35,7 +35,7 @@ const { variants } = await cms.api.pages.getPublishedContent({
   query: { slug: 'welcome' },
 });
 
-// No A/B test → exactly one published branch, so variants[0] is the page.
+// One published branch → variants[0] is the page.
 render(variants[0].tree);
 ```
 

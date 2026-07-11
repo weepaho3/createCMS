@@ -53,7 +53,8 @@ await cms.api.pages.createBlock({
 const { tree } = await cms.api.pages.getBlockTree({
   query: { rootId: 'root_home', branchId: 'br_main' },
 });
-// tree.properties.heading === 'Welcome to Acme'
+// The Hero is the root's first child, so the resolved value lands here:
+// tree.children[0].properties.heading === 'Welcome to Acme'
 ```
 
 ## Knowing where a value is used
