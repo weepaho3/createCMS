@@ -62,6 +62,6 @@ All options are optional; omit a section to skip that step.
 | `convert` | `format` | `'webp'` | | Target format (only WebP is supported). |
 | `convert` | `storeOriginal` | `boolean` | `false` | Also keep a resized, compressed copy in the original format. |
 
-## Failures
+### Failures
 
 This plugin runs entirely in the browser, so there are no HTTP errors. When optimization fails, `useOptimize` surfaces it as an `error` string, and the standalone `optimizeImage` throws. Common causes are a failed WebP encode (the browser lacks native encoding and `@jsquash/webp` is not installed) or being unable to acquire a canvas 2D context.

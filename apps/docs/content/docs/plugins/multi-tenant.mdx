@@ -61,6 +61,10 @@ const tenant = resolveTenantSlug(ctx, session.organizationSlug, {
 
 See [Security → Multi-tenant](/docs/resources/security#multi-tenant) for the isolation rationale.
 
+### Variables and templates
+
+[Variables](/docs/concepts/variables) and [templates](/docs/concepts/templates) are partitioned per tenant, exactly like content: each tenant has its own values (a `companyName`, a block default), independent of every other tenant's. Uniqueness for both is scoped per tenant, so a variable's `key` (or a template's `(collection, blockType, propertyKey)`) is free to differ per tenant.
+
 ## Schema
 
 The plugin adds a `tenantSlug` column (text, not null) and tenant-scoped indexes to these core tables:
@@ -73,6 +77,16 @@ The plugin adds a `tenantSlug` column (text, not null) and tenant-scoped indexes
 | `redirects` | `tenantSlug` | `(tenantSlug, collection)` |
 | `templates` | `tenantSlug` | `(tenantSlug, collection, blockType)` |
 | `variables` | `tenantSlug` | `(tenantSlug, key)` |
+
+## Options
+
+`multiTenant()` takes no configuration; every request is scoped by whatever `tenantSlug` your `authMiddleware` returns (see Usage).
+
+### `resolveTenantSlug(ctx, fallback, opts)`
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allowRequestOverride` | `boolean` | `false` | Let a request-supplied `tenantSlug` (body or query) override the session `fallback`. Only enable after verifying the caller is authorized for cross-tenant access. |
 
 ## Error codes
 
