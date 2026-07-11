@@ -5,124 +5,264 @@ description: Create, read, move, and version entries (roots).
 
 Roots are the top-level entries of a collection (a page, a post, a product). These methods live at `cms.api.<collection>.<method>` and mirror on the client as `client.<collection>.<method>` with identical types. Every commit-producing mutation (`createRoot`, `updateRoot`, `duplicateRoot`) returns a `commit: { id, message, createdAt, createdBy }` envelope.
 
-### `createRoot`
+### Create an Entry [#createroot]
 
-Creates a new entry (root) in the collection, with its initial draft branch and commit.
+Create a new entry (root) in a collection. You get back a fresh entry with its own draft branch and initial commit, ready for you to start adding blocks to.
 
-<APIMethod method="POST" path="/{collection}/createRoot" resource="root" operation="create" returns="{ commit, rootId, branchId, slug?, path? }" params={{
-  properties: { type: 'typed root properties', required: true, description: "The entry's root-level properties, typed from the collection's root definition." },
-  slug: { type: 'string', description: 'Slug for the entry (slug-enabled collections).' },
-  parentRootId: { type: 'string', description: 'Parent entry id (nesting-enabled collections).' },
-  message: { type: 'string', default: "'Initial commit'", description: 'Commit message.' },
-}} />
+<APIMethod
+  method="POST"
+  path="/{collection}/createRoot"
+  fn="createRoot"
+  resource="root"
+  operation="create"
+  args={`{
+  body: {
+    slug: 'welcome', // required on slug-enabled collections
+    properties: { title: 'Welcome' }, // required
+  },
+}`}
+  returns={{
+    commit: { type: 'Commit', description: 'The new head commit: `{ id, message, createdAt, createdBy }`.' },
+    rootId: { type: 'string', description: 'The id of the new entry.' },
+    branchId: { type: 'string', description: "The id of the entry's initial draft branch." },
+    slug: { type: 'string', optional: true, description: 'The server-normalized slug. Slug-enabled collections only.' },
+    path: { type: 'string', optional: true, description: 'The resolved URL path. Slug-enabled collections only.' },
+  }}
+  params={{
+    properties: { type: 'typed root properties', required: true, description: "The entry's root-level properties, typed from the collection's root definition." },
+    slug: { type: 'string', description: 'Slug for the entry (slug-enabled collections).' },
+    parentRootId: { type: 'string', description: 'Parent entry id (nesting-enabled collections).' },
+    message: { type: 'string', default: "'Initial commit'", description: 'Commit message.' },
+  }}
+/>
 
-```ts
-const { rootId, branchId } = await cms.api.pages.createRoot({
-  body: { slug: 'welcome', properties: { title: 'Welcome' } },
-});
-```
+### List Entries [#listroots]
 
-### `listRoots`
+Page through the entries of a collection with search, filter, and sort. Every field is optional, so a bare call hands you the most recent entries. Each row comes back enriched with its publication, branch, and open-merge-request counts.
 
-Lists the entries (roots) of a collection with search, filter, and sort. All query fields are optional.
-
-<APIMethod method="GET" path="/{collection}/listRoots" resource="root" operation="read" returns="{ roots, total, hasMore }" params={{
-  limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
-  offset: { type: 'number', default: '0', description: 'Rows to skip.' },
-  search: { type: 'string', description: 'Substring matched (ILIKE `%term%`) against `searchField`.' },
-  searchField: { type: "'rootId' | 'slug' | 'createdAt' | 'createdBy'", description: 'Column, or any root property key, to search.' },
-  sortBy: { type: "'rootId' | 'slug' | 'createdAt' | 'createdBy'", default: "'createdAt'", description: 'Column, or any root property key, to sort by.' },
-  sortDirection: { type: "'asc' | 'desc'", default: "'desc'", description: 'Sort order.' },
-  filterField: { type: "'rootId' | 'slug' | 'createdAt' | 'createdBy'", description: 'Column, or any root property key, to filter on.' },
-  filterValue: { type: 'string', description: "ILIKE pattern for `filterField`, passed raw (add `%`/`_` yourself)." },
-  hasPublications: { type: 'boolean', description: 'Keep only entries with (`true`) or without (`false`) any publication.' },
-  createdAfter: { type: 'Date', description: 'Keep entries created after this date.' },
-  createdBefore: { type: 'Date', description: 'Keep entries created before this date.' },
-  parentRootId: { type: 'string', description: "Filter by parent entry; pass `'null'` for top-level entries." },
-}} />
-
-```ts
-const { roots, total, hasMore } = await cms.api.pages.listRoots({
+<APIMethod
+  method="GET"
+  path="/{collection}/listRoots"
+  fn="listRoots"
+  resource="root"
+  operation="read"
+  args={`{
   query: { limit: 20, sortBy: 'createdAt', sortDirection: 'desc' },
-});
-```
+}`}
+  returns={{
+    roots: { type: 'RootListItem[]', description: 'The entries on this page. Each carries `id`, `slug`, `properties`, `createdAt`, `createdBy`, publication/branch/merge-request counts, and (on slug-enabled collections) `path`.' },
+    total: { type: 'number', description: 'Total entries matching the filters across all pages, ignoring limit/offset.' },
+    hasMore: { type: 'boolean', description: 'Whether more entries exist after this page.' },
+  }}
+  params={{
+    limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
+    offset: { type: 'number', default: '0', description: 'Rows to skip.' },
+    search: { type: 'string', description: 'Substring matched (ILIKE `%term%`) against `searchField`.' },
+    searchField: { type: "'rootId' | 'slug' | 'createdAt' | 'createdBy'", description: 'Column, or any root property key, to search.' },
+    sortBy: { type: "'rootId' | 'slug' | 'createdAt' | 'createdBy'", default: "'createdAt'", description: 'Column, or any root property key, to sort by.' },
+    sortDirection: { type: "'asc' | 'desc'", default: "'desc'", description: 'Sort order.' },
+    filterField: { type: "'rootId' | 'slug' | 'createdAt' | 'createdBy'", description: 'Column, or any root property key, to filter on.' },
+    filterValue: { type: 'string', description: "ILIKE pattern for `filterField`, passed raw (add `%`/`_` yourself)." },
+    hasPublications: { type: 'boolean', description: 'Keep only entries with (`true`) or without (`false`) any publication.' },
+    createdAfter: { type: 'Date', description: 'Keep entries created after this date.' },
+    createdBefore: { type: 'Date', description: 'Keep entries created before this date.' },
+    parentRootId: { type: 'string', description: "Filter by parent entry; pass `'null'` for top-level entries." },
+  }}
+/>
 
-### `getRoot`
+### Get an Entry [#getroot]
 
-Fetches a single entry by id, with its current properties, metadata, and publication counts.
+Fetch a single entry by id, with its current properties, metadata, and publication counts. Use this when you already hold the entry's id; to look one up by slug, reach for [`getRootBySlug`](#getrootbyslug) instead.
 
-<APIMethod method="GET" path="/{collection}/getRoot" resource="root" operation="read" returns="RootListItem" params={{
-  rootId: { type: 'string', required: true, description: 'Entry (root) id.' },
-}} />
+<APIMethod
+  method="GET"
+  path="/{collection}/getRoot"
+  fn="getRoot"
+  resource="root"
+  operation="read"
+  args={`{
+  query: { rootId: 'root_home' }, // required
+}`}
+  returns={{
+    root: { type: 'RootListItem', description: 'The entry, with its current `properties`, metadata, `slug`, and publication/branch/merge-request counts.' },
+  }}
+  params={{
+    rootId: { type: 'string', required: true, description: 'Entry (root) id.' },
+  }}
+/>
 
-### `getRootBySlug`
+### Get an Entry by Slug [#getrootbyslug]
 
-Looks up an entry by its draft slug (and optional parent). Matches the per-branch `__slug`, not the published slug, so an unpublished entry is findable by the slug it is about to publish.
+Look up an entry by its draft slug (and optional parent). It matches the per-branch `__slug`, not the published slug, so you can find an unpublished entry by the slug it is about to publish.
 
-<APIMethod method="GET" path="/{collection}/getRootBySlug" resource="root" operation="read" returns="RootListItem" params={{
-  slug: { type: 'string', required: true, description: 'Draft slug to look up.' },
-  parentRootId: { type: 'string', description: 'Parent entry id for nested lookups; omit for top-level.' },
-}} />
+<APIMethod
+  method="GET"
+  path="/{collection}/getRootBySlug"
+  fn="getRootBySlug"
+  resource="root"
+  operation="read"
+  args={`{
+  query: { slug: 'welcome' }, // required
+}`}
+  returns={{
+    root: { type: 'RootListItem', description: 'The matched entry (same shape as `getRoot`). Throws `AMBIGUOUS_SLUG` if more than one draft matches.' },
+  }}
+  params={{
+    slug: { type: 'string', required: true, description: 'Draft slug to look up.' },
+    parentRootId: { type: 'string', description: 'Parent entry id for nested lookups; omit for top-level.' },
+  }}
+/>
 
-### `getRootHistory`
+### Get an Entry's History [#getroothistory]
 
-Fetches commit history for an entry across all branches, newest first.
+Walk the full commit history of an entry across all its branches, newest first, so you can render a timeline or an activity feed. Opt into per-commit change counts with `withChanges`.
 
-<APIMethod method="GET" path="/{collection}/getRootHistory" resource="root" operation="read" returns="{ commits, total, hasMore }" params={{
-  rootId: { type: 'string', required: true, description: 'Entry (root) id.' },
-  limit: { type: 'number', default: '50', description: 'Max commits to return, 1 to 200.' },
-  offset: { type: 'number', default: '0', description: 'Commits to skip.' },
-  withChanges: { type: 'boolean', description: 'Add a per-commit `changes: { added, modified, deleted }` block count.' },
-}} />
+<APIMethod
+  method="GET"
+  path="/{collection}/getRootHistory"
+  fn="getRootHistory"
+  resource="root"
+  operation="read"
+  args={`{
+  query: {
+    rootId: 'root_home', // required
+    limit: 20,
+  },
+}`}
+  returns={{
+    commits: { type: '{ id, message, createdBy, createdAt, branch, parents, type, isPublished }[]', description: 'Commit records, newest first (fields detailed below). With `withChanges: true`, each also gains a `changes` count.' },
+    total: { type: 'number', description: "Total commits for this entry across all branches." },
+    hasMore: { type: 'boolean', description: 'Whether more commits exist after this page.' },
+  }}
+  params={{
+    rootId: { type: 'string', required: true, description: 'Entry (root) id.' },
+    limit: { type: 'number', default: '50', description: 'Max commits to return, 1 to 200.' },
+    offset: { type: 'number', default: '0', description: 'Commits to skip.' },
+    withChanges: { type: 'boolean', description: 'Add a per-commit `changes: { added, modified, deleted }` block count.' },
+  }}
+/>
 
 Each commit carries `id`, `message`, `createdBy`, `createdAt`, `branch` (the branch it was created on), `parents` (one commit id, two for a merge), `type` (`'initial' | 'commit' | 'merge'`), and `isPublished`. With `withChanges: true`, the counts are **version-level** (from a cheap version-id comparison against the parent snapshot, no properties loaded), coarser than [`getDiff`](#getdiff): a pure move counts as `modified` on the parent whose children array changed, an initial commit counts every block as `added`, and a merge commit is diffed against its **first** parent only. The field is omitted (not zeroed) on commits whose snapshot was pruned by [retention](/docs/concepts/data-retention).
 
-### `updateRoot`
+### Update an Entry [#updateroot]
 
-Updates an entry's properties and/or slug on a branch, and auto-creates redirects when a published slug changes.
+Edit an entry's properties and/or slug on a branch. You get back the new commit and, on slug-enabled collections, the server-normalized draft slug; redirects are auto-created when a published slug changes.
 
-<APIMethod method="POST" path="/{collection}/updateRoot" resource="root" operation="update" returns="{ commit, slug? }" params={{
-  rootId: { type: 'string', required: true, description: 'Entry (root) id.' },
-  branchId: { type: 'string', required: true, description: 'Branch to commit the change on.' },
-  properties: { type: 'partial root properties', required: true, description: 'Root properties to merge; a `null` value deletes that key.' },
-  slug: { type: 'string', description: 'New draft slug (slug-enabled collections).' },
-  message: { type: 'string', default: "'Update root block {rootId}'", description: 'Commit message.' },
-  expectedHeadCommitId: { type: 'string', description: 'Optimistic-concurrency guard: reject if the branch head has moved.' },
-}} />
+<APIMethod
+  method="POST"
+  path="/{collection}/updateRoot"
+  fn="updateRoot"
+  resource="root"
+  operation="update"
+  args={`{
+  body: {
+    rootId: 'root_home', // required
+    branchId: 'br_main', // required
+    properties: { title: 'Welcome home' }, // required
+  },
+}`}
+  returns={{
+    commit: { type: 'Commit', description: 'The new head commit on the branch.' },
+    slug: { type: 'string', optional: true, description: 'The server-normalized draft slug, echoed back on slug-enabled collections.' },
+  }}
+  params={{
+    rootId: { type: 'string', required: true, description: 'Entry (root) id.' },
+    branchId: { type: 'string', required: true, description: 'Branch to commit the change on.' },
+    properties: { type: 'partial root properties', required: true, description: 'Root properties to merge; a `null` value deletes that key.' },
+    slug: { type: 'string', description: 'New draft slug (slug-enabled collections).' },
+    message: { type: 'string', default: "'Update root block {rootId}'", description: 'Commit message.' },
+    expectedHeadCommitId: { type: 'string', description: 'Optimistic-concurrency guard: reject if the branch head has moved.' },
+  }}
+/>
 
-```ts
-const { commit } = await cms.api.pages.updateRoot({
-  body: { rootId, branchId, properties: { title: 'Welcome home' } },
-});
-```
+### Move an Entry [#moveroot]
 
-### `moveRoot`
+Reparent an entry (or promote it to top-level) and reorder it among its siblings. Nesting must be enabled and circular references are rejected; redirects are auto-created when the parent actually changes.
 
-Reparents an entry (or sets it to top-level) and reorders it among its siblings. Nesting must be enabled; circular references are rejected. Auto-creates redirects when the parent actually changes.
+<APIMethod
+  method="POST"
+  path="/{collection}/moveRoot"
+  fn="moveRoot"
+  resource="root"
+  operation="update"
+  args={`{
+  body: {
+    rootId: 'root_home', // required
+    newParentRootId: 'root_docs', // required (or null for top-level)
+  },
+}`}
+  returns={{
+    rootId: { type: 'string', description: 'The id of the moved entry.' },
+    newParentRootId: { type: 'string | null', description: 'The new parent id, or `null` if the entry is now top-level.' },
+    path: { type: 'string', optional: true, description: "The entry's resolved URL path. Slug-enabled collections only." },
+    sortOrder: { type: 'number', description: "The new sort position among the parent's children." },
+    redirectsCreated: { type: 'number', description: 'How many redirects were auto-created (nonzero only when the parent actually changed).' },
+  }}
+  params={{
+    rootId: { type: 'string', required: true, description: 'Entry (root) id to move.' },
+    newParentRootId: { type: 'string | null', required: true, description: 'New parent entry id, or `null` for top-level.' },
+    position: { type: 'number', description: "Sort order among the parent's children." },
+  }}
+/>
 
-<APIMethod method="POST" path="/{collection}/moveRoot" resource="root" operation="update" returns="{ rootId, newParentRootId, path?, sortOrder, redirectsCreated }" params={{
-  rootId: { type: 'string', required: true, description: 'Entry (root) id to move.' },
-  newParentRootId: { type: 'string | null', required: true, description: 'New parent entry id, or `null` for top-level.' },
-  position: { type: 'number', description: "Sort order among the parent's children." },
-}} />
+### Duplicate an Entry [#duplicateroot]
 
-### `duplicateRoot`
+Deep-copy an entire entry's block tree into a brand-new top-level entry. To copy a subtree under an existing parent instead, reach for `duplicateBlock`.
 
-Deep-copies an entire entry's block tree into a new top-level entry. To copy a subtree under an existing parent, use `duplicateBlock` instead.
+<APIMethod
+  method="POST"
+  path="/{collection}/duplicateRoot"
+  fn="duplicateRoot"
+  resource="root"
+  operation="create"
+  args={`{
+  body: {
+    rootId: 'root_home', // required
+    branchId: 'br_main', // required
+    blockId: 'root_home', // required (the entry's root block id)
+    targetProperties: { title: 'Welcome (copy)' }, // required
+    targetSlug: 'welcome-copy',
+  },
+}`}
+  returns={{
+    mode: { type: "'root'", description: "Always `'root'`: this endpoint only ever produces a new top-level entry." },
+    commit: { type: 'Commit', description: 'The initial commit of the new entry.' },
+    rootId: { type: 'string', description: 'The id of the new entry.' },
+    branchId: { type: 'string', description: "The id of the new entry's draft branch." },
+    slug: { type: 'string', optional: true, description: "The new entry's server-normalized slug. Slug-enabled collections only." },
+    path: { type: 'string', optional: true, description: "The new entry's resolved URL path. Slug-enabled collections only." },
+  }}
+  params={{
+    rootId: { type: 'string', required: true, description: 'Source entry (root) id.' },
+    branchId: { type: 'string', required: true, description: 'Source branch id.' },
+    blockId: { type: 'string', required: true, description: 'Root block id to duplicate.' },
+    targetProperties: { type: 'Record<string, unknown>', required: true, description: 'Properties for the new root block.' },
+    targetSlug: { type: 'string', description: 'Slug for the new entry (slug-enabled collections).' },
+    message: { type: 'string', default: "'Duplicated root'", description: 'Commit message.' },
+  }}
+/>
 
-<APIMethod method="POST" path="/{collection}/duplicateRoot" resource="root" operation="create" returns="{ mode: 'root', commit, rootId, branchId, slug?, path? }" params={{
-  rootId: { type: 'string', required: true, description: 'Source entry (root) id.' },
-  branchId: { type: 'string', required: true, description: 'Source branch id.' },
-  blockId: { type: 'string', required: true, description: 'Root block id to duplicate.' },
-  targetProperties: { type: 'Record<string, unknown>', required: true, description: 'Properties for the new root block.' },
-  targetSlug: { type: 'string', description: 'Slug for the new entry (slug-enabled collections).' },
-  message: { type: 'string', default: "'Duplicated root'", description: 'Commit message.' },
-}} />
+### Archive an Entry [#archiveroot]
 
-### `archiveRoot`
+Soft-archive an entry (its history is preserved) and auto-create a redirect from its old path to its parent. You cannot archive an entry that still has live child pages or is embedded as a reusable block on live content.
 
-Soft-archives an entry (history preserved) and auto-creates a redirect from its old path to its parent. Rejected if the entry has live child pages or is embedded as a reusable block on live content.
-
-<APIMethod method="POST" path="/{collection}/archiveRoot" resource="root" operation="delete" returns="{ rootId, path?, redirectsCreated }" params={{
-  rootId: { type: 'string', required: true, description: 'Entry (root) id.' },
-}} />
+<APIMethod
+  method="POST"
+  path="/{collection}/archiveRoot"
+  fn="archiveRoot"
+  resource="root"
+  operation="delete"
+  args={`{
+  body: {
+    rootId: 'root_home', // required
+  },
+}`}
+  returns={{
+    rootId: { type: 'string', description: 'The id of the archived entry.' },
+    path: { type: 'string', optional: true, description: 'The now-archived URL, for a "removed /x" confirmation. Slug-enabled collections only.' },
+    redirectsCreated: { type: 'number', description: 'How many redirects were auto-created (1 when an archive redirect to the parent was written).' },
+  }}
+  params={{
+    rootId: { type: 'string', required: true, description: 'Entry (root) id.' },
+  }}
+/>

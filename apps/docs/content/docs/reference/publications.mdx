@@ -9,103 +9,181 @@ Publishing points a publication at the branch's existing head commit rather than
 
 ## Publishing
 
-### `publishBranch`
+### Publish a Branch [#publishbranch]
 
-Creates or updates a publication of a branch, making its head commit publicly available. Fails with `PUBLICATION_APPROVAL_REQUIRED` if the branch has open approval requests that are not all approved.
+Publish a branch, making its head commit the version your readers see live. You get back the resulting `publication` (publishing points at the existing head commit, so there is no new `commit`). Fails with `PUBLICATION_APPROVAL_REQUIRED` if the branch has open approval requests that are not all approved.
 
-<APIMethod method="POST" path="/{collection}/publishBranch" resource="publication" operation="create" returns="{ publication }" params={{
-  rootId: { type: 'string', required: true, description: 'The root to publish.' },
-  branchId: { type: 'string', required: true, description: 'The branch whose head commit is published.' },
-  publishedBy: { type: 'string', description: 'Actor override; defaults to the current user.' },
-}} />
-
-```ts
-const { publication } = await cms.api.pages.publishBranch({
-  body: { rootId: 'root_123', branchId: 'branch_456' },
-});
-```
+<APIMethod
+  method="POST"
+  path="/{collection}/publishBranch"
+  fn="publishBranch"
+  resource="publication"
+  operation="create"
+  args={`{
+  body: {
+    rootId: 'root_home', // required
+    branchId: 'br_main', // required
+  },
+}`}
+  returns={{
+    publication: { type: 'Publication', description: 'The publication: `{ rootId, branchId, commitId, publishedBy, publishedAt, branchName }`.' },
+  }}
+  params={{
+    rootId: { type: 'string', required: true, description: 'The root to publish.' },
+    branchId: { type: 'string', required: true, description: 'The branch whose head commit is published.' },
+    publishedBy: { type: 'string', description: 'Actor override; defaults to the current user.' },
+  }}
+/>
 
 The returned `publication` carries `rootId`, `branchId`, `commitId`, `publishedBy`, `publishedAt`, and `branchName`.
 
-### `unpublishBranch`
+### Unpublish a Branch [#unpublishbranch]
 
-Removes a publication, taking the branch's content offline. Fails with `PUBLICATION_NOT_FOUND` when no active publication exists for the root-branch pair.
+Take a branch's content offline by removing its publication. You get back which commit was live and when it came down. Fails with `PUBLICATION_NOT_FOUND` when no active publication exists for the root-branch pair.
 
-<APIMethod method="POST" path="/{collection}/unpublishBranch" resource="publication" operation="delete" returns="{ rootId, branchId, unpublishedCommitId, unpublishedAt }" params={{
-  rootId: { type: 'string', required: true, description: 'The root whose publication to remove.' },
-  branchId: { type: 'string', required: true, description: 'The branch whose publication to remove.' },
-}} />
+<APIMethod
+  method="POST"
+  path="/{collection}/unpublishBranch"
+  fn="unpublishBranch"
+  resource="publication"
+  operation="delete"
+  args={`{
+  body: {
+    rootId: 'root_home', // required
+    branchId: 'br_main', // required
+  },
+}`}
+  returns={{
+    rootId: { type: 'string', description: 'The root whose publication was removed.' },
+    branchId: { type: 'string', description: 'The branch whose publication was removed.' },
+    unpublishedCommitId: { type: 'string', description: 'The commit that was live before it was taken offline.' },
+    unpublishedAt: { type: 'Date', description: 'When the content was taken offline.' },
+  }}
+  params={{
+    rootId: { type: 'string', required: true, description: 'The root whose publication to remove.' },
+    branchId: { type: 'string', required: true, description: 'The branch whose publication to remove.' },
+  }}
+/>
 
 ## Scheduling
 
-### `schedulePublication`
+### Schedule a Publish [#schedulepublication]
 
-Queues a future publish of a branch. Nothing goes live until the cron-driven `admin.runScheduled` processes the due row. The root (in scope) and branch are validated up front.
+Queue a branch to publish itself at a future time. Nothing goes live until the cron-driven `admin.runScheduled` processes the due row; the root (in scope) and branch are validated up front, so you catch bad ids now rather than at run time.
 
-<APIMethod method="POST" path="/{collection}/schedulePublication" resource="publication" operation="create" returns="{ scheduled }" params={{
-  rootId: { type: 'string', required: true, description: 'The root to publish when due.' },
-  branchId: { type: 'string', required: true, description: 'The branch whose head commit is published when due.' },
-  scheduledAt: { type: 'Date', required: true, description: 'When the publish becomes due (ISO string or Date).' },
-}} />
-
-```ts
-await cms.api.pages.schedulePublication({
+<APIMethod
+  method="POST"
+  path="/{collection}/schedulePublication"
+  fn="schedulePublication"
+  resource="publication"
+  operation="create"
+  args={`{
   body: {
-    rootId: 'root_123',
-    branchId: 'branch_456',
-    scheduledAt: '2026-01-01T00:00:00Z',
+    rootId: 'root_home', // required
+    branchId: 'br_main', // required
+    scheduledAt: '2026-01-01T00:00:00Z', // required
   },
-});
-```
+}`}
+  returns={{
+    scheduled: { type: 'ScheduledPublication', description: "The queued row: `{ id, rootId, branchId, action: 'publish', scheduledAt, processedAt }` (`processedAt` is null until the cron runs it)." },
+  }}
+  params={{
+    rootId: { type: 'string', required: true, description: 'The root to publish when due.' },
+    branchId: { type: 'string', required: true, description: 'The branch whose head commit is published when due.' },
+    scheduledAt: { type: 'Date', required: true, description: 'When the publish becomes due (ISO string or Date).' },
+  }}
+/>
 
 The returned `scheduled` row carries `id`, `rootId`, `branchId`, `action: 'publish'`, `scheduledAt`, and `processedAt` (null until run).
 
-### `scheduleUnpublish`
+### Schedule an Unpublish [#scheduleunpublish]
 
-Queues a future unpublish (expiry) of a branch. The content is taken offline when `admin.runScheduled` processes the due row. Use this to expire content at a given time.
+Queue a branch's content to go offline at a future time. The content is taken down when `admin.runScheduled` processes the due row, so reach for this to expire content on a schedule.
 
-<APIMethod method="POST" path="/{collection}/scheduleUnpublish" resource="publication" operation="delete" returns="{ scheduled }" params={{
-  rootId: { type: 'string', required: true, description: 'The root to unpublish when due.' },
-  branchId: { type: 'string', required: true, description: 'The branch whose publication is removed when due.' },
-  scheduledAt: { type: 'Date', required: true, description: 'When the unpublish becomes due (ISO string or Date).' },
-}} />
+<APIMethod
+  method="POST"
+  path="/{collection}/scheduleUnpublish"
+  fn="scheduleUnpublish"
+  resource="publication"
+  operation="delete"
+  args={`{
+  body: {
+    rootId: 'root_home', // required
+    branchId: 'br_main', // required
+    scheduledAt: '2026-02-01T00:00:00Z', // required
+  },
+}`}
+  returns={{
+    scheduled: { type: 'ScheduledPublication', description: "The queued row, same shape as `schedulePublication` but with `action: 'unpublish'`." },
+  }}
+  params={{
+    rootId: { type: 'string', required: true, description: 'The root to unpublish when due.' },
+    branchId: { type: 'string', required: true, description: 'The branch whose publication is removed when due.' },
+    scheduledAt: { type: 'Date', required: true, description: 'When the unpublish becomes due (ISO string or Date).' },
+  }}
+/>
 
 The returned `scheduled` row is identical in shape to `schedulePublication`, with `action: 'unpublish'`.
 
 ## Reading
 
-### `getPublishedContent`
+### Read Published Content [#getpublishedcontent]
 
-Retrieves published content for a root by `rootId`, `slug`, or `path`; at least one lookup key is required. References are resolved inline and variables are substituted unless `raw` is set. Runs the full auth chain (so plugin scope is enforced) but is conventionally anonymous-readable.
+Fetch the live, published content for an entry, looked up by `rootId`, `slug`, or `path` (pass at least one). References are resolved inline and variables substituted unless you set `raw`. It runs the full auth chain (so plugin scope stays enforced) but is conventionally anonymous-readable.
 
-<APIMethod method="GET" path="/{collection}/getPublishedContent" anonymousRead returns="{ rootId, collection, variants, abTest?, ancestors? }" params={{
-  rootId: { type: 'string', description: 'Fetch this root directly. One of rootId, slug, or path is required.' },
-  slug: { type: 'string', description: 'Resolve a root by slug; must be unique within the active scope.' },
-  path: { type: 'string', description: 'Resolve a root by path (for nested slugs).' },
-  raw: { type: 'boolean', description: 'If true, skip variable substitution and link-path resolution.' },
-  branchName: { type: 'string', description: 'Resolve only this published branch (returned as a length-1 variants array). When omitted, all published branches are returned.' },
-}} />
-
-```ts
-const { variants } = await cms.api.pages.getPublishedContent({
-  query: { slug: 'welcome' },
-});
-```
+<APIMethod
+  method="GET"
+  path="/{collection}/getPublishedContent"
+  fn="getPublishedContent"
+  anonymousRead
+  args={`{
+  query: { slug: 'welcome' }, // one of rootId, slug, or path required
+}`}
+  returns={{
+    rootId: { type: 'string', description: 'The resolved entry id.' },
+    collection: { type: 'string', description: 'The collection the entry belongs to.' },
+    variants: { type: '{ branchId, branchName, commitId, publishedAt, publishedBy, tree }[]', description: 'One entry per published branch, each with a fully resolved block `tree`. A single-element array when you pass `branchName`.' },
+    abTest: { type: '{ testId, trafficPercentage, controlBranchId }', optional: true, description: 'Present only when the entry has a running page-level A/B test with at least two published variant branches and a published control.' },
+    ancestors: { type: '{ rootId, slug }[]', optional: true, description: "The entry's ancestor chain. Present only for nested-slug collections." },
+  }}
+  params={{
+    rootId: { type: 'string', description: 'Fetch this root directly. One of rootId, slug, or path is required.' },
+    slug: { type: 'string', description: 'Resolve a root by slug; must be unique within the active scope.' },
+    path: { type: 'string', description: 'Resolve a root by path (for nested slugs).' },
+    raw: { type: 'boolean', description: 'If true, skip variable substitution and link-path resolution.' },
+    branchName: { type: 'string', description: 'Resolve only this published branch (returned as a length-1 variants array). When omitted, all published branches are returned.' },
+  }}
+/>
 
 Each `variants` item carries `branchId`, `branchName`, `commitId`, `publishedAt`, `publishedBy`, and a resolved block `tree`. `ancestors` is present only for nested-slug collections.
 
-### `listPublications`
+### List Publications [#listpublications]
 
-Lists publications for the collection, with optional filtering by root, branch, or date range. Publications of soft-deleted roots are excluded.
+List the publications in a collection, so you can see what is currently live and when it went out. Filter by root, branch, or date range. Publications of soft-deleted roots are excluded.
 
-<APIMethod method="GET" path="/{collection}/listPublications" resource="publication" operation="read" returns="{ publications, total, hasMore }" params={{
-  limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
-  offset: { type: 'number', default: '0', description: 'Rows to skip.' },
-  rootId: { type: 'string', description: 'Filter to publications of a specific root.' },
-  branchId: { type: 'string', description: 'Filter to publications of a specific branch.' },
-  publishedAfter: { type: 'Date', description: 'Only publications on or after this date.' },
-  publishedBefore: { type: 'Date', description: 'Only publications on or before this date.' },
-  sortDirection: { type: "'asc' | 'desc'", default: "'desc'", description: 'Sort order by publish date (newest first by default).' },
-}} />
+<APIMethod
+  method="GET"
+  path="/{collection}/listPublications"
+  fn="listPublications"
+  resource="publication"
+  operation="read"
+  args={`{
+  query: { limit: 20, rootId: 'root_home' },
+}`}
+  returns={{
+    publications: { type: 'Publication[]', description: 'The publications on this page. Each item: `{ rootId, branchId, commitId, publishedBy, publishedAt, branchName, rootProperties }`, plus `publishedByUser` when user enrichment is enabled.' },
+    total: { type: 'number', description: 'Total publications matching the filter, ignoring limit/offset.' },
+    hasMore: { type: 'boolean', description: 'Whether more publications exist after this page.' },
+  }}
+  params={{
+    limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
+    offset: { type: 'number', default: '0', description: 'Rows to skip.' },
+    rootId: { type: 'string', description: 'Filter to publications of a specific root.' },
+    branchId: { type: 'string', description: 'Filter to publications of a specific branch.' },
+    publishedAfter: { type: 'Date', description: 'Only publications on or after this date.' },
+    publishedBefore: { type: 'Date', description: 'Only publications on or before this date.' },
+    sortDirection: { type: "'asc' | 'desc'", default: "'desc'", description: 'Sort order by publish date (newest first by default).' },
+  }}
+/>
 
 Each `publications` item includes `rootId`, `branchId`, `commitId`, `publishedBy`, `publishedAt`, `branchName`, `rootProperties`, and (when user enrichment is enabled) `publishedByUser`.

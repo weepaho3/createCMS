@@ -9,74 +9,153 @@ A `key` is alphanumeric plus underscores. Updating a variable's `value` revalida
 
 Reference a variable in any string property, for example `{ title: 'Hello {{siteName}}' }`. An unknown key is left literal.
 
-### `list`
+### List Variables [#list]
 
-Lists variables ordered by key. All query fields are optional.
+List every variable, ordered by key, so you can browse or search what's defined. All query fields are optional — call it with no arguments to page through everything from the top.
 
-<APIMethod method="GET" path="/variables/list" resource="variable" operation="read" returns="{ variables, total, hasMore }" params={{
-  limit: { type: 'number', default: '50', description: 'Page size, 1 to 100.' },
-  offset: { type: 'number', default: '0', description: 'Rows to skip.' },
-  search: { type: 'string', description: 'Case-insensitive substring match against the variable key.' },
-}} />
-
-```ts
-const { variables } = await cms.api.variables.list({
+<APIMethod
+  method="GET"
+  path="/variables/list"
+  fn="list"
+  collection="variables"
+  resource="variable"
+  operation="read"
+  args={`{
   query: { search: 'site', limit: 20 },
-});
-```
+}`}
+  returns={{
+    variables: { type: 'Variable[]', description: 'The variables on this page, ordered by key. Each row is `{ id, key, value, description, createdBy, updatedBy, createdAt, updatedAt }`.' },
+    total: { type: 'number', description: 'Total variables matching the search, ignoring limit/offset.' },
+    hasMore: { type: 'boolean', description: 'Whether more variables exist after this page.' },
+  }}
+  params={{
+    limit: { type: 'number', default: '50', description: 'Page size, 1 to 100.' },
+    offset: { type: 'number', default: '0', description: 'Rows to skip.' },
+    search: { type: 'string', description: 'Case-insensitive substring match against the variable key.' },
+  }}
+/>
 
-### `getVariable`
+### Get a Variable [#getvariable]
 
-Retrieves a single variable by key and reports whether it is currently referenced.
+Fetch a single variable by its key, and find out in the same call whether it's currently referenced anywhere. Throws `VARIABLE_NOT_FOUND` if no variable has that key.
 
-<APIMethod method="GET" path="/variables/getVariable" resource="variable" operation="read" returns="{ variable, inUse }" params={{
-  key: { type: 'string', required: true, description: 'The variable key to retrieve.' },
-}} />
+<APIMethod
+  method="GET"
+  path="/variables/getVariable"
+  fn="getVariable"
+  collection="variables"
+  resource="variable"
+  operation="read"
+  args={`{
+  query: { key: 'siteName' }, // required
+}`}
+  returns={{
+    variable: { type: 'Variable', description: 'The variable row: `{ id, key, value, description, createdBy, updatedBy, createdAt, updatedAt }`.' },
+    inUse: { type: 'boolean', description: 'Whether the variable is currently referenced by live content or a template.' },
+  }}
+  params={{
+    key: { type: 'string', required: true, description: 'The variable key to retrieve.' },
+  }}
+/>
 
-### `createVariable`
+### Create a Variable [#createvariable]
 
-Creates a new variable with a unique key.
+Create a new variable with a unique key. You get back the created variable, including its generated id and timestamps. A duplicate key throws `VARIABLE_KEY_EXISTS`.
 
-<APIMethod method="POST" path="/variables/createVariable" resource="variable" operation="create" returns="{ variable }" params={{
-  key: { type: 'string', required: true, description: 'Unique key, 1 to 100 characters, alphanumeric and underscores only.' },
-  value: { type: 'string', required: true, description: 'The variable value.' },
-  description: { type: 'string', description: "Optional description of the variable's purpose." },
-}} />
+<APIMethod
+  method="POST"
+  path="/variables/createVariable"
+  fn="createVariable"
+  collection="variables"
+  resource="variable"
+  operation="create"
+  args={`{
+  body: {
+    key: 'siteName', // required
+    value: 'Acme', // required
+    description: 'Public site name',
+  },
+}`}
+  returns={{
+    variable: { type: 'Variable', description: 'The newly created variable, with its generated id, timestamps, and creator metadata.' },
+  }}
+  params={{
+    key: { type: 'string', required: true, description: 'Unique key, 1 to 100 characters, alphanumeric and underscores only.' },
+    value: { type: 'string', required: true, description: 'The variable value.' },
+    description: { type: 'string', description: "Optional description of the variable's purpose." },
+  }}
+/>
 
-```ts
-const { variable } = await cms.api.variables.createVariable({
-  body: { key: 'siteName', value: 'Acme', description: 'Public site name' },
-});
-```
+### Update a Variable [#updatevariable]
 
-### `updateVariable`
+Update a variable's value and/or description. Changing the value revalidates every published root that references it, so the new value goes live automatically.
 
-Updates a variable's value and/or description. Changing the value revalidates every published root that uses the variable.
+<APIMethod
+  method="POST"
+  path="/variables/updateVariable"
+  fn="updateVariable"
+  collection="variables"
+  resource="variable"
+  operation="update"
+  args={`{
+  body: {
+    key: 'siteName', // required
+    value: 'Acme Corp',
+  },
+}`}
+  returns={{
+    variable: { type: 'Variable', description: 'The updated variable.' },
+  }}
+  params={{
+    key: { type: 'string', required: true, description: 'The variable key to update.' },
+    value: { type: 'string', description: 'New value. Changing it triggers revalidation of published content.' },
+    description: { type: 'string', description: 'New description.' },
+  }}
+/>
 
-<APIMethod method="POST" path="/variables/updateVariable" resource="variable" operation="update" returns="{ variable }" params={{
-  key: { type: 'string', required: true, description: 'The variable key to update.' },
-  value: { type: 'string', description: 'New value. Changing it triggers revalidation of published content.' },
-  description: { type: 'string', description: 'New description.' },
-}} />
+### Delete a Variable [#deletevariable]
 
-```ts
-const { variable } = await cms.api.variables.updateVariable({
-  body: { key: 'siteName', value: 'Acme Corp' },
-});
-```
+Delete a variable by key. It fails with `VARIABLE_IN_USE` if the variable is still referenced in any live content or template, so you can't leave a dangling `{{key}}` behind.
 
-### `deleteVariable`
+<APIMethod
+  method="POST"
+  path="/variables/deleteVariable"
+  fn="deleteVariable"
+  collection="variables"
+  resource="variable"
+  operation="delete"
+  args={`{
+  body: { key: 'siteName' }, // required
+}`}
+  returns={{
+    variableId: { type: 'string', description: 'The id of the deleted variable.' },
+  }}
+  params={{
+    key: { type: 'string', required: true, description: 'The variable key to delete.' },
+  }}
+/>
 
-Deletes a variable. Fails with `VARIABLE_IN_USE` if it is referenced in any live content or template.
+### List Variable Usages [#getvariableusages]
 
-<APIMethod method="POST" path="/variables/deleteVariable" resource="variable" operation="delete" returns="{ variableId }" params={{
-  key: { type: 'string', required: true, description: 'The variable key to delete.' },
-}} />
+Find every place a variable is referenced before you change or delete it: the distinct live block usages in branch heads and the template usages, each with a total count.
 
-### `getVariableUsages`
-
-Lists every place a variable is referenced: distinct block usages in branch heads and template usages, each with a count.
-
-<APIMethod method="GET" path="/variables/getVariableUsages" resource="variable" operation="read" returns="{ blockUsageCount, templateUsageCount, blockUsages, templateUsages }" params={{
-  key: { type: 'string', required: true, description: 'The variable key to inspect.' },
-}} />
+<APIMethod
+  method="GET"
+  path="/variables/getVariableUsages"
+  fn="getVariableUsages"
+  collection="variables"
+  resource="variable"
+  operation="read"
+  args={`{
+  query: { key: 'siteName' }, // required
+}`}
+  returns={{
+    blockUsageCount: { type: 'number', description: 'Number of distinct live block usages.' },
+    templateUsageCount: { type: 'number', description: 'Number of template usages.' },
+    blockUsages: { type: '{ rootId, blockId, propertyKey }[]', description: 'Each distinct live block property (in a branch head) that references the variable.' },
+    templateUsages: { type: '{ templateId, collection, blockType, propertyKey }[]', description: 'Each template property that references the variable.' },
+  }}
+  params={{
+    key: { type: 'string', required: true, description: 'The variable key to inspect.' },
+  }}
+/>

@@ -7,50 +7,92 @@ The admin namespace exposes bounded maintenance jobs meant to be driven by a cro
 
 `runPruning` and `runScheduled` each do one capped pass and report progress, so a plain cron can ping them periodically while a queue driver re-enqueues until the work drains. None of these methods produces a `commit` envelope.
 
-### `runPruning`
+### Run a Pruning Pass [#runpruning]
 
-Runs one bounded, resumable pruning pass that reclaims storage by deleting old commits, hard-deleting archived entries (roots), and reclaiming unreferenced assets. Each pass does capped work within the time and root-count budgets and persists its own progress, so repeated invocations drain the backlog. Throws `DATA_RETENTION_NOT_CONFIGURED` when data retention is not configured.
+Run one bounded, resumable pruning pass to reclaim storage: it deletes old commits, hard-deletes archived entries (roots), and frees unreferenced assets. Each call does one capped pass within its time and root-count budgets and persists its own progress, so you keep calling it (or let a cron ping it) until `done` is true. Throws `DATA_RETENTION_NOT_CONFIGURED` when data retention is not configured.
 
-<APIMethod method="POST" path="/admin/runPruning" resource="admin" operation="delete" returns="{ deletedCommits, deletedBlockVersions, deletedSnapshots, deletedMergeRequests, deletedApprovals, prunedRoots, deletedRoots, deletedAssets, processedLiveRoots, plugins, stoppedReason, done }" params={{
-  dryRun: { type: 'boolean', default: 'false', description: 'Plan what would be deleted without persisting any changes.' },
-  maxRoots: { type: 'number', default: '50', description: 'Maximum roots to process this pass (archived and live combined), 1 to 1000.' },
-  maxDurationMs: { type: 'number', default: '8000', description: 'Soft wall-clock budget in milliseconds; the pass returns before exceeding it. Minimum 100.' },
-  liveRescanMs: { type: 'number', default: '86400000', description: 'Interval in milliseconds after which a live root becomes due for re-scanning. Minimum 0.' },
-  maxAssets: { type: 'number', default: '100', description: 'Maximum archived, unreferenced assets to reclaim this pass, 1 to 1000.' },
-}} />
-
-```ts
-// One capped pass; drain the backlog by re-running until `done`.
-let result = await cms.api.admin.runPruning({
-  body: { maxRoots: 10, maxDurationMs: 5000 },
-});
-while (!result.done) {
-  result = await cms.api.admin.runPruning({ body: {} });
-}
-```
+<APIMethod
+  method="POST"
+  path="/admin/runPruning"
+  fn="runPruning"
+  collection="admin"
+  resource="admin"
+  operation="delete"
+  args={`{
+  body: {
+    maxRoots: 10,
+    maxDurationMs: 5000,
+  },
+}`}
+  returns={{
+    deletedCommits: { type: 'number', description: 'Old commits deleted this pass across every root processed.' },
+    deletedBlockVersions: { type: 'number', description: 'Unreferenced block versions deleted this pass.' },
+    deletedSnapshots: { type: 'number', description: 'Commit-snapshot rows deleted this pass.' },
+    deletedMergeRequests: { type: 'number', description: 'Closed merge requests past the retention window that were deleted.' },
+    deletedApprovals: { type: 'number', description: 'Stale or already-resolved approval rows deleted.' },
+    prunedRoots: { type: 'string[]', description: 'Ids of every entry touched this pass — the hard-deleted archived roots plus each live root that had commits to prune.' },
+    deletedRoots: { type: 'string[]', description: 'Ids of soft-archived entries hard-deleted this pass (past the trash window).' },
+    deletedAssets: { type: 'string[]', description: 'Ids of archived, unreferenced assets reclaimed this pass (DB row plus S3 object).' },
+    processedLiveRoots: { type: 'number', description: 'How many live entries were visited for history pruning this pass.' },
+    plugins: { type: 'Record<string, Record<string, number>>', description: 'Per-plugin pruning metrics keyed by plugin id; always present, empty when no plugin prunes.' },
+    stoppedReason: { type: "'maxRoots' | 'budget' | 'idle'", description: 'Why the pass stopped: it hit the count cap, ran out of the time budget, or drained all due work.' },
+    done: { type: 'boolean', description: 'True when the pass drained all currently-due work (stopped idle); keep re-running while it is false.' },
+  }}
+  params={{
+    dryRun: { type: 'boolean', default: 'false', description: 'Plan what would be deleted without persisting any changes.' },
+    maxRoots: { type: 'number', default: '50', description: 'Maximum roots to process this pass (archived and live combined), 1 to 1000.' },
+    maxDurationMs: { type: 'number', default: '8000', description: 'Soft wall-clock budget in milliseconds; the pass returns before exceeding it. Minimum 100.' },
+    liveRescanMs: { type: 'number', default: '86400000', description: 'Interval in milliseconds after which a live root becomes due for re-scanning. Minimum 0.' },
+    maxAssets: { type: 'number', default: '100', description: 'Maximum archived, unreferenced assets to reclaim this pass, 1 to 1000.' },
+  }}
+/>
 
 `done` is true when the pass drained all currently-due work (stopped idle); `stoppedReason` is one of `'maxRoots'`, `'budget'`, or `'idle'`.
 
-### `runScheduled`
+### Process Scheduled Publishing [#runscheduled]
 
-Processes the scheduled-publishing queue: every due row (`scheduledAt <= now` and not yet processed) is published or unpublished with the same machinery as the single publish endpoints, then stamped processed. A row whose publish or unpublish fails is still marked processed and surfaced in `failed`, so a permanently broken intent never re-runs forever.
+Drain the scheduled-publishing queue: every due row (`scheduledAt <= now` and not yet processed) is published or unpublished with the same machinery as the single publish endpoints, then stamped processed. A row whose publish or unpublish fails is still marked processed and surfaced in `failed`, so a permanently broken intent never re-runs forever.
 
-<APIMethod method="POST" path="/admin/runScheduled" resource="admin" operation="create" returns="{ processed, published, unpublished, failed }" params={{
-  limit: { type: 'number', default: '100', description: 'Maximum number of due rows to process this pass, 1 to 1000.' },
-}} />
-
-```ts
-const { processed, failed } = await cms.api.admin.runScheduled({
-  body: { limit: 50 },
-});
-```
+<APIMethod
+  method="POST"
+  path="/admin/runScheduled"
+  fn="runScheduled"
+  collection="admin"
+  resource="admin"
+  operation="create"
+  args={`{
+  body: {
+    limit: 50,
+  },
+}`}
+  returns={{
+    processed: { type: 'number', description: 'Rows attempted this pass (successes plus failures).' },
+    published: { type: 'number', description: 'Rows that published successfully.' },
+    unpublished: { type: 'number', description: 'Rows that unpublished (expired) successfully.' },
+    failed: { type: '{ id, rootId, branchId, action, error }[]', description: 'One entry per row whose publish or unpublish permanently failed; `error` is the CMS error code.' },
+  }}
+  params={{
+    limit: { type: 'number', default: '100', description: 'Maximum number of due rows to process this pass, 1 to 1000.' },
+  }}
+/>
 
 `failed` is an array of `{ id, rootId, branchId, action, error }`, one entry per row whose publish or unpublish threw.
 
-### `reindexSearch`
+### Rebuild the Search Index [#reindexsearch]
 
-Rebuilds the entire full-text search index from scratch, re-indexing all roots, comments, merge requests, variables, templates, assets, and notifications. Takes no input.
+Rebuild the entire full-text search index from scratch, re-indexing every root, comment, merge request, variable, template, asset, and notification. Reach for this after a bulk import or an index-shape change; it takes no input and hands back the per-type counts it wrote.
 
-<APIMethod method="POST" path="/admin/reindexSearch" resource="admin" operation="create" returns="{ indexed }" params={{}} />
+<APIMethod
+  method="POST"
+  path="/admin/reindexSearch"
+  fn="reindexSearch"
+  collection="admin"
+  resource="admin"
+  operation="create"
+  returns={{
+    indexed: { type: 'Record<string, number>', description: 'Per-entity-type counts of rows re-indexed, keyed by entity type (root, comment, mergeRequest, variable, template, asset, notification).' },
+  }}
+  params={{}}
+/>
 
 `indexed` is a record of per-entity-type counts that were re-indexed.

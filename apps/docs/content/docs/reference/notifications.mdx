@@ -13,55 +13,102 @@ These endpoints operate on the recipient's inbox, not on content commits, so no 
 
 ## Methods
 
-### `list`
+### List Notifications [#list]
 
-Retrieves a paginated list of the current user's notifications (newest first, archived ones excluded), optionally filtered by type, collection, or read status. All query fields are optional.
+Fetch a page of your notifications (newest first, archived ones excluded) so you can render an inbox. Filter by type, collection, or read status, or leave every query field off to pull the latest across the board.
 
-<APIMethod method="GET" path="/notifications/list" resource="notification" operation="read" returns="{ notifications, total, hasMore, unreadCount }" params={{
-  type: { type: 'NotificationType', description: 'Filter by notification type (see Types below for the full set).' },
-  unreadOnly: { type: 'boolean', description: 'When true, returns only unread notifications.' },
-  collection: { type: 'string', description: 'Filter to notifications about one collection.' },
-  limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
-  offset: { type: 'number', default: '0', description: 'Rows to skip.' },
-}} />
-
-```ts
-const { notifications, unreadCount } = await cms.api.notifications.list({
+<APIMethod
+  method="GET"
+  path="/notifications/list"
+  fn="list"
+  collection="notifications"
+  resource="notification"
+  operation="read"
+  args={`{
   query: { unreadOnly: true, limit: 10 },
-});
-```
+}`}
+  returns={{
+    notifications: { type: 'NotificationListItem[]', description: 'This page of notifications, newest first. Each carries id, recipientId, actorId, type, title, body, resourceType, resourceId, collection, meta, readAt, and createdAt.' },
+    total: { type: 'number', description: 'Total matching notifications across all pages, ignoring limit/offset.' },
+    hasMore: { type: 'boolean', description: 'Whether more notifications exist after this page.' },
+    unreadCount: { type: 'number', description: 'Count of all your unread notifications, independent of the current page or filters.' },
+  }}
+  params={{
+    type: { type: 'NotificationType', description: 'Filter by notification type (see Types below for the full set).' },
+    unreadOnly: { type: 'boolean', description: 'When true, returns only unread notifications.' },
+    collection: { type: 'string', description: 'Filter to notifications about one collection.' },
+    limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
+    offset: { type: 'number', default: '0', description: 'Rows to skip.' },
+  }}
+/>
 
 `unreadCount` is the count of all unread notifications for the user, independent of the current page or filters. Each item carries `id`, `recipientId`, `actorId`, `type`, `title`, `body`, `resourceType`, `resourceId`, `collection`, `meta`, `readAt`, and `createdAt`. Pass the transport-level `withUser: true` flag to also include `actorUser` (the acting user, limited to your `user` config's `exposeColumns` allowlist) on each item.
 
-### `markNotificationsRead`
+### Mark Notifications Read [#marknotificationsread]
 
-Marks notification(s) as read. With a `notificationId`, marks that one; without, marks all of the user's unread notifications as read.
+Mark a notification as read once you've seen it. Pass a `notificationId` to clear a single one, or omit it entirely to mark your whole unread inbox as read in one call. You get back how many were actually flipped.
 
-<APIMethod method="POST" path="/notifications/markNotificationsRead" resource="notification" operation="update" returns="{ markedCount }" params={{
-  notificationId: { type: 'string', description: 'Notification to mark read. Omit to mark all unread notifications read.' },
-}} />
+<APIMethod
+  method="POST"
+  path="/notifications/markNotificationsRead"
+  fn="markNotificationsRead"
+  collection="notifications"
+  resource="notification"
+  operation="update"
+  args={`{
+  body: { notificationId: 'notif_8fd21c' }, // omit body to mark all unread as read
+}`}
+  returns={{
+    markedCount: { type: 'number', description: 'How many notifications this call flipped to read.' },
+  }}
+  params={{
+    notificationId: { type: 'string', description: 'Notification to mark read. Omit to mark all unread notifications read.' },
+  }}
+/>
 
-```ts
-const { markedCount } = await cms.api.notifications.markNotificationsRead({
-  body: { notificationId: 'notif_8fd21c' },
-});
-```
+### Mark Notifications Unread [#marknotificationsunread]
 
-### `markNotificationsUnread`
+Flag a notification as unread so it resurfaces for later. Pass a `notificationId` to reopen one, or omit it to mark all of your read notifications unread. You get back how many were flipped.
 
-Marks notification(s) as unread. With a `notificationId`, marks that one; without, marks all of the user's read notifications as unread.
+<APIMethod
+  method="POST"
+  path="/notifications/markNotificationsUnread"
+  fn="markNotificationsUnread"
+  collection="notifications"
+  resource="notification"
+  operation="update"
+  args={`{
+  body: { notificationId: 'notif_8fd21c' }, // omit body to mark all read as unread
+}`}
+  returns={{
+    markedCount: { type: 'number', description: 'How many notifications this call flipped to unread.' },
+  }}
+  params={{
+    notificationId: { type: 'string', description: 'Notification to mark unread. Omit to mark all read notifications unread.' },
+  }}
+/>
 
-<APIMethod method="POST" path="/notifications/markNotificationsUnread" resource="notification" operation="update" returns="{ markedCount }" params={{
-  notificationId: { type: 'string', description: 'Notification to mark unread. Omit to mark all read notifications unread.' },
-}} />
+### Archive a Notification [#archivenotification]
 
-### `archiveNotification`
+Archive a notification to drop it from your active inbox, so it stops showing up in `list`. Use it to clear out items you're done with without losing the underlying record.
 
-Archives a notification, removing it from the user's active inbox (it stops appearing in `list`).
-
-<APIMethod method="POST" path="/notifications/archiveNotification" resource="notification" operation="delete" returns="{ notificationId }" params={{
-  notificationId: { type: 'string', required: true, description: 'The notification to archive.' },
-}} />
+<APIMethod
+  method="POST"
+  path="/notifications/archiveNotification"
+  fn="archiveNotification"
+  collection="notifications"
+  resource="notification"
+  operation="delete"
+  args={`{
+  body: { notificationId: 'notif_8fd21c' }, // required
+}`}
+  returns={{
+    notificationId: { type: 'string', description: 'The id of the notification that was archived.' },
+  }}
+  params={{
+    notificationId: { type: 'string', required: true, description: 'The notification to archive.' },
+  }}
+/>
 
 ## Types
 

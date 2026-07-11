@@ -7,91 +7,185 @@ A release bundles several entries (roots), each pinned to one of its branches, s
 
 A release starts as a `draft` you build up with items, then flips to `published` when `publishRelease` succeeds. Item mutations only work while the release is a draft. Publishing points each item at its branch's existing head commit rather than creating new ones, so none of these methods returns a `commit` envelope.
 
-### `createRelease`
+### Create a Release [#createrelease]
 
-Creates a new empty draft release. Add entries to it with `addToRelease` or `setReleaseItems`, then publish with `publishRelease`.
+Start a new, empty draft release and get it back to work with. Fill it with entries using `addToRelease` or `setReleaseItems`, then ship them together with `publishRelease`.
 
-<APIMethod method="POST" path="/releases/createRelease" resource="release" operation="create" returns="{ release }" params={{
-  title: { type: 'string', required: true, description: 'Human-readable name for the release (non-empty).' },
-}} />
-
-```ts
-const { release } = await cms.api.releases.createRelease({
-  body: { title: 'Spring launch' },
-});
-```
+<APIMethod
+  method="POST"
+  path="/releases/createRelease"
+  fn="createRelease"
+  collection="releases"
+  resource="release"
+  operation="create"
+  args={`{
+  body: { title: 'Spring launch' }, // required
+}`}
+  returns={{
+    release: { type: 'Release', description: "The new draft release: `{ id, title, status: 'draft', createdBy, createdAt, publishedAt: null }`." },
+  }}
+  params={{
+    title: { type: 'string', required: true, description: 'Human-readable name for the release (non-empty).' },
+  }}
+/>
 
 The returned `release` carries `id`, `title`, `status: 'draft'`, `createdBy`, `createdAt`, and `publishedAt` (null until published).
 
-### `addToRelease`
+### Add an Entry to a Release [#addtorelease]
 
-Adds (or updates) one entry in a draft release. Upserts on `(releaseId, rootId)`: re-adding a root already in the release swaps which branch it will publish. The root and branch are validated up front. Fails with `RELEASE_NOT_FOUND`, `RELEASE_NOT_DRAFT`, `ROOT_NOT_FOUND`, or `BRANCH_NOT_FOUND`.
+Add one entry to a draft release, pinned to the branch you want it to publish from. It upserts on `(releaseId, rootId)`, so re-adding a root that's already in the release just swaps which branch it will publish, and the root and branch are validated up front. Fails with `RELEASE_NOT_FOUND`, `RELEASE_NOT_DRAFT`, `ROOT_NOT_FOUND`, or `BRANCH_NOT_FOUND`.
 
-<APIMethod method="POST" path="/releases/addToRelease" resource="release" operation="update" returns="{ item }" params={{
-  releaseId: { type: 'string', required: true, description: 'The draft release to add to.' },
-  rootId: { type: 'string', required: true, description: 'The root (entry) to include.' },
-  branchId: { type: 'string', required: true, description: 'The branch of that root to publish when the release publishes.' },
-}} />
-
-```ts
-const { item } = await cms.api.releases.addToRelease({
-  body: { releaseId: release.id, rootId: 'root_123', branchId: 'branch_456' },
-});
-```
+<APIMethod
+  method="POST"
+  path="/releases/addToRelease"
+  fn="addToRelease"
+  collection="releases"
+  resource="release"
+  operation="update"
+  args={`{
+  body: {
+    releaseId: 'rel_abc123', // required
+    rootId: 'root_home', // required
+    branchId: 'br_main', // required
+  },
+}`}
+  returns={{
+    item: { type: 'ReleaseItem', description: 'The created or updated member: `{ id, releaseId, rootId, branchId }`.' },
+  }}
+  params={{
+    releaseId: { type: 'string', required: true, description: 'The draft release to add to.' },
+    rootId: { type: 'string', required: true, description: 'The root (entry) to include.' },
+    branchId: { type: 'string', required: true, description: 'The branch of that root to publish when the release publishes.' },
+  }}
+/>
 
 The returned `item` carries `id`, `releaseId`, `rootId`, and `branchId`.
 
-### `removeFromRelease`
+### Remove an Entry from a Release [#removefromrelease]
 
-Removes one entry (by `rootId`) from a draft release. Fails with `RELEASE_NOT_FOUND` or `RELEASE_NOT_DRAFT`.
+Drop one entry (by `rootId`) from a draft release. Fails with `RELEASE_NOT_FOUND` or `RELEASE_NOT_DRAFT`.
 
-<APIMethod method="POST" path="/releases/removeFromRelease" resource="release" operation="update" returns="{ removed }" params={{
-  releaseId: { type: 'string', required: true, description: 'The draft release.' },
-  rootId: { type: 'string', required: true, description: 'The root to remove.' },
-}} />
+<APIMethod
+  method="POST"
+  path="/releases/removeFromRelease"
+  fn="removeFromRelease"
+  collection="releases"
+  resource="release"
+  operation="update"
+  args={`{
+  body: {
+    releaseId: 'rel_abc123', // required
+    rootId: 'root_home', // required
+  },
+}`}
+  returns={{
+    removed: { type: 'boolean', description: 'Whether a matching item was deleted — `true` if the root was in the release, `false` otherwise.' },
+  }}
+  params={{
+    releaseId: { type: 'string', required: true, description: 'The draft release.' },
+    rootId: { type: 'string', required: true, description: 'The root to remove.' },
+  }}
+/>
 
 The returned `removed` is `true` when a matching item was deleted, `false` otherwise.
 
-### `setReleaseItems`
+### Set a Release's Items [#setreleaseitems]
 
-Replaces the entire item set of a draft release in one shot. Every item is validated first, then the old items are cleared and the new set is inserted in a single transaction. Duplicate roots are rejected with `RELEASE_DUPLICATE_ROOT`. Fails with `RELEASE_NOT_FOUND`, `RELEASE_NOT_DRAFT`, `ROOT_NOT_FOUND`, or `BRANCH_NOT_FOUND`.
+Replace a draft release's entire member list in one shot. Every item is validated first, then the old items are cleared and the new set inserted in a single transaction. Duplicate roots are rejected with `RELEASE_DUPLICATE_ROOT`; it also fails with `RELEASE_NOT_FOUND`, `RELEASE_NOT_DRAFT`, `ROOT_NOT_FOUND`, or `BRANCH_NOT_FOUND`.
 
-<APIMethod method="POST" path="/releases/setReleaseItems" resource="release" operation="update" returns="{ items }" params={{
-  releaseId: { type: 'string', required: true, description: 'The draft release.' },
-  items: { type: '{ rootId: string; branchId: string }[]', required: true, description: 'The complete new member list. Replaces all existing items; roots must be unique.' },
-}} />
+<APIMethod
+  method="POST"
+  path="/releases/setReleaseItems"
+  fn="setReleaseItems"
+  collection="releases"
+  resource="release"
+  operation="update"
+  args={`{
+  body: {
+    releaseId: 'rel_abc123', // required
+    items: [{ rootId: 'root_home', branchId: 'br_main' }], // required
+  },
+}`}
+  returns={{
+    items: { type: 'ReleaseItem[]', description: 'The new member set after replacement — one `{ id, releaseId, rootId, branchId }` per item (empty if you passed an empty list).' },
+  }}
+  params={{
+    releaseId: { type: 'string', required: true, description: 'The draft release.' },
+    items: { type: '{ rootId: string; branchId: string }[]', required: true, description: 'The complete new member list. Replaces all existing items; roots must be unique.' },
+  }}
+/>
 
-### `getRelease`
+### Get a Release [#getrelease]
 
-Reads a release and its items. Fails with `RELEASE_NOT_FOUND`.
+Fetch a single release together with its items. Fails with `RELEASE_NOT_FOUND`.
 
-<APIMethod method="GET" path="/releases/getRelease" resource="release" operation="read" returns="{ release, items }" params={{
-  releaseId: { type: 'string', required: true, description: 'The release to fetch.' },
-}} />
+<APIMethod
+  method="GET"
+  path="/releases/getRelease"
+  fn="getRelease"
+  collection="releases"
+  resource="release"
+  operation="read"
+  args={`{
+  query: { releaseId: 'rel_abc123' }, // required
+}`}
+  returns={{
+    release: { type: 'Release', description: 'The release row: `{ id, title, status, createdBy, createdAt, publishedAt }`.' },
+    items: { type: 'ReleaseItem[]', description: 'The entries in the release, each `{ id, releaseId, rootId, branchId }`.' },
+  }}
+  params={{
+    releaseId: { type: 'string', required: true, description: 'The release to fetch.' },
+  }}
+/>
 
-### `listReleases`
+### List Releases [#listreleases]
 
-Lists releases, newest first, with an optional status filter. All query fields are optional.
+Page through your releases, newest first, optionally narrowed to one status. Every query field is optional.
 
-<APIMethod method="GET" path="/releases/listReleases" resource="release" operation="read" returns="{ releases, total, hasMore }" params={{
-  status: { type: "'draft' | 'published'", description: 'Filter by release status.' },
-  limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
-  offset: { type: 'number', default: '0', description: 'Rows to skip.' },
-}} />
+<APIMethod
+  method="GET"
+  path="/releases/listReleases"
+  fn="listReleases"
+  collection="releases"
+  resource="release"
+  operation="read"
+  args={`{
+  query: { status: 'draft', limit: 20 },
+}`}
+  returns={{
+    releases: { type: 'Release[]', description: 'The releases on this page, newest first.' },
+    total: { type: 'number', description: 'Total releases matching the status filter, ignoring limit/offset.' },
+    hasMore: { type: 'boolean', description: 'Whether more releases exist after this page.' },
+  }}
+  params={{
+    status: { type: "'draft' | 'published'", description: 'Filter by release status.' },
+    limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
+    offset: { type: 'number', default: '0', description: 'Rows to skip.' },
+  }}
+/>
 
-### `publishRelease`
+### Publish a Release [#publishrelease]
 
-Publishes every item in the release atomically. Runs the same per-root publish machinery as `pages.publishBranch` for each item inside one database transaction: if any item fails (for example an unapproved branch under a policy that requires approval), the whole set rolls back and nothing goes live. On success the release flips to `published`. Fails with `RELEASE_NOT_FOUND`, `RELEASE_NOT_DRAFT`, `RELEASE_EMPTY`, `ROOT_NOT_FOUND`, `BRANCH_NOT_FOUND`, or `PUBLICATION_APPROVAL_REQUIRED`.
+Publish every entry in the release atomically. Each item runs the same publish machinery as `pages.publishBranch`, all inside one database transaction: if any item fails (for example an unapproved branch under a policy that requires approval), the whole set rolls back and nothing goes live. On success the release flips to `published`. Fails with `RELEASE_NOT_FOUND`, `RELEASE_NOT_DRAFT`, `RELEASE_EMPTY`, `ROOT_NOT_FOUND`, `BRANCH_NOT_FOUND`, or `PUBLICATION_APPROVAL_REQUIRED`.
 
-<APIMethod method="POST" path="/releases/publishRelease" resource="release" operation="update" returns="{ release, publications }" params={{
-  releaseId: { type: 'string', required: true, description: 'The draft release to publish.' },
-  publishedBy: { type: 'string', description: 'Fallback actor id, used only when the request has no session user (the request user takes precedence).' },
-}} />
-
-```ts
-const { release, publications } = await cms.api.releases.publishRelease({
-  body: { releaseId: 'rel_abc123' },
-});
-```
+<APIMethod
+  method="POST"
+  path="/releases/publishRelease"
+  fn="publishRelease"
+  collection="releases"
+  resource="release"
+  operation="update"
+  args={`{
+  body: { releaseId: 'rel_abc123' }, // required
+}`}
+  returns={{
+    release: { type: 'Release', description: "The updated release, now `status: 'published'` with a set `publishedAt`." },
+    publications: { type: 'Publication[]', description: 'One publication per item: `{ rootId, branchId, commitId, publishedBy, publishedAt, branchName }`.' },
+  }}
+  params={{
+    releaseId: { type: 'string', required: true, description: 'The draft release to publish.' },
+    publishedBy: { type: 'string', description: 'Fallback actor id, used only when the request has no session user (the request user takes precedence).' },
+  }}
+/>
 
 The updated `release` has `status: 'published'` and a set `publishedAt`; `publications` holds one publication per item.

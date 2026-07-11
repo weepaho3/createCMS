@@ -9,92 +9,177 @@ Templates are not versioned content, so these methods do not return a `commit` e
 
 ## Methods
 
-### `list`
+### List Templates [#list]
 
-Lists templates, ordered by collection then block type, optionally filtered by collection, block type, and a case-insensitive substring match on the template string. All query fields are optional.
+List every template, ordered by collection then block type, so you can see which block properties already have defaults. Narrow the results by collection, block type, or a case-insensitive substring of the template string, and page through with `limit`/`offset`. Every filter is optional.
 
-<APIMethod method="GET" path="/templates/list" resource="template" operation="read" returns="{ templates, total, hasMore }" params={{
-  collection: { type: 'string', description: 'Filter by collection name.' },
-  blockType: { type: 'string', description: 'Filter by block type.' },
-  search: { type: 'string', description: 'Case-insensitive substring match on the template string.' },
-  limit: { type: 'number', default: '50', description: 'Page size.' },
-  offset: { type: 'number', default: '0', description: 'Rows to skip.' },
-}} />
-
-```ts
-const { templates, total } = await cms.api.templates.list({
+<APIMethod
+  method="GET"
+  path="/templates/list"
+  fn="list"
+  collection="templates"
+  resource="template"
+  operation="read"
+  args={`{
   query: { collection: 'pages', blockType: 'hero', limit: 20 },
-});
-```
+}`}
+  returns={{
+    templates: { type: 'Template[]', description: 'The matching template records on this page. Each has `id`, `collection`, `blockType`, `propertyKey`, `template`, `description`, and timestamps.' },
+    total: { type: 'number', description: 'Total templates matching the filters, ignoring `limit`/`offset`.' },
+    hasMore: { type: 'boolean', description: 'Whether more templates exist after this page.' },
+  }}
+  params={{
+    collection: { type: 'string', description: 'Filter by collection name.' },
+    blockType: { type: 'string', description: 'Filter by block type.' },
+    search: { type: 'string', description: 'Case-insensitive substring match on the template string.' },
+    limit: { type: 'number', default: '50', description: 'Page size.' },
+    offset: { type: 'number', default: '0', description: 'Rows to skip.' },
+  }}
+/>
 
-### `getTemplate`
+### Get a Template [#gettemplate]
 
-Retrieves a single template by id. Throws `TEMPLATE_NOT_FOUND` if it does not exist.
+Fetch a single template by id, so you can inspect its string, description, and which property it targets. Throws `TEMPLATE_NOT_FOUND` if no template with that id exists.
 
-<APIMethod method="GET" path="/templates/getTemplate" resource="template" operation="read" returns="{ template }" params={{
-  templateId: { type: 'string', required: true, description: 'The template id.' },
-}} />
+<APIMethod
+  method="GET"
+  path="/templates/getTemplate"
+  fn="getTemplate"
+  collection="templates"
+  resource="template"
+  operation="read"
+  args={`{
+  query: { templateId: 'tpl_abc123' }, // required
+}`}
+  returns={{
+    template: { type: 'Template', description: 'The template record: `{ id, collection, blockType, propertyKey, template, description, ... }`.' },
+  }}
+  params={{
+    templateId: { type: 'string', required: true, description: 'The template id.' },
+  }}
+/>
 
-### `getTemplateDefaults`
+### Get Resolved Defaults [#gettemplatedefaults]
 
-Resolves the default values for every template defined on a collection and block type, substituting `{{key}}` variables. Returns a `defaults` object mapping each `propertyKey` to its resolved string; empty when no templates exist for the pair.
+Resolve the default values for every template on a collection and block type, with `{{key}}` variables already substituted, so you can seed a new block's properties. You get back a `defaults` map from `propertyKey` to its resolved string; it is empty when the pair has no templates.
 
-<APIMethod method="GET" path="/templates/getTemplateDefaults" resource="template" operation="read" returns="{ defaults }" params={{
-  collection: { type: 'string', required: true, description: 'The collection name.' },
-  blockType: { type: 'string', required: true, description: 'The block type.' },
-}} />
+<APIMethod
+  method="GET"
+  path="/templates/getTemplateDefaults"
+  fn="getTemplateDefaults"
+  collection="templates"
+  resource="template"
+  operation="read"
+  args={`{
+  query: { collection: 'pages', blockType: 'hero' }, // both required
+}`}
+  returns={{
+    defaults: { type: 'Record<string, string>', description: 'Maps each `propertyKey` to its resolved template string. Empty when the collection/block-type pair has no templates.' },
+  }}
+  params={{
+    collection: { type: 'string', required: true, description: 'The collection name.' },
+    blockType: { type: 'string', required: true, description: 'The block type.' },
+  }}
+/>
 
-```ts
-const { defaults } = await cms.api.templates.getTemplateDefaults({
-  query: { collection: 'pages', blockType: 'hero' },
-});
-```
+### Resolve a Template String [#resolvetemplate]
 
-### `resolveTemplate`
+Resolve an arbitrary template string against your current variables, substituting `{{key}}` placeholders with their stored values. Unknown placeholders are left literal, so you can preview exactly what a template will render to.
 
-Resolves an arbitrary template string against the current variables, substituting `{{key}}` placeholders with their stored values. Unknown placeholders are left literal.
+<APIMethod
+  method="GET"
+  path="/templates/resolveTemplate"
+  fn="resolveTemplate"
+  collection="templates"
+  resource="template"
+  operation="read"
+  args={`{
+  query: { template: 'Welcome to {{siteName}}' }, // required
+}`}
+  returns={{
+    resolved: { type: 'string', description: 'The template string with every known `{{key}}` replaced by its value; unresolved placeholders remain as-is.' },
+  }}
+  params={{
+    template: { type: 'string', required: true, description: 'The template string to resolve.' },
+  }}
+/>
 
-<APIMethod method="GET" path="/templates/resolveTemplate" resource="template" operation="read" returns="{ resolved }" params={{
-  template: { type: 'string', required: true, description: 'The template string to resolve.' },
-}} />
+### Create a Template [#createtemplate]
 
-### `createTemplate`
+Create a template for a `(collection, blockType, propertyKey)` triple; you get back the new record, and its `{{key}}` variable usages are tracked for you. The target property must be a `string` or `richText` property — pointing at any other type throws `TEMPLATE_PROPERTY_INVALID` — and a duplicate triple throws `TEMPLATE_KEY_EXISTS`.
 
-Creates a template for a `(collection, blockType, propertyKey)` triple and records the variable keys used in the template string. The target property must be a `string` or `richText` property, otherwise it throws `TEMPLATE_PROPERTY_INVALID`. Creating a duplicate `(collection, blockType, propertyKey)` throws `TEMPLATE_KEY_EXISTS`.
-
-<APIMethod method="POST" path="/templates/createTemplate" resource="template" operation="create" returns="{ template }" params={{
-  collection: { type: 'string', required: true, description: 'The collection name.' },
-  blockType: { type: 'string', required: true, description: 'The block type.' },
-  propertyKey: { type: 'string', required: true, description: 'The property key this template applies to.' },
-  template: { type: 'string', required: true, description: 'The template string, may include `{{key}}` variable placeholders.' },
-  description: { type: 'string', description: 'Optional description.' },
-}} />
-
-```ts
-const { template } = await cms.api.templates.createTemplate({
+<APIMethod
+  method="POST"
+  path="/templates/createTemplate"
+  fn="createTemplate"
+  collection="templates"
+  resource="template"
+  operation="create"
+  args={`{
   body: {
-    collection: 'pages',
-    blockType: 'hero',
-    propertyKey: 'title',
-    template: 'Welcome to {{siteName}}',
+    collection: 'pages', // required
+    blockType: 'hero', // required
+    propertyKey: 'title', // required
+    template: 'Welcome to {{siteName}}', // required
   },
-});
-```
+}`}
+  returns={{
+    template: { type: 'Template', description: 'The created template record, including its generated `id`.' },
+  }}
+  params={{
+    collection: { type: 'string', required: true, description: 'The collection name.' },
+    blockType: { type: 'string', required: true, description: 'The block type.' },
+    propertyKey: { type: 'string', required: true, description: 'The property key this template applies to.' },
+    template: { type: 'string', required: true, description: 'The template string, may include `{{key}}` variable placeholders.' },
+    description: { type: 'string', description: 'Optional description.' },
+  }}
+/>
 
-### `updateTemplate`
+### Update a Template [#updatetemplate]
 
-Updates a template's string and/or description, re-syncing tracked variable usages when the string changes. Omitted fields keep their current value. Throws `TEMPLATE_NOT_FOUND` if it does not exist.
+Update a template's string and/or description; omitted fields keep their current value, and changing the string re-syncs its tracked variable usages. Throws `TEMPLATE_NOT_FOUND` if the template does not exist.
 
-<APIMethod method="POST" path="/templates/updateTemplate" resource="template" operation="update" returns="{ template }" params={{
-  templateId: { type: 'string', required: true, description: 'The template id.' },
-  template: { type: 'string', description: 'New template string. Omit to keep the current value.' },
-  description: { type: 'string', description: 'New description. Omit to keep the current value.' },
-}} />
+<APIMethod
+  method="POST"
+  path="/templates/updateTemplate"
+  fn="updateTemplate"
+  collection="templates"
+  resource="template"
+  operation="update"
+  args={`{
+  body: {
+    templateId: 'tpl_abc123', // required
+    template: 'Updated {{siteName}} content',
+  },
+}`}
+  returns={{
+    template: { type: 'Template', description: 'The updated template record.' },
+  }}
+  params={{
+    templateId: { type: 'string', required: true, description: 'The template id.' },
+    template: { type: 'string', description: 'New template string. Omit to keep the current value.' },
+    description: { type: 'string', description: 'New description. Omit to keep the current value.' },
+  }}
+/>
 
-### `deleteTemplate`
+### Delete a Template [#deletetemplate]
 
-Deletes a template by id. Throws `TEMPLATE_NOT_FOUND` if it does not exist.
+Delete a template by id. You get back the id you deleted; throws `TEMPLATE_NOT_FOUND` if it does not exist.
 
-<APIMethod method="POST" path="/templates/deleteTemplate" resource="template" operation="delete" returns="{ templateId }" params={{
-  templateId: { type: 'string', required: true, description: 'The template id.' },
-}} />
+<APIMethod
+  method="POST"
+  path="/templates/deleteTemplate"
+  fn="deleteTemplate"
+  collection="templates"
+  resource="template"
+  operation="delete"
+  args={`{
+  body: { templateId: 'tpl_abc123' }, // required
+}`}
+  returns={{
+    templateId: { type: 'string', description: 'The id of the deleted template.' },
+  }}
+  params={{
+    templateId: { type: 'string', required: true, description: 'The template id.' },
+  }}
+/>

@@ -9,171 +9,379 @@ Every method requires a session except the public [`asset`](#public-delivery) de
 
 ## Folders
 
-### `listFolders`
+### List Folders [#listfolders]
 
-Lists folders one level at a time, sorted by name. Omit `parentFolderId` for the root-level folders, or pass a folder id to get its direct children. Intentionally unpaginated (per-level tree navigation).
+Walk the folder tree one level at a time. Omit `parentFolderId` to get the root-level folders, or pass a folder id to get that folder's direct children — sorted by name. It's intentionally unpaginated: each call is bounded by a single parent's direct-child fan-out, so you page the tree by descending, not by offset.
 
-<APIMethod method="GET" path="/media/listFolders" resource="media" operation="read" returns="{ folders }" params={{
-  parentFolderId: { type: 'string', description: 'Parent folder id. Omit for the root-level folders (those with no parent).' },
-}} />
+<APIMethod
+  method="GET"
+  path="/media/listFolders"
+  fn="listFolders"
+  collection="media"
+  resource="media"
+  operation="read"
+  args={`{
+  query: { parentFolderId: 'fld_images' }, // omit for the root-level folders
+}`}
+  returns={{
+    folders: { type: '{ id, name, parentId, createdBy, createdAt }[]', description: 'The direct child folders (of the parent, or of the root), sorted by name. `parentId` and `createdBy` are `null` at the root or when unknown.' },
+  }}
+  params={{
+    parentFolderId: { type: 'string', description: 'Parent folder id. Omit for the root-level folders (those with no parent).' },
+  }}
+/>
 
-### `createFolder`
+### Create a Folder [#createfolder]
 
-Creates a folder in the asset library.
+Create a folder in the asset library to group your assets. Nest it under a parent with `parentFolderId`, or omit that to add a folder at the root.
 
-<APIMethod method="POST" path="/media/createFolder" resource="media" operation="create" returns="{ folder }" params={{
-  name: { type: 'string', required: true, description: 'Folder name.' },
-  parentFolderId: { type: 'string', description: 'Parent folder id. Omit to create a root-level folder. Throws `PARENT_NOT_FOUND` if it does not exist.' },
-}} />
+<APIMethod
+  method="POST"
+  path="/media/createFolder"
+  fn="createFolder"
+  collection="media"
+  resource="media"
+  operation="create"
+  args={`{
+  body: {
+    name: 'Images', // required
+    parentFolderId: 'fld_media',
+  },
+}`}
+  returns={{
+    folder: { type: '{ id, name, parentId, createdBy, createdAt }', description: 'The new folder. `parentId` is `null` for a root-level folder.' },
+  }}
+  params={{
+    name: { type: 'string', required: true, description: 'Folder name.' },
+    parentFolderId: { type: 'string', description: 'Parent folder id. Omit to create a root-level folder. Throws `PARENT_NOT_FOUND` if it does not exist.' },
+  }}
+/>
 
-### `moveFolder`
+### Move a Folder [#movefolder]
 
-Moves a folder under a new parent, or to the root. Throws `CANNOT_MOVE_INTO_SELF` or `CANNOT_MOVE_INTO_DESCENDANT` for an invalid target.
+Move a folder under a new parent, or detach it to the root with `newParentFolderId: null`. Moving a folder into itself or into one of its own descendants is rejected.
 
-<APIMethod method="POST" path="/media/moveFolder" resource="media" operation="update" returns="{ folder }" params={{
-  folderId: { type: 'string', required: true, description: 'The folder to move.' },
-  newParentFolderId: { type: 'string | null', description: 'New parent folder id. Omit or pass `null` to move to the root.' },
-}} />
+<APIMethod
+  method="POST"
+  path="/media/moveFolder"
+  fn="moveFolder"
+  collection="media"
+  resource="media"
+  operation="update"
+  args={`{
+  body: {
+    folderId: 'fld_images', // required
+    newParentFolderId: 'fld_media', // omit or null to move to the root
+  },
+}`}
+  returns={{
+    folder: { type: '{ id, name, parentId, createdBy, createdAt }', description: 'The updated folder, with its new `parentId` (`null` at the root).' },
+  }}
+  params={{
+    folderId: { type: 'string', required: true, description: 'The folder to move.' },
+    newParentFolderId: { type: 'string | null', description: 'New parent folder id. Omit or pass `null` to move to the root.' },
+  }}
+/>
 
-### `deleteFolder`
+### Delete a Folder [#deletefolder]
 
-Deletes an empty folder. Fails with `FOLDER_HAS_CONTENT` if it still holds assets or subfolders.
+Delete an empty folder. Clear out its assets and subfolders first — a folder that still holds content can't be deleted.
 
-<APIMethod method="POST" path="/media/deleteFolder" resource="media" operation="delete" returns="{ folderId }" params={{
-  folderId: { type: 'string', required: true, description: 'The folder to delete.' },
-}} />
+<APIMethod
+  method="POST"
+  path="/media/deleteFolder"
+  fn="deleteFolder"
+  collection="media"
+  resource="media"
+  operation="delete"
+  args={`{
+  body: { folderId: 'fld_images' }, // required
+}`}
+  returns={{
+    folderId: { type: 'string', description: 'The id of the deleted folder.' },
+  }}
+  params={{
+    folderId: { type: 'string', required: true, description: 'The folder to delete.' },
+  }}
+/>
 
 ## Assets
 
-### `listAssets`
+### List Assets [#listassets]
 
-Lists assets with optional filtering and pagination. Supports two modes: legacy `offset` (bounded to the first 100 rows) and stable, unbounded `cursor` (keyset) paging that walks the whole library. Pass `cursor` (the previous page's `nextCursor`) to continue; it takes precedence over `offset`.
+List the assets in your media library, with optional filtering (by folder, status, or slug search) and sorting. For paging, prefer the stable `cursor` (keyset) mode to walk the whole library — pass the previous page's `nextCursor` to continue; the legacy `offset` mode is capped to the first 100 rows and `cursor` takes precedence over it.
 
-<APIMethod method="GET" path="/media/listAssets" resource="media" operation="read" returns="{ assets, total, hasMore, nextCursor }" params={{
-  folderId: { type: 'string', description: "Filter to a folder's assets. Omit for no folder filter." },
-  unfiled: { type: 'boolean', description: 'Set `true` to list only root-level (unfiled) assets, those with no folder. Takes precedence over `folderId`.' },
-  status: { type: "'private' | 'public'", description: 'Filter by privacy status.' },
-  search: { type: 'string', description: 'Case-insensitive substring match against the asset slug.' },
-  limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
-  offset: { type: 'number', default: '0', description: 'Rows to skip. Ignored when `cursor` is given.' },
-  cursor: { type: 'string', description: "Opaque keyset cursor from a previous page's `nextCursor`; pages past the offset ceiling." },
-  sortBy: { type: "'createdAt' | 'slug' | 'size'", default: "'createdAt'", description: 'Sort field.' },
-  sortDirection: { type: "'asc' | 'desc'", default: "'desc'", description: 'Sort order.' },
-}} />
-
-```ts
-const { assets, nextCursor } = await cms.api.media.listAssets({
-  query: { status: 'public', limit: 50 },
-});
-```
+<APIMethod
+  method="GET"
+  path="/media/listAssets"
+  fn="listAssets"
+  collection="media"
+  resource="media"
+  operation="read"
+  args={`{
+  query: {
+    status: 'public',
+    limit: 50,
+  },
+}`}
+  returns={{
+    assets: { type: 'AssetListItem[]', description: 'The assets on this page. Each carries `id`, `slug`, `mimeType`, `size`, `objectKey`, direct `url`, `status`, `folderId`, `variantOf`, `uploadedBy`, `createdAt`, `updatedAt`.' },
+    total: { type: 'number', description: 'Total assets across all pages for the current filter (ignores paging).' },
+    hasMore: { type: 'boolean', description: 'Whether more assets exist after this page.' },
+    nextCursor: { type: 'string | null', description: 'Opaque cursor for the next page; `null` at the end of the list. Pass it back as `cursor` to continue.' },
+  }}
+  params={{
+    folderId: { type: 'string', description: "Filter to a folder's assets. Omit for no folder filter." },
+    unfiled: { type: 'boolean', description: 'Set `true` to list only root-level (unfiled) assets, those with no folder. Takes precedence over `folderId`.' },
+    status: { type: "'private' | 'public'", description: 'Filter by privacy status.' },
+    search: { type: 'string', description: 'Case-insensitive substring match against the asset slug.' },
+    limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
+    offset: { type: 'number', default: '0', description: 'Rows to skip. Ignored when `cursor` is given.' },
+    cursor: { type: 'string', description: "Opaque keyset cursor from a previous page's `nextCursor`; pages past the offset ceiling." },
+    sortBy: { type: "'createdAt' | 'slug' | 'size'", default: "'createdAt'", description: 'Sort field.' },
+    sortDirection: { type: "'asc' | 'desc'", default: "'desc'", description: 'Sort order.' },
+  }}
+/>
 
 Each asset includes the direct `url` (`${publicUrl}/${objectKey}`) for internal/admin display; `nextCursor` is `null` at the end of the list.
 
-### `getAssets`
+### Get Assets by Id [#getassets]
 
-Bulk-resolves assets by id, the id-to-asset counterpart to `listAssets` (for previewing assets outside the current library page). Same row shape as `listAssets`; archived, out-of-scope, and unknown ids are simply absent from the result (no error). Order is not guaranteed.
+Resolve a batch of assets by id — the id-to-asset counterpart to `listAssets`, for previewing assets that fall outside the current library page (say, ones referenced by content you're editing). You get back the same row shape as `listAssets`; archived, out-of-scope, and unknown ids are simply absent from the result (no error), and order is not guaranteed.
 
-<APIMethod method="GET" path="/media/getAssets" resource="media" operation="read" returns="{ assets }" params={{
-  ids: { type: 'string[]', required: true, description: 'Asset ids to resolve (at least one).' },
-}} />
+<APIMethod
+  method="GET"
+  path="/media/getAssets"
+  fn="getAssets"
+  collection="media"
+  resource="media"
+  operation="read"
+  args={`{
+  query: { ids: ['ast_123', 'ast_456'] }, // required
+}`}
+  returns={{
+    assets: { type: 'AssetListItem[]', description: 'The matching live, in-scope assets, each with the same fields a `listAssets` row carries. Unknown, archived, and out-of-scope ids are absent; order is not guaranteed.' },
+  }}
+  params={{
+    ids: { type: 'string[]', required: true, description: 'Asset ids to resolve (at least one).' },
+  }}
+/>
 
-### `getAssetUsages`
+### Get Asset Usages [#getassetusages]
 
-Returns page-centric usage details for an asset across all live content. Each page reports `rootId`, `collection`, `storedSlug` (the page's bare stored slug segment, not a full URL path), and per-block `occurrences`.
+Check where an asset is used across your live content before you touch it — you get each page that references it, with per-block occurrences. Each page reports its `rootId`, `collection`, `storedSlug` (the page's bare stored slug segment, not a full URL path), and the block-level `occurrences`.
 
-<APIMethod method="GET" path="/media/getAssetUsages" resource="media" operation="read" returns="{ pageCount, pages }" params={{
-  assetId: { type: 'string', required: true, description: 'The asset id to query. Throws `ASSET_NOT_FOUND` if it does not exist.' },
-}} />
+<APIMethod
+  method="GET"
+  path="/media/getAssetUsages"
+  fn="getAssetUsages"
+  collection="media"
+  resource="media"
+  operation="read"
+  args={`{
+  query: { assetId: 'ast_123' }, // required
+}`}
+  returns={{
+    pageCount: { type: 'number', description: 'How many distinct live pages reference the asset.' },
+    pages: { type: '{ rootId, collection, storedSlug, occurrences }[]', description: "One entry per referencing page. `storedSlug` is the page's bare stored slug segment (`null` for root pages); `occurrences` is `{ branchId, blockId, propertyKey }[]`." },
+  }}
+  params={{
+    assetId: { type: 'string', required: true, description: 'The asset id to query. Throws `ASSET_NOT_FOUND` if it does not exist.' },
+  }}
+/>
 
 ## Uploads
 
-### `createSignedUpload`
+### Create a Signed Upload [#createsignedupload]
 
-Prepares assets for client-side upload and returns presigned PUT URLs; the browser uploads each file straight to the bucket. Creates the database rows (`private`) up front.
+Hand the browser presigned PUT URLs so it can upload files straight to your bucket — no bytes pass through your server. The asset rows are created up front as `private`; PUT each file to its `signedUrl` with the returned `headers`, then flip the assets to `public` when you're ready to serve them.
 
-<APIMethod method="POST" path="/media/createSignedUpload" resource="media" operation="create" returns="{ assets, expiresAt }" params={{
-  files: { type: '{ name: string; size: number; type: string; variantOf?: string }[]', required: true, description: 'Files to upload (at least one). `size` is the byte length, `type` a MIME type, `variantOf` an existing asset id when uploading a variant.' },
-  folderId: { type: 'string', description: 'Target folder id.' },
-}} />
-
-```ts
-const { assets } = await cms.api.media.createSignedUpload({
-  body: { files: [{ name: 'hero.jpg', size: 512000, type: 'image/jpeg' }] },
-});
-// PUT each file to assets[i].signedUrl with assets[i].headers.
-```
+<APIMethod
+  method="POST"
+  path="/media/createSignedUpload"
+  fn="createSignedUpload"
+  collection="media"
+  resource="media"
+  operation="create"
+  args={`{
+  body: {
+    files: [{ name: 'hero.jpg', size: 512000, type: 'image/jpeg' }], // required
+  },
+}`}
+  returns={{
+    assets: { type: '{ id, slug, objectKey, url, signedUrl, headers }[]', description: 'One entry per file: the created (private) asset plus its presigned `signedUrl` and the `headers` to send with the PUT.' },
+    expiresAt: { type: 'Date', description: 'When the signed URLs expire.' },
+  }}
+  params={{
+    files: { type: '{ name: string; size: number; type: string; variantOf?: string }[]', required: true, description: 'Files to upload (at least one). `size` is the byte length, `type` a MIME type, `variantOf` an existing asset id when uploading a variant.' },
+    folderId: { type: 'string', description: 'Target folder id.' },
+  }}
+/>
 
 Returns `{ assets: { id, slug, objectKey, url, signedUrl, headers }[], expiresAt }`. PUT each file to its `signedUrl` with the returned `headers` (`Content-Type`, `x-amz-acl: public-read`); `expiresAt` is when the signed URLs expire. Throws `TOO_MANY_FILES`, `FILE_TOO_LARGE`, `INVALID_FILE_TYPE`, `FOLDER_NOT_FOUND`, `ASSET_NOT_FOUND` (unknown `variantOf`), or `SLUG_GENERATION_FAILED`.
 
-### `uploadAssets`
+### Upload Assets [#uploadassets]
 
-Uploads file bytes through the server (for small files or server-initiated uploads). Same shape as `createSignedUpload`, but each file carries a `buffer`. Declared image types are sniffed against their magic bytes and a spoofed type (e.g. an SVG posing as `image/png`) is rejected before any row or object is written.
+Upload file bytes through the server — reach for this for small files or server-initiated uploads. It takes the same shape as `createSignedUpload`, but each file carries its `buffer`. Declared image types are sniffed against their magic bytes, so a spoofed file (e.g. an SVG posing as `image/png`) is rejected before any row or object is written.
 
-<APIMethod method="POST" path="/media/uploadAssets" resource="media" operation="create" returns="{ assets }" params={{
-  files: { type: '{ name: string; size: number; type: string; buffer: Blob | ArrayBuffer; variantOf?: string }[]', required: true, description: 'Files with byte content (at least one). The real byte length is measured server-side; the declared `size` is not trusted.' },
-  folderId: { type: 'string', description: 'Target folder id.' },
-}} />
-
-```ts
-const { assets } = await cms.api.media.uploadAssets({
+<APIMethod
+  method="POST"
+  path="/media/uploadAssets"
+  fn="uploadAssets"
+  collection="media"
+  resource="media"
+  operation="create"
+  args={`{
   body: {
-    files: [{ name: 'hero.jpg', size: buffer.byteLength, type: 'image/jpeg', buffer }],
+    files: [{ name: 'hero.jpg', size: buffer.byteLength, type: 'image/jpeg', buffer }], // required
   },
-});
-```
+}`}
+  returns={{
+    assets: { type: 'AssetListItem[]', description: 'The uploaded assets, each with the same fields a `listAssets` row carries.' },
+  }}
+  params={{
+    files: { type: '{ name: string; size: number; type: string; buffer: Blob | ArrayBuffer; variantOf?: string }[]', required: true, description: 'Files with byte content (at least one). The real byte length is measured server-side; the declared `size` is not trusted.' },
+    folderId: { type: 'string', description: 'Target folder id.' },
+  }}
+/>
 
 Returns `{ assets }`, each with the same fields a `listAssets` row carries. Throws `TOO_MANY_FILES`, `FILE_TOO_LARGE`, `INVALID_FILE_TYPE`, `FOLDER_NOT_FOUND`, `ASSET_NOT_FOUND` (unknown `variantOf`), `UPLOAD_FAILED`, or `SLUG_GENERATION_FAILED`.
 
-### `replaceAsset`
+### Replace an Asset [#replaceasset]
 
-Swaps the bytes behind an existing asset while keeping its `id` (and `folderId`/`status`) stable, so every content reference picks up the new image with no content change (the id-addressed gate re-resolves it). A new slug/object key is minted for a clean cache-bust, and the asset's old variants are archived (regenerate them afterward). Server-side and atomic.
+Swap the bytes behind an existing asset while keeping its `id` (and `folderId`/`status`) stable, so every content reference picks up the new image with no content change — the id-addressed gate re-resolves it. A fresh slug and object key are minted for a clean cache-bust, and the asset's old variants are archived (regenerate them afterward). Server-side and atomic.
 
-<APIMethod method="POST" path="/media/replaceAsset" resource="media" operation="update" returns="{ asset }" params={{
-  assetId: { type: 'string', required: true, description: 'The asset to replace.' },
-  file: { type: '{ name: string; size: number; type: string; buffer: Blob | ArrayBuffer }', required: true, description: 'The new file bytes. Sniffed like `uploadAssets`.' },
-}} />
+<APIMethod
+  method="POST"
+  path="/media/replaceAsset"
+  fn="replaceAsset"
+  collection="media"
+  resource="media"
+  operation="update"
+  args={`{
+  body: {
+    assetId: 'ast_123', // required
+    file: { name: 'hero.jpg', size: buffer.byteLength, type: 'image/jpeg', buffer }, // required
+  },
+}`}
+  returns={{
+    asset: { type: 'AssetListItem', description: 'The updated asset (same `id`, new `slug`/`objectKey`/`url`), with the same fields a `listAssets` row carries.' },
+  }}
+  params={{
+    assetId: { type: 'string', required: true, description: 'The asset to replace.' },
+    file: { type: '{ name: string; size: number; type: string; buffer: Blob | ArrayBuffer }', required: true, description: 'The new file bytes. Sniffed like `uploadAssets`.' },
+  }}
+/>
 
 Returns `{ asset }` with the same fields a `listAssets` row carries. Throws `CANNOT_REPLACE_VARIANT` (target is itself a variant), `ASSET_NOT_FOUND`, `FILE_TOO_LARGE` / `INVALID_FILE_TYPE`, or `UPLOAD_FAILED` (asset left unchanged).
 
 ## Asset status
 
-### `updateAssetsStatus`
+### Update Asset Status [#updateassetsstatus]
 
-Changes the privacy status of one or more assets. Archived and out-of-scope ids are surfaced in `skipped`. Throws `ASSET_NOT_FOUND` if none of the ids match a live, in-scope asset.
+Flip one or more assets between `private` and `public` — this is the gate you open to actually serve an uploaded asset. Archived and out-of-scope ids come back in `skipped`; if none of the ids match a live, in-scope asset the call throws `ASSET_NOT_FOUND`.
 
-<APIMethod method="POST" path="/media/updateAssetsStatus" resource="media" operation="update" returns="{ updated, updatedIds, skipped }" params={{
-  assetIds: { type: 'string[]', required: true, description: 'Asset ids to update (at least one).' },
-  status: { type: "'private' | 'public'", required: true, description: 'Target status.' },
-}} />
+<APIMethod
+  method="POST"
+  path="/media/updateAssetsStatus"
+  fn="updateAssetsStatus"
+  collection="media"
+  resource="media"
+  operation="update"
+  args={`{
+  body: {
+    assetIds: ['ast_123'], // required
+    status: 'public', // required
+  },
+}`}
+  returns={{
+    updated: { type: 'number', description: 'How many assets had their status changed.' },
+    updatedIds: { type: 'string[]', description: 'The ids that were updated.' },
+    skipped: { type: 'string[]', description: 'Requested ids that matched no live, in-scope asset (archived or out of scope).' },
+  }}
+  params={{
+    assetIds: { type: 'string[]', required: true, description: 'Asset ids to update (at least one).' },
+    status: { type: "'private' | 'public'", required: true, description: 'Target status.' },
+  }}
+/>
 
-### `moveAssets`
+### Move Assets [#moveassets]
 
-Moves assets into a folder (or to the root with `folderId: null`). Non-existent, out-of-scope, archived, and variant ids are skipped (surfaced in `skipped`), so a batch partially succeeds. A moved asset's variants follow it into the same folder, so an original and its variants are never split apart.
+Move a batch of assets into a folder (or to the root with `folderId: null`). Non-existent, out-of-scope, archived, and variant ids are skipped (surfaced in `skipped`), so a batch partially succeeds. A moved asset's variants follow it into the same folder, so an original and its variants are never split apart.
 
-<APIMethod method="POST" path="/media/moveAssets" resource="media" operation="update" returns="{ moved, movedIds, skipped }" params={{
-  assetIds: { type: 'string[]', required: true, description: 'Asset ids to move (at least one).' },
-  folderId: { type: 'string | null', required: true, description: 'Target folder id, or `null` to move to the root.' },
-}} />
+<APIMethod
+  method="POST"
+  path="/media/moveAssets"
+  fn="moveAssets"
+  collection="media"
+  resource="media"
+  operation="update"
+  args={`{
+  body: {
+    assetIds: ['ast_123'], // required
+    folderId: 'fld_images', // required; null moves to the root
+  },
+}`}
+  returns={{
+    moved: { type: 'number', description: 'How many originals were moved (their variants follow along).' },
+    movedIds: { type: 'string[]', description: 'The ids that were moved.' },
+    skipped: { type: 'string[]', description: 'Requested ids that were skipped: missing, out-of-scope, archived, or a variant passed on its own.' },
+  }}
+  params={{
+    assetIds: { type: 'string[]', required: true, description: 'Asset ids to move (at least one).' },
+    folderId: { type: 'string | null', required: true, description: 'Target folder id, or `null` to move to the root.' },
+  }}
+/>
 
 Throws `FOLDER_NOT_FOUND` (unknown/out-of-scope target) or `ASSET_NOT_FOUND` (no live ids).
 
-### `archiveAssets`
+### Archive Assets [#archiveassets]
 
-Soft-deletes assets and their variants for later garbage collection. Assets referenced by live (published) content are skipped, not failed, so a batch still archives the rest. Throws `ASSET_NOT_FOUND` if none of the ids match a live, in-scope asset.
+Soft-delete a batch of assets (and their variants) so a later garbage-collection pass can reclaim them. Assets still referenced by live (published) content are skipped rather than failed, so the rest of the batch still archives. Throws `ASSET_NOT_FOUND` if none of the ids match a live, in-scope asset.
 
-<APIMethod method="POST" path="/media/archiveAssets" resource="media" operation="delete" returns="{ archived, archivedIds, skipped }" params={{
-  assetIds: { type: 'string[]', required: true, description: 'Asset ids to archive (at least one).' },
-}} />
+<APIMethod
+  method="POST"
+  path="/media/archiveAssets"
+  fn="archiveAssets"
+  collection="media"
+  resource="media"
+  operation="delete"
+  args={`{
+  body: { assetIds: ['ast_123'] }, // required
+}`}
+  returns={{
+    archived: { type: 'number', description: 'How many assets were archived (variants archived alongside them).' },
+    archivedIds: { type: 'string[]', description: 'The ids that were archived.' },
+    skipped: { type: 'string[]', description: 'Ids skipped because they are still referenced by live content.' },
+  }}
+  params={{
+    assetIds: { type: 'string[]', required: true, description: 'Asset ids to archive (at least one).' },
+  }}
+/>
 
 ## Public delivery
 
-### `asset`
+### Serve an Asset [#asset]
 
-Public redirect (`302`) to an asset's object URL, addressed by the **asset id** (what content stores). This is how you serve assets in content and on public pages. It survives a `replaceAsset` without touching content: the gate just re-resolves the id to the current object. Private assets return `ASSET_ACCESS_DENIED`. The redirect is short-cached (`max-age=300`, not immutable), so swapping the object behind the same id propagates automatically.
+Serve an asset on a public page by addressing it by **asset id** (what content stores) — this `302`s to the asset's current object URL. It's what you put behind an `<img src>`, and it survives a `replaceAsset` untouched: the gate just re-resolves the id to the current object. Private assets are rejected with `ASSET_ACCESS_DENIED`, and the redirect is short-cached (`max-age=300`, not immutable), so swapping the object behind the same id propagates automatically.
 
-<APIMethod method="GET" path="/media/asset/{assetId}" public returns="302 redirect to the object URL" params={{
-  assetId: { type: 'string', required: true, description: 'Path parameter: the asset id to serve.' },
-  format: { type: "'webp' | 'jpeg' | 'png'", description: 'Serve a pre-uploaded format variant, falling back to the original.' },
-  w: { type: 'number', description: 'Serve a pre-uploaded width variant (positive integer), falling back to the original.' },
-  download: { type: 'boolean', description: 'Set `true` to send a `Content-Disposition: attachment` header.' },
-}} />
+<APIMethod
+  method="GET"
+  path="/media/asset/{assetId}"
+  fn="asset"
+  collection="media"
+  public
+  args={`{
+  params: { assetId: 'ast_123' }, // required
+  query: { w: 800, format: 'webp' },
+}`}
+  returns={{
+    Location: { type: '302 redirect', description: "A `302` to the asset's public object URL (short-cached, `max-age=300`). No JSON body: the browser follows the `Location` header to the bytes." },
+  }}
+  params={{
+    assetId: { type: 'string', required: true, description: 'Path parameter: the asset id to serve.' },
+    format: { type: "'webp' | 'jpeg' | 'png'", description: 'Serve a pre-uploaded format variant, falling back to the original.' },
+    w: { type: 'number', description: 'Serve a pre-uploaded width variant (positive integer), falling back to the original.' },
+    download: { type: 'boolean', description: 'Set `true` to send a `Content-Disposition: attachment` header.' },
+  }}
+/>

@@ -9,11 +9,30 @@ Results honour the caller's read boundary: rows are returned only when their und
 
 ## Methods
 
-### `query`
+### Search Across Entities [#query]
 
-Searches every indexed entity with a single full-text query, ranked by relevance, with optional filtering by entity type, collection, or root. Each result carries a `highlight` string with `<mark>` around the matched terms.
+Run one full-text query across every indexed entity and get back matches ranked by relevance. Narrow the search by entity type, collection, or entry, and use each result's `highlight` string (with `<mark>` around the matched terms) to show users exactly where they matched.
 
-<APIMethod method="GET" path="/search/query" resource="search" operation="read" returns="{ results, total, hasMore }" params={{
+<APIMethod
+  method="GET"
+  path="/search/query"
+  fn="query"
+  collection="search"
+  resource="search"
+  operation="read"
+  args={`{
+  query: {
+    search: 'homepage', // required
+    entityTypes: ['root', 'variable'],
+    limit: 10,
+  },
+}`}
+  returns={{
+    results: { type: 'SearchResult[]', description: 'The matches on this page, ranked by relevance (highest `rank` first). See the shape below.' },
+    total: { type: 'number', description: 'Total number of matches across all pages, ignoring limit/offset.' },
+    hasMore: { type: 'boolean', description: 'Whether more matches exist after this page.' },
+  }}
+  params={{
   search: { type: 'string', required: true, description: 'Search term. Parsed as a websearch query.' },
   entityTypes: { type: "('root' | 'comment' | 'mergeRequest' | 'variable' | 'template' | 'asset' | 'notification')[]", description: 'Restrict to these entity types. Also accepts a comma-separated string.' },
   collection: { type: 'string', description: 'Restrict to a single collection.' },
@@ -21,12 +40,6 @@ Searches every indexed entity with a single full-text query, ranked by relevance
   limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
   offset: { type: 'number', default: '0', description: 'Rows to skip.' },
 }} />
-
-```ts
-const { results, total, hasMore } = await cms.api.search.query({
-  query: { search: 'homepage', entityTypes: ['root', 'variable'], limit: 10 },
-});
-```
 
 Each result has `entityType`, `entityId`, optional `collection` / `rootId` / `title` / `snippet` / `meta`, a `rank` (relevance), and a `highlight` string with `<mark>` around the matched terms.
 

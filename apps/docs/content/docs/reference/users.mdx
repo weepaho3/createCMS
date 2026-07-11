@@ -5,29 +5,44 @@ description: Current-user identity and reviewer discovery, via cms.api.users.
 
 User-directory reads for identifying the current request's user and listing candidate reviewers. These methods live on the system namespace at `cms.api.users.<method>` and mirror on the client as `client.users.<method>` with identical types. Both project the id plus the configured `user.exposeColumns` allowlist (password hashes and tokens are never selected), and both degrade when no `user.table` is configured: `whoami` returns `{ user: null }` and `listReviewers` returns `[]`.
 
-### `whoami`
+### Identify the Current User [#whoami]
 
-Returns the current request's user id and its resolved user row, so a client can learn who it is without supplying the id. Both fields are `null` when unauthenticated; `user` is `null` when no `user.table` is configured or the id matches no row.
+Find out who the current request is authenticated as, so a client can learn its own identity without you supplying the id. You get back the user id plus the resolved user row (the configured `exposeColumns`). Both fields are `null` when unauthenticated, and `user` is `null` when no `user.table` is configured or the id matches no row.
 
-<APIMethod method="GET" path="/users/whoami" resource="user" operation="read" returns="{ userId, user }" />
-
-```ts
-const { userId, user } = await cms.api.users.whoami();
-```
+<APIMethod
+  method="GET"
+  path="/users/whoami"
+  fn="whoami"
+  collection="users"
+  resource="user"
+  operation="read"
+  returns={{
+    userId: { type: 'string | null', description: "The current request's user id (`ctx.userId`), or `null` when unauthenticated." },
+    user: { type: 'ExposedUser | null', description: 'The resolved user row `{ id, ...exposeColumns }`, or `null` when unauthenticated, no `user.table` is configured, or the id matches no row.' },
+  }}
+/>
 
 The resolved `user` is `{ id, ...exposeColumns }` or `null`.
 
-### `listReviewers`
+### List Reviewers [#listreviewers]
 
-Lists candidate reviewer users from the configured `user.table`, each as `{ id, ...exposeColumns }`, ordered by id. This is the picker source for approval workflows. All query fields are optional.
+List candidate reviewer users from your configured `user.table` — the picker source for approval workflows. Each user comes back as `{ id, ...exposeColumns }`, ordered by id, and you get an empty list when no `user.table` is configured. All query fields are optional.
 
-<APIMethod method="GET" path="/users/listReviewers" resource="user" operation="read" returns="ExposedUser[]" params={{
-  limit: { type: 'number', default: '100', description: 'Max users to return, 1 to 100.' },
-  offset: { type: 'number', default: '0', description: 'Rows to skip.' },
-}} />
-
-```ts
-const reviewers = await cms.api.users.listReviewers({
-  query: { limit: 50 },
-});
-```
+<APIMethod
+  method="GET"
+  path="/users/listReviewers"
+  fn="listReviewers"
+  collection="users"
+  resource="user"
+  operation="read"
+  args={`{
+  query: { limit: 50 }, // all optional
+}`}
+  returns={{
+    reviewers: { type: 'ExposedUser[]', description: 'Candidate reviewer users, each `{ id, ...exposeColumns }`, ordered by id. Empty when no `user.table` is configured.' },
+  }}
+  params={{
+    limit: { type: 'number', default: '100', description: 'Max users to return, 1 to 100.' },
+    offset: { type: 'number', default: '0', description: 'Rows to skip.' },
+  }}
+/>
