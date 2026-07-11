@@ -3,20 +3,73 @@ title: Collaboration
 description: Comment threads, mentions, and approvals for reviewing changes.
 ---
 
-Editing in the CMS is collaborative: changes are discussed and signed off before they go live. The review layer has three pieces, all built on the [merge request](/docs/concepts/merges).
+Editing in the CMS is collaborative: a change is discussed and signed off before it goes live. The review layer sits on top of the [merge request](/docs/concepts/merges) and does two distinct jobs. Comments and mentions carry the **discussion**, which is advisory and blocks nothing. Approvals are the **gate**, a sign-off the server enforces before a merge or a publish can run. Keeping those two apart is the whole model: talking about a change is separate from signing it off.
 
 ## Comment threads
 
-A comment thread attaches a conversation to a merge request or to a specific block. Each thread holds messages (with replies), can mention users, and can be resolved once the discussion is settled. Threads keep the review discussion next to the change it is about, with full history.
+A comment thread attaches a conversation to one of two targets: a merge request (`targetType: 'mergeRequest'`) or a single block (`targetType: 'block'`) for an inline note on one piece of content. A thread holds an ordered list of messages, replies can nest under a parent message, and users can be mentioned. When the discussion is settled the thread is resolved, which appends a system message recording who closed it and sets the thread's status to `resolved`. Listing returns open and resolved threads alike unless you filter by `status`.
 
-## Mentions and notifications
+[`createCommentThread`](/docs/reference/comments#createcommentthread) opens a thread with its first message:
 
-Mentioning a user with `@` in a comment, requesting their approval, or activity on a thread they are part of raises a [notification](/docs/concepts/notifications) in their inbox, so reviewers do not have to poll.
+```ts
+const { thread } = await cms.api.pages.createCommentThread({
+  body: {
+    targetType: 'block',
+    blockId: 'blk_hero',
+    body: 'This headline runs long on mobile. @user_editor can you trim it?',
+    mentions: ['user_editor'],
+  },
+});
+```
+
+Replies are added with [`createCommentMessage`](/docs/reference/comments#createcommentmessage), and [`resolveCommentThread`](/docs/reference/comments#resolvecommentthread) / [`reopenCommentThread`](/docs/reference/comments#reopencommentthread) flip the status. A thread keeps its full history in place: every reply, plus the system messages for resolve and reopen, stays on the thread, so the record of the discussion travels with the change. Only a message's author may edit or delete it, and system messages cannot be edited or deleted by anyone. A deleted message is soft-deleted with its body masked, so the shape of the conversation survives even after a message is removed.
+
+To pin a note to the exact content it was written against rather than the moving branch head, pass a `commitId` when opening the thread.
+
+<Callout type="info">
+  A comment never gates a merge or a publish. Resolving a thread signals the discussion is done; it does not unlock anything. All enforcement lives in approvals.
+</Callout>
+
+## Mentions
+
+Mentioning a user with `@` addresses a specific person. In the API a mention is a `mentions` array of user ids on a thread's first message or on any reply, and each mentioned user gets a [notification](/docs/concepts/notifications) in their inbox, so reviewers do not have to poll. You mention only the people whose attention you want: the list is de-duplicated and your own id is dropped, so you never notify yourself.
+
+Mentions are not the only thing that notifies. A reply also notifies the thread's creator (unless they wrote it or were already mentioned in it), and resolving or reopening a thread notifies its creator. [`listMentions`](/docs/reference/comments#listmentions) reads back every mention a given user has received, with the message and thread context for each.
 
 ## Approvals
 
-An approval is a required sign-off. A reviewer is asked to approve, and the gated action is blocked until they do. Approvals gate both merges (every merge needs one) and, optionally, publishing.
+An approval is a required sign-off. Someone requests it from one or more reviewers, and the gated action stays blocked until every requested reviewer has granted it. Each reviewer gets their own pending approval, so "two people must sign off" is two rows, tracked independently.
+
+An approval targets either a merge request or a **direct publication** (a branch's head commit): provide exactly one of `mergeRequestId` or `branchId` to [`requestApproval`](/docs/reference/approvals#requestapproval), and the approval's `targetType` reflects which. Every approval pins to a specific `commitId`, the head at request time. That is what sign-off means here: a reviewer approves an exact snapshot, not a moving branch. For a direct publication, if the branch head moves after the request, submitting the approval fails with [`APPROVAL_STALE`](/docs/reference/errors) rather than rubber-stamping content the reviewer never saw.
+
+```ts
+// Ask two reviewers to sign off on an open merge request.
+const { approvals } = await cms.api.pages.requestApproval({
+  body: {
+    mergeRequestId: 'mr_8fd21c',
+    requestedReviewers: ['user_editor', 'user_legal'],
+    message: 'Ready for review before we merge.',
+  },
+});
+
+// Each reviewer acts on their own approval.
+await cms.api.pages.submitApproval({
+  body: { approvalId: approvals[0].id },
+});
+```
+
+Only the requested reviewer may act on an approval, and only while it is pending. A reviewer approves with [`submitApproval`](/docs/reference/approvals#submitapproval) or declines with [`submitRejection`](/docs/reference/approvals#submitrejection) (which can carry a `rejectionReason`); the requester can withdraw a still-pending request with [`cancelApproval`](/docs/reference/approvals#cancelapproval). Requesting an approval, approving, and rejecting each notify the other party, so the request and its outcome move through the inbox without anyone polling. Withdrawing a still-pending request with `cancelApproval` does not notify.
+
+## Gating merges and publishing
+
+This is where the discussion / sign-off split pays off: comments advise, approvals enforce.
+
+**Merges enforce sign-off once it is requested.** After an approval has been requested on a merge, [`executeMerge`](/docs/reference/merges#executemerge) throws `APPROVALS_NOT_FULLY_APPROVED` while any requested approval is still pending, so the merge runs only once every requested reviewer approves. Approval is opt-in by default: a conflict-free merge with no approval request runs immediately. Turn on the [`requireApprovalToMerge`](/docs/reference/configuration) branch policy to make it mandatory even when none was requested, and a merge with no request then throws [`MERGE_APPROVAL_REQUIRED`](/docs/reference/errors).
+
+**Publishing requires sign-off only when you configure it to.** When it does, [`publishBranch`](/docs/reference/publications#publishbranch) is blocked with `PUBLICATION_APPROVAL_REQUIRED` until the branch's publication approval is granted, and the same gate applies to a scheduled publish. A due publish still waiting on an approval is treated as a transient failure: it stays queued and is retried on the next pass, not marked failed (only a missing root, branch, or publication is stamped permanent).
+
+Nothing in the comment layer feeds these gates: you can merge with open threads, and you can resolve every thread without unlocking a merge. Discussion and sign-off stay independent on purpose.
 
 <Callout type="info">
-  To run the flow, see [Review with comments](/docs/guides/review-comments) and [Draft, review, and publish](/docs/guides/content-workflow).
+  To run the flow end to end, see [Review with comments](/docs/guides/review-comments) and [Draft, review, and publish](/docs/guides/content-workflow). For exact signatures, see the [Comments API](/docs/reference/comments) and [Approvals API](/docs/reference/approvals).
 </Callout>

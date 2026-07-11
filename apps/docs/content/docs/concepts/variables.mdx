@@ -3,7 +3,9 @@ title: Variables
 description: Reusable values substituted into content on read.
 ---
 
-A variable is a named value you set once and reference from many places in your content. You write `{{key}}` in any string property, and the CMS substitutes the variable's current value when content is read.
+A variable is a named value you set once and reference from many places in your content. You write `{{key}}` in any string property, and the CMS substitutes the variable's current value when the content is read. It is the single source of truth for a value that repeats across pages: a product name, a support email, a launch year. Set the row once and every reference stays in step.
+
+The mental model that matters: a variable is one mutable cell, not a piece of content. It has no draft and no version of its own. What actually lives in your blocks is the literal template string `{{key}}`; the value is stitched in at read time, on every read.
 
 <Callout type="warn">
   **Variables are instantly live and unversioned.** A variable is a single mutable row substituted at read time, so editing its value changes **every live page that uses it, on the next read**, with no draft, approval, history, or rollback outside the [branch](/docs/concepts/branches) model. `updateVariable` overwrites the value in place (the previous value is not kept) and automatically revalidates the published entries that reference it. [Templates](/docs/concepts/templates) are the same kind of flat mutable row. Treat a variable edit as a site-wide publish, not a draft.
@@ -11,26 +13,76 @@ A variable is a named value you set once and reference from many places in your 
 
 ## How substitution works
 
-Variables are resolved on read, not on write. `getBlockTree` and `getPublishedContent` replace every `{{key}}` in string properties with the variable's value; pass `raw: true` to skip substitution and see the literal template. An unknown key is left as-is.
+Variables resolve on read, never on write. Both read paths walk the tree and replace every `{{key}}` in string properties with the variable's value: [`getBlockTree`](/docs/reference/blocks#getblocktree), the editing view, and [`getPublishedContent`](/docs/reference/publications#getpublishedcontent), the live view. Pass `raw: true` to skip substitution and get the literal template back. The editor reads with `raw: true` so the `{{key}}` binding survives edits instead of collapsing into its resolved text.
 
 ```ts
-// stored:    { title: 'Welcome to {{siteName}}' }
+// stored:    { heading: 'Welcome to {{siteName}}' }
 // variable:  siteName = 'Acme'
-// read:      { title: 'Welcome to Acme' }
+// read:      { heading: 'Welcome to Acme' }
 ```
 
-## Editing safely
+A few rules follow from how the match works:
 
-Because a value is shared, changing it updates every entry that uses it. Updating a variable's value automatically revalidates the published entries that reference it. A variable that is still in use cannot be deleted (`VARIABLE_IN_USE`); `getVariableUsages` shows where it is used.
+- **String properties only.** A number, boolean, date, or link value is passed through untouched; substitution never looks inside them.
+- **`{{key}}` is literal, with no spaces.** The `key` is word characters (letters, digits, underscore), the same shape `createVariable` accepts. `{{siteName}}` matches; `{{ siteName }}` does not.
+- **An unknown key stays literal.** A typo like `{{sitename}}` renders as the text `{{sitename}}`, not an empty string, so a missing value is visible rather than silent.
+- **Embedded content resolves too.** A `{{key}}` inside a resolved [reference](/docs/concepts/blocks) or an A/B variant subtree is substituted with the same values as the host page.
+
+The variable map is loaded once per read request and reused for the whole tree, so referencing a variable in a hundred blocks costs one lookup, not a hundred.
+
+Defining a value once and referencing it from a block looks like this:
+
+```ts
+// 1. Define the value once.
+await cms.api.variables.createVariable({
+  body: { key: 'siteName', value: 'Acme', description: 'Public site name' },
+});
+
+// 2. Reference it in any string property.
+await cms.api.pages.createBlock({
+  body: {
+    rootId: 'root_home',
+    branchId: 'br_main',
+    parentBlockId: 'root_home',
+    type: 'Hero',
+    properties: { heading: 'Welcome to {{siteName}}' },
+  },
+});
+
+// 3. On the next read, {{siteName}} becomes the value.
+const { tree } = await cms.api.pages.getBlockTree({
+  query: { rootId: 'root_home', branchId: 'br_main' },
+});
+// tree.properties.heading === 'Welcome to Acme'
+```
+
+## Knowing where a value is used
+
+Every time content is saved, the CMS records which variables each block references. That usage index is what makes a shared value safe to edit, and it powers three things:
+
+- **Targeted revalidation.** [`updateVariable`](/docs/reference/variables#updatevariable) looks up exactly the published entries whose live content uses the key and revalidates only those. Changing a value refreshes the pages that show it, not the whole site.
+- **A delete guard.** [`deleteVariable`](/docs/reference/variables#deletevariable) refuses a key that is still referenced in live content or any template, throwing [`VARIABLE_IN_USE`](/docs/reference/errors). You cannot leave a page pointing at a `{{key}}` that no longer resolves.
+- **Inspection.** [`getVariableUsages`](/docs/reference/variables#getvariableusages) lists every place a key appears: the distinct block properties in branch heads, and the templates that embed it.
+
+```ts
+// Before renaming or removing a variable, see what depends on it.
+const { blockUsages, templateUsages } = await cms.api.variables.getVariableUsages({
+  query: { key: 'siteName' },
+});
+// blockUsages:    [{ rootId, blockId, propertyKey }, ...]
+// templateUsages: [{ templateId, collection, blockType, propertyKey }, ...]
+```
 
 ## Scoping (i18n / multi-tenant)
 
-Variables scope per tenant and per language, with fallback, just like content — see [i18n](/docs/plugins/i18n) and [multi-tenant](/docs/plugins/multi-tenant).
+Variables scope per tenant and per language, with fallback, just like content: see [i18n](/docs/plugins/i18n) and [multi-tenant](/docs/plugins/multi-tenant). Reading is where the fallback matters. A page rendered in a language that has no override for a key resolves the value from the language chain, so one base value can back many locales.
+
+Managing a variable does not fall back. `createVariable` and `updateVariable` target the exact active cell (tenant plus language), writing that language's own row rather than following the read fallback. Set an override where you want one, and leave the base value to cover the rest.
 
 ## Relationship to templates
 
-[Templates](/docs/concepts/templates) are default property values that can themselves contain `{{variables}}`, so a new block can start with a value like `© {{companyName}}` already filled in. A template's variables resolve through the same scope (tenant + language fallback) when the block is read.
+[Templates](/docs/concepts/templates) are default property values that can themselves contain `{{variables}}`, so a new block can start with a value like `© {{companyName}}` already filled in. The raw template string is stored as-is, so a template's variables resolve at read time through the same scope (tenant plus language fallback) as any other content. Changing the variable updates blocks already seeded from the template; the value is not frozen at creation.
 
 <Callout type="info">
-  For the CRUD methods, see the [Variables reference](/docs/reference/variables).
+  For the CRUD methods and exact signatures, see the [Variables reference](/docs/reference/variables).
 </Callout>

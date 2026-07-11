@@ -3,7 +3,7 @@ title: Media
 description: How assets, folders, uploads, and serving work.
 ---
 
-Media (images, video, PDFs) lives in object storage (S3, Cloudflare R2, DigitalOcean Spaces, or any S3-compatible bucket), with a row per asset in the CMS database. The CMS handles uploads, access control, folders, and variants; serving happens from your bucket or a CDN.
+Media (images, video, PDFs) lives in object storage (S3, Cloudflare R2, DigitalOcean Spaces, or any S3-compatible bucket), with one row per asset in the CMS database. The CMS handles uploads, access control, folders, and variants; serving happens from your bucket or a CDN. For exact method signatures, see the [media reference](/docs/reference/media).
 
 ## The asset model
 
@@ -11,54 +11,111 @@ Each upload creates a row in `assets`:
 
 | Field | Meaning |
 | --- | --- |
-| `slug` | Unique, URL-friendly id. Equal to the `objectKey`. |
-| `objectKey` | The key in your bucket. |
+| `id` | Stable primary key (`ast_…`). What content stores and what the gate resolves. Never changes, even when the bytes are replaced. |
+| `slug` | Unique, URL-friendly name derived from the filename. Equal to the `objectKey`. Regenerated on `replaceAsset`. |
+| `objectKey` | The key in your bucket (currently the slug verbatim). |
 | `status` | `'private'` (default) or `'public'`. |
 | `folderId` | The folder it lives in, if any. |
 | `variantOf` | If set, this asset is a variant (a resized or reformatted copy) of another. |
 | `mimeType`, `size` | Content type and byte size. |
 | `archivedAt` | Soft-delete marker for pruning. |
 
-Folders are a nested tree (`asset_folders`, each with a `parentId`). `listFolders` reads them — the children of a parent, or the root-level folders when no `parentFolderId` is given; `createFolder`, `moveFolder`, and `deleteFolder` manage them; a folder that still holds assets or subfolders cannot be deleted (`FOLDER_HAS_CONTENT`).
+Three of these are identifiers, and keeping them straight is the key to the whole model. The `id` is stable and opaque: content references it, and the gate is addressed by it. The `slug` is a human-readable, unique name derived from the filename, and it doubles as the `objectKey` in your bucket. The two are decoupled on purpose. [`replaceAsset`](/docs/reference/media#replaceasset) mints a new slug and object key for the new bytes but keeps the `id`, so every reference follows the swap while the CDN still treats each version's object as immutable.
+
+Folders are a nested tree (`asset_folders`, each with a `parentId`). They organize the media library and nothing more: a folder does not affect an asset's URL, its status, or how it is served. [`listFolders`](/docs/reference/media#listfolders) reads one level at a time (the children of a parent, or the root-level folders when no `parentFolderId` is given); [`createFolder`](/docs/reference/media#createfolder), [`moveFolder`](/docs/reference/media#movefolder), and [`deleteFolder`](/docs/reference/media#deletefolder) manage them. A folder that still holds assets or subfolders cannot be deleted (it throws `FOLDER_HAS_CONTENT`), and moving an asset carries its variants along, so an original and its variants are never split across folders.
 
 ## Private vs public
 
-`status` is a **visibility flag**. An asset is created `private`, and a private asset is not served by the public redirect (`GET /media/asset/{id}` returns `ASSET_ACCESS_DENIED`). To expose one, flip it to `public` with `updateAssetsStatus` — publishing content that references an asset does this automatically.
+`status` is a **visibility flag**. An asset is created `private`, and a private asset is not served by the public gate: [`GET /media/asset/{id}`](/docs/reference/media#asset) returns `ASSET_ACCESS_DENIED`. To expose one, flip it to `public` with [`updateAssetsStatus`](/docs/reference/media#updateassetsstatus). You rarely call that by hand: publishing content that references an asset flips it to `public` automatically, and unpublishing reverts it to `private` unless another published page still references it. Status tracks what your live content needs, so it mostly manages itself.
 
-The gate is enforced by the CMS endpoints, not by the object store — uploaded objects are `public-read`, so `status` is not a hard-privacy boundary. Treat it as "should this be shown," not "is this secret." As defense in depth, serve assets from a **cross-origin** host (a `publicUrl` that isn't your app's origin) so an uploaded file can't run as same-origin; the default `allowedMimeTypes` excludes SVG for the same reason. See [Security → Media privacy](/docs/resources/security#media-privacy).
+The gate is enforced by the CMS endpoints, not by the object store. Uploaded objects are `public-read`, so `status` is not a hard-privacy boundary. Treat it as "should this be shown," not "is this secret." As defense in depth, serve assets from a **cross-origin** host (a `publicUrl` that is not your app's origin) so an uploaded file cannot run as same-origin, and note that the default `allowedMimeTypes` excludes SVG for the same reason. See [Security → Media privacy](/docs/resources/security#media-privacy).
 
 ## Uploading: signed URL vs server
 
-There are two upload paths:
+Two upload paths write the same rows and enforce the same limits; they differ only in who holds the bytes:
 
-- **`createSignedUpload` (default).** The CMS creates the asset rows and returns presigned PUT URLs; the browser uploads each file straight to the bucket. No file bytes pass through your server, so there are no serverless body-size limits and less egress. Use this for browser uploads.
-- **`uploadAssets`.** You send the file bytes (a `buffer: Blob | ArrayBuffer` per file) to the CMS, which PUTs them to the bucket. Use this for server-side sources.
+- **[`createSignedUpload`](/docs/reference/media#createsignedupload) (default).** The CMS creates the asset rows and returns presigned PUT URLs; the browser uploads each file straight to the bucket. No file bytes pass through your server, so there are no serverless body-size limits and less egress. Use this for browser uploads; the React `useUploadAssets` hook wraps it.
+- **[`uploadAssets`](/docs/reference/media#uploadassets).** You send the file bytes (a `buffer: Blob | ArrayBuffer` per file) to the CMS, which PUTs them to the bucket. Use this for server-side sources.
 
-Both validate against the limits (defaults: `maxFiles` 10, `maxFileSize` 4 MB, `allowedMimeTypes` an explicit image/video/PDF allowlist that **excludes SVG**, see [Configuration](/docs/reference/configuration#media)), and signed URLs expire after 120s by default. The browser hook is in [Upload and serve media](/docs/guides/media-uploads).
+Both validate against the limits (defaults: `maxFiles` 10, `maxFileSize` 4 MB, and an `allowedMimeTypes` allowlist that **excludes SVG**; see [Configuration](/docs/reference/configuration#media)), and signed URLs expire after 120s by default. Every new asset lands `private`, so uploading and serving are two steps:
+
+```ts
+// Server-side upload: bytes go through the CMS to the bucket.
+const { assets } = await cms.api.media.uploadAssets({
+  body: {
+    files: [
+      { name: 'welcome-hero.jpg', size: buffer.byteLength, type: 'image/jpeg', buffer },
+    ],
+  },
+});
+const [hero] = assets; // { id: 'ast_…', slug: 'welcome-hero.jpg', status: 'private', … }
+
+// New assets are private. Publishing referencing content flips this for you;
+// to serve an asset on its own, make it public explicitly.
+await cms.api.media.updateAssetsStatus({
+  body: { assetIds: [hero.id], status: 'public' },
+});
+
+// Now it serves through the gate, addressed by its id:
+//   <img src={`/media/asset/${hero.id}`} />
+```
+
+The browser hook is covered step by step in [Upload and serve media](/docs/guides/media-uploads).
 
 ## Serving assets
 
-Serve assets through the **gate**: `GET /media/asset/{id}`, a public redirect to the object, addressed by the **asset id** (which is what content stores). It is the contract to use in content and on public pages — it enforces `status` (a `private` asset returns `ASSET_ACCESS_DENIED`) and honors `?format=webp|jpeg|png` and `?w=<width>` by resolving a **pre-uploaded variant** (an asset whose `variantOf` points at the original), falling back to the original. There is no on-the-fly transform: create variants ahead of time, for example with the [media optimize plugin](/docs/plugins/media-optimize), which optimizes in the browser before upload.
+Serve assets through the **gate**: [`GET /media/asset/{id}`](/docs/reference/media#asset), a public redirect to the object, addressed by the **asset id** (which is what content stores). It is the contract to use in content and on public pages. It enforces `status` (a `private` asset returns `ASSET_ACCESS_DENIED`) and honors `?format=webp|jpeg|png` and `?w=<width>` by resolving a **pre-uploaded variant**, falling back to the original.
 
-The redirect itself is **short-cached** (`max-age=300`, not immutable): because it is keyed by the stable id, swapping the bytes behind that id (keeping the id) re-resolves and propagates to already-rendered pages within minutes — while the object bytes stay long-cached at the CDN, since each version has its own object key.
+There is no on-the-fly transform. A variant is just another asset row whose `variantOf` points at the original and whose `slug` is derived from the original plus the requested format and width. The gate computes that expected slug and looks it up: a hit is served, a miss silently serves the original. So a request for `/media/asset/{id}?w=800&format=webp` on an asset stored as `welcome-hero.jpg` resolves to a sibling asset named `welcome-hero-800-webp.webp`:
+
+```ts
+// Register a pre-sized WebP variant of an existing asset.
+await cms.api.media.createSignedUpload({
+  body: {
+    files: [
+      {
+        name: 'welcome-hero-800-webp.webp', // matches the slug the gate derives
+        size: variantBytes,
+        type: 'image/webp',
+        variantOf: hero.id,
+      },
+    ],
+  },
+});
+// GET /media/asset/{hero.id}?w=800&format=webp now serves this variant;
+// any other size or format still falls back to the original.
+```
+
+Create the variants you need ahead of time. The [media optimize plugin](/docs/plugins/media-optimize) resizes and re-encodes images in the browser before upload, so the stored bytes are already small.
+
+The redirect itself is **short-cached** (`max-age=300`, not immutable). Because it is keyed by the stable id, swapping the bytes behind that id (keeping the id) re-resolves and propagates to already-rendered pages within minutes, while the object bytes stay long-cached at the CDN, since each version has its own object key.
 
 <Callout type="warn">
-  Deployment note: a CDN in front of the gate must include the **query string** in its cache key. The redirect target differs per `?format`/`?w`/`?download`, and only the query string distinguishes those cache entries — if the CDN strips it (a common default), the variant, download, and original redirects collapse into one and get cross-served.
+  Deployment note: a CDN in front of the gate must include the **query string** in its cache key. The redirect target differs per `?format`, `?w`, and `?download`, and only the query string distinguishes those cache entries. If the CDN strips it (a common default), the variant, download, and original redirects collapse into one and get cross-served.
 </Callout>
 
-Each asset also has a **direct** object URL, `${publicUrl}/${objectKey}` — returned as `url` by `listAssets` and the upload responses. It bypasses the gate (no status check, no transforms), so it is meant for **internal tooling** such as a media-library admin UI rendering thumbnails of assets you already manage. Don't bake it into content or public pages — serve those through the gate.
+Each asset also has a **direct** object URL, `${publicUrl}/${objectKey}`, returned as `url` by [`listAssets`](/docs/reference/media#listassets) and the upload responses. It bypasses the gate (no status check, no transforms), so it is meant for **internal tooling** such as a media-library admin UI rendering thumbnails of assets you already manage. Do not bake it into content or public pages; serve those through the gate.
 
 ## Images in content
 
-An `image` block property stores the asset **id** (an `ast_…` reference), never a URL — and the read path returns it verbatim (nothing is resolved). Your renderer builds the gate URL straight from that id: `<img src="/media/asset/{id}">`. Because the id is stable, swapping the object behind it updates every reference automatically, with no content change and no re-render. Don't store the direct `url` in content — it bypasses the status gate and transforms and pins the entry to your bucket layout, and it won't follow such a swap. `getAssetUsages` reports which entries reference an asset (the index keys on the asset id), and archiving is blocked while an asset is used by live content.
+An `image` block property stores the asset **id** (an `ast_…` reference), never a URL, and the read path returns it verbatim (nothing is resolved). Your renderer builds the gate URL straight from that id: `<img src="/media/asset/{id}">`. Because the id is stable, swapping the object behind it updates every reference automatically, with no content change and no re-render. Do not store the direct `url` in content: it bypasses the status gate and transforms, pins the entry to your bucket layout, and will not follow such a swap.
+
+[`getAssetUsages`](/docs/reference/media#getassetusages) reports which entries reference an asset (the index keys on the asset id), and archiving is blocked while an asset is used by live content:
+
+```ts
+// Which live pages reference this asset?
+const { pageCount, pages } = await cms.api.media.getAssetUsages({
+  query: { assetId: hero.id },
+});
+```
 
 ## Limitations
 
 The media pipeline is deliberately thin. Know these boundaries before you design around it:
 
-- **No server-side image transforms.** `GET /media/asset/{id}?format=webp&w=800` resolves a **pre-uploaded variant** (an asset whose `variantOf` points at the original) by matching the requested format and width. If no matching variant exists, the gate **silently serves the original**, at its stored size and format: an unmatched `?format`/`?w` is not an error and does not resize or convert on the fly. Create the variants you need ahead of time.
-- **Optimization is client-side only.** The [media optimize plugin](/docs/plugins/media-optimize) resizes and re-encodes each image **in the browser** (via a canvas) before upload, then uploads the smaller original plus any variants. Nothing optimizes server-side, so a file uploaded through a path that skips the plugin is stored as-is.
-- **Assets store bytes and status, nothing else.** An `assets` row carries `slug`, `objectKey`, `mimeType`, `size`, `status`, `folderId`, and `variantOf` (see the table above), and no more. There is no stored **width/height**, **focal point**, **alt text**, or **caption**. Keep intrinsic dimensions, art-direction focal points, and accessibility text on your content instead (for example an `image` block's own `alt` property), not on the asset.
+- **No server-side image transforms.** `GET /media/asset/{id}?format=webp&w=800` resolves a **pre-uploaded variant** (an asset whose `variantOf` points at the original) by matching the requested format and width. If no matching variant exists, the gate **silently serves the original**, at its stored size and format: an unmatched `?format` or `?w` is not an error and does not resize or convert on the fly. Create the variants you need ahead of time.
+- **Optimization is client-side only.** The [media optimize plugin](/docs/plugins/media-optimize) resizes and re-encodes each image **in the browser** (via a canvas) before upload, then uploads the smaller result. Nothing optimizes server-side, so a file uploaded through a path that skips the plugin is stored as-is.
+- **Assets store bytes and status, nothing else.** An `assets` row carries the fields in the table above and no more. There is no stored **width/height**, **focal point**, **alt text**, or **caption**. Keep intrinsic dimensions, art-direction focal points, and accessibility text on your content instead (for example an `image` block's own `alt` property), not on the asset.
 
 <Callout type="info">
   For uploading and serving step by step, see [Upload and serve media](/docs/guides/media-uploads).

@@ -3,42 +3,115 @@ title: Merges
 description: Merge requests, three-way conflict detection, and how a merge is committed.
 ---
 
-A merge request integrates a source branch into a target branch. It is the review unit: you open it, inspect the diff and any conflicts, get it approved, and then execute the merge. Its status is `open`, `merged`, or `closed`, and there can be only one open merge request per source-target pair.
+A merge request integrates a source branch into a target branch. It is the review unit: you open it, inspect what changed and any conflicts, get it approved if your workflow calls for that, then execute the merge. Every merge request has a status of `open`, `merged`, or `closed`, and there can be only one open merge request per source-target pair.
 
-## The three-way comparison
+The lifecycle is four steps: diff the branches to understand the change, open the merge request to record it, resolve any conflicts, then execute. The sections below follow that spine.
 
-A merge compares three snapshots: the **base** (the common ancestor of the two branches), the **source**, and the **target**. For each block, the CMS looks at which version is active in each:
+## Why the comparison is three-way
 
-- Changed on only one side relative to the base: take that side automatically.
-- Unchanged on both, or identical on both: nothing to do.
-- Changed differently on both sides: a **conflict**.
+A merge looks at three snapshots of the entry: the **base** (the common ancestor commit the two branches share), the **source**, and the **target**. The base is what makes an automatic merge possible.
 
-`getDiff` classifies the per-block changes of source against base (a two-way diff): each changed block gets `changeTypes` of `added`, `deleted`, `modified` (with per-property detail), `moved`, or `childrenReordered`. The move classification is identity-based — a block counts as `moved` only when it was reparented or truly reordered among its surviving siblings, not when its index shifted because another block was inserted or removed around it, and `childrenReordered` marks a parent only when the relative order of its surviving children changed. Alongside the flat list, `getDiff` returns an annotated copy of the draft tree that renders through your normal block components (see [Review changes visually](/docs/guides/visual-diff)). Its two sides are not limited to branches: each is a ref — a branch, a commit, or (target only) the entry's current publication — and when one ref is an ancestor of the other, the base **is** that ref, so the diff is an exact two-way comparison (a publish preview, or a commit against its parent). `checkConflicts` is the three-way detector: it returns the conflicting blocks, each with its source, target, and base version ids.
+To see why, imagine comparing only source and target. You can tell they hold different versions of a block, but not *who* changed it. A two-way comparison cannot separate "I edited this" from "they edited this," so it would have to flag every difference for a human. The base breaks the tie. For each block the CMS looks at the version active in each of the three snapshots:
+
+- Changed on only one side relative to the base: take that side automatically. The other side never touched it, so there is nothing to reconcile.
+- Unchanged on both, or changed to the same version on both: nothing to do.
+- Changed differently on both sides: a **conflict**. Only a person can say which version wins.
+
+That comparison is by **version identity**. Every block carries the id of its active version in each snapshot, and the merge compares those ids, not the properties inside them. Reconciliation is therefore per block, not per property: a block both sides edited is a single conflict, resolved by choosing one whole version, even when their edits touched different fields. A delete is just another version (a tombstone, see [Commits](/docs/concepts/commits#deletes-are-tombstones)), so editing a block on one side while deleting it on the other is a conflict like any other.
+
+Two methods read this model, one two-way and one three-way:
+
+- [`getDiff`](/docs/reference/merges#getdiff) answers "what changed?". It classifies the source against the base as a flat change list plus an annotated render tree, marking each block `added`, `deleted`, `modified`, `moved`, or `childrenReordered`. Moves are detected by identity, so a block is `moved` only when it truly was, not when a sibling shifted around it. It is the input to visual review; [Review changes visually](/docs/guides/visual-diff) covers rendering it. Its two sides are refs, not only branches: a branch, a commit, or (for the target) the entry's current publication. When one ref is an ancestor of the other, the base **is** that ref and the diff becomes an exact two-way comparison, which is how a publish preview works.
+- [`checkConflicts`](/docs/reference/merges#checkconflicts) answers "will it conflict?". It runs the full three-way detection and returns each conflicting block with its source, target, and base version ids.
+
+## The merge request lifecycle
+
+Opening a merge request runs that same conflict detection once and records the outcome. `createMergeRequest` stores the merge base and the source head as of open time and writes a row for every conflict it finds, so the response tells you immediately whether the branches merge cleanly:
+
+```ts
+const { mergeRequest, hasConflicts, conflicts } =
+  await cms.api.pages.createMergeRequest({
+    body: {
+      sourceBranchId: draft.branchId,
+      targetBranchId: main.branchId,
+      title: 'Homepage refresh',
+    },
+  });
+```
+
+When `hasConflicts` is `false`, the merge can execute as soon as it is approved. When it is `true`, `conflicts` lists the blocks that need a decision, each with its `blockId` and the three version ids, and `executeMerge` refuses to run until every one is resolved.
+
+A merge request is not frozen when you open it. Either branch can keep moving afterward, so `executeMerge` recomputes the base and re-detects conflicts against the **live** branch heads at execute time, then checks them against the resolutions on record. Resolutions you already made still count, and the merge stays blocked while any current conflict is unresolved.
 
 ## Resolving conflicts
 
-Each conflict is resolved by choosing one of three resolutions, after which the merge can proceed:
+Each conflict is settled by choosing one of three resolutions:
 
 | Resolution | Result |
 | --- | --- |
 | `source` | Keep the source branch's version. |
 | `target` | Keep the target branch's version. |
-| `manual` | Use any existing block version id, whether preexisting or created with `createMergeBlockVersion`. |
+| `manual` | Use any existing block version id, whether preexisting or authored for the merge with [`createMergeBlockVersion`](/docs/reference/merges#createmergeblockversion). |
 
-`applyConflictResolutions` records the choices; `executeMerge` refuses to run while any conflict is unresolved (`UNRESOLVED_CONFLICTS`).
+`applyConflictResolutions` records the choices against the merge request. It does not merge anything yet; `executeMerge` reads the recorded resolutions when it runs and throws `UNRESOLVED_CONFLICTS` while any conflict still lacks one:
+
+```ts
+await cms.api.pages.applyConflictResolutions({
+  body: {
+    mergeRequestId: mergeRequest.id,
+    resolutions: [
+      // conflictId identifies a stored conflict row on the merge request
+      { conflictId, resolution: 'source', resolvedBy: 'editor-1' },
+    ],
+  },
+});
+
+const { commit, fastForward } = await cms.api.pages.executeMerge({
+  body: { mergeRequestId: mergeRequest.id },
+});
+```
+
+`manual` is the **third way**. Rather than pick a side wholesale, author a reconciled version with `createMergeBlockVersion` and point the resolution at it. The new version is persisted immediately and becomes live only when the merge executes, so it is the way to keep, say, one side's headline and the other side's alignment in a single block:
+
+```ts
+const { blockVersionId } = await cms.api.pages.createMergeBlockVersion({
+  body: {
+    mergeRequestId: mergeRequest.id,
+    blockId: 'blk_hero',
+    type: 'hero',
+    properties: { headline: 'The Acme story', align: 'left' },
+  },
+});
+
+await cms.api.pages.applyConflictResolutions({
+  body: {
+    mergeRequestId: mergeRequest.id,
+    resolutions: [
+      {
+        conflictId,
+        resolution: 'manual',
+        resolvedVersionId: blockVersionId,
+        resolvedBy: 'editor-1',
+      },
+    ],
+  },
+});
+```
 
 ## Fast-forward vs merge commit
 
-How the merge is committed depends on whether the target moved:
+How the merge is committed depends on whether the target moved since the merge base:
 
-- **Fast-forward.** If the target's head is still the merge base, the target simply advances to the source head. No new commit is created (the `executeMerge` result's `mergeCommitId` is `null`, though the stored merge request records the source head as its merge commit).
-- **Merge commit.** Otherwise the CMS builds a merged snapshot and writes a new commit whose `parentCommitId` is the target head and whose `mergeSourceCommitId` is the source head. That second parent records the merge in history.
+- **Fast-forward.** If the target head is still the merge base (the target has not diverged, see [Divergence](/docs/concepts/branches#divergence)), the target simply advances to the source head. No new commit is written. `executeMerge` returns `fastForward: true` and reports the source head as the `commit` that became the new target head, and the stored merge request records that source head as its merge commit.
+- **Merge commit.** Otherwise the CMS builds a merged snapshot and writes a new commit whose `parentCommitId` is the target head and whose `mergeSourceCommitId` is the source head. That second parent is what records the merge in history. `executeMerge` returns `fastForward: false` and the new merge commit.
+
+The `fastForward` boolean in the result is the reliable signal of which path ran.
 
 ### Forcing a merge commit
 
-When the target has **not** diverged, a fast-forward is *possible* but not mandatory. Set `mergeStrategy: 'merge-commit'` in the [config](/docs/reference/configuration#mergestrategy) to always record an explicit merge commit instead — git's `--no-ff` — so every integration is visible in history. The default is `'fast-forward'`.
+When the target has **not** diverged, a fast-forward is *possible* but not mandatory. Set `mergeStrategy: 'merge-commit'` in the [config](/docs/reference/configuration#mergestrategy) to always record an explicit merge commit instead (git's `--no-ff`), so every integration stays visible in history. The default is `'fast-forward'`.
 
-Override the configured strategy on a single call with `executeMerge({ mergeRequestId, noFastForward })`: `noFastForward: true` forces a merge commit, `noFastForward: false` forces a fast-forward. A diverged target always produces a merge commit regardless of the strategy, and a merge with nothing to integrate (the heads are already equal) is always a no-op fast-forward.
+Override the configured strategy on a single call with `executeMerge({ mergeRequestId, noFastForward })`: `noFastForward: true` forces a merge commit, `noFastForward: false` forces a fast-forward. A diverged target always produces a merge commit regardless of the strategy, and a merge with nothing left to integrate (the heads are already equal) is always a no-op fast-forward.
 
 ```mermaid
 graph RL
@@ -50,8 +123,12 @@ graph RL
 
 ## Approvals
 
-Every merge requires sign-off. You request approval from reviewers with `requestApproval`; each reviewer calls `submitApproval` or `submitRejection`. `executeMerge` throws `MERGE_APPROVAL_REQUIRED` when no approval was ever requested, and `APPROVALS_NOT_FULLY_APPROVED` while any requested approval is still pending. The merge runs only once every requested approval is granted.
+Approvals are **opt-in**, and a merge honors them once they exist. By default a merge needs no sign-off. The moment someone opens an approval request on the merge request, though, `executeMerge` will not bypass it: a request that is still pending or was rejected blocks the merge with `APPROVALS_NOT_FULLY_APPROVED`, and the merge proceeds only once every request is approved.
+
+You request sign-off with [`requestApproval`](/docs/reference/approvals#requestapproval); each reviewer calls [`submitApproval`](/docs/reference/approvals#submitapproval) or [`submitRejection`](/docs/reference/approvals#submitrejection).
+
+To make review mandatory across the board, turn on `requireApprovalToMerge` in [branch protection](/docs/guides/content-workflow#make-review-mandatory). With it on, a merge that has **no** approval request at all throws `MERGE_APPROVAL_REQUIRED`, so an approval becomes a hard precondition rather than something a reviewer has to opt into.
 
 <Callout type="info">
-  To run the full flow, see [Draft, review, and publish](/docs/guides/content-workflow). For signatures, see the [Merges API](/docs/reference/merges).
+  To run the full flow end to end, see [Draft, review, and publish](/docs/guides/content-workflow). For exact signatures, see the [Merges API](/docs/reference/merges).
 </Callout>
