@@ -53,5 +53,5 @@ graph RL
 Every merge requires sign-off. You request approval from reviewers with `requestApproval`; each reviewer calls `submitApproval` or `submitRejection`. `executeMerge` throws `MERGE_APPROVAL_REQUIRED` when no approval was ever requested, and `APPROVALS_NOT_FULLY_APPROVED` while any requested approval is still pending. The merge runs only once every requested approval is granted.
 
 <Callout type="info">
-  To run the full flow, see [Draft, review, and publish](/docs/guides/content-workflow). For signatures, see the [Server API](/docs/reference/server-api).
+  To run the full flow, see [Draft, review, and publish](/docs/guides/content-workflow). For signatures, see the [Merges API](/docs/reference/merges).
 </Callout>

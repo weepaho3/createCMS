@@ -38,7 +38,7 @@ The two differ in what they assemble:
 
 ## Slugs go live at publish
 
-The slug is versioned. Editing an entry's slug stores it on the draft (the branch's root version) and does not change the live URL until you publish. On publish, the draft slug is promoted to the live `roots.slug`, uniqueness is checked, and a slug change records a redirect from the old path (see [Redirects](/docs/guides/redirects)). The same promotion runs whether you publish through `publishBranch`, a [release](/docs/reference/server-api), or a scheduled publish.
+The slug is versioned. Editing an entry's slug stores it on the draft (the branch's root version) and does not change the live URL until you publish. On publish, the draft slug is promoted to the live `roots.slug`, uniqueness is checked, and a slug change records a redirect from the old path (see [Redirects](/docs/guides/redirects)). The same promotion runs whether you publish through `publishBranch`, a [release](/docs/reference/releases), or a scheduled publish.
 
 Two current limitations follow from how the draft slug is stored:
 
@@ -61,5 +61,5 @@ Publishing records that a branch is live, not a timeline of what was live. Two b
 </Callout>
 
 <Callout type="info">
-  For `publishBranch`, `unpublishBranch`, `getPublishedContent`, and `listPublications`, see the [Server API](/docs/reference/server-api).
+  For `publishBranch`, `unpublishBranch`, `getPublishedContent`, and `listPublications`, see the [Publications API](/docs/reference/publications).
 </Callout>

@@ -17,5 +17,5 @@ Two things accumulate and are reclaimed:
 Pruning does not run on its own. Configure `dataRetention` on `createCMS`, then call `admin.runPruning` on a schedule (a cron or a queue). Each pass does a bounded amount of work and reports `done`; re-run until it is `true` to drain a backlog.
 
 <Callout type="info">
-  For the retention options, see [Configuration](/docs/reference/configuration); for the pass itself, see `admin.runPruning` in the [Server API](/docs/reference/server-api).
+  For the retention options, see [Configuration](/docs/reference/configuration); for the pass itself, see `admin.runPruning` in the [Admin API](/docs/reference/admin).
 </Callout>

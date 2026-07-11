@@ -1,5 +1,36 @@
 {
   "title": "Reference",
   "icon": "Code",
-  "pages": ["configuration", "environment", "define", "server-api", "client-api", "react", "media", "variables", "templates", "search", "notifications", "cli", "edge", "errors", "..."]
+  "pages": [
+    "---Setup---",
+    "configuration",
+    "environment",
+    "define",
+    "---API---",
+    "server-api",
+    "client-api",
+    "errors",
+    "---Collections---",
+    "roots",
+    "blocks",
+    "branches",
+    "merges",
+    "publications",
+    "comments",
+    "approvals",
+    "redirects",
+    "---System---",
+    "media",
+    "variables",
+    "templates",
+    "search",
+    "releases",
+    "notifications",
+    "users",
+    "admin",
+    "---Framework & tooling---",
+    "react",
+    "edge",
+    "cli"
+  ]
 }
