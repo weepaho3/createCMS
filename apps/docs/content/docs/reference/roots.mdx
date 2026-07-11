@@ -75,6 +75,8 @@ Fetches commit history for an entry across all branches, newest first.
   withChanges: { type: 'boolean', description: 'Add a per-commit `changes: { added, modified, deleted }` block count.' },
 }} />
 
+Each commit carries `id`, `message`, `createdBy`, `createdAt`, `branch` (the branch it was created on), `parents` (one commit id, two for a merge), `type` (`'initial' | 'commit' | 'merge'`), and `isPublished`. With `withChanges: true`, the counts are **version-level** (from a cheap version-id comparison against the parent snapshot, no properties loaded), coarser than [`getDiff`](#getdiff): a pure move counts as `modified` on the parent whose children array changed, an initial commit counts every block as `added`, and a merge commit is diffed against its **first** parent only. The field is omitted (not zeroed) on commits whose snapshot was pruned by [retention](/docs/concepts/data-retention).
+
 ### `updateRoot`
 
 Updates an entry's properties and/or slug on a branch, and auto-creates redirects when a published slug changes.

@@ -28,6 +28,16 @@ const { diff, summary } = await cms.api.pages.getDiff({
 });
 ```
 
+Both refs must belong to the same entry (`BRANCHES_NOT_SAME_ROOT` otherwise). The base is the common ancestor of the two resolved commits; when one commit is an ancestor of the other, the common ancestor **is** that commit and the diff degenerates to an exact two-way comparison (a branch against `targetPublished` yields exactly the draft edits that are not live yet, the [publish preview](/docs/guides/visual-diff#publish-preview)).
+
+#### The diff shape
+
+- **`diff`** (with `view: 'list'` or `'both'`, otherwise `null`): the flat change list. Each entry carries `blockId`, `changeTypes` (`added`, `deleted`, `modified`, `moved`, `childrenReordered`), `propertyChanges` when modified (per-property `path`, `kind`, `from`, `to`, plus word-level `textDiff` segments for `richText` properties), `typeChange` when the block type changed, `slugChange` on the root entry when the draft slug changed, `moved` (`kind: 'reparented' | 'reordered'` with old and new parent id and index), and the full `sourceVersion` / `targetVersion` / `baseVersion` payloads. `moved` marks only blocks that actually moved (siblings whose index merely shifted are not marked), and `childrenReordered` only parents whose surviving children truly changed relative order. A slug-only change is not `modified`: it surfaces as a root entry with an **empty** `changeTypes` array and only `slugChange` set.
+- **`tree`** (with `view: 'tree'` or `'both'`): the annotated draft tree, the source branch's block tree where changed nodes carry a `diff` annotation and deleted blocks are re-inserted as ghost nodes at their old position. It is structurally a regular block tree, so it renders through the same component maps. `null` when the view is `'list'`, and also when the draft deleted the entry's root block (guard before rendering).
+- **`summary`**: per-changeType entry counts `{ added, deleted, modified, moved, reordered }`.
+
+With `withAttribution: true`, each `diff` entry and each `tree` annotation additionally carries `attribution: { commitId, changedAt, changedBy, changedByUser? }` — which commit made the change, and who. `changedByUser` is present only when called with `query.withUser`, limited to your `user` config's `exposeColumns` allowlist. See [Review changes visually](/docs/guides/visual-diff) for rendering the annotated tree.
+
 ### `checkConflicts`
 
 Detects merge conflicts between two branches using a three-way merge (base, source, target).
