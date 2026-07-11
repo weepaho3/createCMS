@@ -67,6 +67,20 @@ await cms.api.pages.createTranslation({
 | `seed` | `'copy' \| 'blank'` | no | Start from a copy of the source or an empty entry. |
 | `message` | `string` | no | Commit message. |
 
+### Variables and templates
+
+[Variables](/docs/concepts/variables) and [templates](/docs/concepts/templates) scope by language too, with the same fallback chain: a value defined only in the default language is inherited by every language that falls back to it, and only the languages that need a different value override it.
+
+```ts
+// companyName: only defined in the default language 'en' = 'Acme'
+// cta:         'en' = 'Buy now', 'de' = 'Jetzt kaufen'
+// reading a German page:
+//   {{companyName}} → 'Acme'          (fell back to en)
+//   {{cta}}         → 'Jetzt kaufen'  (de override)
+```
+
+Managing variables and templates always targets the exact active language, not a fallback cell — so in German you manage German values. Uniqueness for both is scoped per language, so a variable's `key` (or a template's `(collection, blockType, propertyKey)`) is free to differ per language.
+
 ## Schema
 
 | Table | Column | Purpose |
@@ -74,6 +88,16 @@ await cms.api.pages.createTranslation({
 | `roots` | `language` | The entry's language. |
 | `roots` | `translationKey` | Stable group id tying sibling-language entries together. |
 | `redirects` | `language` | Per-language redirect routing. |
+| `templates` | `language` | The default's language (a German and an English default coexist for one field). |
+| `variables` | `language` | The value's language, resolved with fallback. |
+
+## Options
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `languages` | `readonly string[]` | The supported languages (a `const` tuple). |
+| `defaultLanguage` | one of `languages` | Seed language and default fallback target. |
+| `fallback` | `Partial<Record<language \| 'default', language[]>>` | Per-language fallback chains. Absent means fall back to `defaultLanguage`. |
 
 ## Error codes
 
@@ -87,11 +111,3 @@ await cms.api.pages.createTranslation({
 | `TRANSLATION_LANGUAGE_NOT_ENABLED` | 400 | `targetLanguage` is not one of the configured `languages`. |
 
 There is intentionally no `I18N_NOT_ENABLED` code: `createTranslation` / `listTranslations` only exist when the plugin is installed, so "i18n not enabled" is the structural absence of the endpoint, not a runtime error.
-
-## Options
-
-| Option | Type | Description |
-| --- | --- | --- |
-| `languages` | `readonly string[]` | The supported languages (a `const` tuple). |
-| `defaultLanguage` | one of `languages` | Seed language and default fallback target. |
-| `fallback` | `Partial<Record<language \| 'default', language[]>>` | Per-language fallback chains. Absent means fall back to `defaultLanguage`. |

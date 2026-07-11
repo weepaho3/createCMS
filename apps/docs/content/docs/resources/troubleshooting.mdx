@@ -48,11 +48,7 @@ createCMS({
 
 **Cause.** The multi-tenant plugin is installed, but your `authMiddleware` did not return a `tenantSlug`.
 
-**Fix.** Return it (and type the result as `MultiTenantMiddlewareResult`):
-
-```ts
-authMiddleware: async (ctx) => ({ userId, tenantSlug });
-```
+**Fix.** Return it, typed as `MultiTenantMiddlewareResult` — see [Multi-tenant → Installation](/docs/plugins/multi-tenant#add-it-to-your-config).
 
 ## `AMBIGUOUS_SLUG`
 
@@ -74,8 +70,4 @@ await cms.api.pages.getPublishedContent({ query: { rootId } });
 
 **Cause.** The media optimize plugin tried to encode WebP in a browser without native support, and `@jsquash/webp` is not installed. Optimization is best-effort, so the original file still uploads; the failure surfaces as a string in `useOptimize`'s `state.error` (there is no error code).
 
-**Fix.** Install the optional fallback:
-
-```bash
-npm install @jsquash/webp
-```
+**Fix.** Install the optional `@jsquash/webp` fallback — see [Media optimize → Installation](/docs/plugins/media-optimize#add-the-client-plugin).
