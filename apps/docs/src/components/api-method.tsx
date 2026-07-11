@@ -1,147 +1,133 @@
-import { Globe, Lock } from 'lucide-react';
+import { highlight } from 'fumadocs-core/highlight';
+import { CodeBlock, Pre } from 'fumadocs-ui/components/codeblock';
 import { type ReactNode } from 'react';
 
-import { cn } from '../lib/cn';
-import { TypeTable, type TypeNode } from './type-table';
+import { ApiMethodCard, type APIParam, type APIReturn, type HttpMethod } from './api-method-card';
 
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-
-const methodVariants: Record<HttpMethod, string> = {
-  GET: 'text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/25',
-  POST: 'text-sky-700 dark:text-sky-400 bg-sky-500/10 border-sky-500/25',
-  PUT: 'text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-500/25',
-  PATCH: 'text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-500/25',
-  DELETE: 'text-red-700 dark:text-red-400 bg-red-500/10 border-red-500/25',
-};
+export type { APIParam, APIReturn };
 
 export interface APIMethodProps {
   /** HTTP verb the endpoint is called with. */
   method: HttpMethod;
   /** Route path. Use `{collection}` for the per-collection segment. */
   path: string;
-  /** Permission resource checked by authorization (e.g. `root`, `block`). */
+  /** Sample collection/namespace used in the code (e.g. `pages`, `media`). */
+  collection?: string;
+  /** The method name, e.g. `createRoot`. */
+  fn: string;
+  /**
+   * The call arguments as a formatted string, including the `body`/`query`
+   * wrapper, e.g. `"{\n  body: { slug: 'welcome' },\n}"`. Omit for no-arg calls.
+   */
+  args?: string;
+  /** Which tab to show first. Defaults to `client`. */
+  defaultTab?: 'server' | 'client';
+  /** Permission resource checked by authorization (e.g. `root`). */
   resource?: string;
   /** Permission operation checked by authorization (`create` | `read` | `update` | `delete`). */
   operation?: string;
-  /** The endpoint is reachable without a session (only the public media asset gate). */
+  /** The endpoint is reachable without a session (only the public media gate). */
   public?: boolean;
-  /**
-   * The endpoint runs the auth chain but is conventionally anonymous-readable
-   * (the `publishedContent` carve-out: `getPublishedContent`, `resolveRedirect`,
-   * `resolveAbVariant`).
-   */
+  /** Runs the auth chain but is conventionally anonymous-readable (`publishedContent`). */
   anonymousRead?: boolean;
-  /** Request fields (body for `POST`, query for `GET`). Rendered as a {@link TypeTable}. */
-  params?: Record<string, TypeNode>;
-  /** Short description of the resolved value, e.g. `{ commit, rootId }`. */
-  returns?: ReactNode;
-  children?: ReactNode;
+  /** Request fields (body for `POST`, query for `GET`). */
+  params?: Record<string, APIParam>;
+  /** Response fields, each with its type and whether it is always present. */
+  returns?: Record<string, APIReturn>;
 }
 
 /**
- * Renders one endpoint the better-auth way: an HTTP-verb badge, the route path,
- * the exact `resource:operation` permission it checks, its typed parameters, and
- * its return shape. Author it as a single self-closing tag per method:
- *
- * ```mdx
- * <APIMethod method="POST" path="/{collection}/createRoot" resource="root" operation="create"
- *   returns="{ commit, rootId, branchId }" params={{
- *     properties: { type: 'RootProperties', description: "The root's typed properties." },
- *     slug: { type: 'string', required: false, description: 'URL slug for the entry.' },
- *   }} />
- * ```
+ * Re-indent a JS object literal from its bracket structure, so the output is
+ * correct regardless of how MDX dedents the authored template literal. Skips
+ * brackets inside strings and line comments.
  */
-export function APIMethod({
+function reindentObject(src: string): string[] {
+  const lines = src.trim().split('\n');
+  let depth = 0;
+  return lines.map((raw) => {
+    const line = raw.trim();
+    if (line === '') return '';
+    const startsWithCloser = /^[}\])]/.test(line);
+    const indentDepth = Math.max(0, depth - (startsWithCloser ? 1 : 0));
+    let delta = 0;
+    let inString: string | null = null;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (inString) {
+        if (c === inString && line[i - 1] !== '\\') inString = null;
+        continue;
+      }
+      if (c === '/' && line[i + 1] === '/') break;
+      if (c === "'" || c === '"' || c === '`') inString = c;
+      else if (c === '{' || c === '[' || c === '(') delta++;
+      else if (c === '}' || c === ']' || c === ')') delta--;
+    }
+    depth += delta;
+    return '  '.repeat(indentDepth) + line;
+  });
+}
+
+function buildCode(lhs: string, base: string, fn: string, args?: string): string {
+  if (!args || args.trim() === '') return `${lhs} = await ${base}.${fn}();`;
+  const lines = reindentObject(args);
+  lines[0] = `${lhs} = await ${base}.${fn}(${lines[0]}`;
+  lines[lines.length - 1] = `${lines[lines.length - 1]});`;
+  return lines.join('\n');
+}
+
+const HIGHLIGHT_OPTIONS = {
+  lang: 'ts',
+  themes: { light: 'light-plus', dark: 'github-dark-default' },
+  components: {
+    pre: (props: React.ComponentProps<typeof Pre>) => (
+      <CodeBlock className="my-0 rounded-none border-0 bg-transparent shadow-none">
+        <Pre {...props} />
+      </CodeBlock>
+    ),
+  },
+} as const;
+
+/**
+ * Renders one endpoint the better-auth way: a Client/Server toggle, the call
+ * with its typed arguments, the exact `resource:operation` permission it checks,
+ * each parameter with its description, and the return shape. Code is highlighted
+ * server-side so its indentation is faithful.
+ */
+export async function APIMethod({
   method,
   path,
+  collection = 'pages',
+  fn,
+  args,
+  defaultTab = 'client',
   resource,
   operation,
   public: isPublic,
   anonymousRead,
   params,
   returns,
-  children,
 }: APIMethodProps) {
-  return (
-    <div className="not-prose my-6 overflow-hidden rounded-2xl border bg-fd-card text-fd-card-foreground">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b bg-fd-muted/40 px-3 py-2.5">
-        <span
-          className={cn(
-            'inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold tracking-wide',
-            methodVariants[method],
-          )}
-        >
-          {method}
-        </span>
-        <code className="break-all font-mono text-sm text-fd-foreground">
-          {path}
-        </code>
-        <span className="ms-auto">
-          <AuthBadge
-            resource={resource}
-            operation={operation}
-            isPublic={isPublic}
-            anonymousRead={anonymousRead}
-          />
-        </span>
-      </div>
-      {params && (
-        <div className="px-1">
-          <TypeTable type={params} />
-        </div>
-      )}
-      {returns && (
-        <div className="flex flex-col gap-1 border-t px-4 py-3 text-sm sm:flex-row sm:items-baseline sm:gap-3">
-          <span className="shrink-0 font-medium text-fd-muted-foreground">
-            Returns
-          </span>
-          <code className="font-mono text-fd-foreground">{returns}</code>
-        </div>
-      )}
-      {children}
-    </div>
-  );
-}
+  const serverCode = buildCode('const data', `cms.api.${collection}`, fn, args);
+  const clientCode = buildCode('const { data, error }', `client.${collection}`, fn, args);
 
-function AuthBadge({
-  resource,
-  operation,
-  isPublic,
-  anonymousRead,
-}: {
-  resource?: string;
-  operation?: string;
-  isPublic?: boolean;
-  anonymousRead?: boolean;
-}) {
-  if (isPublic) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-        <Globe className="size-3" />
-        Public
-      </span>
-    );
-  }
-
-  if (anonymousRead) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
-        <Globe className="size-3" />
-        Anonymous read
-      </span>
-    );
-  }
+  const [serverNode, clientNode] = await Promise.all([
+    highlight(serverCode, HIGHLIGHT_OPTIONS),
+    highlight(clientCode, HIGHLIGHT_OPTIONS),
+  ]);
 
   return (
-    <span className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium text-fd-muted-foreground">
-      <Lock className="size-3" />
-      {resource && operation ? (
-        <code className="font-mono">
-          {resource}:{operation}
-        </code>
-      ) : (
-        'Requires session'
-      )}
-    </span>
+    <ApiMethodCard
+      method={method}
+      path={path}
+      defaultTab={defaultTab}
+      resource={resource}
+      operation={operation}
+      public={isPublic}
+      anonymousRead={anonymousRead}
+      params={params}
+      returns={returns}
+      serverCode={serverNode}
+      clientCode={clientNode}
+    />
   );
 }

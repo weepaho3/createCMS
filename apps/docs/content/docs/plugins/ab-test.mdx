@@ -89,152 +89,315 @@ const { results, isLive } = useLiveResults({
 
 The plugin registers ten endpoints under the `abTest` namespace (`cms.api.abTest.<name>` on the server, `client.abTest.<name>` on the client), plus the per-collection `resolveAbVariant` read (`cms.api.<collection>.resolveAbVariant`). The client [convenience actions](#usage) build on these, and every endpoint also surfaces as a fully typed fetcher through `typeof cms`, so the input and return shapes below are inferred end to end.
 
-### `resolveAbVariant`
+### Resolve a Variant for a Path [#resolveabvariant]
 
-The edge-readable, anonymous lookup: for a request path it returns the single running test that varies the page's render (the page root or a transitively-embedded block) plus the variants to bucket across, or `{ test: null }`. It carries no visitor input, so it is safe to cache. Lives as a collection endpoint (`cms.api.<collection>.resolveAbVariant`).
+Look up the single running test that varies a request path's render — the page root or a transitively-embedded block — and get back the variants to bucket across, or `{ test: null }` when nothing applies. It carries no visitor input, so it's safe to cache from the edge. It lives as a collection endpoint (`cms.api.<collection>.resolveAbVariant`).
 
-<APIMethod method="GET" path="/{collection}/resolveAbVariant" anonymousRead returns="{ test: { testId, rootId, trafficPercentage, variants } | null }" params={{
-  path: { type: 'string', required: true, description: 'The request path to resolve a running test for.' },
-}} />
+<APIMethod
+  method="GET"
+  path="/{collection}/resolveAbVariant"
+  fn="resolveAbVariant"
+  anonymousRead
+  args={`{
+  query: { path: '/pricing' }, // required
+}`}
+  returns={{
+    test: { type: '{ testId, rootId, trafficPercentage, variants: ResolvedAbVariant[] } | null', description: 'The single running test that varies this path (page root or an embedded block) plus the variants to bucket across, or `null` when no test applies. Each variant carries `variantId`, `branchId`, `weight`, and `isControl`.' },
+  }}
+  params={{
+    path: { type: 'string', required: true, description: 'The request path to resolve a running test for.' },
+  }}
+/>
 
-```ts
-const { test } = await cms.api.pages.resolveAbVariant({
-  query: { path: '/pricing' },
-});
-```
+### Create a Test [#createtest]
 
-### `createTest`
+Create an A/B test on a root. It opens in `draft`, every variant's branch must already be published, and you get back the new test's id.
 
-Creates a test on a root. It opens in `draft`, and every variant's branch must already be published.
-
-<APIMethod method="POST" path="/abTest/createTest" resource="abTest" operation="create" returns="{ testId }" params={{
-  rootId: { type: 'string', required: true, description: 'The root the test runs on.' },
-  collection: { type: 'string', required: true, description: 'The collection the root belongs to.' },
-  name: { type: 'string', required: true, description: 'Human-readable test name.' },
-  variants: { type: '{ branchId, name, weight, isControl? }[]', required: true, description: 'At least 2 variants; weights must sum to 100 with exactly one isControl.' },
-  trafficPercentage: { type: 'number', default: '100', description: 'Percent of visitors entered into the test, 0 to 100.' },
-  goalHandle: { type: 'string', description: 'The conversion goal block trackingId (handle).' },
-  goalEvent: { type: 'string', description: 'The conversion goal event name.' },
-}} />
-
-```ts
-const { testId } = await cms.api.abTest.createTest({
+<APIMethod
+  method="POST"
+  path="/abTest/createTest"
+  collection="abTest"
+  fn="createTest"
+  resource="abTest"
+  operation="create"
+  args={`{
   body: {
-    rootId,
-    collection: 'pages',
-    name: 'Hero copy test',
-    trafficPercentage: 50, // optional, defaults to 100
+    rootId: 'root_home', // required
+    collection: 'pages', // required
+    name: 'Hero copy test', // required
     variants: [
-      { branchId: control, name: 'Control', weight: 50, isControl: true },
-      { branchId: variantB, name: 'Bold headline', weight: 50 },
-    ],
+      { branchId: 'br_control', name: 'Control', weight: 50, isControl: true },
+      { branchId: 'br_bold', name: 'Bold headline', weight: 50 },
+    ], // required
+    trafficPercentage: 50, // optional, defaults to 100
   },
-});
-```
+}`}
+  returns={{
+    testId: { type: 'string', description: 'The id of the newly created test (opens in `draft`).' },
+  }}
+  params={{
+    rootId: { type: 'string', required: true, description: 'The root the test runs on.' },
+    collection: { type: 'string', required: true, description: 'The collection the root belongs to.' },
+    name: { type: 'string', required: true, description: 'Human-readable test name.' },
+    variants: { type: '{ branchId, name, weight, isControl? }[]', required: true, description: 'At least 2 variants; weights must sum to 100 with exactly one isControl.' },
+    trafficPercentage: { type: 'number', default: '100', description: 'Percent of visitors entered into the test, 0 to 100.' },
+    goalHandle: { type: 'string', description: 'The conversion goal block trackingId (handle).' },
+    goalEvent: { type: 'string', description: 'The conversion goal event name.' },
+  }}
+/>
 
-### `updateTest`
+### Update a Test [#updatetest]
 
-Updates a test's name, traffic, goal, or variants, or advances its status. Passing `null` for `goalHandle`/`goalEvent` clears the goal; returns `{ testId }`.
+Rename a test, retarget its traffic or goal, replace its variants, or advance its status through the state machine. Pass `null` for `goalHandle`/`goalEvent` to clear the goal; you get back the test's id.
 
-<APIMethod method="POST" path="/abTest/updateTest" resource="abTest" operation="update" returns="{ testId }" params={{
-  testId: { type: 'string', required: true, description: 'The test to update.' },
-  name: { type: 'string', description: 'New test name.' },
-  status: { type: "'draft' | 'running' | 'paused' | 'completed'", description: 'Advance the test through its status machine.' },
-  trafficPercentage: { type: 'number', description: 'New traffic percentage, 0 to 100.' },
-  goalHandle: { type: 'string | null', description: 'Set the goal handle, or null to clear it.' },
-  goalEvent: { type: 'string | null', description: 'Set the goal event, or null to clear it.' },
-  variants: { type: '{ branchId, name, weight, isControl? }[]', description: 'Replace the variants (only while draft or paused).' },
-}} />
+<APIMethod
+  method="POST"
+  path="/abTest/updateTest"
+  collection="abTest"
+  fn="updateTest"
+  resource="abTest"
+  operation="update"
+  args={`{
+  body: {
+    testId: 'test_hero', // required
+    status: 'running', // optional
+  },
+}`}
+  returns={{
+    testId: { type: 'string', description: 'The id of the updated test.' },
+  }}
+  params={{
+    testId: { type: 'string', required: true, description: 'The test to update.' },
+    name: { type: 'string', description: 'New test name.' },
+    status: { type: "'draft' | 'running' | 'paused' | 'completed'", description: 'Advance the test through its status machine.' },
+    trafficPercentage: { type: 'number', description: 'New traffic percentage, 0 to 100.' },
+    goalHandle: { type: 'string | null', description: 'Set the goal handle, or null to clear it.' },
+    goalEvent: { type: 'string | null', description: 'Set the goal event, or null to clear it.' },
+    variants: { type: '{ branchId, name, weight, isControl? }[]', description: 'Replace the variants (only while draft or paused).' },
+  }}
+/>
 
 <Callout type="info">
   `variants` needs at least two entries whose `weight` values sum to 100, with exactly one flagged `isControl`. `updateTest` follows the status machine `draft → running`, `running → paused`/`completed`, `paused → running`/`completed`, and only replaces `variants` while a test is `draft` or `paused`; passing `null` for `goalHandle`/`goalEvent` clears the goal. `listTests` defaults `limit` to 50 (max 100) and `offset` to 0.
 </Callout>
 
-### `getTest`
+### Get a Test [#gettest]
 
-Fetches a test and its variants.
+Fetch a single test together with its variants.
 
-<APIMethod method="GET" path="/abTest/getTest" resource="abTest" operation="read" returns="{ ...test, variants }" params={{
-  testId: { type: 'string', required: true, description: 'The test to fetch.' },
-}} />
+<APIMethod
+  method="GET"
+  path="/abTest/getTest"
+  collection="abTest"
+  fn="getTest"
+  resource="abTest"
+  operation="read"
+  args={`{
+  query: { testId: 'test_hero' }, // required
+}`}
+  returns={{
+    id: { type: 'string', description: 'The test id.' },
+    rootId: { type: 'string', description: 'The root the test runs on.' },
+    collection: { type: 'string', description: 'The collection the root belongs to.' },
+    name: { type: 'string', description: 'The human-readable test name.' },
+    goalHandle: { type: 'string | null', description: 'The conversion goal block trackingId, or `null` if unset.' },
+    goalEvent: { type: 'string | null', description: 'The conversion goal event name, or `null` if unset.' },
+    status: { type: "'draft' | 'running' | 'paused' | 'completed'", description: 'The current lifecycle status.' },
+    trafficPercentage: { type: 'number', description: 'Percent of visitors entered into the test.' },
+    startedAt: { type: 'string | null', description: 'When the test first entered `running`, or `null` if it never has.' },
+    endedAt: { type: 'string | null', description: 'When the test was `completed`, or `null` if still active.' },
+    createdBy: { type: 'string | null', description: 'The user id that created the test, or `null`.' },
+    createdAt: { type: 'string', description: 'When the test was created.' },
+    updatedAt: { type: 'string', description: 'When the test was last updated.' },
+    variants: { type: '{ id, branchId, name, weight, isControl }[]', description: "The test's variants, each tied to a published branch." },
+  }}
+  params={{
+    testId: { type: 'string', required: true, description: 'The test to fetch.' },
+  }}
+/>
 
-### `listTests`
+### List Tests [#listtests]
 
-Lists tests, optionally filtered by collection or status.
+Page through your tests, optionally narrowed to one collection or status.
 
-<APIMethod method="GET" path="/abTest/listTests" resource="abTest" operation="read" returns="{ tests, total, hasMore }" params={{
-  collection: { type: 'string', description: 'Filter by collection.' },
-  status: { type: "'draft' | 'running' | 'paused' | 'completed'", description: 'Filter by status.' },
-  limit: { type: 'number', default: '50', description: 'Page size, 1 to 100.' },
-  offset: { type: 'number', default: '0', description: 'Rows to skip.' },
-}} />
+<APIMethod
+  method="GET"
+  path="/abTest/listTests"
+  collection="abTest"
+  fn="listTests"
+  resource="abTest"
+  operation="read"
+  args={`{
+  query: { status: 'running', limit: 50 }, // all optional
+}`}
+  returns={{
+    tests: { type: '{ id, rootId, collection, name, status, trafficPercentage, ... }[]', description: 'The tests on this page, newest first. Each is a test row — the same shape `getTest` returns, without `variants`.' },
+    total: { type: 'number', description: 'Total tests matching the filters, ignoring limit/offset.' },
+    hasMore: { type: 'boolean', description: 'Whether more tests exist after this page.' },
+  }}
+  params={{
+    collection: { type: 'string', description: 'Filter by collection.' },
+    status: { type: "'draft' | 'running' | 'paused' | 'completed'", description: 'Filter by status.' },
+    limit: { type: 'number', default: '50', description: 'Page size, 1 to 100.' },
+    offset: { type: 'number', default: '0', description: 'Rows to skip.' },
+  }}
+/>
 
-### `listGoalEvents`
+### List Goal Events [#listgoalevents]
 
-Enumerates the pickable conversion goals for a root: one candidate per functional block instance and declared event, across the root's own tree and its embedded reusable blocks.
+Enumerate the conversion goals you can pick for a root: one candidate per functional block instance and declared event, across the root's own tree and its embedded reusable blocks.
 
-<APIMethod method="GET" path="/abTest/listGoalEvents" resource="abTest" operation="read" returns="{ rootId, goals }" params={{
-  rootId: { type: 'string', required: true, description: 'The root to enumerate pickable goal events for.' },
-}} />
+<APIMethod
+  method="GET"
+  path="/abTest/listGoalEvents"
+  collection="abTest"
+  fn="listGoalEvents"
+  resource="abTest"
+  operation="read"
+  args={`{
+  query: { rootId: 'root_home' }, // required
+}`}
+  returns={{
+    rootId: { type: 'string', description: 'The root the goals were enumerated for (echoed back).' },
+    goals: { type: 'GoalCandidate[]', description: 'One candidate per functional block instance × declared event. Each has `handle`, `blockType`, `blockId`, `event`, `name`, `params`, `inVaryingRoot`, and `hostRootId`.' },
+  }}
+  params={{
+    rootId: { type: 'string', required: true, description: 'The root to enumerate pickable goal events for.' },
+  }}
+/>
 
-### `assignVariant`
+### Assign a Variant [#assignvariant]
 
-Server-side deterministic assignment for a running test: it buckets the visitor `context` and returns the variant, its branch, and whether the visitor is in the test. It reads (assigns without mutating test config), so its operation is `read` despite the POST.
+Deterministically bucket a visitor into a running test server-side and get back their variant, its branch, and whether they fell inside the test. It reads (assigns without mutating test config), so its operation is `read` despite the POST.
 
-<APIMethod method="POST" path="/abTest/assignVariant" resource="abTest" operation="read" returns="{ variantId, branchId, inTest }" params={{
-  testId: { type: 'string', required: true, description: 'The running test to assign against.' },
-  context: { type: '{ key: string, anonymous?: boolean }', required: true, description: 'The visitor bucketing context; key is the stable visitor key.' },
-}} />
+<APIMethod
+  method="POST"
+  path="/abTest/assignVariant"
+  collection="abTest"
+  fn="assignVariant"
+  resource="abTest"
+  operation="read"
+  args={`{
+  body: {
+    testId: 'test_hero', // required
+    context: { key: 'visitor_abc' }, // required
+  },
+}`}
+  returns={{
+    variantId: { type: 'string', description: 'The variant the visitor was bucketed into.' },
+    branchId: { type: 'string', description: "The variant's published branch to render (empty string if the variant has no branch)." },
+    inTest: { type: 'boolean', description: "Whether the visitor fell inside the test's traffic percentage (`false` = serve control)." },
+  }}
+  params={{
+    testId: { type: 'string', required: true, description: 'The running test to assign against.' },
+    context: { type: '{ key: string, anonymous?: boolean }', required: true, description: 'The visitor bucketing context; key is the stable visitor key.' },
+  }}
+/>
 
-### `trackEvent`
+### Track an Event [#trackevent]
 
-The public event ingest. It uses a distinct `abTestEvent` permission resource, so an app can open it to anonymous visitors without exposing test management. A/B-attributed events must resolve to a variant of `testId` via `variantId` or `branchId`; it also accepts the optional analytics-stitching fields `source`, `interactionId`, and `transport`. Returns an empty ack.
+Record an impression, conversion, or any analytics event from a visitor. It uses a distinct `abTestEvent` permission resource, so an app can open it to anonymous visitors without exposing test management. A/B-attributed events must resolve to a variant of `testId` via `variantId` or `branchId`; it also accepts the optional analytics-stitching fields `source`, `interactionId`, and `transport`, and returns an empty ack.
 
-<APIMethod method="POST" path="/abTest/trackEvent" resource="abTestEvent" operation="create" returns="{}" params={{
-  eventType: { type: 'string', required: true, description: 'The event name, 1 to 80 chars; blocks declare their own.' },
-  testId: { type: 'string', description: 'A/B test id (required for A/B-attributed events).' },
-  variantId: { type: 'string', description: 'The variant the event belongs to.' },
-  branchId: { type: 'string', description: 'Served branch; resolves the variant id server-side (Pattern A).' },
-  visitorId: { type: 'string', description: 'Visitor id for the consent-gated unique-visitor / GA4 path.' },
-  anonymous: { type: 'boolean', default: 'false', description: 'Whether the event carries no visitor identifier.' },
-  metadata: { type: 'Record<string, unknown>', description: 'Arbitrary event metadata, up to 8KB serialized.' },
-  source: { type: '{ handle?: string, type?: string }', description: 'The source block handle and type (each up to 128 chars).' },
-  interactionId: { type: 'string', description: 'Funnel grouping id shared by the attempt and success legs (up to 128 chars).' },
-  transport: { type: '{ clientId?, sessionId?, engagementTimeMsec? }', description: 'GA4 stitching ids, sent only when consent is granted.' },
-  consent: { type: 'ConsentState', description: "Consent Mode v2 signals (analytics_storage, ad_storage, ad_user_data, ad_personalization: 'granted' | 'denied'); analytics_storage 'denied' skips recording." },
-}} />
+<APIMethod
+  method="POST"
+  path="/abTest/trackEvent"
+  collection="abTest"
+  fn="trackEvent"
+  resource="abTestEvent"
+  operation="create"
+  args={`{
+  body: {
+    eventType: 'conversion', // required
+    testId: 'test_hero',
+    branchId: 'br_bold',
+  },
+}`}
+  params={{
+    eventType: { type: 'string', required: true, description: 'The event name, 1 to 80 chars; blocks declare their own.' },
+    testId: { type: 'string', description: 'A/B test id (required for A/B-attributed events).' },
+    variantId: { type: 'string', description: 'The variant the event belongs to.' },
+    branchId: { type: 'string', description: 'Served branch; resolves the variant id server-side (Pattern A).' },
+    visitorId: { type: 'string', description: 'Visitor id for the consent-gated unique-visitor / GA4 path.' },
+    anonymous: { type: 'boolean', default: 'false', description: 'Whether the event carries no visitor identifier.' },
+    metadata: { type: 'Record<string, unknown>', description: 'Arbitrary event metadata, up to 8KB serialized.' },
+    source: { type: '{ handle?: string, type?: string }', description: 'The source block handle and type (each up to 128 chars).' },
+    interactionId: { type: 'string', description: 'Funnel grouping id shared by the attempt and success legs (up to 128 chars).' },
+    transport: { type: '{ clientId?, sessionId?, engagementTimeMsec? }', description: 'GA4 stitching ids, sent only when consent is granted.' },
+    consent: { type: 'ConsentState', description: "Consent Mode v2 signals (analytics_storage, ad_storage, ad_user_data, ad_personalization: 'granted' | 'denied'); analytics_storage 'denied' skips recording." },
+  }}
+/>
 
-### `getResults`
+### Get Results [#getresults]
 
-Aggregated results for a test: `AggregatedResults` = `{ testId, variants, totalImpressions, totalConversions, goalEvent? }`, where each variant carries its own impressions, conversions, and rates. `from`/`to` bound the reporting window.
+Pull the aggregated results for a test — per-variant impressions, conversions, and rates, plus the totals. Bound the reporting window with `from`/`to`.
 
-<APIMethod method="GET" path="/abTest/getResults" resource="abTest" operation="read" returns="AggregatedResults" params={{
-  testId: { type: 'string', required: true, description: 'The test to aggregate results for.' },
-  from: { type: 'Date', description: 'Start of the reporting window (inclusive).' },
-  to: { type: 'Date', description: 'End of the reporting window.' },
-}} />
+<APIMethod
+  method="GET"
+  path="/abTest/getResults"
+  collection="abTest"
+  fn="getResults"
+  resource="abTest"
+  operation="read"
+  args={`{
+  query: { testId: 'test_hero' }, // required
+}`}
+  returns={{
+    testId: { type: 'string', description: 'The test the results are for.' },
+    variants: { type: 'AggregatedVariantResult[]', description: 'Per-variant rollup. Each has `variantId`, `variantName`, `impressions`, `conversions`, `uniqueVisitors`, `conversionRate`, `attempts`, `completionRate`, and an `eventBreakdown`.' },
+    totalImpressions: { type: 'number', description: 'Impressions summed across all variants.' },
+    totalConversions: { type: 'number', description: 'Conversions summed across all variants (for the resolved goal event).' },
+    goalEvent: { type: 'string | null', description: "The test's resolved goal event (wire name), or `null` for the goal-less default where `conversion` events count." },
+  }}
+  params={{
+    testId: { type: 'string', required: true, description: 'The test to aggregate results for.' },
+    from: { type: 'Date', description: 'Start of the reporting window (inclusive).' },
+    to: { type: 'Date', description: 'End of the reporting window.' },
+  }}
+/>
 
-```ts
-const results = await cms.api.abTest.getResults({
-  query: { testId },
-});
-```
+### Flush Events [#flushevents]
 
-### `flushEvents`
+Force buffered events to persist on adapters that buffer (Upstash, say); adapters that don't throw `AB_TEST_FLUSH_NOT_SUPPORTED`. Pass `testId` to flush one test, or omit it to flush all.
 
-Flushes buffered events on adapters that buffer (throws `AB_TEST_FLUSH_NOT_SUPPORTED` otherwise). Pass `testId` to flush one test, or omit it to flush all.
+<APIMethod
+  method="POST"
+  path="/abTest/flushEvents"
+  collection="abTest"
+  fn="flushEvents"
+  resource="abTest"
+  operation="update"
+  args={`{
+  body: { testId: 'test_hero' }, // optional
+}`}
+  returns={{
+    flushed: { type: 'number', description: 'How many buffered events were flushed to durable storage.' },
+  }}
+  params={{
+    testId: { type: 'string', description: 'Flush buffered events for this test; omit to flush all.' },
+  }}
+/>
 
-<APIMethod method="POST" path="/abTest/flushEvents" resource="abTest" operation="update" returns="adapter flush result" params={{
-  testId: { type: 'string', description: 'Flush buffered events for this test; omit to flush all.' },
-}} />
+### Delete a Test [#deletetest]
 
-### `deleteTest`
+Delete a test. Only tests in `draft` or `completed` status can be deleted.
 
-Deletes a test. Only tests in `draft` or `completed` status can be deleted.
-
-<APIMethod method="POST" path="/abTest/deleteTest" resource="abTest" operation="delete" returns="{ testId }" params={{
-  testId: { type: 'string', required: true, description: 'The test to delete (must be draft or completed).' },
-}} />
+<APIMethod
+  method="POST"
+  path="/abTest/deleteTest"
+  collection="abTest"
+  fn="deleteTest"
+  resource="abTest"
+  operation="delete"
+  args={`{
+  body: { testId: 'test_hero' }, // required
+}`}
+  returns={{
+    testId: { type: 'string', description: 'The id of the deleted test.' },
+  }}
+  params={{
+    testId: { type: 'string', required: true, description: 'The test to delete (must be draft or completed).' },
+  }}
+/>
 
 ### Variant selection
 

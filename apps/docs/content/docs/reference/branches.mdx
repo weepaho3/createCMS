@@ -7,11 +7,28 @@ Branches are the drafts of an entry (root): each one is an independent line of c
 
 ## Methods
 
-### `listBranches`
+### List Branches [#listbranches]
 
-Lists the branches of a root, with pagination and filtering by publication and merge-request state. Each item carries `isDeletable` and `hasPublications`.
+List the branches of an entry, with pagination and filters for publication and merge-request state. Each item carries `isDeletable` and `hasPublications`, so you can tell at a glance which drafts are safe to remove.
 
-<APIMethod method="GET" path="/{collection}/listBranches" resource="branch" operation="read" returns="{ branches, total, hasMore }" params={{
+<APIMethod
+  method="GET"
+  path="/{collection}/listBranches"
+  fn="listBranches"
+  resource="branch"
+  operation="read"
+  args={`{
+  query: {
+    rootId: 'root_123', // required
+    limit: 50,
+  },
+}`}
+  returns={{
+    branches: { type: 'BranchListItem[]', description: 'The branches on this page. Each has id, rootId, name, headCommitId, createdBy, createdAt, updatedAt, plus `hasPublications` and `isDeletable`.' },
+    total: { type: 'number', description: 'Total branches matching the filters across all pages, ignoring limit/offset.' },
+    hasMore: { type: 'boolean', description: 'Whether more branches exist after this page.' },
+  }}
+  params={{
   rootId: { type: 'string', required: true, description: 'Root whose branches to list.' },
   limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
   offset: { type: 'number', default: '0', description: 'Rows to skip.' },
@@ -19,80 +36,167 @@ Lists the branches of a root, with pagination and filtering by publication and m
   isDeletable: { type: 'boolean', description: 'Keep only deletable branches (true) or only protected ones (false).' },
   hasPublications: { type: 'boolean', description: 'Keep only branches with (true) or without (false) any publication.' },
   hasOpenMergeRequests: { type: 'boolean', description: 'Keep only branches with (true) or without (false) an open merge request.' },
-}} />
+}}
+/>
 
-```ts
-const { branches } = await cms.api.pages.listBranches({
-  query: { rootId: 'root_123', limit: 50 },
-});
-```
+### Get a Branch [#getbranch]
 
-### `getBranch`
+Fetch a single branch with its metadata and `isDeletable` flag. Look it up either by `branchId`, or by its `{ rootId, name }` pair (branch names are unique per root), so you can resolve a branch you only know by name without paging through `listBranches`.
 
-Retrieves a single branch with its metadata and `isDeletable` flag. Look it up either by `branchId`, or by its `{ rootId, name }` pair (branch names are unique per root).
-
-<APIMethod method="GET" path="/{collection}/getBranch" resource="branch" operation="read" returns="{ id, rootId, name, headCommitId, createdBy, createdAt, updatedAt, isDeletable }" params={{
+<APIMethod
+  method="GET"
+  path="/{collection}/getBranch"
+  fn="getBranch"
+  resource="branch"
+  operation="read"
+  args={`{
+  query: { rootId: 'root_123', name: 'draft' }, // or { branchId: 'br_main' }
+}`}
+  returns={{
+    id: { type: 'string', description: 'The branch id.' },
+    rootId: { type: 'string', description: 'The root the branch belongs to.' },
+    name: { type: 'string', description: 'The branch name, unique within the root.' },
+    headCommitId: { type: 'string', description: 'The commit currently at the branch head.' },
+    createdBy: { type: 'string | null', description: 'Actor id that created the branch, or null.' },
+    createdAt: { type: 'Date', description: 'When the branch was created.' },
+    updatedAt: { type: 'Date', description: 'When the branch was last updated.' },
+    isDeletable: { type: 'boolean', description: 'Whether the branch can be deleted (not the default branch, no publications or open merge requests).' },
+  }}
+  params={{
   branchId: { type: 'string', description: 'Look up by primary key. Use this, or the `{ rootId, name }` pair.' },
   rootId: { type: 'string', description: 'Look up by root plus branch name. Requires `name`.' },
   name: { type: 'string', description: 'Branch name, unique per root. Requires `rootId`.' },
-}} />
+}}
+/>
 
-```ts
-const draft = await cms.api.pages.getBranch({
-  query: { rootId: 'root_123', name: 'draft' },
-});
-```
+### Create a Branch [#createbranch]
 
-### `createBranch`
+Spin up a new branch by copying the head commit of a source branch. You get back the fresh branch, whose `isDeletable` is always `true` since it has no publications or open merge requests yet.
 
-Creates a new branch by copying the head commit of a source branch. `isDeletable` is always `true` for a fresh branch.
-
-<APIMethod method="POST" path="/{collection}/createBranch" resource="branch" operation="create" returns="{ branch, isDeletable }" params={{
+<APIMethod
+  method="POST"
+  path="/{collection}/createBranch"
+  fn="createBranch"
+  resource="branch"
+  operation="create"
+  args={`{
+  body: {
+    rootId: 'root_123', // required
+    name: 'feature-hero', // required
+    sourceBranchId: 'br_main', // required
+  },
+}`}
+  returns={{
+    branch: { type: 'Branch', description: 'The newly created branch row: `{ id, rootId, name, headCommitId, createdBy, createdAt, updatedAt }`.' },
+    isDeletable: { type: 'boolean', description: 'Always `true` for a fresh branch (never the default branch, no publications or open merge requests yet).' },
+  }}
+  params={{
   rootId: { type: 'string', required: true, description: 'Root the branch belongs to.' },
   name: { type: 'string', required: true, description: 'New branch name, unique within the root.' },
   sourceBranchId: { type: 'string', required: true, description: 'Branch whose head commit seeds the new branch.' },
   createdBy: { type: 'string', description: 'Fallback actor id, used only when no session user is present.' },
-}} />
+}}
+/>
 
-```ts
-const { branch } = await cms.api.pages.createBranch({
-  body: { rootId: 'root_123', name: 'feature-hero', sourceBranchId: 'br_main' },
-});
-```
+### Rename a Branch [#renamebranch]
 
-### `renameBranch`
+Rename a branch and get the updated row back. Fails with `CANNOT_RENAME_MAIN_BRANCH` for the default branch, or `BRANCH_NAME_ALREADY_EXISTS` if the name is taken in the root.
 
-Renames a branch. Fails with `CANNOT_RENAME_MAIN_BRANCH` for the default branch, or `BRANCH_NAME_ALREADY_EXISTS` if the name is taken in the root.
-
-<APIMethod method="POST" path="/{collection}/renameBranch" resource="branch" operation="update" returns="{ branch, isDeletable }" params={{
+<APIMethod
+  method="POST"
+  path="/{collection}/renameBranch"
+  fn="renameBranch"
+  resource="branch"
+  operation="update"
+  args={`{
+  body: {
+    branchId: 'br_feature', // required
+    newName: 'feature-hero', // required
+  },
+}`}
+  returns={{
+    branch: { type: 'Branch', description: 'The updated branch row with its new name and refreshed `updatedAt`.' },
+    isDeletable: { type: 'boolean', description: 'Whether the renamed branch can be deleted (not the default branch, no publications or open merge requests).' },
+  }}
+  params={{
   branchId: { type: 'string', required: true, description: 'Branch to rename.' },
   newName: { type: 'string', required: true, description: 'New name, unique within the root.' },
-}} />
+}}
+/>
 
-### `revertBranch`
+### Revert a Branch [#revertbranch]
 
-Reverts a branch to the snapshot at a target commit by writing a new commit with that state onto the branch head. Blocked while the branch is published.
+Roll a branch back to the snapshot at an earlier commit. This writes a new commit with that state onto the branch head (it never rewrites history), and is blocked while the branch is published.
 
-<APIMethod method="POST" path="/{collection}/revertBranch" resource="branch" operation="update" returns="{ commit }" params={{
+<APIMethod
+  method="POST"
+  path="/{collection}/revertBranch"
+  fn="revertBranch"
+  resource="branch"
+  operation="update"
+  args={`{
+  body: {
+    branchId: 'br_feature', // required
+    targetCommitId: 'commit_abc', // required
+  },
+}`}
+  returns={{
+    commit: { type: 'Commit', description: 'The revert commit written onto the branch head: `{ id, message, createdAt, createdBy }`.' },
+  }}
+  params={{
   branchId: { type: 'string', required: true, description: 'Branch to revert.' },
   targetCommitId: { type: 'string', required: true, description: 'Commit whose snapshot to restore.' },
   message: { type: 'string', description: 'Commit message. Defaults to an auto-generated one.' },
   createdBy: { type: 'string', description: 'Fallback actor id, used only when no session user is present.' },
-}} />
+}}
+/>
 
-### `checkDivergence`
+### Check Divergence [#checkdivergence]
 
-Compares two branches of the same root, computing their common ancestor and commit distance. Fails with `BRANCHES_NOT_SAME_ROOT` if the branches belong to different roots.
+Compare two branches of the same root to see how far they have diverged: their common ancestor, how many commits each is ahead, and whether the source can fast-forward onto the target. Fails with `BRANCHES_NOT_SAME_ROOT` if the branches belong to different roots.
 
-<APIMethod method="GET" path="/{collection}/checkDivergence" resource="branch" operation="read" returns="{ hasCommonAncestor, commonAncestorCommitId, sourceAhead, targetAhead, canFastForward }" params={{
+<APIMethod
+  method="GET"
+  path="/{collection}/checkDivergence"
+  fn="checkDivergence"
+  resource="branch"
+  operation="read"
+  args={`{
+  query: {
+    sourceBranchId: 'br_feature', // required
+    targetBranchId: 'br_main', // required
+  },
+}`}
+  returns={{
+    hasCommonAncestor: { type: 'boolean', description: 'Whether the two branches share a common ancestor commit.' },
+    commonAncestorCommitId: { type: 'string | null', description: 'The shared ancestor commit id, or null when there is none.' },
+    sourceAhead: { type: 'number', description: 'How many commits the source branch is ahead of the common ancestor.' },
+    targetAhead: { type: 'number', description: 'How many commits the target branch is ahead of the common ancestor.' },
+    canFastForward: { type: 'boolean', description: 'Whether the source can fast-forward onto the target (the target has not moved past the ancestor).' },
+  }}
+  params={{
   sourceBranchId: { type: 'string', required: true, description: 'Source branch to compare.' },
   targetBranchId: { type: 'string', required: true, description: 'Target branch to compare.' },
-}} />
+}}
+/>
 
-### `deleteBranch`
+### Delete a Branch [#deletebranch]
 
-Deletes a branch. Fails with `CANNOT_DELETE_MAIN_BRANCH` for the default branch, `BRANCH_HAS_PUBLICATIONS` if it has any publication, or `BRANCH_HAS_OPEN_MERGE_REQUESTS` if it is part of an open merge request.
+Delete a branch. Fails with `CANNOT_DELETE_MAIN_BRANCH` for the default branch, `BRANCH_HAS_PUBLICATIONS` if it has any publication, or `BRANCH_HAS_OPEN_MERGE_REQUESTS` if it is part of an open merge request.
 
-<APIMethod method="POST" path="/{collection}/deleteBranch" resource="branch" operation="delete" returns="{ branchId }" params={{
+<APIMethod
+  method="POST"
+  path="/{collection}/deleteBranch"
+  fn="deleteBranch"
+  resource="branch"
+  operation="delete"
+  args={`{
+  body: { branchId: 'br_feature' }, // required
+}`}
+  returns={{
+    branchId: { type: 'string', description: 'The id of the deleted branch.' },
+  }}
+  params={{
   branchId: { type: 'string', required: true, description: 'Branch to delete.' },
-}} />
+}}
+/>

@@ -7,126 +7,258 @@ Comment methods let reviewers open threads on a merge request or a block, reply,
 
 These endpoints operate on comment threads and messages, not on content commits, so no method returns a `commit` envelope.
 
-### `createCommentThread`
+### Open a Comment Thread [#createcommentthread]
 
-Opens a new thread with an initial message and optional mentions. `targetType` decides which id is required.
+Open a new review thread with an initial message, so reviewers can flag something on a merge request or a block. `targetType` picks the anchor: `'mergeRequest'` requires `mergeRequestId`, `'block'` requires `blockId`. Anyone you list in `mentions` gets a notification.
 
-<APIMethod method="POST" path="/{collection}/createCommentThread" resource="comment" operation="create" returns="{ thread, message }" params={{
-  targetType: { type: "'mergeRequest' | 'block'", required: true, description: 'What the thread is attached to.' },
-  body: { type: 'string', required: true, description: 'Initial message text (non-empty).' },
-  mergeRequestId: { type: 'string', description: "Merge request to attach to. Required when targetType is 'mergeRequest'; also infers rootId." },
-  blockId: { type: 'string', description: "Block to attach to. Required when targetType is 'block'." },
-  commitId: { type: 'string', description: 'Optional commit to pin the thread to a specific snapshot.' },
-  rootId: { type: 'string', description: 'Optional root ID. Inferred from the merge request when omitted.' },
-  mentions: { type: 'string[]', description: 'User IDs to mention in the initial message.' },
-}} />
-
-```ts
-const { thread, message } = await cms.api.pages.createCommentThread({
+<APIMethod
+  method="POST"
+  path="/{collection}/createCommentThread"
+  fn="createCommentThread"
+  resource="comment"
+  operation="create"
+  args={`{
   body: {
-    targetType: 'mergeRequest',
-    mergeRequestId: 'mr_8fd21c',
-    body: 'Can we tighten the hero copy before merging?',
+    targetType: 'mergeRequest', // required
+    mergeRequestId: 'mr_8fd21c', // required when targetType is 'mergeRequest'
+    body: 'Can we tighten the hero copy before merging?', // required
     mentions: ['user_editor'],
   },
-});
-```
+}`}
+  returns={{
+    thread: { type: 'CommentThread', description: 'The new thread: `{ id, status, targetType, rootId, mergeRequestId, blockId, commitId, createdBy, createdAt, ... }`.' },
+    message: { type: 'CommentMessage', description: 'The initial message, with its resolved `mentions` (the author is stripped out).' },
+  }}
+  params={{
+    targetType: { type: "'mergeRequest' | 'block'", required: true, description: 'What the thread is attached to.' },
+    body: { type: 'string', required: true, description: 'Initial message text (non-empty).' },
+    mergeRequestId: { type: 'string', description: "Merge request to attach to. Required when targetType is 'mergeRequest'; also infers rootId." },
+    blockId: { type: 'string', description: "Block to attach to. Required when targetType is 'block'." },
+    commitId: { type: 'string', description: 'Optional commit to pin the thread to a specific snapshot.' },
+    rootId: { type: 'string', description: 'Optional root ID. Inferred from the merge request when omitted.' },
+    mentions: { type: 'string[]', description: 'User IDs to mention in the initial message.' },
+  }}
+/>
 
-### `createCommentMessage`
+### Reply to a Thread [#createcommentmessage]
 
-Adds a reply to an existing thread, optionally nested under a parent message.
+Reply to an existing thread, optionally nested under a parent message. The thread's creator and every mentioned user get notified.
 
-<APIMethod method="POST" path="/{collection}/createCommentMessage" resource="comment" operation="create" returns="{ message }" params={{
-  threadId: { type: 'string', required: true, description: 'Thread to reply in.' },
-  body: { type: 'string', required: true, description: 'Message text (non-empty).' },
-  parentMessageId: { type: 'string', description: 'Parent message for a nested reply.' },
-  mentions: { type: 'string[]', description: 'User IDs to mention in this message.' },
-}} />
+<APIMethod
+  method="POST"
+  path="/{collection}/createCommentMessage"
+  fn="createCommentMessage"
+  resource="comment"
+  operation="create"
+  args={`{
+  body: {
+    threadId: 'thr_1a2b3c', // required
+    body: 'Updated, ready for another look.', // required
+  },
+}`}
+  returns={{
+    message: { type: 'CommentMessage', description: 'The new reply, with its resolved `mentions` and `parentMessageId` when nested.' },
+  }}
+  params={{
+    threadId: { type: 'string', required: true, description: 'Thread to reply in.' },
+    body: { type: 'string', required: true, description: 'Message text (non-empty).' },
+    parentMessageId: { type: 'string', description: 'Parent message for a nested reply.' },
+    mentions: { type: 'string[]', description: 'User IDs to mention in this message.' },
+  }}
+/>
 
-```ts
-const { message } = await cms.api.pages.createCommentMessage({
-  body: { threadId: thread.id, body: 'Updated, ready for another look.' },
-});
-```
+### List Comment Threads [#listcommentthreads]
 
-### `listCommentThreads`
+Page through comment threads, filtered by what they're attached to (merge request, block, commit, root), by `status`, or by who was mentioned. Each thread comes back with its message count and first/latest message, so you can render a list without a second round-trip. Every query field is optional.
 
-Lists threads filtered by target, status, or mentions, with pagination. All query fields are optional.
+<APIMethod
+  method="GET"
+  path="/{collection}/listCommentThreads"
+  fn="listCommentThreads"
+  resource="comment"
+  operation="read"
+  args={`{
+  query: {
+    status: 'open',
+    limit: 50,
+  },
+}`}
+  returns={{
+    threads: { type: 'CommentThreadSummary[]', description: 'The threads on this page, newest first. Each carries `messageCount`, `firstMessage`, `latestMessage`, and enriched `createdByUser` / `resolvedByUser`.' },
+    total: { type: 'number', description: 'Total threads matching the filters, ignoring limit/offset.' },
+    hasMore: { type: 'boolean', description: 'Whether more threads exist after this page.' },
+  }}
+  params={{
+    mergeRequestId: { type: 'string', description: 'Filter by merge request.' },
+    blockId: { type: 'string', description: 'Filter by block.' },
+    commitId: { type: 'string', description: 'Filter by commit.' },
+    rootId: { type: 'string', description: 'Filter by root.' },
+    status: { type: "'open' | 'resolved'", description: 'Filter by thread status.' },
+    mentionedUserId: { type: 'string', description: 'Only threads mentioning this user.' },
+    limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
+    offset: { type: 'number', default: '0', description: 'Rows to skip.' },
+  }}
+/>
 
-<APIMethod method="GET" path="/{collection}/listCommentThreads" resource="comment" operation="read" returns="{ threads, total, hasMore }" params={{
-  mergeRequestId: { type: 'string', description: 'Filter by merge request.' },
-  blockId: { type: 'string', description: 'Filter by block.' },
-  commitId: { type: 'string', description: 'Filter by commit.' },
-  rootId: { type: 'string', description: 'Filter by root.' },
-  status: { type: "'open' | 'resolved'", description: 'Filter by thread status.' },
-  mentionedUserId: { type: 'string', description: 'Only threads mentioning this user.' },
-  limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
-  offset: { type: 'number', default: '0', description: 'Rows to skip.' },
-}} />
+### Get a Thread with Its Messages [#getcommentthread]
 
-### `getCommentThread`
+Load a single thread together with all of its messages in chronological order, so you can render the full discussion. Deleted messages still come back, but with their `body` masked to `null`.
 
-Retrieves a single thread with all of its messages in chronological order. Deleted messages return with their body masked.
+<APIMethod
+  method="GET"
+  path="/{collection}/getCommentThread"
+  fn="getCommentThread"
+  resource="comment"
+  operation="read"
+  args={`{
+  query: { threadId: 'thr_1a2b3c' }, // required
+}`}
+  returns={{
+    thread: { type: 'CommentThread', description: 'The thread, with enriched `createdByUser` / `resolvedByUser`.' },
+    messages: { type: 'CommentMessage[]', description: 'Every message in the thread, oldest first. Deleted messages come back with `body: null`; author profiles attach as `authorUser` when user enrichment is on.' },
+  }}
+  params={{
+    threadId: { type: 'string', required: true, description: 'Thread to fetch.' },
+  }}
+/>
 
-<APIMethod method="GET" path="/{collection}/getCommentThread" resource="comment" operation="read" returns="{ thread, messages }" params={{
-  threadId: { type: 'string', required: true, description: 'Thread to fetch.' },
-}} />
+### Edit a Message [#updatecommentmessage]
 
-### `updateCommentMessage`
+Edit the text of a message you wrote, and optionally replace its mentions. Only the original author may edit, and system messages cannot be edited.
 
-Edits a comment message body and optionally re-sets its mentions. Only the original author may edit, and system messages cannot be edited.
+<APIMethod
+  method="POST"
+  path="/{collection}/updateCommentMessage"
+  fn="updateCommentMessage"
+  resource="comment"
+  operation="update"
+  args={`{
+  body: {
+    messageId: 'msg_9f8e7d', // required
+    body: 'Revised: tightened the hero copy.', // required
+  },
+}`}
+  returns={{
+    message: { type: 'CommentMessage', description: 'The edited message, with `editedAt` set and its current `mentions`.' },
+  }}
+  params={{
+    messageId: { type: 'string', required: true, description: 'Message to edit.' },
+    body: { type: 'string', required: true, description: 'New message text (non-empty).' },
+    mentions: { type: 'string[]', description: "When provided, replaces the message's mentions." },
+  }}
+/>
 
-<APIMethod method="POST" path="/{collection}/updateCommentMessage" resource="comment" operation="update" returns="{ message }" params={{
-  messageId: { type: 'string', required: true, description: 'Message to edit.' },
-  body: { type: 'string', required: true, description: 'New message text (non-empty).' },
-  mentions: { type: 'string[]', description: 'When provided, replaces the message\'s mentions.' },
-}} />
+### Resolve a Thread [#resolvecommentthread]
 
-### `resolveCommentThread`
+Mark a thread as resolved once its discussion is settled. A system message is appended recording who resolved it, and you get both the updated thread and that message back.
 
-Marks a thread as resolved and appends a system message recording the resolution.
+<APIMethod
+  method="POST"
+  path="/{collection}/resolveCommentThread"
+  fn="resolveCommentThread"
+  resource="comment"
+  operation="update"
+  args={`{
+  body: { threadId: 'thr_1a2b3c' }, // required
+}`}
+  returns={{
+    thread: { type: 'CommentThread', description: "The thread, now resolved: `status: 'resolved'` with `resolvedBy` and `resolvedAt` set." },
+    message: { type: 'CommentMessage', description: "The appended system message recording the resolution (`messageType: 'system'`, `systemType: 'threadResolved'`)." },
+  }}
+  params={{
+    threadId: { type: 'string', required: true, description: 'Thread to resolve.' },
+  }}
+/>
 
-<APIMethod method="POST" path="/{collection}/resolveCommentThread" resource="comment" operation="update" returns="{ thread, message }" params={{
-  threadId: { type: 'string', required: true, description: 'Thread to resolve.' },
-}} />
+### Reopen a Thread [#reopencommentthread]
 
-```ts
-const { thread } = await cms.api.pages.resolveCommentThread({
-  body: { threadId: 't_1a2b3c' },
-});
-```
+Reopen a resolved thread when the discussion isn't finished after all. A system message is appended recording the reopening, and you get both the updated thread and that message back.
 
-### `reopenCommentThread`
+<APIMethod
+  method="POST"
+  path="/{collection}/reopenCommentThread"
+  fn="reopenCommentThread"
+  resource="comment"
+  operation="update"
+  args={`{
+  body: { threadId: 'thr_1a2b3c' }, // required
+}`}
+  returns={{
+    thread: { type: 'CommentThread', description: "The thread, reopened: `status: 'open'` with `resolvedBy` / `resolvedAt` cleared." },
+    message: { type: 'CommentMessage', description: "The appended system message recording the reopening (`systemType: 'threadReopened'`)." },
+  }}
+  params={{
+    threadId: { type: 'string', required: true, description: 'Thread to reopen.' },
+  }}
+/>
 
-Reopens a resolved thread and appends a system message recording the reopening.
+### Delete a Thread [#deletecommentthread]
 
-<APIMethod method="POST" path="/{collection}/reopenCommentThread" resource="comment" operation="update" returns="{ thread, message }" params={{
-  threadId: { type: 'string', required: true, description: 'Thread to reopen.' },
-}} />
+Soft-delete a thread so it drops out of list and get. Its messages and mentions stay in the database and are removed only when the owning root is pruned.
 
-### `deleteCommentThread`
+<APIMethod
+  method="POST"
+  path="/{collection}/deleteCommentThread"
+  fn="deleteCommentThread"
+  resource="comment"
+  operation="delete"
+  args={`{
+  body: { threadId: 'thr_1a2b3c' }, // required
+}`}
+  returns={{
+    threadId: { type: 'string', description: 'The id of the soft-deleted thread.' },
+  }}
+  params={{
+    threadId: { type: 'string', required: true, description: 'Thread to soft-delete.' },
+  }}
+/>
 
-Soft-deletes a thread so it is hidden from list and get. Messages and mentions are removed only when the owning root is pruned.
+### Delete a Message [#deletecommentmessage]
 
-<APIMethod method="POST" path="/{collection}/deleteCommentThread" resource="comment" operation="delete" returns="{ threadId }" params={{
-  threadId: { type: 'string', required: true, description: 'Thread to soft-delete.' },
-}} />
+Soft-delete a single message so its body is masked on retrieval. Only the original author may delete, and system messages cannot be deleted.
 
-### `deleteCommentMessage`
+<APIMethod
+  method="POST"
+  path="/{collection}/deleteCommentMessage"
+  fn="deleteCommentMessage"
+  resource="comment"
+  operation="delete"
+  args={`{
+  body: { messageId: 'msg_9f8e7d' }, // required
+}`}
+  returns={{
+    message: { type: 'CommentMessage', description: 'The soft-deleted message, returned with `body: null` and `deletedAt` set.' },
+  }}
+  params={{
+    messageId: { type: 'string', required: true, description: 'Message to soft-delete.' },
+  }}
+/>
 
-Soft-deletes a single message (its body is masked on retrieval). Only the original author may delete, and system messages cannot be deleted.
+### List a User's Mentions [#listmentions]
 
-<APIMethod method="POST" path="/{collection}/deleteCommentMessage" resource="comment" operation="delete" returns="{ message }" params={{
-  messageId: { type: 'string', required: true, description: 'Message to soft-delete.' },
-}} />
+Page through the mentions a user has received, each with the message and thread it came from, so you can build a mentions inbox. Filter to a single thread with `threadId`.
 
-### `listMentions`
-
-Lists all mentions received by a user, with the message and thread context for each. Pagination via `limit` and `offset`.
-
-<APIMethod method="GET" path="/{collection}/listMentions" resource="comment" operation="read" returns="{ mentions, total, hasMore }" params={{
-  mentionedUserId: { type: 'string', required: true, description: 'User whose mentions to list.' },
-  threadId: { type: 'string', description: 'Restrict to mentions in one thread.' },
-  limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
-  offset: { type: 'number', default: '0', description: 'Rows to skip.' },
-}} />
+<APIMethod
+  method="GET"
+  path="/{collection}/listMentions"
+  fn="listMentions"
+  resource="comment"
+  operation="read"
+  args={`{
+  query: {
+    mentionedUserId: 'usr_1', // required
+    limit: 50,
+  },
+}`}
+  returns={{
+    mentions: { type: 'Mention[]', description: 'The mentions on this page, newest first. Each has `id`, `mentionedUserId`, `mentionedBy`, `createdAt`, plus the full `message` and `thread` it belongs to.' },
+    total: { type: 'number', description: 'Total mentions matching the filters, ignoring limit/offset.' },
+    hasMore: { type: 'boolean', description: 'Whether more mentions exist after this page.' },
+  }}
+  params={{
+    mentionedUserId: { type: 'string', required: true, description: 'User whose mentions to list.' },
+    threadId: { type: 'string', description: 'Restrict to mentions in one thread.' },
+    limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
+    offset: { type: 'number', default: '0', description: 'Rows to skip.' },
+  }}
+/>

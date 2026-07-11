@@ -9,84 +9,141 @@ Redirects are not versioned content, so unlike the entry and block mutation APIs
 
 ## Methods
 
-### `createRedirect`
+### Create a Redirect [#createredirect]
 
-Creates a redirect from a source (page or path) to a target (page or path). Source paths are canonicalized and must be unique among active redirects; target paths are stored verbatim and may reference external destinations. Fails with `SLUG_NOT_ENABLED`, `REDIRECT_INVALID` (a source page root does not exist or a required field is missing), or `REDIRECT_SOURCE_EXISTS`.
+Point an old source (a page reference or a literal path) at a target, so a moved or retired URL keeps resolving. Source paths are canonicalized and must be unique among active redirects; target paths are stored verbatim, so you can point at an external destination. You get back the stored redirect enriched with its resolved current paths. Fails with `SLUG_NOT_ENABLED`, `REDIRECT_INVALID` (a source page root does not exist or a required field is missing), or `REDIRECT_SOURCE_EXISTS`.
 
-<APIMethod method="POST" path="/{collection}/createRedirect" resource="redirect" operation="create" returns="{ redirect }" params={{
-  sourceType: { type: "'page' | 'path'", required: true, description: "Whether the source is a page reference (needs `sourceRootId`) or a literal path (needs `sourcePath`)." },
-  sourceRootId: { type: 'string', description: "Root id of the source page. Required when `sourceType` is `'page'`." },
-  sourcePath: { type: 'string', description: "Literal source path, canonicalized before storage. Required when `sourceType` is `'path'`." },
-  targetType: { type: "'page' | 'path'", required: true, description: "Whether the target is a page reference (needs `targetRootId`) or a literal path (needs `targetPath`)." },
-  targetRootId: { type: 'string', description: "Root id of the target page. Required when `targetType` is `'page'`." },
-  targetPath: { type: 'string', description: "Target path or URL, stored verbatim (may be external). Required when `targetType` is `'path'`." },
-  statusCode: { type: '301 | 302 | 307 | 308', default: '301', description: 'HTTP redirect status code.' },
-}} />
-
-```ts
-const { redirect } = await cms.api.pages.createRedirect({
+<APIMethod
+  method="POST"
+  path="/{collection}/createRedirect"
+  fn="createRedirect"
+  resource="redirect"
+  operation="create"
+  args={`{
   body: {
-    sourceType: 'path',
-    sourcePath: '/old-pricing',
-    targetType: 'page',
-    targetRootId: 'root_123',
+    sourceType: 'path', // required
+    sourcePath: '/old-pricing', // required when sourceType is 'path'
+    targetType: 'page', // required
+    targetRootId: 'root_123', // required when targetType is 'page'
     statusCode: 301,
   },
-});
-```
+}`}
+  returns={{
+    redirect: { type: 'Redirect', description: 'The created redirect: the stored row plus resolved current paths.' },
+  }}
+  params={{
+    sourceType: { type: "'page' | 'path'", required: true, description: "Whether the source is a page reference (needs `sourceRootId`) or a literal path (needs `sourcePath`)." },
+    sourceRootId: { type: 'string', description: "Root id of the source page. Required when `sourceType` is `'page'`." },
+    sourcePath: { type: 'string', description: "Literal source path, canonicalized before storage. Required when `sourceType` is `'path'`." },
+    targetType: { type: "'page' | 'path'", required: true, description: "Whether the target is a page reference (needs `targetRootId`) or a literal path (needs `targetPath`)." },
+    targetRootId: { type: 'string', description: "Root id of the target page. Required when `targetType` is `'page'`." },
+    targetPath: { type: 'string', description: "Target path or URL, stored verbatim (may be external). Required when `targetType` is `'path'`." },
+    statusCode: { type: '301 | 302 | 307 | 308', default: '301', description: 'HTTP redirect status code.' },
+  }}
+/>
 
 The returned `redirect` carries the stored row plus resolved `sourceCurrentPath` and `targetCurrentPath` (page references resolve to their current published path), matching the rows from `listRedirects`.
 
-### `listRedirects`
+### List Redirects [#listredirects]
 
-Lists active redirects in the collection, newest first, with pagination and resolved current paths for page references. Returns an empty list when slugs are not enabled.
+List the active redirects in a collection, newest first, with pagination and resolved current paths for page references. You get an empty list back when slugs are not enabled.
 
-<APIMethod method="GET" path="/{collection}/listRedirects" resource="redirect" operation="read" returns="{ redirects, total, hasMore }" params={{
-  limit: { type: 'number', default: '50', description: 'Page size, 1 to 100.' },
-  offset: { type: 'number', default: '0', description: 'Rows to skip.' },
-}} />
-
-```ts
-const { redirects, total } = await cms.api.pages.listRedirects({
+<APIMethod
+  method="GET"
+  path="/{collection}/listRedirects"
+  fn="listRedirects"
+  resource="redirect"
+  operation="read"
+  args={`{
   query: { limit: 25, offset: 0 },
-});
-```
+}`}
+  returns={{
+    redirects: { type: 'Redirect[]', description: 'The active redirects on this page, newest first, each enriched with resolved `sourceCurrentPath` and `targetCurrentPath`.' },
+    total: { type: 'number', description: 'Total active redirects across all pages, ignoring limit/offset.' },
+    hasMore: { type: 'boolean', description: 'Whether more redirects exist after this page.' },
+  }}
+  params={{
+    limit: { type: 'number', default: '50', description: 'Page size, 1 to 100.' },
+    offset: { type: 'number', default: '0', description: 'Rows to skip.' },
+  }}
+/>
 
-### `updateRedirect`
+### Update a Redirect [#updateredirect]
 
-Updates an existing redirect's source, target, or status code. Source uniqueness is re-checked, excluding the redirect itself. Fails with `SLUG_NOT_ENABLED`, `REDIRECT_NOT_FOUND`, `REDIRECT_INVALID`, or `REDIRECT_SOURCE_EXISTS`.
+Change a redirect's source, target, or status code. Source uniqueness is re-checked (excluding the redirect itself), so you can safely re-point it. Fails with `SLUG_NOT_ENABLED`, `REDIRECT_NOT_FOUND`, `REDIRECT_INVALID`, or `REDIRECT_SOURCE_EXISTS`.
 
-<APIMethod method="POST" path="/{collection}/updateRedirect" resource="redirect" operation="update" returns="{ redirect }" params={{
-  redirectId: { type: 'string', required: true, description: 'Id of the redirect to update.' },
-  sourceType: { type: "'page' | 'path'", required: true, description: "Whether the source is a page reference (needs `sourceRootId`) or a literal path (needs `sourcePath`)." },
-  sourceRootId: { type: 'string', description: "Root id of the source page. Required when `sourceType` is `'page'`." },
-  sourcePath: { type: 'string', description: "Literal source path, canonicalized before storage. Required when `sourceType` is `'path'`." },
-  targetType: { type: "'page' | 'path'", required: true, description: "Whether the target is a page reference (needs `targetRootId`) or a literal path (needs `targetPath`)." },
-  targetRootId: { type: 'string', description: "Root id of the target page. Required when `targetType` is `'page'`." },
-  targetPath: { type: 'string', description: "Target path or URL, stored verbatim (may be external). Required when `targetType` is `'path'`." },
-  statusCode: { type: '301 | 302 | 307 | 308', default: '301', description: 'HTTP redirect status code.' },
-}} />
+<APIMethod
+  method="POST"
+  path="/{collection}/updateRedirect"
+  fn="updateRedirect"
+  resource="redirect"
+  operation="update"
+  args={`{
+  body: {
+    redirectId: 'redirect_123', // required
+    sourceType: 'path', // required
+    sourcePath: '/old-pricing', // required when sourceType is 'path'
+    targetType: 'page', // required
+    targetRootId: 'root_456', // required when targetType is 'page'
+    statusCode: 301,
+  },
+}`}
+  returns={{
+    redirect: { type: 'Redirect', description: 'The updated redirect: the stored row plus resolved current paths, matching `listRedirects` rows.' },
+  }}
+  params={{
+    redirectId: { type: 'string', required: true, description: 'Id of the redirect to update.' },
+    sourceType: { type: "'page' | 'path'", required: true, description: "Whether the source is a page reference (needs `sourceRootId`) or a literal path (needs `sourcePath`)." },
+    sourceRootId: { type: 'string', description: "Root id of the source page. Required when `sourceType` is `'page'`." },
+    sourcePath: { type: 'string', description: "Literal source path, canonicalized before storage. Required when `sourceType` is `'path'`." },
+    targetType: { type: "'page' | 'path'", required: true, description: "Whether the target is a page reference (needs `targetRootId`) or a literal path (needs `targetPath`)." },
+    targetRootId: { type: 'string', description: "Root id of the target page. Required when `targetType` is `'page'`." },
+    targetPath: { type: 'string', description: "Target path or URL, stored verbatim (may be external). Required when `targetType` is `'path'`." },
+    statusCode: { type: '301 | 302 | 307 | 308', default: '301', description: 'HTTP redirect status code.' },
+  }}
+/>
 
-### `resolveRedirect`
+### Resolve a Redirect [#resolveredirect]
 
-Resolves a request path to its redirect target, if one matches. This is the consumer's public routing call: it runs the full auth chain (so plugin scope is enforced) but is conventionally anonymous-readable. Returns `{ redirect: null }` when no redirect matches or slugs are not enabled.
+Resolve an incoming request path to its redirect decision, if one matches. This is the consumer's public routing call: it runs the full auth chain (so plugin scope is enforced) but is conventionally anonymous-readable. You get back `{ redirect: null }` when no redirect matches or slugs are not enabled.
 
-<APIMethod method="GET" path="/{collection}/resolveRedirect" anonymousRead returns="{ redirect }" params={{
-  path: { type: 'string', required: true, description: "The request path to resolve, e.g. `/old-pricing`." },
-}} />
-
-```ts
-const { redirect } = await cms.api.pages.resolveRedirect({
-  query: { path: '/old-pricing' },
-});
-```
+<APIMethod
+  method="GET"
+  path="/{collection}/resolveRedirect"
+  fn="resolveRedirect"
+  anonymousRead
+  args={`{
+  query: { path: '/old-pricing' }, // required
+}`}
+  returns={{
+    redirect: { type: '{ status, location } | null', description: 'The routing decision to apply: `status` (the HTTP redirect code) and `location` (the resolved target URL), or `null` when nothing matches.' },
+  }}
+  params={{
+    path: { type: 'string', required: true, description: "The request path to resolve, e.g. `/old-pricing`." },
+  }}
+/>
 
 The resolved `redirect` carries the target URL and status code, or is `null` when nothing matches.
 
-### `archiveRedirect`
+### Archive a Redirect [#archiveredirect]
 
-Archives (soft-deletes) an active redirect by setting its `archivedAt` timestamp. Fails with `REDIRECT_NOT_FOUND` if the redirect does not exist, is already archived, or is out of scope.
+Soft-delete an active redirect by stamping its `archivedAt` timestamp, so it stops resolving without losing the record. Fails with `REDIRECT_NOT_FOUND` if the redirect does not exist, is already archived, or is out of scope.
 
-<APIMethod method="POST" path="/{collection}/archiveRedirect" resource="redirect" operation="delete" returns="{ redirectId }" params={{
-  redirectId: { type: 'string', required: true, description: 'Id of the redirect to archive.' },
-}} />
+<APIMethod
+  method="POST"
+  path="/{collection}/archiveRedirect"
+  fn="archiveRedirect"
+  resource="redirect"
+  operation="delete"
+  args={`{
+  body: {
+    redirectId: 'redirect_123', // required
+  },
+}`}
+  returns={{
+    redirectId: { type: 'string', description: 'The id of the archived redirect.' },
+  }}
+  params={{
+    redirectId: { type: 'string', required: true, description: 'Id of the redirect to archive.' },
+  }}
+/>

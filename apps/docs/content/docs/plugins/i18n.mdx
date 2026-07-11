@@ -45,37 +45,60 @@ The `drizzle-kit` commands need a `drizzle.config.ts` at your project root — s
 
 The active language is resolved per request from your middleware and applied to every query. These two methods are contributed to every collection, so they live at `cms.api.<collection>.<method>` (and on the client as `client.<collection>.<method>` with identical types). They only exist when the i18n plugin is installed.
 
-### `createTranslation`
+### Create a Translation [#createtranslation]
 
-Creates a sibling-language version of an existing entry. The new root inherits the source's translation group (`translationKey`), takes the target language, and (by default) seeds its draft from a copy of the source's `main` tree. The source must exist in the active language.
+Create a sibling-language version of an existing entry, so a page can live in every language you support. The new entry joins the source's translation group (`translationKey`), takes the target language, and (by default) seeds its draft from a copy of the source's `main` tree. The source must exist in the active language.
 
-<APIMethod method="POST" path="/{collection}/createTranslation" resource="root" operation="create" returns="{ rootId, branchId, commitId, language, translationKey }" params={{
-  sourceRootId: { type: 'string', required: true, description: 'The entry to translate from. Must exist in the active language.' },
-  targetLanguage: { type: 'string', required: true, description: 'The language for the new root. Must be one of the configured `languages`.' },
-  targetSlug: { type: 'string', description: 'Slug for the new translation. Defaults to the source slug.' },
-  seed: { type: "'copy' | 'blank'", default: "'copy'", description: "Seed the draft from a copy of the source's `main` tree, or start empty." },
-  message: { type: 'string', default: "'Translation (<targetLanguage>)'", description: 'Commit message for the initial draft.' },
-}} />
+<APIMethod
+  method="POST"
+  path="/{collection}/createTranslation"
+  fn="createTranslation"
+  resource="root"
+  operation="create"
+  args={`{
+  body: {
+    sourceRootId: 'root_abc', // required
+    targetLanguage: 'de', // required
+    seed: 'copy',
+  },
+}`}
+  returns={{
+    rootId: { type: 'string', description: 'The id of the new translated entry.' },
+    branchId: { type: 'string', description: "The id of the new entry's initial draft branch." },
+    commitId: { type: 'string', description: 'The id of the initial commit that seeds the draft.' },
+    language: { type: 'string', description: 'The target language stamped on the new entry.' },
+    translationKey: { type: 'string', description: 'The group id inherited from the source, tying the sibling-language entries together.' },
+  }}
+  params={{
+    sourceRootId: { type: 'string', required: true, description: 'The entry to translate from. Must exist in the active language.' },
+    targetLanguage: { type: 'string', required: true, description: 'The language for the new root. Must be one of the configured `languages`.' },
+    targetSlug: { type: 'string', description: 'Slug for the new translation. Defaults to the source slug.' },
+    seed: { type: "'copy' | 'blank'", default: "'copy'", description: "Seed the draft from a copy of the source's `main` tree, or start empty." },
+    message: { type: 'string', default: "'Translation (<targetLanguage>)'", description: 'Commit message for the initial draft.' },
+  }}
+/>
 
-```ts
-const { rootId } = await cms.api.pages.createTranslation({
-  body: { sourceRootId: 'root_abc', targetLanguage: 'de', seed: 'copy' },
-});
-```
+### List an Entry's Translations [#listtranslations]
 
-### `listTranslations`
+List every language variant (sibling) of an entry, tied together by their translation group. Diff the returned languages against your configured `languages` to see which ones you still need to translate. It works cross-language by design: you pass a `rootId` from the active language, and the siblings you get back span the whole group.
 
-Returns all language variants (siblings) of an entry, tied together by their translation group. Diff the returned languages against your configured `languages` to find the ones still untranslated. Cross-language by design: the input `rootId` is gated to the active language, but the siblings span the whole group.
-
-<APIMethod method="GET" path="/{collection}/listTranslations" resource="root" operation="read" returns="{ translationKey, translations: [{ language, rootId, slug, path }] }" params={{
-  rootId: { type: 'string', required: true, description: 'The entry whose translations to list. Must exist in the active language.' },
-}} />
-
-```ts
-const { translations } = await cms.api.pages.listTranslations({
-  query: { rootId: 'root_abc' },
-});
-```
+<APIMethod
+  method="GET"
+  path="/{collection}/listTranslations"
+  fn="listTranslations"
+  resource="root"
+  operation="read"
+  args={`{
+  query: { rootId: 'root_abc' }, // required
+}`}
+  returns={{
+    translationKey: { type: 'string', description: 'The shared key that ties the language group together.' },
+    translations: { type: '{ language, rootId, slug, path }[]', description: 'One sibling per language in the group, including the entry you passed in.' },
+  }}
+  params={{
+    rootId: { type: 'string', required: true, description: 'The entry whose translations to list. Must exist in the active language.' },
+  }}
+/>
 
 ### Variables and templates
 
