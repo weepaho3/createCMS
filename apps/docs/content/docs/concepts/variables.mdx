@@ -25,20 +25,7 @@ Because a value is shared, changing it updates every entry that uses it. Updatin
 
 ## Scoping (i18n / multi-tenant)
 
-With the scoping plugins, variables follow the same model as content:
-
-- **multi-tenant** — variables are **partitioned per tenant**. Each tenant has its own `companyName`/`siteUrl`/…; the same key is independent across tenants, and content resolves the active tenant's value.
-- **i18n** — variables are **per language with fallback**, exactly like a translated entry. A value is resolved in the active language; if it has no value there, it falls back through the configured chain to the default language. So you define shared values once (in the default language) and only **override** the few that need translating.
-
-```ts
-// companyName: only defined in the default language 'en' = 'Acme'
-// cta:         'en' = 'Buy now', 'de' = 'Jetzt kaufen'
-// reading a German page:
-//   {{companyName}} → 'Acme'          (fell back to en)
-//   {{cta}}         → 'Jetzt kaufen'  (de override)
-```
-
-Managing variables (create/list/update/delete) always targets the **exact active cell** (tenant + language) — there is no fallback when editing, so in German you manage German values. Uniqueness is per `(tenant, language, key)`.
+Variables scope per tenant and per language, with fallback, just like content — see [i18n](/docs/plugins/i18n) and [multi-tenant](/docs/plugins/multi-tenant).
 
 ## Relationship to templates
 

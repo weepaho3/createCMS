@@ -56,15 +56,7 @@ export function Uploader() {
 
 ### Optimize before upload
 
-Add the [media optimize plugin](/docs/plugins/media-optimize) to resize and convert in the browser first. `useOptimize` returns `OptimizeResult[]` (`{ file, originalVariant?, optimized }`); flatten it to the `File[]` that `upload` expects:
-
-```tsx
-const { results } = cmsClient.optimize.useOptimize(file);
-const files = (results ?? []).flatMap((r) =>
-  r.originalVariant ? [r.file, r.originalVariant] : [r.file],
-);
-// cmsClient.media.useUploadAssets().upload(files)
-```
+Add the [media optimize plugin](/docs/plugins/media-optimize) to resize, compress, and convert images in the browser before handing them to `upload` — see [Media optimize → Usage](/docs/plugins/media-optimize#usage).
 
 ### Serve an asset
 

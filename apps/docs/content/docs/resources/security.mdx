@@ -109,24 +109,7 @@ Token-in-header auth (e.g. an `Authorization: Bearer …` header your client set
 
 ## Multi-tenant
 
-With the [multi-tenant plugin](/docs/plugins/multi-tenant), `resolveTenantSlug` is **session-only by default**: it returns the tenant from your session fallback and ignores any `tenantSlug` in the request body or query. That default is what keeps one tenant from reading or writing another's data.
-
-```ts
-import { resolveTenantSlug } from '@createcms/core/plugins/multi-tenant';
-
-// Session-only: the request cannot pick the tenant.
-const tenantSlug = resolveTenantSlug(ctx, session.organizationSlug);
-```
-
-Only opt into request-supplied overrides — and only **after** an admin check:
-
-```ts
-const tenantSlug = resolveTenantSlug(ctx, session.organizationSlug, {
-  // Let body/query.tenantSlug override the session — gated on an admin check.
-  // Without this gate, any user could scope a request to another tenant.
-  allowRequestOverride: session.isAdmin,
-});
-```
+With the [multi-tenant plugin](/docs/plugins/multi-tenant), `resolveTenantSlug` is **session-only by default**: it returns the tenant from your session fallback and ignores any `tenantSlug` in the request body or query. That default is what keeps one tenant from reading or writing another's data. See [Multi-tenant → Usage](/docs/plugins/multi-tenant#usage) for the `resolveTenantSlug` API and its `allowRequestOverride` opt-in.
 
 <Callout type="warn">
   Never pass `{ allowRequestOverride: true }` unconditionally. It moves tenant selection from the trusted session to the untrusted request, so an unprivileged caller could set `tenantSlug` to a tenant they don't belong to. Gate it on a verified admin/impersonation check.

@@ -87,13 +87,7 @@ The same map also renders a merge-request diff: `getDiff` returns an annotated c
 
 ### Choosing a variant
 
-`getPublishedContent` returns one entry per published branch in `variants` (see [Publishing](/docs/concepts/publishing)). With no A/B test there is exactly one, so `variants[0]` is the page. With the A/B testing plugin, resolve the visitor's branch and select it with `pickVariant`:
-
-```tsx
-import { pickVariant } from '@createcms/core/react/variant';
-
-const tree = pickVariant(variants, branchId) ?? variants[0].tree;
-```
+`getPublishedContent` returns one entry per published branch in `variants` (see [Publishing](/docs/concepts/publishing)). With no A/B test there is exactly one, so `variants[0]` is the page. With the [A/B testing plugin](/docs/plugins/ab-test), resolve the visitor's branch and select it with `pickVariant` — see [A/B testing → Usage](/docs/plugins/ab-test#variant-selection).
 
 <Callout type="info">
   For every React export and its props, see the [React reference](/docs/reference/react).

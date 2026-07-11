@@ -32,7 +32,7 @@ A template string can contain `{{key}}` [variables](/docs/concepts/variables). `
 
 ## Scoping (i18n / multi-tenant)
 
-Templates participate in scoping like content does. With the **i18n** plugin a template is per **language** (a German and an English default can coexist for the same field); with **multi-tenant** it is per **tenant**. `createBlock` applies the active scope's template, and the `(collection, blockType, propertyKey)` uniqueness is enforced **within** that scope — so the same key is free to differ per language and per tenant.
+Templates scope per tenant and per language, just like content — see [i18n](/docs/plugins/i18n) and [multi-tenant](/docs/plugins/multi-tenant).
 
 <Callout type="info">
   For the CRUD methods, see the [Templates reference](/docs/reference/templates).

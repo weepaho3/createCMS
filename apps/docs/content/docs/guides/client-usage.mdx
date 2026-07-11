@@ -39,14 +39,7 @@ const { rootId } = await cmsClient.pages.createRoot({
 
 ### Upload assets
 
-The React client exposes a media upload hook. Combine it with the [media optimize plugin](/docs/plugins/media-optimize) to resize and convert images before upload:
-
-```tsx
-function Uploader() {
-  const { upload, isUploading } = cmsClient.media.useUploadAssets();
-  // upload(files) where files is File[]
-}
-```
+The React client exposes a media upload hook (see [Upload and serve media](/docs/guides/media-uploads)); combine it with the [media optimize plugin](/docs/plugins/media-optimize) to resize and convert images before upload.
 
 <Callout type="info">
   For the full client surface and `createCMSQuery`, see the [Client API reference](/docs/reference/client-api). For the asset model, see [Media](/docs/concepts/media).
