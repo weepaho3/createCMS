@@ -3,17 +3,80 @@ title: Variables
 description: Reusable values substituted into content, via cms.api.variables.
 ---
 
-Variables are reusable values referenced in content as `{{key}}` and substituted on read (in `getBlockTree` and `getPublishedContent`, unless `raw: true`). Methods live under `cms.api.variables`.
-
-| Method | HTTP | Input | Returns |
-| --- | --- | --- | --- |
-| `list` | GET | | `{ variables }` |
-| `getVariable` | GET | `query: { key }` | `{ variable, inUse }` |
-| `createVariable` | POST | `body: { key, value, description? }` | `{ variable }` |
-| `updateVariable` | POST | `body: { key, value?, description? }` | `{ variable }` |
-| `deleteVariable` | POST | `body: { key }` | `{ deleted }` |
-| `getVariableUsages` | GET | `query: { key }` | usage counts and sites |
+Variables are reusable values referenced in content as `{{key}}` and substituted on read (in `getBlockTree` and `getPublishedContent`, unless `raw: true`). Methods live under `cms.api.variables` and are mirrored on the client as `client.variables.<method>` with identical types.
 
 A `key` is alphanumeric plus underscores. Updating a variable's `value` revalidates the published roots that use it. Deleting one that is in use throws `VARIABLE_IN_USE`.
 
 Reference a variable in any string property, for example `{ title: 'Hello {{siteName}}' }`. An unknown key is left literal.
+
+### `list`
+
+Lists variables ordered by key. All query fields are optional.
+
+<APIMethod method="GET" path="/variables/list" resource="variable" operation="read" returns="{ variables, total, hasMore }" params={{
+  limit: { type: 'number', default: '50', description: 'Page size, 1 to 100.' },
+  offset: { type: 'number', default: '0', description: 'Rows to skip.' },
+  search: { type: 'string', description: 'Case-insensitive substring match against the variable key.' },
+}} />
+
+```ts
+const { variables } = await cms.api.variables.list({
+  query: { search: 'site', limit: 20 },
+});
+```
+
+### `getVariable`
+
+Retrieves a single variable by key and reports whether it is currently referenced.
+
+<APIMethod method="GET" path="/variables/getVariable" resource="variable" operation="read" returns="{ variable, inUse }" params={{
+  key: { type: 'string', required: true, description: 'The variable key to retrieve.' },
+}} />
+
+### `createVariable`
+
+Creates a new variable with a unique key.
+
+<APIMethod method="POST" path="/variables/createVariable" resource="variable" operation="create" returns="{ variable }" params={{
+  key: { type: 'string', required: true, description: 'Unique key, 1 to 100 characters, alphanumeric and underscores only.' },
+  value: { type: 'string', required: true, description: 'The variable value.' },
+  description: { type: 'string', description: "Optional description of the variable's purpose." },
+}} />
+
+```ts
+const { variable } = await cms.api.variables.createVariable({
+  body: { key: 'siteName', value: 'Acme', description: 'Public site name' },
+});
+```
+
+### `updateVariable`
+
+Updates a variable's value and/or description. Changing the value revalidates every published root that uses the variable.
+
+<APIMethod method="POST" path="/variables/updateVariable" resource="variable" operation="update" returns="{ variable }" params={{
+  key: { type: 'string', required: true, description: 'The variable key to update.' },
+  value: { type: 'string', description: 'New value. Changing it triggers revalidation of published content.' },
+  description: { type: 'string', description: 'New description.' },
+}} />
+
+```ts
+const { variable } = await cms.api.variables.updateVariable({
+  body: { key: 'siteName', value: 'Acme Corp' },
+});
+```
+
+### `deleteVariable`
+
+Deletes a variable. Fails with `VARIABLE_IN_USE` if it is referenced in any live content or template.
+
+<APIMethod method="POST" path="/variables/deleteVariable" resource="variable" operation="delete" returns="{ variableId }" params={{
+  key: { type: 'string', required: true, description: 'The variable key to delete.' },
+}} />
+
+### `getVariableUsages`
+
+Lists every place a variable is referenced: distinct block usages in branch heads and template usages, each with a count.
+
+<APIMethod method="GET" path="/variables/getVariableUsages" resource="variable" operation="read" returns="{ blockUsageCount, templateUsageCount, blockUsages, templateUsages }" params={{
+  key: { type: 'string', required: true, description: 'The variable key to inspect.' },
+}} />

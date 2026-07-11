@@ -1,0 +1,56 @@
+---
+title: Admin API
+description: Maintenance jobs (pruning, scheduled publishing, search reindex) via cms.api.admin.
+---
+
+The admin namespace exposes bounded maintenance jobs meant to be driven by a cron or queue rather than a UI. These methods live on the system namespace at `cms.api.admin.<method>` and mirror on the client as `client.admin.<method>` with identical types. Every method requires the `admin` permission resource, so gate the trigger accordingly.
+
+`runPruning` and `runScheduled` each do one capped pass and report progress, so a plain cron can ping them periodically while a queue driver re-enqueues until the work drains. None of these methods produces a `commit` envelope.
+
+### `runPruning`
+
+Runs one bounded, resumable pruning pass that reclaims storage by deleting old commits, hard-deleting archived entries (roots), and reclaiming unreferenced assets. Each pass does capped work within the time and root-count budgets and persists its own progress, so repeated invocations drain the backlog. Throws `DATA_RETENTION_NOT_CONFIGURED` when data retention is not configured.
+
+<APIMethod method="POST" path="/admin/runPruning" resource="admin" operation="delete" returns="{ deletedCommits, deletedBlockVersions, deletedSnapshots, deletedMergeRequests, deletedApprovals, prunedRoots, deletedRoots, deletedAssets, processedLiveRoots, plugins, stoppedReason, done }" params={{
+  dryRun: { type: 'boolean', default: 'false', description: 'Plan what would be deleted without persisting any changes.' },
+  maxRoots: { type: 'number', default: '50', description: 'Maximum roots to process this pass (archived and live combined), 1 to 1000.' },
+  maxDurationMs: { type: 'number', default: '8000', description: 'Soft wall-clock budget in milliseconds; the pass returns before exceeding it. Minimum 100.' },
+  liveRescanMs: { type: 'number', default: '86400000', description: 'Interval in milliseconds after which a live root becomes due for re-scanning. Minimum 0.' },
+  maxAssets: { type: 'number', default: '100', description: 'Maximum archived, unreferenced assets to reclaim this pass, 1 to 1000.' },
+}} />
+
+```ts
+// One capped pass; drain the backlog by re-running until `done`.
+let result = await cms.api.admin.runPruning({
+  body: { maxRoots: 10, maxDurationMs: 5000 },
+});
+while (!result.done) {
+  result = await cms.api.admin.runPruning({ body: {} });
+}
+```
+
+`done` is true when the pass drained all currently-due work (stopped idle); `stoppedReason` is one of `'maxRoots'`, `'budget'`, or `'idle'`.
+
+### `runScheduled`
+
+Processes the scheduled-publishing queue: every due row (`scheduledAt <= now` and not yet processed) is published or unpublished with the same machinery as the single publish endpoints, then stamped processed. A row whose publish or unpublish fails is still marked processed and surfaced in `failed`, so a permanently broken intent never re-runs forever.
+
+<APIMethod method="POST" path="/admin/runScheduled" resource="admin" operation="create" returns="{ processed, published, unpublished, failed }" params={{
+  limit: { type: 'number', default: '100', description: 'Maximum number of due rows to process this pass, 1 to 1000.' },
+}} />
+
+```ts
+const { processed, failed } = await cms.api.admin.runScheduled({
+  body: { limit: 50 },
+});
+```
+
+`failed` is an array of `{ id, rootId, branchId, action, error }`, one entry per row whose publish or unpublish threw.
+
+### `reindexSearch`
+
+Rebuilds the entire full-text search index from scratch, re-indexing all roots, comments, merge requests, variables, templates, assets, and notifications. Takes no input.
+
+<APIMethod method="POST" path="/admin/reindexSearch" resource="admin" operation="create" returns="{ indexed }" params={{}} />
+
+`indexed` is a record of per-entity-type counts that were re-indexed.

@@ -1,0 +1,33 @@
+---
+title: Users API
+description: Current-user identity and reviewer discovery, via cms.api.users.
+---
+
+User-directory reads for identifying the current request's user and listing candidate reviewers. These methods live on the system namespace at `cms.api.users.<method>` and mirror on the client as `client.users.<method>` with identical types. Both project the id plus the configured `user.exposeColumns` allowlist (password hashes and tokens are never selected), and both degrade when no `user.table` is configured: `whoami` returns `{ user: null }` and `listReviewers` returns `[]`.
+
+### `whoami`
+
+Returns the current request's user id and its resolved user row, so a client can learn who it is without supplying the id. Both fields are `null` when unauthenticated; `user` is `null` when no `user.table` is configured or the id matches no row.
+
+<APIMethod method="GET" path="/users/whoami" resource="user" operation="read" returns="{ userId, user }" />
+
+```ts
+const { userId, user } = await cms.api.users.whoami();
+```
+
+The resolved `user` is `{ id, ...exposeColumns }` or `null`.
+
+### `listReviewers`
+
+Lists candidate reviewer users from the configured `user.table`, each as `{ id, ...exposeColumns }`, ordered by id. This is the picker source for approval workflows. All query fields are optional.
+
+<APIMethod method="GET" path="/users/listReviewers" resource="user" operation="read" returns="ExposedUser[]" params={{
+  limit: { type: 'number', default: '100', description: 'Max users to return, 1 to 100.' },
+  offset: { type: 'number', default: '0', description: 'Rows to skip.' },
+}} />
+
+```ts
+const reviewers = await cms.api.users.listReviewers({
+  query: { limit: 50 },
+});
+```
