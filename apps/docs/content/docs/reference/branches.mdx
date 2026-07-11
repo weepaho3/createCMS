@@ -1,0 +1,98 @@
+---
+title: Branches API
+description: Create and manage branches (drafts) of an entry.
+---
+
+Branches are the drafts of an entry (root): each one is an independent line of commits you can edit, publish, and merge back. Methods live at `cms.api.<collection>.<method>` (use your collection name, e.g. `cms.api.pages.listBranches`) and mirror on the [client](/docs/reference/client-api) with identical types. Every commit-producing mutation returns a `commit` envelope: `{ id, message, createdAt, createdBy }`.
+
+## Methods
+
+### `listBranches`
+
+Lists the branches of a root, with pagination and filtering by publication and merge-request state. Each item carries `isDeletable` and `hasPublications`.
+
+<APIMethod method="GET" path="/{collection}/listBranches" resource="branch" operation="read" returns="{ branches, total, hasMore }" params={{
+  rootId: { type: 'string', required: true, description: 'Root whose branches to list.' },
+  limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
+  offset: { type: 'number', default: '0', description: 'Rows to skip.' },
+  search: { type: 'string', description: 'Case-insensitive substring match on branch name.' },
+  isDeletable: { type: 'boolean', description: 'Keep only deletable branches (true) or only protected ones (false).' },
+  hasPublications: { type: 'boolean', description: 'Keep only branches with (true) or without (false) any publication.' },
+  hasOpenMergeRequests: { type: 'boolean', description: 'Keep only branches with (true) or without (false) an open merge request.' },
+}} />
+
+```ts
+const { branches } = await cms.api.pages.listBranches({
+  query: { rootId: 'root_123', limit: 50 },
+});
+```
+
+### `getBranch`
+
+Retrieves a single branch with its metadata and `isDeletable` flag. Look it up either by `branchId`, or by its `{ rootId, name }` pair (branch names are unique per root).
+
+<APIMethod method="GET" path="/{collection}/getBranch" resource="branch" operation="read" returns="{ id, rootId, name, headCommitId, createdBy, createdAt, updatedAt, isDeletable }" params={{
+  branchId: { type: 'string', description: 'Look up by primary key. Use this, or the `{ rootId, name }` pair.' },
+  rootId: { type: 'string', description: 'Look up by root plus branch name. Requires `name`.' },
+  name: { type: 'string', description: 'Branch name, unique per root. Requires `rootId`.' },
+}} />
+
+```ts
+const draft = await cms.api.pages.getBranch({
+  query: { rootId: 'root_123', name: 'draft' },
+});
+```
+
+### `createBranch`
+
+Creates a new branch by copying the head commit of a source branch. `isDeletable` is always `true` for a fresh branch.
+
+<APIMethod method="POST" path="/{collection}/createBranch" resource="branch" operation="create" returns="{ branch, isDeletable }" params={{
+  rootId: { type: 'string', required: true, description: 'Root the branch belongs to.' },
+  name: { type: 'string', required: true, description: 'New branch name, unique within the root.' },
+  sourceBranchId: { type: 'string', required: true, description: 'Branch whose head commit seeds the new branch.' },
+  createdBy: { type: 'string', description: 'Fallback actor id, used only when no session user is present.' },
+}} />
+
+```ts
+const { branch } = await cms.api.pages.createBranch({
+  body: { rootId: 'root_123', name: 'feature-hero', sourceBranchId: 'br_main' },
+});
+```
+
+### `renameBranch`
+
+Renames a branch. Fails with `CANNOT_RENAME_MAIN_BRANCH` for the default branch, or `BRANCH_NAME_ALREADY_EXISTS` if the name is taken in the root.
+
+<APIMethod method="POST" path="/{collection}/renameBranch" resource="branch" operation="update" returns="{ branch, isDeletable }" params={{
+  branchId: { type: 'string', required: true, description: 'Branch to rename.' },
+  newName: { type: 'string', required: true, description: 'New name, unique within the root.' },
+}} />
+
+### `revertBranch`
+
+Reverts a branch to the snapshot at a target commit by writing a new commit with that state onto the branch head. Blocked while the branch is published.
+
+<APIMethod method="POST" path="/{collection}/revertBranch" resource="branch" operation="update" returns="{ commit }" params={{
+  branchId: { type: 'string', required: true, description: 'Branch to revert.' },
+  targetCommitId: { type: 'string', required: true, description: 'Commit whose snapshot to restore.' },
+  message: { type: 'string', description: 'Commit message. Defaults to an auto-generated one.' },
+  createdBy: { type: 'string', description: 'Fallback actor id, used only when no session user is present.' },
+}} />
+
+### `checkDivergence`
+
+Compares two branches of the same root, computing their common ancestor and commit distance. Fails with `BRANCHES_NOT_SAME_ROOT` if the branches belong to different roots.
+
+<APIMethod method="GET" path="/{collection}/checkDivergence" resource="branch" operation="read" returns="{ hasCommonAncestor, commonAncestorCommitId, sourceAhead, targetAhead, canFastForward }" params={{
+  sourceBranchId: { type: 'string', required: true, description: 'Source branch to compare.' },
+  targetBranchId: { type: 'string', required: true, description: 'Target branch to compare.' },
+}} />
+
+### `deleteBranch`
+
+Deletes a branch. Fails with `CANNOT_DELETE_MAIN_BRANCH` for the default branch, `BRANCH_HAS_PUBLICATIONS` if it has any publication, or `BRANCH_HAS_OPEN_MERGE_REQUESTS` if it is part of an open merge request.
+
+<APIMethod method="POST" path="/{collection}/deleteBranch" resource="branch" operation="delete" returns="{ branchId }" params={{
+  branchId: { type: 'string', required: true, description: 'Branch to delete.' },
+}} />

@@ -1,0 +1,91 @@
+---
+title: Approvals API
+description: Request and record approvals on merge requests and publications.
+---
+
+Approval methods let you request sign-off from reviewers and record their approve or reject decisions on a merge request or a direct publication. They live at `cms.api.<collection>.<method>` and mirror on the client at `client.<collection>.<method>` with identical types. Examples below use `pages` as the sample collection. An approval targets either a merge request or a direct publication (a branch's head commit); the `targetType` field reflects which.
+
+These methods record approvals against an existing commit, they don't produce content commits, so none returns the `commit: { id, message, createdAt, createdBy }` envelope that commit-producing mutations elsewhere in the API return.
+
+### `requestApproval`
+
+Requests approval from one or more reviewers for a merge request or a branch's head commit (a direct publication). Each reviewer receives a separate pending approval. Provide exactly one of `mergeRequestId` or `branchId`.
+
+<APIMethod method="POST" path="/{collection}/requestApproval" resource="approval" operation="create" returns="{ approvals }" params={{
+  requestedReviewers: { type: 'string[]', required: true, description: 'User IDs to request approval from (non-empty, unique).' },
+  mergeRequestId: { type: 'string', description: 'Merge request to request approval on. Provide exactly one of `mergeRequestId` or `branchId`.' },
+  branchId: { type: 'string', description: "Branch whose head commit to request approval on (direct publication). Provide exactly one of `mergeRequestId` or `branchId`." },
+  message: { type: 'string', description: 'Message sent to reviewers with the request.' },
+}} />
+
+```ts
+const { approvals } = await cms.api.pages.requestApproval({
+  body: {
+    branchId: 'br_9f2a1c',
+    requestedReviewers: ['user_editor', 'user_legal'],
+    message: 'Ready for review before publishing.',
+  },
+});
+```
+
+### `listApprovals`
+
+Lists approvals filtered by status, target, requester, or reviewer, with pagination. Approvals on archived entries are excluded. All query fields are optional.
+
+<APIMethod method="GET" path="/{collection}/listApprovals" resource="approval" operation="read" returns="{ approvals, total, hasMore }" params={{
+  limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
+  offset: { type: 'number', default: '0', description: 'Rows to skip.' },
+  status: { type: "'pending' | 'approved' | 'rejected'", description: 'Filter by approval status.' },
+  mergeRequestId: { type: 'string', description: 'Filter by merge request.' },
+  branchId: { type: 'string', description: 'Filter by branch.' },
+  commitId: { type: 'string', description: 'Filter by commit.' },
+  requestedBy: { type: 'string', description: 'Filter by the user who requested the approval.' },
+  requestedReviewer: { type: 'string', description: 'Filter by the requested reviewer.' },
+  reviewedBy: { type: 'string', description: 'Filter by the user who reviewed the approval.' },
+  targetType: { type: "'mergeRequest' | 'publication'", description: 'Filter by target: merge-request approvals or direct-publication approvals.' },
+}} />
+
+```ts
+const { approvals, total } = await cms.api.pages.listApprovals({
+  query: { status: 'pending', requestedReviewer: 'user_editor', limit: 20 },
+});
+```
+
+### `getApproval`
+
+Fetches a single approval by id, with the requester, requested reviewer, and reviewer enriched as user profile objects.
+
+<APIMethod method="GET" path="/{collection}/getApproval" resource="approval" operation="read" returns="approval with requestedByUser, requestedReviewerUser, reviewedByUser" params={{
+  approvalId: { type: 'string', required: true, description: 'Approval id to fetch.' },
+}} />
+
+### `submitApproval`
+
+Approves a pending approval. Only the requested reviewer may submit it, and for a direct-publication approval it fails if the branch head has moved since the request.
+
+<APIMethod method="POST" path="/{collection}/submitApproval" resource="approval" operation="update" returns="{ approval }" params={{
+  approvalId: { type: 'string', required: true, description: 'Approval to approve (must be pending).' },
+}} />
+
+```ts
+const { approval } = await cms.api.pages.submitApproval({
+  body: { approvalId: 'apr_1a2b3c' },
+});
+```
+
+### `submitRejection`
+
+Rejects a pending approval with an optional reason. Same requested-reviewer and staleness rules as `submitApproval`.
+
+<APIMethod method="POST" path="/{collection}/submitRejection" resource="approval" operation="update" returns="{ approval }" params={{
+  approvalId: { type: 'string', required: true, description: 'Approval to reject (must be pending).' },
+  rejectionReason: { type: 'string', description: 'Reason recorded on the rejection.' },
+}} />
+
+### `cancelApproval`
+
+Cancels a pending approval, deleting the request. Only pending approvals can be canceled.
+
+<APIMethod method="POST" path="/{collection}/cancelApproval" resource="approval" operation="delete" returns="{ approvalId }" params={{
+  approvalId: { type: 'string', required: true, description: 'Pending approval to cancel.' },
+}} />

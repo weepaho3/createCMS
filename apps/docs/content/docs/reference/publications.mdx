@@ -1,0 +1,111 @@
+---
+title: Publications API
+description: Publish, unpublish, schedule, and read published content.
+---
+
+Publications control what content is publicly live. Every method lives at `cms.api.<collection>.<method>` (use your collection name, e.g. `cms.api.pages`) and mirrors on the client as `client.<collection>.<method>` with identical types.
+
+Publishing points a publication at the branch's existing head commit rather than creating a new one, so unlike the entry and block mutation APIs these methods do not return a `commit` envelope.
+
+## Publishing
+
+### `publishBranch`
+
+Creates or updates a publication of a branch, making its head commit publicly available. Fails with `PUBLICATION_APPROVAL_REQUIRED` if the branch has open approval requests that are not all approved.
+
+<APIMethod method="POST" path="/{collection}/publishBranch" resource="publication" operation="create" returns="{ publication }" params={{
+  rootId: { type: 'string', required: true, description: 'The root to publish.' },
+  branchId: { type: 'string', required: true, description: 'The branch whose head commit is published.' },
+  publishedBy: { type: 'string', description: 'Actor override; defaults to the current user.' },
+}} />
+
+```ts
+const { publication } = await cms.api.pages.publishBranch({
+  body: { rootId: 'root_123', branchId: 'branch_456' },
+});
+```
+
+The returned `publication` carries `rootId`, `branchId`, `commitId`, `publishedBy`, `publishedAt`, and `branchName`.
+
+### `unpublishBranch`
+
+Removes a publication, taking the branch's content offline. Fails with `PUBLICATION_NOT_FOUND` when no active publication exists for the root-branch pair.
+
+<APIMethod method="POST" path="/{collection}/unpublishBranch" resource="publication" operation="delete" returns="{ rootId, branchId, unpublishedCommitId, unpublishedAt }" params={{
+  rootId: { type: 'string', required: true, description: 'The root whose publication to remove.' },
+  branchId: { type: 'string', required: true, description: 'The branch whose publication to remove.' },
+}} />
+
+## Scheduling
+
+### `schedulePublication`
+
+Queues a future publish of a branch. Nothing goes live until the cron-driven `admin.runScheduled` processes the due row. The root (in scope) and branch are validated up front.
+
+<APIMethod method="POST" path="/{collection}/schedulePublication" resource="publication" operation="create" returns="{ scheduled }" params={{
+  rootId: { type: 'string', required: true, description: 'The root to publish when due.' },
+  branchId: { type: 'string', required: true, description: 'The branch whose head commit is published when due.' },
+  scheduledAt: { type: 'Date', required: true, description: 'When the publish becomes due (ISO string or Date).' },
+}} />
+
+```ts
+await cms.api.pages.schedulePublication({
+  body: {
+    rootId: 'root_123',
+    branchId: 'branch_456',
+    scheduledAt: '2026-01-01T00:00:00Z',
+  },
+});
+```
+
+The returned `scheduled` row carries `id`, `rootId`, `branchId`, `action: 'publish'`, `scheduledAt`, and `processedAt` (null until run).
+
+### `scheduleUnpublish`
+
+Queues a future unpublish (expiry) of a branch. The content is taken offline when `admin.runScheduled` processes the due row. Use this to expire content at a given time.
+
+<APIMethod method="POST" path="/{collection}/scheduleUnpublish" resource="publication" operation="delete" returns="{ scheduled }" params={{
+  rootId: { type: 'string', required: true, description: 'The root to unpublish when due.' },
+  branchId: { type: 'string', required: true, description: 'The branch whose publication is removed when due.' },
+  scheduledAt: { type: 'Date', required: true, description: 'When the unpublish becomes due (ISO string or Date).' },
+}} />
+
+The returned `scheduled` row is identical in shape to `schedulePublication`, with `action: 'unpublish'`.
+
+## Reading
+
+### `getPublishedContent`
+
+Retrieves published content for a root by `rootId`, `slug`, or `path`; at least one lookup key is required. References are resolved inline and variables are substituted unless `raw` is set. Runs the full auth chain (so plugin scope is enforced) but is conventionally anonymous-readable.
+
+<APIMethod method="GET" path="/{collection}/getPublishedContent" anonymousRead returns="{ rootId, collection, variants, abTest?, ancestors? }" params={{
+  rootId: { type: 'string', description: 'Fetch this root directly. One of rootId, slug, or path is required.' },
+  slug: { type: 'string', description: 'Resolve a root by slug; must be unique within the active scope.' },
+  path: { type: 'string', description: 'Resolve a root by path (for nested slugs).' },
+  raw: { type: 'boolean', description: 'If true, skip variable substitution and link-path resolution.' },
+  branchName: { type: 'string', description: 'Resolve only this published branch (returned as a length-1 variants array). When omitted, all published branches are returned.' },
+}} />
+
+```ts
+const { variants } = await cms.api.pages.getPublishedContent({
+  query: { slug: 'welcome' },
+});
+```
+
+Each `variants` item carries `branchId`, `branchName`, `commitId`, `publishedAt`, `publishedBy`, and a resolved block `tree`. `ancestors` is present only for nested-slug collections.
+
+### `listPublications`
+
+Lists publications for the collection, with optional filtering by root, branch, or date range. Publications of soft-deleted roots are excluded.
+
+<APIMethod method="GET" path="/{collection}/listPublications" resource="publication" operation="read" returns="{ publications, total, hasMore }" params={{
+  limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
+  offset: { type: 'number', default: '0', description: 'Rows to skip.' },
+  rootId: { type: 'string', description: 'Filter to publications of a specific root.' },
+  branchId: { type: 'string', description: 'Filter to publications of a specific branch.' },
+  publishedAfter: { type: 'Date', description: 'Only publications on or after this date.' },
+  publishedBefore: { type: 'Date', description: 'Only publications on or before this date.' },
+  sortDirection: { type: "'asc' | 'desc'", default: "'desc'", description: 'Sort order by publish date (newest first by default).' },
+}} />
+
+Each `publications` item includes `rootId`, `branchId`, `commitId`, `publishedBy`, `publishedAt`, `branchName`, `rootProperties`, and (when user enrichment is enabled) `publishedByUser`.
