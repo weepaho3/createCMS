@@ -3,28 +3,109 @@ title: Notifications
 description: The per-user inbox for collaboration and publishing events.
 ---
 
-Notifications are a per-user inbox. The CMS raises them when something happens that a user should know about, so reviewers and editors keep up without polling.
+Notifications are a per-user inbox. When something happens that a user should know about (someone mentions them, an approval lands, content ships) the CMS writes a row addressed to that user, so reviewers and editors keep up without polling a dozen resources.
+
+Every notification belongs to exactly one recipient. A comment that mentions three people raises three notifications, one in each inbox. Every read and mutation the API exposes is scoped to the caller: you only ever see or touch your own, and acting on someone else's notification fails with [`NOTIFICATION_RECIPIENT_MISMATCH`](/docs/reference/errors).
 
 ## What triggers a notification
 
-The CMS notifies users on:
+The CMS raises a notification on:
 
 - **Mentions**: being `@`-mentioned in a [comment](/docs/guides/review-comments).
-- **Comments**: new messages and resolved threads on a thread you are part of.
-- **Approvals**: an approval requested from you, or your request being approved or rejected.
+- **Comments**: new messages, and resolved or reopened threads, on a thread you are part of.
+- **Approvals**: an approval requested from you, or your own request being approved or rejected.
 - **Merge requests**: opened, merged, closed, or reopened.
 - **Publishing**: content published.
 
-Each notification carries a `type`, a `title` and `body`, the `resourceType` and `resourceId` it points at, and a `readAt` (null while unread).
+Each source maps to a `type`. The core set runs from `mention` and `comment` through the approval, merge-request, and `published` events; the full list is in the [reference](/docs/reference/notifications#types). Treat `type` as an open string when you branch on it, so an unfamiliar value degrades gracefully.
+
+## Anatomy of a notification
+
+A row carries everything a UI needs to render a line item and link it back to its source:
+
+- `type`, `title`, and `body`: the kind of event and its human-readable text.
+- `actorId`: the user who caused it (`null` for system events). See [actor enrichment](#the-responsible-user) below.
+- `resourceType`, `resourceId`, and `collection`: what the notification points at (a `commentThread`, a `mergeRequest`, a published `root`) and where it lives.
+- `meta`: a free-form JSON bag of per-type extras. A `mention`, for example, carries its `threadId` and `messageId`. Together with the resource fields it is enough to build a deep link back to the thing that changed.
+- `readAt`: the timestamp it was read, or `null` while unread.
+
+For the exact field types, see the [`list` reference](/docs/reference/notifications#list).
+
+## Reading the inbox
+
+[`list`](/docs/reference/notifications#list) returns the recipient's notifications newest first, archived ones excluded, plus a `total`, a `hasMore` paging flag, and an `unreadCount`:
+
+```ts
+// the recipient's inbox, newest first (archived rows excluded)
+const { notifications, unreadCount, hasMore } = await cms.api.notifications.list({
+  query: { limit: 20 },
+});
+
+// narrow it: just the unread mentions
+const { notifications: mentions } = await cms.api.notifications.list({
+  query: { unreadOnly: true, type: 'mention' },
+});
+```
+
+`unreadCount` is the count of all unread notifications in the inbox, independent of the current page and any filter, so it drives a badge on its own. Narrow the list with `unreadOnly`, `type`, or `collection`, and page with `limit` / `offset`.
+
+## Read, unread, and archived
+
+A notification moves along two independent axes, and it is worth keeping them apart:
+
+- **Read vs unread** is a reversible toggle on `readAt`. [`markNotificationsRead`](/docs/reference/notifications#marknotificationsread) sets it, [`markNotificationsUnread`](/docs/reference/notifications#marknotificationsunread) clears it. Both take an optional `notificationId`: pass one to flip a single row, omit it to flip the whole inbox (mark-all-read is the no-argument call).
+- **Active vs archived** is a one-way move on `archivedAt`. [`archiveNotification`](/docs/reference/notifications#archivenotification) removes a notification from the inbox for good: `list` never returns archived rows, and there is no unarchive endpoint. Archiving is how a user says "I am done with this," where marking read just says "I have seen it."
+
+```ts
+// mark one as read
+await cms.api.notifications.markNotificationsRead({
+  body: { notificationId: 'notif_8fd21c' },
+});
+
+// clear the whole inbox in one call
+await cms.api.notifications.markNotificationsRead();
+
+// drop one for good
+await cms.api.notifications.archiveNotification({
+  body: { notificationId: 'notif_8fd21c' },
+});
+```
+
+Because the two axes are independent, `unreadCount` counts only rows that are both unread and still active: archiving an unread notification also takes it out of the badge.
+
+## The responsible user
+
+Every notification stores the `actorId` of whoever triggered it, but an id alone cannot render "Ada approved your request." Pass `withUser: true` in the query and each item gains an `actorUser` object with that user's exposed columns, drawn from the same `exposeColumns` allowlist the rest of the CMS uses, so private fields never leak:
+
+```ts
+const { notifications } = await cms.api.notifications.list({
+  query: { withUser: true, limit: 20 },
+});
+
+notifications[0]?.actorUser?.name; // typed off your `user` config, not `unknown`
+```
+
+`actorUser` is typed from your `user` config, so the columns you exposed autocomplete. With [realtime](/docs/concepts/realtime) enabled the live push carries `actorUser` on the wire too, so a pushed notification can render its actor's name and avatar immediately, with no follow-up fetch.
 
 ## Delivery
 
-Notifications are written after the triggering action commits, fire-and-forget: a notification failure never rolls back the action. Read them with `notifications.list` (which also returns an `unreadCount`), and mark them read, unread, or archived.
+Notifications are written after the triggering action commits, and they are fire-and-forget: a rolled-back change raises nothing, and a notification failure never rolls back the action that caused it.
 
-With [realtime](/docs/concepts/realtime) configured, notifications are also **pushed** to each recipient the moment they're raised — the `useNotifications` hook (under a `RealtimeProvider`) prepends them live on top of the poll. Without realtime, `notifications.list` is the only path; there is no built-in polling hook.
+`list` is the durable path and is always available. With [realtime](/docs/concepts/realtime) configured, notifications are also **pushed** to each recipient the moment they are raised, and the `useNotifications` hook layers those live pushes on top of the poll. Without realtime there is no built-in polling hook: you call `list` on your own cadence. See [realtime](/docs/concepts/realtime) for the push model and the notification bell.
 
-You can disable the feature entirely with `notifications: false` on `createCMS` — the tables, routes, and `client.notifications` / `cms.notify` types all disappear. See [configuration](/docs/reference/configuration#notifications).
+## Turning it off
+
+Set `notifications: false` on `createCMS` to remove the feature outright:
+
+```ts
+const cms = createCMS({
+  // …
+  notifications: false,
+});
+```
+
+This is a hard, **type-level** disable: the notification tables are not generated (regenerate your schema after toggling), the routes never mount, and `cms.notify` plus the whole `cms.api.notifications` namespace disappear from the inferred types, so a stray call is a compile error rather than a runtime surprise. Use a literal `false`: a value widened to `boolean` keeps the types enabled (the runtime still honors it at request time). `notifications` and `realtime` are independent, so A/B live results can run on realtime with notifications off.
 
 <Callout type="info">
-  For the inbox methods and the full type list, see the [Notifications reference](/docs/reference/notifications).
+  For exact method signatures and the full type list, see the [Notifications reference](/docs/reference/notifications), and [configuration](/docs/reference/configuration#notifications) for the switch.
 </Callout>

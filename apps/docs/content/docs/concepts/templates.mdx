@@ -3,7 +3,7 @@ title: Templates
 description: Default property values per collection, block, and property.
 ---
 
-A template is a default value for a single block property, scoped to a collection and a block type. When a block is created, any **optional** property the caller leaves unset is seeded from its template.
+A template is a default value for a single block property, scoped to a collection and a block type. When a block is created, any **optional** property the caller leaves unset is seeded from its template. It is the per-property, editor-owned answer to "what should this field start as?"
 
 ## How templates are keyed
 
@@ -16,24 +16,83 @@ property:   cite
 template:   "© {{companyName}}"
 ```
 
-## Applied server-side on create
+Defining that template is a single call:
 
-`createBlock` applies templates automatically: for the block being created, every property the caller did **not** provide is filled from its template. There is no client wiring to do — if a template exists, it is used.
+```ts
+await cms.api.templates.createTemplate({
+  body: {
+    collection: 'posts',
+    blockType: 'quote',
+    propertyKey: 'cite',
+    template: '© {{companyName}}',
+  },
+});
+```
 
-- **`createBlock` only.** Defaults are seeded when a fresh block is added. `duplicateBlock` makes a faithful copy (it must match the original, not re-default) and `updateBlocks` applies a client-authoritative tree, so neither re-applies templates.
-- **Optional properties only.** A required property must still be provided by the caller (the input is validated before defaults are applied). Mark a property optional if you want it template-defaulted.
-- **Text properties only.** A template targets a `string` or `richText` property — `createTemplate` rejects any other type (or a property that does not exist on the block) with `TEMPLATE_PROPERTY_INVALID`.
-- **Caller wins.** An explicitly provided value always overrides the template.
-- **Variables stay live.** The raw template string is stored as-is, so embedded `{{variables}}` resolve at read time like any other content — changing a variable updates blocks already seeded from the template (it is not frozen at creation).
+## A template is data, not code
 
-## Templates use variables
+A block definition can already declare a per-property [`defaultValue`](/docs/concepts/blocks). So why a second layer of defaults? Because the two live in different places and answer to different owners:
 
-A template string can contain `{{key}}` [variables](/docs/concepts/variables). `resolveTemplate` resolves a string on demand, and `getTemplateDefaults` returns the resolved defaults for every property of a collection and block type (for prefilling an editor UI).
+- **`defaultValue` is code.** It is written into the block definition and compiled with your app: one value for every tenant and language, changed only by editing the source and redeploying.
+- **A template is content.** It is a row an editor writes and edits at runtime through [`createTemplate`](/docs/reference/templates#createtemplate) / [`updateTemplate`](/docs/reference/templates#updatetemplate), it scopes per tenant and per language like the rest of your content, and its `{{variables}}` are tracked so changing a variable reaches every template that uses it.
+
+Templates are the runtime, per-scope layer of defaults sitting above the compile-time one. When both exist for a property, the template wins.
+
+## Where a new block's values come from
+
+[`createBlock`](/docs/reference/blocks#createblock) fills each unset property by merging three sources, lowest priority first:
+
+1. the block definition's `defaultValue` (the compile-time base)
+2. the template for `(collection, blockType, propertyKey)` (runtime, scoped)
+3. the value the caller passed in `properties` (always wins)
+
+A caller value overrides both defaults; a template overrides the schema default; the schema default fills whatever is left. Only **optional** properties reach this merge: a required property is validated on the request before defaults apply, so the caller must always send it.
+
+So a quote block created without a `cite` inherits the template, while one that passes `cite` keeps its own value:
+
+```ts
+const { blockId } = await cms.api.posts.createBlock({
+  body: {
+    rootId: 'root_launch',
+    branchId: 'br_main',
+    parentBlockId: 'root_launch',
+    type: 'quote',
+    properties: { text: 'Ship early, ship often.' },
+    // cite omitted, so it is seeded with the raw "© {{companyName}}"
+  },
+});
+```
+
+## Applied on create, once
+
+Seeding happens only when a fresh block is added, and only for the constraints above:
+
+- **`createBlock` only.** [`duplicateBlock`](/docs/reference/blocks#duplicateblock) makes a faithful copy (it must match the original, not re-default) and [`updateBlocks`](/docs/reference/blocks#updateblocks) applies a client-authoritative tree, so neither re-applies templates.
+- **Text properties only.** A template targets a `string` or `richText` property. [`createTemplate`](/docs/reference/templates#createtemplate) rejects any other type, or a property that does not exist on the block, with `TEMPLATE_PROPERTY_INVALID`.
+
+There is no client wiring to do: if a template exists for a property the caller left unset, it is used.
+
+## Stored raw, resolved on read
+
+The raw template string is what gets stored, both in the template row and in the property it seeds. Nothing is frozen at creation. The seeded property still holds the literal `© {{companyName}}`, so it resolves at read time like any other content and tracks later changes to `companyName` (see [variables](/docs/concepts/variables), where read paths substitute `{{key}}` and the editor reads `raw: true` so the binding survives edits).
+
+## Prefilling an editor with `getTemplateDefaults`
+
+Before any block exists, an editor opening the "add block" form wants to show the defaults a new block *would* receive, already resolved for display. That is what [`getTemplateDefaults`](/docs/reference/templates#gettemplatedefaults) returns: the resolved value for every templated property of a `(collection, blockType)` pair, empty when the pair has none.
+
+```ts
+const { defaults } = await cms.api.templates.getTemplateDefaults({
+  query: { collection: 'posts', blockType: 'quote' },
+});
+// defaults → { cite: '© Acme Inc.' }   ({{companyName}} resolved for the form)
+```
+
+This is the one place the **resolved** form is handed back. `createBlock` seeds the **raw** form so the binding stays live, whereas the editor form only needs a value to preview. To resolve a single arbitrary string rather than a whole block type, use [`resolveTemplate`](/docs/reference/templates#resolvetemplate).
 
 ## Scoping (i18n / multi-tenant)
 
-Templates scope per tenant and per language, just like content — see [i18n](/docs/plugins/i18n) and [multi-tenant](/docs/plugins/multi-tenant).
+Templates scope per tenant and per language, just like content, so `getTemplateDefaults` and the seed applied on create both see only the active scope's rows. See [i18n](/docs/plugins/i18n) and [multi-tenant](/docs/plugins/multi-tenant).
 
 <Callout type="info">
-  For the CRUD methods, see the [Templates reference](/docs/reference/templates).
+  For the CRUD methods and exact signatures, see the [Templates reference](/docs/reference/templates).
 </Callout>

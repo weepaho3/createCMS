@@ -3,22 +3,66 @@ title: Notifications
 description: The per-user inbox, via cms.api.notifications.
 ---
 
-Notifications are the per-user inbox. The CMS raises them on @mentions in comments, approval decisions, merge-request activity, and publishing. Methods live under `cms.api.notifications`.
+Notifications are the per-user inbox. The CMS raises them on @mentions in comments, approval decisions, merge-request activity, and publishing. Methods live under `cms.api.notifications` and mirror on the [client](/docs/reference/client-api) as `client.notifications.<method>` with identical types.
+
+These endpoints operate on the recipient's inbox, not on content commits, so no method returns a `commit` envelope. Every endpoint scopes to the authenticated user: reads and mutations only ever touch the current user's own notifications, and acting on another user's notification fails with `NOTIFICATION_RECIPIENT_MISMATCH`.
+
+<Callout type="info">
+  The whole `notifications` namespace is omitted when the CMS is configured with `notifications: false`.
+</Callout>
 
 ## Methods
 
 ### `list`
 
-`GET`. Query: `type?`, `unreadOnly?`, `collection?`, `limit?` (default 20), `offset?`, and `withUser?: true` (a transport-level flag on every endpoint) — pass `withUser: true` to include `actorUser` (the acting user, limited to your `user` config's `exposeColumns` allowlist) on each item. Returns `{ notifications, total, hasMore, unreadCount }`. Each notification has `id`, `recipientId`, `actorId`, `type`, `title`, `body`, `resourceType`, `resourceId`, `collection`, `meta`, `readAt`, `createdAt`, and `actorUser?` (present only with `withUser: true`).
+Retrieves a paginated list of the current user's notifications (newest first, archived ones excluded), optionally filtered by type, collection, or read status. All query fields are optional.
 
-### `markNotificationsRead` / `markNotificationsUnread`
+<APIMethod method="GET" path="/notifications/list" resource="notification" operation="read" returns="{ notifications, total, hasMore, unreadCount }" params={{
+  type: { type: 'NotificationType', description: 'Filter by notification type (see Types below for the full set).' },
+  unreadOnly: { type: 'boolean', description: 'When true, returns only unread notifications.' },
+  collection: { type: 'string', description: 'Filter to notifications about one collection.' },
+  limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
+  offset: { type: 'number', default: '0', description: 'Rows to skip.' },
+}} />
 
-`POST`, `body: { notificationId? }`. With an id, marks that one; without, marks all of the user's. Returns `{ markedCount }`.
+```ts
+const { notifications, unreadCount } = await cms.api.notifications.list({
+  query: { unreadOnly: true, limit: 10 },
+});
+```
+
+`unreadCount` is the count of all unread notifications for the user, independent of the current page or filters. Each item carries `id`, `recipientId`, `actorId`, `type`, `title`, `body`, `resourceType`, `resourceId`, `collection`, `meta`, `readAt`, and `createdAt`. Pass the transport-level `withUser: true` flag to also include `actorUser` (the acting user, limited to your `user` config's `exposeColumns` allowlist) on each item.
+
+### `markNotificationsRead`
+
+Marks notification(s) as read. With a `notificationId`, marks that one; without, marks all of the user's unread notifications as read.
+
+<APIMethod method="POST" path="/notifications/markNotificationsRead" resource="notification" operation="update" returns="{ markedCount }" params={{
+  notificationId: { type: 'string', description: 'Notification to mark read. Omit to mark all unread notifications read.' },
+}} />
+
+```ts
+const { markedCount } = await cms.api.notifications.markNotificationsRead({
+  body: { notificationId: 'notif_8fd21c' },
+});
+```
+
+### `markNotificationsUnread`
+
+Marks notification(s) as unread. With a `notificationId`, marks that one; without, marks all of the user's read notifications as unread.
+
+<APIMethod method="POST" path="/notifications/markNotificationsUnread" resource="notification" operation="update" returns="{ markedCount }" params={{
+  notificationId: { type: 'string', description: 'Notification to mark unread. Omit to mark all read notifications unread.' },
+}} />
 
 ### `archiveNotification`
 
-`POST`, `body: { notificationId }`. Removes a notification from the inbox. Returns `{ notificationId }`.
+Archives a notification, removing it from the user's active inbox (it stops appearing in `list`).
+
+<APIMethod method="POST" path="/notifications/archiveNotification" resource="notification" operation="delete" returns="{ notificationId }" params={{
+  notificationId: { type: 'string', required: true, description: 'The notification to archive.' },
+}} />
 
 ## Types
 
-`type` is one of: `mention`, `comment`, `threadResolved`, `approvalRequested`, `approvalApproved`, `approvalRejected`, `mergeRequestOpened`, `mergeRequestMerged`, `mergeRequestClosed`, `mergeRequestReopened`, `published`, `custom`.
+`type` is one of: `mention`, `comment`, `threadResolved`, `threadReopened`, `approvalRequested`, `approvalApproved`, `approvalRejected`, `mergeRequestOpened`, `mergeRequestMerged`, `mergeRequestClosed`, `mergeRequestReopened`, `published`, `custom`.

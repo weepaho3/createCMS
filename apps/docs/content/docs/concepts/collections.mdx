@@ -28,39 +28,97 @@ const posts = defineCollection({
 });
 ```
 
-## Roots are entries
+One `defineCollection` call is the single source for three things: the runtime validation of every write, the typed API namespace `cms.api.posts`, and what the visual editor shows the author. Change a property here and all three move together in one step, with no separate type-generation to run. (The database tables themselves are a fixed, generic codegen output, the same for every collection; see [Type safety](/docs/concepts/type-safety).) For the exact fields, see [`defineCollection`](/docs/reference/define).
 
-Each entry in a collection is a **root**. The root carries the collection's top-level `properties` (here, a post's `title` and `excerpt`) and anchors the tree of blocks beneath it. `listRoots` returns the entries of a collection, and `createRoot` adds one.
+## Roots and blocks
 
-## Slugs
+A collection has exactly one **root** shape and a set of named **block** shapes. Both are built from the same nine [field types](/docs/concepts/blocks), so the split is about role, not structure:
 
-The optional `slug` config gives entries a URL path. When `enabled`, you set the `prefix` and choose how paths behave:
+- A **root** is the entry itself, one per page or post. It owns the entry's identity (a stable `rootId`), its slug and path, its listing metadata, and its history. Its `properties` are the entry's top-level fields (a post's `title` and `excerpt`).
+- **Blocks** are the nodes of the tree beneath the root. An entry has many of them, nested to any depth, and they carry the page's actual content.
 
-| Field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `enabled` | `boolean` | | Turns slug handling on or off. |
-| `prefix` | `string` | | Path prefix for the collection (for example `/blog`). |
-| `nested` | `boolean` | `false` | Whether entries can nest under one another to form paths. |
-| `allowIndex` | `boolean` | `true` | Whether an entry may occupy the collection root path. |
-| `normalize` | `boolean` | `true` | Whether slugs are slugified on write. |
+That role split is exactly how the API is organized. Root methods act on entries: [`createRoot`](/docs/reference/roots#createroot), [`listRoots`](/docs/reference/roots#listroots), [`updateRoot`](/docs/reference/roots#updateroot). Block methods act on the tree inside one entry: [`createBlock`](/docs/reference/blocks#createblock), [`getBlockTree`](/docs/reference/blocks#getblocktree). You create the entry first, then fill its tree:
 
-### Slugs vs paths
+```ts
+// one entry (root) ...
+const { rootId, branchId } = await cms.api.posts.createRoot({
+  body: { slug: 'hello-world', properties: { title: 'Hello world' } },
+});
 
-A root's `slug` is a single segment (for example `hello-world`), not a full URL. The collection's `prefix` and any ancestors are joined into the **path**:
+// ... then blocks inside it
+await cms.api.posts.createBlock({
+  body: {
+    rootId,
+    branchId,
+    parentBlockId: rootId, // pass the rootId to attach at the top level
+    type: 'richText',
+    properties: { content: '<p>First post.</p>' },
+  },
+});
+```
+
+*Which* blocks a container may hold is a separate concern, declared on the collection's `structure` map. See [Blocks](/docs/concepts/blocks#nesting).
+
+## Slugs and paths
+
+The optional `slug` config gives a collection's entries a URL. A root's `slug` is a single segment (for example `hello-world`), never a full URL. The collection's `prefix` and any ancestors are joined into the **path**:
 
 ```
-slug:  hello-world
-root:  /blog
-path:  /blog/hello-world
+slug:    hello-world
+prefix:  /blog
+path:    /blog/hello-world
 ```
 
-`listRoots` returns both `slug` (the segment) and `path` (the resolved full URL). `getPublishedContent` always accepts a `rootId`; with slugs enabled, you can additionally look up by `slug` or `path`.
+Set `prefix` to the collection's root path (`/blog`), and turn on `nested` to let entries nest under one another via `parentRootId`, building deep paths from the ancestor chain. `allowIndex` controls whether an entry may occupy the collection root path itself, and `normalize` slugifies slugs on write. For the exact fields, see [`defineCollection`](/docs/reference/define#slug-config).
+
+`listRoots` returns both the `slug` (the segment) and the resolved `path`. With nesting on, a child's path includes its whole ancestor chain:
+
+```ts
+// a `docs` collection: slug: { enabled: true, prefix: '/docs', nested: true }
+const { rootId: guidesId, branchId: guidesBranch } = await cms.api.docs.createRoot({
+  body: { slug: 'guides', properties: { title: 'Guides' } },
+});
+const { rootId: installId, branchId: installBranch } = await cms.api.docs.createRoot({
+  body: { parentRootId: guidesId, slug: 'install', properties: { title: 'Install' } },
+});
+
+// The slug is versioned on the draft; the live slug and its resolved path
+// populate only once the branch is published.
+await cms.api.docs.publishBranch({ body: { rootId: guidesId, branchId: guidesBranch } });
+await cms.api.docs.publishBranch({ body: { rootId: installId, branchId: installBranch } });
+
+const { roots } = await cms.api.docs.listRoots();
+roots.find((r) => r.slug === 'install')?.path; // '/docs/guides/install'
+```
+
+Reads accept either key: [`getPublishedContent`](/docs/reference/publications#getpublishedcontent) resolves an entry by `rootId`, or, with slugs enabled, by `slug` or `path`.
 
 ## Reusable blocks and references
 
-A `reference` property points one entry at another by `rootId`. On the published read, the referenced entry's content is inlined, so a page that embeds a shared block renders in one read.
+A `reference` property points one entry at another by `rootId`. On the published read the referenced entry's content is inlined, so a page that embeds a shared block renders in one read.
 
-**Reuse vs duplicate**: embed a `reference` when several entries should share content that is edited in one place (a change propagates to every embedder on the next read). Duplicate instead when each copy should diverge independently. Setting `reusableBlock: true` on a collection is only an editor hint that its roots are meant to be embedded; any collection can be a reference target.
+**Reuse vs duplicate**: embed a `reference` when several entries should share content that is edited in one place (a change propagates to every embedder on the next read). Duplicate instead when each copy should diverge independently. Setting `reusableBlock: true` on a collection is only an editor hint that its roots are meant to be embedded; any collection can be a reference target, and the delete-in-use guard protects a referenced root regardless of the flag.
+
+## The typed API falls out of the definition
+
+This is the payoff of defining once. When you group collections with `defineCollections`, each key becomes an API namespace, and each namespace's methods are typed from that collection's own root and block definitions:
+
+```ts
+export const cms = createCMS({
+  // db, media, authMiddleware, ...
+  collections: defineCollections({ pages, posts }),
+});
+
+// the `pages` / `posts` keys ARE the api namespaces:
+await cms.api.pages.createRoot({
+  body: { slug: 'home', properties: { title: 'Home' } },
+});
+await cms.api.posts.createRoot({
+  body: { slug: 'hello', properties: { title: 'Hello', excerpt: 'First post.' } },
+});
+```
+
+`cms.api.posts.createRoot` accepts exactly the `posts` root properties, and `cms.api.posts.createBlock` is a discriminated union over the `posts` block types. Point at `pages` instead and the input shape changes to match its definition. Nothing is generated for the types: they are inferred straight from the definitions, and the same surface mirrors on the client as `client.posts.*`. See [Type safety](/docs/concepts/type-safety) for how the inference flows, and [Roots API](/docs/reference/roots) and [Blocks API](/docs/reference/blocks) for the exact method shapes.
 
 <Callout type="info">
   For exact signatures, see [`defineCollection`](/docs/reference/define). To model the building blocks, see [Blocks](/docs/concepts/blocks).

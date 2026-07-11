@@ -3,16 +3,75 @@ title: Redirects
 description: Mapping old URLs to new ones, with automatic redirects on URL changes.
 ---
 
-A redirect maps an old location to a new one within a collection. Each side, source and target, is either a **page** (a `rootId`) or a **path** (a string), and the redirect carries an HTTP status code (`301`, `302`, `307`, or `308`).
+A redirect maps an old location to a new one within a collection. Each side, source and target, is either a **page** (a `rootId`) or a **path** (a string), and the redirect carries an HTTP status code (`301`, `302`, `307`, or `308`, default `301`). Redirects are per collection: the methods live at `cms.api.<collection>.<method>` and every one needs the collection to have [slugs enabled](/docs/concepts/collections#slugs-and-paths).
+
+## Page endpoints follow the entry, path endpoints are literal
+
+The two endpoint kinds are not interchangeable, and the difference is the whole model.
+
+A **page** endpoint stores a `rootId`. Its URL is resolved from the entry's live slug chain on every read, so it always points at where that entry lives *now*: move or rename the entry and a page endpoint tracks it, with no redirect edit.
+
+A **path** endpoint stores a literal string. A source path is canonicalized on write the same way the resolver canonicalizes an incoming request, so a match is exact string equality. A target path is stored verbatim, so it can point anywhere: another collection, an external URL, a hand-built destination.
+
+That asymmetry is why a typical redirect has a **path source and a page target**. The old URL is a dead string nobody serves anymore, and the destination is a real entry you want the redirect to keep following.
+
+```ts
+// /old-pricing is retired; send it to the pricing entry, wherever it now lives
+await cms.api.pages.createRedirect({
+  body: {
+    sourceType: 'path',
+    sourcePath: '/old-pricing',
+    targetType: 'page',
+    targetRootId: pricing.rootId,
+    statusCode: 301,
+  },
+});
+```
+
+A **page source** is the other useful case: it attaches the redirect to an entry that still exists. Because the source is matched by `rootId`, it keeps matching even after the entry moves, and it takes precedence over the live page (see resolution below). Use it to send a page that is still published somewhere else:
+
+```ts
+// the campaign page is live, but route every hit to the new evergreen page
+await cms.api.pages.createRedirect({
+  body: {
+    sourceType: 'page',
+    sourceRootId: campaign.rootId,
+    targetType: 'page',
+    targetRootId: evergreen.rootId,
+    statusCode: 302,
+  },
+});
+```
+
+A source must be unique among active redirects; a second redirect for the same source fails with `REDIRECT_SOURCE_EXISTS`. For exact signatures see [`createRedirect`](/docs/reference/redirects#createredirect) and the rest of the [Redirects API](/docs/reference/redirects).
 
 ## Automatic redirects
 
-When a slug-enabled entry's URL changes, the CMS records a redirect for you: renaming an entry's slug, moving it under a new parent, or archiving it captures the old path and points it at the entry (or its parent). Auto-created redirects never overwrite one you made by hand, so your manual redirects always win.
+When a slug-enabled entry's live URL changes, the CMS records the redirect for you, so an old link never dies just because you tidied a slug. Two edits capture it immediately, and a slug rename captures it on publish:
+
+- [`moveRoot`](/docs/reference/roots#moveroot) under a new parent, which shifts the entry's live path (and its whole subtree),
+- [`archiveRoot`](/docs/reference/roots#archiveroot), retiring the entry,
+- a **slug rename**: [`updateRoot`](/docs/reference/roots#updateroot) commits the new slug to the draft only, so the live URL, and its redirect from the old path, change when you [publish](/docs/concepts/publishing) the branch.
+
+Every auto-created redirect is a **path source aimed at a page target**: it captures the old URL as a literal string and points it at the entry, so the redirect then follows that entry through any later move. A rename or move captures the old path of the entry *and of every descendant*, because moving a parent shifts the whole subtree's paths, not just the one node. An archive points the old path at the entry's **parent** instead, since the entry itself is gone.
+
+Auto-created redirects never overwrite one that already exists, manual or auto. A path that already has an active redirect keeps its first one, so your hand-written redirects always win.
 
 ## Redirects are resolved, not applied
 
-The CMS stores redirects but does not serve them; your app resolves them in routing. `resolveRedirect` takes an incoming path, follows the redirect chain (up to ten hops), and returns the final status and location, or nothing.
+The CMS stores redirects but never serves them. Your app resolves them in routing by calling [`resolveRedirect`](/docs/reference/redirects#resolveredirect) with the incoming path:
+
+```ts
+const { redirect } = await cms.api.pages.resolveRedirect({
+  query: { path: '/old-pricing' },
+});
+// redirect is { status: 301, location: '/pricing' }, or null when nothing matches
+```
+
+`resolveRedirect` follows the chain: a page target resolves to the entry's current path, which may itself be the source of another redirect. It collapses the whole chain into **one** response, using the **first** hop's status and the **final** location, and walks at most ten hops. A cycle or an over-long chain resolves to `null`, so a misconfigured loop never reaches the browser. A page target whose entry has been archived falls back to that entry's parent path (one level) before giving up.
+
+One rule keeps redirects from shadowing your site: a request that resolves to a **live published page** stops there, unless that page has a page-source redirect. Path-source redirects only apply where nothing is currently served (a retired or unpublished path). That is what makes a page source special: it is the one way to redirect a URL that still resolves to live content.
 
 <Callout type="info">
-  For a Next.js middleware example and the management methods, see [Handle redirects](/docs/guides/redirects).
+  For a Next.js middleware example and the full management API (`listRedirects`, `updateRedirect`, `archiveRedirect`), see [Handle redirects](/docs/guides/redirects).
 </Callout>

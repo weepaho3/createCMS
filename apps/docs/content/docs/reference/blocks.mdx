@@ -1,0 +1,149 @@
+---
+title: Blocks API
+description: Read and edit the block tree inside an entry.
+---
+
+Block methods live at `cms.api.<collection>.<method>` and read or mutate the block tree of a single entry on a branch. The same methods are available on the [client](/docs/reference/client-api) with identical types. Every commit-producing mutation returns `commit: { id, message, createdAt, createdBy }`, the new branch head.
+
+### `getBlockTree`
+
+Returns the editing view of an entry's block tree at a branch head or a specific commit.
+
+<APIMethod method="GET" path="/{collection}/getBlockTree" resource="block" operation="read" returns="{ tree, reconstructed, references? }" params={{
+  rootId: { type: 'string', required: true, description: 'The entry.' },
+  branchId: { type: 'string', required: true, description: 'Branch to read (resolves the head commit when `commitId` is omitted).' },
+  commitId: { type: 'string', description: 'A specific commit to read; defaults to the branch head.' },
+  raw: { type: 'boolean', description: 'Keep stored values for editing: skip variable and link resolution.' },
+  includeReferencePreviews: { type: 'boolean', description: 'Also return a `references` sidecar (published previews of embedded references).' },
+}} />
+
+The `tree` is a discriminated union over `type`, and the top node is `type: 'root'`. `reconstructed` is `true` when the commit was rebuilt from a partial snapshot. With `includeReferencePreviews: true`, `references` is a `Record<storedReferenceValue, tree>` holding the published render tree of every reference embedded in the entry, resolved through the active scope.
+
+```ts
+const { tree } = await cms.api.pages.getBlockTree({
+  query: { rootId: 'root_home', branchId: 'br_main' },
+});
+```
+
+### `createBlock`
+
+Adds a block as a child of a parent block. The body is a discriminated union over `type`: each block type accepts its own typed `properties`.
+
+<APIMethod method="POST" path="/{collection}/createBlock" resource="block" operation="create" returns="{ commit, blockId }" params={{
+  rootId: { type: 'string', required: true, description: 'The entry.' },
+  branchId: { type: 'string', required: true, description: 'The branch.' },
+  parentBlockId: { type: 'string', required: true, description: 'Block to attach the new block under (pass the `rootId` to attach at the top level).' },
+  type: { type: 'block type name', required: true, description: "One of the collection's block types." },
+  properties: { type: 'typed block properties', required: true, description: "The block's properties, typed from its block definition." },
+  position: { type: 'number', description: "Index in the parent's children (defaults to append)." },
+  message: { type: 'string', description: 'Commit message (defaults to `Add {type} block`).' },
+  expectedHeadCommitId: { type: 'string', description: 'Optimistic-concurrency guard: reject with `HEAD_MISMATCH` if the branch head moved.' },
+}} />
+
+```ts
+const { blockId } = await cms.api.pages.createBlock({
+  body: {
+    rootId: 'root_home',
+    branchId: 'br_main',
+    parentBlockId: 'root_home',
+    type: 'Hero',
+    properties: { heading: 'Welcome' },
+  },
+});
+```
+
+### `updateBlock`
+
+Updates one block with patch semantics: supplied fields overwrite, omitted fields stay, a `null` value deletes a key.
+
+<APIMethod method="POST" path="/{collection}/updateBlock" resource="block" operation="update" returns="{ commit }" params={{
+  rootId: { type: 'string', required: true, description: 'The entry.' },
+  branchId: { type: 'string', required: true, description: 'The branch.' },
+  blockId: { type: 'string', required: true, description: 'Block to update.' },
+  type: { type: 'block type name', required: true, description: "The block's current type (must match the stored type, else `TYPE_MISMATCH`)." },
+  properties: { type: 'partial block properties', required: true, description: 'Properties to merge. A `null` value deletes that key; omitted keys stay unchanged.' },
+  message: { type: 'string', description: 'Commit message (defaults to `Update {type} block {blockId}`).' },
+  expectedHeadCommitId: { type: 'string', description: 'Optimistic-concurrency guard: reject with `HEAD_MISMATCH` if the branch head moved.' },
+}} />
+
+### `updateBlocks`
+
+Saves a whole tree in one commit: it diffs the tree you send against the branch head and creates, updates, and deletes blocks to match. This is the batch save path an editor calls after local edits, instead of one call per change.
+
+<APIMethod method="POST" path="/{collection}/updateBlocks" resource="block" operation="update" returns="{ commit, changed }" params={{
+  rootId: { type: 'string', required: true, description: 'The entry.' },
+  branchId: { type: 'string', required: true, description: 'The branch to write.' },
+  tree: { type: 'block tree node', required: true, description: 'The desired final tree, root node first: `{ blockId, type, properties, children }` (the shape `getBlockTree` returns). The root node `blockId` must equal `rootId`.' },
+  message: { type: 'string', default: "'Batch update'", description: 'Commit message.' },
+  expectedHeadCommitId: { type: 'string', description: 'Optimistic-concurrency guard: reject with `HEAD_MISMATCH` if the branch head moved.' },
+}} />
+
+`changed` is `false` when the tree already matches the head (no commit is written and the current head commit is returned), and `true` when a real commit was created. Every created or updated node is validated before the commit (known block type, valid properties, legal placement), so any violation rejects the whole batch with no partial write.
+
+```ts
+const { commit, changed } = await cms.api.pages.updateBlocks({
+  body: {
+    rootId: 'root_home',
+    branchId: 'br_main',
+    tree, // the edited tree from getBlockTree, root node included
+    expectedHeadCommitId: headCommitId,
+  },
+});
+```
+
+### `moveBlock`
+
+Moves a block (and its subtree) to a new parent and/or position within a parent's children.
+
+<APIMethod method="POST" path="/{collection}/moveBlock" resource="block" operation="update" returns="{ commit }" params={{
+  rootId: { type: 'string', required: true, description: 'The entry.' },
+  branchId: { type: 'string', required: true, description: 'The branch.' },
+  blockId: { type: 'string', required: true, description: 'Block to move.' },
+  newParentBlockId: { type: 'string', required: true, description: 'Block to move it under.' },
+  newIndex: { type: 'number', required: true, description: "Index in the new parent's children (integer >= 0, clamped to range)." },
+  message: { type: 'string', description: 'Commit message (defaults to `Move block {blockId}`).' },
+  expectedHeadCommitId: { type: 'string', description: 'Optimistic-concurrency guard: reject with `HEAD_MISMATCH` if the branch head moved.' },
+}} />
+
+Moving into itself, into one of its own descendants, or moving the root block is rejected (`CANNOT_MOVE_INTO_SELF`, `CANNOT_MOVE_INTO_DESCENDANT`, `CANNOT_MOVE_ROOT`).
+
+### `duplicateBlock`
+
+Clones a block subtree. With a `targetParentBlockId` it duplicates into that parent (child mode); with `targetProperties` and no parent it creates a new root from the subtree (root mode).
+
+<APIMethod method="POST" path="/{collection}/duplicateBlock" resource="block" operation="create" returns="{ mode, commit, ... }" params={{
+  rootId: { type: 'string', required: true, description: 'Source entry.' },
+  branchId: { type: 'string', required: true, description: 'Source branch.' },
+  blockId: { type: 'string', required: true, description: 'Block (and its whole subtree) to duplicate.' },
+  targetParentBlockId: { type: 'string', description: 'Parent for the copy (child mode). Omit to duplicate into a new root.' },
+  targetProperties: { type: 'Record<string, unknown>', description: 'Root properties for the new root (required in root mode, else `MISSING_TARGET_PROPERTIES`).' },
+  targetSlug: { type: 'string', description: 'Slug for the duplicated root (validated for uniqueness).' },
+  targetIndex: { type: 'number', description: "Index in the target parent's children (integer >= 0)." },
+  message: { type: 'string', description: 'Commit message.' },
+}} />
+
+`mode` is `'root'` or `'child'`. Child mode also returns `blockId`; root mode also returns `rootId`, `branchId`, `slug?`, and `path?`.
+
+### `deleteBlock`
+
+Soft-deletes a block and all its descendants (tombstones), and removes it from its parent's children.
+
+<APIMethod method="POST" path="/{collection}/deleteBlock" resource="block" operation="delete" returns="{ commit, deletedBlockIds }" params={{
+  rootId: { type: 'string', required: true, description: 'The entry.' },
+  branchId: { type: 'string', required: true, description: 'The branch.' },
+  blockId: { type: 'string', required: true, description: 'Block to delete (with all its descendants).' },
+  message: { type: 'string', description: 'Commit message (defaults to `Delete block {blockId}`).' },
+  expectedHeadCommitId: { type: 'string', description: 'Optimistic-concurrency guard: reject with `HEAD_MISMATCH` if the branch head moved.' },
+}} />
+
+`deletedBlockIds` lists every block tombstoned in the commit (the target plus its descendants).
+
+### `getReferenceUsages`
+
+Lists the pages that embed this reusable block. Under i18n the inspected root's translation group expands to all sibling roots, so usage is reported across languages.
+
+<APIMethod method="GET" path="/{collection}/getReferenceUsages" resource="root" operation="read" returns="usage details (which roots reference this block)" params={{
+  rootId: { type: 'string', required: true, description: 'Root id of the reusable block to inspect.' },
+}} />
+
+This endpoint checks `root:read`, not `block:read`, because it reports usage of an entry across the collection.

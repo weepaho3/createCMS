@@ -3,19 +3,79 @@ title: Data retention
 description: How old history and archived content are pruned.
 ---
 
-Versioning keeps full history, which grows without bound. Data retention is the policy that reclaims it: a bounded, resumable pruning pass deletes old commits and hard-deletes archived content, on a schedule you run.
+Versioning keeps full history, and full history grows without bound: every edit writes new commits, every archived page and unreferenced upload lingers. Data retention is the policy that reclaims that space. It is one bounded, resumable pass that deletes old commits, hard-deletes archived content past a grace window, and frees unreferenced assets, on a schedule you run.
 
-## What gets pruned
+Nothing is reclaimed by default. Retention stays off until you configure a policy, and even then it runs only when you call it.
 
-Two things accumulate and are reclaimed:
+## What retention reclaims
 
-- **Old commits.** Beyond your `keepDays` window (and `keepMinCommits` per branch), superseded commits and their block versions are deleted. A commit that loses its materialized snapshot is then reconstructed on read (see [Commits](/docs/concepts/commits)).
-- **Archived content.** Deleting an entry archives it (sets `archivedAt`) rather than removing it immediately. After `archiveKeepDays`, a trash window, it is hard-deleted along with its history and any unreferenced assets.
+Retention never deletes anything the live system can still reach. It waits out a grace period, then removes what is provably unreachable. Three things accumulate, each with its own notion of reachability:
 
-## Running pruning
+- **Old commits.** A commit older than `keepDays` is deletable unless something still points at it: the entry's initial commit, any branch head (which is what a published read actually serves, so live content is never pruned), a commit on an open merge request, a commit an approval references, or one of the `keepMinCommits` most recent commits. Everything past the window and outside that protected set is removed whole, along with the block versions and snapshots only it held, and the surviving commits are reparented onto the initial commit (see [Commits](/docs/concepts/commits#reading-a-commit)).
+- **Archived entries.** [`archiveRoot`](/docs/reference/roots#archiveroot) soft-archives an entry (it sets `archivedAt`) rather than removing it. Once it is past `archiveKeepDays`, a trash window, the pass hard-deletes it and its entire history, oldest archive first.
+- **Unreferenced assets.** An archived asset (its `archivedAt` set) is freed once it is past the trash window and no non-deleted block in any live entry's head still references it. The database row goes first, then the S3 object as best-effort cleanup: a storage error never blocks reclamation, since the row is already gone.
 
-Pruning does not run on its own. Configure `dataRetention` on `createCMS`, then call `admin.runPruning` on a schedule (a cron or a queue). Each pass does a bounded amount of work and reports `done`; re-run until it is `true` to drain a backlog.
+Closed merge requests past `keepDays`, and the resolved or superseded approvals tied to a branch, are swept in the same pass.
+
+## Bounded and resumable
+
+A pass is built for a periodic serverless invocation, so it can never run unbounded. It does capped work, then stops and reports where it stopped:
+
+- **`maxRoots`** (default 50) caps how many roots it touches, archived and live combined.
+- **`maxDurationMs`** (default 8000) is a soft wall-clock budget; the pass returns before exceeding it.
+- **`maxAssets`** (default 100) caps how many assets it frees.
+
+Each root is processed in its own transaction, so a pass is never one giant cross-root lock, and stopping between roots keeps every root already finished. The result carries a `stoppedReason` of `'maxRoots'`, `'budget'`, or `'idle'`, and `done` is true only when it stopped `'idle'`, having found nothing left to do this cycle.
+
+What makes `done` meaningful is that the work set drains:
+
+- Archived roots and assets are self-draining. They are processed oldest-first and physically disappear, so each later pass simply sees fewer.
+- Live roots cannot disappear, so every visit stamps `roots.lastPrunedAt`. A pass picks up only roots never scanned or last scanned before `liveRescanMs` ago (default 24h), least-recently-pruned first. Stamping drops a root out of the due set, so the set empties and `done` can flip to true, while each root still comes due again one rescan window later.
+
+So a single call always makes progress, and repeated calls drain a backlog: no pass loops over the whole dataset, and none holds it all open at once.
+
+## It requires configuration
+
+Retention is inert without a `dataRetention` policy. Set one on `createCMS`:
+
+```ts
+import { createCMS } from '@createcms/core';
+
+export const cms = createCMS({
+  // …
+  dataRetention: {
+    keepDays: 90, // delete commits older than 90 days…
+    keepMinCommits: 20, // …but always keep the 20 most recent
+    archiveKeepDays: 30, // hard-delete archived entries 30 days after archiving
+  },
+});
+```
+
+`keepDays` and `keepMinCommits` are required; `archiveKeepDays` is optional and defaults to `keepDays`. Calling [`runPruning`](/docs/reference/admin#runpruning) with no policy throws `DATA_RETENTION_NOT_CONFIGURED`. For the exact fields, see [Configuration](/docs/reference/configuration#dataretention).
+
+## Driving it with a cron
+
+Pruning does not run on its own. Point a scheduled trigger at [`runPruning`](/docs/reference/admin#runpruning), which lives on the `admin` namespace and requires the `admin` permission. A plain cron is the simplest driver: ping on a schedule and let each pass do its slice. Because the work set drains on its own, later pings clear the rest, and you can ignore `done`:
+
+```ts
+// A daily cron hits this route. One capped pass, no loop.
+const result = await cms.api.admin.runPruning({
+  body: { maxRoots: 50, maxDurationMs: 8000 },
+});
+// result.deletedCommits, result.deletedRoots, result.deletedAssets, result.done
+```
+
+Preview first with `dryRun` to see what a real pass would reclaim without touching anything:
+
+```ts
+const preview = await cms.api.admin.runPruning({
+  body: { dryRun: true, maxRoots: 1000 },
+});
+// preview.deletedCommits / deletedRoots / deletedAssets — planned, not performed
+```
+
+To clear a large backlog in one stretch (a first run, or right after you tighten the policy), drive it from a queue instead and re-enqueue each pass while `done` is false. The [Admin API](/docs/reference/admin#runpruning) shows that loop.
 
 <Callout type="info">
-  For the retention options, see [Configuration](/docs/reference/configuration); for the pass itself, see `admin.runPruning` in the [Server API](/docs/reference/server-api).
+  For the retention options see [Configuration](/docs/reference/configuration#dataretention); for `runPruning`'s parameters and full result shape see the [Admin API](/docs/reference/admin#runpruning).
 </Callout>

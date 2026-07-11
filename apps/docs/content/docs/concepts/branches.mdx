@@ -5,23 +5,55 @@ description: Named pointers to commits, and how branches diverge.
 
 A branch is a named pointer to a commit. A row in `branches` holds a `name`, the `rootId` it belongs to, and a `headCommitId`. Editing a branch advances its head: each new commit sets `headCommitId` to the new commit.
 
+## Drafts of one entry
+
+A branch belongs to a single entry. Its `rootId` ties it to one [root](/docs/concepts/collections#roots-and-blocks), and every branch of that root is an independent draft of the same page. That is the unit that makes branches useful: one entry can hold a live `main`, a `draft` you are still writing, and an A/B `variant`, all at once, each with its own head and its own history.
+
+Branches are per-entry, not global. There is no repo-wide `main` that every page shares. Each root gets its own default branch when it is created, and branching one page leaves every other page untouched. Two branches of the same root always share history (see [Divergence](#divergence)); two branches of different roots share nothing, which is why a cross-root comparison in [`checkDivergence`](/docs/reference/branches#checkdivergence) is rejected (`BRANCHES_NOT_SAME_ROOT`).
+
 ## The main branch
 
-Every entry is created with a `main` branch. It is protected: it cannot be renamed or deleted. Any other branch can be deleted, unless it has active publications or open merge requests.
+Every entry is created with a default branch, named `main` unless you set [`defaultBranchName`](/docs/reference/configuration). It is created pointing at the entry's first commit, and it is protected: it cannot be renamed ([`CANNOT_RENAME_MAIN_BRANCH`](/docs/reference/errors)) or deleted ([`CANNOT_DELETE_MAIN_BRANCH`](/docs/reference/errors)). It is the stable line the rest of the model treats as canonical, and the branch a merge usually targets.
 
 ## Creating a branch
 
-A new branch starts from an existing one. `createBranch` copies the source branch's head commit, so the new branch begins with identical content and then diverges as you edit it:
+A new branch starts from an existing one. [`createBranch`](/docs/reference/branches#createbranch) copies the source branch's head commit, so the new branch begins with identical content and then diverges as you edit it:
 
 ```ts
-const draft = await cms.api.pages.createBranch({
+const { branch: draft } = await cms.api.pages.createBranch({
   body: { rootId, name: 'draft', sourceBranchId: mainBranchId },
 });
 ```
 
+Copying the head is a pointer copy, not a content copy. The new branch's `headCommitId` is set to the source's, so at creation the two branches literally share one commit. That shared commit is their common ancestor, and nothing is duplicated until you make the first edit. A fresh branch has no publications and no merge requests, so its `isDeletable` flag is always `true`.
+
+## Editing in isolation
+
+Every content mutation ([`createBlock`](/docs/reference/blocks), `updateBlock`, `moveBlock`, `deleteBlock`, and the rest) takes a `branchId` and advances only that branch's head. Writing to `draft` appends a commit to `draft` and moves its head forward; `main` still points where it did.
+
+```ts
+await cms.api.pages.updateBlock({
+  body: {
+    rootId,
+    branchId: draft.id,
+    blockId: heroId,
+    type: 'hero',
+    properties: { headline: 'Fresh headline' },
+  },
+});
+```
+
+Isolation is a property of the [commit](/docs/concepts/commits) graph, not a copy. The two branches keep sharing every commit up to the split point; only the commits you add after branching are reachable from the new head alone. Because commits are immutable and copy-on-write, editing `draft` can never change what `main` renders. The draft reaches readers only when you [publish](/docs/concepts/publishing) it or [merge](/docs/concepts/merges) it back.
+
 ## Divergence
 
-Because branches share history, two branches of the same root always have a common ancestor commit. `checkDivergence` reports how far each has moved past that ancestor:
+Because branches share history, two branches of the same root always have a common ancestor commit. [`checkDivergence`](/docs/reference/branches#checkdivergence) reports how far each has moved past that ancestor:
+
+```ts
+const d = await cms.api.pages.checkDivergence({
+  query: { sourceBranchId: draft.id, targetBranchId: mainBranchId },
+});
+```
 
 | Field | Meaning |
 | --- | --- |
@@ -30,12 +62,18 @@ Because branches share history, two branches of the same root always have a comm
 | `targetAhead` | Commits on the target since the ancestor. |
 | `canFastForward` | Whether the target can be moved forward without a merge commit. |
 
-When `targetAhead` is `0`, the target has not moved, so a merge can fast-forward. Otherwise the target has advanced past the common ancestor (the source may or may not have advanced too) and a merge has to reconcile them.
+When `targetAhead` is `0`, the target has not moved, so a merge can fast-forward. Otherwise the target has advanced past the common ancestor (the source may or may not have advanced too) and a merge has to reconcile them. Right after `createBranch`, both counts are `0`: the branches point at the same commit, so they are their own common ancestor.
+
+## Deleting a branch
+
+Any branch other than the default can be deleted, but not while it is still doing work. [`deleteBranch`](/docs/reference/branches#deletebranch) refuses a branch with an active publication ([`BRANCH_HAS_PUBLICATIONS`](/docs/reference/errors)) or an open merge request ([`BRANCH_HAS_OPEN_MERGE_REQUESTS`](/docs/reference/errors)), and refuses the default branch outright ([`CANNOT_DELETE_MAIN_BRANCH`](/docs/reference/errors)). The `isDeletable` flag carried on every branch is the precomputed answer to those three checks, so an editor can disable the delete action without a round trip.
 
 ## Branches can be published independently
 
 A branch does not have to be merged into `main` to go live. Any branch can be [published](/docs/concepts/publishing) on its own, which is how one entry serves several branches at once (a control and an A/B variant). It is also why a branch with an active publication cannot be deleted.
 
+Publishing does not, by default, freeze a branch: a published branch stays editable in place, and later commits go live on the next read. Opt into [`protectPublishedBranches`](/docs/reference/configuration#branchprotection) to make a branch read-only for exactly as long as it is published, so changes have to go through another branch and a merge (`PROTECTED_BRANCH`).
+
 <Callout type="info">
-  See [Merges](/docs/concepts/merges) for combining branches, and the [Server API](/docs/reference/server-api) for `createBranch`, `listBranches`, `renameBranch`, and `deleteBranch`.
+  See [Merges](/docs/concepts/merges) for combining branches, and the [Branches API](/docs/reference/branches) for `createBranch`, `getBranch`, `listBranches`, `renameBranch`, and `deleteBranch`.
 </Callout>

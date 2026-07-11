@@ -1,313 +1,50 @@
 ---
 title: Server API
-description: The type-safe server-side API on cms.api, method by method.
+description: The type-safe server-side API on cms.api, grouped by area.
 ---
 
-`createCMS` returns an `api` object namespaced by collection: `cms.api.<collection>.<method>`. Methods follow the better-call convention: read methods take a `query` object, write methods take a `body` object. Inputs and outputs are typed from your collection definitions.
+`createCMS` returns an `api` object namespaced by collection and by system feature. You call `cms.api.<collection>.<method>` for content (e.g. `cms.api.pages.createRoot`) and `cms.api.<namespace>.<method>` for system features (e.g. `cms.api.media.uploadAssets`). Inputs and outputs are fully typed from your collection definitions.
 
 ```ts
 const { roots } = await cms.api.pages.listRoots({ query: { limit: 20 } });
 ```
 
-The same methods are available on the [client](/docs/reference/client-api), with identical types.
+Every method follows the better-call convention: **read** methods take a `query` object, **write** methods take a `body` object. Every commit-producing mutation returns a `commit: { id, message, createdAt, createdBy }` envelope, the new branch head. The same methods are available on the [client](/docs/reference/client-api) as `client.<collection>.<method>`, with identical types.
+
+## Permissions
+
+Every endpoint runs an authorization check keyed by a **resource** and an **operation** (`create`, `read`, `update`, or `delete`), shown on each method as a `resource:operation` chip (for example `root:create`). [Access control](/docs/guides/permissions) maps those to your roles. The only endpoint reachable without a session is the public media gate `media.asset`; the anonymous-readable reads (`getPublishedContent`, `resolveRedirect`, and the A/B `resolveAbVariant`) still run the auth chain under the `publishedContent` resource, so plugin scope is enforced.
 
 ## Collection methods
 
-### `listRoots`
-
-Lists the entries (roots) of a collection. `GET`, input via `query` (all fields optional).
-
-| Query field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `limit` | `number` | `20` | Page size (1 to 100). |
-| `offset` | `number` | `0` | Rows to skip. |
-| `search` | `string` | | Search term. |
-| `searchField` | column or property | | Field to search. |
-| `sortBy` | column or property | `createdAt` | Sort field. |
-| `sortDirection` | `'asc' \| 'desc'` | `desc` | Sort order. |
-| `filterField` | column or property | | Field to filter. |
-| `filterValue` | `string` | | Filter value. |
-| `hasPublications` | `boolean` | | Only entries with or without publications. |
-| `createdAfter` | `Date` | | Entries created after this time. |
-| `createdBefore` | `Date` | | Entries created before this time. |
-| `parentRootId` | `string` | | Filter by parent entry. |
-
-Returns `{ roots, total, hasMore }`. Each root has `id`, `createdAt`, `createdBy`, `parentRootId`, `sortOrder`, `slug`, `properties` (typed), `hasPublications`, `publicationCount`, `branchCount`, and `openMergeRequestCount`. `path` (the full ancestor-resolved URL) is present only for slug-enabled collections, and `createdByUser` only when called with `query.withUser`.
-
-<Callout type="info">
-  `search` here does a substring match over the chosen field, which is a sequential scan. It is fine for the bounded, filtered admin listings this endpoint serves. For full-text search across a large corpus, use [`search.query`](/docs/reference/search) instead, which is backed by a `tsvector` GIN index.
-</Callout>
-
-### `createRoot`
-
-Creates a new entry. `POST`, input via `body`.
-
-| Body field | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `properties` | typed root properties | yes if the root has required props | | The root's properties. |
-| `slug` | `string` | no | | Slug for the entry. |
-| `parentRootId` | `string` | no | | Parent entry for nesting. |
-| `message` | `string` | no | `'Initial commit'` | Commit message. |
-
-Returns `{ commit, rootId, branchId, slug, path }`. `commit` is the new head as `{ id, message, createdAt, createdBy }` — every commit-producing mutation returns this envelope. `slug` and `path` are the server-normalized values (`path` is present for slug-enabled collections).
-
-```ts
-const { rootId } = await cms.api.pages.createRoot({
-  body: { slug: 'welcome', properties: { title: 'Welcome' } },
-});
-```
-
-### `getBlockTree`
-
-Returns the editing view of an entry's block tree. `GET`, input via `query`.
-
-| Query field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `rootId` | `string` | yes | The entry. |
-| `branchId` | `string` | yes | The branch to read. |
-| `commitId` | `string` | no | A specific commit (defaults to branch head). |
-| `raw` | `boolean` | no | Keep stored values for editing: skip variable and link resolution. |
-| `includeReferencePreviews` | `boolean` | no | Also return a `references` sidecar (see below). |
-
-Returns `{ tree, reconstructed }`. The `tree` is a discriminated union over `type`, and the top node is `type: 'root'`.
-
-With `includeReferencePreviews: true`, the result also carries `references`: a `Record<storedReferenceValue, tree>` holding the **published** render tree of every reference embedded anywhere in the entry — its own nested references resolved and `{{variables}}` substituted, resolved through the active scope (tenant / language fallback). This lets an editor render the raw editable tree **and** all embedded reusable-block previews in **one** call instead of one `getPublishedContent` per reference. References that are not published (or out of scope) are omitted from the map. The flag is opt-in because resolving is more expensive; combine it with `raw: true` to keep the main tree editable while still getting rendered previews.
-
-### `createBlock`
-
-Adds a block under a parent. `POST`, input via `body`.
-
-| Body field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `rootId` | `string` | yes | The entry. |
-| `branchId` | `string` | yes | The branch. |
-| `parentBlockId` | `string` | yes | Parent block to attach under. |
-| `type` | block type name | yes | One of the collection's block types. |
-| `properties` | typed block properties | yes | The block's properties. |
-| `position` | `number` | no | Insert position (defaults to append). |
-| `message` | `string` | no | Commit message. |
-
-Returns `{ commit, blockId }` (`commit` is the new-head envelope; see `createRoot`).
-
-### `updateBlock`
-
-Updates a block with patch semantics: supplied fields overwrite, omitted fields stay, `null` deletes. `POST`, input via `body`.
-
-| Body field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `rootId` | `string` | yes | The entry. |
-| `branchId` | `string` | yes | The branch. |
-| `blockId` | `string` | yes | The block to update. |
-| `type` | block type name | yes | The block's type. |
-| `properties` | partial block properties | yes | Fields to change. |
-| `message` | `string` | no | Commit message. |
-
-Returns `{ commit }` (the new-head envelope; see `createRoot`).
-
-### `updateBlocks`
-
-Saves a whole tree in one commit: it diffs the tree you send against the branch head and creates, updates, and deletes blocks to match. This is the batch save path an editor calls after local edits, rather than one `createBlock`/`updateBlock`/`moveBlock` per change. `POST`, input via `body`. See [Build your own editor](/docs/guides/building-an-editor) for how it fits an editor's save loop.
-
-| Body field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `rootId` | `string` | yes | The entry. |
-| `branchId` | `string` | yes | The branch to write. |
-| `tree` | block tree node | yes | The desired final tree, root node first. |
-| `message` | `string` | no | Commit message (defaults to `'Batch update'`). |
-| `expectedHeadCommitId` | `string` | no | Optimistic-concurrency guard (see below). |
-
-The `tree` has the same shape `getBlockTree` returns: a node is `{ blockId, type, properties, children }`. The top node is the root. `getBlockTree` emits it as `type: 'root'`; you may post that value straight back, because `updateBlocks` normalizes the root node's type to the collection's own type before writing. The root node's `blockId` must be the `rootId`.
-
-Returns `{ commit, changed }`. `commit` is the new-head envelope (see `createRoot`). When the diff is empty (the tree already matches the head), no commit is created: the call returns the current head commit with `changed: false`, so you can tell a no-op save from a real one.
-
-Every created or updated block is validated before the commit, matching what the single-block handlers enforce: the block `type` must exist in the collection, its `properties` must satisfy that type's schema, [placement](/docs/concepts/blocks) (allowed parent/child) must be legal, and the root node's `blockId` must be the `rootId`. Any violation rejects the whole batch with no partial write.
-
-Pass `expectedHeadCommitId` to make the save conditional: if the branch head has moved since you loaded the tree, the write is rejected with `HEAD_MISMATCH` instead of clobbering the newer commit. Set it to the `commitId` you read the tree at, then refetch and retry (or surface a conflict) on mismatch.
-
-```ts
-const { commit, changed } = await cms.api.pages.updateBlocks({
-  body: {
-    rootId,
-    branchId,
-    tree, // the edited tree from getBlockTree, root node included
-    expectedHeadCommitId: headCommitId,
-  },
-});
-```
-
-### `getPublishedContent`
-
-Returns the published view of an entry, with references resolved. `GET`, input via `query`. Provide at least one of `rootId`, `slug`, or `path`.
-
-| Query field | Type | Description |
-| --- | --- | --- |
-| `rootId` | `string` | Look up by entry id. |
-| `slug` | `string` | Look up by slug (slug-enabled collections). |
-| `path` | `string` | Look up by full path. |
-| `raw` | `boolean` | Keep stored values: skip variable and link resolution. |
-
-Returns `{ rootId, collection, variants }`, where each variant has `branchId`, `branchName`, `commitId`, `publishedAt`, `publishedBy`, and a resolved `tree`. Additional fields appear when relevant: a page-level A/B test descriptor when one is running, and `ancestors` when the collection uses nested slugs.
-
-In the resolved `tree`, `reference` properties are inlined and `link` properties become a `ResolvedLink` (an `href`). An `image` property is returned verbatim as the stored asset-id string (nothing is resolved); build the gate URL `/media/asset/{id}` from that id to serve it. A `raw` read keeps the stored link / reference target instead, for re-picking in an editor.
-
-```ts
-const { variants } = await cms.api.pages.getPublishedContent({
-  query: { path: '/welcome' },
-});
-```
-
-### `listBranches`
-
-Lists the branches of an entry. `GET`, input via `query`.
-
-| Query field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `rootId` | `string` | | The entry (required). |
-| `limit` | `number` | `20` | Page size (1 to 100). |
-| `offset` | `number` | `0` | Rows to skip. |
-| `search` | `string` | | Search term. |
-| `isDeletable` | `boolean` | | Filter protected vs deletable branches. |
-| `hasPublications` | `boolean` | | Filter by publication state. |
-| `hasOpenMergeRequests` | `boolean` | | Filter by open merge requests. |
-
-Returns `{ branches, total, hasMore }`. Each branch has `id`, `rootId`, `name`, `headCommitId`, `createdBy`, `createdAt`, `updatedAt`, `isDeletable`, and `hasPublications` (whether the branch is currently published) — plus `createdByUser` when called with `query.withUser`.
-
-### `createBranch`
-
-Creates a branch from an existing one, copying its head commit. `POST`, input via `body`.
-
-| Body field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `rootId` | `string` | yes | The entry. |
-| `name` | `string` | yes | Branch name (unique per entry). |
-| `sourceBranchId` | `string` | yes | Branch to copy the head commit from. |
-| `createdBy` | `string` | no | Actor (defaults to the request user). |
-
-Returns `{ branch, isDeletable }` — the full new branch row (same shape as a `listBranches`/`renameBranch` row) plus `isDeletable: true`.
-
-### `getBranch`
-
-Returns one branch. `GET`, `query: { branchId }`.
-
-### `renameBranch`
-
-Renames a branch (the default branch (`defaultBranchName`, `main` by default) cannot be renamed). `POST`, `body: { branchId, newName }`.
-
-### `deleteBranch`
-
-Deletes a branch. The default branch (`defaultBranchName`, `main` by default), published branches, and branches with open merge requests cannot be deleted. `POST`, `body: { branchId }`.
-
-### `publishBranch`
-
-Publishes a branch as the live content of an entry. `POST`, input via `body`.
-
-| Body field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `rootId` | `string` | yes | The entry. |
-| `branchId` | `string` | yes | The branch to publish. |
-| `publishedBy` | `string` | no | Fallback actor, used only when the request has no user. The request user takes precedence. |
-
-Returns `{ publication }`, the publication row (`rootId`, `branchId`, `commitId`, `publishedBy`, `publishedAt`) plus `branchName`.
-
-### `getDiff`
-
-Compares two refs of an entry for review: the source against the common ancestor it shares with the target (the merge base). `GET`, input via `query`. Provide exactly **one** source ref (`sourceBranchId` or `sourceCommitId`) and exactly **one** target ref (`targetBranchId`, `targetCommitId`, or `targetPublished`).
-
-| Query field | Type | Description |
-| --- | --- | --- |
-| `sourceBranchId` | `string` | Source branch, resolved to its head commit. |
-| `sourceCommitId` | `string` | Source commit, used as-is. |
-| `targetBranchId` | `string` | Target branch, resolved to its head commit. |
-| `targetCommitId` | `string` | Target commit, used as-is. |
-| `targetPublished` | `boolean` | Target the entry's current publication — resolved to the live head of the publication's branch, exactly what `getPublishedContent` serves. Throws `PUBLICATION_NOT_FOUND` when the entry has no publication. |
-| `view` | `'list' \| 'tree' \| 'both'` | Which representations to return (defaults to `'both'`). |
-| `withAttribution` | `boolean` | Attach per-entry commit attribution (defaults to `false`; see below). |
-
-Both refs must belong to the same entry (`BRANCHES_NOT_SAME_ROOT` otherwise). The base is the common ancestor of the two resolved commits; when one commit is an ancestor of the other, the common ancestor **is** that commit and the diff degenerates to an exact two-way comparison — a commit against its parent yields exactly that commit's changes, and a branch against `targetPublished` yields exactly the draft's edits that are not live yet (see [Publish preview](/docs/guides/visual-diff#publish-preview)).
-
-Returns `{ diff, tree, summary, sourceCommitId, targetCommitId, commonAncestorCommitId }`:
-
-- `diff` (with `view: 'list'` or `'both'`, otherwise `null`): the flat change list. Each entry carries `blockId`, `changeTypes` (`added`, `deleted`, `modified`, `moved`, `childrenReordered`), `propertyChanges` when modified (per-property `path`, `kind`, `from`, `to`, plus word-level `textDiff` segments for `richText` properties), `typeChange` when the block type changed, `slugChange` on the root entry when the draft slug changed, `moved` (`kind: 'reparented' | 'reordered'` with old and new parent id and index) when moved, and the full `sourceVersion` / `targetVersion` / `baseVersion` payloads. `moved` marks only blocks that actually moved — siblings whose index merely shifted are not marked — and `childrenReordered` only parents whose surviving children truly changed relative order. A slug-only change is not `modified`: it surfaces as a root entry with an **empty** `changeTypes` array and only `slugChange` set.
-- `tree` (with `view: 'tree'` or `'both'`): the annotated draft tree — the source branch's block tree where changed nodes carry a `diff` annotation, unchanged nodes carry none, and deleted blocks are re-inserted as ghost nodes at their old position with their last properties. It is structurally a regular block tree, so it renders through the same component maps. `null` when the view is `'list'`, and also when the draft deleted the entry's root block (no source tree remains to annotate) — guard before rendering.
-- `summary`: per-changeType entry counts `{ added, deleted, modified, moved, reordered }`.
-
-With `withAttribution: true`, each `diff` entry and each `tree` annotation additionally carries `attribution` — which commit made the change, and who:
-
-```ts
-attribution?: {
-  commitId: string;
-  changedAt: Date;
-  changedBy: string | null;
-  changedByUser?: { /* your user table's exposed columns */ };
-};
-```
-
-An entry whose own version changed (added, deleted, modified, `childrenReordered`, or a slug change) is attributed to the commit that created its `sourceVersion`; a pure position move is attributed to the commit that actually repositioned the block under its new parent (derived by walking the parent's version history — omitted when the move arrived via a merge). `changedByUser` follows the same rules as `createdByUser` elsewhere: present only when called with `query.withUser`, limited to your `user` config's `exposeColumns` allowlist. Entries whose authoring commit is not derivable omit `attribution`.
-
-See [Review changes visually](/docs/guides/visual-diff) for rendering the annotated tree.
-
-### `getRootHistory`
-
-Fetches an entry's commit history across all branches, newest first. `GET`, input via `query`.
-
-| Query field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `rootId` | `string` | | The entry (required). |
-| `limit` | `number` | `50` | Page size (1 to 200). |
-| `offset` | `number` | `0` | Rows to skip. |
-| `withChanges` | `boolean` | `false` | Add per-commit change counts (see below). |
-
-Returns `{ commits, total, hasMore }`. Each commit has `id`, `message`, `createdBy`, `createdAt`, `branch` (the name of the branch the commit was created on — see [Branch attribution](/docs/concepts/commits#branch-attribution)), `parents` (one commit id, two for a merge commit), `type` (`'initial' | 'commit' | 'merge'`), and `isPublished` — plus `createdByUser` when called with `query.withUser`.
-
-With `withChanges: true`, each commit additionally carries `changes: { added, modified, deleted }` — block counts from a cheap version-id comparison of the commit's snapshot against its parent's (no block properties are loaded). The counts are **version-level**, coarser than `getDiff`'s classification, and meant for history badges: any block whose stored version changed is counted, so a pure move counts as `modified` on the parent whose children array changed. An initial commit counts every block as `added`, and a merge commit is diffed against its **first** parent only, so its counts read as "what this merge landed on the target branch". Blocks that vanish from the snapshot entirely (merge- and revert-landed deletions carry no tombstone) count as `deleted` as well. The field is omitted (not zeroed) on commits whose own or parent snapshot was pruned by [retention](/docs/concepts/data-retention).
-
-## Admin methods
-
-System-wide methods live under `cms.api.admin`.
-
-### `admin.runPruning`
-
-Runs one bounded, resumable pruning pass to reclaim storage (old commits, hard-deleted archived roots, unreferenced assets). Requires `dataRetention` to be configured. `POST`, input via `body`.
-
-| Body field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `dryRun` | `boolean` | `false` | Plan deletions without persisting. |
-| `maxRoots` | `number` | `50` | Roots processed per pass (1 to 1000). |
-| `maxDurationMs` | `number` | `8000` | Soft time budget in milliseconds. |
-| `liveRescanMs` | `number` | `86400000` | Interval before a live root is rescanned. |
-| `maxAssets` | `number` | `100` | Archived assets reclaimed per pass (1 to 1000). |
-
-Returns deletion counts (`deletedCommits`, `deletedBlockVersions`, `deletedSnapshots`, `deletedMergeRequests`, `deletedApprovals`), `deletedRoots` and `deletedAssets` (id arrays), `prunedRoots`, `processedLiveRoots`, `plugins`, `stoppedReason`, and `done` (true when all due work has drained within budget).
-
-### `admin.reindexSearch`
-
-Rebuilds the full-text search index across all entities. `POST`, empty body. Returns `{ indexed }` with per-entity counts.
-
-## More collection methods
-
-Each collection also exposes the rest of the versioning and review surface. The remaining methods, all under `cms.api.<collection>`:
-
-- **Roots**: `getRoot`, `getRootBySlug`, `archiveRoot`, `moveRoot`, `duplicateRoot`, `getReferenceUsages` (plus `getRootHistory` above).
-- **Blocks**: `moveBlock`, `deleteBlock`, `duplicateBlock`, `updateRoot`.
-- **Branches**: `revertBranch`, `checkDivergence` (plus the branch methods above).
-- **Merges**: `createMergeRequest`, `checkConflicts`, `applyConflictResolutions`, `createMergeBlockVersion`, `executeMerge`, `listMergeRequests`, `updateMergeRequest`, `closeMergeRequest`, `reopenMergeRequest` (plus `getDiff` above).
-- **Approvals**: `requestApproval`, `submitApproval`, `submitRejection`, `cancelApproval`, `getApproval`, `listApprovals`.
-- **Comments**: `createCommentThread`, `createCommentMessage`, `listCommentThreads`, `getCommentThread`, `resolveCommentThread`, `reopenCommentThread`, `updateCommentMessage`, `deleteCommentThread`, `deleteCommentMessage`, `listMentions`.
-- **Publications**: `unpublishBranch`, `listPublications` (plus `publishBranch` and `getPublishedContent`).
-- **Redirects**: `createRedirect`, `updateRedirect`, `archiveRedirect`, `listRedirects`, and `resolveRedirect` (call this in routing to follow a redirect).
-
-## Other namespaces
-
-Beyond collections and `admin`, `cms.api` exposes system namespaces, each on its own page:
+Available on every collection as `cms.api.<collection>.<method>`.
 
 <Cards>
-  <Card title="Media" href="/docs/reference/media">Upload, serve, folders, variants.</Card>
+  <Card title="Roots" href="/docs/reference/roots">Create, read, move, and version entries.</Card>
+  <Card title="Blocks" href="/docs/reference/blocks">Read and edit the block tree of an entry.</Card>
+  <Card title="Branches" href="/docs/reference/branches">Create and manage branches (drafts).</Card>
+  <Card title="Merges" href="/docs/reference/merges">Diff, review, resolve conflicts, and merge.</Card>
+  <Card title="Publications" href="/docs/reference/publications">Publish, schedule, and read live content.</Card>
+  <Card title="Comments" href="/docs/reference/comments">Threaded review comments.</Card>
+  <Card title="Approvals" href="/docs/reference/approvals">Request and record approvals.</Card>
+  <Card title="Redirects" href="/docs/reference/redirects">Create and resolve URL redirects.</Card>
+</Cards>
+
+## System namespaces
+
+Feature APIs, each on its own `cms.api.<namespace>`.
+
+<Cards>
+  <Card title="Media" href="/docs/reference/media">Assets, folders, uploads, and variants.</Card>
   <Card title="Variables" href="/docs/reference/variables">Reusable `{{key}}` values.</Card>
   <Card title="Templates" href="/docs/reference/templates">Per-property default values.</Card>
-  <Card title="Search" href="/docs/reference/search">Full-text search.</Card>
-  <Card title="Notifications" href="/docs/reference/notifications">The user inbox.</Card>
+  <Card title="Search" href="/docs/reference/search">Full-text search across entities.</Card>
+  <Card title="Releases" href="/docs/reference/releases">Publish many entries together.</Card>
+  <Card title="Notifications" href="/docs/reference/notifications">The per-user inbox.</Card>
+  <Card title="Users" href="/docs/reference/users">The current user and reviewers.</Card>
+  <Card title="Admin" href="/docs/reference/admin">Pruning, scheduled jobs, and search reindex.</Card>
 </Cards>
 
 <Callout type="info">
-  These methods are also available on the [client](/docs/reference/client-api) as `client.<collection>.<method>` and `client.admin.<method>`.
+  Plugins extend `cms.api` with their own methods (for example `createTranslation` from [i18n](/docs/plugins/i18n) and the `cms.api.abTest.*` methods from [A/B testing](/docs/plugins/ab-test)). Each plugin page documents its methods the same way.
 </Callout>

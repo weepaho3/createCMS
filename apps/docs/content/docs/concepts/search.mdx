@@ -3,14 +3,57 @@ title: Search
 description: Full-text search across CMS entities.
 ---
 
-The CMS maintains a full-text search index so you can find content and collaboration objects by keyword. It spans seven entity types: roots, comments, merge requests, variables, templates, assets, and notifications.
+The CMS maintains a single full-text index so you can find content and collaboration objects by keyword from one query. It spans seven entity types: roots, comments, merge requests, variables, templates, assets, and notifications.
 
-## How it works
+## One index, one query
 
-The index is built on PostgreSQL full-text search. A `search.query` query ranks results by relevance and returns a highlighted snippet (`<mark>` around the matched terms) for each hit, with optional filters by entity type, collection, or entry.
+Every indexed thing, whatever its underlying shape, is normalized to the same row: an `entityType` and `entityId`, a `title` and `snippet` for display, a free-form `meta` blob, and a weighted `tsvector` of its searchable text. [`search.query`](/docs/reference/search#query) scans that shared table with PostgreSQL full-text search (a GIN index over the vector), ranks the hits by relevance, and returns a highlighted snippet (`<mark>` around the matched terms) for each one.
 
-The index is kept up to date as content changes. If it ever drifts (after a bulk import or a schema change), `admin.reindexSearch` rebuilds it from scratch.
+Because the shape is uniform, one query crosses entity types at once: a search for "checkout" can surface a page root, a variable, and a comment in the same ranked list. Narrow it with `entityTypes`, `collection`, or `rootId`. The `search` term is parsed as a web-search query, so `"black friday"` matches the phrase and a leading `-` excludes a term.
+
+```ts
+const { results, total, hasMore } = await cms.api.search.query({
+  query: { search: 'checkout', entityTypes: ['root', 'variable'], limit: 10 },
+});
+
+for (const hit of results) {
+  console.log(hit.entityType, hit.title, hit.highlight); // highlight carries <mark>…</mark>
+}
+```
+
+## Relevance is weighted
+
+Not all text ranks equally. As a row is indexed, each piece of its text is stamped with a weight, and `search.query` orders results by it. Titles and identifiers outrank primary body text, which outranks incidental text:
+
+| Weight | What lands here | Examples |
+| --- | --- | --- |
+| A (highest) | titles and identifiers | a root's `title` or `name`, a variable key, an asset slug, a merge request title |
+| B | primary body text | a root's other fields, its slug, comment bodies, descriptions |
+| C | incidental text | text inside a root's child blocks, an asset's MIME type |
+
+So a page whose `title` is "Checkout" ranks above one that merely mentions checkout in a paragraph three blocks deep. The `highlight` on each result is drawn from the stored `snippet`, so it frames the matched terms in context when the match falls within it.
+
+## Roots track the main branch
+
+A root is indexed at the head of its **default branch**, not once per branch. Draft edits on a feature branch are not searchable until they land: merging re-indexes the root, so the index always reflects the canonical, merged state of your content. Archiving a root drops it from the index.
+
+## Staying fresh, and reindexing
+
+The index maintains itself. Content mutations (creating a root, editing a block, posting a comment, uploading an asset, and so on) fire an after-hook that re-indexes the affected entity. Those hooks run fire-and-forget, off the mutation's response path, so indexing never adds latency to a write and a failed index update is logged rather than thrown.
+
+That best-effort model is why a full rebuild exists. If the index ever drifts (a dropped async update, or a bulk import that writes rows directly and bypasses the API hooks), [`admin.reindexSearch`](/docs/reference/admin#reindexsearch) clears the table and rebuilds every entity from scratch:
+
+```ts
+const { indexed } = await cms.api.admin.reindexSearch();
+// indexed: { root: 128, comment: 540, mergeRequest: 12, variable: 30, … }
+```
+
+It returns per-type counts of what it re-indexed. Reach for it after a migration or a schema change, not on every write.
+
+## What the caller can see
+
+`search.query` honors the caller's read boundary: a row is returned only when its underlying entity is visible under the active plugin scope, so search never becomes a side channel around your access rules. Notifications are per-recipient: a `notification` hit surfaces only to the user it belongs to, and an unauthenticated caller sees none.
 
 <Callout type="info">
-  For the query parameters and result shape, see the [Search reference](/docs/reference/search).
+  For the exact query parameters, result shape, and `reindexSearch`, see the [Search reference](/docs/reference/search) and [`admin.reindexSearch`](/docs/reference/admin#reindexsearch).
 </Callout>

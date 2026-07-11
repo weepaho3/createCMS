@@ -1,0 +1,154 @@
+---
+title: Merges API
+description: Diff branches, open merge requests, resolve conflicts, and merge.
+---
+
+Merge methods diff two refs of an entry, open and manage merge requests, resolve conflicts, and integrate one branch into another. They live at `cms.api.<collection>.<method>` and mirror on the [client](/docs/reference/client-api) with identical types (the examples below use `pages` as the sample collection). Read methods take a `query` object, write methods take a `body` object.
+
+Every commit-producing mutation returns `commit: { id, message, createdAt, createdBy }`, the new head after the change.
+
+### `getDiff`
+
+Compares two refs of one entry and returns the base-to-source changeset as a flat change list, an annotated render tree, or both. Each side is a branch (resolved to its head commit) or a commit; the target may also be the source root's current publication. The base is the common ancestor of the two resolved commits.
+
+<APIMethod method="GET" path="/{collection}/getDiff" resource="mergeRequest" operation="read" returns="{ diff, tree, summary, sourceCommitId, targetCommitId, commonAncestorCommitId }" params={{
+  sourceBranchId: { type: 'string', description: 'Source branch ref. Provide exactly one of sourceBranchId or sourceCommitId.' },
+  sourceCommitId: { type: 'string', description: 'Source commit ref. Provide exactly one of sourceBranchId or sourceCommitId.' },
+  targetBranchId: { type: 'string', description: 'Target branch ref. Provide exactly one of targetBranchId, targetCommitId, or targetPublished.' },
+  targetCommitId: { type: 'string', description: 'Target commit ref. Provide exactly one of targetBranchId, targetCommitId, or targetPublished.' },
+  targetPublished: { type: 'boolean', description: "Diff against the source root's current publication (the published branch's live head)." },
+  view: { type: "'list' | 'tree' | 'both'", default: "'both'", description: "Which representations to return. `diff` is null when 'tree', `tree` is null when 'list'." },
+  withAttribution: { type: 'boolean', default: 'false', description: 'Attach per-entry attribution (commit id, timestamp, author) to each change.' },
+}} />
+
+```ts
+// Publish preview: exactly the edits on a branch that are not yet live.
+const { diff, summary } = await cms.api.pages.getDiff({
+  query: { sourceBranchId: 'branch_draft', targetPublished: true },
+});
+```
+
+Both refs must belong to the same entry (`BRANCHES_NOT_SAME_ROOT` otherwise). The base is the common ancestor of the two resolved commits; when one commit is an ancestor of the other, the common ancestor **is** that commit and the diff degenerates to an exact two-way comparison (a branch against `targetPublished` yields exactly the draft edits that are not live yet, the [publish preview](/docs/guides/visual-diff#publish-preview)).
+
+#### The diff shape
+
+- **`diff`** (with `view: 'list'` or `'both'`, otherwise `null`): the flat change list. Each entry carries `blockId`, `changeTypes` (`added`, `deleted`, `modified`, `moved`, `childrenReordered`), `propertyChanges` when modified (per-property `path`, `kind`, `from`, `to`, plus word-level `textDiff` segments for `richText` properties), `typeChange` when the block type changed, `slugChange` on the root entry when the draft slug changed, `moved` (`kind: 'reparented' | 'reordered'` with old and new parent id and index), and the full `sourceVersion` / `targetVersion` / `baseVersion` payloads. `moved` marks only blocks that actually moved (siblings whose index merely shifted are not marked), and `childrenReordered` only parents whose surviving children truly changed relative order. A slug-only change is not `modified`: it surfaces as a root entry with an **empty** `changeTypes` array and only `slugChange` set.
+- **`tree`** (with `view: 'tree'` or `'both'`): the annotated draft tree, the source branch's block tree where changed nodes carry a `diff` annotation and deleted blocks are re-inserted as ghost nodes at their old position. It is structurally a regular block tree, so it renders through the same component maps. `null` when the view is `'list'`, and also when the draft deleted the entry's root block (guard before rendering).
+- **`summary`**: per-changeType entry counts `{ added, deleted, modified, moved, reordered }`.
+
+With `withAttribution: true`, each `diff` entry and each `tree` annotation additionally carries `attribution: { commitId, changedAt, changedBy, changedByUser? }` — which commit made the change, and who. `changedByUser` is present only when called with `query.withUser`, limited to your `user` config's `exposeColumns` allowlist. See [Review changes visually](/docs/guides/visual-diff) for rendering the annotated tree.
+
+### `checkConflicts`
+
+Detects merge conflicts between two branches using a three-way merge (base, source, target).
+
+<APIMethod method="GET" path="/{collection}/checkConflicts" resource="mergeRequest" operation="read" returns="{ hasConflicts, conflicts, commonAncestorCommitId, sourceCommitId, targetCommitId }" params={{
+  sourceBranchId: { type: 'string', required: true, description: 'Source branch id.' },
+  targetBranchId: { type: 'string', required: true, description: 'Target branch id.' },
+}} />
+
+### `createMergeRequest`
+
+Opens a merge request to merge the source branch into the target branch. Fails if an open merge request already exists for this source-target pair.
+
+<APIMethod method="POST" path="/{collection}/createMergeRequest" resource="mergeRequest" operation="create" returns="{ mergeRequest, hasConflicts, conflicts }" params={{
+  sourceBranchId: { type: 'string', required: true, description: 'Source branch to merge from.' },
+  targetBranchId: { type: 'string', required: true, description: 'Target branch to merge into.' },
+  title: { type: 'string', required: true, description: 'Merge request title (at least 1 character).' },
+  description: { type: 'string', description: 'Longer description.' },
+  createdBy: { type: 'string', description: 'Explicit actor id, used only when the request has no session user (context takes precedence).' },
+}} />
+
+```ts
+const { mergeRequest, hasConflicts } = await cms.api.pages.createMergeRequest({
+  body: {
+    sourceBranchId: 'branch_draft',
+    targetBranchId: 'branch_main',
+    title: 'Publish homepage refresh',
+  },
+});
+```
+
+### `listMergeRequests`
+
+Lists merge requests for the collection with optional filtering and sorting. All query fields are optional.
+
+<APIMethod method="GET" path="/{collection}/listMergeRequests" resource="mergeRequest" operation="read" returns="{ mergeRequests, total, hasMore }" params={{
+  limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
+  offset: { type: 'number', default: '0', description: 'Rows to skip.' },
+  rootId: { type: 'string', description: 'Filter by root id.' },
+  sourceBranchId: { type: 'string', description: 'Filter by source branch.' },
+  targetBranchId: { type: 'string', description: 'Filter by target branch.' },
+  status: { type: "'open' | 'merged' | 'closed'", description: 'Filter by status.' },
+  createdBy: { type: 'string', description: 'Filter by creator.' },
+  search: { type: 'string', description: 'Substring match over title and description.' },
+  sortBy: { type: "'createdAt' | 'updatedAt' | 'status' | 'title'", default: "'createdAt'", description: 'Sort field.' },
+  sortDirection: { type: "'asc' | 'desc'", default: "'desc'", description: 'Sort order.' },
+}} />
+
+### `updateMergeRequest`
+
+Updates the title and/or description of an open merge request. Passing neither is a no-op that returns the merge request unchanged.
+
+<APIMethod method="POST" path="/{collection}/updateMergeRequest" resource="mergeRequest" operation="update" returns="{ mergeRequest }" params={{
+  mergeRequestId: { type: 'string', required: true, description: 'The merge request id.' },
+  title: { type: 'string', description: 'New title.' },
+  description: { type: 'string', description: 'New description.' },
+}} />
+
+### `executeMerge`
+
+Integrates the merge request into its target branch. Fast-forwards when the target has not diverged, otherwise writes a merge commit; `noFastForward: true` (or config `mergeStrategy: 'merge-commit'`) always forces a merge commit. Requires every conflict resolved, and a pending approval request blocks the merge.
+
+<APIMethod method="POST" path="/{collection}/executeMerge" resource="mergeRequest" operation="update" returns="{ commit, fastForward, rootId, targetBranchId }" params={{
+  mergeRequestId: { type: 'string', required: true, description: 'The merge request id.' },
+  mergedBy: { type: 'string', description: 'Explicit actor id, used only when the request has no session user (context takes precedence).' },
+  message: { type: 'string', description: 'Custom merge commit message (auto-generated if omitted).' },
+  noFastForward: { type: 'boolean', description: "Force a merge commit even when a fast-forward is possible (git's --no-ff). `false` forces a fast-forward." },
+}} />
+
+`commit` is the merge commit on a non-fast-forward, or the source head that became the new target head on a fast-forward.
+
+```ts
+const { commit, fastForward } = await cms.api.pages.executeMerge({
+  body: { mergeRequestId: mergeRequest.id },
+});
+```
+
+### `createMergeBlockVersion`
+
+Creates a new block version to resolve a conflict manually (a third-way resolution). The version is persisted for the conflict and becomes live once the merge is executed. Input is a discriminated union over `type`, one variant per block definition plus `'root'`.
+
+<APIMethod method="POST" path="/{collection}/createMergeBlockVersion" resource="mergeRequest" operation="create" returns="{ blockVersionId }" params={{
+  mergeRequestId: { type: 'string', required: true, description: 'The merge request id.' },
+  blockId: { type: 'string', required: true, description: 'The conflicting block id.' },
+  type: { type: "block name | 'root'", required: true, description: "The block's type literal (a block name from the collection, or 'root')." },
+  properties: { type: 'typed block properties', required: true, description: 'Full properties for the resolved version, typed by `type`.' },
+  children: { type: 'string[]', description: 'Child block ids for the resolved version.' },
+}} />
+
+### `applyConflictResolutions`
+
+Marks one or more conflicts as resolved, choosing which version to keep per conflict. A `'manual'` resolution must reference an existing block version (from `createMergeBlockVersion` or a preexisting one).
+
+<APIMethod method="POST" path="/{collection}/applyConflictResolutions" resource="mergeRequest" operation="update" returns="{ resolved, remainingUnresolved }" params={{
+  mergeRequestId: { type: 'string', required: true, description: 'The merge request id.' },
+  resolutions: { type: "{ conflictId, resolution, resolvedVersionId?, resolvedBy }[]", required: true, description: "At least one resolution. `resolution` is 'source', 'target', or 'manual'; a 'manual' resolution needs `resolvedVersionId`." },
+}} />
+
+### `closeMergeRequest`
+
+Closes an open merge request without merging it. Notifies the creator if closed by another user.
+
+<APIMethod method="POST" path="/{collection}/closeMergeRequest" resource="mergeRequest" operation="update" returns="{ mergeRequest }" params={{
+  mergeRequestId: { type: 'string', required: true, description: 'The merge request id.' },
+  reason: { type: 'string', description: 'Optional reason for closing.' },
+}} />
+
+### `reopenMergeRequest`
+
+Reopens a closed merge request back to open status. Fails if it was already merged, or if an open merge request already exists for the same source-target pair.
+
+<APIMethod method="POST" path="/{collection}/reopenMergeRequest" resource="mergeRequest" operation="update" returns="{ mergeRequest }" params={{
+  mergeRequestId: { type: 'string', required: true, description: 'The merge request id.' },
+}} />
