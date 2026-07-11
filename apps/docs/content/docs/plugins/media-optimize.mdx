@@ -57,6 +57,7 @@ All options are optional; omit a section to skip that step.
 
 | Section | Field | Type | Default | Description |
 | --- | --- | --- | --- | --- |
+| | `enabled` | `boolean` | `true` | Auto-optimize on upload. Set `false` to register no auto-optimizer, so `useUploadAssets().upload(...)` sends the original bytes and you optimize manually with `useOptimize` / `optimizeImage`. |
 | `compress` | `quality` | `number` | `80` | JPEG/PNG quality, 1 to 100. |
 | `resize` | `maxSize` | `number` | `2000` | Max width or height in pixels (aspect ratio preserved). |
 | `convert` | `format` | `'webp'` | | Target format (only WebP is supported). |

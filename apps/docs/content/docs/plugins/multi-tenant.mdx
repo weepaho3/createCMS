@@ -74,7 +74,7 @@ The plugin adds a `tenantSlug` column (text, not null) and tenant-scoped indexes
 | `roots` | `tenantSlug` | `(tenantSlug, collection)`, unique `(tenantSlug, collection, parentRootId, slug)` |
 | `assets` | `tenantSlug` | `(tenantSlug)`, unique `(tenantSlug, slug)` |
 | `asset_folders` | `tenantSlug` | unique `(tenantSlug, parentId, name)` |
-| `redirects` | `tenantSlug` | `(tenantSlug, collection)` |
+| `redirects` | `tenantSlug` | `(tenantSlug, collection)`, unique `(tenantSlug, sourceRootId)` where `archived_at IS NULL` |
 | `templates` | `tenantSlug` | `(tenantSlug, collection, blockType)` |
 | `variables` | `tenantSlug` | `(tenantSlug, key)` |
 
