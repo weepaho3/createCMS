@@ -18,7 +18,7 @@
     "declarationMap": false,
     "esModuleInterop": true
   },
-  "include": ["src", "test"],
+  "include": ["src"],
   // Tests ARE type-checked (check-types = tsc --noEmit): a wrong-signature call
   // in a *.test.ts is caught here, not only at vitest runtime. The build is
   // unaffected — bunchee emits from the package `exports` entries, not from this
