@@ -3,6 +3,85 @@ title: Changelog
 description: Release notes for @createcms/core, generated from Changesets.
 ---
 
+## 0.3.0
+
+### Minor Changes
+
+- [`f0b9dbd`](https://github.com/weepaho3/createCMS/commit/f0b9dbd4d4424313bebbdce4b90b74d4e41f34cf) Thanks [@weepaho3](https://github.com/weepaho3)! - fix(blocks): guard duplicateRoot as root:create, not block:create
+
+  `duplicateRoot` mints a NEW top-level root (forced root mode), the same
+  privileged act `createRoot` guards as `permissionResource: 'root'`, but it was
+  labeled `permissionResource: 'block'`. A consumer granting `block:create` while
+  denying `root:create` could create roots through duplication. The metadata now
+  reads `root`. BREAKING for any authMiddleware policy that mapped
+  `duplicateRoot` under `block` — remap it to `root`.
+
+- [#57](https://github.com/weepaho3/createCMS/pull/57) [`e83ada8`](https://github.com/weepaho3/createCMS/commit/e83ada87522cd84ac7d1ac40b59b7d0ba79efd8f) Thanks [@weepaho3](https://github.com/weepaho3)! - feat(diff): visual diff — precise change classification, property-level detail, and a renderable annotated tree
+
+  **BREAKING (pre-1.0): `getDiff` semantics and response shape changed.**
+
+  - **Identity-based `moved` (noise fix):** blocks are only flagged `moved` when they were reparented or are a true reorder outlier among surviving siblings (LIS-based). Siblings whose index merely shifted because another block was inserted/removed/moved around them are no longer flagged. Inserting one block among N siblings now yields exactly one diff entry (was N+2).
+  - **Truthful `childrenReordered`:** only set on a parent when the relative order of its surviving common children changed — never for pure child additions/removals.
+  - **Property-level detail:** modified entries carry `propertyChanges` (`{ path, kind: 'added' | 'removed' | 'changed', from, to }` with deep paths and array LCS alignment), `typeChange`, and word-level `textDiff` segments (`same`/`ins`/`del`) for `richText` properties (including list-of-richText items).
+  - **Slug changes are first-class:** a draft-slug change on the root yields `slugChange: { from, to }` instead of an opaque `modified`; the reserved `__slug` key no longer leaks into any returned version properties.
+  - **Annotated diff tree:** new `view` query param (`'list' | 'tree' | 'both'`, default `'both'`). The response is now `{ diff, tree, summary, sourceCommitId, targetCommitId, commonAncestorCommitId }` — `tree` is the draft tree with per-node `diff` annotations and deleted blocks re-inserted as ghost nodes at their old position (with their last content), directly renderable by the existing component maps. `summary` carries per-changeType counts.
+  - **React:** `BlocksRenderer` and `createContentRenderer` accept an opt-in `diff` prop that wraps changed blocks in `<div data-diff="added | deleted | modified | moved" data-diff-types data-diff-props>` (or a custom `wrap` callback). New helpers: `getBlockDiff(node)`, `diffSegmentsToHtml(segments)` for inline rich-text ins/del highlighting; `BlockComponentMap` is now exported.
+
+  New exported types: `ChangeType`, `PropertyChange`, `TextDiffSegment`, `MovedInfo`, `BlockChange`, `DiffSummary`, `BlockDiffAnnotation`, `AnnotatedBlockTreeNode`, `DiffView`.
+
+### Patch Changes
+
+- [`a3218b6`](https://github.com/weepaho3/createCMS/commit/a3218b67e643eeb306db95e2f94c5a7a57208c28) Thanks [@weepaho3](https://github.com/weepaho3)! - perf(blocks): batch updateBlocks reference-existence checks into a single asset query and one roots query per collection, shortening the write-transaction critical section for large page saves
+
+- [#57](https://github.com/weepaho3/createCMS/pull/57) [`d6ed93b`](https://github.com/weepaho3/createCMS/commit/d6ed93b922adfbf0c6337fab5bda4abf0cc2a89e) Thanks [@weepaho3](https://github.com/weepaho3)! - feat(diff): generalize getDiff to refs (branch | commit | published), per-change attribution, and history change counts
+
+  - **`getDiff` now compares arbitrary refs:** pass exactly one of `sourceBranchId` | `sourceCommitId` and one of `targetBranchId` | `targetCommitId` | `targetPublished` per side. Branch refs resolve to their head; commit refs are used as-is; `targetPublished` resolves to the live head of the entry's publication branch (exactly what `getPublishedContent` serves) and throws `PUBLICATION_NOT_FOUND` for unpublished entries. When one ref is an ancestor of the other the three-way diff degenerates to an exact two-way comparison — a commit vs its parent yields exactly that commit's changes, a draft vs `targetPublished` yields exactly the edits that are not live yet. Commit refs enforce the same collection + root scoping as branch refs.
+  - **`withAttribution` on `getDiff`:** every diff entry and tree annotation gains `attribution: { commitId, changedAt, changedBy, changedByUser? }`. Own-version changes attribute the commit that created the source version; pure position moves attribute the commit that actually repositioned the block (derived by walking the new parent's version history; omitted when the move arrived via a merge). `changedByUser` follows the `withUser`/`exposeColumns` rules.
+  - **`withChanges` on `getRootHistory`:** each commit entry gains `changes: { added, modified, deleted }` — computed as a version-id-level snapshot set-diff in a single SQL query per page (no properties loaded), intended for history badges. Merge and revert commits count absence-based deletions correctly (their snapshots carry no tombstones); merge commits diff against their first parent.
+  - Boolean query flags (`targetPublished`, `withAttribution`, `withChanges`) decode strictly over the wire — the string `'false'` means false.
+
+  New exported type: `ChangeAttribution`.
+
+- [`93561b4`](https://github.com/weepaho3/createCMS/commit/93561b4f61a728af1194a2a760fc71fdf45a897f) Thanks [@weepaho3](https://github.com/weepaho3)! - chore(deps): raise the `fast-xml-parser` dependency floor from ^5.4.2 to ^5.7.0 so downstream consumers cannot resolve a version affected by the &lt;5.7.0 prototype-pollution / XML-injection advisory
+
+- [`04f63f2`](https://github.com/weepaho3/createCMS/commit/04f63f2db12474cbe862b0e733b30d84ca718288) Thanks [@weepaho3](https://github.com/weepaho3)! - docs(readme): fix links that 404 on npm, correct the slug example (prefix, not root), and the Node engine version
+
+- [`46c9a7f`](https://github.com/weepaho3/createCMS/commit/46c9a7fe920f4f69297fd80eeffefab185e93a37) Thanks [@weepaho3](https://github.com/weepaho3)! - feat(cli): add `createcms generate --check` — verify the committed schema is up to date without writing, exiting non-zero on drift (for CI). Reuses the exact generator, so it never diverges from what `generate` would write.
+
+- [`53c71ba`](https://github.com/weepaho3/createCMS/commit/53c71ba9d8692b73ab31ec1423291d032b465519) Thanks [@weepaho3](https://github.com/weepaho3)! - fix(media): scope variant refs to the active tenant and measure real upload bytes
+
+  `validateVariantRefs` looked up `variantOf` ids with no scope filter, letting a
+  multi-tenant caller reference or probe another tenant's asset ids. It now ANDs
+  the active scope's asset `where`, mirroring every other media query.
+
+  On the two server buffer-upload paths (`uploadAssets`, `replaceAsset`) the
+  `maxFileSize` check, the persisted `size` column, and the S3 `contentLength` all
+  used the client-declared `size` — a body field the server never verified. They
+  now use the true byte length measured from the held buffer, so an under-declared
+  `size` can no longer bypass the limit or corrupt stored metadata. The
+  client-side `createSignedUpload` path is unchanged (the server never holds those
+  bytes).
+
+- [#57](https://github.com/weepaho3/createCMS/pull/57) [`818d102`](https://github.com/weepaho3/createCMS/commit/818d102d4146c31a5ac15ff146d5879352792d48) Thanks [@weepaho3](https://github.com/weepaho3)! - fix(merge): stop dropping one-side-added blocks from merged snapshots (data loss)
+
+  `buildMergedSnapshot`'s delete-vs-edit exclusion treated "absent from the other side" as "deleted by the other side" — but a block with no live version at the common ancestor is simply NEW on whichever side carries it. On any merge where the target had diverged (the real three-way path), this silently dropped blocks that were added after the branch point on either side: content vanished from the merged tree with no conflict and no error. The exclusion is now gated on a live base version, so one-side additions always survive; genuine delete-vs-edit cases (block existed at the ancestor) still resolve exactly as before. Fast-forward and forced-merge-on-undiverged-target paths were never affected.
+
+- [`025fa3a`](https://github.com/weepaho3/createCMS/commit/025fa3ae8f65afa1d0d6e3c55ccdede9c6eae361) Thanks [@weepaho3](https://github.com/weepaho3)! - chore(pruning): remove the unused, unbudgeted collectRootExecutionPlans export
+
+  `collectRootExecutionPlans` loaded every root with no limit and then serially ran the full per-root planning bundle (`planRootPruning` + `collectPluginPruningPlans`) with no bound — an unbounded N+1 whose memory footprint grows with root count. It had zero callers anywhere in the repo, was never re-exported from the package entrypoint, and had no `./admin` subpath to reach it externally. The production entry point, `runPruningPass`, already does the budgeted equivalent directly (bounded by `maxRoots`/`maxDurationMs`), so this was dead code — not a reachable dry-run/reporting API. Removed.
+
+- [`e393ea1`](https://github.com/weepaho3/createCMS/commit/e393ea1a0765727c06d1d54f89079e8888a6a61a) Thanks [@weepaho3](https://github.com/weepaho3)! - fix(routes): decode remaining GET boolean query flags wire-safely
+
+  `z.coerce.boolean()` turns the wire string `'false'` into `true`
+  (`Boolean('false') === true`), so passing `false` over HTTP inverted the flag.
+  Migrated the last GET flags — `listBranches` (isDeletable / hasPublications /
+  hasOpenMergeRequests), `listRoots` (hasPublications), `notifications.list`
+  (unreadOnly), `getBlockTree` (raw / includeReferencePreviews),
+  `getPublishedContent` (raw), and `listAssets` (unfiled) / the media asset gate
+  (download) — to `wireBooleanSchema` + `wireBooleanIsTrue`. Tri-state filters keep
+  true/false/absent distinct. In-process callers passing real booleans are
+  unaffected.
+
 ## 0.2.12
 
 ### Patch Changes
