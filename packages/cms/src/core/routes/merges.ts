@@ -1526,7 +1526,8 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
             // (the transaction default here) the FOR UPDATE reads below observe
             // the latest committed head; if a concurrent merge/commit moved
             // either head between the unlocked read and the lock, we recompute
-            // the ancestor under the lock — rare, and always correct.
+            // the ancestor (and, if `dismissStaleApprovals` is on, the approval
+            // state) under the lock — rare, and always correct.
             const [preSource] = await tx
               .select({ headCommitId: branches.headCommitId })
               .from(branches)
@@ -1539,13 +1540,19 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
               .where(eq(branches.id, mr.targetBranchId));
             if (!preTarget) throw new CMSError('BRANCH_NOT_FOUND');
 
-            const [preAncestor, approvalState] = await Promise.all([
+            const [preAncestor, preApprovalState] = await Promise.all([
               findCommonAncestor(
                 tx,
                 preSource.headCommitId,
                 preTarget.headCommitId,
               ),
-              getApprovalStateForMergeRequest(tx, mr.id),
+              getApprovalStateForMergeRequest(
+                tx,
+                mr.id,
+                branchPolicy.dismissStaleApprovals
+                  ? preSource.headCommitId
+                  : undefined,
+              ),
             ]);
 
             const [sourceBranch] = await tx
@@ -1595,6 +1602,24 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
             if (!ancestor) throw new CMSError('NO_COMMON_ANCESTOR');
             const baseCommitId = ancestor.commonAncestorCommitId;
 
+            // Same reuse-unless-moved rule for the approval read: when
+            // `dismissStaleApprovals` is on, the state was pinned to
+            // `preSource.headCommitId` above. If a concurrent write moved the
+            // source head between that unlocked read and the FOR UPDATE lock,
+            // re-pin to the now-locked, actually-being-merged head so the
+            // staleness check reflects the commit that is really about to be
+            // merged, not a commit we already know is stale.
+            const approvalState =
+              liveSourceCommitId === preSource.headCommitId
+                ? preApprovalState
+                : await getApprovalStateForMergeRequest(
+                    tx,
+                    mr.id,
+                    branchPolicy.dismissStaleApprovals
+                      ? liveSourceCommitId
+                      : undefined,
+                  );
+
             // A fast-forward is *possible* only when the target has not diverged
             // from the common ancestor. `noFastForward` (per call) overrides the
             // configured `mergeStrategy`; either forces an explicit merge commit
@@ -1615,6 +1640,12 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
               if (!approvalState.hasRequests) {
                 throw new CMSError('MERGE_APPROVAL_REQUIRED');
               }
+              if (approvalState.staleRequests) {
+                // dismissStaleApprovals is on and every approval was recorded
+                // against an earlier commit — the author pushed after review.
+                // Mirrors GitHub's "dismiss stale approvals" branch protection.
+                throw new CMSError('APPROVALS_STALE');
+              }
               if (
                 !approvalGatePasses(
                   approvalState,
@@ -1623,17 +1654,27 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
               ) {
                 throw new CMSError('APPROVALS_NOT_FULLY_APPROVED');
               }
-            } else if (
-              approvalState.hasRequests &&
-              !approvalGatePasses(approvalState, branchPolicy.requiredReviewers)
-            ) {
-              // Default (flag-independent) behavior, mirroring publishBranch: even
-              // with the governance flags off, an approval request that exists but
-              // is not fully approved — e.g. still PENDING — blocks the merge. If
-              // someone opened an approval request, a merge must not silently
-              // bypass it; only once every request is APPROVED may the merge
-              // proceed.
-              throw new CMSError('APPROVALS_NOT_FULLY_APPROVED');
+            } else if (approvalState.hasRequests) {
+              if (approvalState.staleRequests) {
+                // dismissStaleApprovals is on and every approval was recorded
+                // against an earlier commit — the author pushed after review.
+                // Mirrors GitHub's "dismiss stale approvals" branch protection.
+                throw new CMSError('APPROVALS_STALE');
+              }
+              if (
+                !approvalGatePasses(
+                  approvalState,
+                  branchPolicy.requiredReviewers,
+                )
+              ) {
+                // Default (flag-independent) behavior, mirroring publishBranch:
+                // even with the governance flags off, an approval request that
+                // exists but is not fully approved — e.g. still PENDING — blocks
+                // the merge. If someone opened an approval request, a merge must
+                // not silently bypass it; only once every request is APPROVED
+                // may the merge proceed.
+                throw new CMSError('APPROVALS_NOT_FULLY_APPROVED');
+              }
             }
 
             if (doFastForward) {

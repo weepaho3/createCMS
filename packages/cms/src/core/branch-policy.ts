@@ -19,6 +19,7 @@ export type ResolvedBranchPolicy = {
   protectPublishedBranches: boolean;
   requireApprovalToMerge: boolean;
   requireApprovalBeforePublish: boolean;
+  dismissStaleApprovals: boolean;
   requiredReviewers: number;
   mergeStrategy: MergeStrategy;
 };
@@ -47,6 +48,9 @@ export function resolveBranchPolicy(
     requireApprovalToMerge: pick('requireApprovalToMerge') === true,
     // Default false: keep the existing conditional publish behavior.
     requireApprovalBeforePublish: pick('requireApprovalBeforePublish') === true,
+    // Default false: an approval survives a subsequent push, matching GitHub's
+    // default. Opt in to require re-approval after every push.
+    dismissStaleApprovals: pick('dismissStaleApprovals') === true,
     requiredReviewers: Math.max(1, pick('requiredReviewers') ?? 1),
     // Default 'fast-forward': keep the leanest history unless opted into merge commits.
     mergeStrategy: ctx.mergeStrategy ?? DEFAULT_MERGE_STRATEGY,

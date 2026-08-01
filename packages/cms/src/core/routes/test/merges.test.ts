@@ -2,6 +2,12 @@ import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 
 import {
+  allowAnonymous,
+  createCMS,
+  defineCollection,
+  defineCollections,
+} from '../../../index';
+import {
   assets,
   blockVersions,
   branches,
@@ -12,12 +18,6 @@ import {
   mergeConflicts,
   mergeRequests,
 } from '../../../schema';
-import {
-  allowAnonymous,
-  createCMS,
-  defineCollection,
-  defineCollections,
-} from '../../../index';
 import { setupTestCMS } from '../../../test-utils/cms';
 import { setupTestDB } from '../../../test-utils/db';
 import { DUMMY_MEDIA_CONFIG, pages } from '../../../test-utils/fixtures';
@@ -1157,9 +1157,7 @@ describe('getDiff', () => {
         withAttribution: 'true' as unknown as boolean,
       },
     });
-    const withEntry = withResult.diff!.find(
-      (d) => d.blockId === block.blockId,
-    );
+    const withEntry = withResult.diff!.find((d) => d.blockId === block.blockId);
     expect(withEntry!.attribution).toBeDefined();
     expect(withEntry!.attribution!.commitId).toBe(block.commit.id);
   });
@@ -2212,7 +2210,9 @@ describe('createMergeRequest', () => {
       .where(eq(mergeConflicts.mergeRequestId, result.mergeRequest.id));
 
     expect(dbConflicts.length).toBeGreaterThanOrEqual(1);
-    const dbConflict = dbConflicts.find((c: any) => c.blockId === block.blockId);
+    const dbConflict = dbConflicts.find(
+      (c: any) => c.blockId === block.blockId,
+    );
     expect(dbConflict).toBeDefined();
     expect(dbConflict!.resolution).toBeNull();
   });
@@ -3713,6 +3713,291 @@ describe('executeMerge', () => {
 });
 
 // ============================================================================
+// executeMerge — dismissStaleApprovals
+// ============================================================================
+
+describe('executeMerge — dismissStaleApprovals', () => {
+  it('merges when the source branch advanced after approval (default policy)', async () => {
+    // Default policy (dismissStaleApprovals unset): an approval keeps
+    // counting after a push, matching GitHub's default pull-request
+    // behaviour. This must not regress.
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/stale-default-ok', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'First change' },
+      },
+    });
+
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        title: 'Test MR',
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        createdBy: 'user-1',
+      },
+    });
+
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
+
+    // Push a second change AFTER approval — the source branch head advances.
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Second change' },
+      },
+    });
+
+    const result = await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequest.id },
+    });
+
+    expect(result.fastForward).toBe(true);
+  });
+
+  it('still blocks a merge with a pending approval request (default policy)', async () => {
+    // Pins the existing flag-independent rule: an approval request that
+    // exists but is not fully approved blocks the merge, regardless of
+    // dismissStaleApprovals.
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/stale-default-pending', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'New content' },
+      },
+    });
+
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        title: 'Test MR',
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        createdBy: 'user-1',
+      },
+    });
+
+    await cms.api.pages.requestApproval({
+      body: {
+        mergeRequestId: mr.mergeRequest.id,
+        requestedReviewers: ['reviewer-1'],
+      },
+      context: { userId: 'requester-1' },
+    });
+
+    await expect(
+      cms.api.pages.executeMerge({
+        body: { mergeRequestId: mr.mergeRequest.id },
+      }),
+    ).rejects.toThrow(/not all requested approvals are approved/i);
+  });
+
+  it('rejects a stale approval when dismissStaleApprovals is on', async () => {
+    const { cms } = await setupTestCMS({
+      branchProtection: { dismissStaleApprovals: true },
+    });
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/stale-strict', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'First change' },
+      },
+    });
+
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        title: 'Test MR',
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        createdBy: 'user-1',
+      },
+    });
+
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
+
+    // Push a second change AFTER approval — supersedes the approval.
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Second change' },
+      },
+    });
+
+    await expect(
+      cms.api.pages.executeMerge({
+        body: { mergeRequestId: mr.mergeRequest.id },
+      }),
+    ).rejects.toThrow(/stale|approved/i);
+  });
+
+  it('merges when the approval matches the current head and the flag is on', async () => {
+    const { cms } = await setupTestCMS({
+      branchProtection: { dismissStaleApprovals: true },
+    });
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/stale-strict-fresh', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'New content' },
+      },
+    });
+
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        title: 'Test MR',
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        createdBy: 'user-1',
+      },
+    });
+
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
+
+    // No push after approval — the approval still matches the current head.
+    const result = await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequest.id },
+    });
+
+    expect(result.fastForward).toBe(true);
+  });
+
+  it('merges after re-approval on the new head with the flag on', async () => {
+    const { cms } = await setupTestCMS({
+      branchProtection: { dismissStaleApprovals: true },
+    });
+
+    const root = await cms.api.pages.createRoot({
+      body: {
+        slug: '/stale-strict-reapprove',
+        properties: { title: 'Page' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'First change' },
+      },
+    });
+
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        title: 'Test MR',
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        createdBy: 'user-1',
+      },
+    });
+
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
+
+    // Push a second change AFTER approval — supersedes the approval.
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Second change' },
+      },
+    });
+
+    await expect(
+      cms.api.pages.executeMerge({
+        body: { mergeRequestId: mr.mergeRequest.id },
+      }),
+    ).rejects.toThrow(/stale|approved/i);
+
+    // Recovery path: request and approve again on the new head.
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
+
+    const result = await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequest.id },
+    });
+
+    expect(result.fastForward).toBe(true);
+  });
+});
+
+// ============================================================================
 // executeMerge — one-side additions survive a three-way merge
 // ============================================================================
 
@@ -4884,7 +5169,9 @@ describe('createMergeBlockVersion', () => {
     });
 
     // Step 2: Resolve all conflicts using the custom version
-    const blockConflict = dbConflicts.find((c: any) => c.blockId === block.blockId)!;
+    const blockConflict = dbConflicts.find(
+      (c: any) => c.blockId === block.blockId,
+    )!;
     const otherConflicts = dbConflicts.filter(
       (c: any) => c.blockId !== block.blockId,
     );
@@ -4974,7 +5261,9 @@ describe('createMergeBlockVersion', () => {
     expect(refs[0].targetKey).toBe(asset.id);
 
     // Drive the resolved version to the live head via a real merge.
-    const blockConflict = dbConflicts.find((c: any) => c.blockId === block.blockId)!;
+    const blockConflict = dbConflicts.find(
+      (c: any) => c.blockId === block.blockId,
+    )!;
     const otherConflicts = dbConflicts.filter(
       (c: any) => c.blockId !== block.blockId,
     );

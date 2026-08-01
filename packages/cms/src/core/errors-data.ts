@@ -176,6 +176,11 @@ export const CMS_ERRORS = {
     status: 400 as const,
     message: 'Cannot proceed: not all requested approvals are approved',
   },
+  APPROVALS_STALE: {
+    status: 409 as const,
+    message:
+      'The source branch has new commits since it was approved; request approval again',
+  },
   BRANCHES_NOT_SAME_ROOT: {
     status: 400 as const,
     message: 'Source and target branches must belong to the same root',
