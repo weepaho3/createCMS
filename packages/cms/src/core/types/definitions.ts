@@ -1221,6 +1221,16 @@ export type BranchProtectionConfig = {
    */
   requireApprovalBeforePublish?: boolean;
   /**
+   * Whether pushing new commits to a merge request's source branch invalidates
+   * existing approvals. Default `false` — an approval keeps counting after a
+   * push, matching GitHub's default pull-request behaviour. Set `true` for
+   * GitHub's "Dismiss stale pull request approvals when new commits are pushed":
+   * the merge gate then only counts approvals recorded against the source
+   * branch's current head commit, and a superseded approval fails with
+   * `APPROVALS_STALE`.
+   */
+  dismissStaleApprovals?: boolean;
+  /**
    * Minimum distinct approved reviewers required by the merge / publish gates,
    * on top of "all requested reviewers approved". Default `1`.
    */

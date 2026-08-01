@@ -18,42 +18,42 @@ export const cms = createCMS({
 
 ## Options
 
-| Option | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `db` | `DrizzleInstance` | yes | | Your Drizzle (PostgreSQL) database instance. |
-| `collections` | `Record<string, CollectionDefinition>` | yes | | The collections, usually grouped with `defineCollections`. |
-| `media` | `MediaConfig` | yes | | S3-compatible storage config (see below). |
-| `authMiddleware` | `CMSMiddleware` | yes | | Resolves the user and permissions per request. `createCMS` throws without it; pass [`allowAnonymous()`](/docs/resources/security#authentication-is-required) to run with no auth on purpose. |
-| `plugins` | `CMSPlugin[]` | no | `[]` | Server plugins — see [Building plugins](/docs/plugins/building). |
-| `basePath` | `string` | no | `'/api/cms'` | Base path the router mounts under. |
-| `dataRetention` | `DataRetentionConfig` | no | | Pruning policy for old commits and archived roots. |
-| `forceCommitMessage` | `boolean` | no | `false` | Require a non-empty `message` on every content mutation (create/update/delete/move/duplicate of roots and blocks). An empty or whitespace-only message is rejected with `COMMIT_MESSAGE_REQUIRED` instead of auto-generating one. |
-| `defaultBranchName` | `string` | no | `'main'` | Name of the default branch every root is seeded with. |
-| `branchProtection` | `BranchProtectionConfig` | no | | Branch-protection and approval gates (see below). |
-| `mergeStrategy` | `'fast-forward' \| 'merge-commit'` | no | `'fast-forward'` | Default integration strategy for `executeMerge` when a fast-forward is possible. `'fast-forward'` moves the target head with no merge commit; `'merge-commit'` always records an explicit merge commit (git's `--no-ff`). A diverged target always produces a merge commit regardless. Override per call with `executeMerge({ noFastForward })`. |
-| `user` | `CMSUserConfig` | no | | Links a user table so reads can enrich with author data. |
-| `hooks` | `{ before?, after? }` | no | | Inline before/after hooks on CMS actions. |
-| `schema` | `{ output?: string }` | no | | CLI-only: the `output` path for `createcms generate` (default `./cms-schema.ts`). Not read at runtime. |
-| `onRevalidate` | `RevalidateHandler \| RevalidateConfig` | no | | Called after content changes, for cache revalidation. |
-| `onNotification` | `OnNotificationHandler` | no | | Called when the CMS emits a notification. |
-| `notifications` | `boolean` | no | `true` | Set `false` to fully disable notifications — no tables, no routes, and `client.notifications` / `cms.notify` absent from the types (see below). |
-| `realtime` | `{ url, token }` | no | | Upstash Redis credentials. Enables the `/realtime` SSE route, per-user notification push, and A/B live results (see below). |
+| Option               | Type                                    | Required | Default          | Description                                                                                                                                                                                                                                                                                                                                      |
+| -------------------- | --------------------------------------- | -------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `db`                 | `DrizzleInstance`                       | yes      |                  | Your Drizzle (PostgreSQL) database instance.                                                                                                                                                                                                                                                                                                     |
+| `collections`        | `Record<string, CollectionDefinition>`  | yes      |                  | The collections, usually grouped with `defineCollections`.                                                                                                                                                                                                                                                                                       |
+| `media`              | `MediaConfig`                           | yes      |                  | S3-compatible storage config (see below).                                                                                                                                                                                                                                                                                                        |
+| `authMiddleware`     | `CMSMiddleware`                         | yes      |                  | Resolves the user and permissions per request. `createCMS` throws without it; pass [`allowAnonymous()`](/docs/resources/security#authentication-is-required) to run with no auth on purpose.                                                                                                                                                     |
+| `plugins`            | `CMSPlugin[]`                           | no       | `[]`             | Server plugins — see [Building plugins](/docs/plugins/building).                                                                                                                                                                                                                                                                                 |
+| `basePath`           | `string`                                | no       | `'/api/cms'`     | Base path the router mounts under.                                                                                                                                                                                                                                                                                                               |
+| `dataRetention`      | `DataRetentionConfig`                   | no       |                  | Pruning policy for old commits and archived roots.                                                                                                                                                                                                                                                                                               |
+| `forceCommitMessage` | `boolean`                               | no       | `false`          | Require a non-empty `message` on every content mutation (create/update/delete/move/duplicate of roots and blocks). An empty or whitespace-only message is rejected with `COMMIT_MESSAGE_REQUIRED` instead of auto-generating one.                                                                                                                |
+| `defaultBranchName`  | `string`                                | no       | `'main'`         | Name of the default branch every root is seeded with.                                                                                                                                                                                                                                                                                            |
+| `branchProtection`   | `BranchProtectionConfig`                | no       |                  | Branch-protection and approval gates (see below).                                                                                                                                                                                                                                                                                                |
+| `mergeStrategy`      | `'fast-forward' \| 'merge-commit'`      | no       | `'fast-forward'` | Default integration strategy for `executeMerge` when a fast-forward is possible. `'fast-forward'` moves the target head with no merge commit; `'merge-commit'` always records an explicit merge commit (git's `--no-ff`). A diverged target always produces a merge commit regardless. Override per call with `executeMerge({ noFastForward })`. |
+| `user`               | `CMSUserConfig`                         | no       |                  | Links a user table so reads can enrich with author data.                                                                                                                                                                                                                                                                                         |
+| `hooks`              | `{ before?, after? }`                   | no       |                  | Inline before/after hooks on CMS actions.                                                                                                                                                                                                                                                                                                        |
+| `schema`             | `{ output?: string }`                   | no       |                  | CLI-only: the `output` path for `createcms generate` (default `./cms-schema.ts`). Not read at runtime.                                                                                                                                                                                                                                           |
+| `onRevalidate`       | `RevalidateHandler \| RevalidateConfig` | no       |                  | Called after content changes, for cache revalidation.                                                                                                                                                                                                                                                                                            |
+| `onNotification`     | `OnNotificationHandler`                 | no       |                  | Called when the CMS emits a notification.                                                                                                                                                                                                                                                                                                        |
+| `notifications`      | `boolean`                               | no       | `true`           | Set `false` to fully disable notifications — no tables, no routes, and `client.notifications` / `cms.notify` absent from the types (see below).                                                                                                                                                                                                  |
+| `realtime`           | `{ url, token }`                        | no       |                  | Upstash Redis credentials. Enables the `/realtime` SSE route, per-user notification push, and A/B live results (see below).                                                                                                                                                                                                                      |
 
 ## `media`
 
 `MediaConfig` is a discriminated union on `provider`. These base fields apply to every provider:
 
-| Field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `accessKeyId` | `string` | | Access key ID. |
-| `secretAccessKey` | `string` | | Secret access key. |
-| `sessionToken` | `string` | | Optional token for temporary credentials. |
-| `bucketName` | `string` | | Bucket for stored assets. |
-| `publicUrl` | `string` | | Public base URL assets are served from. |
-| `maxFileSize` | `number` | `4194304` (4 MB) | Maximum upload size in bytes. |
-| `maxFiles` | `number` | `10` | Maximum files per upload batch. |
-| `allowedMimeTypes` | `string[]` | `['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'video/mp4', 'video/webm', 'application/pdf']` | Allowed MIME types (exact match, no wildcards). `image/svg+xml` is **excluded** by default — SVG can carry inline script (stored-XSS risk). Add it (or any other type) explicitly only if you serve assets cross-origin. See [Security → Media privacy](/docs/resources/security#media-privacy). |
-| `signedUrlExpiresIn` | `number` | `120` | Signed URL lifetime in seconds. |
+| Field                | Type       | Default                                                                                                | Description                                                                                                                                                                                                                                                                                      |
+| -------------------- | ---------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `accessKeyId`        | `string`   |                                                                                                        | Access key ID.                                                                                                                                                                                                                                                                                   |
+| `secretAccessKey`    | `string`   |                                                                                                        | Secret access key.                                                                                                                                                                                                                                                                               |
+| `sessionToken`       | `string`   |                                                                                                        | Optional token for temporary credentials.                                                                                                                                                                                                                                                        |
+| `bucketName`         | `string`   |                                                                                                        | Bucket for stored assets.                                                                                                                                                                                                                                                                        |
+| `publicUrl`          | `string`   |                                                                                                        | Public base URL assets are served from.                                                                                                                                                                                                                                                          |
+| `maxFileSize`        | `number`   | `4194304` (4 MB)                                                                                       | Maximum upload size in bytes.                                                                                                                                                                                                                                                                    |
+| `maxFiles`           | `number`   | `10`                                                                                                   | Maximum files per upload batch.                                                                                                                                                                                                                                                                  |
+| `allowedMimeTypes`   | `string[]` | `['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'video/mp4', 'video/webm', 'application/pdf']` | Allowed MIME types (exact match, no wildcards). `image/svg+xml` is **excluded** by default — SVG can carry inline script (stored-XSS risk). Add it (or any other type) explicitly only if you serve assets cross-origin. See [Security → Media privacy](/docs/resources/security#media-privacy). |
+| `signedUrlExpiresIn` | `number`   | `120`                                                                                                  | Signed URL lifetime in seconds.                                                                                                                                                                                                                                                                  |
 
 Each provider adds its own fields:
 
@@ -114,56 +114,58 @@ const cms = createCMS({ /* … */ notifications: false });
 
 The whole object is optional, but when you provide it, `keepDays` and `keepMinCommits` are required.
 
-| Field | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `keepDays` | `number` | yes | | How long to keep old commits. |
-| `keepMinCommits` | `number` | yes | | Minimum commits to keep per branch regardless of age. |
-| `archiveKeepDays` | `number` | no | `keepDays` | Grace period before an archived root is hard-deleted. |
+| Field             | Type     | Required | Default    | Description                                           |
+| ----------------- | -------- | -------- | ---------- | ----------------------------------------------------- |
+| `keepDays`        | `number` | yes      |            | How long to keep old commits.                         |
+| `keepMinCommits`  | `number` | yes      |            | Minimum commits to keep per branch regardless of age. |
+| `archiveKeepDays` | `number` | no       | `keepDays` | Grace period before an archived root is hard-deleted. |
 
 ## `branchProtection`
 
 Governance for published content and the merge/publish approval gates. Every field is opt-in; an empty config preserves current behavior. Each field can be **overridden per collection** via the collection's own `branchProtection` (a `Partial<BranchProtectionConfig>`): a collection's value wins over this global one field-by-field, and unset fields inherit the global value. For example a `reusableBlock` collection can set `branchProtection: { protectPublishedBranches: false }` to stay directly editable while pages keep the global protection.
 
-| Field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `protectPublishedBranches` | `boolean` | `false` | Lock a branch against direct content mutations (create/update/delete/move/duplicate of blocks, `updateRoot`, and reverting the branch) for exactly as long as it is **published** — the live tree is immutable in place. Changes go via another branch + merge, then a re-publish; unpublishing makes the branch directly editable again. Applies to **any** published branch (a root can have several at once, e.g. A/B variants), not just the default one. A never-published branch is freely editable. Throws `PROTECTED_BRANCH`. |
-| `requireApprovalToMerge` | `boolean` | `false` | Require approvals before `executeMerge`. **Note:** previously merges always required approval — this now defaults to off; set `true` to keep the gate. |
-| `requireApprovalBeforePublish` | `boolean` | `false` | Require approvals before `publishBranch`, even when none were explicitly requested. `false` keeps the existing conditional behavior (gate only when approvals exist). |
-| `requiredReviewers` | `number` | `1` | Minimum distinct approved reviewers for the merge / publish gates, on top of "all requested reviewers approved". |
+| Field                          | Type      | Default | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------ | --------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `protectPublishedBranches`     | `boolean` | `false` | Lock a branch against direct content mutations (create/update/delete/move/duplicate of blocks, `updateRoot`, and reverting the branch) for exactly as long as it is **published** — the live tree is immutable in place. Changes go via another branch + merge, then a re-publish; unpublishing makes the branch directly editable again. Applies to **any** published branch (a root can have several at once, e.g. A/B variants), not just the default one. A never-published branch is freely editable. Throws `PROTECTED_BRANCH`. |
+| `requireApprovalToMerge`       | `boolean` | `false` | Require approvals before `executeMerge`. **Note:** previously merges always required approval — this now defaults to off; set `true` to keep the gate.                                                                                                                                                                                                                                                                                                                                                                                |
+| `requireApprovalBeforePublish` | `boolean` | `false` | Require approvals before `publishBranch`, even when none were explicitly requested. `false` keeps the existing conditional behavior (gate only when approvals exist).                                                                                                                                                                                                                                                                                                                                                                 |
+| `dismissStaleApprovals`        | `boolean` | `false` | Whether pushing new commits to a merge request's source branch invalidates existing approvals. `false` keeps GitHub's default pull-request behavior (an approval survives a subsequent push). Set `true` for GitHub's "Dismiss stale pull request approvals when new commits are pushed": `executeMerge` then only counts approvals recorded against the source branch's current head commit, and a superseded approval fails with `APPROVALS_STALE`.                                                                                 |
+| `requiredReviewers`            | `number`  | `1`     | Minimum distinct approved reviewers for the merge / publish gates, on top of "all requested reviewers approved".                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 ## `mergeStrategy`
 
 The default integration strategy for [`executeMerge`](/docs/reference/server-api), applied when a fast-forward is possible — that is, when the target branch has not diverged from the merge base.
 
-| Value | Behavior |
-| --- | --- |
-| `'fast-forward'` | Move the target head straight to the source head, with no merge commit. The default. |
+| Value            | Behavior                                                                                                  |
+| ---------------- | --------------------------------------------------------------------------------------------------------- |
+| `'fast-forward'` | Move the target head straight to the source head, with no merge commit. The default.                      |
 | `'merge-commit'` | Always record an explicit merge commit — git's `--no-ff` — so every integration stays visible in history. |
 
 A **diverged** target always produces a merge commit regardless of this setting, and a merge with nothing to integrate is always a no-op fast-forward. Override the configured strategy per call with `executeMerge({ noFastForward })`: `true` forces a merge commit, `false` forces a fast-forward. See [Merges](/docs/concepts/merges#fast-forward-vs-merge-commit).
 
 ## `user`
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `table` | `AnyPgTable` | Your Drizzle user table. |
-| `idColumn` | `AnyColumn` | The user id column referenced by content. |
+| Field           | Type                                        | Description                                                                                          |
+| --------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `table`         | `AnyPgTable`                                | Your Drizzle user table.                                                                             |
+| `idColumn`      | `AnyColumn`                                 | The user id column referenced by content.                                                            |
 | `exposeColumns` | `(keyof TTable['$inferSelect'] & string)[]` | Allowlist of user-table columns (camelCase keys) that may be returned via the `withUser` query flag. |
 
 ## Return value
 
 `createCMS` returns:
 
-| Property | Description |
-| --- | --- |
-| `router` | HTTP router; destructure `handler` to mount it. |
-| `api` | Type-safe server-side callers, namespaced by collection (and `admin`). |
-| `collections` | Your collections, each augmented with its `name`. |
-| `notify` | Send a notification through the CMS. |
-| `notificationService` | The underlying notification service. |
-| `revalidate` | Manual revalidation trigger. Always present; its value is `undefined` unless `onRevalidate` is set. |
-| `$ERROR_CODES` | Merged error-code map (core plus plugins). |
+| Property              | Description                                                                                         |
+| --------------------- | --------------------------------------------------------------------------------------------------- |
+| `router`              | HTTP router; destructure `handler` to mount it.                                                     |
+| `api`                 | Type-safe server-side callers, namespaced by collection (and `admin`).                              |
+| `collections`         | Your collections, each augmented with its `name`.                                                   |
+| `notify`              | Send a notification through the CMS.                                                                |
+| `notificationService` | The underlying notification service.                                                                |
+| `revalidate`          | Manual revalidation trigger. Always present; its value is `undefined` unless `onRevalidate` is set. |
+| `$ERROR_CODES`        | Merged error-code map (core plus plugins).                                                          |
 
 <Callout type="info">
-  Define collections with [`defineCollection`](/docs/reference/define). Call the API at [Server API](/docs/reference/server-api).
+  Define collections with [`defineCollection`](/docs/reference/define). Call the
+  API at [Server API](/docs/reference/server-api).
 </Callout>
