@@ -34,10 +34,8 @@ import {
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError, errorMessages } from '../errors';
 import { resolveLinkPaths } from '../links';
-import {
-  coreReferenceResolver,
-  getReferenceUsageDetails,
-} from '../references';
+import { coreReferenceResolver, getReferenceUsageDetails } from '../references';
+import { buildReferencePreviews } from '../references-render';
 import {
   buildBlockInputSchema,
   buildPropertiesSchema,
@@ -45,12 +43,8 @@ import {
 } from '../schema-builders';
 import { crossScopeColumns } from '../scope';
 import { loadTemplateStrings } from '../templates';
-import {
-  wireBooleanIsTrue,
-  wireBooleanSchema,
-} from '../utils/wire-boolean';
+import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
 import { loadVariables, substituteVariables } from '../variables';
-import { buildReferencePreviews } from '../references-render';
 import { blockTreeNodeSchema, type BlocksContext } from './blocks-context';
 
 // ============================================================================
@@ -728,21 +722,20 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
     ),
 
     /**
-     * Clone a block subtree to a new location (child duplication) or create a new root from it (root duplication).
-     * For root duplication, creates a new root; for child duplication, inserts under a parent.
+     * Clone a block subtree under an existing parent (child duplication only).
+     * To spin a subtree off into a brand-new top-level entry, use `duplicateRoot`
+     * instead.
      * @param rootId Root id (for source branch).
      * @param branchId Source branch id.
      * @param blockId Block id to duplicate (and its entire subtree).
-     * @param targetParentBlockId Parent block for the duplicate (omit for root duplication).
-     * @param targetProperties Root properties (required for root duplication only).
-     * @param targetSlug Slug for duplicated root (optional; validated for uniqueness).
-     * @param targetIndex Index in parent's children for child duplication.
+     * @param targetParentBlockId Parent block for the duplicate.
+     * @param targetIndex Index in parent's children.
      * @param message Optional commit message.
-     * @returns Object with `mode` ('root' or 'child') and `commit` ({ id, message, createdAt, createdBy }); child mode also returns `blockId`, root mode also returns `rootId`, `branchId`, `slug`, and `path`.
-     * @throws MISSING_TARGET_PROPERTIES when root duplication but targetProperties not provided.
+     * @returns Object with `mode` (always `'child'`), `commit` ({ id, message, createdAt, createdBy }), and `blockId` (the new copy's id).
      * @throws BLOCK_NOT_FOUND when source blockId does not exist.
      * @throws BLOCK_ALREADY_DELETED when source block is marked deleted.
-     * @throws PARENT_NOT_FOUND when targetParentBlockId does not exist (child mode).
+     * @throws PARENT_NOT_FOUND when targetParentBlockId does not exist.
+     * @throws DUPLICATE_BLOCK_REQUIRES_PARENT when targetParentBlockId is omitted.
      */
     duplicateBlock: createCMSEndpoint(
       `/${collectionName}/duplicateBlock`,
@@ -752,7 +745,7 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
           rootId: z.string(),
           branchId: z.string(),
           blockId: z.string(),
-          targetParentBlockId: z.string().optional(),
+          targetParentBlockId: z.string(),
           targetProperties: z.record(z.string(), z.unknown()).optional(),
           targetSlug: z.string().optional(),
           targetIndex: z.number().int().min(0).optional(),
@@ -765,7 +758,7 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
                 rootId: string;
                 branchId: string;
                 blockId: string;
-                targetParentBlockId?: string;
+                targetParentBlockId: string;
                 targetProperties?: Record<string, unknown>;
                 targetSlug?: string;
                 targetIndex?: number;
@@ -774,6 +767,9 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
             },
           },
           {
+            // Child-duplication only (root mode moved to `duplicateRoot`), so
+            // 'block' is the exhaustive most-privileged act this endpoint can
+            // perform.
             permissionResource: 'block',
             operation: 'create',
             scope: 'collection',
@@ -782,9 +778,19 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
         ),
       },
       async (ctx) => {
-        return db.transaction((tx) =>
+        // Defensive boundary guard: schema validation already requires
+        // targetParentBlockId, but make the invariant explicit here since
+        // runDuplicate's root-mode branch is a privileged act (root:create)
+        // that this endpoint must never reach.
+        if (!ctx.body.targetParentBlockId) {
+          throw new CMSError('DUPLICATE_BLOCK_REQUIRES_PARENT');
+        }
+        const res = await db.transaction((tx) =>
           runDuplicate(tx, ctx.context.scope, ctx.context.userId, ctx.body),
         );
+        // `res` is statically the child branch now that targetParentBlockId is
+        // required; narrow away the `root` union arm so callers don't have to.
+        return res as Extract<typeof res, { mode: 'child' }>;
       },
     ),
 
@@ -1089,7 +1095,10 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
           // collection — instead of two-plus queries per block serialized
           // under the branch lock.
           const batchAssetIds = new Map<string, string>();
-          const batchRefIdsByCollection = new Map<string, Map<string, string>>();
+          const batchRefIdsByCollection = new Map<
+            string,
+            Map<string, string>
+          >();
           for (const b of [...diff.created, ...diff.updated]) {
             collectPropertyReferences(
               b.type,

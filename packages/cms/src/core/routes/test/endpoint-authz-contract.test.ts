@@ -48,6 +48,9 @@ const EXPECTED: Record<string, Record<string, Expected>> = {
     getBlockTree: { permissionResource: 'block', operation: 'read' },
     moveBlock: { permissionResource: 'block', operation: 'update' },
     deleteBlock: { permissionResource: 'block', operation: 'delete' },
+    // duplicateBlock is now child-duplication only — the root-mode branch
+    // (the privileged root:create act) was removed, not relabeled, so
+    // block:create stays correct and exhaustive. See Plan 002.
     duplicateBlock: { permissionResource: 'block', operation: 'create' },
     // Relabeled root:create (was block:create) — duplicateRoot forces root
     // mode (no parent) and mints a NEW top-level root, the same privileged
@@ -251,7 +254,10 @@ const EXPECTED: Record<string, Record<string, Expected>> = {
     setReleaseItems: { permissionResource: 'release', operation: 'update' },
     getRelease: { permissionResource: 'release', operation: 'read' },
     listReleases: { permissionResource: 'release', operation: 'read' },
-    publishRelease: { permissionResource: 'release', operation: 'update' },
+    // Relabeled publication:create (was release:update) — publishRelease runs
+    // the same publishBranchInTx machinery publications.publishBranch guards
+    // as 'publication':'create'. See Plan 002.
+    publishRelease: { permissionResource: 'publication', operation: 'create' },
   },
 
   // routes/users.ts
@@ -295,7 +301,8 @@ describe('endpoint authorization contract', () => {
     )) {
       for (const ep of Object.keys(eps)) {
         const fn = (eps as any)[ep];
-        const isEndpoint = typeof fn === 'function' && fn?.options?.metadata !== undefined;
+        const isEndpoint =
+          typeof fn === 'function' && fn?.options?.metadata !== undefined;
         if (!isEndpoint) continue;
         if (!EXPECTED[ns]?.[ep]) unmapped.push(`${ns}.${ep}`);
       }

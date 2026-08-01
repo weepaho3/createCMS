@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest';
 
 import type { CMSPlugin } from '../../../index';
 
+import { allowAnonymous, createCMS } from '../../../index';
+import { setupTestDB } from '../../../test-utils/db';
+import { DUMMY_MEDIA_CONFIG } from '../../../test-utils/fixtures';
+import { publishApprovedBranch } from '../../../test-utils/helpers';
 import {
   buildFullPath,
   normalizeSlug,
@@ -10,10 +14,6 @@ import {
   splitPath,
   validateSlugUniqueness,
 } from '../../slug';
-import { allowAnonymous, createCMS } from '../../../index';
-import { setupTestDB } from '../../../test-utils/db';
-import { DUMMY_MEDIA_CONFIG } from '../../../test-utils/fixtures';
-import { publishApprovedBranch } from '../../../test-utils/helpers';
 
 type Api = Record<string, (...args: any[]) => Promise<any>>;
 type CMS = { api: { pages: Api } };
@@ -341,7 +341,7 @@ describe('nested pages', () => {
       });
       // cms-05: the duplicate seeds 'about' as a DRAFT slug (allowed); publishing
       // it into the already-live 'about' collides.
-      const dup = await cms.api.pages.duplicateBlock({
+      const dup = await cms.api.pages.duplicateRoot({
         body: {
           rootId: a.rootId,
           branchId: a.branchId,
@@ -351,7 +351,6 @@ describe('nested pages', () => {
           message: 'dup',
         },
       });
-      if (dup.mode !== 'root') throw new Error('expected root duplication');
       await expect(
         cms.api.pages.publishBranch({
           body: { rootId: dup.rootId, branchId: dup.branchId },

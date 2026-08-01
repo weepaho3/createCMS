@@ -7,7 +7,12 @@ import type { ResolvedSlugConfig } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
 
 import { resolveBranchPolicy } from '../branch-policy';
-import { branches, releaseItems, releases, roots } from '../db/schema.generated';
+import {
+  branches,
+  releaseItems,
+  releases,
+  roots,
+} from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
 import { syncAssetsOnPublish } from '../media/discovery';
@@ -21,7 +26,10 @@ import { publishBranchInTx } from '../publish/publish-branch';
 // ============================================================================
 
 const RELEASE_NOT_FOUND = () =>
-  new APIError(404, { code: 'RELEASE_NOT_FOUND', message: 'Release not found' });
+  new APIError(404, {
+    code: 'RELEASE_NOT_FOUND',
+    message: 'Release not found',
+  });
 
 const RELEASE_NOT_DRAFT = () =>
   new APIError(400, {
@@ -376,7 +384,15 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
               body: {} as { releaseId: string; publishedBy?: string },
             },
           },
-          { ...META, operation: 'update' },
+          {
+            ...META,
+            // Publishing a release runs the same publishBranchInTx machinery as
+            // publications.publishBranch, which guards it as 'publication':'create'.
+            // Labelling this 'release':'update' let a curator role ship a release
+            // and let a role denied publication:create publish through this path.
+            permissionResource: 'publication',
+            operation: 'create',
+          },
         ),
       },
       async (ctx) => {
