@@ -200,7 +200,7 @@ describe('i18n — translationKey group id', () => {
     const src = await cms.api.pages.createRoot({
       body: { slug: 'src', properties: { title: 'Src' } },
     });
-    await cms.api.pages.duplicateBlock({
+    await cms.api.pages.duplicateRoot({
       body: {
         rootId: src.rootId,
         branchId: src.branchId,
@@ -1765,7 +1765,9 @@ describe('i18n — delete guard is anchor-only (RB4)', () => {
 
 describe('i18n — config & middleware guards', () => {
   it('throws LANGUAGE_REQUIRED when the middleware provides no language', async () => {
-    const { cms } = await setupI18nTestCMS({ authMiddleware: async () => ({}) });
+    const { cms } = await setupI18nTestCMS({
+      authMiddleware: async () => ({}),
+    });
     await expect(
       cms.api.pages.createRoot({
         body: { slug: 'x', properties: { title: 'X' } },

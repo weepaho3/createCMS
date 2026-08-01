@@ -85,6 +85,11 @@ export const CMS_ERRORS = {
     status: 400 as const,
     message: 'targetProperties is required when duplicating a root',
   },
+  DUPLICATE_BLOCK_REQUIRES_PARENT: {
+    status: 400 as const,
+    message:
+      'duplicateBlock requires targetParentBlockId; use duplicateRoot to duplicate a root',
+  },
   BRANCH_NAME_ALREADY_EXISTS: {
     status: 409 as const,
     message: 'A branch with this name already exists for this root',

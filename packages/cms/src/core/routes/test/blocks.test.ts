@@ -1491,6 +1491,37 @@ describe('deleteBlock', () => {
 });
 
 describe('duplicateBlock', () => {
+  it('rejects a call with no targetParentBlockId', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/page', properties: { title: 'Page' } },
+    });
+
+    const para = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'Hello' },
+      },
+    });
+
+    // targetParentBlockId is required by the schema now (root mode moved to
+    // duplicateRoot); cast past the type to exercise the runtime path a
+    // non-TS caller (raw HTTP, or a client bypassing types) would hit.
+    await expect(
+      cms.api.pages.duplicateBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          blockId: para.blockId,
+        } as any,
+      }),
+    ).rejects.toThrow(/targetParentBlockId|use duplicateRoot/i);
+  });
+
   it('duplicates a leaf child block with same type and properties', async () => {
     const { cms, db } = await setupTestCMS();
 
@@ -1722,7 +1753,7 @@ describe('duplicateBlock', () => {
       },
     });
 
-    const dup = await cms.api.pages.duplicateBlock({
+    const dup = await cms.api.pages.duplicateRoot({
       body: {
         rootId: root.rootId,
         branchId: root.branchId,
@@ -1732,9 +1763,6 @@ describe('duplicateBlock', () => {
         targetProperties: { title: 'Copy of Original' },
       },
     });
-
-    expect(dup.mode).toBe('root');
-    if (dup.mode !== 'root') throw new Error('Expected root mode');
 
     const [newRoot] = await db
       .select()
@@ -1843,15 +1871,21 @@ describe('duplicateBlock', () => {
       body: { slug: '/page', properties: { title: 'Page' } },
     });
 
+    // Root duplication now lives on duplicateRoot, where targetProperties is a
+    // REQUIRED schema field — omitting it is a schema validation error, not
+    // the runtime MISSING_TARGET_PROPERTIES check (which duplicateBlock used
+    // to throw when it still had a root mode). Accept either shape.
     await expect(
-      cms.api.pages.duplicateBlock({
+      cms.api.pages.duplicateRoot({
         body: {
           rootId: root.rootId,
           branchId: root.branchId,
           blockId: root.rootId,
-        },
+        } as any,
       }),
-    ).rejects.toThrow(/targetProperties is required when duplicating a root/);
+    ).rejects.toThrow(
+      /targetProperties is required when duplicating a root|targetProperties/i,
+    );
   });
 
   it('rejects duplicating a deleted block', async () => {
@@ -3846,9 +3880,7 @@ describe('updateBlocks', () => {
         query: { rootId: root.rootId, branchId: root.branchId },
       });
 
-      const bySrc = tree.children
-        .map((c: any) => c.properties.src)
-        .sort();
+      const bySrc = tree.children.map((c: any) => c.properties.src).sort();
       expect(bySrc).toEqual([assetA.id, assetB.id, assetC.id].sort());
     });
 
@@ -3898,9 +3930,7 @@ describe('updateBlocks', () => {
             },
           },
         }),
-      ).rejects.toThrow(
-        new RegExp(`image asset does not exist: ${missingId}`),
-      );
+      ).rejects.toThrow(new RegExp(`image asset does not exist: ${missingId}`));
     });
   });
 });
@@ -4105,7 +4135,10 @@ describe('middleware', () => {
       cms.api.pages.archiveRoot({ body: { rootId: root.rootId } }),
     ).rejects.toThrow(/denied/i);
 
-    const [row] = await db.select().from(roots).where(eq(roots.id, root.rootId));
+    const [row] = await db
+      .select()
+      .from(roots)
+      .where(eq(roots.id, root.rootId));
     expect(row).toBeDefined();
     expect(row.archivedAt).toBeNull();
   });

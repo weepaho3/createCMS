@@ -56,7 +56,7 @@ describe('multiTenant — root isolation', () => {
       body: { slug: '/acme-page', properties: { title: 'Acme Page' } },
     });
 
-    const dup = await cms.api.pages.duplicateBlock({
+    const dup = await cms.api.pages.duplicateRoot({
       body: {
         rootId: created.rootId,
         branchId: created.branchId,

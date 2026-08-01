@@ -22,16 +22,44 @@ Load an entry's block tree for editing, at a branch head or a specific commit. Y
   },
 }`}
   returns={{
-    tree: { type: 'BlockTreeNode', description: "The nested block tree, root node first. A discriminated union over `type`; the top node is `type: 'root'` and each node carries its typed `properties` and `children`." },
-    reconstructed: { type: 'boolean', description: 'True when the commit was rebuilt from a partial snapshot.' },
-    references: { type: 'Record<string, BlockTreeNode>', optional: true, description: 'Published preview tree of every embedded reference, keyed by its stored reference value. Only when `includeReferencePreviews` is set.' },
+    tree: {
+      type: 'BlockTreeNode',
+      description:
+        "The nested block tree, root node first. A discriminated union over `type`; the top node is `type: 'root'` and each node carries its typed `properties` and `children`.",
+    },
+    reconstructed: {
+      type: 'boolean',
+      description: 'True when the commit was rebuilt from a partial snapshot.',
+    },
+    references: {
+      type: 'Record<string, BlockTreeNode>',
+      optional: true,
+      description:
+        'Published preview tree of every embedded reference, keyed by its stored reference value. Only when `includeReferencePreviews` is set.',
+    },
   }}
   params={{
     rootId: { type: 'string', required: true, description: 'The entry.' },
-    branchId: { type: 'string', required: true, description: 'Branch to read (resolves the head commit when `commitId` is omitted).' },
-    commitId: { type: 'string', description: 'A specific commit to read; defaults to the branch head.' },
-    raw: { type: 'boolean', description: 'Keep stored values for editing: skip variable and link resolution.' },
-    includeReferencePreviews: { type: 'boolean', description: 'Also return a `references` sidecar (published previews of embedded references).' },
+    branchId: {
+      type: 'string',
+      required: true,
+      description:
+        'Branch to read (resolves the head commit when `commitId` is omitted).',
+    },
+    commitId: {
+      type: 'string',
+      description: 'A specific commit to read; defaults to the branch head.',
+    },
+    raw: {
+      type: 'boolean',
+      description:
+        'Keep stored values for editing: skip variable and link resolution.',
+    },
+    includeReferencePreviews: {
+      type: 'boolean',
+      description:
+        'Also return a `references` sidecar (published previews of embedded references).',
+    },
   }}
 />
 
@@ -57,18 +85,48 @@ Add a block as a child of a parent block. The body is a discriminated union over
   },
 }`}
   returns={{
-    commit: { type: 'Commit', description: 'The new branch head commit: `{ id, message, createdAt, createdBy }`.' },
-    blockId: { type: 'string', description: 'The id of the newly created block.' },
+    commit: {
+      type: 'Commit',
+      description:
+        'The new branch head commit: `{ id, message, createdAt, createdBy }`.',
+    },
+    blockId: {
+      type: 'string',
+      description: 'The id of the newly created block.',
+    },
   }}
   params={{
     rootId: { type: 'string', required: true, description: 'The entry.' },
     branchId: { type: 'string', required: true, description: 'The branch.' },
-    parentBlockId: { type: 'string', required: true, description: 'Block to attach the new block under (pass the `rootId` to attach at the top level).' },
-    type: { type: 'block type name', required: true, description: "One of the collection's block types." },
-    properties: { type: 'typed block properties', required: true, description: "The block's properties, typed from its block definition." },
-    position: { type: 'number', description: "Index in the parent's children (defaults to append)." },
-    message: { type: 'string', description: 'Commit message (defaults to `Add {type} block`).' },
-    expectedHeadCommitId: { type: 'string', description: 'Optimistic-concurrency guard: reject with `HEAD_MISMATCH` if the branch head moved.' },
+    parentBlockId: {
+      type: 'string',
+      required: true,
+      description:
+        'Block to attach the new block under (pass the `rootId` to attach at the top level).',
+    },
+    type: {
+      type: 'block type name',
+      required: true,
+      description: "One of the collection's block types.",
+    },
+    properties: {
+      type: 'typed block properties',
+      required: true,
+      description: "The block's properties, typed from its block definition.",
+    },
+    position: {
+      type: 'number',
+      description: "Index in the parent's children (defaults to append).",
+    },
+    message: {
+      type: 'string',
+      description: 'Commit message (defaults to `Add {type} block`).',
+    },
+    expectedHeadCommitId: {
+      type: 'string',
+      description:
+        'Optimistic-concurrency guard: reject with `HEAD_MISMATCH` if the branch head moved.',
+    },
   }}
 />
 
@@ -92,16 +150,42 @@ Edit one block with patch semantics: the fields you send overwrite, omitted fiel
   },
 }`}
   returns={{
-    commit: { type: 'Commit', description: 'The new branch head commit: `{ id, message, createdAt, createdBy }`.' },
+    commit: {
+      type: 'Commit',
+      description:
+        'The new branch head commit: `{ id, message, createdAt, createdBy }`.',
+    },
   }}
   params={{
     rootId: { type: 'string', required: true, description: 'The entry.' },
     branchId: { type: 'string', required: true, description: 'The branch.' },
-    blockId: { type: 'string', required: true, description: 'Block to update.' },
-    type: { type: 'block type name', required: true, description: "The block's current type (must match the stored type, else `TYPE_MISMATCH`)." },
-    properties: { type: 'partial block properties', required: true, description: 'Properties to merge. A `null` value deletes that key; omitted keys stay unchanged.' },
-    message: { type: 'string', description: 'Commit message (defaults to `Update {type} block {blockId}`).' },
-    expectedHeadCommitId: { type: 'string', description: 'Optimistic-concurrency guard: reject with `HEAD_MISMATCH` if the branch head moved.' },
+    blockId: {
+      type: 'string',
+      required: true,
+      description: 'Block to update.',
+    },
+    type: {
+      type: 'block type name',
+      required: true,
+      description:
+        "The block's current type (must match the stored type, else `TYPE_MISMATCH`).",
+    },
+    properties: {
+      type: 'partial block properties',
+      required: true,
+      description:
+        'Properties to merge. A `null` value deletes that key; omitted keys stay unchanged.',
+    },
+    message: {
+      type: 'string',
+      description:
+        'Commit message (defaults to `Update {type} block {blockId}`).',
+    },
+    expectedHeadCommitId: {
+      type: 'string',
+      description:
+        'Optimistic-concurrency guard: reject with `HEAD_MISMATCH` if the branch head moved.',
+    },
   }}
 />
 
@@ -124,15 +208,40 @@ Save a whole tree in one commit: createCMS diffs the tree you send against the b
   },
 }`}
   returns={{
-    commit: { type: 'Commit', description: 'The new branch head commit, or the unchanged head commit when nothing differed.' },
-    changed: { type: 'boolean', description: 'True when a real commit was written; false when the tree already matched the head.' },
+    commit: {
+      type: 'Commit',
+      description:
+        'The new branch head commit, or the unchanged head commit when nothing differed.',
+    },
+    changed: {
+      type: 'boolean',
+      description:
+        'True when a real commit was written; false when the tree already matched the head.',
+    },
   }}
   params={{
     rootId: { type: 'string', required: true, description: 'The entry.' },
-    branchId: { type: 'string', required: true, description: 'The branch to write.' },
-    tree: { type: 'block tree node', required: true, description: 'The desired final tree, root node first: `{ blockId, type, properties, children }` (the shape `getBlockTree` returns). The root node `blockId` must equal `rootId`.' },
-    message: { type: 'string', default: "'Batch update'", description: 'Commit message.' },
-    expectedHeadCommitId: { type: 'string', description: 'Optimistic-concurrency guard: reject with `HEAD_MISMATCH` if the branch head moved.' },
+    branchId: {
+      type: 'string',
+      required: true,
+      description: 'The branch to write.',
+    },
+    tree: {
+      type: 'block tree node',
+      required: true,
+      description:
+        'The desired final tree, root node first: `{ blockId, type, properties, children }` (the shape `getBlockTree` returns). The root node `blockId` must equal `rootId`.',
+    },
+    message: {
+      type: 'string',
+      default: "'Batch update'",
+      description: 'Commit message.',
+    },
+    expectedHeadCommitId: {
+      type: 'string',
+      description:
+        'Optimistic-concurrency guard: reject with `HEAD_MISMATCH` if the branch head moved.',
+    },
   }}
 />
 
@@ -158,16 +267,36 @@ Move a block (and its subtree) to a new parent and/or a new position within a pa
   },
 }`}
   returns={{
-    commit: { type: 'Commit', description: 'The new branch head commit: `{ id, message, createdAt, createdBy }`.' },
+    commit: {
+      type: 'Commit',
+      description:
+        'The new branch head commit: `{ id, message, createdAt, createdBy }`.',
+    },
   }}
   params={{
     rootId: { type: 'string', required: true, description: 'The entry.' },
     branchId: { type: 'string', required: true, description: 'The branch.' },
     blockId: { type: 'string', required: true, description: 'Block to move.' },
-    newParentBlockId: { type: 'string', required: true, description: 'Block to move it under.' },
-    newIndex: { type: 'number', required: true, description: "Index in the new parent's children (integer >= 0, clamped to range)." },
-    message: { type: 'string', description: 'Commit message (defaults to `Move block {blockId}`).' },
-    expectedHeadCommitId: { type: 'string', description: 'Optimistic-concurrency guard: reject with `HEAD_MISMATCH` if the branch head moved.' },
+    newParentBlockId: {
+      type: 'string',
+      required: true,
+      description: 'Block to move it under.',
+    },
+    newIndex: {
+      type: 'number',
+      required: true,
+      description:
+        "Index in the new parent's children (integer >= 0, clamped to range).",
+    },
+    message: {
+      type: 'string',
+      description: 'Commit message (defaults to `Move block {blockId}`).',
+    },
+    expectedHeadCommitId: {
+      type: 'string',
+      description:
+        'Optimistic-concurrency guard: reject with `HEAD_MISMATCH` if the branch head moved.',
+    },
   }}
 />
 
@@ -175,7 +304,7 @@ Moving into itself, into one of its own descendants, or moving the root block is
 
 ### Duplicate a Block [#duplicateblock]
 
-Clone a block subtree. Pass a `targetParentBlockId` to duplicate into that parent (child mode), or pass `targetProperties` with no parent to spin the subtree off into a brand-new entry (root mode).
+Clone a block subtree under an existing parent. `targetParentBlockId` is required — this endpoint only ever duplicates into a parent. To spin a subtree off into a brand-new top-level entry instead, use [`duplicateRoot`](/docs/reference/roots#duplicateroot).
 
 <APIMethod
   method="POST"
@@ -188,31 +317,44 @@ Clone a block subtree. Pass a `targetParentBlockId` to duplicate into that paren
     rootId: 'root_home', // required
     branchId: 'br_main', // required
     blockId: 'blk_hero', // required
-    targetParentBlockId: 'blk_section', // child mode: duplicate under this parent
+    targetParentBlockId: 'blk_section', // required: duplicate under this parent
   },
 }`}
   returns={{
-    mode: { type: "'root' | 'child'", description: 'Which duplication ran: `child` when `targetParentBlockId` was given, else `root`.' },
-    commit: { type: 'Commit', description: 'The new branch head commit: `{ id, message, createdAt, createdBy }`.' },
-    blockId: { type: 'string', optional: true, description: "The new copy's id. Child mode only." },
-    rootId: { type: 'string', optional: true, description: "The new entry's id. Root mode only." },
-    branchId: { type: 'string', optional: true, description: "The new entry's initial draft branch id. Root mode only." },
-    slug: { type: 'string', optional: true, description: 'The seeded draft slug, when a `targetSlug` was given. Root mode only.' },
-    path: { type: 'string', optional: true, description: 'The resolved URL path. Root mode only, and only once the new entry is published.' },
+    mode: {
+      type: "'child'",
+      description:
+        "Always `'child'`: this endpoint only ever duplicates under a parent.",
+    },
+    commit: {
+      type: 'Commit',
+      description:
+        'The new branch head commit: `{ id, message, createdAt, createdBy }`.',
+    },
+    blockId: { type: 'string', description: "The new copy's id." },
   }}
   params={{
     rootId: { type: 'string', required: true, description: 'Source entry.' },
     branchId: { type: 'string', required: true, description: 'Source branch.' },
-    blockId: { type: 'string', required: true, description: 'Block (and its whole subtree) to duplicate.' },
-    targetParentBlockId: { type: 'string', description: 'Parent for the copy (child mode). Omit to duplicate into a new root.' },
-    targetProperties: { type: 'Record<string, unknown>', description: 'Root properties for the new root (required in root mode, else `MISSING_TARGET_PROPERTIES`).' },
-    targetSlug: { type: 'string', description: 'Slug for the duplicated root (validated for uniqueness).' },
-    targetIndex: { type: 'number', description: "Index in the target parent's children (integer >= 0)." },
+    blockId: {
+      type: 'string',
+      required: true,
+      description: 'Block (and its whole subtree) to duplicate.',
+    },
+    targetParentBlockId: {
+      type: 'string',
+      required: true,
+      description: 'Parent for the copy.',
+    },
+    targetIndex: {
+      type: 'number',
+      description: "Index in the target parent's children (integer >= 0).",
+    },
     message: { type: 'string', description: 'Commit message.' },
   }}
 />
 
-`mode` is `'root'` or `'child'`. Child mode also returns `blockId`; root mode also returns `rootId`, `branchId`, `slug?`, and `path?`.
+`mode` is always `'child'`. The response also carries `blockId`, the new copy's id.
 
 ### Delete a Block [#deleteblock]
 
@@ -232,15 +374,34 @@ Soft-delete a block and all its descendants (tombstones), and remove it from its
   },
 }`}
   returns={{
-    commit: { type: 'Commit', description: 'The new branch head commit: `{ id, message, createdAt, createdBy }`.' },
-    deletedBlockIds: { type: 'string[]', description: 'Every block tombstoned in this commit: the target plus all its descendants.' },
+    commit: {
+      type: 'Commit',
+      description:
+        'The new branch head commit: `{ id, message, createdAt, createdBy }`.',
+    },
+    deletedBlockIds: {
+      type: 'string[]',
+      description:
+        'Every block tombstoned in this commit: the target plus all its descendants.',
+    },
   }}
   params={{
     rootId: { type: 'string', required: true, description: 'The entry.' },
     branchId: { type: 'string', required: true, description: 'The branch.' },
-    blockId: { type: 'string', required: true, description: 'Block to delete (with all its descendants).' },
-    message: { type: 'string', description: 'Commit message (defaults to `Delete block {blockId}`).' },
-    expectedHeadCommitId: { type: 'string', description: 'Optimistic-concurrency guard: reject with `HEAD_MISMATCH` if the branch head moved.' },
+    blockId: {
+      type: 'string',
+      required: true,
+      description: 'Block to delete (with all its descendants).',
+    },
+    message: {
+      type: 'string',
+      description: 'Commit message (defaults to `Delete block {blockId}`).',
+    },
+    expectedHeadCommitId: {
+      type: 'string',
+      description:
+        'Optimistic-concurrency guard: reject with `HEAD_MISMATCH` if the branch head moved.',
+    },
   }}
 />
 
@@ -260,11 +421,22 @@ List the pages that embed this reusable block, so you can see where it's used be
   query: { rootId: 'root_home' }, // required
 }`}
   returns={{
-    pageCount: { type: 'number', description: 'How many distinct live pages embed this reusable block.' },
-    pages: { type: '{ rootId, collection, slug, occurrences }[]', description: 'One entry per host page. Each `occurrences` item is `{ branchId, blockId, propertyKey }`, locating where the block is embedded.' },
+    pageCount: {
+      type: 'number',
+      description: 'How many distinct live pages embed this reusable block.',
+    },
+    pages: {
+      type: '{ rootId, collection, slug, occurrences }[]',
+      description:
+        'One entry per host page. Each `occurrences` item is `{ branchId, blockId, propertyKey }`, locating where the block is embedded.',
+    },
   }}
   params={{
-    rootId: { type: 'string', required: true, description: 'Root id of the reusable block to inspect.' },
+    rootId: {
+      type: 'string',
+      required: true,
+      description: 'Root id of the reusable block to inspect.',
+    },
   }}
 />
 

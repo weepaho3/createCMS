@@ -149,4 +149,41 @@ describe('releases — atomic multi-page publish', () => {
       cms.api.releases.publishRelease({ body: { releaseId: release.id } }),
     ).rejects.toThrow();
   });
+
+  it('publishRelease is gated by publication:create, not release:update', async () => {
+    // A role granted release:update (curation: createRelease/addToRelease) but
+    // denied publication:create must NOT be able to ship the release — that
+    // was the bypass this plan closes (publishRelease used to declare
+    // release:update, the same label as pure curation).
+    const { cms } = await setupTestCMS({
+      authMiddleware: async (ctx) => {
+        if (
+          ctx.permissionResource === 'publication' &&
+          ctx.operation === 'create'
+        ) {
+          throw new Error('DENIED: publication:create');
+        }
+        return {};
+      },
+    });
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/a', properties: { title: 'A' } },
+    });
+
+    const { release } = await cms.api.releases.createRelease({
+      body: { title: 'Launch' },
+    });
+    await cms.api.releases.addToRelease({
+      body: {
+        releaseId: release.id,
+        rootId: root.rootId,
+        branchId: root.branchId,
+      },
+    });
+
+    await expect(
+      cms.api.releases.publishRelease({ body: { releaseId: release.id } }),
+    ).rejects.toThrow(/denied/i);
+  });
 });
