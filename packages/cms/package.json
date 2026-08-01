@@ -28,7 +28,7 @@
     "typescript"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12.0"
   },
   "bin": {
     "createcms": "dist/bin/createcms.js"
@@ -40,240 +40,100 @@
   ],
   "type": "module",
   "sideEffects": false,
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      },
-      "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/index.cjs"
-      }
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     },
     "./react": {
-      "import": {
-        "types": "./dist/react/index.d.ts",
-        "default": "./dist/react/index.js"
-      },
-      "require": {
-        "types": "./dist/react/index.d.cts",
-        "default": "./dist/react/index.cjs"
-      }
+      "types": "./dist/react/index.d.ts",
+      "default": "./dist/react/index.js"
     },
     "./react/realtime": {
-      "import": {
-        "types": "./dist/react/realtime.d.ts",
-        "default": "./dist/react/realtime.js"
-      },
-      "require": {
-        "types": "./dist/react/realtime.d.cts",
-        "default": "./dist/react/realtime.cjs"
-      }
+      "types": "./dist/react/realtime.d.ts",
+      "default": "./dist/react/realtime.js"
     },
     "./react/blocks": {
-      "import": {
-        "types": "./dist/react/blocks.d.ts",
-        "default": "./dist/react/blocks.js"
-      },
-      "require": {
-        "types": "./dist/react/blocks.d.cts",
-        "default": "./dist/react/blocks.cjs"
-      }
+      "types": "./dist/react/blocks.d.ts",
+      "default": "./dist/react/blocks.js"
     },
     "./react/variant": {
-      "import": {
-        "types": "./dist/react/variant.d.ts",
-        "default": "./dist/react/variant.js"
-      },
-      "require": {
-        "types": "./dist/react/variant.d.cts",
-        "default": "./dist/react/variant.cjs"
-      }
+      "types": "./dist/react/variant.d.ts",
+      "default": "./dist/react/variant.js"
     },
     "./react/tracking": {
-      "import": {
-        "types": "./dist/react/tracking.d.ts",
-        "default": "./dist/react/tracking.js"
-      },
-      "require": {
-        "types": "./dist/react/tracking.d.cts",
-        "default": "./dist/react/tracking.cjs"
-      }
+      "types": "./dist/react/tracking.d.ts",
+      "default": "./dist/react/tracking.js"
     },
     "./db": {
-      "import": {
-        "types": "./dist/db.d.ts",
-        "default": "./dist/db.js"
-      },
-      "require": {
-        "types": "./dist/db.d.cts",
-        "default": "./dist/db.cjs"
-      }
+      "types": "./dist/db.d.ts",
+      "default": "./dist/db.js"
     },
     "./nanoid": {
-      "import": {
-        "types": "./dist/nanoid.d.ts",
-        "default": "./dist/nanoid.js"
-      },
-      "require": {
-        "types": "./dist/nanoid.d.cts",
-        "default": "./dist/nanoid.cjs"
-      }
+      "types": "./dist/nanoid.d.ts",
+      "default": "./dist/nanoid.js"
     },
     "./plugins/server": {
-      "import": {
-        "types": "./dist/plugins/server.d.ts",
-        "default": "./dist/plugins/server.js"
-      },
-      "require": {
-        "types": "./dist/plugins/server.d.cts",
-        "default": "./dist/plugins/server.cjs"
-      }
+      "types": "./dist/plugins/server.d.ts",
+      "default": "./dist/plugins/server.js"
     },
     "./plugins/client": {
-      "import": {
-        "types": "./dist/plugins/client.d.ts",
-        "default": "./dist/plugins/client.js"
-      },
-      "require": {
-        "types": "./dist/plugins/client.d.cts",
-        "default": "./dist/plugins/client.cjs"
-      }
+      "types": "./dist/plugins/client.d.ts",
+      "default": "./dist/plugins/client.js"
     },
     "./plugins/multi-tenant": {
-      "import": {
-        "types": "./dist/plugins/multi-tenant/index.d.ts",
-        "default": "./dist/plugins/multi-tenant/index.js"
-      },
-      "require": {
-        "types": "./dist/plugins/multi-tenant/index.d.cts",
-        "default": "./dist/plugins/multi-tenant/index.cjs"
-      }
+      "types": "./dist/plugins/multi-tenant/index.d.ts",
+      "default": "./dist/plugins/multi-tenant/index.js"
     },
     "./plugins/i18n": {
-      "import": {
-        "types": "./dist/plugins/i18n/index.d.ts",
-        "default": "./dist/plugins/i18n/index.js"
-      },
-      "require": {
-        "types": "./dist/plugins/i18n/index.d.cts",
-        "default": "./dist/plugins/i18n/index.cjs"
-      }
+      "types": "./dist/plugins/i18n/index.d.ts",
+      "default": "./dist/plugins/i18n/index.js"
     },
     "./plugins/ab-test": {
-      "import": {
-        "types": "./dist/plugins/ab-test/index.d.ts",
-        "default": "./dist/plugins/ab-test/index.js"
-      },
-      "require": {
-        "types": "./dist/plugins/ab-test/index.d.cts",
-        "default": "./dist/plugins/ab-test/index.cjs"
-      }
+      "types": "./dist/plugins/ab-test/index.d.ts",
+      "default": "./dist/plugins/ab-test/index.js"
     },
     "./plugins/ab-test/client": {
-      "import": {
-        "types": "./dist/plugins/ab-test/client.d.ts",
-        "default": "./dist/plugins/ab-test/client.js"
-      },
-      "require": {
-        "types": "./dist/plugins/ab-test/client.d.cts",
-        "default": "./dist/plugins/ab-test/client.cjs"
-      }
+      "types": "./dist/plugins/ab-test/client.d.ts",
+      "default": "./dist/plugins/ab-test/client.js"
     },
     "./plugins/ab-test/live": {
-      "import": {
-        "types": "./dist/plugins/ab-test/live.d.ts",
-        "default": "./dist/plugins/ab-test/live.js"
-      },
-      "require": {
-        "types": "./dist/plugins/ab-test/live.d.cts",
-        "default": "./dist/plugins/ab-test/live.cjs"
-      }
+      "types": "./dist/plugins/ab-test/live.d.ts",
+      "default": "./dist/plugins/ab-test/live.js"
     },
     "./plugins/ab-test/analytics/upstash": {
-      "import": {
-        "types": "./dist/plugins/ab-test/analytics/upstash.d.ts",
-        "default": "./dist/plugins/ab-test/analytics/upstash.js"
-      },
-      "require": {
-        "types": "./dist/plugins/ab-test/analytics/upstash.d.cts",
-        "default": "./dist/plugins/ab-test/analytics/upstash.cjs"
-      }
+      "types": "./dist/plugins/ab-test/analytics/upstash.d.ts",
+      "default": "./dist/plugins/ab-test/analytics/upstash.js"
     },
     "./plugins/media-optimize": {
-      "import": {
-        "types": "./dist/plugins/media-optimize/index.d.ts",
-        "default": "./dist/plugins/media-optimize/index.js"
-      },
-      "require": {
-        "types": "./dist/plugins/media-optimize/index.d.cts",
-        "default": "./dist/plugins/media-optimize/index.cjs"
-      }
+      "types": "./dist/plugins/media-optimize/index.d.ts",
+      "default": "./dist/plugins/media-optimize/index.js"
     },
     "./plugins/consent": {
-      "import": {
-        "types": "./dist/plugins/consent/index.d.ts",
-        "default": "./dist/plugins/consent/index.js"
-      },
-      "require": {
-        "types": "./dist/plugins/consent/index.d.cts",
-        "default": "./dist/plugins/consent/index.cjs"
-      }
+      "types": "./dist/plugins/consent/index.d.ts",
+      "default": "./dist/plugins/consent/index.js"
     },
     "./plugins/consent/client": {
-      "import": {
-        "types": "./dist/plugins/consent/client.d.ts",
-        "default": "./dist/plugins/consent/client.js"
-      },
-      "require": {
-        "types": "./dist/plugins/consent/client.d.cts",
-        "default": "./dist/plugins/consent/client.cjs"
-      }
+      "types": "./dist/plugins/consent/client.d.ts",
+      "default": "./dist/plugins/consent/client.js"
     },
     "./plugins/consent/c15t": {
-      "import": {
-        "types": "./dist/plugins/consent/c15t.d.ts",
-        "default": "./dist/plugins/consent/c15t.js"
-      },
-      "require": {
-        "types": "./dist/plugins/consent/c15t.d.cts",
-        "default": "./dist/plugins/consent/c15t.cjs"
-      }
+      "types": "./dist/plugins/consent/c15t.d.ts",
+      "default": "./dist/plugins/consent/c15t.js"
     },
     "./next": {
-      "import": {
-        "types": "./dist/next/index.d.ts",
-        "default": "./dist/next/index.js"
-      },
-      "require": {
-        "types": "./dist/next/index.d.cts",
-        "default": "./dist/next/index.cjs"
-      }
+      "types": "./dist/next/index.d.ts",
+      "default": "./dist/next/index.js"
     },
     "./next/middleware": {
-      "import": {
-        "types": "./dist/next/middleware.d.ts",
-        "default": "./dist/next/middleware.js"
-      },
-      "require": {
-        "types": "./dist/next/middleware.d.cts",
-        "default": "./dist/next/middleware.cjs"
-      }
+      "types": "./dist/next/middleware.d.ts",
+      "default": "./dist/next/middleware.js"
     },
     "./ab-edge": {
-      "import": {
-        "types": "./dist/ab-edge/index.d.ts",
-        "default": "./dist/ab-edge/index.js"
-      },
-      "require": {
-        "types": "./dist/ab-edge/index.d.cts",
-        "default": "./dist/ab-edge/index.cjs"
-      }
+      "types": "./dist/ab-edge/index.d.ts",
+      "default": "./dist/ab-edge/index.js"
     }
   },
   "publishConfig": {

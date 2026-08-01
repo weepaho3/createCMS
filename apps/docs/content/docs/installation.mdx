@@ -5,9 +5,11 @@ description: Install @createcms/core and wire it into your project.
 
 ## Prerequisites
 
-- **Node.js 18+** (or Bun) and a package manager.
+- **Node.js 22.12+** (or Bun) and a package manager.
 - **PostgreSQL**, accessed through [Drizzle ORM](https://orm.drizzle.team/).
 - **S3-compatible storage** for media (AWS S3, Cloudflare R2, DigitalOcean Spaces, or any S3-compatible provider).
+
+`@createcms/core` ships ESM only. CommonJS projects don't need to migrate to `import`: Node resolves ESM packages from `require()` natively since 22.12, so `require('@createcms/core')` keeps working.
 
 ## Install
 
@@ -24,7 +26,11 @@ The same works with your package manager of choice (`pnpm add`, `yarn add`, or `
 Pass your Drizzle database instance to `createCMS` along with your collections and a media configuration. This is the smallest working setup:
 
 ```ts title="lib/cms.ts"
-import { createCMS, defineCollection, defineCollections } from '@createcms/core';
+import {
+  createCMS,
+  defineCollection,
+  defineCollections,
+} from '@createcms/core';
 import { db } from './db';
 
 const pages = defineCollection({
@@ -79,5 +85,6 @@ You should see the resolved config path, the output file, and a table and enum c
 Applying that schema to your database is a separate step run with [Drizzle Kit](https://orm.drizzle.team/kit-docs/overview), which needs its own `drizzle.config.ts`. The [Quickstart](/docs/quickstart#3-generate-and-apply-the-schema) shows the config to create.
 
 <Callout type="info">
-  Installed. The [Quickstart](/docs/quickstart) takes you from here to your first type-safe call.
+  Installed. The [Quickstart](/docs/quickstart) takes you from here to your
+  first type-safe call.
 </Callout>
