@@ -89,7 +89,12 @@ jobs:
       - name: Validate published package
         run: |
           bunx --yes publint packages/cms
-          bunx --yes @arethetypeswrong/cli --pack packages/cms --profile node16
+          # `esm-only` (not `node16`): the package ships no CJS build, so the
+          # node16-cjs resolution is skipped by design rather than reported as
+          # CJSResolvesToESM on every subpath. Every other rule stays active.
+          # Consumers require()-ing this package rely on Node's require(esm),
+          # which is why engines.node is >=22.12.
+          bunx --yes @arethetypeswrong/cli --pack packages/cms --profile esm-only
 
       - name: Changeset status (non-blocking)
         if: github.event_name == 'pull_request'
