@@ -39,14 +39,14 @@ const { variantId, branchId } = await cmsClient.abTest.getVariant(testId);
 cmsClient.abTest.setConsent({ analytics_storage: 'granted' });
 ```
 
-| Action                      | Signature                                              | Purpose                                  |
-| --------------------------- | ------------------------------------------------------ | ---------------------------------------- |
-| `recordImpression`          | `(testId, branchId) => void`                           | Record that a variant was shown.         |
-| `useImpression`             | `(testId, branchId) => void`                           | React-hook form of `recordImpression`.   |
-| `getVariant`                | `(testId) => Promise<{ variantId, branchId, … }>`      | Read the visitor's assignment.           |
-| `dispatchEvent`             | `(event) => void`                                      | Fire a client event through the sinks.   |
-| `setConsent` / `getConsent` | Consent Mode v2 signals                                | Gate analytics forwarding on consent.    |
-| `identify` / `reset`        | visitor context                                        | Set or clear the visitor key.            |
+| Action                      | Signature                                         | Purpose                                |
+| --------------------------- | ------------------------------------------------- | -------------------------------------- |
+| `recordImpression`          | `(testId, branchId) => void`                      | Record that a variant was shown.       |
+| `useImpression`             | `(testId, branchId) => void`                      | React-hook form of `recordImpression`. |
+| `getVariant`                | `(testId) => Promise<{ variantId, branchId, … }>` | Read the visitor's assignment.         |
+| `dispatchEvent`             | `(event) => void`                                 | Fire a client event through the sinks. |
+| `setConsent` / `getConsent` | Consent Mode v2 signals                           | Gate analytics forwarding on consent.  |
+| `identify` / `reset`        | visitor context                                   | Set or clear the visitor key.          |
 
 Impressions and the anonymous A/B aggregate leg are consent-free; the GA4/`dataLayer` forwarding leg is gated on `analytics_storage`.
 
@@ -54,18 +54,18 @@ Impressions and the anonymous A/B aggregate leg are consent-free; the GA4/`dataL
 
 The plugin registers ten endpoints under the `abTest` namespace — reachable as `cms.api.abTest.<name>` on the server and `client.abTest.<name>` on the client, each fully typed through `typeof cms`.
 
-| Endpoint         | Method | Input                                                                                | Returns                            |
-| ---------------- | ------ | ------------------------------------------------------------------------------------ | ---------------------------------- |
-| `createTest`     | POST   | `rootId`, `collection`, `name`, `variants`, `trafficPercentage?`, `goal*?`           | `{ testId }`                       |
-| `updateTest`     | POST   | `testId` + optional `name`, `status`, `trafficPercentage`, `goal*`, `variants`       | `{ testId }`                       |
-| `deleteTest`     | POST   | `testId`                                                                             | `{ testId }`                       |
-| `getTest`        | GET    | `testId`                                                                             | Test with its `variants`           |
-| `listTests`      | GET    | `collection?`, `status?`, `limit?`, `offset?`                                        | `{ tests, total, hasMore }`        |
-| `listGoalEvents` | GET    | `rootId`                                                                             | `{ rootId, goals }`                |
-| `assignVariant`  | POST   | `testId`, `context`                                                                 | `{ variantId, branchId, inTest }`  |
-| `trackEvent`     | POST   | `eventType` + optional `testId`/`variantId`/`branchId`/`visitorId`/`consent`/…       | `{}`                               |
-| `getResults`     | GET    | `testId`, `from?`, `to?`                                                             | `AggregatedResults`                |
-| `flushEvents`    | POST   | `testId?`                                                                            | Adapter flush result               |
+| Endpoint         | Method | Input                                                                          | Returns                           |
+| ---------------- | ------ | ------------------------------------------------------------------------------ | --------------------------------- |
+| `createTest`     | POST   | `rootId`, `collection`, `name`, `variants`, `trafficPercentage?`, `goal*?`     | `{ testId }`                      |
+| `updateTest`     | POST   | `testId` + optional `name`, `status`, `trafficPercentage`, `goal*`, `variants` | `{ testId }`                      |
+| `deleteTest`     | POST   | `testId`                                                                       | `{ testId }`                      |
+| `getTest`        | GET    | `testId`                                                                       | Test with its `variants`          |
+| `listTests`      | GET    | `collection?`, `status?`, `limit?`, `offset?`                                  | `{ tests, total, hasMore }`       |
+| `listGoalEvents` | GET    | `rootId`                                                                       | `{ rootId, goals }`               |
+| `assignVariant`  | POST   | `testId`, `context`                                                            | `{ variantId, branchId, inTest }` |
+| `trackEvent`     | POST   | `eventType` + optional `testId`/`variantId`/`branchId`/`visitorId`/`consent`/… | `{}`                              |
+| `getResults`     | GET    | `testId`, `from?`, `to?`                                                       | `AggregatedResults`               |
+| `flushEvents`    | POST   | `testId?`                                                                      | Adapter flush result              |
 
 `variants` needs ≥ 2 entries whose `weight` values sum to 100, exactly one flagged `isControl`, each on an already-published branch. `updateTest` follows the status machine `draft → running`, `running → paused`/`completed`, `paused → running`/`completed`. `trackEvent` is the public ingest (a distinct `abTestEvent` permission resource, so it can be opened to anonymous visitors).
 
@@ -91,31 +91,31 @@ render side  ──►  react/variant.ts     pickVariant() — picks the tree fr
 
 Export subpaths:
 
-| Subpath                                          | Layer                                             |
-| ------------------------------------------------ | ------------------------------------------------- |
-| `@createcms/core/plugins/ab-test`                | server plugin (`abTest`)                          |
-| `@createcms/core/plugins/ab-test/client`         | client plugin (`abTestClient`)                    |
-| `@createcms/core/plugins/ab-test/live`           | `useLiveResults` (pulls optional `@upstash/realtime`) |
-| `@createcms/core/plugins/ab-test/analytics/upstash` | Upstash analytics adapter                       |
-| `@createcms/core/ab-edge`                        | framework-agnostic edge core                      |
-| `@createcms/core/next/middleware`                | Next.js edge adapter                              |
-| `@createcms/core/react/variant`                  | render-side `pickVariant`                         |
-| `@createcms/core/react/tracking`                 | `'use client'` `BlockTracker` runtime             |
+| Subpath                                             | Layer                                                 |
+| --------------------------------------------------- | ----------------------------------------------------- |
+| `@createcms/core/plugins/ab-test`                   | server plugin (`abTest`)                              |
+| `@createcms/core/plugins/ab-test/client`            | client plugin (`abTestClient`)                        |
+| `@createcms/core/plugins/ab-test/live`              | `useLiveResults` (pulls optional `@upstash/realtime`) |
+| `@createcms/core/plugins/ab-test/analytics/upstash` | Upstash analytics adapter                             |
+| `@createcms/core/ab-edge`                           | framework-agnostic edge core                          |
+| `@createcms/core/next/middleware`                   | Next.js edge adapter                                  |
+| `@createcms/core/react/variant`                     | render-side `pickVariant`                             |
+| `@createcms/core/react/tracking`                    | `'use client'` `BlockTracker` runtime                 |
 
 ## Options
 
 ### Server — `abTest(options)`
 
-| Option      | Type                      | Default               | Description                                        |
-| ----------- | ------------------------- | --------------------- | ------------------------------------------------- |
-| `analytics` | `AbTestAnalyticsAdapter`  | `postgresAnalytics()` | Where events are stored / forwarded.              |
-| `ga4`       | `Ga4ServerConfig`         | --                    | Server-side GA4 Measurement Protocol forwarding.  |
-| `rateLimit` | `AbTestRateLimitOptions`  | --                    | Rate-limit the anonymous `trackEvent` ingest.     |
+| Option      | Type                     | Default               | Description                                      |
+| ----------- | ------------------------ | --------------------- | ------------------------------------------------ |
+| `analytics` | `AbTestAnalyticsAdapter` | `postgresAnalytics()` | Where events are stored / forwarded.             |
+| `ga4`       | `Ga4ServerConfig`        | --                    | Server-side GA4 Measurement Protocol forwarding. |
+| `rateLimit` | `AbTestRateLimitOptions` | --                    | Rate-limit the anonymous `trackEvent` ingest.    |
 
 ### Client — `abTestClient(options)`
 
-| Option                 | Type      | Default | Description                                                     |
-| ---------------------- | --------- | ------- | --------------------------------------------------------------- |
+| Option                 | Type      | Default | Description                                                                                  |
+| ---------------------- | --------- | ------- | -------------------------------------------------------------------------------------------- |
 | `disableDataLayerSink` | `boolean` | `false` | Drop the browser `dataLayer` leg when GA4 is forwarded server-side (avoids double-counting). |
 
 ## Live results

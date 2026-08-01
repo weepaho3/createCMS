@@ -13,7 +13,7 @@ A composable, block-based **headless CMS** powered by [better-call](https://gith
 
 - **Block-based content** — define collections as a typed `root` plus child blocks; content is a tree of blocks.
 - **Git-like versioning** — every collection entry is a `root` with branches, commits, and snapshots. Edit on a branch, open a merge request, diff, resolve conflicts, merge, publish.
-- **End-to-end type safety** — collection definitions drive both the write API *and* the read responses. Autocomplete on `properties` everywhere, no manual types.
+- **End-to-end type safety** — collection definitions drive both the write API _and_ the read responses. Autocomplete on `properties` everywhere, no manual types.
 - **Type-safe client** — a proxy-based client mirrors the server API: `client.pages.listRoots()` is fully typed from `typeof cms`.
 - **Plugins** — extend the server API, client, hooks, schema, and request scope. Ships with multi-tenant, i18n, A/B testing, client-side media optimization, and consent.
 - **Framework-friendly** — first-class Next.js route mounting and React rendering helpers; the core is framework-agnostic.
@@ -90,7 +90,7 @@ import { collections } from './collections';
 export const cms = createCMS({
   db,
   collections,
-  media: { /* S3 / DigitalOcean config */ },
+  media: {/* S3 / DigitalOcean config */},
   authMiddleware: async (ctx) => {
     // resolve the user / permissions for this request
     return { userId: '...' };
@@ -163,17 +163,17 @@ export const cms = createCMS({
   db,
   collections,
   media,
-  plugins: [multiTenant(), abTest({ /* ... */ })],
+  plugins: [multiTenant(), abTest({/* ... */})],
 });
 ```
 
-| Plugin | Entry | What it adds |
-| --- | --- | --- |
-| Multi-tenant | `@createcms/core/plugins/multi-tenant` | Per-tenant data isolation via request-scoped query conditions. |
-| A/B testing | `@createcms/core/plugins/ab-test` | Deterministic variant assignment, event tracking, pluggable analytics. |
-| Media optimize | `@createcms/core/plugins/media-optimize` | Client-side resize/compress/WebP before upload. |
-| i18n | `@createcms/core/plugins/i18n` | Per-entry translations across a fixed language universe with per-language fallback chains; adds translation tables and language-scoped read/write endpoints. |
-| Consent | `@createcms/core/plugins/consent` | Google Consent Mode v2 gate (buffer-then-flush) with CMP/dataLayer auto-read and a `<ConsentGate>` wrapper for consent-gated tracking and embeds. |
+| Plugin         | Entry                                    | What it adds                                                                                                                                                 |
+| -------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Multi-tenant   | `@createcms/core/plugins/multi-tenant`   | Per-tenant data isolation via request-scoped query conditions.                                                                                               |
+| A/B testing    | `@createcms/core/plugins/ab-test`        | Deterministic variant assignment, event tracking, pluggable analytics.                                                                                       |
+| Media optimize | `@createcms/core/plugins/media-optimize` | Client-side resize/compress/WebP before upload.                                                                                                              |
+| i18n           | `@createcms/core/plugins/i18n`           | Per-entry translations across a fixed language universe with per-language fallback chains; adds translation tables and language-scoped read/write endpoints. |
+| Consent        | `@createcms/core/plugins/consent`        | Google Consent Mode v2 gate (buffer-then-flush) with CMP/dataLayer auto-read and a `<ConsentGate>` wrapper for consent-gated tracking and embeds.            |
 
 ## License
 

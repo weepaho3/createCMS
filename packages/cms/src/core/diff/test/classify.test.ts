@@ -423,7 +423,9 @@ describe('classifyChanges', () => {
       block(ROOT_ID, { type: 'pages', children: ['g'] }),
       block('g', {
         type: 'gallery',
-        properties: { captions: ['<p>First caption edited</p>', '<p>Second</p>'] },
+        properties: {
+          captions: ['<p>First caption edited</p>', '<p>Second</p>'],
+        },
       }),
     );
 

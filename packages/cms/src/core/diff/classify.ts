@@ -42,7 +42,9 @@ type ParentInfo = { parentId: string; index: number };
 // ============================================================================
 
 /** True when the block exists in the snapshot and is not a tombstone. */
-function isAlive(block: ReconstructedBlock | undefined): block is ReconstructedBlock {
+function isAlive(
+  block: ReconstructedBlock | undefined,
+): block is ReconstructedBlock {
   return block !== undefined && !block.deleted;
 }
 
@@ -326,7 +328,9 @@ export function classifyChanges(opts: {
       if (!moved && !isRoot) {
         const baseParent = baseParentOf.get(blockId);
         const sourceParent = sourceParentOf.get(blockId);
-        if ((baseParent?.parentId ?? null) !== (sourceParent?.parentId ?? null)) {
+        if (
+          (baseParent?.parentId ?? null) !== (sourceParent?.parentId ?? null)
+        ) {
           moved = {
             kind: 'reparented',
             fromParentId: baseParent?.parentId ?? null,

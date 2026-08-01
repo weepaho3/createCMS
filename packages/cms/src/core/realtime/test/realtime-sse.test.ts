@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { createRealtimeRouteHandler } from '../sse';
-import type { RealtimeRuntime } from '../types';
 import type {
   CMSMiddleware,
   CMSProcedureContext,
 } from '../../types/definitions';
+import type { RealtimeRuntime } from '../types';
+
+import { createRealtimeRouteHandler } from '../sse';
 
 /**
  * Exercises the shared `/realtime` route end-to-end at the handler level: path
@@ -24,7 +25,9 @@ const cmsCtx = {
 /** Resolves userId from an `x-user` header (stand-in for a session cookie). */
 const headerAuth: CMSMiddleware = (ctx) => {
   const raw = ctx.request?.headers;
-  const userId = raw ? (new Headers(raw).get('x-user') ?? undefined) : undefined;
+  const userId = raw
+    ? (new Headers(raw).get('x-user') ?? undefined)
+    : undefined;
   return { userId };
 };
 
@@ -65,12 +68,16 @@ function req(path: string, channel?: string, user?: string): Request {
 }
 
 describe('createRealtimeRouteHandler', () => {
-  function handler(opts?: { authMiddleware?: CMSMiddleware; transport?: RealtimeRuntime }) {
+  function handler(opts?: {
+    authMiddleware?: CMSMiddleware;
+    transport?: RealtimeRuntime;
+  }) {
     return createRealtimeRouteHandler({
       transport: opts?.transport ?? fakeTransport(),
       path: '/api/cms/realtime',
       cmsCtx,
-      authMiddleware: 'authMiddleware' in (opts ?? {}) ? opts!.authMiddleware : headerAuth,
+      authMiddleware:
+        'authMiddleware' in (opts ?? {}) ? opts!.authMiddleware : headerAuth,
     });
   }
 

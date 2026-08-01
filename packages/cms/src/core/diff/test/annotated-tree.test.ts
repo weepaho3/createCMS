@@ -46,7 +46,10 @@ function childIds(node: AnnotatedBlockTreeNode): string[] {
   return node.children.map((child) => child.blockId);
 }
 
-function collectIds(node: AnnotatedBlockTreeNode, out: string[] = []): string[] {
+function collectIds(
+  node: AnnotatedBlockTreeNode,
+  out: string[] = [],
+): string[] {
   out.push(node.blockId);
   for (const child of node.children) collectIds(child, out);
   return out;

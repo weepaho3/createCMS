@@ -1,7 +1,6 @@
+import { cleanup, render } from '@testing-library/react';
 // @vitest-environment happy-dom
 import { createElement } from 'react';
-
-import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { BlockTreeNode } from '../../core/blocks/reconstruct-snapshot';

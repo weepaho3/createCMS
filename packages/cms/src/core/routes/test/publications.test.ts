@@ -1003,8 +1003,11 @@ describe('cms-05 slug materialization on publish', () => {
     });
     // Live at /pages/old.
     expect(
-      (await cms.api.pages.getPublishedContent({ query: { path: '/pages/old' } }))
-        .rootId,
+      (
+        await cms.api.pages.getPublishedContent({
+          query: { path: '/pages/old' },
+        })
+      ).rootId,
     ).toBe(root.rootId);
 
     // Draft-rename the slug — the live URL is UNCHANGED.
@@ -1017,8 +1020,11 @@ describe('cms-05 slug materialization on publish', () => {
       },
     });
     expect(
-      (await cms.api.pages.getPublishedContent({ query: { path: '/pages/old' } }))
-        .rootId,
+      (
+        await cms.api.pages.getPublishedContent({
+          query: { path: '/pages/old' },
+        })
+      ).rootId,
     ).toBe(root.rootId);
     await expect(
       cms.api.pages.getPublishedContent({ query: { path: '/pages/new' } }),
@@ -1029,8 +1035,11 @@ describe('cms-05 slug materialization on publish', () => {
       body: { rootId: root.rootId, branchId: root.branchId },
     });
     expect(
-      (await cms.api.pages.getPublishedContent({ query: { path: '/pages/new' } }))
-        .rootId,
+      (
+        await cms.api.pages.getPublishedContent({
+          query: { path: '/pages/new' },
+        })
+      ).rootId,
     ).toBe(root.rootId);
     const redirect = await cms.api.pages.resolveRedirect({
       query: { path: '/pages/old' },

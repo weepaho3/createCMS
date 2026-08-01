@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { indexRoot } from '../index-builder';
 import { setupTestCMS } from '../../../test-utils/cms';
+import { indexRoot } from '../index-builder';
 
 describe('search', () => {
   it('indexes a root and finds it via full-text search', async () => {
@@ -19,7 +19,9 @@ describe('search', () => {
     // previously emitting invalid schema-qualified SQL and silently failing.)
     await cms.api.admin.reindexSearch({ body: {} });
 
-    const result = await cms.api.search.query({ query: { search: 'Zugspitze' } });
+    const result = await cms.api.search.query({
+      query: { search: 'Zugspitze' },
+    });
 
     expect(result.total).toBeGreaterThan(0);
     const hit = result.results.find((r) => r.entityId === root.rootId);
@@ -53,7 +55,9 @@ describe('search', () => {
 
     await cms.api.admin.reindexSearch({ body: {} });
 
-    const result = await cms.api.search.query({ query: { search: 'Capybara' } });
+    const result = await cms.api.search.query({
+      query: { search: 'Capybara' },
+    });
     expect(result.total).toBeGreaterThan(0);
     expect(result.results.some((r) => r.entityType === 'variable')).toBe(true);
   });

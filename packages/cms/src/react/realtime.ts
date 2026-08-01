@@ -1,6 +1,11 @@
 'use client';
 
 import {
+  createRealtime,
+  RealtimeContext,
+  RealtimeProvider as UpstashRealtimeProvider,
+} from '@upstash/realtime/client';
+import {
   createElement,
   Fragment,
   useCallback,
@@ -11,18 +16,11 @@ import {
   type ReactNode,
 } from 'react';
 
-import {
-  createRealtime,
-  RealtimeContext,
-  RealtimeProvider as UpstashRealtimeProvider,
-} from '@upstash/realtime/client';
-
+import type { Serialize } from '../client/types';
 import type {
   ListNotificationsResult,
   NotificationListItem,
 } from '../core/notifications/types';
-
-import type { Serialize } from '../client/types';
 
 import { notificationEventSchema } from '../core/notifications/events';
 import {

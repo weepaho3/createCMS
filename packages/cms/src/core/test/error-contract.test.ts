@@ -1,14 +1,13 @@
+import { APIError } from 'better-call';
 // @vitest-environment node
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-import { APIError } from 'better-call';
 import { describe, expect, it } from 'vitest';
 
 import { CMSClientError } from '../../client/error';
-import { CMS_ERRORS } from '../errors-data';
 import { CMSError, getCMSErrorCode, isCMSError } from '../errors';
+import { CMS_ERRORS } from '../errors-data';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

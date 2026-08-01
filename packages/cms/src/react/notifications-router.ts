@@ -82,7 +82,10 @@ type CmsNotificationMarker = {
 /** Default when `createNotificationRouter` is called without a `typeof cms` —
  *  core types + app-augmented `NotificationMetaMap` only, loose actor. */
 type DefaultMarker = {
-  $InferNotifications: { meta: Record<never, never>; actorUser: Record<string, unknown> };
+  $InferNotifications: {
+    meta: Record<never, never>;
+    actorUser: Record<string, unknown>;
+  };
 };
 
 /**
@@ -134,10 +137,10 @@ type MetaOf<TCMS, T extends string> = T extends keyof CoreNotificationMetaMap
 
 /** A notification narrowed to one `type`, with `meta` (and `actorUser`) typed
  *  for that type + CMS. */
-export type TypedNotification<
-  T extends string,
-  TCMS = DefaultMarker,
-> = Omit<NotificationListItem<ActorOf<TCMS>>, 'type' | 'meta'> & {
+export type TypedNotification<T extends string, TCMS = DefaultMarker> = Omit<
+  NotificationListItem<ActorOf<TCMS>>,
+  'type' | 'meta'
+> & {
   type: T;
   meta: MetaOf<TCMS, T>;
 };
@@ -194,9 +197,9 @@ export type NotificationRouter<TCMS = DefaultMarker> = {
  * Without a `typeof cms`, core types are typed and `NotificationMetaMap` covers
  * your `custom`/app types. See {@link NotificationMetaMap}.
  */
-export function createNotificationRouter<TCMS extends CmsNotificationMarker = DefaultMarker>(
-  routes: NotificationRoutes<TCMS>,
-): NotificationRouter<TCMS> {
+export function createNotificationRouter<
+  TCMS extends CmsNotificationMarker = DefaultMarker,
+>(routes: NotificationRoutes<TCMS>): NotificationRouter<TCMS> {
   return {
     resolve(n) {
       const handler = (routes as Record<string, unknown>)[n.type] as

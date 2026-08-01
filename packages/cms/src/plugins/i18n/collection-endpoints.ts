@@ -5,8 +5,8 @@ import type {
   CollectionWithName,
   ResolvedSlugConfig,
 } from '../../core/types/definitions';
-import type { CMSPluginContext } from '../../core/types/plugin';
 import type { DbOrTx } from '../../core/types/drizzle';
+import type { CMSPluginContext } from '../../core/types/plugin';
 
 import {
   createInitialCommit,
@@ -392,7 +392,8 @@ export function createI18nCollectionEndpoints(
             // the default-branch head root version (the reserved `__slug`) so the
             // language switcher still shows the intended slug; keep the published
             // slug whenever it is present.
-            slug: r.slug ?? (await readDraftRootSlug(db, r.id, defaultBranchName)),
+            slug:
+              r.slug ?? (await readDraftRootSlug(db, r.id, defaultBranchName)),
             path:
               slugCfg?.enabled && slugCfg
                 ? await resolveRootCurrentPath(db, slugCfg, r.id)

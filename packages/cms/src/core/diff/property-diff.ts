@@ -211,10 +211,18 @@ function diffArray(
       );
     }
     for (let k = shared; k < fromGap; k++) {
-      out.push({ path: [...path, fromCursor + k], kind: 'removed', from: from[fromCursor + k] });
+      out.push({
+        path: [...path, fromCursor + k],
+        kind: 'removed',
+        from: from[fromCursor + k],
+      });
     }
     for (let k = shared; k < toGap; k++) {
-      out.push({ path: [...path, toCursor + k], kind: 'added', to: to[toCursor + k] });
+      out.push({
+        path: [...path, toCursor + k],
+        kind: 'added',
+        to: to[toCursor + k],
+      });
     }
 
     fromCursor = matchFrom + 1;

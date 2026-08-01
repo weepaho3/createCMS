@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  mergePolledNotifications,
-  mergePushedNotification,
-} from '../merge';
 import type { NotificationListItem } from '../types';
+
+import { mergePolledNotifications, mergePushedNotification } from '../merge';
 
 /**
  * The reducing core of useNotifications. De-duping the list AND the unread count
@@ -62,7 +60,11 @@ describe('mergePushedNotification', () => {
 describe('mergePolledNotifications', () => {
   // Minimal serialized shape — the merge only reads id/readAt/createdAt, and on
   // the wire `createdAt` is an ISO string (see `Serialize`).
-  const item = (id: string, createdAt: string, readAt: string | null = null) => ({
+  const item = (
+    id: string,
+    createdAt: string,
+    readAt: string | null = null,
+  ) => ({
     id,
     createdAt,
     readAt,

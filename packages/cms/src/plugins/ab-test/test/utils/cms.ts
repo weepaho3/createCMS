@@ -1,12 +1,12 @@
 import type { CMSMiddleware } from '../../../../core/types/definitions';
 
+import { allowAnonymous } from '../../../../core/define';
+import { createCMS } from '../../../../core/factory';
 import { setupTestDB } from '../../../../test-utils/db';
 import {
   DUMMY_MEDIA_CONFIG,
   TEST_COLLECTIONS,
 } from '../../../../test-utils/fixtures';
-import { createCMS } from '../../../../core/factory';
-import { allowAnonymous } from '../../../../core/define';
 import { multiTenant } from '../../../multi-tenant/index';
 import { multiTenantSchema } from '../../../multi-tenant/schema';
 import { abTest } from '../../index';

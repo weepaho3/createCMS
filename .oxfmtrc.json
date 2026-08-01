@@ -1,6 +1,11 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
-  "ignorePatterns": ["**/schema.generated.ts"],
+  "ignorePatterns": [
+    "**/schema.generated.ts",
+    "**/*.type-check.ts",
+    "**/*.type-check.tsx",
+    "**/*.mdx"
+  ],
   "printWidth": 80,
   "singleQuote": true,
   "sortImports": {

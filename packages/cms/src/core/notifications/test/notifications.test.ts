@@ -8,7 +8,10 @@ import type {
 
 import { createCMS } from '../../../index';
 import { setupTestCMS } from '../../../test-utils/cms';
-import { DUMMY_MEDIA_CONFIG, TEST_COLLECTIONS } from '../../../test-utils/fixtures';
+import {
+  DUMMY_MEDIA_CONFIG,
+  TEST_COLLECTIONS,
+} from '../../../test-utils/fixtures';
 import { requestAndApproveMerge } from '../../../test-utils/helpers';
 
 const USER_1 = 'user-1';

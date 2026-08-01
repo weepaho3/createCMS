@@ -19,9 +19,7 @@ import {
 const cms = createCMS({
   db,
   collections,
-  media: {
-    /* ... */
-  },
+  media: {/* ... */},
   plugins: [
     i18n({
       languages: ['en', 'de', 'fr'],
@@ -58,24 +56,24 @@ Core routes apply these conditions automatically — they have no knowledge of l
 
 The `language` and `translationKey` columns do **not** exist in the core schema; they are owned entirely by this plugin via `definePluginSchema`.
 
-| Table       | Column / Index                                        | Purpose                                                    |
-| ----------- | ----------------------------------------------------- | ---------------------------------------------------------- |
-| `roots`     | `language` column (text, NOT NULL)                    | The entry's language                                       |
-| `roots`     | `translationKey` column (text, NOT NULL)              | Stable group id tying sibling-language entries together    |
-| `roots`     | `(language, collection, parentRootId, slug)` UNIQUE   | Per-language slug uniqueness for nested roots              |
-| `roots`     | `(translationKey, language)` UNIQUE (archived excl.)  | At most one active sibling per group per language          |
-| `redirects` | `language` column + `(language, collection)` index    | Per-language redirect routing                              |
-| `templates` | `language` column + `(language, collection, blockType)` index | Per-language block/field defaults                  |
-| `variables` | `language` column + `(language, key)` index           | Per-language variables (resolved with fallback on read)    |
+| Table       | Column / Index                                                | Purpose                                                 |
+| ----------- | ------------------------------------------------------------- | ------------------------------------------------------- |
+| `roots`     | `language` column (text, NOT NULL)                            | The entry's language                                    |
+| `roots`     | `translationKey` column (text, NOT NULL)                      | Stable group id tying sibling-language entries together |
+| `roots`     | `(language, collection, parentRootId, slug)` UNIQUE           | Per-language slug uniqueness for nested roots           |
+| `roots`     | `(translationKey, language)` UNIQUE (archived excl.)          | At most one active sibling per group per language       |
+| `redirects` | `language` column + `(language, collection)` index            | Per-language redirect routing                           |
+| `templates` | `language` column + `(language, collection, blockType)` index | Per-language block/field defaults                       |
+| `variables` | `language` column + `(language, key)` index                   | Per-language variables (resolved with fallback on read) |
 
 ### Endpoints
 
 Contributed to every collection (via `plugin.collectionEndpoints`), so they surface at `cms.api.<collection>.*` **only** when this plugin is installed:
 
-| Endpoint            | Method | Purpose                                                                                  |
-| ------------------- | ------ | ---------------------------------------------------------------------------------------- |
+| Endpoint            | Method | Purpose                                                                                                                                                                                                                                                |
+| ------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `createTranslation` | POST   | Create the sibling-language version of an entry — inherits its `translationKey`, takes the target language, seeds from the source's `main` tree (`seed: 'copy'`) or blank. Body: `sourceRootId`, `targetLanguage`, `targetSlug?`, `seed?`, `message?`. |
-| `listTranslations`  | GET    | Return the existing sibling-language versions of an entry (language switcher / status). Query: `rootId`. |
+| `listTranslations`  | GET    | Return the existing sibling-language versions of an entry (language switcher / status). Query: `rootId`.                                                                                                                                               |
 
 ### Error codes
 
@@ -97,18 +95,17 @@ Codes are typed into the API error union via `InferPluginErrorCodes` when the pl
 Extends the core `MiddlewareResult` with a required `language` field:
 
 ```typescript
-type I18nMiddlewareResult<L extends string = string> =
-  MiddlewareResult & {
-    language: L;
-  };
+type I18nMiddlewareResult<L extends string = string> = MiddlewareResult & {
+  language: L;
+};
 ```
 
 Use this type for your `authMiddleware` return value to get compile-time enforcement. `L` is the language union from your configured `languages`.
 
 ### Helpers
 
-| Export            | Description                                                                                       |
-| ----------------- | ------------------------------------------------------------------------------------------------ |
-| `i18n(config)`    | Plugin factory — pass your `I18nConfig`.                                                          |
-| `resolveLanguage` | Reads an explicit per-request language override (`body.language` → `query.language` → fallback).  |
+| Export            | Description                                                                                            |
+| ----------------- | ------------------------------------------------------------------------------------------------------ |
+| `i18n(config)`    | Plugin factory — pass your `I18nConfig`.                                                               |
+| `resolveLanguage` | Reads an explicit per-request language override (`body.language` → `query.language` → fallback).       |
 | `getI18nContext`  | Reads the resolved `I18nContext` (active language + fallback chain + universe) from a `ResolvedScope`. |

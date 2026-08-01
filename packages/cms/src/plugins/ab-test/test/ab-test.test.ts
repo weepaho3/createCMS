@@ -1,10 +1,10 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 
-import { TEST_COLLECTIONS } from '../../../test-utils/fixtures';
-import { publishApprovedBranch } from '../../../test-utils/helpers';
 import { CONTROL_CODE, decideEdgeVariant } from '../../../ab-edge';
 import { pickVariant } from '../../../react/variant';
+import { TEST_COLLECTIONS } from '../../../test-utils/fixtures';
+import { publishApprovedBranch } from '../../../test-utils/helpers';
 import { postgresAnalytics } from '../analytics/postgres';
 import { resolveVariant } from '../assignment';
 import { assertTrackingIntegrity } from '../tracking-guard';
@@ -733,7 +733,9 @@ describe('A/B Test Analytics', () => {
     const page = await createPageWithBranches(cms);
     // The slug a CONTENT publish revalidates with — test start/stop must use the
     // SAME slug so the app busts the same render-cache tag.
-    const publishSlug = events.find((e) => e.rootId === page.rootId)?.storedSlug;
+    const publishSlug = events.find(
+      (e) => e.rootId === page.rootId,
+    )?.storedSlug;
     expect(publishSlug).toBeTruthy();
     events.length = 0; // ignore the publish events from branch setup
 

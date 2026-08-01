@@ -22,7 +22,7 @@ import { setupMultiTenantTestCMS } from './utils/cms';
 // ============================================================================
 
 describe('cms-08 — search respects multi-tenant scope', () => {
-  it('a tenant cannot find another tenant\'s ROOT via search', async () => {
+  it("a tenant cannot find another tenant's ROOT via search", async () => {
     const { cms, setTenant } = await setupMultiTenantTestCMS();
 
     setTenant('acme');
@@ -60,7 +60,7 @@ describe('cms-08 — search respects multi-tenant scope', () => {
     expect(globexIds).not.toContain(acmeRoot.rootId);
   });
 
-  it('a tenant cannot find another tenant\'s VARIABLE via search', async () => {
+  it("a tenant cannot find another tenant's VARIABLE via search", async () => {
     const { cms, setTenant } = await setupMultiTenantTestCMS();
 
     setTenant('acme');
@@ -86,7 +86,9 @@ describe('cms-08 — search respects multi-tenant scope', () => {
       .map((r) => r.snippet);
     expect(acmeVarValues.some((v) => v?.includes('Acme'))).toBe(true);
     expect(acmeVarValues.some((v) => v?.includes('Globex'))).toBe(false);
-    expect(acmeHits.results.some((r) => r.entityType === 'variable')).toBe(true);
+    expect(acmeHits.results.some((r) => r.entityType === 'variable')).toBe(
+      true,
+    );
 
     setTenant('globex');
     const globexHits = await cms.api.search.query({
@@ -117,7 +119,7 @@ describe('cms-08 — search respects notification recipient', () => {
     });
   }
 
-  it('user X cannot find user Y\'s notification via search', async () => {
+  it("user X cannot find user Y's notification via search", async () => {
     const { db } = await setupTestDB();
     const cmsX = cmsForUser(db, USER_X);
     const cmsY = cmsForUser(db, USER_Y);

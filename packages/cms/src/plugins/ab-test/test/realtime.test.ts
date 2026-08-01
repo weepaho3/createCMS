@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { RealtimeRuntime } from '../../../core/realtime/types';
+
 import { publishLiveDelta } from '../realtime';
 
 function recordingTransport() {

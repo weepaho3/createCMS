@@ -1,5 +1,19 @@
 {
   "title": "Guides",
   "icon": "BookMarked",
-  "pages": ["nextjs", "draft-preview", "rendering-content", "client-usage", "media-uploads", "redirects", "content-workflow", "building-an-editor", "permissions", "review-comments", "visual-diff", "build-a-blog", "..."]
+  "pages": [
+    "nextjs",
+    "draft-preview",
+    "rendering-content",
+    "client-usage",
+    "media-uploads",
+    "redirects",
+    "content-workflow",
+    "building-an-editor",
+    "permissions",
+    "review-comments",
+    "visual-diff",
+    "build-a-blog",
+    "..."
+  ]
 }

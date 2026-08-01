@@ -31,8 +31,8 @@ import { sql } from 'drizzle-orm';
 
 import type { DrizzleInstance } from '../src/core/types/drizzle';
 
-import { DEFAULT_BRANCH_NAME } from '../src/core/branch-policy';
 import { ROOT_SLUG_PROP } from '../src/core/blocks/reconstruct-snapshot';
+import { DEFAULT_BRANCH_NAME } from '../src/core/branch-policy';
 
 export type BackfillOptions = {
   /**

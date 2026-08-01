@@ -1,21 +1,20 @@
+import { cleanup, render } from '@testing-library/react';
 // @vitest-environment happy-dom
 import { useEffect } from 'react';
-
-import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { BlockTreeNode } from '../../core/blocks/reconstruct-snapshot';
-import { diffRichText } from '../../core/diff/text-diff';
 import type {
   AnyBlockDefinition,
   CollectionDefinition,
 } from '../../core/types/definitions';
-
 import type {
   AnnotatedBlockTreeNode,
   BlockComponentMap,
   BlockDiffAnnotation,
 } from '../blocks';
+
+import { diffRichText } from '../../core/diff/text-diff';
 import {
   BlocksRenderer,
   createBlocksMap,
@@ -158,7 +157,11 @@ describe('diff-aware block rendering', () => {
 
   it('wraps added/deleted/modified/moved nodes with the default data-diff wrapper', () => {
     const { container } = render(
-      <BlocksRenderer blocks={blocksMap} tree={makeAnnotatedTree()} diff={{}} />,
+      <BlocksRenderer
+        blocks={blocksMap}
+        tree={makeAnnotatedTree()}
+        diff={{}}
+      />,
     );
 
     const added = container.querySelector('[data-diff="added"]');
@@ -183,7 +186,11 @@ describe('diff-aware block rendering', () => {
 
   it('emits unique top-level property names as data-diff-props', () => {
     const { container } = render(
-      <BlocksRenderer blocks={blocksMap} tree={makeAnnotatedTree()} diff={{}} />,
+      <BlocksRenderer
+        blocks={blocksMap}
+        tree={makeAnnotatedTree()}
+        diff={{}}
+      />,
     );
 
     const modified = Array.from(
@@ -195,7 +202,11 @@ describe('diff-aware block rendering', () => {
 
   it('picks the primary change type as added > deleted > modified > moved', () => {
     const { container } = render(
-      <BlocksRenderer blocks={blocksMap} tree={makeAnnotatedTree()} diff={{}} />,
+      <BlocksRenderer
+        blocks={blocksMap}
+        tree={makeAnnotatedTree()}
+        diff={{}}
+      />,
     );
 
     // `['moved', 'modified']` — `modified` wins as primary, but
@@ -209,7 +220,11 @@ describe('diff-aware block rendering', () => {
 
   it('does not wrap unchanged nodes, pure childrenReordered parents, or the root', () => {
     const { container } = render(
-      <BlocksRenderer blocks={blocksMap} tree={makeAnnotatedTree()} diff={{}} />,
+      <BlocksRenderer
+        blocks={blocksMap}
+        tree={makeAnnotatedTree()}
+        diff={{}}
+      />,
     );
 
     // Unchanged block renders bare, directly under the root fragment.
@@ -263,9 +278,7 @@ describe('diff-aware block rendering', () => {
     expect(addedCall?.annotation.changeTypes).toEqual(['added']);
     expect(addedCall?.node.type).toBe('headline');
     // Pure-childrenReordered and unchanged nodes never reach the callback.
-    expect(
-      captured.some((c) => c.node.blockId === 'blk_reorder'),
-    ).toBe(false);
+    expect(captured.some((c) => c.node.blockId === 'blk_reorder')).toBe(false);
     expect(captured.some((c) => c.node.blockId === 'blk_plain')).toBe(false);
   });
 
@@ -276,9 +289,9 @@ describe('diff-aware block rendering', () => {
     );
 
     expect(container.querySelectorAll('[data-diff]')).toHaveLength(5);
-    expect(
-      container.querySelector('[data-diff="added"] h1')?.textContent,
-    ).toBe('New headline');
+    expect(container.querySelector('[data-diff="added"] h1')?.textContent).toBe(
+      'New headline',
+    );
   });
 
   it('renders byte-identically to a plain tree when the diff prop is absent', () => {

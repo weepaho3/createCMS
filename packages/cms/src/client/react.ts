@@ -13,7 +13,11 @@ import type {
 } from './types';
 
 import { buildClient } from './build';
-import { type ClientConfig, getClientConfigSync, runPluginInit } from './config';
+import {
+  type ClientConfig,
+  getClientConfigSync,
+  runPluginInit,
+} from './config';
 import { useStore } from './react-store';
 
 // Shared-store key the media-optimize plugin publishes its auto-optimizer

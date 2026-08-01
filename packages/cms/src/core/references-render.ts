@@ -1,5 +1,15 @@
 import { and, asc, eq, inArray } from 'drizzle-orm';
 
+import type {
+  AbTestResolver,
+  CollectionWithName,
+  PublishedBranchSnapshot,
+  ReferenceResolver,
+  ResolvedReference,
+  RunningAbTest,
+} from './types';
+import type { DrizzleInstance } from './types/drizzle';
+
 import {
   assembleBlockTree,
   loadBlocksAtCommit,
@@ -10,15 +20,6 @@ import { CMSError } from './errors';
 import { resolveLinkPaths } from './links';
 import { getReferencePropertyNames } from './references';
 import { rootScopeConditions } from './scope';
-import type {
-  AbTestResolver,
-  CollectionWithName,
-  PublishedBranchSnapshot,
-  ReferenceResolver,
-  ResolvedReference,
-  RunningAbTest,
-} from './types';
-import type { DrizzleInstance } from './types/drizzle';
 import { substituteVariables } from './variables';
 
 // ============================================================================
@@ -66,8 +67,8 @@ function replaceReferencesInTree(
       if (Array.isArray(value)) {
         // list-of-reference: resolve each element, leaving unresolved ids as-is
         // (matches the scalar fallback below).
-        (node.properties as Record<string, unknown>)[propName] = value.map((v) =>
-          typeof v === 'string' ? (resolvedMap.get(v) ?? v) : v,
+        (node.properties as Record<string, unknown>)[propName] = value.map(
+          (v) => (typeof v === 'string' ? (resolvedMap.get(v) ?? v) : v),
         );
       } else if (typeof value === 'string') {
         const resolved = resolvedMap.get(value);
@@ -198,7 +199,9 @@ async function loadPublishedRoots(
       // control subtree twice per reference).
       const commitByBranch = new Map(pubs.map((p) => [p.branchId, p.commitId]));
       const variants: PublishedBranchSnapshot[] = [];
-      let control: { properties: Record<string, unknown>; tree: BlockTreeNode } | undefined;
+      let control:
+        | { properties: Record<string, unknown>; tree: BlockTreeNode }
+        | undefined;
       let controlCommitId: string | undefined;
       for (const v of test.variants) {
         const commitId = commitByBranch.get(v.branchId);

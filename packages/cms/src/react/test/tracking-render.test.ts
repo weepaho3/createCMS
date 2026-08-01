@@ -1,7 +1,6 @@
+import { act, cleanup, renderHook } from '@testing-library/react';
 // @vitest-environment happy-dom
 import { createElement, type ReactNode } from 'react';
-
-import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {

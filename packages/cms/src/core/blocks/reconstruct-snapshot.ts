@@ -1,10 +1,10 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import type { DbOrTx, DrizzleInstance } from '../types/drizzle';
+import type { BlockVersionRow } from './copy-subtree';
 
 import { blockVersions, commitSnapshots } from '../db/schema.generated';
 import { CMSError } from '../errors';
-import type { BlockVersionRow } from './copy-subtree';
 
 export type ReconstructedBlock = {
   blockId: string;
@@ -116,10 +116,7 @@ export function assembleBlockTree(
     // leak into rendered/published output. Callers on the PUBLIC path
     // (getPublishedContent + embedded-reference loads) pass `stripReservedProps`;
     // the editor read (getBlockTree) omits it so the slug field round-trips.
-    if (
-      options?.stripReservedProps &&
-      ROOT_SLUG_PROP in rootNode.properties
-    ) {
+    if (options?.stripReservedProps && ROOT_SLUG_PROP in rootNode.properties) {
       const { [ROOT_SLUG_PROP]: _omit, ...rest } = rootNode.properties;
       rootNode.properties = rest;
     }

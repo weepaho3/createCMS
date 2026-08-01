@@ -1,7 +1,7 @@
 import type { CMSProcedureContext, CollectionWithName } from '../types';
 
-import { buildBlocksContext } from './blocks-context';
 import { createBlockEndpoints } from './blocks-block-endpoints';
+import { buildBlocksContext } from './blocks-context';
 import { createRootEndpoints } from './blocks-root-endpoints';
 
 // ============================================================================

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { makeNotificationPublishHandler } from '../../notifications/realtime';
 import type { NotificationPayload } from '../../notifications/types';
 import type { RealtimeRuntime } from '../../realtime/types';
+
+import { makeNotificationPublishHandler } from '../../notifications/realtime';
 
 function payload(recipientId: string): NotificationPayload {
   return {
@@ -41,7 +42,7 @@ describe('makeNotificationPublishHandler', () => {
     expect(calls[0][2]).toBe(p);
   });
 
-  it('forwards transport rejection (failure isolation is the dispatcher\'s job)', async () => {
+  it("forwards transport rejection (failure isolation is the dispatcher's job)", async () => {
     const transport: RealtimeRuntime = {
       async publish() {
         throw new Error('boom');

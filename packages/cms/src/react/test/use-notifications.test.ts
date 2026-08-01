@@ -2,8 +2,8 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { ListNotificationsResult } from '../../core/notifications/types';
 import type { Serialize } from '../../client/types';
+import type { ListNotificationsResult } from '../../core/notifications/types';
 
 // Hoisted mock of the shared realtime client. `useRealtime` captures the hook's
 // `onData` callback (and reports a connected status); the test-only `__push`
@@ -90,7 +90,9 @@ describe('useNotifications', () => {
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error).toBeNull();
     expect(result.current.isLive).toBe(true);
-    expect(list).toHaveBeenCalledWith({ query: { limit: 50, withUser: undefined } });
+    expect(list).toHaveBeenCalledWith({
+      query: { limit: 50, withUser: undefined },
+    });
 
     // A live push for this user is prepended and bumps the unread count.
     act(() => {

@@ -10,7 +10,10 @@ async function historyByMessage(
 ): Promise<Map<string, string>> {
   const hist = await cms.api.pages.getRootHistory({ query: { rootId } });
   return new Map(
-    (hist.commits as unknown as HistoryItem[]).map((d) => [d.message, d.branch]),
+    (hist.commits as unknown as HistoryItem[]).map((d) => [
+      d.message,
+      d.branch,
+    ]),
   );
 }
 

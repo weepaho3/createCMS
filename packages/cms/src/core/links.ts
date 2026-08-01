@@ -132,15 +132,16 @@ export async function resolveLinkPaths(
     );
     const entries = [...valueToRootId];
     const paths = await Promise.all(
-      entries.map(([, targetRootId]): Promise<string | null> =>
-        slug?.enabled
-          ? resolveRootCurrentPath(
-              db,
-              slug as EnabledSlug,
-              targetRootId,
-              rootScope,
-            )
-          : Promise.resolve(null),
+      entries.map(
+        ([, targetRootId]): Promise<string | null> =>
+          slug?.enabled
+            ? resolveRootCurrentPath(
+                db,
+                slug as EnabledSlug,
+                targetRootId,
+                rootScope,
+              )
+            : Promise.resolve(null),
       ),
     );
     entries.forEach(([storedRootId, targetRootId], i) => {

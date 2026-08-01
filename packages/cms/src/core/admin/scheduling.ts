@@ -8,7 +8,10 @@ import { resolveBranchPolicy } from '../branch-policy';
 import { roots, scheduledPublications } from '../db/schema.generated';
 import { CMSError, getCMSErrorCode } from '../errors';
 import { syncAssetsOnPublish, syncAssetsOnUnpublish } from '../media/discovery';
-import { publishBranchInTx, unpublishBranchInTx } from '../publish/publish-branch';
+import {
+  publishBranchInTx,
+  unpublishBranchInTx,
+} from '../publish/publish-branch';
 
 export type RunScheduledOptions = {
   /** Max due rows processed this pass. Default 100. */
@@ -182,8 +185,9 @@ export async function runScheduledPass(
         result.published++;
         // Best-effort: the publish is already committed, so an asset-sync hiccup
         // must not flip a live page back to "failed".
-        await syncAssetsOnPublish(db, outcome.commitId, row.rootId).catch((err) =>
-          console.error('[cms] scheduled publish asset sync failed:', err),
+        await syncAssetsOnPublish(db, outcome.commitId, row.rootId).catch(
+          (err) =>
+            console.error('[cms] scheduled publish asset sync failed:', err),
         );
       } else {
         result.unpublished++;

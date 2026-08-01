@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { createNotificationRouter } from '../../../react/notifications-router';
 import type { NotificationListItem } from '../types';
+
+import { createNotificationRouter } from '../../../react/notifications-router';
 
 function notif(
   over: Partial<NotificationListItem> & Pick<NotificationListItem, 'type'>,

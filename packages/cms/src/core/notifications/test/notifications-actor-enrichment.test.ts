@@ -2,13 +2,10 @@ import { pgTable, text } from 'drizzle-orm/pg-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { DrizzleInstance } from '../../types/drizzle';
-import type {
-  NotificationInput,
-  NotificationPayload,
-} from '../types';
+import type { NotificationInput, NotificationPayload } from '../types';
 
-import { createNotificationService } from '../service';
 import { resolveUserConfig } from '../../user/resolve';
+import { createNotificationService } from '../service';
 
 const userTable = pgTable('user', {
   id: text('id').primaryKey(),
@@ -114,7 +111,11 @@ describe('notification actor enrichment', () => {
         { user_id: 'a2', u_name: 'Bob', u_image: null },
       ],
     }));
-    const service = createNotificationService(fakeDb(execute), [], resolvedUser);
+    const service = createNotificationService(
+      fakeDb(execute),
+      [],
+      resolvedUser,
+    );
 
     const payloads = await service.notifyMany([
       input({ actorId: 'a1' }),
@@ -124,11 +125,9 @@ describe('notification actor enrichment', () => {
 
     // one batched user query for the whole set, not one per notification
     expect(execute).toHaveBeenCalledTimes(1);
-    expect(payloads.map((p) => (p.actorUser as { name: string }).name)).toEqual([
-      'Alice',
-      'Bob',
-      'Alice',
-    ]);
+    expect(payloads.map((p) => (p.actorUser as { name: string }).name)).toEqual(
+      ['Alice', 'Bob', 'Alice'],
+    );
   });
 
   it('is best-effort: a lookup failure never drops the notification', async () => {

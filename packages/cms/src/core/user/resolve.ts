@@ -15,7 +15,9 @@ const SAFE_SQL_TABLE_REF = /^"[a-z_][a-z0-9_]*"(\."[a-z_][a-z0-9_]*")?$/i;
 
 export function assertSafeSqlIdentifier(name: string, kind: string): void {
   if (!SAFE_SQL_IDENTIFIER.test(name)) {
-    throw new Error(`[cms] unsafe SQL identifier rejected (${kind}): "${name}"`);
+    throw new Error(
+      `[cms] unsafe SQL identifier rejected (${kind}): "${name}"`,
+    );
   }
 }
 

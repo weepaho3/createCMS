@@ -49,8 +49,9 @@ describe('endpoint path convention', () => {
   // server's generated `$pathMethods`.
   it('server $pathMethods marks the body-optional core POSTs the client hard-codes', async () => {
     const { cms } = await setupTestCMS();
-    const pathMethods = (cms as unknown as { $pathMethods: Record<string, string> })
-      .$pathMethods;
+    const pathMethods = (
+      cms as unknown as { $pathMethods: Record<string, string> }
+    ).$pathMethods;
     for (const path of [
       '/admin/reindexSearch',
       '/admin/runPruning',
@@ -71,16 +72,20 @@ describe('endpoint path convention', () => {
   // Handler-level tests never see this — they invoke `cms.api.<ns>.<method>()`
   // directly and bypass HTTP method routing entirely — so this contract is the
   // only place a method drift is caught.
-  it('server $pathMethods matches each endpoint\'s declared HTTP method', async () => {
+  it("server $pathMethods matches each endpoint's declared HTTP method", async () => {
     const { cms } = await setupTestCMS();
-    const pathMethods = (cms as unknown as { $pathMethods: Record<string, string> })
-      .$pathMethods;
+    const pathMethods = (
+      cms as unknown as { $pathMethods: Record<string, string> }
+    ).$pathMethods;
 
     const offenders: string[] = [];
     for (const [ns, methods] of Object.entries(
       cms.api as Record<
         string,
-        Record<string, { path?: unknown; options?: { method?: string | string[] } }>
+        Record<
+          string,
+          { path?: unknown; options?: { method?: string | string[] } }
+        >
       >,
     )) {
       for (const [method, endpoint] of Object.entries(methods)) {
@@ -94,7 +99,9 @@ describe('endpoint path convention', () => {
         // `method` as a string or an array; prefer the first non-GET verb, else the
         // first entry. This is the value the client's override map is derived from.
         const m = endpoint?.options?.method;
-        const declared = Array.isArray(m) ? (m.find((x) => x !== 'GET') ?? m[0]) : m;
+        const declared = Array.isArray(m)
+          ? (m.find((x) => x !== 'GET') ?? m[0])
+          : m;
 
         if (pathMethods[path] !== declared) {
           offenders.push(

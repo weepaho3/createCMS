@@ -3,13 +3,13 @@ import { describe, expect, it } from 'vitest';
 
 import type { CMSPlugin } from '../../../index';
 
-import { splitPath } from '../../slug';
 import { allowAnonymous, createCMS } from '../../../index';
 import { redirects, roots } from '../../../schema';
 import { setupTestCMS } from '../../../test-utils/cms';
 import { setupTestDB } from '../../../test-utils/db';
 import { DUMMY_MEDIA_CONFIG } from '../../../test-utils/fixtures';
 import { publishApprovedBranch } from '../../../test-utils/helpers';
+import { splitPath } from '../../slug';
 
 // A nested collection (root '/docs') for parent-fallback resolution tests.
 const NESTED_COLLECTIONS = {
@@ -641,7 +641,9 @@ describe('redirect auto-creation (R4)', () => {
     expect((await cms.api.pages.listRedirects({ query: {} })).total).toBe(0);
     expect(
       (
-        await cms.api.pages.resolveRedirect({ query: { path: '/pages/draft-a' } })
+        await cms.api.pages.resolveRedirect({
+          query: { path: '/pages/draft-a' },
+        })
       ).redirect,
     ).toBeNull();
   });

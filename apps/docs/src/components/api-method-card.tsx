@@ -1,7 +1,14 @@
 'use client';
 
 import { Tooltip } from '@base-ui/react/tooltip';
-import { CornerDownLeft, CornerDownRight, Globe, Lock, Monitor, Server } from 'lucide-react';
+import {
+  CornerDownLeft,
+  CornerDownRight,
+  Globe,
+  Lock,
+  Monitor,
+  Server,
+} from 'lucide-react';
 import { type ReactElement, type ReactNode, useState } from 'react';
 
 import { cn } from '../lib/cn';
@@ -12,7 +19,8 @@ const methodVariants: Record<HttpMethod, string> = {
   GET: 'text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/25',
   POST: 'text-sky-700 dark:text-sky-400 bg-sky-500/10 border-sky-500/25',
   PUT: 'text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-500/25',
-  PATCH: 'text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-500/25',
+  PATCH:
+    'text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-500/25',
   DELETE: 'text-red-700 dark:text-red-400 bg-red-500/10 border-red-500/25',
 };
 
@@ -69,14 +77,27 @@ export function ApiMethodCard({
     <div className="not-prose my-6 overflow-hidden rounded-2xl border bg-fd-card text-fd-card-foreground">
       {/* Client / Server tabs + permission chip */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b bg-fd-muted/40 p-1.5">
-        <TabButton active={tab === 'client'} onClick={() => setTab('client')} icon={<Monitor className="size-3" />}>
+        <TabButton
+          active={tab === 'client'}
+          onClick={() => setTab('client')}
+          icon={<Monitor className="size-3" />}
+        >
           Client
         </TabButton>
-        <TabButton active={tab === 'server'} onClick={() => setTab('server')} icon={<Server className="size-3" />}>
+        <TabButton
+          active={tab === 'server'}
+          onClick={() => setTab('server')}
+          icon={<Server className="size-3" />}
+        >
           Server
         </TabButton>
         <span className="ms-auto pe-1">
-          <AuthBadge resource={resource} operation={operation} isPublic={isPublic} anonymousRead={anonymousRead} />
+          <AuthBadge
+            resource={resource}
+            operation={operation}
+            isPublic={isPublic}
+            anonymousRead={anonymousRead}
+          />
         </span>
       </div>
 
@@ -90,12 +111,18 @@ export function ApiMethodCard({
         >
           {method}
         </span>
-        <code className="break-all font-mono text-sm text-fd-foreground">{path}</code>
+        <code className="break-all font-mono text-sm text-fd-foreground">
+          {path}
+        </code>
       </div>
 
       {/* Code sample (pre-highlighted server-side) */}
-      <div className={tab === 'server' ? undefined : 'hidden'}>{serverCode}</div>
-      <div className={tab === 'client' ? undefined : 'hidden'}>{clientCode}</div>
+      <div className={tab === 'server' ? undefined : 'hidden'}>
+        {serverCode}
+      </div>
+      <div className={tab === 'client' ? undefined : 'hidden'}>
+        {clientCode}
+      </div>
 
       {/* Parameters */}
       {params && Object.keys(params).length > 0 && (
@@ -106,20 +133,33 @@ export function ApiMethodCard({
           </div>
           <div className="flex flex-col">
             {Object.entries(params).map(([name, p]) => (
-              <div key={name} className="flex flex-col gap-1 border-b px-3 py-3 last:border-b-0">
+              <div
+                key={name}
+                className="flex flex-col gap-1 border-b px-3 py-3 last:border-b-0"
+              >
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                   <code className="rounded-md border bg-fd-background px-1.5 py-0.5 font-mono text-sm font-medium text-fd-foreground">
                     {name}
                   </code>
-                  <span className="font-mono text-xs text-fd-muted-foreground">{p.type}</span>
+                  <span className="font-mono text-xs text-fd-muted-foreground">
+                    {p.type}
+                  </span>
                   {p.default !== undefined && (
-                    <span className="font-mono text-xs text-fd-muted-foreground">= {p.default}</span>
+                    <span className="font-mono text-xs text-fd-muted-foreground">
+                      = {p.default}
+                    </span>
                   )}
                   {p.required && (
-                    <span className="text-xs font-medium text-amber-600 dark:text-amber-500">required</span>
+                    <span className="text-xs font-medium text-amber-600 dark:text-amber-500">
+                      required
+                    </span>
                   )}
                 </div>
-                {p.description && <p className="text-sm text-fd-muted-foreground">{p.description}</p>}
+                {p.description && (
+                  <p className="text-sm text-fd-muted-foreground">
+                    {p.description}
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -135,17 +175,28 @@ export function ApiMethodCard({
           </div>
           <div className="flex flex-col">
             {Object.entries(returns).map(([name, r]) => (
-              <div key={name} className="flex flex-col gap-1 border-b px-3 py-3 last:border-b-0">
+              <div
+                key={name}
+                className="flex flex-col gap-1 border-b px-3 py-3 last:border-b-0"
+              >
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                   <code className="rounded-md border bg-fd-background px-1.5 py-0.5 font-mono text-sm font-medium text-fd-foreground">
                     {name}
                   </code>
-                  <span className="font-mono text-xs text-fd-muted-foreground">{r.type}</span>
+                  <span className="font-mono text-xs text-fd-muted-foreground">
+                    {r.type}
+                  </span>
                   {r.optional && (
-                    <span className="text-xs font-medium text-blue-600 dark:text-blue-400">optional</span>
+                    <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
+                      optional
+                    </span>
                   )}
                 </div>
-                {r.description && <p className="text-sm text-fd-muted-foreground">{r.description}</p>}
+                {r.description && (
+                  <p className="text-sm text-fd-muted-foreground">
+                    {r.description}
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -172,7 +223,9 @@ function TabButton({
       onClick={onClick}
       className={cn(
         'inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors',
-        active ? 'bg-fd-background text-fd-foreground shadow-sm' : 'text-fd-muted-foreground hover:text-fd-foreground',
+        active
+          ? 'bg-fd-background text-fd-foreground shadow-sm'
+          : 'text-fd-muted-foreground hover:text-fd-foreground',
       )}
     >
       {icon}
@@ -181,13 +234,24 @@ function TabButton({
   );
 }
 
-function Tip({ content, children }: { content: ReactNode; children: ReactElement }) {
+function Tip({
+  content,
+  children,
+}: {
+  content: ReactNode;
+  children: ReactElement;
+}) {
   return (
     <Tooltip.Provider delay={150}>
       <Tooltip.Root>
         <Tooltip.Trigger render={children} />
         <Tooltip.Portal>
-          <Tooltip.Positioner side="bottom" align="end" sideOffset={6} className="z-50">
+          <Tooltip.Positioner
+            side="bottom"
+            align="end"
+            sideOffset={6}
+            className="z-50"
+          >
             <Tooltip.Popup className="max-w-[17rem] rounded-lg border bg-fd-popover px-3 py-2 shadow-lg">
               {content}
             </Tooltip.Popup>
@@ -223,8 +287,8 @@ function AuthBadge({
       <Tip
         content={
           <TipBody title="Public endpoint">
-            The only route that skips <code>authMiddleware</code> entirely and handles its own access. Reachable with no
-            session.
+            The only route that skips <code>authMiddleware</code> entirely and
+            handles its own access. Reachable with no session.
           </TipBody>
         }
       >
@@ -240,8 +304,10 @@ function AuthBadge({
       <Tip
         content={
           <TipBody title="Anonymous read">
-            Still runs your <code>authMiddleware</code> (so plugin scope like multi-tenant and i18n resolves), passing
-            the <code>publishedContent</code> resource. You conventionally allow that one for logged-out visitors.
+            Still runs your <code>authMiddleware</code> (so plugin scope like
+            multi-tenant and i18n resolves), passing the{' '}
+            <code>publishedContent</code> resource. You conventionally allow
+            that one for logged-out visitors.
           </TipBody>
         }
       >
@@ -258,9 +324,11 @@ function AuthBadge({
         <TipBody title="Passed to your middleware">
           {resource && operation ? (
             <>
-              On every call, createCMS hands your <code>authMiddleware</code> this resource and operation (as{' '}
-              <code>ctx.permissionResource</code> and <code>ctx.operation</code>). Your middleware decides whether to
-              allow, deny, or scope the call. createCMS enforces nothing on its own.
+              On every call, createCMS hands your <code>authMiddleware</code>{' '}
+              this resource and operation (as{' '}
+              <code>ctx.permissionResource</code> and <code>ctx.operation</code>
+              ). Your middleware decides whether to allow, deny, or scope the
+              call. createCMS enforces nothing on its own.
             </>
           ) : (
             'Your authMiddleware resolves a session before this endpoint runs.'

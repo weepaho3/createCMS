@@ -17,8 +17,9 @@
  *   4. Resolves to the resting logo createCMS({▪}).
  */
 
-import { useEffect, useRef } from 'react';
 import type { CSSProperties } from 'react';
+
+import { useEffect, useRef } from 'react';
 
 export interface CreateCMSLogoAnimationProps {
   words?: string[];
@@ -34,8 +35,22 @@ export interface CreateCMSLogoAnimationProps {
 }
 
 const DEFAULT_WORDS = [
-  'roots', 'blocks', 'media', 'branches', 'commits', 'diffs', 'reviews', 'notifications',
-  'merges', 'publications', 'rollbacks', 'type-safe', 'plugins', 'multi-tenant', 'a/b', 'i18n',
+  'roots',
+  'blocks',
+  'media',
+  'branches',
+  'commits',
+  'diffs',
+  'reviews',
+  'notifications',
+  'merges',
+  'publications',
+  'rollbacks',
+  'type-safe',
+  'plugins',
+  'multi-tenant',
+  'a/b',
+  'i18n',
 ];
 
 // --- logo geometry (from createCMS-logo.svg, viewBox 0 0 1365 163) -----------
@@ -44,15 +59,42 @@ const LOGO_H = 163;
 // Per-letter paths of "createCMS" (split from the logo's combined paths, so each
 // glyph can pop in whole). `ink` = false → accent colour (the "CMS").
 const LETTERS: { d: string; ink: boolean }[] = [
-  { ink: true, d: 'M83.32,84.91l27.26-1.43c-2.87-25.42-24.39-41-50.43-41-32.39,0-53.71,22.35-53.71,56.79s21.32,56.78,53.71,56.78c26.86,0,48.18-16.2,51.25-42.43l-27.47-1.24c-2.05,14.56-11.68,22.15-23.78,22.15-16.81,0-26.44-12.92-26.44-35.26s9.63-35.27,26.44-35.27c11.48,0,21.12,7.38,23.17,20.91Z' }, // c
-  { ink: true, d: 'M127.67,44.94v108.65h26.65v-61.91c0-17.43,7.18-26.03,24.6-26.03h10.46v-20.71h-10.25c-13.94,0-21.94,6.97-26.04,21.11l-.62-21.11h-24.8Z' }, // r
-  { ink: true, d: 'M195.19,99.27c0,34.44,21.32,56.78,53.71,56.78,23.57,0,43.25-12.92,49.61-33.83l-27.06-2.04c-3.89,9.42-12.71,14.96-22.55,14.96-15.38,0-24.81-10.66-26.03-28.7h77.28l-.2-6.56c-.41-38.54-23.17-57.4-51.05-57.4-32.39,0-53.71,22.35-53.71,56.79h0ZM223.27,88.81c2.06-15.78,11.28-25.42,25.63-25.42,11.48,0,21.73,6.97,23.78,25.42h-49.41Z' }, // e
-  { ink: true, d: 'M317.24,77.94l27.06,1.65c2.67-11.9,10.05-18.05,21.53-18.05,14.14,0,21.11,8,21.32,24.4l-30.55,6.15c-25.42,5.13-41,11.89-41,33,0,19.28,17.22,30.96,38.95,30.96,18.86,0,31.16-8.2,36.08-18.86,2.05,16.81,19.48,16.61,27.88,16.61l6.15-.21v-19.27h-4.1c-4.1,0-6.76-1.64-6.76-7.99v-37.11c0-30.55-16.61-46.74-47.97-46.74-26.65,0-44.28,13.12-48.59,35.46h0ZM342.87,124.28c0-12.51,10.45-13.94,24.19-16.61l20.5-3.69v1.23c0,21.53-11.07,32.19-25.83,32.19-12.71,0-18.86-5.75-18.86-13.12h0Z' }, // a
-  { ink: true, d: 'M445.24,20.34v24.6h-17.02v20.5h17.02v54.74c0,22.13,12.09,33.41,34.44,33.41h20.91v-20.71h-16.4c-8.2,0-12.3-4.3-12.3-12.7v-54.74h28.7v-20.5h-28.7v-24.6s-26.65,0-26.65,0Z' }, // t
-  { ink: true, d: 'M510.5,99.27c0,34.44,21.32,56.78,53.71,56.78,23.58,0,43.26-12.92,49.61-33.83l-27.06-2.04c-3.89,9.42-12.71,14.96-22.55,14.96-15.37,0-24.8-10.66-26.03-28.7h77.28l-.2-6.56c-.41-38.54-23.17-57.4-51.05-57.4-32.39,0-53.71,22.35-53.71,56.79ZM538.59,88.81c2.05-15.78,11.27-25.42,25.62-25.42,11.48,0,21.73,6.97,23.78,25.42h-49.4Z' }, // e
-  { ink: false, d: 'M760.68,102.75l-28.29-1.44c-3.49,20.5-15.79,31.98-34.04,31.98-27.88,0-40.58-23.16-40.58-52.27s12.5-52.69,40.58-52.69c17.43,0,29.53,10.46,33.42,29.32l28.08-1.43c-6.35-31.99-28.28-51.46-61.08-51.46-42.85,0-68.68,33.41-68.68,76.26s26.03,75.85,68.68,75.85c34.44,0,56.17-20.5,61.91-54.12Z' }, // C
-  { ink: false, d: 'M780.64,8.04v145.55h26.85V54.16l36.29,99.22h26.03l36.08-99.22v99.43h27.06V8.04h-36.28l-39.98,112.55-39.77-112.55h-36.28,0Z' }, // M
-  { ink: false, d: 'M984.48,104.59l-27.06,1.64c2.26,30.35,26.45,49.82,60.88,49.82,29.73,0,54.13-14.96,54.13-42.43,0-22.97-20.92-36.7-51.25-44.08-15.99-4.1-33.01-8.2-33.42-22.55-.21-11.48,10.04-19.07,24.6-19.07,16.81,0,28.5,10.46,30.55,26.45l27.05-1.23c-3.27-28.7-24.8-48.38-57.19-48.38s-52.48,16.19-52.48,42.02c0,23.58,20.7,35.88,49.61,42.85,24.6,6.35,35.06,13.12,35.06,25.21.2,11.69-10.25,17.84-25.63,17.84-19.88,0-31.57-11.07-34.85-28.09h0Z' }, // S
+  {
+    ink: true,
+    d: 'M83.32,84.91l27.26-1.43c-2.87-25.42-24.39-41-50.43-41-32.39,0-53.71,22.35-53.71,56.79s21.32,56.78,53.71,56.78c26.86,0,48.18-16.2,51.25-42.43l-27.47-1.24c-2.05,14.56-11.68,22.15-23.78,22.15-16.81,0-26.44-12.92-26.44-35.26s9.63-35.27,26.44-35.27c11.48,0,21.12,7.38,23.17,20.91Z',
+  }, // c
+  {
+    ink: true,
+    d: 'M127.67,44.94v108.65h26.65v-61.91c0-17.43,7.18-26.03,24.6-26.03h10.46v-20.71h-10.25c-13.94,0-21.94,6.97-26.04,21.11l-.62-21.11h-24.8Z',
+  }, // r
+  {
+    ink: true,
+    d: 'M195.19,99.27c0,34.44,21.32,56.78,53.71,56.78,23.57,0,43.25-12.92,49.61-33.83l-27.06-2.04c-3.89,9.42-12.71,14.96-22.55,14.96-15.38,0-24.81-10.66-26.03-28.7h77.28l-.2-6.56c-.41-38.54-23.17-57.4-51.05-57.4-32.39,0-53.71,22.35-53.71,56.79h0ZM223.27,88.81c2.06-15.78,11.28-25.42,25.63-25.42,11.48,0,21.73,6.97,23.78,25.42h-49.41Z',
+  }, // e
+  {
+    ink: true,
+    d: 'M317.24,77.94l27.06,1.65c2.67-11.9,10.05-18.05,21.53-18.05,14.14,0,21.11,8,21.32,24.4l-30.55,6.15c-25.42,5.13-41,11.89-41,33,0,19.28,17.22,30.96,38.95,30.96,18.86,0,31.16-8.2,36.08-18.86,2.05,16.81,19.48,16.61,27.88,16.61l6.15-.21v-19.27h-4.1c-4.1,0-6.76-1.64-6.76-7.99v-37.11c0-30.55-16.61-46.74-47.97-46.74-26.65,0-44.28,13.12-48.59,35.46h0ZM342.87,124.28c0-12.51,10.45-13.94,24.19-16.61l20.5-3.69v1.23c0,21.53-11.07,32.19-25.83,32.19-12.71,0-18.86-5.75-18.86-13.12h0Z',
+  }, // a
+  {
+    ink: true,
+    d: 'M445.24,20.34v24.6h-17.02v20.5h17.02v54.74c0,22.13,12.09,33.41,34.44,33.41h20.91v-20.71h-16.4c-8.2,0-12.3-4.3-12.3-12.7v-54.74h28.7v-20.5h-28.7v-24.6s-26.65,0-26.65,0Z',
+  }, // t
+  {
+    ink: true,
+    d: 'M510.5,99.27c0,34.44,21.32,56.78,53.71,56.78,23.58,0,43.26-12.92,49.61-33.83l-27.06-2.04c-3.89,9.42-12.71,14.96-22.55,14.96-15.37,0-24.8-10.66-26.03-28.7h77.28l-.2-6.56c-.41-38.54-23.17-57.4-51.05-57.4-32.39,0-53.71,22.35-53.71,56.79ZM538.59,88.81c2.05-15.78,11.27-25.42,25.62-25.42,11.48,0,21.73,6.97,23.78,25.42h-49.4Z',
+  }, // e
+  {
+    ink: false,
+    d: 'M760.68,102.75l-28.29-1.44c-3.49,20.5-15.79,31.98-34.04,31.98-27.88,0-40.58-23.16-40.58-52.27s12.5-52.69,40.58-52.69c17.43,0,29.53,10.46,33.42,29.32l28.08-1.43c-6.35-31.99-28.28-51.46-61.08-51.46-42.85,0-68.68,33.41-68.68,76.26s26.03,75.85,68.68,75.85c34.44,0,56.17-20.5,61.91-54.12Z',
+  }, // C
+  {
+    ink: false,
+    d: 'M780.64,8.04v145.55h26.85V54.16l36.29,99.22h26.03l36.08-99.22v99.43h27.06V8.04h-36.28l-39.98,112.55-39.77-112.55h-36.28,0Z',
+  }, // M
+  {
+    ink: false,
+    d: 'M984.48,104.59l-27.06,1.64c2.26,30.35,26.45,49.82,60.88,49.82,29.73,0,54.13-14.96,54.13-42.43,0-22.97-20.92-36.7-51.25-44.08-15.99-4.1-33.01-8.2-33.42-22.55-.21-11.48,10.04-19.07,24.6-19.07,16.81,0,28.5,10.46,30.55,26.45l27.05-1.23c-3.27-28.7-24.8-48.38-57.19-48.38s-52.48,16.19-52.48,42.02c0,23.58,20.7,35.88,49.61,42.85,24.6,6.35,35.06,13.12,35.06,25.21.2,11.69-10.25,17.84-25.63,17.84-19.88,0-31.57-11.07-34.85-28.09h0Z',
+  }, // S
 ];
 const PAREN_L =
   'M1131.57,7.06h-20.01c-31.29,47.71-31.29,99.35,0,147.06h20.01c-28.05-49.08-28.05-97.98,0-147.06Z';
@@ -88,7 +130,8 @@ const VIEWBOX_W = 1365 + WORD_RESERVE;
 const UNIT_PX = 0.48;
 
 // --- pure helpers ------------------------------------------------------------
-const clamp = (x: number, lo: number, hi: number) => (x < lo ? lo : x > hi ? hi : x);
+const clamp = (x: number, lo: number, hi: number) =>
+  x < lo ? lo : x > hi ? hi : x;
 const lerp = (a: number, b: number, u: number) => a + (b - a) * u;
 const seg = (t: number, a: number, b: number) => clamp((t - a) / (b - a), 0, 1);
 const easeOut = (u: number) => 1 - Math.pow(1 - u, 4); // strong ease-out (punchy entrances)
@@ -119,7 +162,8 @@ export default function CreateCMSLogoAnimation({
     if (!svg) return;
 
     const gfx = (sel: string) => svg.querySelector(sel) as SVGGraphicsElement;
-    const txt = (sel: string) => svg.querySelector(sel) as SVGTextContentElement;
+    const txt = (sel: string) =>
+      svg.querySelector(sel) as SVGTextContentElement;
     const letters = LETTERS.map((_, i) => gfx(`[data-l="${i}"]`));
     const caret = gfx('[data-caret]');
     const parenL = gfx('[data-pl]');
@@ -135,7 +179,16 @@ export default function CreateCMSLogoAnimation({
       e.style.setProperty('transform-box', 'fill-box');
       e.style.transformOrigin = '50% 100%'; // grow up from the baseline
     }
-    for (const e of [parenL, braceL, braceR, parenR, blk, caret, feats[0], feats[1]]) {
+    for (const e of [
+      parenL,
+      braceL,
+      braceR,
+      parenR,
+      blk,
+      caret,
+      feats[0],
+      feats[1],
+    ]) {
       e.style.setProperty('transform-box', 'fill-box');
       e.style.transformOrigin = 'center';
     }
@@ -166,13 +219,23 @@ export default function CreateCMSLogoAnimation({
       FEAT.forEach((f, i) => {
         feats[0].textContent = f;
         const w = feats[0].getComputedTextLength();
-        braceShift[i] = clamp(Math.round(WORD_X + w + 12 - BRACE_GROUP_X), 0, WORD_RESERVE);
+        braceShift[i] = clamp(
+          Math.round(WORD_X + w + 12 - BRACE_GROUP_X),
+          0,
+          WORD_RESERVE,
+        );
       });
       feats[0].textContent = '';
     };
 
     const glyphsTyped = (t: number) =>
-      t < TYPE_START ? 0 : clamp(Math.floor((t - TYPE_START) / MS_PER_GLYPH) + 1, 0, GLYPH_COUNT);
+      t < TYPE_START
+        ? 0
+        : clamp(
+            Math.floor((t - TYPE_START) / MS_PER_GLYPH) + 1,
+            0,
+            GLYPH_COUNT,
+          );
 
     const wordVis = (t: number, i: number) => {
       const start = FEAT_START + i * STEP;
@@ -180,12 +243,22 @@ export default function CreateCMSLogoAnimation({
       if (t < start) return { op: 0, bl: BLUR, sx: 0.93, sy: 0.93 };
       if (t <= start + FEAT_IN) {
         const u = easeInOut(seg(t, start, start + FEAT_IN));
-        return { op: u, bl: lerp(BLUR, 0, u), sx: lerp(0.93, 1, u), sy: lerp(0.93, 1, u) };
+        return {
+          op: u,
+          bl: lerp(BLUR, 0, u),
+          sx: lerp(0.93, 1, u),
+          sy: lerp(0.93, 1, u),
+        };
       }
       if (t < start + STEP) return { op: 1, bl: 0, sx: 1, sy: 1 };
       if (t <= start + STEP + FEAT_OUT) {
         const u = easeInOut(seg(t, start + STEP, start + STEP + FEAT_OUT));
-        return { op: 1 - u, bl: lerp(0, BLUR, u), sx: lerp(1, 1.05, u), sy: lerp(1, 1.05, u) };
+        return {
+          op: 1 - u,
+          bl: lerp(0, BLUR, u),
+          sx: lerp(1, 1.05, u),
+          sy: lerp(1, 1.05, u),
+        };
       }
       return { op: 0, bl: BLUR, sx: 1.05, sy: 1.05 };
     };
@@ -195,7 +268,11 @@ export default function CreateCMSLogoAnimation({
     const braceX = (t: number) => {
       if (t < FEAT_START) return BRACE_TIGHT;
       if (t >= BLOCK_START) {
-        return lerp(braceShift[N - 1], 0, easeInOut(seg(t, BLOCK_START, BLOCK_START + FEAT_OUT)));
+        return lerp(
+          braceShift[N - 1],
+          0,
+          easeInOut(seg(t, BLOCK_START, BLOCK_START + FEAT_OUT)),
+        );
       }
       const i = clamp(Math.floor((t - FEAT_START) / STEP), 0, N - 1);
       const start = FEAT_START + i * STEP;
@@ -210,7 +287,11 @@ export default function CreateCMSLogoAnimation({
     // ")" hugs "(" until "{ }" appear, then it joins "}" (spreading for words).
     const parenX = (t: number) => {
       if (t < BRACE_AT) return PAREN_TIGHT;
-      return lerp(PAREN_TIGHT, braceX(t), easeOut(seg(t, BRACE_AT, BRACE_AT + 160)));
+      return lerp(
+        PAREN_TIGHT,
+        braceX(t),
+        easeOut(seg(t, BRACE_AT, BRACE_AT + 160)),
+      );
     };
 
     const reveal = (t: number, t0: number) => ({
@@ -227,7 +308,8 @@ export default function CreateCMSLogoAnimation({
         const at = TYPE_START + i * MS_PER_GLYPH;
         if (t >= at) {
           letters[i].style.opacity = '1';
-          letters[i].style.transform = `scale(${lerp(0.86, 1, easeOut(seg(t, at, at + 90))).toFixed(3)})`;
+          letters[i].style.transform =
+            `scale(${lerp(0.86, 1, easeOut(seg(t, at, at + 90))).toFixed(3)})`;
         } else {
           letters[i].style.opacity = '0';
           letters[i].style.transform = 'scale(0.86)';
@@ -238,11 +320,24 @@ export default function CreateCMSLogoAnimation({
       // "( )", then the tight "{ }"; blinks and fades as the first word arrives.
       let caretX: number;
       if (t < PAREN_AT) {
-        caretX = typed <= 0 ? 6 : typed >= GLYPH_COUNT ? TYPED_W : LETTER_END[typed - 1];
+        caretX =
+          typed <= 0
+            ? 6
+            : typed >= GLYPH_COUNT
+              ? TYPED_W
+              : LETTER_END[typed - 1];
       } else if (t < BRACE_AT) {
-        caretX = lerp(TYPED_W, PARENS_TIGHT_MID, easeOut(seg(t, PAREN_AT, PAREN_AT + 130)));
+        caretX = lerp(
+          TYPED_W,
+          PARENS_TIGHT_MID,
+          easeOut(seg(t, PAREN_AT, PAREN_AT + 130)),
+        );
       } else {
-        caretX = lerp(PARENS_TIGHT_MID, BRACES_TIGHT_MID, easeOut(seg(t, BRACE_AT, BRACE_AT + 130)));
+        caretX = lerp(
+          PARENS_TIGHT_MID,
+          BRACES_TIGHT_MID,
+          easeOut(seg(t, BRACE_AT, BRACE_AT + 130)),
+        );
       }
       let caretOp: number;
       if (t < TYPE_START) caretOp = Math.floor(t / 520) % 2 === 0 ? 1 : 0;
@@ -298,7 +393,9 @@ export default function CreateCMSLogoAnimation({
         blockOp = easeOut(seg(t, BLOCK_START, BLOCK_START + 260));
         const u = seg(t, BLOCK_START, BLOCK_START + BLOCK_DUR);
         blockScale =
-          u < 0.6 ? lerp(0, 1.16, easeOut(u / 0.6)) : lerp(1.16, 1, easeInOut((u - 0.6) / 0.4));
+          u < 0.6
+            ? lerp(0, 1.16, easeOut(u / 0.6))
+            : lerp(1.16, 1, easeInOut((u - 0.6) / 0.4));
       }
       blk.style.opacity = blockOp.toFixed(3);
       blk.style.transform = `scale(${blockScale.toFixed(3)})`;
@@ -358,11 +455,22 @@ export default function CreateCMSLogoAnimation({
         ref={svgRef}
         viewBox={`0 0 ${VIEWBOX_W} ${LOGO_H}`}
         aria-hidden
-        style={{ fontFamily, width: `min(${Math.round(VIEWBOX_W * UNIT_PX)}px, ${maxWidth})`, height: 'auto', display: 'block', overflow: 'visible' }}
+        style={{
+          fontFamily,
+          width: `min(${Math.round(VIEWBOX_W * UNIT_PX)}px, ${maxWidth})`,
+          height: 'auto',
+          display: 'block',
+          overflow: 'visible',
+        }}
       >
         {/* "createCMS" — one path per letter, popped in individually. */}
         {LETTERS.map((l, i) => (
-          <path key={i} data-l={i} d={l.d} style={{ fill: l.ink ? ink : accent, opacity: 0 }} />
+          <path
+            key={i}
+            data-l={i}
+            d={l.d}
+            style={{ fill: l.ink ? ink : accent, opacity: 0 }}
+          />
         ))}
         {/* Brackets — real logo paths; right ones (}/) ) slide to wrap words.
             Start hidden so the pre-JS frame is just the caret, not "({▪})". */}
@@ -371,11 +479,45 @@ export default function CreateCMSLogoAnimation({
         <path data-br d={BRACE_R} style={{ fill: ink, opacity: 0 }} />
         <path data-pr d={PAREN_R} style={{ fill: ink, opacity: 0 }} />
         {/* Morph words (text) at the logo's fixed brace coordinates. */}
-        <text data-feat x={WORD_X} y={WORD_Y} fontWeight="600" fontSize={WORD_FS} textAnchor="start" dominantBaseline="central" style={{ fill: accent }}></text>
-        <text data-feat2 x={WORD_X} y={WORD_Y} fontWeight="600" fontSize={WORD_FS} textAnchor="start" dominantBaseline="central" style={{ fill: accent }}></text>
-        <rect data-blk x={BLOCK.x} y={BLOCK.y} width={BLOCK.w} height={BLOCK.h} rx={BLOCK.rx} style={{ fill: accent, opacity: 0 }} />
+        <text
+          data-feat
+          x={WORD_X}
+          y={WORD_Y}
+          fontWeight="600"
+          fontSize={WORD_FS}
+          textAnchor="start"
+          dominantBaseline="central"
+          style={{ fill: accent }}
+        ></text>
+        <text
+          data-feat2
+          x={WORD_X}
+          y={WORD_Y}
+          fontWeight="600"
+          fontSize={WORD_FS}
+          textAnchor="start"
+          dominantBaseline="central"
+          style={{ fill: accent }}
+        ></text>
+        <rect
+          data-blk
+          x={BLOCK.x}
+          y={BLOCK.y}
+          width={BLOCK.w}
+          height={BLOCK.h}
+          rx={BLOCK.rx}
+          style={{ fill: accent, opacity: 0 }}
+        />
         {/* Typing caret — cap height of the capitals (y≈8 to baseline ≈154). */}
-        <rect data-caret x="6" y="8" width="12" height="146" rx="3" style={{ fill: accent, opacity: 0 }} />
+        <rect
+          data-caret
+          x="6"
+          y="8"
+          width="12"
+          height="146"
+          rx="3"
+          style={{ fill: accent, opacity: 0 }}
+        />
       </svg>
     </span>
   );

@@ -48,7 +48,8 @@ export function createRealtimeRuntime(config: RealtimeConfig): RealtimeRuntime {
         };
         try {
           redisMod = (await import('@upstash/redis')) as typeof redisMod;
-          realtimeMod = (await import('@upstash/realtime')) as typeof realtimeMod;
+          realtimeMod =
+            (await import('@upstash/realtime')) as typeof realtimeMod;
         } catch (err) {
           // Optional peer(s) not installed → runtime stays inert (silent). A
           // module-not-found is expected; anything else is a real load error

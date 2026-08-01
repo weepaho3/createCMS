@@ -44,11 +44,11 @@ bun run --filter=@createcms/core test:watch
 
 ### Repo map
 
-| Path | What it is | Run it |
-| --- | --- | --- |
-| [`packages/cms`](./packages/cms) | `@createcms/core` — the package under active development. Tests run against an in-memory Postgres (PGlite), so no database is needed. | `bun run --filter=@createcms/core test` |
-| [`apps/docs`](./apps/docs) | The documentation site (Fumadocs); content lives in [`apps/docs/content/docs`](./apps/docs/content/docs). | `bun run --filter=docs dev` → <http://localhost:4000> |
-| [`examples/minimal`](./examples/minimal), [`examples/blog`](./examples/blog) | Runnable example apps (PGlite in-memory, no DB setup). | `bun run --filter=<name> dev` |
+| Path                                                                         | What it is                                                                                                                            | Run it                                                |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| [`packages/cms`](./packages/cms)                                             | `@createcms/core` — the package under active development. Tests run against an in-memory Postgres (PGlite), so no database is needed. | `bun run --filter=@createcms/core test`               |
+| [`apps/docs`](./apps/docs)                                                   | The documentation site (Fumadocs); content lives in [`apps/docs/content/docs`](./apps/docs/content/docs).                             | `bun run --filter=docs dev` → <http://localhost:4000> |
+| [`examples/minimal`](./examples/minimal), [`examples/blog`](./examples/blog) | Runnable example apps (PGlite in-memory, no DB setup).                                                                                | `bun run --filter=<name> dev`                         |
 
 ### Package layout (`packages/cms/src`)
 

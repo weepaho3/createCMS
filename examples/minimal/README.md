@@ -46,7 +46,7 @@ bun run dev      # http://localhost:3000
 > optional media/database variables.
 
 > Copying this example out of the monorepo? Replace `"@createcms/core":
-> "workspace:*"` in `package.json` with a published range like `"^0.2.x"`;
+"workspace:*"` in `package.json` with a published range like `"^0.2.x"`;
 > the `workspace:*` protocol only resolves inside this repo.
 
 ## Regenerating the schema

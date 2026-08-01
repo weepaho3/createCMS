@@ -1,10 +1,10 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { setupTestDB } from '../../../test-utils/db';
-import { DUMMY_MEDIA_CONFIG } from '../../../test-utils/fixtures';
 import { allowAnonymous } from '../../../core/define';
 import { createCMS } from '../../../core/factory';
+import { setupTestDB } from '../../../test-utils/db';
+import { DUMMY_MEDIA_CONFIG } from '../../../test-utils/fixtures';
 import { i18n } from '../../i18n/index';
 import { i18nSchema } from '../../i18n/schema';
 import { abTest } from '../index';

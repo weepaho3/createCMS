@@ -31,10 +31,18 @@ describe('listMergeRequests — commentCount excludes soft-deleted threads', () 
     });
 
     const t1 = await cms.api.pages.createCommentThread({
-      body: { targetType: 'mergeRequest', mergeRequestId: mergeRequest.id, body: 'first' },
+      body: {
+        targetType: 'mergeRequest',
+        mergeRequestId: mergeRequest.id,
+        body: 'first',
+      },
     });
     await cms.api.pages.createCommentThread({
-      body: { targetType: 'mergeRequest', mergeRequestId: mergeRequest.id, body: 'second' },
+      body: {
+        targetType: 'mergeRequest',
+        mergeRequestId: mergeRequest.id,
+        body: 'second',
+      },
     });
 
     const countFor = async () =>

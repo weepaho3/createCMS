@@ -153,7 +153,10 @@ export type { PlacementIndex } from './core/blocks/placement';
 
 // Pure resolved-reference guard + stored-form normalizer (shared by the server
 // read path and the React client entry, which re-exports from here).
-export { isResolvedReference, toStoredReference } from './core/references-guard';
+export {
+  isResolvedReference,
+  toStoredReference,
+} from './core/references-guard';
 
 // Seeds a created block's initial `properties` from its definition's
 // `defaultValue` declarations.

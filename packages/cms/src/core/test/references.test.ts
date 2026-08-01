@@ -1,16 +1,13 @@
 import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 
-import type {
-  ResolvedReference,
-  RevalidateEvent,
-} from '../types/definitions';
+import type { ResolvedReference, RevalidateEvent } from '../types/definitions';
 import type { CustomMediaConfig } from '../types/s3';
 
-import { isReferencedByLiveContent } from '../references';
 import { allowAnonymous, createCMS } from '../../index';
 import { contentUsages } from '../../schema';
 import { setupTestDB } from '../../test-utils/db';
+import { isReferencedByLiveContent } from '../references';
 
 type AnyApi = Record<string, (...args: any[]) => Promise<any>>;
 type AnyCMS = { api: Record<string, AnyApi> };

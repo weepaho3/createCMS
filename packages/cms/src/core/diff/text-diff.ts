@@ -145,7 +145,10 @@ export function diffRichText(from: string, to: string): TextDiffSegment[] {
     suffixLength++;
   }
 
-  const midFrom = fromTokens.slice(prefixLength, fromTokens.length - suffixLength);
+  const midFrom = fromTokens.slice(
+    prefixLength,
+    fromTokens.length - suffixLength,
+  );
   const midTo = toTokens.slice(prefixLength, toTokens.length - suffixLength);
 
   const segments: TextDiffSegment[] = [];
@@ -157,7 +160,8 @@ export function diffRichText(from: string, to: string): TextDiffSegment[] {
   }
 
   if (midFrom.length > MAX_LCS_TOKENS || midTo.length > MAX_LCS_TOKENS) {
-    if (midFrom.length > 0) segments.push({ type: 'del', html: midFrom.join('') });
+    if (midFrom.length > 0)
+      segments.push({ type: 'del', html: midFrom.join('') });
     if (midTo.length > 0) segments.push({ type: 'ins', html: midTo.join('') });
   } else {
     segments.push(...lcsDiff(midFrom, midTo));

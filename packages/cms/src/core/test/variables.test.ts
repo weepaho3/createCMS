@@ -4,12 +4,6 @@ import { describe, expect, it } from 'vitest';
 import type { BlockTreeNode } from '../blocks/reconstruct-snapshot';
 
 import {
-  extractVariableKeys,
-  extractVariableKeysFromProperties,
-  substituteVariables,
-  resolveTemplateString,
-} from '../variables';
-import {
   variables,
   contentUsages,
   templates,
@@ -17,6 +11,12 @@ import {
 } from '../../schema';
 import { setupTestCMS } from '../../test-utils/cms';
 import { publishApprovedBranch } from '../../test-utils/helpers';
+import {
+  extractVariableKeys,
+  extractVariableKeysFromProperties,
+  substituteVariables,
+  resolveTemplateString,
+} from '../variables';
 
 // ============================================================================
 // Unit tests for variable utility functions
@@ -772,10 +772,10 @@ describe('Template CRUD endpoints', () => {
     });
     expect(updated.template).toBe('Updated {{brandName}}');
 
-    await cms.api.templates.deleteTemplate({ body: { templateId: created.id } });
-    const { templates: afterDelete } = await cms.api.templates.list(
-      {},
-    );
+    await cms.api.templates.deleteTemplate({
+      body: { templateId: created.id },
+    });
+    const { templates: afterDelete } = await cms.api.templates.list({});
     expect(afterDelete).toHaveLength(0);
   });
 

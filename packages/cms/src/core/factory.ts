@@ -28,7 +28,6 @@ import type {
 } from './types/plugin';
 
 import { DEFAULT_BRANCH_NAME } from './branch-policy';
-import { CMS_ERRORS } from './errors-data';
 import {
   createCMSContext,
   processCollections,
@@ -36,6 +35,7 @@ import {
   runPluginInit,
 } from './context';
 import { toCMSEndpoints } from './endpoint';
+import { CMS_ERRORS } from './errors-data';
 import { createHookRunner } from './hooks';
 import { makeNotificationPublishHandler } from './notifications/realtime';
 import { createNotificationService } from './notifications/service';
@@ -258,7 +258,9 @@ type WithUserApi<T, TTable extends AnyPgTable> = {
 // so the tuple can't flow to this call site without a bespoke helper generic.
 // Every non-exposed column is therefore typed as optionally-present (never
 // wrongly required); the runtime filter in user/resolve.ts is the source of truth.
-type ActorUserShape<TTable extends AnyPgTable> = Partial<TTable['$inferSelect']>;
+type ActorUserShape<TTable extends AnyPgTable> = Partial<
+  TTable['$inferSelect']
+>;
 
 // Rewrite a `withUser`-enriched RESULT: wherever a `createdByUser` / `actorUser`
 // field is DECLARED on a result type, type it off the user table instead of
@@ -341,7 +343,9 @@ type HasRevalidate<T> = T extends { onRevalidate: infer R }
 // feature. Drives whether `cms.api.notifications` / `cms.notify` exist in the
 // inferred type (mirrors HasRevalidate's value-or-undefined gating, applied to
 // member presence instead).
-type NotificationsEnabled<T> = T extends { notifications: false } ? false : true;
+type NotificationsEnabled<T> = T extends { notifications: false }
+  ? false
+  : true;
 
 type InferCollectionApis<
   TCollections extends Record<string, AnyCollectionDefinition>,
@@ -978,15 +982,17 @@ export const createCMS = <
     notify: notify as NotificationsEnabled<TDef> extends true
       ? NonNullable<typeof notify>
       : undefined,
-    notificationService: notificationService as NotificationsEnabled<TDef> extends true
-      ? NonNullable<typeof notificationService>
-      : undefined,
+    notificationService:
+      notificationService as NotificationsEnabled<TDef> extends true
+        ? NonNullable<typeof notificationService>
+        : undefined,
     // Present only when notifications are enabled (gated from the TYPE too, like
     // `notify`). Awaits all in-flight notification side effects — the assertion
     // seam that replaces real `setTimeout` waits in tests.
-    $flushNotifications: $flushNotifications as NotificationsEnabled<TDef> extends true
-      ? NonNullable<typeof $flushNotifications>
-      : undefined,
+    $flushNotifications:
+      $flushNotifications as NotificationsEnabled<TDef> extends true
+        ? NonNullable<typeof $flushNotifications>
+        : undefined,
     revalidate: revalidate as HasRevalidate<TDef> extends true
       ? RevalidateFn<keyof DefCollections & string>
       : RevalidateFn<keyof DefCollections & string> | undefined,

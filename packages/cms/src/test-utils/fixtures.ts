@@ -1,10 +1,6 @@
 import type { CustomMediaConfig } from '../core/types/s3';
 
-import {
-  defineCollection,
-  defineCollections,
-  defineBlock,
-} from '../index';
+import { defineCollection, defineCollections, defineBlock } from '../index';
 
 export const DUMMY_MEDIA_CONFIG: CustomMediaConfig = {
   provider: 'custom',

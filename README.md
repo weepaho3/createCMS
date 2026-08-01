@@ -27,8 +27,8 @@ bun add @createcms/core
 import { createCMS } from '@createcms/core';
 
 export const cms = createCMS({
-  db,                        // your Drizzle client
-  collections: { pages },    // your collection definitions
+  db, // your Drizzle client
+  collections: { pages }, // your collection definitions
   // S3-compatible storage (dummy values for local dev)
   media: {
     provider: 'custom',

@@ -13,8 +13,16 @@ const flush = () => new Promise<void>((resolve) => queueMicrotask(resolve));
 
 describe('createDynamicPathProxy — dispatch', () => {
   it('dispatches a no-body call as GET', async () => {
-    const $fetch = vi.fn().mockResolvedValue({ ok: true }) as unknown as CMSFetch;
-    const proxy = createDynamicPathProxy({}, $fetch, { '/x/force': 'POST' }, {}, []);
+    const $fetch = vi
+      .fn()
+      .mockResolvedValue({ ok: true }) as unknown as CMSFetch;
+    const proxy = createDynamicPathProxy(
+      {},
+      $fetch,
+      { '/x/force': 'POST' },
+      {},
+      [],
+    );
 
     await proxy.pages.listRoots();
 
@@ -22,8 +30,16 @@ describe('createDynamicPathProxy — dispatch', () => {
   });
 
   it('dispatches a call WITH a body as POST, forwarding the body', async () => {
-    const $fetch = vi.fn().mockResolvedValue({ ok: true }) as unknown as CMSFetch;
-    const proxy = createDynamicPathProxy({}, $fetch, { '/x/force': 'POST' }, {}, []);
+    const $fetch = vi
+      .fn()
+      .mockResolvedValue({ ok: true }) as unknown as CMSFetch;
+    const proxy = createDynamicPathProxy(
+      {},
+      $fetch,
+      { '/x/force': 'POST' },
+      {},
+      [],
+    );
 
     await proxy.pages.createRoot({ body: { a: 1 } });
 
@@ -34,8 +50,16 @@ describe('createDynamicPathProxy — dispatch', () => {
   });
 
   it('honors a pathMethods override, forcing POST on a no-body call', async () => {
-    const $fetch = vi.fn().mockResolvedValue({ ok: true }) as unknown as CMSFetch;
-    const proxy = createDynamicPathProxy({}, $fetch, { '/x/force': 'POST' }, {}, []);
+    const $fetch = vi
+      .fn()
+      .mockResolvedValue({ ok: true }) as unknown as CMSFetch;
+    const proxy = createDynamicPathProxy(
+      {},
+      $fetch,
+      { '/x/force': 'POST' },
+      {},
+      [],
+    );
 
     await proxy.x.force();
 
@@ -46,7 +70,9 @@ describe('createDynamicPathProxy — dispatch', () => {
 describe('createDynamicPathProxy — atom invalidation', () => {
   it('flips the matching signal after a non-GET mutation', async () => {
     const $mediaSignal = atom(false);
-    const $fetch = vi.fn().mockResolvedValue({ ok: true }) as unknown as CMSFetch;
+    const $fetch = vi
+      .fn()
+      .mockResolvedValue({ ok: true }) as unknown as CMSFetch;
     const listeners: CMSAtomListener[] = [
       { matcher: (p) => p.startsWith('/media/'), signal: '$mediaSignal' },
     ];
@@ -66,7 +92,9 @@ describe('createDynamicPathProxy — atom invalidation', () => {
 
   it('does NOT flip the signal on a GET read of the same namespace', async () => {
     const $mediaSignal = atom(false);
-    const $fetch = vi.fn().mockResolvedValue({ ok: true }) as unknown as CMSFetch;
+    const $fetch = vi
+      .fn()
+      .mockResolvedValue({ ok: true }) as unknown as CMSFetch;
     const listeners: CMSAtomListener[] = [
       { matcher: (p) => p.startsWith('/media/'), signal: '$mediaSignal' },
     ];

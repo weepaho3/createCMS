@@ -96,9 +96,7 @@ export function createNotificationService(
     if (!resolvedUser) return;
     const actorIds = [
       ...new Set(
-        payloads
-          .map((p) => p.actorId)
-          .filter((id): id is string => id != null),
+        payloads.map((p) => p.actorId).filter((id): id is string => id != null),
       ),
     ];
     if (actorIds.length === 0) return;
@@ -203,8 +201,10 @@ export function withNotifications<T>(
   fn: (tx: DrizzleInstance, pending: NotificationInput[]) => Promise<T>,
 ): Promise<T> {
   const pending: NotificationInput[] = [];
-  return db.transaction((tx) => fn(tx, pending)).then((result) => {
-    flushNotifications(service, pending);
-    return result;
-  });
+  return db
+    .transaction((tx) => fn(tx, pending))
+    .then((result) => {
+      flushNotifications(service, pending);
+      return result;
+    });
 }

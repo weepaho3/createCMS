@@ -7,7 +7,10 @@ import type { ResolvedUserConfig } from '../user/resolve';
 
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { extractUserFromRow, userJoinFragments } from '../user/join-helpers';
-import { assertSafeSqlIdentifier, assertSafeSqlTableRef } from '../user/resolve';
+import {
+  assertSafeSqlIdentifier,
+  assertSafeSqlTableRef,
+} from '../user/resolve';
 
 // A normal permission resource for the user-directory reads. The app's auth
 // middleware decides who may call these (e.g. anyone who can pick a reviewer);
@@ -45,7 +48,8 @@ async function fetchExposedUsers(
   const frags = userJoinFragments(uc, `u.${uc.idColumnDbName}`, 'u', true);
   const idCol = sql.raw(`u.${uc.idColumnDbName}`);
 
-  const where = opts.id !== undefined ? sql`WHERE ${idCol} = ${opts.id}` : sql``;
+  const where =
+    opts.id !== undefined ? sql`WHERE ${idCol} = ${opts.id}` : sql``;
   const limit = opts.limit !== undefined ? sql`LIMIT ${opts.limit}` : sql``;
   const offset = opts.offset !== undefined ? sql`OFFSET ${opts.offset}` : sql``;
 

@@ -62,8 +62,18 @@ describe('diffProperties', () => {
     it('recurses into aligned object items using the new index', () => {
       expect(
         diffProperties(
-          { items: [{ id: 1, title: 'x' }, { id: 2, title: 'y' }] },
-          { items: [{ id: 1, title: 'x' }, { id: 2, title: 'z' }] },
+          {
+            items: [
+              { id: 1, title: 'x' },
+              { id: 2, title: 'y' },
+            ],
+          },
+          {
+            items: [
+              { id: 1, title: 'x' },
+              { id: 2, title: 'z' },
+            ],
+          },
         ),
       ).toEqual([
         { path: ['items', 1, 'title'], kind: 'changed', from: 'y', to: 'z' },

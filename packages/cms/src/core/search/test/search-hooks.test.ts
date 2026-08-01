@@ -16,11 +16,8 @@ vi.mock('../index-builder', () => ({
   deleteSearchIndex: vi.fn().mockResolvedValue(undefined),
 }));
 
-import {
-  indexComment,
-  indexMergeRequest,
-} from '../index-builder';
 import { createSearchHooks } from '../hooks';
+import { indexComment, indexMergeRequest } from '../index-builder';
 
 const hooks = createSearchHooks('main');
 const hookFor = (action: string) => hooks.find((h) => h.action === action)!;

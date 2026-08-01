@@ -4,13 +4,13 @@ import { describe, expect, it } from 'vitest';
 
 import type { ResolvedUserConfig } from '../user/resolve';
 
+import { setupTestCMS } from '../../test-utils/cms';
 import {
   extractUserFromRow,
   resolveUserColumns,
   userJoinFragments,
 } from '../user/join-helpers';
 import { resolveUserConfig } from '../user/resolve';
-import { setupTestCMS } from '../../test-utils/cms';
 
 // ---------------------------------------------------------------------------
 // Test user table (Drizzle definition — used for metadata resolution)

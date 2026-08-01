@@ -7,6 +7,7 @@ import type {
   RootListItem,
 } from '../types';
 import type { ResolvedSlugConfig } from '../types/definitions';
+import type { BlocksContext } from './blocks-context';
 
 import { newId } from '../../utils/nanoid';
 import { createInitialCommit } from '../blocks/commit-writer';
@@ -52,11 +53,7 @@ import {
 } from '../slug';
 import { userEnrichment } from '../user/enrichment';
 import { parseTimestamp } from '../utils/parse-timestamp';
-import {
-  wireBooleanIsTrue,
-  wireBooleanSchema,
-} from '../utils/wire-boolean';
-import type { BlocksContext } from './blocks-context';
+import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
 
 // ============================================================================
 // Root endpoints (9): createRoot, listRoots, duplicateRoot, updateRoot,
@@ -673,7 +670,9 @@ export function createRootEndpoints<TDef extends CollectionWithName>(
         // `__slug: null`, which the merge-patch deletes.
         let patch = properties as Record<string, unknown> | undefined;
         if (slugCfg?.enabled && newSlug !== undefined) {
-          const normalized = slugCfg.normalize ? normalizeSlug(newSlug) : newSlug;
+          const normalized = slugCfg.normalize
+            ? normalizeSlug(newSlug)
+            : newSlug;
           if (!normalized && !slugCfg.allowIndex) {
             throw new CMSError('SLUG_EMPTY_NOT_ALLOWED');
           }

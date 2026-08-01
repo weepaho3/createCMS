@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+
 import { Fragment } from 'react';
 
 import type { BlockTreeNode } from '../core/blocks/reconstruct-snapshot';
@@ -7,7 +8,6 @@ import type {
   BlockDiffAnnotation,
   TextDiffSegment,
 } from '../core/diff/types';
-import { isResolvedReference } from '../core/references-guard';
 import type {
   AnyBlockDefinition,
   AnyCollectionDefinition,
@@ -18,6 +18,7 @@ import type {
   RefMode,
 } from '../core/types/definitions';
 
+import { isResolvedReference } from '../core/references-guard';
 import { BlockTracker } from './tracking';
 
 // Re-export the canonical resolved-reference guard from its pure module, so
@@ -317,7 +318,9 @@ function applyDiffWrapper(
         ...new Set(
           annotation.propertyChanges
             .map((change) => change.path[0])
-            .filter((segment): segment is string => typeof segment === 'string'),
+            .filter(
+              (segment): segment is string => typeof segment === 'string',
+            ),
         ),
       ].join(' ')
     : '';
@@ -483,8 +486,7 @@ function renderNodeElement(
   // it must never fire impressions/events. Skipping the tracker leaves any
   // fire() inside it unscoped (no source, dev-warned), instead of attributing
   // events to a block the draft removed.
-  const isGhost =
-    getBlockDiff(node)?.changeTypes.includes('deleted') === true;
+  const isGhost = getBlockDiff(node)?.changeTypes.includes('deleted') === true;
   if (node.type in events && !isGhost) {
     const rawTrackingId = node.properties.trackingId;
     return (

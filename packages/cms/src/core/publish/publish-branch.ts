@@ -1,8 +1,18 @@
 import { and, eq, type SQL } from 'drizzle-orm';
 
+import type {
+  ResolvedSlugConfig,
+  RootTableScope,
+  TableScope,
+} from '../types/definitions';
+import type { DrizzleInstance } from '../types/drizzle';
+
 import { getApprovalStateForPublication } from '../approvals/state';
-import { approvalGatePasses, type ResolvedBranchPolicy } from '../branch-policy';
 import { readRootSlug } from '../blocks/reconstruct-snapshot';
+import {
+  approvalGatePasses,
+  type ResolvedBranchPolicy,
+} from '../branch-policy';
 import {
   blockVersions,
   branches,
@@ -15,16 +25,7 @@ import {
   captureSubtreePaths,
   recordSubtreeRedirects,
 } from '../redirects/auto-create';
-import {
-  normalizeSlug,
-  validateSlugUniqueness,
-} from '../slug';
-import type {
-  ResolvedSlugConfig,
-  RootTableScope,
-  TableScope,
-} from '../types/definitions';
-import type { DrizzleInstance } from '../types/drizzle';
+import { normalizeSlug, validateSlugUniqueness } from '../slug';
 
 // ============================================================================
 // Shared publish/unpublish core — the SINGLE source of the publish rules,
@@ -91,7 +92,11 @@ export async function publishBranchInTx(
     })
     .from(roots)
     .where(
-      and(eq(roots.id, rootId), eq(roots.collection, collectionName), scopeWhere),
+      and(
+        eq(roots.id, rootId),
+        eq(roots.collection, collectionName),
+        scopeWhere,
+      ),
     );
   if (!root) throw new CMSError('ROOT_NOT_FOUND');
 
@@ -265,7 +270,11 @@ export async function unpublishBranchInTx(
     .select({ id: roots.id })
     .from(roots)
     .where(
-      and(eq(roots.id, rootId), eq(roots.collection, collectionName), scopeWhere),
+      and(
+        eq(roots.id, rootId),
+        eq(roots.collection, collectionName),
+        scopeWhere,
+      ),
     );
   if (!root) throw new CMSError('ROOT_NOT_FOUND');
 

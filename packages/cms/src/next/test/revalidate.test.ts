@@ -62,7 +62,9 @@ describe('createRevalidateHandler', () => {
   });
 
   it('returns 200 with empty paths/tags and does not fan out', async () => {
-    const res = await POST(makeRequest(JSON.stringify({ paths: [], tags: [] })));
+    const res = await POST(
+      makeRequest(JSON.stringify({ paths: [], tags: [] })),
+    );
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({
       revalidated: true,

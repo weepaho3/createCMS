@@ -160,8 +160,7 @@ export async function assertFolderExists(
   scope: ResolvedScope,
 ) {
   const conditions: SQL[] = [eq(assetFolders.id, folderId)];
-  if (scope.assetFolders?.where)
-    conditions.push(scope.assetFolders.where);
+  if (scope.assetFolders?.where) conditions.push(scope.assetFolders.where);
 
   const [folder] = await db
     .select({ id: assetFolders.id })

@@ -2,7 +2,12 @@ import { highlight } from 'fumadocs-core/highlight';
 import { CodeBlock, Pre } from 'fumadocs-ui/components/codeblock';
 import { type ReactNode } from 'react';
 
-import { ApiMethodCard, type APIParam, type APIReturn, type HttpMethod } from './api-method-card';
+import {
+  ApiMethodCard,
+  type APIParam,
+  type APIReturn,
+  type HttpMethod,
+} from './api-method-card';
 
 export type { APIParam, APIReturn };
 
@@ -67,7 +72,12 @@ function reindentObject(src: string): string[] {
   });
 }
 
-function buildCode(lhs: string, base: string, fn: string, args?: string): string {
+function buildCode(
+  lhs: string,
+  base: string,
+  fn: string,
+  args?: string,
+): string {
   if (!args || args.trim() === '') return `${lhs} = await ${base}.${fn}();`;
   const lines = reindentObject(args);
   lines[0] = `${lhs} = await ${base}.${fn}(${lines[0]}`;
@@ -108,7 +118,12 @@ export async function APIMethod({
   returns,
 }: APIMethodProps) {
   const serverCode = buildCode('const data', `cms.api.${collection}`, fn, args);
-  const clientCode = buildCode('const { data, error }', `client.${collection}`, fn, args);
+  const clientCode = buildCode(
+    'const { data, error }',
+    `client.${collection}`,
+    fn,
+    args,
+  );
 
   const [serverNode, clientNode] = await Promise.all([
     highlight(serverCode, HIGHLIGHT_OPTIONS),

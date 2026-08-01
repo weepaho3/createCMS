@@ -28,7 +28,12 @@ import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
 import { resolveLinkPaths } from '../links';
 import { syncAssetsOnPublish, syncAssetsOnUnpublish } from '../media/discovery';
+import {
+  publishBranchInTx,
+  unpublishBranchInTx,
+} from '../publish/publish-branch';
 import { coreReferenceResolver } from '../references';
+import { resolveTreeReferences } from '../references-render';
 import { crossScopeColumns } from '../scope';
 import {
   normalizeSlug,
@@ -40,8 +45,6 @@ import { userEnrichment } from '../user/enrichment';
 import { parseTimestampOrNull } from '../utils/parse-timestamp';
 import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
 import { loadVariables, substituteVariables } from '../variables';
-import { publishBranchInTx, unpublishBranchInTx } from '../publish/publish-branch';
-import { resolveTreeReferences } from '../references-render';
 
 type PublishedContentQuery =
   | {
@@ -99,7 +102,11 @@ async function queueScheduledAction(
     .select({ id: roots.id })
     .from(roots)
     .where(
-      and(eq(roots.id, rootId), eq(roots.collection, collectionName), scopeWhere),
+      and(
+        eq(roots.id, rootId),
+        eq(roots.collection, collectionName),
+        scopeWhere,
+      ),
     );
   if (!root) throw new CMSError('ROOT_NOT_FOUND');
 

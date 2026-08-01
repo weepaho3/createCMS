@@ -1,11 +1,11 @@
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { setupTestDB } from '../../test-utils/db';
-import { DUMMY_MEDIA_CONFIG } from '../../test-utils/fixtures';
 import { allowAnonymous } from '../../core/define';
 import { createCMS } from '../../core/factory';
 import { abTest } from '../../plugins/ab-test/index';
 import { buildSchema } from '../../plugins/ab-test/schema';
+import { setupTestDB } from '../../test-utils/db';
+import { DUMMY_MEDIA_CONFIG } from '../../test-utils/fixtures';
 import { pickVariant } from '../variant';
 
 /**

@@ -18,26 +18,24 @@ const MARK = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="14 -56 272 272">
 
 export default function AppleIcon() {
   return new ImageResponse(
-    (
-      <div
-        style={{
-          width: '100%',
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: '#fafaf9',
-        }}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          width={120}
-          height={120}
-          alt="createCMS"
-          src={`data:image/svg+xml;utf8,${encodeURIComponent(MARK)}`}
-        />
-      </div>
-    ),
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#fafaf9',
+      }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        width={120}
+        height={120}
+        alt="createCMS"
+        src={`data:image/svg+xml;utf8,${encodeURIComponent(MARK)}`}
+      />
+    </div>,
     size,
   );
 }

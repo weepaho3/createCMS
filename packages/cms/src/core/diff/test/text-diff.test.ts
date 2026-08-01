@@ -43,9 +43,7 @@ describe('diffRichText', () => {
   });
 
   it('diffs a single word change mid-sentence', () => {
-    expect(
-      diffRichText('The quick brown fox', 'The quick red fox'),
-    ).toEqual([
+    expect(diffRichText('The quick brown fox', 'The quick red fox')).toEqual([
       { type: 'same', html: 'The quick ' },
       { type: 'del', html: 'brown ' },
       { type: 'ins', html: 'red ' },
@@ -91,9 +89,7 @@ describe('diffRichText', () => {
   });
 
   it('treats a tag with changed attributes as del + ins, not same', () => {
-    expect(
-      diffRichText('<p class="a">x</p>', '<p class="b">x</p>'),
-    ).toEqual([
+    expect(diffRichText('<p class="a">x</p>', '<p class="b">x</p>')).toEqual([
       { type: 'del', html: '<p class="a">' },
       { type: 'ins', html: '<p class="b">' },
       { type: 'same', html: 'x</p>' },
@@ -108,9 +104,7 @@ describe('diffRichText', () => {
   });
 
   it('diffs plain text without any tags', () => {
-    expect(
-      diffRichText('one two three four', 'one 2 three four'),
-    ).toEqual([
+    expect(diffRichText('one two three four', 'one 2 three four')).toEqual([
       { type: 'same', html: 'one ' },
       { type: 'del', html: 'two ' },
       { type: 'ins', html: '2 ' },
@@ -149,24 +143,33 @@ describe('diffRichText', () => {
       ['old text here', 'brand new stuff'],
       ['one two three four', 'one 2 three four'],
       ['  leading and   inner\nwhitespace ', 'leading and inner whitespace'],
-      ['<ul><li>a</li><li>b</li></ul>', '<ul><li>a</li><li>c</li><li>b</li></ul>'],
+      [
+        '<ul><li>a</li><li>b</li></ul>',
+        '<ul><li>a</li><li>c</li><li>b</li></ul>',
+      ],
       ['text with <br/> void tag', 'text without void tag'],
     ];
 
-    it.each(cases)('same+del === from and same+ins === to (%j -> %j)', (from, to) => {
-      const segments = diffRichText(from, to);
-      expect(concatFrom(segments)).toBe(from);
-      expect(concatTo(segments)).toBe(to);
-    });
+    it.each(cases)(
+      'same+del === from and same+ins === to (%j -> %j)',
+      (from, to) => {
+        const segments = diffRichText(from, to);
+        expect(concatFrom(segments)).toBe(from);
+        expect(concatTo(segments)).toBe(to);
+      },
+    );
 
-    it.each(cases)('never emits adjacent segments of the same type (%j -> %j)', (from, to) => {
-      const segments = diffRichText(from, to);
-      for (let i = 1; i < segments.length; i++) {
-        expect(segments[i].type).not.toBe(segments[i - 1].type);
-      }
-      for (const segment of segments) {
-        expect(segment.html).not.toBe('');
-      }
-    });
+    it.each(cases)(
+      'never emits adjacent segments of the same type (%j -> %j)',
+      (from, to) => {
+        const segments = diffRichText(from, to);
+        for (let i = 1; i < segments.length; i++) {
+          expect(segments[i].type).not.toBe(segments[i - 1].type);
+        }
+        for (const segment of segments) {
+          expect(segment.html).not.toBe('');
+        }
+      },
+    );
   });
 });

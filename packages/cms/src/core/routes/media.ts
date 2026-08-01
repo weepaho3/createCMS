@@ -18,10 +18,6 @@ import type { CMSProcedureContext, MediaConfig } from '../types';
 import type { S3Client } from '../types/s3';
 
 import { newId } from '../../utils/nanoid';
-import {
-  assetsReferencedByLiveContent,
-  getAssetUsageDetails,
-} from '../media/usage';
 import { assetFolders, assets } from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError, errorMessages } from '../errors';
@@ -32,6 +28,10 @@ import {
   prepareAssetUpload,
   validateFiles,
 } from '../media/uploads';
+import {
+  assetsReferencedByLiveContent,
+  getAssetUsageDetails,
+} from '../media/usage';
 import { crossScopeColumns, scopedInsert, scopedInsertBatch } from '../scope';
 import { createS3Client } from '../storage/s3/client';
 import {
@@ -960,8 +960,7 @@ export function createMediaEndpoints(
           inArray(assets.id, assetIds),
           isNull(assets.archivedAt),
         ];
-        if (scope.assets?.where)
-          selectConditions.push(scope.assets.where);
+        if (scope.assets?.where) selectConditions.push(scope.assets.where);
 
         const existing = await db
           .select({ id: assets.id })
@@ -976,8 +975,7 @@ export function createMediaEndpoints(
 
         const existingIds = existing.map((a) => a.id);
         const updateConditions: SQL[] = [inArray(assets.id, existingIds)];
-        if (scope.assets?.where)
-          updateConditions.push(scope.assets.where);
+        if (scope.assets?.where) updateConditions.push(scope.assets.where);
 
         await db
           .update(assets)
@@ -1033,8 +1031,7 @@ export function createMediaEndpoints(
           inArray(assets.id, assetIds),
           isNull(assets.archivedAt),
         ];
-        if (scope.assets?.where)
-          selectConditions.push(scope.assets.where);
+        if (scope.assets?.where) selectConditions.push(scope.assets.where);
 
         const existing = await db
           .select({ id: assets.id, variantOf: assets.variantOf })
@@ -1064,8 +1061,7 @@ export function createMediaEndpoints(
             )!,
             isNull(assets.archivedAt),
           ];
-          if (scope.assets?.where)
-            updateConditions.push(scope.assets.where);
+          if (scope.assets?.where) updateConditions.push(scope.assets.where);
 
           await db
             .update(assets)
@@ -1104,8 +1100,7 @@ export function createMediaEndpoints(
           inArray(assets.id, assetIds),
           isNull(assets.archivedAt),
         ];
-        if (scope.assets?.where)
-          selectConditions.push(scope.assets.where);
+        if (scope.assets?.where) selectConditions.push(scope.assets.where);
 
         const existing = await db
           .select({ id: assets.id })
@@ -1156,8 +1151,7 @@ export function createMediaEndpoints(
           )!,
           isNull(assets.archivedAt),
         ];
-        if (scope.assets?.where)
-          archiveConditions.push(scope.assets.where);
+        if (scope.assets?.where) archiveConditions.push(scope.assets.where);
 
         const archived = await db
           .update(assets)
@@ -1395,7 +1389,11 @@ export function createMediaEndpoints(
         // buffer's magic bytes and reject a spoof (e.g. SVG-as-PNG) BEFORE any
         // DB row or S3 object is written.
         for (const file of files) {
-          await assertDeclaredTypeMatchesBytes(file.name, file.type, file.buffer);
+          await assertDeclaredTypeMatchesBytes(
+            file.name,
+            file.type,
+            file.buffer,
+          );
         }
 
         const client = getS3Client();
@@ -1583,8 +1581,7 @@ export function createMediaEndpoints(
             eq(assets.id, assetId),
             isNull(assets.archivedAt),
           ];
-          if (scope.assets?.where)
-            updateConditions.push(scope.assets.where);
+          if (scope.assets?.where) updateConditions.push(scope.assets.where);
 
           const repointed = await tx
             .update(assets)
@@ -1611,8 +1608,7 @@ export function createMediaEndpoints(
             eq(assets.variantOf, assetId),
             isNull(assets.archivedAt),
           ];
-          if (scope.assets?.where)
-            variantConditions.push(scope.assets.where);
+          if (scope.assets?.where) variantConditions.push(scope.assets.where);
 
           await tx
             .update(assets)

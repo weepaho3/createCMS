@@ -1,5 +1,13 @@
 {
   "title": "Plugins",
   "icon": "Puzzle",
-  "pages": ["multi-tenant", "i18n", "ab-test", "consent", "media-optimize", "building", "..."]
+  "pages": [
+    "multi-tenant",
+    "i18n",
+    "ab-test",
+    "consent",
+    "media-optimize",
+    "building",
+    "..."
+  ]
 }

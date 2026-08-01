@@ -16,9 +16,7 @@ import {
 const cms = createCMS({
   db,
   collections,
-  media: {
-    /* ... */
-  },
+  media: {/* ... */},
   plugins: [multiTenant()],
   authMiddleware: async (ctx): Promise<MultiTenantMiddlewareResult> => {
     const session = await getSession(ctx);

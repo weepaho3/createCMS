@@ -61,7 +61,9 @@ describe('generateSchema', () => {
 
     const onDisk = await readFile(out, 'utf8');
     // emit puts the db name on the next line: `cmsSchema.table(\n  "roots",`
-    expect(onDisk).toMatch(/export const roots = cmsSchema\.table\(\s+"roots",/);
+    expect(onDisk).toMatch(
+      /export const roots = cmsSchema\.table\(\s+"roots",/,
+    );
     expect(onDisk).toMatch(
       /export const redirects = cmsSchema\.table\(\s+"redirects",/,
     );

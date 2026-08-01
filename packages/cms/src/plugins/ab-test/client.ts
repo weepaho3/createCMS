@@ -552,7 +552,6 @@ export function abTestClient(options?: AbTestClientOptions) {
             // Revoke consent in-session — stops any further fan-out.
             gate.reset();
           },
-
         },
       };
     },

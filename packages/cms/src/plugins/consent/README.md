@@ -19,9 +19,7 @@ import { consent } from '@createcms/core/plugins/consent';
 export const cms = createCMS({
   db,
   collections,
-  media: {
-    /* ... */
-  },
+  media: {/* ... */},
   plugins: [consent()],
 });
 ```
@@ -44,20 +42,23 @@ export const cmsClient = createCMSClient<typeof cms>({
 Set and read consent through the `consent` namespace. The four signals follow Consent Mode v2:
 
 ```ts
-cmsClient.consent.setConsent({ analytics_storage: 'granted', ad_storage: 'denied' });
+cmsClient.consent.setConsent({
+  analytics_storage: 'granted',
+  ad_storage: 'denied',
+});
 cmsClient.consent.isGranted('analytics_storage'); // boolean
 ```
 
-| Action            | Signature                                         | Description                                                                  |
-| ----------------- | ------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `setConsent`      | `(consent: Partial<ConsentState>) => void`        | Apply a real decision (treated like a Consent Mode `update`).                |
-| `getConsent`      | `() => ConsentState`                              | Read the current state.                                                       |
-| `isGranted`       | `(purpose: ConsentPurpose) => boolean`            | Check one purpose.                                                            |
-| `isResolved`      | `() => boolean`                                   | `true` once a real decision arrived or the wait-window elapsed.              |
-| `onChange`        | `(listener) => () => void`                        | Subscribe to changes; returns an unsubscribe.                                |
-| `reset`           | `() => void`                                      | Revoke in-session: back to default-deny. Stays resolved; nothing persisted. |
-| `useConsentState` | React hook                                         | Returns `{ state, resolved, isGranted }`, re-rendering on every change.      |
-| `ConsentGate`     | `<ConsentGate purpose fallback?>`                 | Render wrapper bound to this client's gate (see below).                      |
+| Action            | Signature                                  | Description                                                                 |
+| ----------------- | ------------------------------------------ | --------------------------------------------------------------------------- |
+| `setConsent`      | `(consent: Partial<ConsentState>) => void` | Apply a real decision (treated like a Consent Mode `update`).               |
+| `getConsent`      | `() => ConsentState`                       | Read the current state.                                                     |
+| `isGranted`       | `(purpose: ConsentPurpose) => boolean`     | Check one purpose.                                                          |
+| `isResolved`      | `() => boolean`                            | `true` once a real decision arrived or the wait-window elapsed.             |
+| `onChange`        | `(listener) => () => void`                 | Subscribe to changes; returns an unsubscribe.                               |
+| `reset`           | `() => void`                               | Revoke in-session: back to default-deny. Stays resolved; nothing persisted. |
+| `useConsentState` | React hook                                 | Returns `{ state, resolved, isGranted }`, re-rendering on every change.     |
+| `ConsentGate`     | `<ConsentGate purpose fallback?>`          | Render wrapper bound to this client's gate (see below).                     |
 
 ### Gate an embed
 
@@ -66,7 +67,10 @@ cmsClient.consent.isGranted('analytics_storage'); // boolean
 ```tsx
 const { ConsentGate } = cmsClient.consent;
 
-<ConsentGate purpose="ad_storage" fallback={<p>Accept cookies to view this.</p>}>
+<ConsentGate
+  purpose="ad_storage"
+  fallback={<p>Accept cookies to view this.</p>}
+>
   <iframe src="https://www.youtube.com/embed/..." />
 </ConsentGate>;
 ```
@@ -107,8 +111,8 @@ The plugin adds no database schema.
 
 ## Exports
 
-| Subpath                                   | Contents                                                                                                                       |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `@createcms/core/plugins/consent`         | Server marker `consent()` plus the gate primitives — `createConsentGate`, `parseConsentEntry(s)`, `resolveVisitorKey`, `startConsentAutoRead`, `DENIED_ALL`, `CONSENT_WAIT_MS`, and the consent types. |
-| `@createcms/core/plugins/consent/client`  | The `consentClient()` client plugin (the `consent` namespace + `<ConsentGate>`).                                              |
-| `@createcms/core/plugins/consent/c15t`    | The c15t adapter — `useC15tConsentBridge`, `consentModeFromC15t`, `DEFAULT_C15T_MAPPING`.                                     |
+| Subpath                                  | Contents                                                                                                                                                                                               |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `@createcms/core/plugins/consent`        | Server marker `consent()` plus the gate primitives — `createConsentGate`, `parseConsentEntry(s)`, `resolveVisitorKey`, `startConsentAutoRead`, `DENIED_ALL`, `CONSENT_WAIT_MS`, and the consent types. |
+| `@createcms/core/plugins/consent/client` | The `consentClient()` client plugin (the `consent` namespace + `<ConsentGate>`).                                                                                                                       |
+| `@createcms/core/plugins/consent/c15t`   | The c15t adapter — `useC15tConsentBridge`, `consentModeFromC15t`, `DEFAULT_C15T_MAPPING`.                                                                                                              |

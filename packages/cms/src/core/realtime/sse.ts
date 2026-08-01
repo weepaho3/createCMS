@@ -1,6 +1,7 @@
 import type { CMSMiddleware, CMSProcedureContext } from '../types/definitions';
-import { defaultAuthorizeChannels } from './channels';
 import type { RealtimeRuntime } from './types';
+
+import { defaultAuthorizeChannels } from './channels';
 
 /** Channel-authorization policy: maps an authenticated (or anonymous) caller +
  *  requested channels to a rejecting `Response`, or void to allow. */

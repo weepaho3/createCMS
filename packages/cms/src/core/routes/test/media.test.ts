@@ -259,9 +259,11 @@ describe('media.listFolders', () => {
     const leaf = await cms.api.media.createFolder({ body: { name: 'Leaf' } });
 
     expect(
-      (await cms.api.media.listFolders({
-        query: { parentFolderId: leaf.folder.id },
-      })).folders,
+      (
+        await cms.api.media.listFolders({
+          query: { parentFolderId: leaf.folder.id },
+        })
+      ).folders,
     ).toEqual([]);
     expect(
       (await cms.api.media.listFolders({ query: { parentFolderId: 'nope' } }))

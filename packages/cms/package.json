@@ -2,11 +2,22 @@
   "name": "@createcms/core",
   "version": "0.3.0",
   "description": "[Work in progress · pre-1.0 · not production-ready] Composable, block-based headless CMS powered by better-call and Drizzle ORM (Postgres). Database-native versioning with Git-like branches, copy-on-write drafts, visual diffs, merges, reusable blocks, nested pages, and a fully type-safe API.",
-  "license": "MIT",
+  "keywords": [
+    "blocks",
+    "cms",
+    "composable",
+    "drizzle",
+    "git-like",
+    "headless-cms",
+    "postgres",
+    "typescript",
+    "versioning"
+  ],
   "homepage": "https://github.com/weepaho3/createCMS#readme",
   "bugs": {
     "url": "https://github.com/weepaho3/createCMS/issues"
   },
+  "license": "MIT",
   "author": {
     "name": "weepaho3",
     "url": "https://github.com/weepaho3"
@@ -15,20 +26,6 @@
     "type": "git",
     "url": "git+https://github.com/weepaho3/createCMS.git",
     "directory": "packages/cms"
-  },
-  "keywords": [
-    "cms",
-    "headless-cms",
-    "drizzle",
-    "postgres",
-    "composable",
-    "blocks",
-    "git-like",
-    "versioning",
-    "typescript"
-  ],
-  "engines": {
-    "node": ">=22.12.0"
   },
   "bin": {
     "createcms": "dist/bin/createcms.js"
@@ -141,14 +138,14 @@
   },
   "scripts": {
     "build": "NODE_OPTIONS=--max-old-space-size=6144 bunchee && bun scripts/inject-endpoint-docs.mjs",
-    "prepublishOnly": "bun run build",
+    "check-types": "tsc --noEmit",
     "clean": "rm -rf dist .turbo",
     "generate:schema": "bun run scripts/generate-schema.ts",
     "lint": "oxlint",
+    "prepublishOnly": "bun run build",
     "test": "vitest run",
-    "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "check-types": "tsc --noEmit"
+    "test:watch": "vitest"
   },
   "dependencies": {
     "aws4fetch": "^1.0.20",
@@ -207,5 +204,8 @@
     "next": {
       "optional": true
     }
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }
