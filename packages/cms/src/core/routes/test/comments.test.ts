@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { createCMS } from '../../../index';
 import { setupTestCMS } from '../../../test-utils/cms';
 import { setupTestDB } from '../../../test-utils/db';
-import { DUMMY_MEDIA_CONFIG, TEST_COLLECTIONS } from '../../../test-utils/fixtures';
+import {
+  DUMMY_MEDIA_CONFIG,
+  TEST_COLLECTIONS,
+} from '../../../test-utils/fixtures';
 
 const USER_1 = 'user-1';
 const USER_2 = 'user-2';
@@ -55,6 +58,41 @@ async function setupCommentFixture(userId = USER_1) {
   });
 
   return { cms, db, root, draft, mr };
+}
+
+/**
+ * Same fixture, but with two separate CMS instances sharing one db, each
+ * authenticated as a different user — for tests that must call an endpoint
+ * "as" a specific user (e.g. `listMentions`, which now derives its filter
+ * from the session rather than a caller-supplied id).
+ */
+async function setupCommentFixtureMultiUser() {
+  const { db } = await setupTestDB();
+  const cms1 = createCMSWithUser(db, USER_1);
+  const cms2 = createCMSWithUser(db, USER_2);
+
+  const root = await cms1.api.pages.createRoot({
+    body: { slug: 'comments-multi-user', properties: { title: 'Page' } },
+  });
+
+  const draft = await cms1.api.pages.createBranch({
+    body: {
+      rootId: root.rootId,
+      name: 'draft',
+      sourceBranchId: root.branchId,
+    },
+  });
+
+  const mr = await cms1.api.pages.createMergeRequest({
+    body: {
+      sourceBranchId: draft.branch.id,
+      targetBranchId: root.branchId,
+      title: 'Test MR',
+      createdBy: USER_1,
+    },
+  });
+
+  return { cms1, cms2, db, root, draft, mr };
 }
 
 describe('comments', () => {
@@ -1013,10 +1051,10 @@ describe('comments', () => {
       ).toContain(USER_2);
     });
 
-    it('listMentions returns mentions for a user', async () => {
-      const { cms, mr } = await setupCommentFixture();
+    it("listMentions returns only the calling user's mentions", async () => {
+      const { cms1, cms2, mr } = await setupCommentFixtureMultiUser();
 
-      await cms.api.pages.createCommentThread({
+      await cms1.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
           mergeRequestId: mr.mergeRequest.id,
@@ -1025,7 +1063,7 @@ describe('comments', () => {
         },
       });
 
-      const { thread: thread2 } = await cms.api.pages.createCommentThread({
+      const { thread: thread2 } = await cms1.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
           mergeRequestId: mr.mergeRequest.id,
@@ -1033,7 +1071,7 @@ describe('comments', () => {
         },
       });
 
-      await cms.api.pages.createCommentMessage({
+      await cms1.api.pages.createCommentMessage({
         body: {
           threadId: thread2.id,
           body: 'Also cc @user-2',
@@ -1041,9 +1079,23 @@ describe('comments', () => {
         },
       });
 
-      const result = await cms.api.pages.listMentions({
-        query: { mentionedUserId: USER_2 },
+      // A third thread mentions a different user — it must not leak into
+      // user-2's inbox, even though user-1 (comment:read too) created both.
+      await cms1.api.pages.createCommentThread({
+        body: {
+          targetType: 'mergeRequest',
+          mergeRequestId: mr.mergeRequest.id,
+          body: 'Hey @user-3',
+          mentions: [USER_3],
+        },
       });
+
+      // Called as user-1 (mentionedUserId is no longer a query param at all —
+      // the filter is always the session user).
+      const asUser1 = await cms1.api.pages.listMentions({ query: {} });
+      expect(asUser1.total).toBe(0);
+
+      const result = await cms2.api.pages.listMentions({ query: {} });
 
       expect(result.total).toBe(2);
       expect(result.mentions).toHaveLength(2);
@@ -1056,9 +1108,9 @@ describe('comments', () => {
     });
 
     it('listMentions filters by threadId', async () => {
-      const { cms, mr } = await setupCommentFixture();
+      const { cms1, cms2, mr } = await setupCommentFixtureMultiUser();
 
-      const { thread: t1 } = await cms.api.pages.createCommentThread({
+      const { thread: t1 } = await cms1.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
           mergeRequestId: mr.mergeRequest.id,
@@ -1067,7 +1119,7 @@ describe('comments', () => {
         },
       });
 
-      await cms.api.pages.createCommentThread({
+      await cms1.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
           mergeRequestId: mr.mergeRequest.id,
@@ -1076,17 +1128,17 @@ describe('comments', () => {
         },
       });
 
-      const result = await cms.api.pages.listMentions({
-        query: { mentionedUserId: USER_2, threadId: t1.id },
+      const result = await cms2.api.pages.listMentions({
+        query: { threadId: t1.id },
       });
 
       expect(result.total).toBe(1);
     });
 
     it('listMentions supports pagination', async () => {
-      const { cms, mr } = await setupCommentFixture();
+      const { cms1, cms2, mr } = await setupCommentFixtureMultiUser();
 
-      const { thread } = await cms.api.pages.createCommentThread({
+      const { thread } = await cms1.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
           mergeRequestId: mr.mergeRequest.id,
@@ -1095,7 +1147,7 @@ describe('comments', () => {
       });
 
       for (let i = 0; i < 5; i++) {
-        await cms.api.pages.createCommentMessage({
+        await cms1.api.pages.createCommentMessage({
           body: {
             threadId: thread.id,
             body: `Reply ${i} @user-2`,
@@ -1104,15 +1156,15 @@ describe('comments', () => {
         });
       }
 
-      const page1 = await cms.api.pages.listMentions({
-        query: { mentionedUserId: USER_2, limit: 2, offset: 0 },
+      const page1 = await cms2.api.pages.listMentions({
+        query: { limit: 2, offset: 0 },
       });
       expect(page1.mentions).toHaveLength(2);
       expect(page1.total).toBe(5);
       expect(page1.hasMore).toBe(true);
 
-      const page3 = await cms.api.pages.listMentions({
-        query: { mentionedUserId: USER_2, limit: 2, offset: 4 },
+      const page3 = await cms2.api.pages.listMentions({
+        query: { limit: 2, offset: 4 },
       });
       expect(page3.mentions).toHaveLength(1);
       expect(page3.hasMore).toBe(false);
@@ -1131,10 +1183,18 @@ describe('comments', () => {
 
       expect(result.message.mentions).toEqual([]);
 
-      const mentionsList = await cms.api.pages.listMentions({
-        query: { mentionedUserId: USER_2 },
-      });
+      const mentionsList = await cms.api.pages.listMentions({ query: {} });
       expect(mentionsList.total).toBe(0);
+    });
+
+    it('listMentions requires an authenticated user', async () => {
+      const { cms } = await setupTestCMS({
+        authMiddleware: async () => ({}),
+      });
+
+      await expect(cms.api.pages.listMentions({ query: {} })).rejects.toThrow(
+        /user/i,
+      );
     });
   });
 
@@ -1172,6 +1232,55 @@ describe('comments', () => {
         cms.api.pages.deleteCommentThread({
           body: { threadId: 'commentThread_nope' },
         }),
+      ).rejects.toThrow(/not found/i);
+    });
+  });
+
+  // ========================================================================
+  // SOFT-DELETE — resolve/reopen must not operate on a deleted thread
+  // ========================================================================
+
+  describe('resolve/reopen on a soft-deleted thread', () => {
+    it('resolveCommentThread rejects a soft-deleted thread', async () => {
+      const { cms, mr } = await setupCommentFixture();
+
+      const { thread } = await cms.api.pages.createCommentThread({
+        body: {
+          targetType: 'mergeRequest',
+          mergeRequestId: mr.mergeRequest.id,
+          body: 'Will be deleted then resolved',
+        },
+      });
+
+      await cms.api.pages.deleteCommentThread({
+        body: { threadId: thread.id },
+      });
+
+      await expect(
+        cms.api.pages.resolveCommentThread({ body: { threadId: thread.id } }),
+      ).rejects.toThrow(/not found/i);
+    });
+
+    it('reopenCommentThread rejects a soft-deleted thread', async () => {
+      const { cms, mr } = await setupCommentFixture();
+
+      const { thread } = await cms.api.pages.createCommentThread({
+        body: {
+          targetType: 'mergeRequest',
+          mergeRequestId: mr.mergeRequest.id,
+          body: 'Will be resolved, deleted, then reopened',
+        },
+      });
+
+      await cms.api.pages.resolveCommentThread({
+        body: { threadId: thread.id },
+      });
+      await cms.api.pages.deleteCommentThread({
+        body: { threadId: thread.id },
+      });
+
+      await expect(
+        cms.api.pages.reopenCommentThread({ body: { threadId: thread.id } }),
       ).rejects.toThrow(/not found/i);
     });
   });

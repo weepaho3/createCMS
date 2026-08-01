@@ -1529,7 +1529,7 @@ describe('multiTenant — publishRelease materializes slugs in the tenant scope'
 });
 
 describe('multiTenant — scheduled publishing is scoped per tenant', () => {
-  it('a scoped runScheduled processes only its own tenant\'s due rows', async () => {
+  it("a scoped runScheduled processes only its own tenant's due rows", async () => {
     const { cms, db, setTenant } = await setupMultiTenantTestCMS();
 
     // Each tenant queues a DUE publish.
@@ -1595,5 +1595,125 @@ describe('multiTenant — scheduled publishing is scoped per tenant', () => {
         .from(publications)
         .where(eq(publications.rootId, globex.rootId)),
     ).toHaveLength(1);
+  });
+});
+
+// ============================================================================
+// Tenant isolation — Comment threads (IDOR via the comments scope-enforcing
+// loader — advisor plan 003)
+// ============================================================================
+
+describe('multiTenant — comment thread scope isolation', () => {
+  // The default multi-tenant middleware only carries tenantSlug; comment
+  // endpoints also require a userId, so this test group supplies its own
+  // authMiddleware (with a mutable tenant, mirroring setTenant) instead of
+  // using the plugin's default.
+  async function setupTenantCommentCMS() {
+    let tenant = 'acme';
+    const { cms } = await setupMultiTenantTestCMS({
+      authMiddleware: async () => ({ tenantSlug: tenant, userId: 'user-1' }),
+    });
+
+    async function createAcmeThread() {
+      const acme = await cms.api.pages.createRoot({
+        body: { slug: '/acme-comments', properties: { title: 'Acme' } },
+      });
+      const { thread } = await cms.api.pages.createCommentThread({
+        body: {
+          targetType: 'block',
+          blockId: acme.rootId,
+          rootId: acme.rootId,
+          body: 'Acme-only comment',
+        },
+      });
+      return { acme, thread };
+    }
+
+    return {
+      cms,
+      createAcmeThread,
+      setTenant(slug: string) {
+        tenant = slug;
+      },
+    };
+  }
+
+  it("rejects cross-tenant getCommentThread of another tenant's thread by id", async () => {
+    const { cms, setTenant, createAcmeThread } = await setupTenantCommentCMS();
+
+    setTenant('acme');
+    const { thread } = await createAcmeThread();
+
+    // The owner can read its own thread.
+    await expect(
+      cms.api.pages.getCommentThread({ query: { threadId: thread.id } }),
+    ).resolves.toBeDefined();
+
+    // Another tenant cannot, even with the exact thread id.
+    setTenant('globex');
+    await expect(
+      cms.api.pages.getCommentThread({ query: { threadId: thread.id } }),
+    ).rejects.toThrow(/not found/i);
+  });
+
+  it("rejects cross-tenant createCommentMessage on another tenant's thread by id", async () => {
+    const { cms, setTenant, createAcmeThread } = await setupTenantCommentCMS();
+
+    setTenant('acme');
+    const { thread } = await createAcmeThread();
+
+    setTenant('globex');
+    await expect(
+      cms.api.pages.createCommentMessage({
+        body: { threadId: thread.id, body: 'hijacked reply' },
+      }),
+    ).rejects.toThrow(/not found/i);
+  });
+
+  it("rejects cross-tenant resolveCommentThread on another tenant's thread by id", async () => {
+    const { cms, setTenant, createAcmeThread } = await setupTenantCommentCMS();
+
+    setTenant('acme');
+    const { thread } = await createAcmeThread();
+
+    setTenant('globex');
+    await expect(
+      cms.api.pages.resolveCommentThread({ body: { threadId: thread.id } }),
+    ).rejects.toThrow(/not found/i);
+  });
+
+  it("rejects cross-tenant reopenCommentThread on another tenant's thread by id", async () => {
+    const { cms, setTenant, createAcmeThread } = await setupTenantCommentCMS();
+
+    setTenant('acme');
+    const { thread } = await createAcmeThread();
+
+    setTenant('globex');
+    await expect(
+      cms.api.pages.reopenCommentThread({ body: { threadId: thread.id } }),
+    ).rejects.toThrow(/not found/i);
+  });
+
+  it('rejects createCommentThread with an out-of-scope rootId', async () => {
+    const { cms, setTenant } = await setupTenantCommentCMS();
+
+    setTenant('acme');
+    const acme = await cms.api.pages.createRoot({
+      body: { slug: '/acme-root-guard', properties: { title: 'Acme' } },
+    });
+
+    // Globex must not be able to attach a new thread to Acme's root, even by
+    // supplying its exact rootId directly.
+    setTenant('globex');
+    await expect(
+      cms.api.pages.createCommentThread({
+        body: {
+          targetType: 'block',
+          blockId: 'irrelevant-block-id',
+          rootId: acme.rootId,
+          body: "Trying to attach to another tenant's root",
+        },
+      }),
+    ).rejects.toThrow(/not found/i);
   });
 });
