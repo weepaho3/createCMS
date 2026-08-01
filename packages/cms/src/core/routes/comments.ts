@@ -1,7 +1,11 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
-import type { CollectionWithName, CMSProcedureContext } from '../types';
+import type {
+  CollectionWithName,
+  CMSProcedureContext,
+  ResolvedScope,
+} from '../types';
 import type { DrizzleInstance } from '../types/drizzle';
 
 import { requireRootInScope } from '../blocks/guards';
@@ -100,7 +104,9 @@ function mapThread(row: typeof commentThreads.$inferSelect): ThreadOutput {
  * arrives as `Record<string, unknown>`, not `commentThreads.$inferSelect`).
  * This is intentionally distinct from {@link mapThread}, which maps a typed row.
  */
-function mapRawThreadRow(row: Record<string, unknown>): Record<string, unknown> {
+function mapRawThreadRow(
+  row: Record<string, unknown>,
+): Record<string, unknown> {
   return {
     id: row.id,
     rootId: row.root_id,
@@ -238,6 +244,52 @@ async function loadBoundaryMessages(
     );
 }
 
+/**
+ * Loads a comment thread by id, enforcing the collection, the soft-delete
+ * filter, and — when the thread is attached to a root — the caller's active
+ * scope. This is the choke point that closes cross-scope IDOR on every
+ * thread-addressed endpoint; resolving a thread by id without it lets a caller
+ * in one scope read or mutate another scope's thread by guessing an id.
+ *
+ * Pass `forUpdate: true` to hold a `FOR UPDATE` row lock for the rest of the
+ * caller's transaction (mirrors the lock the mutating thread endpoints took
+ * before they had a shared loader to route through).
+ */
+async function loadThreadInScope(
+  exec: DrizzleInstance,
+  threadId: string,
+  collection: string,
+  scope: ResolvedScope,
+  forUpdate = false,
+): Promise<typeof commentThreads.$inferSelect> {
+  const condition = and(
+    eq(commentThreads.id, threadId),
+    eq(commentThreads.collection, collection),
+    isNull(commentThreads.deletedAt),
+  );
+
+  const [thread] = forUpdate
+    ? await exec.select().from(commentThreads).where(condition).for('update')
+    : await exec.select().from(commentThreads).where(condition);
+
+  if (!thread) throw new CMSError('COMMENT_THREAD_NOT_FOUND');
+
+  // IDOR: when the thread is attached to a root, enforce the active scope on
+  // that root (root-less threads fall back to collection scoping, matching
+  // the sibling comment endpoints).
+  if (thread.rootId) {
+    await requireRootInScope(
+      exec,
+      thread.rootId,
+      collection,
+      scope.roots,
+      'COMMENT_THREAD_NOT_FOUND',
+    );
+  }
+
+  return thread;
+}
+
 export function createCommentEndpoints<TDef extends CollectionWithName>(
   def: TDef,
   cmsCtx: CMSProcedureContext,
@@ -349,6 +401,19 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
               if (!commit) throw new CMSError('COMMIT_NOT_FOUND');
             }
 
+            // IDOR: a caller-supplied rootId (explicit, or inferred above from
+            // an already-scoped merge request) must itself be in the active
+            // scope before it is written into the thread row.
+            if (rootId) {
+              await requireRootInScope(
+                tx,
+                rootId,
+                collectionName,
+                ctx.context.scope.roots,
+                'COMMENT_THREAD_NOT_FOUND',
+              );
+            }
+
             const [thread] = await tx
               .insert(commentThreads)
               .values({
@@ -454,22 +519,12 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
           db,
           cmsCtx.notificationService,
           async (tx, pending) => {
-            const [thread] = await tx
-              .select({
-                id: commentThreads.id,
-                rootId: commentThreads.rootId,
-                collection: commentThreads.collection,
-                createdBy: commentThreads.createdBy,
-              })
-              .from(commentThreads)
-              .where(
-                and(
-                  eq(commentThreads.id, input.threadId),
-                  eq(commentThreads.collection, collectionName),
-                ),
-              );
-
-            if (!thread) throw new CMSError('COMMENT_THREAD_NOT_FOUND');
+            const thread = await loadThreadInScope(
+              tx,
+              input.threadId,
+              collectionName,
+              ctx.context.scope,
+            );
 
             if (input.parentMessageId) {
               const [parent] = await tx
@@ -644,6 +699,16 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
           );
         }
 
+        // IDOR: exclude threads whose root lies outside the caller's active
+        // scope (root-less threads — e.g. pure block-targeted threads with no
+        // merge request or explicit rootId — fall back to collection scoping,
+        // matching the by-id endpoints).
+        if (ctx.context.scope.roots?.where) {
+          conditions.push(
+            or(isNull(commentThreads.rootId), ctx.context.scope.roots.where)!,
+          );
+        }
+
         const whereCondition = and(...conditions)!;
 
         const enrich = userEnrichment(ctx, COMMENT_THREAD_USER_FIELDS);
@@ -651,6 +716,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
         const [{ count }] = await db
           .select({ count: sql<number>`count(*)`.mapWith(Number) })
           .from(commentThreads)
+          .leftJoin(roots, eq(roots.id, commentThreads.rootId))
           .where(whereCondition);
 
         const dataResult = await db.execute(sql`
@@ -670,6 +736,7 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
             ${commentThreads.updatedAt} AS updated_at
             ${enrich.select}
           FROM ${commentThreads}
+          LEFT JOIN ${roots} ON ${roots.id} = ${commentThreads.rootId}
           ${enrich.join}
           WHERE ${whereCondition}
           ORDER BY ${commentThreads.createdAt} DESC
@@ -794,6 +861,17 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
         ),
       },
       async (ctx) => {
+        // IDOR: resolve the thread through the scope-enforcing loader first —
+        // the enrichment query below is a raw `db.execute` with a user-table
+        // JOIN, so the scope predicate can't simply be ANDed into it. Two
+        // queries is acceptable here; correctness over round-trips.
+        await loadThreadInScope(
+          db,
+          ctx.query.threadId,
+          collectionName,
+          ctx.context.scope,
+        );
+
         // withUser / uc stay in scope: the thread row is enriched via the JOIN
         // helper below, but per-message authors use the batchFetchUsers path.
         const withUser = ctx.context.withUser;
@@ -850,7 +928,8 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
           msgUserMap = await batchFetchUsers(db, uc, withUser, authorIds);
         }
 
-        const threadOutput: Record<string, unknown> = mapRawThreadRow(threadRow);
+        const threadOutput: Record<string, unknown> =
+          mapRawThreadRow(threadRow);
 
         enrich.apply(threadOutput, threadRow);
 
@@ -908,18 +987,14 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
           db,
           cmsCtx.notificationService,
           async (tx, pending) => {
-            const [thread] = await tx
-              .select()
-              .from(commentThreads)
-              .where(
-                and(
-                  eq(commentThreads.id, ctx.body.threadId),
-                  eq(commentThreads.collection, collectionName),
-                ),
-              )
-              .for('update');
+            const thread = await loadThreadInScope(
+              tx,
+              ctx.body.threadId,
+              collectionName,
+              ctx.context.scope,
+              true,
+            );
 
-            if (!thread) throw new CMSError('COMMENT_THREAD_NOT_FOUND');
             if (thread.status === 'resolved') {
               throw new CMSError('COMMENT_THREAD_ALREADY_RESOLVED');
             }
@@ -1004,35 +1079,13 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
         if (!userId) throw new CMSError('USER_ID_REQUIRED');
 
         return db.transaction(async (tx) => {
-          const [thread] = await tx
-            .select({
-              id: commentThreads.id,
-              rootId: commentThreads.rootId,
-            })
-            .from(commentThreads)
-            .where(
-              and(
-                eq(commentThreads.id, ctx.body.threadId),
-                eq(commentThreads.collection, collectionName),
-                isNull(commentThreads.deletedAt),
-              ),
-            )
-            .for('update');
-
-          if (!thread) throw new CMSError('COMMENT_THREAD_NOT_FOUND');
-
-          // IDOR: when the thread is attached to a root, enforce the active
-          // scope on that root (root-less threads fall back to collection
-          // scoping, matching the sibling comment endpoints).
-          if (thread.rootId) {
-            await requireRootInScope(
-              tx,
-              thread.rootId,
-              collectionName,
-              ctx.context.scope.roots,
-              'COMMENT_THREAD_NOT_FOUND',
-            );
-          }
+          const thread = await loadThreadInScope(
+            tx,
+            ctx.body.threadId,
+            collectionName,
+            ctx.context.scope,
+            true,
+          );
 
           // Soft-delete: hidden from list/get; messages + mentions are removed
           // physically only when the owning root is pruned (FK cascade).
@@ -1084,18 +1137,14 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
           db,
           cmsCtx.notificationService,
           async (tx, pending) => {
-            const [thread] = await tx
-              .select()
-              .from(commentThreads)
-              .where(
-                and(
-                  eq(commentThreads.id, ctx.body.threadId),
-                  eq(commentThreads.collection, collectionName),
-                ),
-              )
-              .for('update');
+            const thread = await loadThreadInScope(
+              tx,
+              ctx.body.threadId,
+              collectionName,
+              ctx.context.scope,
+              true,
+            );
 
-            if (!thread) throw new CMSError('COMMENT_THREAD_NOT_FOUND');
             if (thread.status !== 'resolved') {
               throw new CMSError('COMMENT_THREAD_NOT_RESOLVED');
             }
@@ -1205,18 +1254,21 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
               deletedAt: commentMessages.deletedAt,
             })
             .from(commentMessages)
-            .innerJoin(
-              commentThreads,
-              eq(commentThreads.id, commentMessages.threadId),
-            )
-            .where(
-              and(
-                eq(commentMessages.id, ctx.body.messageId),
-                eq(commentThreads.collection, collectionName),
-              ),
-            );
+            .where(eq(commentMessages.id, ctx.body.messageId));
 
           if (!msg) throw new CMSError('COMMENT_MESSAGE_NOT_FOUND');
+
+          // IDOR: resolve the owning thread through the scope-enforcing
+          // loader — a message id alone must not reach another scope's
+          // thread. Also enforces the message's thread belongs to this
+          // collection, matching the original hand-rolled JOIN's filter.
+          await loadThreadInScope(
+            tx,
+            msg.threadId,
+            collectionName,
+            ctx.context.scope,
+          );
+
           if (msg.deletedAt) throw new CMSError('COMMENT_MESSAGE_DELETED');
           if (msg.messageType !== 'comment') {
             throw new CMSError('COMMENT_MESSAGE_NOT_FOUND');
@@ -1306,18 +1358,21 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
             deletedAt: commentMessages.deletedAt,
           })
           .from(commentMessages)
-          .innerJoin(
-            commentThreads,
-            eq(commentThreads.id, commentMessages.threadId),
-          )
-          .where(
-            and(
-              eq(commentMessages.id, ctx.body.messageId),
-              eq(commentThreads.collection, collectionName),
-            ),
-          );
+          .where(eq(commentMessages.id, ctx.body.messageId));
 
         if (!msg) throw new CMSError('COMMENT_MESSAGE_NOT_FOUND');
+
+        // IDOR: resolve the owning thread through the scope-enforcing loader
+        // — a message id alone must not reach another scope's thread. Also
+        // enforces the message's thread belongs to this collection, matching
+        // the original hand-rolled JOIN's filter.
+        await loadThreadInScope(
+          db,
+          msg.threadId,
+          collectionName,
+          ctx.context.scope,
+        );
+
         if (msg.deletedAt) throw new CMSError('COMMENT_MESSAGE_DELETED');
         if (msg.messageType !== 'comment') {
           throw new CMSError('COMMENT_MESSAGE_NOT_FOUND');
@@ -1342,29 +1397,29 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
     ),
 
     /**
-     * Lists all mentions received by a user with pagination.
-     * @param mentionedUserId Required user ID to list mentions for.
+     * Lists mentions received by the calling user, with pagination.
      * @param threadId Optional filter to mentions in a specific thread.
      * @param limit Page size (1–100, default 20).
      * @param offset Pagination offset (default 0).
      * @returns Paginated list of mentions with associated message and thread context.
-     * @example await cmsClient.pages.listMentions({ mentionedUserId: 'user1', limit: 50 })
+     * @throws USER_ID_REQUIRED if userId is not present.
+     * @example await cmsClient.pages.listMentions({ limit: 50 })
      */
     listMentions: createCMSEndpoint(
       `/${collectionName}/listMentions`,
       {
         method: 'GET',
-        query: z.object({
-          mentionedUserId: z.string(),
-          threadId: z.string().optional(),
-          limit: z.coerce.number().min(1).max(100).optional(),
-          offset: z.coerce.number().min(0).optional(),
-        }),
+        query: z
+          .object({
+            threadId: z.string().optional(),
+            limit: z.coerce.number().min(1).max(100).optional(),
+            offset: z.coerce.number().min(0).optional(),
+          })
+          .optional(),
         metadata: cmsMeta(
           {
             $Infer: {
               query: {} as {
-                mentionedUserId: string;
                 threadId?: string;
                 limit?: number;
                 offset?: number;
@@ -1380,12 +1435,19 @@ export function createCommentEndpoints<TDef extends CollectionWithName>(
         ),
       },
       async (ctx) => {
-        const input = ctx.query;
+        const userId = ctx.context.userId;
+        if (!userId) throw new CMSError('USER_ID_REQUIRED');
+
+        const input = ctx.query ?? {};
         const limit = input.limit ?? 20;
         const offset = input.offset ?? 0;
 
+        // Privacy: mentions are always filtered by the session user, never a
+        // caller-supplied id — otherwise any caller with comment:read could
+        // page through another user's mention inbox (message bodies
+        // included).
         const conditions = [
-          eq(commentMentions.mentionedUserId, input.mentionedUserId),
+          eq(commentMentions.mentionedUserId, userId),
           eq(commentThreads.collection, collectionName),
         ];
 
