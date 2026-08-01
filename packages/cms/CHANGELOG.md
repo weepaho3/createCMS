@@ -1,5 +1,120 @@
 # @createcms/core
 
+## 0.4.0
+
+### Minor Changes
+
+- [`17fdd6b`](https://github.com/weepaho3/createCMS/commit/17fdd6bae3534c49d8bb0634c24fb78f762938a2) Thanks [@weepaho3](https://github.com/weepaho3)! - fix(routes): close two permission-resource bypasses
+
+  `duplicateBlock` minted a new top-level root when `targetParentBlockId` was
+  omitted, while declaring only `block:create` — so a host granting `block:create`
+  but denying `root:create` could be bypassed through duplication. This was the
+  same defect already fixed on `duplicateRoot`, still reachable through the older
+  door.
+
+  **Breaking:** `targetParentBlockId` is now required on `duplicateBlock`, which
+  is child-duplication only. Use `duplicateRoot` to duplicate a subtree into a new
+  top-level entry — it takes the same arguments and has always been guarded as
+  `root:create`. `duplicateBlock` now returns a non-union type (`mode` is always
+  `'child'`), so callers no longer need to narrow it.
+
+  `publishRelease` made content live under `release:update` while the equivalent
+  `publishBranch` requires `publication:create`.
+
+  **Breaking:** `publishRelease` now declares `publication:create`. Hosts granting
+  `release:update` for release curation must also grant `publication:create` to
+  allow publishing.
+
+- [`64488a7`](https://github.com/weepaho3/createCMS/commit/64488a7bc4f834ebccf1a54cdc4e00a2ed885042) Thanks [@weepaho3](https://github.com/weepaho3)! - fix(comments): enforce the active scope on every thread-addressed endpoint
+
+  Only `deleteCommentThread` enforced the caller's scope; every other
+  thread-addressed comment endpoint resolved a thread by id and collection alone.
+  Under the multi-tenant plugin that allowed cross-tenant reads and writes of
+  comment threads. All thread endpoints now go through a shared scope-enforcing
+  loader, `createCommentThread` validates the supplied `rootId`, and
+  `resolveCommentThread` / `reopenCommentThread` no longer operate on
+  soft-deleted threads.
+
+  **Breaking:** `listMentions` filtered on a caller-supplied `mentionedUserId`,
+  letting any caller read another user's mention inbox. It now derives the filter
+  from the session user, and the `mentionedUserId` query parameter has been
+  removed.
+
+- [`5a4ee09`](https://github.com/weepaho3/createCMS/commit/5a4ee098f93d66a955acefe924bbd21d3168f2cf) Thanks [@weepaho3](https://github.com/weepaho3)! - fix(branches): deleting a branch no longer fails once it has merge history
+
+  `deleteBranch` threw a raw foreign-key error on any branch that had been merged
+  or had an approval request, so the standard branch → merge request → merge →
+  delete workflow failed at the last step with an opaque 500 and the branch stayed
+  permanently undeletable.
+
+  `merge_requests.source_branch_id`, `merge_requests.target_branch_id` and
+  `approvals.branch_id` are now nullable with `ON DELETE SET NULL`, so merge and
+  approval history survives the branch row. Open merge requests still block
+  deletion, and publications still block deletion.
+
+  **Breaking:** `ApprovalOutput.branchId` is now `string | null`. It is null for
+  approvals whose branch has since been deleted. Consumers reading `branchId` off
+  an approval must handle null.
+
+  **Migration:** this changes the database schema. Regenerate and apply your
+  Drizzle migrations (`drizzle-kit generate`) after upgrading.
+
+- [`b8085b7`](https://github.com/weepaho3/createCMS/commit/b8085b79e61ba815f9ae6893739d59ccc41a1723) Thanks [@weepaho3](https://github.com/weepaho3)! - feat(merges): add `dismissStaleApprovals` branch-protection flag
+
+  By default an approval keeps counting after new commits are pushed to a merge
+  request's source branch, matching GitHub's default pull-request behaviour. This
+  is unchanged.
+
+  Teams that need every merged commit to have been reviewed can now set
+  `branchProtection.dismissStaleApprovals: true` (globally or per collection),
+  the equivalent of GitHub's "Dismiss stale pull request approvals when new
+  commits are pushed". With it on, the merge gate only counts approvals recorded
+  against the source branch's current head, and a superseded approval fails with
+  the new `APPROVALS_STALE` error.
+
+- [`4b7a75f`](https://github.com/weepaho3/createCMS/commit/4b7a75fdd5b3fd660cd0329790ca04954ac70830) Thanks [@weepaho3](https://github.com/weepaho3)! - feat(pkg): publish as ESM-only
+
+  **Breaking:** `@createcms/core` no longer ships a CommonJS build. The `main` and
+  `module` fields are gone and every `exports` subpath now resolves to ESM only.
+
+  CommonJS projects do **not** need to migrate to `import`: Node resolves ESM from
+  `require()` natively since 22.12, so `require('@createcms/core')` keeps working.
+  That is why the minimum Node version is now **22.12** (`engines.node` was
+  `>=20`).
+
+  Dropping the dual build also removes the dual-package hazard: the client layer
+  holds module-level state in nanostores atoms, and a consumer whose graph loaded
+  both the ESM and the CJS copy would previously end up with two independent store
+  instances.
+
+- [`0d22f89`](https://github.com/weepaho3/createCMS/commit/0d22f892e6e7a85d9d656ae263c255c580b24b12) Thanks [@weepaho3](https://github.com/weepaho3)! - fix(deps): require Next.js >= 16.2.11 and bump runtime dependencies
+
+  **Breaking (Next.js users only):** the `next` peer range moves from `>=16` to
+  `>=16.2.11`. Every 16.x below that carries nine security advisories — four of
+  them high, including SSRF in Server Actions, a middleware/proxy bypass in App
+  Router applications, and SSRF via rewrites. createCMS ships a `next/middleware`
+  integration, so pairing it with an affected Next is a real exposure rather than
+  a theoretical one. `next` remains an optional peer: projects not using Next.js
+  are unaffected.
+
+  Runtime dependencies moved to their current releases within the existing ranges:
+  `better-call` 2.0.5, `nanostores` 1.4.2, `fast-xml-parser` 5.10.1, `nanoid`
+  5.1.16 and `ora` 9.4.1.
+
+- [`06d9e28`](https://github.com/weepaho3/createCMS/commit/06d9e28ffe5e1f27baa495eb39f2aaa72518172c) Thanks [@weepaho3](https://github.com/weepaho3)! - fix(blocks): validate `position` and `targetProperties` on the block write paths
+
+  `createBlock`'s `position` was an unconstrained number handed to
+  `Array.prototype.splice`, so a negative value silently inserted the block near
+  the end of its parent's children instead of failing, and a fractional value was
+  truncated. It is now `z.number().int().min(0)` — matching `moveBlock`'s
+  `newIndex` — and the insert index is clamped to the child count.
+
+  `targetProperties` on the duplicate paths was written into content with only a
+  cast, bypassing the per-block property schema that every other write path
+  enforces. `runDuplicate` now parses it with `buildPropertiesSchema`, so declared
+  constraints (`maxLength`, numeric ranges, required keys) apply to duplication
+  too.
+
 ## 0.3.0
 
 ### Minor Changes
