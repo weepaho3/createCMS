@@ -69,10 +69,13 @@ async function getBranchState(
 
   const openMergeRequests = new Set<string>();
   for (const mr of mrs) {
-    if (branchIds.includes(mr.sourceBranchId)) {
+    // sourceBranchId/targetBranchId are only ever null once a branch has been
+    // deleted (ON DELETE SET NULL); an open merge request can never reference
+    // an already-deleted branch, so these guards are just type narrowing.
+    if (mr.sourceBranchId && branchIds.includes(mr.sourceBranchId)) {
       openMergeRequests.add(mr.sourceBranchId);
     }
-    if (branchIds.includes(mr.targetBranchId)) {
+    if (mr.targetBranchId && branchIds.includes(mr.targetBranchId)) {
       openMergeRequests.add(mr.targetBranchId);
     }
   }
@@ -573,6 +576,12 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
 
     /**
      * Deletes a branch.
+     *
+     * Merge requests and approvals that reference this branch are not deleted —
+     * they are historical records and outlive the branch. Their
+     * `sourceBranchId` / `targetBranchId` / `branchId` pointer is set to null
+     * (ON DELETE SET NULL) so merged/closed merge request and approval history
+     * survives branch deletion.
      * @param branchId The branch ID to delete.
      * @returns Object with the deleted branchId.
      * @throws BRANCH_NOT_FOUND if the branch does not exist.

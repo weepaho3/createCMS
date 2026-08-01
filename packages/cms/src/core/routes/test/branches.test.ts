@@ -707,7 +707,10 @@ describe('listBranches', () => {
     });
 
     const protectedResult = await cms.api.pages.listBranches({
-      query: { rootId: root.rootId, isDeletable: 'false' as unknown as boolean },
+      query: {
+        rootId: root.rootId,
+        isDeletable: 'false' as unknown as boolean,
+      },
     });
     expect(protectedResult.branches.map((b) => b.name)).toEqual(['main']);
 
@@ -902,6 +905,142 @@ describe('deleteBranch', () => {
     await expect(
       cms.api.pages.deleteBranch({ body: { branchId: 'nonexistent-id' } }),
     ).rejects.toThrow(/Branch not found/);
+  });
+
+  it('deletes a branch after its merge request has been merged', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'New content' },
+      },
+    });
+
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        title: 'Test MR',
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        createdBy: 'user-1',
+      },
+    });
+
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
+
+    await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequest.id, mergedBy: 'user-1' },
+    });
+
+    const result = await cms.api.pages.deleteBranch({
+      body: { branchId: draft.branch.id },
+    });
+
+    expect(result.branchId).toBe(draft.branch.id);
+
+    const remaining = await cms.api.pages.listBranches({
+      query: { rootId: root.rootId },
+    });
+    expect(remaining.branches.map((b) => b.id)).not.toContain(draft.branch.id);
+  });
+
+  it('preserves merge-request history when the source branch is deleted', async () => {
+    const { cms, db } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'New content' },
+      },
+    });
+
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        title: 'Test MR',
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        createdBy: 'user-1',
+      },
+    });
+
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
+
+    await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequest.id, mergedBy: 'user-1' },
+    });
+
+    await cms.api.pages.deleteBranch({
+      body: { branchId: draft.branch.id },
+    });
+
+    const [row] = await db
+      .select()
+      .from(mergeRequests)
+      .where(eq(mergeRequests.id, mr.mergeRequest.id));
+
+    expect(row).toBeDefined();
+    expect(row.status).toBe('merged');
+    expect(row.sourceBranchId).toBeNull();
+    expect(row.targetBranchId).toBe(root.branchId);
+  });
+
+  it('still refuses to delete a branch with an OPEN merge request', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'Page' } },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    await cms.api.pages.createMergeRequest({
+      body: {
+        title: 'Test MR',
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        createdBy: 'user-1',
+      },
+    });
+
+    await expect(
+      cms.api.pages.deleteBranch({ body: { branchId: draft.branch.id } }),
+    ).rejects.toThrow(/open merge requests/i);
   });
 });
 
@@ -1311,7 +1450,9 @@ describe('getRootHistory', () => {
 
     expect(result.commits).toHaveLength(3);
 
-    const draftCommit = result.commits.find((c) => c.id === draftBlock.commit.id);
+    const draftCommit = result.commits.find(
+      (c) => c.id === draftBlock.commit.id,
+    );
     const mainCommit = result.commits.find((c) => c.id === mainBlock.commit.id);
     const initialCommit = result.commits.find((c) => c.id === root.commit.id);
 
@@ -1428,7 +1569,9 @@ describe('getRootHistory', () => {
     });
 
     const publishedCommit = result.commits.find((c) => c.id === root.commit.id);
-    const unpublishedCommit = result.commits.find((c) => c.id !== root.commit.id);
+    const unpublishedCommit = result.commits.find(
+      (c) => c.id !== root.commit.id,
+    );
 
     expect(publishedCommit!.isPublished).toBe(true);
     expect(unpublishedCommit!.isPublished).toBe(false);
@@ -1822,7 +1965,11 @@ describe('getRootHistory', () => {
       // merge landed the draft edit of Block A on main — Block B (with the
       // main-side edit) and the root already existed there with the same
       // versions.
-      expect(mergeCommit.changes).toEqual({ added: 0, modified: 1, deleted: 0 });
+      expect(mergeCommit.changes).toEqual({
+        added: 0,
+        modified: 1,
+        deleted: 0,
+      });
     });
 
     it('computes merge-commit counts when the target diverged by adding a block', async () => {
@@ -1908,7 +2055,11 @@ describe('getRootHistory', () => {
       // Diffed against the target-side parent, which already held Block B and
       // the root version listing it: the merge landed only the draft edit of
       // Block A. Block B must NOT read as a deletion.
-      expect(mergeCommit.changes).toEqual({ added: 0, modified: 1, deleted: 0 });
+      expect(mergeCommit.changes).toEqual({
+        added: 0,
+        modified: 1,
+        deleted: 0,
+      });
 
       // And Block B is still in the merged tree.
       const { tree } = await cms.api.pages.getBlockTree({
@@ -2011,7 +2162,11 @@ describe('getRootHistory', () => {
       // block being ABSENT from the merge commit vs live in the target-side
       // parent — it must still count as deleted. The root is modified (its
       // children lost Block A on draft); Block B kept the target's version.
-      expect(mergeCommit.changes).toEqual({ added: 0, modified: 1, deleted: 1 });
+      expect(mergeCommit.changes).toEqual({
+        added: 0,
+        modified: 1,
+        deleted: 1,
+      });
     });
 
     it('counts blocks dropped by a revert as deleted', async () => {

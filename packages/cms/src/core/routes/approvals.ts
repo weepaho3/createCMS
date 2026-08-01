@@ -42,7 +42,7 @@ const APPROVAL_USER_FIELDS: EnrichField[] = [
 const approvalSchema = z.object({
   id: z.string(),
   mergeRequestId: z.string().nullable(),
-  branchId: z.string(),
+  branchId: z.string().nullable(),
   commitId: z.string(),
   status: approvalStatusSchema,
   requestedBy: z.string(),
@@ -61,7 +61,7 @@ type ApprovalOutput = z.infer<typeof approvalSchema>;
 function mapApproval(row: {
   id: string;
   mergeRequestId: string | null;
-  branchId: string;
+  branchId: string | null;
   commitId: string;
   status: 'pending' | 'approved' | 'rejected';
   requestedBy: string;
@@ -180,6 +180,10 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
               if (!mr) throw new CMSError('MERGE_REQUEST_NOT_FOUND');
               if (mr.status !== 'open')
                 throw new CMSError('MERGE_REQUEST_NOT_OPEN');
+              // sourceBranchId is only null once a branch has been deleted (ON
+              // DELETE SET NULL); an open merge request can never reference an
+              // already-deleted branch, but narrow explicitly rather than assert.
+              if (!mr.sourceBranchId) throw new CMSError('BRANCH_NOT_FOUND');
 
               const [sourceBranch] = await tx
                 .select({
@@ -370,7 +374,10 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
               throw new CMSError('APPROVAL_REVIEWER_MISMATCH');
             }
 
-            if (!approval.mergeRequestId) {
+            // branchId is only null once the branch has been deleted (ON
+            // DELETE SET NULL); mirror the existing "branch not found" == "not
+            // stale" tolerance below rather than querying with a null id.
+            if (!approval.mergeRequestId && approval.branchId) {
               const [branch] = await tx
                 .select({ headCommitId: branches.headCommitId })
                 .from(branches)
@@ -510,7 +517,10 @@ export function createApprovalEndpoints<TDef extends CollectionWithName>(
               throw new CMSError('APPROVAL_REVIEWER_MISMATCH');
             }
 
-            if (!approval.mergeRequestId) {
+            // branchId is only null once the branch has been deleted (ON
+            // DELETE SET NULL); mirror the existing "branch not found" == "not
+            // stale" tolerance below rather than querying with a null id.
+            if (!approval.mergeRequestId && approval.branchId) {
               const [branch] = await tx
                 .select({ headCommitId: branches.headCommitId })
                 .from(branches)

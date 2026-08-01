@@ -11,6 +11,7 @@ import {
 } from 'drizzle-orm';
 import * as z from 'zod';
 
+import type { BlockChange, ChangeAttribution } from '../diff/types';
 import type {
   CollectionWithName,
   CMSProcedureContext,
@@ -21,8 +22,7 @@ import type {
 } from '../types';
 import type { DrizzleInstance } from '../types/drizzle';
 
-import type { BlockChange, ChangeAttribution } from '../diff/types';
-
+import { getApprovalStateForMergeRequest } from '../approvals/state';
 import { fetchCommitSummary } from '../blocks/commit-writer';
 import {
   loadBlocksAtCommit,
@@ -50,11 +50,7 @@ import { batchFetchRoots } from '../root/batch-fetch';
 import { buildMergeBlockVersionInputSchema } from '../schema-builders';
 import { userEnrichment, type UserEnrichment } from '../user/enrichment';
 import { parseTimestamp } from '../utils/parse-timestamp';
-import {
-  wireBooleanIsTrue,
-  wireBooleanSchema,
-} from '../utils/wire-boolean';
-import { getApprovalStateForMergeRequest } from '../approvals/state';
+import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
 import {
   findCommonAncestor,
   loadBranchPair,
@@ -1334,6 +1330,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * @throws MERGE_REQUEST_NOT_FOUND if the merge request does not exist.
      * @throws MERGE_REQUEST_ALREADY_MERGED if the merge request was already merged.
      * @throws MERGE_REQUEST_NOT_CLOSED if the merge request is still open.
+     * @throws BRANCH_NOT_FOUND if the source or target branch has since been deleted.
      * @throws MERGE_REQUEST_ALREADY_EXISTS if another open MR exists for the same source-target pair.
      * @example await cmsClient.pages.reopenMergeRequest({ mergeRequestId: 'mr-id' })
      */
@@ -1375,6 +1372,11 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
             }
             if (mr.status === 'open') {
               throw new CMSError('MERGE_REQUEST_NOT_CLOSED');
+            }
+            // A closed MR can outlive its branches (ON DELETE SET NULL); it
+            // cannot be reopened once either side is gone.
+            if (!mr.sourceBranchId || !mr.targetBranchId) {
+              throw new CMSError('BRANCH_NOT_FOUND');
             }
 
             // Preserve the "at most one open MR per source/target" invariant.
@@ -1501,6 +1503,14 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
               collectionName,
               scopeWhere: ctx.context.scope.roots?.where,
             });
+
+            // sourceBranchId/targetBranchId are only null once a branch has
+            // been deleted (ON DELETE SET NULL); an open merge request can
+            // never reference an already-deleted branch (deleteBranch blocks
+            // on open MRs), but narrow explicitly rather than assert.
+            if (!mr.sourceBranchId || !mr.targetBranchId) {
+              throw new CMSError('BRANCH_NOT_FOUND');
+            }
 
             // Compute the common ancestor OFF the branch-row locks' critical
             // path. `findCommonAncestor` walks the append-only, immutable
@@ -1903,6 +1913,11 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
             collectionName,
             scopeWhere: ctx.context.scope.roots?.where,
           });
+
+          // sourceBranchId is only null once a branch has been deleted (ON
+          // DELETE SET NULL); an open merge request can never reference an
+          // already-deleted branch, but narrow explicitly rather than assert.
+          if (!mr.sourceBranchId) throw new CMSError('BRANCH_NOT_FOUND');
 
           const [conflict] = await tx
             .select({ id: mergeConflicts.id })
