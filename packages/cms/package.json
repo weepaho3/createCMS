@@ -316,7 +316,7 @@
     "@upstash/realtime": "^1.0.3",
     "@upstash/redis": "^1.38.0",
     "@vitest/coverage-v8": "4.1.9",
-    "bunchee": "^6.9.3",
+    "bunchee": "^7.0.0",
     "drizzle-kit": "^0.31.9",
     "drizzle-orm": "^0.45.0",
     "happy-dom": "^20",
