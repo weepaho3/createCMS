@@ -218,7 +218,13 @@ async function planRootPruning(
   for (const approval of allApprovalsForRoot) {
     if (approval.mergeRequestId === null) {
       const isResolved = approval.status !== 'pending';
-      const ownBranchHead = branchHeadMap.get(approval.branchId);
+      // approval.branchId can't actually be null here — the query above
+      // inner-joins on branches.id = approvals.branch_id, which excludes any
+      // row whose branchId is null — but the column type stays nullable
+      // (ON DELETE SET NULL), so narrow rather than assert.
+      const ownBranchHead = approval.branchId
+        ? branchHeadMap.get(approval.branchId)
+        : undefined;
       const isStale = ownBranchHead !== approval.commitId;
 
       if (isResolved || isStale) {

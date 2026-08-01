@@ -46,7 +46,7 @@ export const approvals = cmsSchema.table(
   {
     id: text("id").primaryKey().$defaultFn(() => newId("approval")),
     mergeRequestId: text("merge_request_id").references(() => mergeRequests.id, { onDelete: "cascade" }),
-    branchId: text("branch_id").notNull().references(() => branches.id),
+    branchId: text("branch_id").references(() => branches.id, { onDelete: "set null" }),
     commitId: text("commit_id").notNull().references(() => commits.id),
     status: approvalStatusEnum("status").notNull().default("pending"),
     requestedBy: text("requested_by").notNull(),
@@ -315,8 +315,8 @@ export const mergeRequests = cmsSchema.table(
   {
     id: text("id").primaryKey().$defaultFn(() => newId("mergeRequest")),
     rootId: text("root_id").notNull().references(() => roots.id),
-    sourceBranchId: text("source_branch_id").notNull().references(() => branches.id),
-    targetBranchId: text("target_branch_id").notNull().references(() => branches.id),
+    sourceBranchId: text("source_branch_id").references(() => branches.id, { onDelete: "set null" }),
+    targetBranchId: text("target_branch_id").references(() => branches.id, { onDelete: "set null" }),
     sourceCommitId: text("source_commit_id").notNull().references(() => commits.id),
     baseCommitId: text("base_commit_id").references(() => commits.id),
     mergeCommitId: text("merge_commit_id").references(() => commits.id),

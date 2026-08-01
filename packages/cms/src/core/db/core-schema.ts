@@ -404,13 +404,11 @@ export const coreSchema = defineCoreSchema({
         },
         sourceBranchId: {
           type: 'text',
-          notNull: true,
-          references: { table: 'branches', column: 'id' },
+          references: { table: 'branches', column: 'id', onDelete: 'set null' },
         },
         targetBranchId: {
           type: 'text',
-          notNull: true,
-          references: { table: 'branches', column: 'id' },
+          references: { table: 'branches', column: 'id', onDelete: 'set null' },
         },
         sourceCommitId: {
           type: 'text',
@@ -523,8 +521,7 @@ export const coreSchema = defineCoreSchema({
         },
         branchId: {
           type: 'text',
-          notNull: true,
-          references: { table: 'branches', column: 'id' },
+          references: { table: 'branches', column: 'id', onDelete: 'set null' },
         },
         commitId: {
           type: 'text',
