@@ -98,7 +98,8 @@ function scalarSchema(spec: {
       let s = z.string();
       if (typeof spec.minLength === 'number') s = s.min(spec.minLength);
       if (typeof spec.maxLength === 'number') s = s.max(spec.maxLength);
-      if (typeof spec.pattern === 'string') s = s.regex(new RegExp(spec.pattern));
+      if (typeof spec.pattern === 'string')
+        s = s.regex(new RegExp(spec.pattern));
       return s;
     }
     case 'number': {
@@ -198,7 +199,7 @@ export function buildBlockInputSchema<
       rootId: z.string(),
       branchId: z.string(),
       parentBlockId: z.string(),
-      position: z.number().optional(),
+      position: z.number().int().min(0).optional(),
       message: z.string().optional(),
       // Optimistic-concurrency guard (cms-18); enforced in the blocks route.
       expectedHeadCommitId: z.string().optional(),

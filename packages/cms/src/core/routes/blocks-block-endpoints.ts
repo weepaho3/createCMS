@@ -34,10 +34,8 @@ import {
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError, errorMessages } from '../errors';
 import { resolveLinkPaths } from '../links';
-import {
-  coreReferenceResolver,
-  getReferenceUsageDetails,
-} from '../references';
+import { coreReferenceResolver, getReferenceUsageDetails } from '../references';
+import { buildReferencePreviews } from '../references-render';
 import {
   buildBlockInputSchema,
   buildPropertiesSchema,
@@ -45,12 +43,8 @@ import {
 } from '../schema-builders';
 import { crossScopeColumns } from '../scope';
 import { loadTemplateStrings } from '../templates';
-import {
-  wireBooleanIsTrue,
-  wireBooleanSchema,
-} from '../utils/wire-boolean';
+import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
 import { loadVariables, substituteVariables } from '../variables';
-import { buildReferencePreviews } from '../references-render';
 import { blockTreeNodeSchema, type BlocksContext } from './blocks-context';
 
 // ============================================================================
@@ -208,7 +202,14 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
           await assertPropertyReferencesExist(tx, type, blockProps);
 
           const newChildrenArray = [...(parentVersion.children ?? [])];
-          const insertPosition = position ?? newChildrenArray.length;
+          // Schema validation already rejects a negative/fractional `position`
+          // (see buildBlockInputSchema); an out-of-range POSITIVE index would
+          // still land correctly via splice's own clamping, but make that
+          // explicit rather than incidental — matches moveBlock's clamp.
+          const insertPosition = Math.min(
+            position ?? newChildrenArray.length,
+            newChildrenArray.length,
+          );
           newChildrenArray.splice(insertPosition, 0, childBlockId);
 
           const { commit } = await writeCommit(tx, def, {
@@ -1089,7 +1090,10 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
           // collection — instead of two-plus queries per block serialized
           // under the branch lock.
           const batchAssetIds = new Map<string, string>();
-          const batchRefIdsByCollection = new Map<string, Map<string, string>>();
+          const batchRefIdsByCollection = new Map<
+            string,
+            Map<string, string>
+          >();
           for (const b of [...diff.created, ...diff.updated]) {
             collectPropertyReferences(
               b.type,
