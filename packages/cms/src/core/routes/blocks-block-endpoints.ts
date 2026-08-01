@@ -202,7 +202,14 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
           await assertPropertyReferencesExist(tx, type, blockProps);
 
           const newChildrenArray = [...(parentVersion.children ?? [])];
-          const insertPosition = position ?? newChildrenArray.length;
+          // Schema validation already rejects a negative/fractional `position`
+          // (see buildBlockInputSchema); an out-of-range POSITIVE index would
+          // still land correctly via splice's own clamping, but make that
+          // explicit rather than incidental — matches moveBlock's clamp.
+          const insertPosition = Math.min(
+            position ?? newChildrenArray.length,
+            newChildrenArray.length,
+          );
           newChildrenArray.splice(insertPosition, 0, childBlockId);
 
           const { commit } = await writeCommit(tx, def, {

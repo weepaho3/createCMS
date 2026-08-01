@@ -530,6 +530,152 @@ describe('createBlock', () => {
       }),
     ).rejects.toThrow(/Block is already deleted/);
   });
+
+  it('rejects a negative position', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/negative-position', properties: { title: 'Page' } },
+    });
+
+    await expect(
+      cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          position: -1,
+          type: 'paragraph',
+          properties: { text: 'Should fail' },
+        },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('rejects a fractional position', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/fractional-position', properties: { title: 'Page' } },
+    });
+
+    await expect(
+      cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          position: 1.5,
+          type: 'paragraph',
+          properties: { text: 'Should fail' },
+        },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('appends when position exceeds the child count', async () => {
+    const { cms, db } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/overflow-position', properties: { title: 'Page' } },
+    });
+
+    const a = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'A' },
+      },
+    });
+
+    const b = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'B' },
+      },
+    });
+
+    // `position: 100` is far beyond the current 2-child array — the insert
+    // clamps to the end instead of `splice` treating it as-is (which, for a
+    // positive index past the end, already appends — this pins that behaviour
+    // explicitly rather than incidentally).
+    const x = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        position: 100,
+        type: 'paragraph',
+        properties: { text: 'X at overflow position' },
+      },
+    });
+
+    const [parentBv] = await db
+      .select()
+      .from(blockVersions)
+      .where(
+        and(
+          eq(blockVersions.commitId, x.commit.id),
+          eq(blockVersions.blockId, root.rootId),
+        ),
+      );
+    expect(parentBv.children).toEqual([a.blockId, b.blockId, x.blockId]);
+  });
+
+  it('still honours a valid position', async () => {
+    const { cms, db } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/valid-position', properties: { title: 'Page' } },
+    });
+
+    const a = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'A' },
+      },
+    });
+
+    const b = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'B' },
+      },
+    });
+
+    const x = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        position: 0,
+        type: 'paragraph',
+        properties: { text: 'X at pos 0' },
+      },
+    });
+
+    const [parentBv] = await db
+      .select()
+      .from(blockVersions)
+      .where(
+        and(
+          eq(blockVersions.commitId, x.commit.id),
+          eq(blockVersions.blockId, root.rootId),
+        ),
+      );
+    expect(parentBv.children).toEqual([x.blockId, a.blockId, b.blockId]);
+  });
 });
 
 describe('getBlockTree', () => {
@@ -2067,6 +2213,64 @@ describe('duplicateRoot', () => {
       query: { rootId: root.rootId, branchId: root.branchId, raw: true },
     });
     expect(src.tree.children).toHaveLength(1);
+  });
+
+  it('rejects targetProperties violating the property schema', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/schema-source', properties: { title: 'Source' } },
+    });
+
+    // `pages.root.properties.title` is `required: true`; omitting it violates
+    // the same schema `createRoot` enforces via `buildPropertiesSchema`.
+    await expect(
+      cms.api.pages.duplicateRoot({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          blockId: root.rootId,
+          targetSlug: '/schema-copy',
+          targetProperties: { description: 'Missing the required title' },
+        },
+      }),
+    ).rejects.toThrow(/Invalid targetProperties/i);
+  });
+
+  it('still accepts valid targetProperties', async () => {
+    const { cms, db } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/schema-source-valid', properties: { title: 'Source' } },
+    });
+
+    const dup = await cms.api.pages.duplicateRoot({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        blockId: root.rootId,
+        targetSlug: '/schema-copy-valid',
+        targetProperties: {
+          title: 'Valid Copy',
+          description: 'A valid description',
+        },
+      },
+    });
+
+    const [newRoot] = await db
+      .select()
+      .from(blockVersions)
+      .where(
+        and(
+          eq(blockVersions.commitId, dup.commit.id),
+          eq(blockVersions.blockId, dup.rootId),
+        ),
+      );
+    expect(newRoot.properties).toEqual({
+      title: 'Valid Copy',
+      description: 'A valid description',
+      __slug: 'schema-copy-valid',
+    });
   });
 });
 

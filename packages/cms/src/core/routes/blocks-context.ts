@@ -2,10 +2,7 @@ import { and, eq, inArray, isNull } from 'drizzle-orm';
 import * as z from 'zod';
 
 import type { CMSProcedureContext, CollectionWithName } from '../types';
-import type {
-  ResolvedScope,
-  ResolvedSlugConfig,
-} from '../types/definitions';
+import type { ResolvedScope, ResolvedSlugConfig } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
 
 import { newId } from '../../utils/nanoid';
@@ -33,6 +30,7 @@ import {
   roots,
 } from '../db/schema.generated';
 import { CMSError, errorMessages } from '../errors';
+import { buildPropertiesSchema } from '../schema-builders';
 import { scopedInsert } from '../scope';
 import { normalizeSlug } from '../slug';
 
@@ -161,6 +159,29 @@ export function buildBlocksContext<TDef extends CollectionWithName>(
         throw new CMSError('MISSING_TARGET_PROPERTIES');
       }
 
+      // Root duplication mints a NEW top-level entry, exactly like `createRoot`
+      // — so validate `targetProperties` against the collection's root schema
+      // the same way `createRoot` does (buildRootInputSchema → strict/
+      // required-enforcing buildPropertiesSchema), rather than trusting the
+      // caller's shape via a bare cast. Parsed BEFORE `withRootSlug` runs, so
+      // slug seeding never operates on unvalidated input.
+      const rootPropertiesSchema = buildPropertiesSchema(def.root.properties);
+      const parsedTargetProperties = rootPropertiesSchema.safeParse(
+        input.targetProperties,
+      );
+      if (!parsedTargetProperties.success)
+        throw new CMSError('TYPE_MISMATCH', {
+          message: `Invalid targetProperties for duplicated root: ${parsedTargetProperties.error.message}`,
+          data: {
+            reason: 'invalid-root-properties',
+            issues: parsedTargetProperties.error.issues,
+          },
+        });
+      const targetProperties = parsedTargetProperties.data as Record<
+        string,
+        unknown
+      >;
+
       const slugCfg = def.slug as ResolvedSlugConfig | undefined;
       let dupSlug: string | null = null;
       if (slugCfg?.enabled && input.targetSlug) {
@@ -195,10 +216,7 @@ export function buildBlocksContext<TDef extends CollectionWithName>(
           blockId: isTopLevel ? newRoot.id : copy.newBlockId,
           type: isTopLevel ? collectionName : copy.type,
           properties: isTopLevel
-            ? withRootSlug(
-                input.targetProperties as Record<string, unknown>,
-                dupSlug,
-              )
+            ? withRootSlug(targetProperties, dupSlug)
             : copy.properties,
           children: copy.newChildren,
         };
