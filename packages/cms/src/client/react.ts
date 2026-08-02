@@ -18,7 +18,21 @@ import {
   getClientConfigSync,
   runPluginInit,
 } from './config';
+import {
+  type CMSMediaReplaceState,
+  createMediaReplaceAtom,
+} from './media-upload';
 import { useStore } from './react-store';
+
+// Adds the browser-callable replace-asset hook to the client's `media`
+// namespace, mirroring `WithMedia<T>` in types.ts. Declared locally (rather
+// than in the shared type-mapping utility) to keep Plan 007's client changes
+// confined to media-upload.ts/react.ts/vanilla.ts.
+type WithReplaceAsset<T> = T extends { media: infer M }
+  ? Omit<T, 'media'> & {
+      media: M & { useReplaceAsset: () => CMSMediaReplaceState };
+    }
+  : T & { media: { useReplaceAsset: () => CMSMediaReplaceState } };
 
 // Shared-store key the media-optimize plugin publishes its auto-optimizer
 // under. Kept as a literal (not imported) so the React entry never statically
@@ -75,6 +89,19 @@ function makeUseUploadAssets(config: ClientConfig): () => CMSMediaUploadState {
 }
 
 /**
+ * React `useReplaceAsset` hook — the browser-callable half of `replaceAsset`
+ * (Plan 007 part A). Wraps a `CMSMediaReplaceState` atom created once per
+ * client instance (mirrors `makeUseUploadAssets`, which reads the upload
+ * atom off `config.pluginsAtoms` instead — the replace atom is created
+ * directly here rather than threaded through `ClientConfig`).
+ */
+function makeUseReplaceAsset(
+  replaceAtom: ReadableAtom<CMSMediaReplaceState>,
+): () => CMSMediaReplaceState {
+  return () => useStore(replaceAtom);
+}
+
+/**
  * Creates a type-safe React CMS client with plugin support.
  *
  * Plugin `init` functions run asynchronously in the background on creation
@@ -112,13 +139,13 @@ export function createCMSClient<
   const TPlugins extends CMSClientPlugin[] = [],
 >(
   options: CMSClientOptions & { plugins?: TPlugins },
-): CMSClientInstance<TCMS, TPlugins>;
+): WithReplaceAsset<CMSClientInstance<TCMS, TPlugins>>;
 
 export function createCMSClient<TCMS = unknown>(): <
   const TPlugins extends CMSClientPlugin[] = [],
 >(
   options: CMSClientOptions & { plugins?: TPlugins },
-) => CMSClientInstance<TCMS, TPlugins>;
+) => WithReplaceAsset<CMSClientInstance<TCMS, TPlugins>>;
 
 export function createCMSClient<TCMS = unknown>(
   options?: CMSClientOptions & { plugins?: CMSClientPlugin[] },
@@ -128,20 +155,29 @@ export function createCMSClient<TCMS = unknown>(
     runPluginInit(options, config).catch((err) =>
       console.error('[cms] plugin init failed:', err),
     );
-    return buildClient<CMSClientInstance<TCMS, CMSClientPlugin[]>>(config, {
+    const replaceAtom = createMediaReplaceAtom(config.$fetch);
+    return buildClient<
+      WithReplaceAsset<CMSClientInstance<TCMS, CMSClientPlugin[]>>
+    >(config, {
       useUploadAssets: makeUseUploadAssets(config),
+      useReplaceAsset: makeUseReplaceAsset(replaceAtom),
     });
   }
   return <const TPlugins extends CMSClientPlugin[] = []>(
     opts: CMSClientOptions & { plugins?: TPlugins },
-  ): CMSClientInstance<TCMS, TPlugins> => {
+  ): WithReplaceAsset<CMSClientInstance<TCMS, TPlugins>> => {
     const config = getClientConfigSync(opts);
     runPluginInit(opts, config).catch((err) =>
       console.error('[cms] plugin init failed:', err),
     );
-    return buildClient<CMSClientInstance<TCMS, TPlugins>>(config, {
-      useUploadAssets: makeUseUploadAssets(config),
-    });
+    const replaceAtom = createMediaReplaceAtom(config.$fetch);
+    return buildClient<WithReplaceAsset<CMSClientInstance<TCMS, TPlugins>>>(
+      config,
+      {
+        useUploadAssets: makeUseUploadAssets(config),
+        useReplaceAsset: makeUseReplaceAsset(replaceAtom),
+      },
+    );
   };
 }
 
