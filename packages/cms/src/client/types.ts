@@ -1,5 +1,7 @@
 import type { ReadableAtom, WritableAtom } from 'nanostores';
 
+import type { ServerOnlyEndpoint } from '../core/types/definitions';
+
 import { CMS_ERRORS } from '../core/errors-data';
 
 // ============================================================================
@@ -144,10 +146,17 @@ export type Serialize<T> = T extends Date
           : T;
 
 // Apply `Serialize` to every endpoint method's RESOLVED return, leaving the
-// input `opts` exactly as the server declares them.
+// input `opts` exactly as the server declares them. The `as ... ? never : M`
+// remap ALSO drops any key whose caller carries the `ServerOnlyEndpoint` brand
+// (see core/types/definitions.ts) — an endpoint marked `scope: 'server'`
+// (e.g. media.uploadAssets / media.replaceAsset) never appears on the client's
+// type surface, even though `cms.api.*` (server.ts's own caller type,
+// untouched by this file) keeps it. Plan 008.
 type SerializeApi<A> = {
   [NS in keyof A]: {
-    [M in keyof A[NS]]: A[NS][M] extends (...args: infer Args) => infer R
+    [M in keyof A[NS] as A[NS][M] extends ServerOnlyEndpoint
+      ? never
+      : M]: A[NS][M] extends (...args: infer Args) => infer R
       ? (
           ...args: Args
         ) => R extends Promise<infer RR> ? Promise<Serialize<RR>> : Serialize<R>

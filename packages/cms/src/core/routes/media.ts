@@ -1693,7 +1693,13 @@ export function createMediaEndpoints(
             .min(1),
           folderId: z.string().optional(),
         }),
-        metadata: cmsMeta({}, { operation: 'create', ...MEDIA_META }),
+        // Body takes in-process bytes (Blob/ArrayBuffer), which can't survive
+        // the client's JSON serialization; browsers use the signed upload flow
+        // instead (createSignedUpload + uploadAssets' signed path).
+        metadata: cmsMeta(
+          { scope: 'server' as const },
+          { operation: 'create', ...MEDIA_META },
+        ),
       },
       async (ctx) => {
         const { userId: actor, scope } = ctx.context;
@@ -1844,7 +1850,13 @@ export function createMediaEndpoints(
             buffer: z.instanceof(Blob).or(z.instanceof(ArrayBuffer)),
           }),
         }),
-        metadata: cmsMeta({}, { operation: 'update', ...MEDIA_META }),
+        // Body takes in-process bytes (Blob/ArrayBuffer), which can't survive
+        // the client's JSON serialization; browsers use the signed replace
+        // flow instead (createSignedReplace + commitReplace).
+        metadata: cmsMeta(
+          { scope: 'server' as const },
+          { operation: 'update', ...MEDIA_META },
+        ),
       },
       async (ctx) => {
         const { scope } = ctx.context;

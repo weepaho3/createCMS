@@ -1370,3 +1370,26 @@ export type CMSSystemHandlerContext<
   permissionResource: string;
   operation: CMSOperation;
 } & TExtensions;
+
+// ============================================================================
+// Client visibility brand (type-only)
+// ============================================================================
+
+/**
+ * Type-only phantom brand. `factory.ts`'s `EndpointCaller` intersects the
+ * caller type of any endpoint whose better-call metadata carries
+ * `scope: 'server'` with this type; `client/types.ts`'s `SerializeApi` then
+ * omits keys assignable to it from the client's type surface, while the
+ * server-side `cms.api` caller keeps the key (its callable signature is
+ * untouched — this only adds an optional, never-set property to the type).
+ *
+ * Deliberately a plain literal-keyed object, NOT a `declare const ... unique
+ * symbol` brand: a `unique symbol` computed key leaks into `createCMS`'s
+ * inferred return type, and any consumer that re-exports a value derived from
+ * it without an explicit return-type annotation (several `setup*TestCMS`
+ * plugin test helpers do exactly this) fails to compile with TS4023
+ * ("... has or is using name 'X' ... but cannot be named") because the symbol
+ * can't be named across that module boundary. A literal string key has no
+ * such restriction — it is structurally printable anywhere.
+ */
+export type ServerOnlyEndpoint = { readonly __cmsServerOnly__?: true };
