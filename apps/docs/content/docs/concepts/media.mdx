@@ -20,7 +20,7 @@ Each upload creates a row in `assets`:
 | `mimeType`, `size` | Content type and byte size. |
 | `archivedAt` | Soft-delete marker for pruning. |
 
-Three of these are identifiers, and keeping them straight is the key to the whole model. The `id` is stable and opaque: content references it, and the gate is addressed by it. The `slug` is a human-readable, unique name derived from the filename, and it doubles as the `objectKey` in your bucket. The two are decoupled on purpose. [`replaceAsset`](/docs/reference/media#replaceasset) mints a new slug and object key for the new bytes but keeps the `id`, so every reference follows the swap while the CDN still treats each version's object as immutable.
+Three of these are identifiers, and keeping them straight is the key to the whole model. The `id` is stable and opaque: content references it, and the gate is addressed by it. The `slug` is a human-readable, unique name derived from the filename, and it doubles as the `objectKey` in your bucket. The two are decoupled on purpose. [`replaceAsset`](/docs/reference/media#replaceasset) (server-side) or [`createSignedReplace`](/docs/reference/media#createsignedreplace) + [`commitReplace`](/docs/reference/media#commitreplace) (browser) mints a new slug and object key for the new bytes but keeps the `id`, so every reference follows the swap while the CDN still treats each version's object as immutable.
 
 Folders are a nested tree (`asset_folders`, each with a `parentId`). They organize the media library and nothing more: a folder does not affect an asset's URL, its status, or how it is served. [`listFolders`](/docs/reference/media#listfolders) reads one level at a time (the children of a parent, or the root-level folders when no `parentFolderId` is given); [`createFolder`](/docs/reference/media#createfolder), [`moveFolder`](/docs/reference/media#movefolder), and [`deleteFolder`](/docs/reference/media#deletefolder) manage them. A folder that still holds assets or subfolders cannot be deleted (it throws `FOLDER_HAS_CONTENT`), and moving an asset carries its variants along, so an original and its variants are never split across folders.
 
@@ -61,6 +61,15 @@ await cms.api.media.updateAssetsStatus({
 ```
 
 The browser hook is covered step by step in [Upload and serve media](/docs/guides/media-uploads).
+
+### Replacing: signed URL vs server
+
+Swapping an existing asset's bytes has the same two-path split as uploading, for the same reason — a browser cannot send raw file bytes through a JSON request body:
+
+- **[`createSignedReplace`](/docs/reference/media#createsignedreplace) + [`commitReplace`](/docs/reference/media#commitreplace) (browser).** `createSignedReplace` validates the target and mints a signed PUT URL without touching the row; the browser PUTs the bytes straight to the bucket; `commitReplace` repoints the row once that succeeds. The React `useReplaceAsset` hook wraps both calls.
+- **[`replaceAsset`](/docs/reference/media#replaceasset) (server-side only).** Takes the file bytes directly (`buffer: Blob | ArrayBuffer`) in one call. A browser `File` cannot survive `replaceAsset`'s JSON body — it serializes to `{}` — so this endpoint is for server-initiated replacements only.
+
+Both mint a fresh slug/object key (the cache-bust) and keep the asset's `id` stable, exactly like `replaceAsset` described above.
 
 ## Serving assets
 
@@ -108,6 +117,12 @@ const { pageCount, pages } = await cms.api.media.getAssetUsages({
   query: { assetId: hero.id },
 });
 ```
+
+## Object lifecycle [#object-lifecycle]
+
+Archiving an asset ([`archiveAssets`](/docs/reference/media#archiveassets)) is soft-delete: the row gets `archivedAt` set and drops out of `listAssets`/the gate, but the row and its S3 object both stay put until a later [pruning pass](/docs/concepts/data-retention) reclaims them — once it is past the trash window (`archiveKeepDays`) and no live content references it.
+
+Replacing an asset (either path above) mints a *new* object for the new bytes but keeps the row's `id`, so the row that used to name the *old* object no longer exists after the swap — nothing would ever reference the superseded object for reclaim. To close that gap, a replace also inserts a **tombstone**: a fresh, already-archived asset row that reuses the *old* slug/object key (with a brand-new `id`, never referenced by any content). That tombstone is what the pruning pass actually finds and reclaims once its trash window elapses — so a superseded object is not left behind forever, and replacing the same asset repeatedly does not accumulate orphaned bytes in your bucket.
 
 ## Limitations
 

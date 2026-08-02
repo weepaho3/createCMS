@@ -1,6 +1,11 @@
 import { eq, inArray, sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 
+// Real multi-tenant scoping infra (not modified — only imported) to exercise
+// the genuine scope guard on the new signed-replace endpoints (Plan 007
+// part A), the same way plugins/multi-tenant/test/multi-tenant.test.ts does
+// for createSignedUpload.
+import { setupMultiTenantTestCMS } from '../../../plugins/multi-tenant/test/utils/cms';
 import { assetFolders, assets } from '../../../schema';
 import { setupTestCMS } from '../../../test-utils/cms';
 
@@ -2154,5 +2159,507 @@ describe('media.replaceAsset', () => {
     // The row still points at the original object — nothing was replaced.
     const [row] = await db.select().from(assets).where(eq(assets.id, orig.id));
     expect(row.slug).toBe('o.png');
+  });
+});
+
+// ============================================================================
+// createSignedReplace / commitReplace (browser-callable replace — Plan 007
+// part A)
+// ============================================================================
+
+describe('media.createSignedReplace', () => {
+  let cleanup: (() => Promise<void>) | undefined;
+  afterEach(async () => {
+    await cleanup?.();
+  });
+
+  const insertAsset = (db: any, slug: string, extra: object = {}) =>
+    db
+      .insert(assets)
+      .values({
+        slug,
+        mimeType: 'image/png',
+        size: 8,
+        objectKey: slug,
+        status: 'public',
+        ...extra,
+      })
+      .returning({ id: assets.id });
+
+  it('mints a signed URL and a new slug/objectKey without touching the row', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const [orig] = await insertAsset(db, 'logo.png');
+
+    const result = await cms.api.media.createSignedReplace({
+      body: {
+        assetId: orig.id,
+        file: { name: 'logo-v2.png', size: 8, type: 'image/png' },
+      },
+    });
+
+    expect(result.assetId).toBe(orig.id);
+    expect(result.slug).not.toBe('logo.png');
+    expect(result.slug).toContain('logo-v2');
+    expect(result.objectKey).toBe(result.slug);
+    expect(result.signedUrl).toContain('X-Amz-');
+    expect(result.expiresAt).toBeInstanceOf(Date);
+
+    // The row is untouched — only commitReplace repoints it.
+    const [row] = await db.select().from(assets).where(eq(assets.id, orig.id));
+    expect(row.slug).toBe('logo.png');
+    expect(row.objectKey).toBe('logo.png');
+  });
+
+  it('rejects replacing a variant directly (CANNOT_REPLACE_VARIANT)', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const [orig] = await insertAsset(db, 'o.png');
+    const [variant] = await insertAsset(db, 'o-200.webp', {
+      mimeType: 'image/webp',
+      variantOf: orig.id,
+    });
+
+    await expect(
+      cms.api.media.createSignedReplace({
+        body: {
+          assetId: variant.id,
+          file: { name: 'x.png', size: 8, type: 'image/png' },
+        },
+      }),
+    ).rejects.toThrow(/variant/i);
+  });
+
+  it('throws ASSET_NOT_FOUND for a missing or archived asset', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const [archived] = await insertAsset(db, 'a.png', {
+      archivedAt: new Date(),
+    });
+
+    await expect(
+      cms.api.media.createSignedReplace({
+        body: {
+          assetId: archived.id,
+          file: { name: 'x.png', size: 8, type: 'image/png' },
+        },
+      }),
+    ).rejects.toThrow(/found/i);
+    await expect(
+      cms.api.media.createSignedReplace({
+        body: {
+          assetId: 'ast_nope00000000000000',
+          file: { name: 'x.png', size: 8, type: 'image/png' },
+        },
+      }),
+    ).rejects.toThrow(/found/i);
+  });
+
+  it('rejects an out-of-scope asset (a different tenant owns it)', async () => {
+    const { cms, db, setTenant } = await setupMultiTenantTestCMS();
+
+    await db.execute(sql`
+      INSERT INTO cms.assets (id, slug, mime_type, size, object_key, status, tenant_slug)
+      VALUES ('asset-globex-1', 'globex-logo.png', 'image/png', 1024, 'globex-logo.png', 'public', 'globex')
+    `);
+
+    setTenant('acme');
+    await expect(
+      cms.api.media.createSignedReplace({
+        body: {
+          assetId: 'asset-globex-1',
+          file: { name: 'x.png', size: 8, type: 'image/png' },
+        },
+      }),
+    ).rejects.toThrow(/found/i);
+  });
+});
+
+describe('media.commitReplace', () => {
+  let cleanup: (() => Promise<void>) | undefined;
+  afterEach(async () => {
+    await cleanup?.();
+  });
+
+  const insertAsset = (db: any, slug: string, extra: object = {}) =>
+    db
+      .insert(assets)
+      .values({
+        slug,
+        mimeType: 'image/png',
+        size: 8,
+        objectKey: slug,
+        status: 'public',
+        ...extra,
+      })
+      .returning({ id: assets.id });
+
+  it('repoints the row and archives old variants', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const folder = await cms.api.media.createFolder({
+      body: { name: 'Brand' },
+    });
+    const [orig] = await insertAsset(db, 'acme-logo.png', {
+      folderId: folder.folder.id,
+    });
+    const [variant] = await insertAsset(db, 'acme-logo-200.webp', {
+      mimeType: 'image/webp',
+      variantOf: orig.id,
+    });
+
+    const signed = await cms.api.media.createSignedReplace({
+      body: {
+        assetId: orig.id,
+        file: { name: 'globex-logo.png', size: 8, type: 'image/png' },
+      },
+    });
+
+    // Simulate the browser's PUT to the signed URL.
+    const uploadResponse = await fetch(signed.signedUrl, {
+      method: 'PUT',
+      headers: { 'content-type': 'image/png', 'content-length': '8' },
+      body: new Uint8Array(8),
+    });
+    expect(uploadResponse.ok).toBe(true);
+
+    const result = await cms.api.media.commitReplace({
+      body: {
+        assetId: orig.id,
+        objectKey: signed.objectKey,
+        slug: signed.slug,
+        mimeType: 'image/png',
+        size: 8,
+      },
+    });
+
+    expect(result.asset.id).toBe(orig.id); // id unchanged
+    expect(result.asset.slug).toBe(signed.slug);
+    expect(result.asset.objectKey).toBe(signed.objectKey);
+    expect(result.asset.folderId).toBe(folder.folder.id); // folder unchanged
+    expect(result.asset.status).toBe('public'); // status unchanged
+
+    const [row] = await db.select().from(assets).where(eq(assets.id, orig.id));
+    expect(row.slug).toBe(signed.slug);
+    expect(row.objectKey).toBe(signed.objectKey);
+
+    const [v] = await db
+      .select({ archivedAt: assets.archivedAt })
+      .from(assets)
+      .where(eq(assets.id, variant.id));
+    expect(v.archivedAt).not.toBeNull(); // old variant archived
+  });
+
+  it('rejects when the asset was archived in between (TOCTOU) and tombstones the just-PUT object', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const [orig] = await insertAsset(db, 'logo.png');
+
+    const signed = await cms.api.media.createSignedReplace({
+      body: {
+        assetId: orig.id,
+        file: { name: 'logo-v2.png', size: 8, type: 'image/png' },
+      },
+    });
+
+    await fetch(signed.signedUrl, {
+      method: 'PUT',
+      headers: { 'content-type': 'image/png', 'content-length': '8' },
+      body: new Uint8Array(8),
+    });
+
+    // The asset is archived BETWEEN sign and commit (TOCTOU).
+    await cms.api.media.archiveAssets({ body: { assetIds: [orig.id] } });
+
+    await expect(
+      cms.api.media.commitReplace({
+        body: {
+          assetId: orig.id,
+          objectKey: signed.objectKey,
+          slug: signed.slug,
+          mimeType: 'image/png',
+          size: 8,
+        },
+      }),
+    ).rejects.toThrow(/found/i);
+
+    // The just-PUT NEW object (which will never be referenced by any row,
+    // since the repoint rolled back) is tombstoned so pruning can still
+    // reclaim it, rather than being silently abandoned.
+    const [tombstone] = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.objectKey, signed.objectKey));
+    expect(tombstone).toBeDefined();
+    expect(tombstone.archivedAt).not.toBeNull();
+    expect(tombstone.id).not.toBe(orig.id);
+  });
+});
+
+// ============================================================================
+// Object reclaim after a replace (Plan 007 part B)
+// ============================================================================
+
+describe('replaced asset object reclaim (Plan 007 part B)', () => {
+  let cleanup: (() => Promise<void>) | undefined;
+  afterEach(async () => {
+    await cleanup?.();
+  });
+
+  const pixel = new Uint8Array([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+  ]);
+  const file = (name: string) => ({
+    name,
+    size: pixel.byteLength,
+    type: 'image/png',
+    buffer: new Blob([pixel]),
+  });
+  const insertAsset = (db: any, slug: string, extra: object = {}) =>
+    db
+      .insert(assets)
+      .values({
+        slug,
+        mimeType: 'image/png',
+        size: pixel.byteLength,
+        objectKey: slug,
+        status: 'public',
+        ...extra,
+      })
+      .returning({ id: assets.id });
+  const putRealObject = (s3: any, key: string) =>
+    fetch(`${s3.config.publicUrl}/${key}`, {
+      method: 'PUT',
+      headers: {
+        'content-type': 'image/png',
+        'content-length': String(pixel.byteLength),
+      },
+      body: pixel,
+    });
+  const backdatePastTrashWindow = (db: any, id: string) =>
+    db
+      .update(assets)
+      .set({ archivedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) })
+      .where(eq(assets.id, id));
+
+  it("a replaced asset's previous object becomes reclaimable", async () => {
+    const { cms, db, s3 } = await setupTestCMS({
+      withS3: true,
+      dataRetention: { keepDays: 7, keepMinCommits: 1, archiveKeepDays: 7 },
+    });
+    cleanup = s3.cleanup;
+
+    const [orig] = await insertAsset(db, 'acme-logo.png');
+    await putRealObject(s3, 'acme-logo.png');
+
+    await cms.api.media.replaceAsset({
+      body: { assetId: orig.id, file: file('globex-logo.png') },
+    });
+
+    // The tombstone reuses the OLD (superseded) objectKey.
+    const [tombstone] = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.objectKey, 'acme-logo.png'));
+    expect(tombstone).toBeDefined();
+    expect(tombstone.archivedAt).not.toBeNull();
+    expect(tombstone.id).not.toBe(orig.id);
+
+    await backdatePastTrashWindow(db, tombstone.id);
+
+    // A pruning pass, run with the trash window elapsed, must actually
+    // delete the old object — not merely leave a tombstone row nobody
+    // collects (the bug this plan exists to fix).
+    const result = await cms.api.admin.runPruning({ body: { dryRun: false } });
+    expect(result.deletedAssets).toContain(tombstone.id);
+
+    const [row] = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.id, tombstone.id));
+    expect(row).toBeUndefined();
+
+    const check = await fetch(`${s3.config.publicUrl}/acme-logo.png`);
+    expect(check.status).toBe(404);
+  });
+
+  it("the tombstone is not held alive by the original's content usages", async () => {
+    const { cms, db, s3 } = await setupTestCMS({
+      withS3: true,
+      dataRetention: { keepDays: 7, keepMinCommits: 1, archiveKeepDays: 7 },
+    });
+    cleanup = s3.cleanup;
+
+    const [orig] = await insertAsset(db, 'hero.png');
+    await putRealObject(s3, 'hero.png');
+
+    // Reference the asset from LIVE content, the way pruning.test.ts does.
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/p', properties: { title: 'P' } },
+    });
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: orig.id },
+      },
+    });
+
+    await cms.api.media.replaceAsset({
+      body: { assetId: orig.id, file: file('hero-v2.png') },
+    });
+
+    const [tombstone] = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.objectKey, 'hero.png'));
+    expect(tombstone).toBeDefined();
+    expect(tombstone.id).not.toBe(orig.id);
+
+    await backdatePastTrashWindow(db, tombstone.id);
+
+    const result = await cms.api.admin.runPruning({ body: { dryRun: false } });
+
+    // The tombstone has a FRESH id that content never referenced, so the
+    // liveness NOT EXISTS check finds nothing for it — it is reclaimed...
+    expect(result.deletedAssets).toContain(tombstone.id);
+    // ...while the LIVE (replaced) asset — still referenced via its STABLE
+    // id by content_usages — survives, untouched by this pass. If a future
+    // change made the tombstone reuse the original's id instead of minting a
+    // fresh one, the tombstone would inherit that protection and never be
+    // reclaimed — this assertion (plus `tombstone.id !== orig.id` above)
+    // catches that regression.
+    const [liveRow] = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.id, orig.id));
+    expect(liveRow).toBeDefined();
+    expect(liveRow.archivedAt).toBeNull();
+  });
+
+  it('replacing twice leaves no object behind', async () => {
+    const { cms, db, s3 } = await setupTestCMS({
+      withS3: true,
+      dataRetention: { keepDays: 7, keepMinCommits: 1, archiveKeepDays: 7 },
+    });
+    cleanup = s3.cleanup;
+
+    const [orig] = await insertAsset(db, 'banner.png');
+    await putRealObject(s3, 'banner.png');
+
+    await cms.api.media.replaceAsset({
+      body: { assetId: orig.id, file: file('banner-v2.png') },
+    });
+    const afterFirst = await cms.api.media.getAssets({
+      query: { ids: [orig.id] },
+    });
+    const secondObjectKey = afterFirst.assets[0].objectKey;
+
+    await cms.api.media.replaceAsset({
+      body: { assetId: orig.id, file: file('banner-v3.png') },
+    });
+
+    // Both PREDECESSORS (the original AND the first replacement) must be
+    // tombstoned — not just the most recent one.
+    const tombstones = await db
+      .select()
+      .from(assets)
+      .where(inArray(assets.objectKey, ['banner.png', secondObjectKey]));
+    expect(tombstones).toHaveLength(2);
+
+    for (const t of tombstones) {
+      await backdatePastTrashWindow(db, t.id);
+    }
+
+    const result = await cms.api.admin.runPruning({ body: { dryRun: false } });
+    for (const t of tombstones) {
+      expect(result.deletedAssets).toContain(t.id);
+    }
+
+    for (const key of ['banner.png', secondObjectKey]) {
+      const check = await fetch(`${s3.config.publicUrl}/${key}`);
+      expect(check.status).toBe(404);
+    }
+  });
+});
+
+// ============================================================================
+// Upload error detail does not reach the client (Plan 007 part C)
+// ============================================================================
+
+describe('upload error detail (Plan 007 part C)', () => {
+  const pixel = new Uint8Array([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+  ]);
+
+  it('uploadAssets failure does not leak provider detail to the client', async () => {
+    const { cms, s3 } = await setupTestCMS({ withS3: true });
+    // Kill the test S3 server so the PUT fails at the network level — the
+    // provider-level failure that used to leak into `data.cause`.
+    await s3.cleanup();
+
+    let caught: any;
+    try {
+      await cms.api.media.uploadAssets({
+        body: {
+          files: [
+            {
+              name: 'x.png',
+              size: pixel.byteLength,
+              type: 'image/png',
+              buffer: new Blob([pixel]),
+            },
+          ],
+        },
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeDefined();
+    expect(caught.body?.data).toBeUndefined();
+    expect(JSON.stringify(caught.body ?? {})).not.toMatch(
+      /ECONNREFUSED|fetch failed|ENOTFOUND|refused/i,
+    );
+  });
+
+  it('replaceAsset failure does not leak provider detail to the client', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    const [orig] = await db
+      .insert(assets)
+      .values({
+        slug: 'o.png',
+        mimeType: 'image/png',
+        size: 8,
+        objectKey: 'o.png',
+        status: 'public',
+      })
+      .returning({ id: assets.id });
+    await s3.cleanup();
+
+    let caught: any;
+    try {
+      await cms.api.media.replaceAsset({
+        body: {
+          assetId: orig.id,
+          file: {
+            name: 'x.png',
+            size: pixel.byteLength,
+            type: 'image/png',
+            buffer: new Blob([pixel]),
+          },
+        },
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeDefined();
+    expect(caught.body?.data).toBeUndefined();
+    expect(JSON.stringify(caught.body ?? {})).not.toMatch(
+      /ECONNREFUSED|fetch failed|ENOTFOUND|refused/i,
+    );
   });
 });

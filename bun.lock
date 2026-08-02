@@ -46,7 +46,7 @@
     },
     "examples/blog": {
       "name": "@createcms/example-blog",
-      "version": "0.0.15",
+      "version": "0.0.16",
       "dependencies": {
         "@createcms/core": "workspace:*",
         "@electric-sql/pglite": "^0.5.4",
@@ -65,7 +65,7 @@
     },
     "examples/minimal": {
       "name": "@createcms/example-minimal",
-      "version": "0.0.15",
+      "version": "0.0.16",
       "dependencies": {
         "@createcms/core": "workspace:*",
         "@electric-sql/pglite": "^0.5.4",
@@ -84,7 +84,7 @@
     },
     "packages/cms": {
       "name": "@createcms/core",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "bin": {
         "createcms": "dist/bin/createcms.js",
       },

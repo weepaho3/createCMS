@@ -251,6 +251,10 @@ Returns `{ assets }`, each with the same fields a `listAssets` row carries. Thro
 
 Swap the bytes behind an existing asset while keeping its `id` (and `folderId`/`status`) stable, so every content reference picks up the new image with no content change — the id-addressed gate re-resolves it. A fresh slug and object key are minted for a clean cache-bust, and the asset's old variants are archived (regenerate them afterward). Server-side and atomic.
 
+<Callout type="warn">
+  `replaceAsset` takes in-process bytes (`buffer: Blob | ArrayBuffer`) and is for **server-side callers only** — a browser `File` cannot survive the client's JSON request body (it serializes to `{}`), so a browser call to `replaceAsset` type-checks but fails at runtime. Browsers must use [`createSignedReplace`](#createsignedreplace) + [`commitReplace`](#commitreplace) instead, or the `useReplaceAsset` client hook that wraps them.
+</Callout>
+
 <APIMethod
   method="POST"
   path="/media/replaceAsset"
@@ -269,11 +273,98 @@ Swap the bytes behind an existing asset while keeping its `id` (and `folderId`/`
   }}
   params={{
     assetId: { type: 'string', required: true, description: 'The asset to replace.' },
-    file: { type: '{ name: string; size: number; type: string; buffer: Blob | ArrayBuffer }', required: true, description: 'The new file bytes. Sniffed like `uploadAssets`.' },
+    file: { type: '{ name: string; size: number; type: string; buffer: Blob | ArrayBuffer }', required: true, description: 'The new file bytes. Sniffed like `uploadAssets`. Server-side only — see the callout above.' },
   }}
 />
 
 Returns `{ asset }` with the same fields a `listAssets` row carries. Throws `CANNOT_REPLACE_VARIANT` (target is itself a variant), `ASSET_NOT_FOUND`, `FILE_TOO_LARGE` / `INVALID_FILE_TYPE`, or `UPLOAD_FAILED` (asset left unchanged).
+
+### Create a Signed Replace [#createsignedreplace]
+
+The browser-callable half of a replace: validates the target asset (live, in scope, not itself a variant) and the new file's declared metadata, mints a new slug/object key, and returns a presigned PUT URL — the same shape as `createSignedUpload`, but for an *existing* asset. It does **not** touch the database; call [`commitReplace`](#commitreplace) once the PUT succeeds.
+
+<APIMethod
+  method="POST"
+  path="/media/createSignedReplace"
+  fn="createSignedReplace"
+  collection="media"
+  resource="media"
+  operation="update"
+  args={`{
+  body: {
+    assetId: 'ast_123', // required
+    file: { name: 'hero-v2.jpg', size: file.size, type: file.type }, // required
+  },
+}`}
+  returns={{
+    assetId: { type: 'string', description: 'Echoes the requested asset id — pass it through to `commitReplace`.' },
+    slug: { type: 'string', description: 'The freshly minted slug (cache-bust). Pass it through to `commitReplace`.' },
+    objectKey: { type: 'string', description: 'The freshly minted object key (equal to `slug`). Pass it through to `commitReplace`.' },
+    url: { type: 'string', description: "The object's public URL once the PUT below succeeds AND `commitReplace` repoints the row. For internal/admin display only." },
+    signedUrl: { type: 'string', description: 'Presigned PUT URL — upload the new bytes here.' },
+    headers: { type: 'Record<string, string>', description: 'Headers to send with the PUT (`Content-Type`, `x-amz-acl: public-read`).' },
+    expiresAt: { type: 'Date', description: 'When the signed URL expires.' },
+  }}
+  params={{
+    assetId: { type: 'string', required: true, description: 'The asset to replace.' },
+    file: { type: '{ name: string; size: number; type: string }', required: true, description: "The new file's declared metadata — no bytes; the browser PUTs them straight to your bucket." },
+  }}
+/>
+
+Throws `ASSET_NOT_FOUND` (missing, archived, or out of scope), `CANNOT_REPLACE_VARIANT`, `FILE_TOO_LARGE` / `INVALID_FILE_TYPE`, or `SLUG_GENERATION_FAILED`.
+
+### Commit a Replace [#commitreplace]
+
+Repoints the asset's row at the new object after the browser's PUT to `createSignedReplace`'s `signedUrl` has succeeded — the second half of the browser-callable replace flow. Atomic and TOCTOU-safe like `replaceAsset`: the row is repointed and old variants archived in one transaction, and it keeps every guarantee `replaceAsset` has (including tombstoning the superseded object so it becomes reclaimable — see [Object lifecycle](/docs/concepts/media#object-lifecycle)).
+
+<APIMethod
+  method="POST"
+  path="/media/commitReplace"
+  fn="commitReplace"
+  collection="media"
+  resource="media"
+  operation="update"
+  args={`{
+  body: {
+    assetId: 'ast_123', // required
+    objectKey: signed.objectKey, // required — from createSignedReplace
+    slug: signed.slug, // required — from createSignedReplace
+    mimeType: file.type, // required
+    size: file.size, // required
+  },
+}`}
+  returns={{
+    asset: { type: 'AssetListItem', description: 'The updated asset (same `id`, new `slug`/`objectKey`/`url`), with the same fields a `listAssets` row carries.' },
+  }}
+  params={{
+    assetId: { type: 'string', required: true, description: 'The asset being replaced (must match the `createSignedReplace` call).' },
+    objectKey: { type: 'string', required: true, description: 'The `objectKey` returned by `createSignedReplace`.' },
+    slug: { type: 'string', required: true, description: 'The `slug` returned by `createSignedReplace`.' },
+    mimeType: { type: 'string', required: true, description: "The uploaded file's declared MIME type." },
+    size: { type: 'number', required: true, description: "The uploaded file's declared byte size." },
+  }}
+/>
+
+Returns `{ asset }` with the same fields a `listAssets` row carries. Throws `ASSET_NOT_FOUND` if the asset was archived or left scope since `createSignedReplace` (TOCTOU) — the row is left unchanged and the just-uploaded object is tombstoned for reclaim rather than abandoned.
+
+```ts
+// Full browser-side replace flow.
+const signed = await cmsClient.media.createSignedReplace({
+  body: { assetId: hero.id, file: { name: file.name, size: file.size, type: file.type } },
+});
+await fetch(signed.signedUrl, { method: 'PUT', headers: signed.headers, body: file });
+const { asset } = await cmsClient.media.commitReplace({
+  body: {
+    assetId: hero.id,
+    objectKey: signed.objectKey,
+    slug: signed.slug,
+    mimeType: file.type,
+    size: file.size,
+  },
+});
+```
+
+The React client wraps this pipeline as `client.media.useReplaceAsset()` (mirrors `useUploadAssets`) — `const { replace, isReplacing, progress, error, result } = client.media.useReplaceAsset(); await replace(assetId, file);`. The vanilla client exposes the same state as a raw nanostores atom at `client.media.replaceState`.
 
 ## Asset status
 
