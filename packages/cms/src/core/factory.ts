@@ -15,6 +15,7 @@ import type {
   CMSUserConfig,
   CollectionWithName,
 } from './types';
+import type { ServerOnlyEndpoint } from './types/definitions';
 import type {
   CMSAfterHook,
   CMSBeforeHook,
@@ -181,15 +182,34 @@ type EndpointCallerExtras = {
   context?: { userId?: string } & Record<string, unknown>;
 };
 
+// Position 7 (`infer Meta`) preserves the endpoint's better-call metadata so a
+// `scope: 'server'`-marked endpoint (see `core/routes/media.ts`) can carry a
+// type-only phantom brand on its caller. The brand is an OPTIONAL property, so
+// it changes nothing about how the caller is invoked here — `cms.api.*` (the
+// SERVER-side surface this type produces) stays exactly as callable as before;
+// only the client's `SerializeApi` (client/types.ts) reads the brand and omits
+// the key. Do not filter here — see plan 008.
 type EndpointCaller<E> =
-  E extends Endpoint<any, any, infer Body, infer Query, any, infer R, any, any>
-    ? AreEndpointOptionsOptional<Body, Query> extends true
-      ? (
-          opts?: OptionalizeEndpointOptions<Body, Query> & EndpointCallerExtras,
-        ) => Promise<Awaited<R>>
-      : (
-          opts: OptionalizeEndpointOptions<Body, Query> & EndpointCallerExtras,
-        ) => Promise<Awaited<R>>
+  E extends Endpoint<
+    any,
+    any,
+    infer Body,
+    infer Query,
+    any,
+    infer R,
+    infer Meta,
+    any
+  >
+    ? (AreEndpointOptionsOptional<Body, Query> extends true
+        ? (
+            opts?: OptionalizeEndpointOptions<Body, Query> &
+              EndpointCallerExtras,
+          ) => Promise<Awaited<R>>
+        : (
+            opts: OptionalizeEndpointOptions<Body, Query> &
+              EndpointCallerExtras,
+          ) => Promise<Awaited<R>>) &
+        (Meta extends { scope: 'server' } ? ServerOnlyEndpoint : {})
     : never;
 
 type ServerApiCallers<T> = {
