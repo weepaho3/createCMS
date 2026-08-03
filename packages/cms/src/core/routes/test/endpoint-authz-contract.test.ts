@@ -191,6 +191,11 @@ const EXPECTED: Record<string, Record<string, Expected>> = {
     createSignedUpload: { permissionResource: 'media', operation: 'create' },
     uploadAssets: { permissionResource: 'media', operation: 'create' },
     replaceAsset: { permissionResource: 'media', operation: 'update' },
+    // routes/media.ts — the browser-callable replace flow (Plan 007 part A).
+    // Same permissionResource/operation as replaceAsset: a weaker label on
+    // either half would reintroduce a bypass class already closed once.
+    createSignedReplace: { permissionResource: 'media', operation: 'update' },
+    commitReplace: { permissionResource: 'media', operation: 'update' },
   },
 
   // routes/notifications.ts (setupTestCMS defaults notifications enabled)

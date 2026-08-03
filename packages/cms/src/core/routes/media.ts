@@ -1333,6 +1333,333 @@ export function createMediaEndpoints(
     ),
 
     /**
+     * Prepares a REPLACEMENT of an asset's bytes for client-side S3 upload —
+     * the browser-callable half of `replaceAsset` (see its docstring for the
+     * id/slug cache-bust rationale). Validates the target asset and the new
+     * file's declared metadata the same way `replaceAsset` does, mints a new
+     * slug/objectKey, and returns a signed PUT URL. Unlike `createSignedUpload`,
+     * this does NOT write any database row — the target asset's row is only
+     * repointed once `commitReplace` is called after the client's PUT succeeds.
+     *
+     * @param assetId - The asset to replace.
+     * @param file - The new file's metadata (name, size, type) — no bytes; the browser PUTs them straight to S3.
+     * @returns `{ assetId, slug, objectKey, url, signedUrl, headers, expiresAt }`.
+     * @throws ASSET_NOT_FOUND if the asset does not exist (in scope) or is archived.
+     * @throws CANNOT_REPLACE_VARIANT if the target is itself a variant.
+     * @throws FILE_TOO_LARGE / INVALID_FILE_TYPE on validation failure.
+     * @throws SLUG_GENERATION_FAILED if slug generation exhausts retry attempts.
+     * @example
+     * const signed = await cmsClient.media.createSignedReplace({
+     *   body: { assetId, file: { name: file.name, size: file.size, type: file.type } },
+     * });
+     * await fetch(signed.signedUrl, { method: 'PUT', headers: signed.headers, body: file });
+     * await cmsClient.media.commitReplace({
+     *   body: { assetId, objectKey: signed.objectKey, slug: signed.slug, mimeType: file.type, size: file.size },
+     * });
+     */
+    createSignedReplace: createCMSEndpoint(
+      '/media/createSignedReplace',
+      {
+        method: 'POST',
+        body: z.object({
+          assetId: z.string().min(1),
+          file: z.object({
+            name: z.string().min(1),
+            size: z.number().int().positive(),
+            type: z.string().min(1),
+          }),
+        }),
+        metadata: cmsMeta({}, { operation: 'update', ...MEDIA_META }),
+      },
+      async (ctx) => {
+        const { scope } = ctx.context;
+        const { assetId, file } = ctx.body;
+
+        // 1. Load the target (live, in scope) — same guard as replaceAsset
+        //    step 1.
+        const loadConditions: SQL[] = [
+          eq(assets.id, assetId),
+          isNull(assets.archivedAt),
+        ];
+        if (scope.assets?.where) loadConditions.push(scope.assets.where);
+
+        const [target] = await db
+          .select({ id: assets.id, variantOf: assets.variantOf })
+          .from(assets)
+          .where(and(...loadConditions));
+
+        if (!target) {
+          throw new CMSError('ASSET_NOT_FOUND', {
+            message: errorMessages.assetNotFound(assetId),
+          });
+        }
+
+        // 2. A variant must be regenerated via its original, never replaced
+        //    directly — same guard as replaceAsset step 2.
+        if (target.variantOf) {
+          throw new CMSError('CANNOT_REPLACE_VARIANT');
+        }
+
+        // 3. Validate the declared file (size / MIME type). No bytes are held
+        //    here — this is the client signed-upload path, so magic-byte
+        //    sniffing is not possible server-side (see
+        //    assertDeclaredTypeMatchesBytes).
+        validateFiles([{ name: file.name, size: file.size, type: file.type }], {
+          maxFiles,
+          maxFileSize,
+          allowedMimeTypes,
+        });
+
+        // 4. Mint a NEW slug/objectKey from the new file (cache-bust) — same
+        //    as replaceAsset step 4. The row itself is repointed later, by
+        //    commitReplace, once the client's PUT below has succeeded.
+        const slug = await generateUniqueSlug(db, file.name, undefined, scope);
+        if (!slug) {
+          throw new CMSError('SLUG_GENERATION_FAILED');
+        }
+        const objectKey = buildObjectKey(slug);
+
+        const client = getS3Client();
+        const expiresAt = new Date(Date.now() + signedUrlExpiresIn * 1000);
+        const signedUrl = await signPutObject(client, {
+          bucket: bucketName,
+          key: objectKey,
+          contentType: file.type,
+          contentLength: file.size,
+          expiresIn: signedUrlExpiresIn,
+          acl: 'public-read',
+        });
+
+        return {
+          assetId,
+          slug,
+          objectKey,
+          // Direct object URL the asset will have once the PUT below succeeds
+          // AND commitReplace repoints the row — for INTERNAL/admin display
+          // only (see createSignedUpload).
+          url: buildPublicObjectUrl(mediaConfig.publicUrl, objectKey),
+          signedUrl,
+          headers: {
+            'Content-Type': file.type,
+            'x-amz-acl': 'public-read',
+          },
+          expiresAt,
+        };
+      },
+    ),
+
+    /**
+     * Repoints an asset's row at a NEW object after the browser has
+     * successfully PUT it to the signed URL from `createSignedReplace` — the
+     * second half of the client-side replace flow. Server-side and atomic
+     * like `replaceAsset` step 6: the row is repointed and the asset's old
+     * variants archived in one transaction, and the superseded slug/objectKey
+     * is tombstoned (a fresh, immediately-archived asset row reusing the OLD
+     * slug/objectKey) so the pruning pass's existing asset-reclaim query picks
+     * it up and deletes the now-unreachable S3 object once the trash window
+     * elapses (Plan 007 part B). If the asset was archived / left scope since
+     * `createSignedReplace` (TOCTOU), the just-PUT NEW object is tombstoned
+     * instead, since no row will ever reference it.
+     *
+     * @param assetId - The asset being replaced (must match the `createSignedReplace` call).
+     * @param objectKey - The `objectKey` returned by `createSignedReplace`.
+     * @param slug - The `slug` returned by `createSignedReplace`.
+     * @param mimeType - The uploaded file's declared MIME type.
+     * @param size - The uploaded file's declared byte size.
+     * @returns `{ asset }` with the same fields a `listAssets` row carries.
+     * @throws ASSET_NOT_FOUND if the asset was archived / left scope since `createSignedReplace` (TOCTOU).
+     * @example await cmsClient.media.commitReplace({ body: { assetId, objectKey, slug, mimeType, size } })
+     */
+    commitReplace: createCMSEndpoint(
+      '/media/commitReplace',
+      {
+        method: 'POST',
+        body: z.object({
+          assetId: z.string().min(1),
+          objectKey: z.string().min(1),
+          slug: z.string().min(1),
+          mimeType: z.string().min(1),
+          size: z.number().int().positive(),
+        }),
+        metadata: cmsMeta({}, { operation: 'update', ...MEDIA_META }),
+      },
+      async (ctx) => {
+        const { scope } = ctx.context;
+        const { assetId, objectKey, slug, mimeType, size } = ctx.body;
+
+        const now = new Date();
+
+        // `.value` is set inside the transaction ONLY on the TOCTOU-rollback
+        // branch, so the outer catch below knows to tombstone the just-PUT NEW
+        // object. Read outside the transaction (after it has already rolled
+        // back), because a row inserted from WITHIN a transaction that then
+        // throws is rolled back along with everything else in it — the
+        // tombstone for this branch must be written in a SEPARATE statement,
+        // after the rollback. A one-property CARRIER object (rather than a
+        // reassigned `let`) sidesteps a TS control-flow-narrowing limitation:
+        // TS does not track assignments made inside a nested closure when
+        // narrowing a captured `let` at a read site in the enclosing scope.
+        const orphanedNewObject: {
+          value: {
+            slug: string;
+            objectKey: string;
+            mimeType: string;
+            size: number;
+          } | null;
+        } = { value: null };
+
+        try {
+          const repointedRow = await db.transaction(async (tx) => {
+            // Load the CURRENT (pre-repoint) row inside the transaction — its
+            // slug/objectKey are what the tombstone below preserves.
+            const loadConditions: SQL[] = [
+              eq(assets.id, assetId),
+              isNull(assets.archivedAt),
+            ];
+            if (scope.assets?.where) loadConditions.push(scope.assets.where);
+
+            const [before] = await tx
+              .select({
+                slug: assets.slug,
+                objectKey: assets.objectKey,
+                mimeType: assets.mimeType,
+                size: assets.size,
+                uploadedBy: assets.uploadedBy,
+              })
+              .from(assets)
+              .where(and(...loadConditions));
+
+            // The asset was archived / left scope since createSignedReplace
+            // (TOCTOU). Roll back so we never report a replace that didn't
+            // land; the just-PUT object at `objectKey` is unreachable from any
+            // row, so it is tombstoned (outside this transaction, see below)
+            // rather than left for pruning to never find.
+            if (!before) {
+              orphanedNewObject.value = { slug, objectKey, mimeType, size };
+              throw new CMSError('ASSET_NOT_FOUND', {
+                message: errorMessages.assetNotFound(assetId),
+              });
+            }
+
+            const updateConditions: SQL[] = [
+              eq(assets.id, assetId),
+              isNull(assets.archivedAt),
+            ];
+            if (scope.assets?.where) updateConditions.push(scope.assets.where);
+
+            const repointed = await tx
+              .update(assets)
+              .set({ slug, objectKey, mimeType, size, updatedAt: now })
+              .where(and(...updateConditions))
+              .returning();
+
+            if (repointed.length === 0) {
+              orphanedNewObject.value = { slug, objectKey, mimeType, size };
+              throw new CMSError('ASSET_NOT_FOUND', {
+                message: errorMessages.assetNotFound(assetId),
+              });
+            }
+
+            const variantConditions: SQL[] = [
+              eq(assets.variantOf, assetId),
+              isNull(assets.archivedAt),
+            ];
+            if (scope.assets?.where) variantConditions.push(scope.assets.where);
+
+            await tx
+              .update(assets)
+              .set({ archivedAt: now, updatedAt: now })
+              .where(and(...variantConditions));
+
+            // Tombstone the SUPERSEDED slug/objectKey so the pruning pass's
+            // asset reclaim (admin/pruning.ts) finds and deletes the now-
+            // unreachable S3 object — Plan 007 part B. MUST run AFTER the
+            // update above: the live row still held `before.slug`/
+            // `before.objectKey` until that UPDATE ran, and both columns are
+            // globally UNIQUE (core-schema.ts) — inserting this tombstone
+            // first would collide with the still-live row on both indexes and
+            // abort the transaction.
+            await scopedInsert(
+              tx,
+              'cms.assets',
+              {
+                // A fresh id (never reused from the live/original row) is
+                // load-bearing: the pruning reclaim query's liveness check
+                // joins content_usages on this asset's id, and content only
+                // ever referenced the ORIGINAL id — a tombstone that reused it
+                // would look "still referenced" and never be reclaimed.
+                id: newId('asset'),
+                slug: before.slug,
+                mime_type: before.mimeType,
+                size: before.size,
+                object_key: before.objectKey,
+                status: 'private' as const,
+                folder_id: null,
+                variant_of: null,
+                uploaded_by: before.uploadedBy,
+                archived_at: now,
+              },
+              scope.assets,
+            );
+
+            return repointed[0];
+          });
+
+          return {
+            asset: {
+              id: repointedRow.id,
+              slug: repointedRow.slug,
+              mimeType: repointedRow.mimeType,
+              size: repointedRow.size,
+              objectKey: repointedRow.objectKey,
+              url: buildPublicObjectUrl(
+                mediaConfig.publicUrl,
+                repointedRow.objectKey,
+              ),
+              status: repointedRow.status,
+              folderId: repointedRow.folderId ?? null,
+              variantOf: repointedRow.variantOf ?? null,
+              uploadedBy: repointedRow.uploadedBy ?? null,
+              createdAt: repointedRow.createdAt,
+              updatedAt: repointedRow.updatedAt,
+            },
+          };
+        } catch (err) {
+          const orphaned = orphanedNewObject.value;
+          if (orphaned) {
+            try {
+              await scopedInsert(
+                db,
+                'cms.assets',
+                {
+                  // Fresh id — see the matching happy-path insert above for
+                  // why this matters (content_usages liveness).
+                  id: newId('asset'),
+                  slug: orphaned.slug,
+                  mime_type: orphaned.mimeType,
+                  size: orphaned.size,
+                  object_key: orphaned.objectKey,
+                  status: 'private' as const,
+                  folder_id: null,
+                  variant_of: null,
+                  uploaded_by: null,
+                  archived_at: now,
+                },
+                scope.assets,
+              );
+            } catch (tombstoneErr) {
+              console.error(
+                '[cms:media] failed to tombstone orphaned commitReplace object',
+                tombstoneErr,
+              );
+            }
+          }
+          throw err;
+        }
+      },
+    ),
+
+    /**
      * Server-side uploads assets directly to S3 with buffer/Blob bodies.
      * Creates database records and synchronously uploads file content; use for small files or server-initiated uploads.
      *
@@ -1366,7 +1693,13 @@ export function createMediaEndpoints(
             .min(1),
           folderId: z.string().optional(),
         }),
-        metadata: cmsMeta({}, { operation: 'create', ...MEDIA_META }),
+        // Body takes in-process bytes (Blob/ArrayBuffer), which can't survive
+        // the client's JSON serialization; browsers use the signed upload flow
+        // instead (createSignedUpload + uploadAssets' signed path).
+        metadata: cmsMeta(
+          { scope: 'server' as const },
+          { operation: 'create', ...MEDIA_META },
+        ),
       },
       async (ctx) => {
         const { userId: actor, scope } = ctx.context;
@@ -1431,11 +1764,15 @@ export function createMediaEndpoints(
               acl: 'public-read',
             });
           } catch (err) {
+            // Full provider detail (the raw S3 error) stays server-side only —
+            // it must never reach the client (Plan 007 part C). This is the
+            // only place an operator sees it; there is no definition-level
+            // onAPIError hook reachable from a handler-thrown CMSError (see
+            // CMSDefinition['onAPIError']'s doc comment in types/definitions.ts).
             console.error('[cms:media] upload failed', err);
             const status = err instanceof S3Error ? 500 : 0;
             throw new CMSError('UPLOAD_FAILED', {
               message: errorMessages.uploadFailed(file.name, status),
-              data: { cause: err instanceof Error ? err.message : String(err) },
             });
           }
         }
@@ -1476,11 +1813,20 @@ export function createMediaEndpoints(
      * stale image; a new key is a natural cache-bust, and the short-cached gate
      * redirect propagates it within minutes.
      *
+     * SERVER-SIDE ONLY: `file.buffer` must be an in-process `Blob`/`ArrayBuffer`,
+     * which cannot survive the browser client's JSON request body — a `File`
+     * serializes to `{}` over the wire. Browser callers MUST use the signed
+     * flow instead: `createSignedReplace` (mint a slot + signed PUT URL) then
+     * `commitReplace` (repoint the row) once the client's PUT succeeds.
+     *
      * Server-side and atomic, like uploadAssets but reversed: the new object is
      * PUT first, then (only on success) the row is repointed in one transaction
      * that also archives the asset's old variants (they depict the old bytes and
-     * are unreachable from the new slug). The old object is left orphaned for a
-     * future pruning pass. Returns the updated asset.
+     * are unreachable from the new slug) and tombstones the superseded
+     * slug/objectKey — a fresh, immediately-archived asset row reusing the OLD
+     * values — so the pruning pass's existing asset-reclaim query deletes the
+     * now-unreachable S3 object once the trash window elapses (Plan 007 part B).
+     * Returns the updated asset.
      *
      * @param assetId - The asset to replace.
      * @param file - The new file (`buffer` of bytes, like uploadAssets).
@@ -1504,7 +1850,13 @@ export function createMediaEndpoints(
             buffer: z.instanceof(Blob).or(z.instanceof(ArrayBuffer)),
           }),
         }),
-        metadata: cmsMeta({}, { operation: 'update', ...MEDIA_META }),
+        // Body takes in-process bytes (Blob/ArrayBuffer), which can't survive
+        // the client's JSON serialization; browsers use the signed replace
+        // flow instead (createSignedReplace + commitReplace).
+        metadata: cmsMeta(
+          { scope: 'server' as const },
+          { operation: 'update', ...MEDIA_META },
+        ),
       },
       async (ctx) => {
         const { scope } = ctx.context;
@@ -1564,81 +1916,212 @@ export function createMediaEndpoints(
             acl: 'public-read',
           });
         } catch (err) {
+          // Full provider detail (the raw S3 error) stays server-side only —
+          // it must never reach the client (Plan 007 part C). See the same
+          // note on uploadAssets's catch block for why this console.error is
+          // the only channel: there is no definition-level onAPIError hook
+          // reachable from a handler-thrown CMSError.
           console.error('[cms:media] upload failed', err);
           const status = err instanceof S3Error ? 500 : 0;
           throw new CMSError('UPLOAD_FAILED', {
             message: errorMessages.uploadFailed(file.name, status),
-            data: { cause: err instanceof Error ? err.message : String(err) },
           });
         }
 
-        // 6. Atomically repoint the row at the new object AND archive the old
-        //    variants (stale bytes, unreachable from the new slug). id, folderId,
-        //    status, variantOf are unchanged. Old object is left for pruning.
+        // 6. Atomically repoint the row at the new object, archive the old
+        //    variants (stale bytes, unreachable from the new slug), and
+        //    tombstone the SUPERSEDED slug/objectKey so the pruning pass's
+        //    asset-reclaim query (admin/pruning.ts) finds and deletes the now-
+        //    unreachable S3 object once the trash window elapses (Plan 007
+        //    part B). id, folderId, status, variantOf are unchanged.
         const now = new Date();
-        const repointedRow = await db.transaction(async (tx) => {
-          const updateConditions: SQL[] = [
-            eq(assets.id, assetId),
-            isNull(assets.archivedAt),
-          ];
-          if (scope.assets?.where) updateConditions.push(scope.assets.where);
 
-          const repointed = await tx
-            .update(assets)
-            .set({
-              slug,
-              objectKey,
-              mimeType: file.type,
-              size: measuredSize,
-              updatedAt: now,
-            })
-            .where(and(...updateConditions))
-            .returning();
+        // `.value` is set inside the transaction ONLY on the TOCTOU-rollback
+        // branch below, so the outer catch knows to tombstone the just-PUT NEW
+        // object. Read outside the transaction (after it has already rolled
+        // back), because a row inserted from WITHIN a transaction that then
+        // throws is rolled back along with everything else in it — that
+        // tombstone must be written in a SEPARATE statement, after the
+        // rollback. A one-property CARRIER object (rather than a reassigned
+        // `let`) sidesteps a TS control-flow-narrowing limitation: TS does not
+        // track assignments made inside a nested closure when narrowing a
+        // captured `let` at a read site in the enclosing scope.
+        const orphanedNewObject: {
+          value: {
+            slug: string;
+            objectKey: string;
+            mimeType: string;
+            size: number;
+          } | null;
+        } = { value: null };
 
-          // The asset was archived / left scope between the load and here
-          // (TOCTOU). Roll back so we never report a replace that didn't land;
-          // the just-PUT object is left orphaned for the pruning pass.
-          if (repointed.length === 0) {
-            throw new CMSError('ASSET_NOT_FOUND', {
-              message: errorMessages.assetNotFound(assetId),
-            });
+        try {
+          const repointedRow = await db.transaction(async (tx) => {
+            // Load the CURRENT (pre-repoint) row's slug/objectKey/mimeType/size
+            // — what the tombstone below preserves. Re-read here (not reused
+            // from step 1, which only fetched id/variantOf) so the tombstoned
+            // values are exactly what this UPDATE overwrites, even if the row
+            // changed between step 1 and here.
+            const beforeConditions: SQL[] = [
+              eq(assets.id, assetId),
+              isNull(assets.archivedAt),
+            ];
+            if (scope.assets?.where) beforeConditions.push(scope.assets.where);
+
+            const [before] = await tx
+              .select({
+                slug: assets.slug,
+                objectKey: assets.objectKey,
+                mimeType: assets.mimeType,
+                size: assets.size,
+                uploadedBy: assets.uploadedBy,
+              })
+              .from(assets)
+              .where(and(...beforeConditions));
+
+            // The asset was archived / left scope between the load and here
+            // (TOCTOU). Roll back so we never report a replace that didn't
+            // land; the just-PUT object at `objectKey` is unreachable from any
+            // row, so it is tombstoned (outside this transaction, see below)
+            // rather than left for pruning to never find.
+            if (!before) {
+              orphanedNewObject.value = {
+                slug,
+                objectKey,
+                mimeType: file.type,
+                size: measuredSize,
+              };
+              throw new CMSError('ASSET_NOT_FOUND', {
+                message: errorMessages.assetNotFound(assetId),
+              });
+            }
+
+            const updateConditions: SQL[] = [
+              eq(assets.id, assetId),
+              isNull(assets.archivedAt),
+            ];
+            if (scope.assets?.where) updateConditions.push(scope.assets.where);
+
+            const repointed = await tx
+              .update(assets)
+              .set({
+                slug,
+                objectKey,
+                mimeType: file.type,
+                size: measuredSize,
+                updatedAt: now,
+              })
+              .where(and(...updateConditions))
+              .returning();
+
+            if (repointed.length === 0) {
+              orphanedNewObject.value = {
+                slug,
+                objectKey,
+                mimeType: file.type,
+                size: measuredSize,
+              };
+              throw new CMSError('ASSET_NOT_FOUND', {
+                message: errorMessages.assetNotFound(assetId),
+              });
+            }
+
+            const variantConditions: SQL[] = [
+              eq(assets.variantOf, assetId),
+              isNull(assets.archivedAt),
+            ];
+            if (scope.assets?.where) variantConditions.push(scope.assets.where);
+
+            await tx
+              .update(assets)
+              .set({ archivedAt: now, updatedAt: now })
+              .where(and(...variantConditions));
+
+            // Tombstone the SUPERSEDED slug/objectKey. MUST run AFTER the
+            // update above: the live row still held `before.slug`/
+            // `before.objectKey` until that UPDATE ran, and both columns are
+            // globally UNIQUE (core-schema.ts) — inserting this tombstone
+            // first would collide with the still-live row on both indexes and
+            // abort the transaction.
+            await scopedInsert(
+              tx,
+              'cms.assets',
+              {
+                // A fresh id (never reused from the live/original row) is
+                // load-bearing: the pruning reclaim query's liveness check
+                // joins content_usages on this asset's id, and content only
+                // ever referenced the ORIGINAL id — a tombstone that reused it
+                // would look "still referenced" and never be reclaimed.
+                id: newId('asset'),
+                slug: before.slug,
+                mime_type: before.mimeType,
+                size: before.size,
+                object_key: before.objectKey,
+                status: 'private' as const,
+                folder_id: null,
+                variant_of: null,
+                uploaded_by: before.uploadedBy,
+                archived_at: now,
+              },
+              scope.assets,
+            );
+
+            return repointed[0];
+          });
+
+          return {
+            asset: {
+              id: repointedRow.id,
+              slug: repointedRow.slug,
+              mimeType: repointedRow.mimeType,
+              size: repointedRow.size,
+              objectKey: repointedRow.objectKey,
+              // Direct object URL for INTERNAL/admin display only (see the
+              // gate for serving in content).
+              url: buildPublicObjectUrl(
+                mediaConfig.publicUrl,
+                repointedRow.objectKey,
+              ),
+              status: repointedRow.status,
+              folderId: repointedRow.folderId ?? null,
+              variantOf: repointedRow.variantOf ?? null,
+              uploadedBy: repointedRow.uploadedBy ?? null,
+              createdAt: repointedRow.createdAt,
+              updatedAt: repointedRow.updatedAt,
+            },
+          };
+        } catch (err) {
+          const orphaned = orphanedNewObject.value;
+          if (orphaned) {
+            try {
+              await scopedInsert(
+                db,
+                'cms.assets',
+                {
+                  // Fresh id — see the matching happy-path insert above for
+                  // why this matters (content_usages liveness).
+                  id: newId('asset'),
+                  slug: orphaned.slug,
+                  mime_type: orphaned.mimeType,
+                  size: orphaned.size,
+                  object_key: orphaned.objectKey,
+                  status: 'private' as const,
+                  folder_id: null,
+                  variant_of: null,
+                  uploaded_by: null,
+                  archived_at: now,
+                },
+                scope.assets,
+              );
+            } catch (tombstoneErr) {
+              console.error(
+                '[cms:media] failed to tombstone orphaned replaceAsset object',
+                tombstoneErr,
+              );
+            }
           }
-
-          const variantConditions: SQL[] = [
-            eq(assets.variantOf, assetId),
-            isNull(assets.archivedAt),
-          ];
-          if (scope.assets?.where) variantConditions.push(scope.assets.where);
-
-          await tx
-            .update(assets)
-            .set({ archivedAt: now, updatedAt: now })
-            .where(and(...variantConditions));
-
-          return repointed[0];
-        });
-
-        return {
-          asset: {
-            id: repointedRow.id,
-            slug: repointedRow.slug,
-            mimeType: repointedRow.mimeType,
-            size: repointedRow.size,
-            objectKey: repointedRow.objectKey,
-            // Direct object URL for INTERNAL/admin display only (see the gate
-            // for serving in content).
-            url: buildPublicObjectUrl(
-              mediaConfig.publicUrl,
-              repointedRow.objectKey,
-            ),
-            status: repointedRow.status,
-            folderId: repointedRow.folderId ?? null,
-            variantOf: repointedRow.variantOf ?? null,
-            uploadedBy: repointedRow.uploadedBy ?? null,
-            createdAt: repointedRow.createdAt,
-            updatedAt: repointedRow.updatedAt,
-          },
-        };
+          throw err;
+        }
       },
     ),
   };
