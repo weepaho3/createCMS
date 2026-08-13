@@ -86,16 +86,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Type-check
-        run: |
-          set -o pipefail
-          bun run check-types 2>&1 | tee /tmp/check-types.log
-
-      # Temporary debug: job logs need admin rights via API, annotations are
-      # public — surface the failing output where it can be read remotely.
-      - name: Surface type-check failure (log tail)
-        if: failure()
-        run: |
-          echo "::error title=check-types log tail::$(tail -c 900 /tmp/check-types.log | tr '\n' '¶')"
+        run: bun run check-types
 
   test:
     runs-on: ubuntu-latest
@@ -130,21 +121,6 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
-      # Temporary debug: surface runner facts + whether --expose-gc actually
-      # reaches vitest workers, as public ::notice:: annotations (job logs need
-      # admin rights via the API).
-      - name: Runner diagnostics
-        run: |
-          mem_total=$(free -m | awk 'NR==2 {print $2}')
-          mem_avail=$(free -m | awk 'NR==2 {print $7}')
-          echo "::notice title=runner::$(nproc) cpus | ${mem_total} MB total, ${mem_avail} MB avail | node $(node --version) | bun $(bun --version)"
-
-      # --expose-gc arms the opportunistic gc() in the per-test PGlite release
-      # (src/test-utils/db.ts). A background sampler records used memory every
-      # 10s, vitest output is teed, and both tails are emitted as public
-      # ::notice:: annotations afterwards — job logs need admin rights via the
-      # API, annotations do not. `timeout 600` guarantees the step ends before
-      # timeout-minutes would cancel the job, so the notice steps always run.
       # The test DBs are worker-lived PGlite singletons with a truncate reset
       # per test (src/test-utils/db.ts) — required on Linux, where dropped
       # PGlite instances are never reclaimed (~200MB each, permanently): a
@@ -155,21 +131,7 @@ jobs:
         working-directory: packages/cms
         env:
           NODE_OPTIONS: --expose-gc
-        run: |
-          ( while true; do echo "$(date +%H:%M:%S) $(free -m | awk 'NR==2 {print $3}')MB used"; sleep 10; done ) > /tmp/mem.log 2>/dev/null &
-          sampler=$!
-          set +e
-          set -o pipefail
-          timeout --signal=TERM 600 bunx vitest run --shard=${{ matrix.shard }}/4 --maxWorkers=2 2>&1 | tee /tmp/vitest.log
-          rc=$?
-          kill $sampler 2>/dev/null
-          exit $rc
-
-      - name: Surface shard diagnostics
-        if: always()
-        run: |
-          echo "::notice title=vitest tail shard ${{ matrix.shard }}::$(tail -c 700 /tmp/vitest.log 2>/dev/null | tr '\n' '¶')"
-          echo "::notice title=memory timeline shard ${{ matrix.shard }}::$(tail -n 12 /tmp/mem.log 2>/dev/null | tr '\n' ' ')"
+        run: bunx vitest run --shard=${{ matrix.shard }}/4 --maxWorkers=2
 
   build:
     runs-on: ubuntu-latest
