@@ -51,6 +51,7 @@ jobs:
           bunx turbo run check-types test build --filter=@createcms/core
 
       - name: Create release PR or publish
+        id: changesets
         uses: changesets/action@3841a0683d3cfa6dae0f9bb335290003010fe3f0 # v1.9.0
         with:
           version: bun run version-packages
@@ -62,3 +63,14 @@ jobs:
           # No NODE_AUTH_TOKEN: publishing uses OIDC trusted publishing
           # (configured on npmjs.com). The package is set to "disallow tokens".
           NPM_CONFIG_PROVENANCE: true
+
+      # Bookkeeping only: tells Linear which issues went out in which version by
+      # moving everything in `Merged` to `Done`. Runs ONLY on an actual publish,
+      # never on the version PR. The script swallows its own errors so a Linear
+      # outage cannot turn a successful publish into a red run.
+      - name: Close shipped Linear issues
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          PUBLISHED: ${{ steps.changesets.outputs.publishedPackages }}
+        run: node scripts/linear-release.mjs
