@@ -130,16 +130,43 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
+      # Temporary debug: surface runner facts + whether --expose-gc actually
+      # reaches vitest workers, as public ::notice:: annotations (job logs need
+      # admin rights via the API).
+      - name: Runner diagnostics
+        working-directory: packages/cms
+        env:
+          NODE_OPTIONS: --expose-gc
+        run: |
+          echo "::notice title=runner::$(nproc) cpus | $(free -m | awk '/^Mem:/{print $2\" MB total, \"$7\" MB avail\"}') | node $(node --version) | bun $(bun --version)"
+          cat > gc-probe.test.ts <<'EOF'
+          import { expect, it } from 'vitest';
+          it('gc exposed in worker', () => {
+            expect(typeof (globalThis as { gc?: () => void }).gc).toBe('function');
+          });
+          EOF
+          if bunx vitest run gc-probe.test.ts >/dev/null 2>&1; then
+            echo "::notice title=gc-probe::gc IS exposed in vitest workers"
+          else
+            echo "::notice title=gc-probe::gc NOT exposed in vitest workers"
+          fi
+          rm -f gc-probe.test.ts
+
       # --expose-gc arms the opportunistic gc() in the per-test PGlite release
       # (src/test-utils/db.ts): without it, V8 collects the multi-hundred-MB
-      # WASM heaps lazily, several instances float uncollected per worker, and
-      # 4 workers can push a 16GB runner into swap — which is how the previous
-      # single-job Test step hit the 20-minute timeout.
+      # WASM heaps lazily and several instances float uncollected per worker.
+      # --maxWorkers=2 caps concurrent memory on the 16GB runner — 4 workers
+      # OOM-killed the runner VM itself (jobs died as "canceled"/exit 143).
       - name: Test (shard ${{ matrix.shard }}/4)
         working-directory: packages/cms
         env:
           NODE_OPTIONS: --expose-gc
-        run: bunx vitest run --shard=${{ matrix.shard }}/4
+        run: bunx vitest run --shard=${{ matrix.shard }}/4 --maxWorkers=2
+
+      - name: OOM check
+        if: failure()
+        run: |
+          echo "::notice title=oom-check::$(sudo dmesg 2>/dev/null | grep -i 'out of memory' | tail -3 | tr '\n' '¶' || echo 'no OOM lines in dmesg')"
 
   build:
     runs-on: ubuntu-latest
