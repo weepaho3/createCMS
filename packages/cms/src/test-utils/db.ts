@@ -1,7 +1,18 @@
 import { PGlite } from '@electric-sql/pglite';
 import { generateDrizzleJson, generateMigration } from 'drizzle-kit/api';
 import { drizzle } from 'drizzle-orm/pglite';
-import { mkdir, unlink, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import {
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  stat,
+  unlink,
+  writeFile,
+} from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -16,6 +27,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const NANOID_SOURCE_PATH = path.resolve(__dirname, '../../src/utils/nanoid.ts');
 
+const TMP_DIR = path.resolve(__dirname, '../../.test-schema');
+
 /**
  * Merges core + plugin schemas via the codegen pipeline, writes a temp
  * file, dynamically imports it, and returns the Drizzle schema module.
@@ -25,7 +38,7 @@ const NANOID_SOURCE_PATH = path.resolve(__dirname, '../../src/utils/nanoid.ts');
  *
  * The ESM module is evaluated in memory once imported, so the temp file is
  * unlinked immediately after import — nothing else references it on disk.
- * This runs inside the memoized migration generator, so it executes at most
+ * This runs inside the memoized data-dir builder, so it executes at most
  * once per schema-set.
  */
 async function generateMergedSchema(
@@ -44,11 +57,9 @@ async function generateMergedSchema(
     nanoidImport: `import { newId } from '${NANOID_SOURCE_PATH}';`,
   });
 
-  // Use a directory within the project so module resolution works
-  const tmpDir = path.resolve(__dirname, '../../.test-schema');
-  await mkdir(tmpDir, { recursive: true });
+  await mkdir(TMP_DIR, { recursive: true });
   const tmpFile = path.join(
-    tmpDir,
+    TMP_DIR,
     `schema-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.ts`,
   );
   await writeFile(tmpFile, code, 'utf8');
@@ -63,39 +74,179 @@ async function generateMergedSchema(
 }
 
 /**
- * Memoizes the generated migration SQL per schema-set. The DDL statements
- * emitted by `generateMigration` are identical for a given schema-set — the
- * random temp filename and snapshot `prev.id` are metadata that never appear
- * in the SQL, so they are excluded from the cache key.
+ * Resolves the installed @electric-sql/pglite version by walking up from the
+ * resolved entry point to its package.json (the package does not export
+ * "./package.json", so it cannot be imported directly). The version is part
+ * of the on-disk dump cache key: the data-dir format is version-specific, so
+ * a PGlite upgrade must invalidate old dumps rather than fail restoring them.
+ */
+function pgliteVersion(): string {
+  const require = createRequire(import.meta.url);
+  let dir = path.dirname(require.resolve('@electric-sql/pglite'));
+  while (true) {
+    try {
+      const pkg = JSON.parse(
+        readFileSync(path.join(dir, 'package.json'), 'utf8'),
+      ) as {
+        name?: string;
+        version?: string;
+      };
+      if (pkg.name === '@electric-sql/pglite' && pkg.version)
+        return pkg.version;
+    } catch {
+      // No package.json at this level — keep walking up.
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return 'unknown';
+    dir = parent;
+  }
+}
+
+/** Dumps older than this are pruned when a new one is written. */
+const DUMP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Best-effort removal of stale dump files so schema churn during development
+ * does not grow the cache dir unboundedly (each dump is ~40MB). Runs only on
+ * the cache-miss path, so the hot path never pays for it.
+ */
+async function pruneStaleDumps(exclude: string): Promise<void> {
+  try {
+    const entries = await readdir(TMP_DIR);
+    const cutoff = Date.now() - DUMP_MAX_AGE_MS;
+    for (const entry of entries) {
+      if (!entry.startsWith('pgdata-') || entry === exclude) continue;
+      const file = path.join(TMP_DIR, entry);
+      const info = await stat(file).catch(() => null);
+      if (info && info.mtimeMs < cutoff) await unlink(file).catch(() => {});
+    }
+  } catch {
+    // Pruning is opportunistic; a failure here must never fail a test.
+  }
+}
+
+/**
+ * Memoizes a *migrated data directory* per schema-set — in memory for this
+ * module registry, and on disk (content-addressed) across processes and runs.
  *
- * Only the SQL *generation* is cached; each `setupTestDB` call still spins up
- * its own fresh PGlite and replays these statements against it.
+ * A bare `new PGlite()` pays for `initdb` — bootstrapping the Postgres system
+ * catalogs — which dominates setup (~660ms of a ~730ms boot on an M-series
+ * Mac; the ~170 DDL statements are only ~70ms of it). Restoring a dump skips
+ * initdb entirely (~150ms). With 500+ `setupTestCMS` calls in the suite that
+ * is the difference between a CI test step measured in minutes and one
+ * measured in seconds.
+ *
+ * The in-memory map alone is not enough: vitest isolates the module registry
+ * per test *file*, so a module-level cache is rebuilt by every file. The disk
+ * layer (packages/cms/.test-schema/pgdata-<hash>.tar) makes the template
+ * build a once-per-schema-change cost instead of once-per-file. The file is
+ * keyed by a hash of the PGlite version plus the exact DDL, so it can never
+ * go stale: any schema or PGlite change produces a new file. Concurrent
+ * workers may race to build the same dump on a cold cache; each writes to a
+ * pid-suffixed temp file and renames it into place, which is atomic, so
+ * readers only ever see complete dumps.
  *
  * The cached value is a Promise, so concurrent boots of the same schema-set
- * dedupe onto a single generation pass.
+ * within one file dedupe onto a single build (or disk read).
  */
-const migrationCache = new Map<string, Promise<string[]>>();
+const dataDirCache = new Map<string, Promise<Blob>>();
 
-async function getMigrationStatements(
+async function getMigratedDataDir(
   key: string,
   build: () => Promise<Record<string, unknown>>,
-): Promise<string[]> {
-  let cached = migrationCache.get(key);
+): Promise<Blob> {
+  let cached = dataDirCache.get(key);
   if (!cached) {
     cached = (async () => {
       const schema = await build();
       const prev = generateDrizzleJson({});
       const curr = generateDrizzleJson(schema, prev.id);
-      return generateMigration(prev, curr);
+      const statements = await generateMigration(prev, curr);
+
+      // The emitted DDL fully determines the migrated data dir, so it (plus
+      // the PGlite version, for the on-disk format) is the content address.
+      const hash = createHash('sha256')
+        .update(pgliteVersion())
+        .update('\0')
+        .update(statements.join('\n'))
+        .digest('hex')
+        .slice(0, 16);
+      const dumpName = `pgdata-${hash}.tar`;
+      const dumpPath = path.join(TMP_DIR, dumpName);
+
+      // Disk hit: reconstruct the File PGlite dumps ('application/x-tar' is
+      // how loadDataDir knows the payload is uncompressed tar).
+      const existing = await readFile(dumpPath).catch(() => null);
+      if (existing) {
+        return new File([new Uint8Array(existing)], 'pgdata.tar', {
+          type: 'application/x-tar',
+        });
+      }
+
+      // Cold cache: boot a template, replay the DDL, dump it, persist.
+      const template = new PGlite();
+      const db = drizzle(template, { schema: baseSchema });
+      for (const stmt of statements) {
+        await db.execute(stmt);
+      }
+      // 'none': the dump is handed straight back to `loadDataDir`, so gzip
+      // would only cost CPU on both ends. The template is NOT closed — see
+      // releaseClientsFrom for why close() is never safe here; dropping the
+      // reference lets the GC reclaim it.
+      const dump = await template.dumpDataDir('none');
+
+      await mkdir(TMP_DIR, { recursive: true });
+      const tmpPath = `${dumpPath}.${process.pid}.tmp`;
+      await writeFile(tmpPath, new Uint8Array(await dump.arrayBuffer()));
+      await rename(tmpPath, dumpPath);
+      await pruneStaleDumps(dumpName);
+
+      return dump;
     })();
     // Evict on failure so a later boot can retry instead of replaying a
     // permanently-rejected promise.
     cached.catch(() => {
-      if (migrationCache.get(key) === cached) migrationCache.delete(key);
+      if (dataDirCache.get(key) === cached) dataDirCache.delete(key);
     });
-    migrationCache.set(key, cached);
+    dataDirCache.set(key, cached);
   }
   return cached;
+}
+
+/**
+ * Every PGlite client opened by `setupTestDB`, in creation order. Each
+ * instance pins its whole data dir plus WASM heap (hundreds of MB), and test
+ * files routinely open one per test — a heavy file holds 100+ at once if
+ * nothing closes them, which is enough to exhaust machine memory across
+ * parallel workers. The global hooks in vitest.setup.ts drain this registry:
+ * clients opened during a test are closed right after it, clients opened
+ * outside tests (beforeAll / module scope) at the end of the file.
+ */
+const openClients: PGlite[] = [];
+
+/** Snapshot the registry length; pass it to `releaseClientsFrom` later. */
+export function markClientBoundary(): number {
+  return openClients.length;
+}
+
+/**
+ * Releases every client opened at or after `index` by dropping all
+ * references and nudging the GC.
+ *
+ * Deliberately does NOT call `client.close()`: PGlite 0.5.x's WASM shutdown
+ * busy-loops forever on some close calls (reproduced deterministically in
+ * this suite — the 4th close in a file pegs the CPU and never returns; the
+ * spin is synchronous, so it cannot even be raced against a timeout). An
+ * unreferenced instance is plain JS objects plus a WASM ArrayBuffer, and V8
+ * tracks that external memory, so ordinary GC pressure reclaims it promptly
+ * — verified: the full suite stays bounded (a few GB per worker) on release
+ * alone. The gc() call is opportunistic: Vitest 4 offers no way to pass
+ * --expose-gc to workers, so it is normally undefined; it only kicks in if
+ * the runtime exposes it (e.g. NODE_OPTIONS=--expose-gc).
+ */
+export async function releaseClientsFrom(index: number): Promise<void> {
+  openClients.splice(index);
+  (globalThis as { gc?: () => void }).gc?.();
 }
 
 /**
@@ -108,30 +259,32 @@ async function getMigrationStatements(
 export const setupTestDB = async (options?: {
   plugins?: Array<{ name: string; schema: SchemaModule }>;
 }) => {
-  const client = new PGlite();
-  const db = drizzle(client, { schema: baseSchema });
-
   const plugins = options?.plugins;
-  // The cache key is the ordered plugin-name list. This is sound only because
-  // every call site maps a given name to ONE fixed schema module (a static const
-  // or a no-arg builder). If a test ever passed the same `name` with a different
-  // `schema`, it would replay the first schema's stale DDL — key on a content
-  // hash of the emitted schema then (the emit is the expensive step we memoize,
-  // so hashing it defeats the cache; keep names stable instead).
-  const statements =
+  // The in-memory cache key is the ordered plugin-name list. This is sound
+  // only because every call site maps a given name to ONE fixed schema module
+  // (a static const or a no-arg builder). If a test ever passed the same
+  // `name` with a different `schema`, it would restore the first schema's
+  // data dir within that file — the disk layer is immune (content-addressed),
+  // but the module-level memo would still serve the stale Blob. Keep names
+  // stable.
+  const dataDir =
     plugins && plugins.length > 0
-      ? await getMigrationStatements(
+      ? await getMigratedDataDir(
           `plugins:${plugins.map((p) => p.name).join('|')}`,
           () => generateMergedSchema(plugins),
         )
-      : await getMigrationStatements('__base__', async () => baseSchema);
+      : await getMigratedDataDir('__base__', async () => baseSchema);
 
-  for (const stmt of statements) {
-    await db.execute(stmt);
-  }
+  // Restores the already-migrated template: the schema is in place on boot and
+  // no DDL runs here. The dump is read-only — PGlite copies it into this
+  // instance's own memory FS — so every caller gets an isolated database.
+  const client = new PGlite({ loadDataDir: dataDir });
+  openClients.push(client);
+  const db = drizzle(client, { schema: baseSchema });
 
-  // The migration SQL is memoized and the schema temp file is removed inside
-  // the generator, so there is nothing left to clean up per call.
+  // The data dir is memoized, the schema temp file is removed inside the
+  // generator, and the client is closed by the global vitest.setup.ts hooks —
+  // so there is nothing left to clean up per call.
   const cleanup: () => Promise<void> = async () => {};
 
   return { db, client, cleanup };
