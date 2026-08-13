@@ -86,7 +86,16 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Type-check
-        run: bun run check-types
+        run: |
+          set -o pipefail
+          bun run check-types 2>&1 | tee /tmp/check-types.log
+
+      # Temporary debug: job logs need admin rights via API, annotations are
+      # public — surface the failing output where it can be read remotely.
+      - name: Surface type-check failure (log tail)
+        if: failure()
+        run: |
+          echo "::error title=check-types log tail::$(tail -c 900 /tmp/check-types.log | tr '\n' '¶')"
 
   test:
     runs-on: ubuntu-latest
