@@ -103,7 +103,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        # Temporarily one shard while debugging the runner OOM — restore
+        # [1, 2, 3, 4] afterwards.
+        shard: [2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -153,7 +155,7 @@ jobs:
       - name: PGlite lifecycle probe
         working-directory: packages/cms
         run: |
-          cat > /tmp/pglite-probe.mjs <<'EOF'
+          cat > pglite-probe.mjs <<'EOF'
           import { PGlite } from '@electric-sql/pglite';
           const rss = () => Math.round(process.memoryUsage().rss / 1024 / 1024);
           const out = [];
@@ -175,8 +177,27 @@ jobs:
           console.log(out.join(' | '));
           process.exit(0);
           EOF
-          probe=$(timeout 120 node --expose-gc /tmp/pglite-probe.mjs 2>&1 | tail -c 600 | tr '\n' '¶')
+          probe=$(timeout 120 node --expose-gc pglite-probe.mjs 2>&1 | tail -c 600 | tr '\n' '¶')
+          rm -f pglite-probe.mjs
           echo "::notice title=pglite-probe shard ${{ matrix.shard }}::${probe}"
+
+      # The worst single file in isolation, serial, with a memory timeline:
+      # the exact death profile of the heaviest workload without shard noise.
+      - name: Heaviest file probe (merges.test.ts)
+        working-directory: packages/cms
+        env:
+          NODE_OPTIONS: --expose-gc
+        run: |
+          ( while true; do echo "$(date +%H:%M:%S) $(free -m | awk 'NR==2 {print $3}')MB"; sleep 5; done ) > /tmp/merges-mem.log 2>/dev/null &
+          sampler=$!
+          set +e
+          set -o pipefail
+          timeout --signal=TERM 480 bunx vitest run src/core/routes/test/merges.test.ts --maxWorkers=1 2>&1 | tail -4 | tr '\n' '¶' > /tmp/merges-tail.txt
+          rc=$?
+          kill $sampler 2>/dev/null
+          echo "::notice title=merges result::exit=$rc | $(cat /tmp/merges-tail.txt | tail -c 400)"
+          echo "::notice title=merges memory::$(tail -n 30 /tmp/merges-mem.log | tr '\n' ' ')"
+          exit 0
 
       - name: Test (shard ${{ matrix.shard }}/4)
         working-directory: packages/cms
