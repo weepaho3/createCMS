@@ -214,13 +214,45 @@ async function getMigratedDataDir(
 }
 
 /**
- * Every PGlite client opened by `setupTestDB`, in creation order. Each
- * instance pins its whole data dir plus WASM heap (hundreds of MB), and test
- * files routinely open one per test — a heavy file holds 100+ at once if
- * nothing closes them, which is enough to exhaust machine memory across
- * parallel workers. The global hooks in vitest.setup.ts drain this registry:
- * clients opened during a test are closed right after it, clients opened
- * outside tests (beforeAll / module scope) at the end of the file.
+ * Worker-process-global state, stashed on globalThis because vitest resets
+ * the module registry per test *file* — module-level state would be rebuilt
+ * by every file, while the process (and therefore this object) lives on.
+ *
+ * `shared` holds ONE long-lived PGlite per schema-set, reused by every test
+ * in the worker with a TRUNCATE-based reset between hand-outs. This is not
+ * an optimization but a correctness requirement on Linux: dropped PGlite
+ * instances are never reclaimed there — not even by an explicit gc() — so
+ * every instance costs its ~200MB+ WASM heap permanently. A suite that boots
+ * one instance per test (500+ boots) inevitably OOMs a 16GB CI runner; a
+ * handful of persistent instances per worker stays bounded everywhere.
+ * (On macOS the GC does reclaim dropped instances, which is why the leak
+ * never showed locally.)
+ *
+ * `testSeq` counts tests (bumped by vitest.setup.ts) so `setupTestDB` can
+ * detect a second call within the same test and hand out a fresh throwaway
+ * instance instead of the shared one — two callers inside one test must not
+ * see each other's data.
+ */
+type SharedDB = { client: PGlite; handedOutInSeq: number };
+type TestDBGlobals = {
+  shared: Map<string, Promise<SharedDB>>;
+  testSeq: number;
+};
+const testDBGlobals: TestDBGlobals = ((
+  globalThis as { __createcmsTestDB?: TestDBGlobals }
+).__createcmsTestDB ??= { shared: new Map(), testSeq: 0 });
+
+/** Called by vitest.setup.ts at every test start. */
+export function beginTest(): number {
+  testDBGlobals.testSeq += 1;
+  return markClientBoundary();
+}
+
+/**
+ * Every *throwaway* PGlite client opened by `setupTestDB` (second and later
+ * DBs within a single test), in creation order. The global hooks in
+ * vitest.setup.ts drain this registry after each test; the shared singletons
+ * above are deliberately NOT in here — they live until the worker exits.
  */
 const openClients: PGlite[] = [];
 
@@ -256,35 +288,82 @@ export async function releaseClientsFrom(index: number): Promise<void> {
  * plugin schemas -> emit -> temp file -> migrate). Otherwise uses the
  * pre-built `src/schema` directly for faster startup.
  */
+/**
+ * Empties every user table on the shared instance so the next test starts
+ * from a blank database. TRUNCATE (instead of DROP SCHEMA + DDL replay)
+ * keeps enums, indexes and defaults intact and resets identity sequences in
+ * one statement.
+ */
+async function resetSharedDB(client: PGlite): Promise<void> {
+  // The generated schema lives in its own "cms" pg schema (not public), and
+  // plugins may add more — collect every non-system table.
+  const tables = await client.query<{ schemaname: string; tablename: string }>(
+    `SELECT schemaname, tablename FROM pg_tables
+     WHERE schemaname NOT IN ('pg_catalog', 'information_schema')`,
+  );
+  if (tables.rows.length === 0) return;
+  const list = tables.rows
+    .map((r) => `"${r.schemaname}"."${r.tablename}"`)
+    .join(', ');
+  await client.exec(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`);
+}
+
 export const setupTestDB = async (options?: {
   plugins?: Array<{ name: string; schema: SchemaModule }>;
 }) => {
   const plugins = options?.plugins;
-  // The in-memory cache key is the ordered plugin-name list. This is sound
+  // The cache/singleton key is the ordered plugin-name list. This is sound
   // only because every call site maps a given name to ONE fixed schema module
   // (a static const or a no-arg builder). If a test ever passed the same
-  // `name` with a different `schema`, it would restore the first schema's
-  // data dir within that file — the disk layer is immune (content-addressed),
-  // but the module-level memo would still serve the stale Blob. Keep names
-  // stable.
-  const dataDir =
+  // `name` with a different `schema`, it would reuse the first schema's
+  // instance — the disk layer is immune (content-addressed), but the
+  // singleton would still be stale. Keep names stable.
+  const key =
     plugins && plugins.length > 0
-      ? await getMigratedDataDir(
-          `plugins:${plugins.map((p) => p.name).join('|')}`,
-          () => generateMergedSchema(plugins),
-        )
-      : await getMigratedDataDir('__base__', async () => baseSchema);
+      ? `plugins:${plugins.map((p) => p.name).join('|')}`
+      : '__base__';
+  const build = () =>
+    plugins && plugins.length > 0
+      ? getMigratedDataDir(key, () => generateMergedSchema(plugins))
+      : getMigratedDataDir('__base__', async () => baseSchema);
 
-  // Restores the already-migrated template: the schema is in place on boot and
-  // no DDL runs here. The dump is read-only — PGlite copies it into this
-  // instance's own memory FS — so every caller gets an isolated database.
-  const client = new PGlite({ loadDataDir: dataDir });
-  openClients.push(client);
+  let sharedPromise = testDBGlobals.shared.get(key);
+  if (!sharedPromise) {
+    sharedPromise = (async (): Promise<SharedDB> => {
+      // Restores the already-migrated template: the schema is in place on
+      // boot and no DDL runs here.
+      const client = new PGlite({ loadDataDir: await build() });
+      await client.waitReady;
+      return { client, handedOutInSeq: -1 };
+    })();
+    sharedPromise.catch(() => {
+      if (testDBGlobals.shared.get(key) === sharedPromise) {
+        testDBGlobals.shared.delete(key);
+      }
+    });
+    testDBGlobals.shared.set(key, sharedPromise);
+  }
+  const shared = await sharedPromise;
+
+  let client: PGlite;
+  if (shared.handedOutInSeq === testDBGlobals.testSeq) {
+    // Second DB within the same test: a fresh throwaway instance, released
+    // by the vitest.setup.ts hooks right after the test. Rare enough that
+    // the Linux no-reclaim behaviour stays harmless.
+    client = new PGlite({ loadDataDir: await build() });
+    openClients.push(client);
+  } else {
+    shared.handedOutInSeq = testDBGlobals.testSeq;
+    await resetSharedDB(shared.client);
+    client = shared.client;
+  }
+
   const db = drizzle(client, { schema: baseSchema });
 
   // The data dir is memoized, the schema temp file is removed inside the
-  // generator, and the client is closed by the global vitest.setup.ts hooks —
-  // so there is nothing left to clean up per call.
+  // generator, and instance lifetimes are owned by the vitest.setup.ts hooks
+  // (throwaways) or the worker process (shared) — nothing to clean up per
+  // call.
   const cleanup: () => Promise<void> = async () => {};
 
   return { db, client, cleanup };

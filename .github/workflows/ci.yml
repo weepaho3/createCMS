@@ -103,9 +103,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Temporarily one shard while debugging the runner OOM — restore
-        # [1, 2, 3, 4] afterwards.
-        shard: [2]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -147,58 +145,12 @@ jobs:
       # ::notice:: annotations afterwards — job logs need admin rights via the
       # API, annotations do not. `timeout 600` guarantees the step ends before
       # timeout-minutes would cancel the job, so the notice steps always run.
-      # Isolates PGlite-on-Linux from the vitest machinery: initdb a template,
-      # dump it, then clone it 5x via loadDataDir with reference-drop + gc in
-      # between — printing RSS after every step. If THIS explodes, the problem
-      # is the PGlite lifecycle on Linux; if it stays flat, the problem is in
-      # how the suite drives it.
-      - name: PGlite lifecycle probe
-        working-directory: packages/cms
-        run: |
-          cat > pglite-probe.mjs <<'EOF'
-          import { PGlite } from '@electric-sql/pglite';
-          const rss = () => Math.round(process.memoryUsage().rss / 1024 / 1024);
-          const out = [];
-          out.push(`start ${rss()}MB`);
-          const template = new PGlite();
-          await template.waitReady;
-          out.push(`initdb ${rss()}MB`);
-          const dump = await template.dumpDataDir('none');
-          out.push(`dump ${rss()}MB`);
-          for (let i = 1; i <= 5; i++) {
-            const c = new PGlite({ loadDataDir: dump });
-            await c.waitReady;
-            await c.query('SELECT 1');
-            out.push(`clone${i} ${rss()}MB`);
-            globalThis.gc?.();
-          }
-          globalThis.gc?.();
-          out.push(`end ${rss()}MB`);
-          console.log(out.join(' | '));
-          process.exit(0);
-          EOF
-          probe=$(timeout 120 node --expose-gc pglite-probe.mjs 2>&1 | tail -c 600 | tr '\n' '¶')
-          rm -f pglite-probe.mjs
-          echo "::notice title=pglite-probe shard ${{ matrix.shard }}::${probe}"
-
-      # The worst single file in isolation, serial, with a memory timeline:
-      # the exact death profile of the heaviest workload without shard noise.
-      - name: Heaviest file probe (merges.test.ts)
-        working-directory: packages/cms
-        env:
-          NODE_OPTIONS: --expose-gc
-        run: |
-          ( while true; do echo "$(date +%H:%M:%S) $(free -m | awk 'NR==2 {print $3}')MB"; sleep 5; done ) > /tmp/merges-mem.log 2>/dev/null &
-          sampler=$!
-          set +e
-          set -o pipefail
-          timeout --signal=TERM 480 bunx vitest run src/core/routes/test/merges.test.ts --maxWorkers=1 2>&1 | tail -4 | tr '\n' '¶' > /tmp/merges-tail.txt
-          rc=$?
-          kill $sampler 2>/dev/null
-          echo "::notice title=merges result::exit=$rc | $(cat /tmp/merges-tail.txt | tail -c 400)"
-          echo "::notice title=merges memory::$(tail -n 30 /tmp/merges-mem.log | tr '\n' ' ')"
-          exit 0
-
+      # The test DBs are worker-lived PGlite singletons with a truncate reset
+      # per test (src/test-utils/db.ts) — required on Linux, where dropped
+      # PGlite instances are never reclaimed (~200MB each, permanently): a
+      # boot-per-test suite OOM-killed these runners. --maxWorkers=2 bounds
+      # how many worker processes accumulate singletons. --expose-gc arms the
+      # opportunistic gc() for the rare throwaway instances.
       - name: Test (shard ${{ matrix.shard }}/4)
         working-directory: packages/cms
         env:
@@ -208,7 +160,7 @@ jobs:
           sampler=$!
           set +e
           set -o pipefail
-          timeout --signal=TERM 600 bunx vitest run --shard=${{ matrix.shard }}/4 --maxWorkers=1 --no-file-parallelism 2>&1 | tee /tmp/vitest.log
+          timeout --signal=TERM 600 bunx vitest run --shard=${{ matrix.shard }}/4 --maxWorkers=2 2>&1 | tee /tmp/vitest.log
           rc=$?
           kill $sampler 2>/dev/null
           exit $rc
