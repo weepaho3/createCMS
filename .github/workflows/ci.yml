@@ -145,6 +145,39 @@ jobs:
       # ::notice:: annotations afterwards — job logs need admin rights via the
       # API, annotations do not. `timeout 600` guarantees the step ends before
       # timeout-minutes would cancel the job, so the notice steps always run.
+      # Isolates PGlite-on-Linux from the vitest machinery: initdb a template,
+      # dump it, then clone it 5x via loadDataDir with reference-drop + gc in
+      # between — printing RSS after every step. If THIS explodes, the problem
+      # is the PGlite lifecycle on Linux; if it stays flat, the problem is in
+      # how the suite drives it.
+      - name: PGlite lifecycle probe
+        working-directory: packages/cms
+        run: |
+          cat > /tmp/pglite-probe.mjs <<'EOF'
+          import { PGlite } from '@electric-sql/pglite';
+          const rss = () => Math.round(process.memoryUsage().rss / 1024 / 1024);
+          const out = [];
+          out.push(`start ${rss()}MB`);
+          const template = new PGlite();
+          await template.waitReady;
+          out.push(`initdb ${rss()}MB`);
+          const dump = await template.dumpDataDir('none');
+          out.push(`dump ${rss()}MB`);
+          for (let i = 1; i <= 5; i++) {
+            const c = new PGlite({ loadDataDir: dump });
+            await c.waitReady;
+            await c.query('SELECT 1');
+            out.push(`clone${i} ${rss()}MB`);
+            globalThis.gc?.();
+          }
+          globalThis.gc?.();
+          out.push(`end ${rss()}MB`);
+          console.log(out.join(' | '));
+          process.exit(0);
+          EOF
+          probe=$(timeout 120 node --expose-gc /tmp/pglite-probe.mjs 2>&1 | tail -c 600 | tr '\n' '¶')
+          echo "::notice title=pglite-probe shard ${{ matrix.shard }}::${probe}"
+
       - name: Test (shard ${{ matrix.shard }}/4)
         working-directory: packages/cms
         env:
@@ -153,7 +186,8 @@ jobs:
           ( while true; do echo "$(date +%H:%M:%S) $(free -m | awk 'NR==2 {print $3}')MB used"; sleep 10; done ) > /tmp/mem.log 2>/dev/null &
           sampler=$!
           set +e
-          timeout --signal=TERM 600 bunx vitest run --shard=${{ matrix.shard }}/4 --maxWorkers=2 2>&1 | tee /tmp/vitest.log
+          set -o pipefail
+          timeout --signal=TERM 600 bunx vitest run --shard=${{ matrix.shard }}/4 --maxWorkers=1 --no-file-parallelism 2>&1 | tee /tmp/vitest.log
           rc=$?
           kill $sampler 2>/dev/null
           exit $rc
