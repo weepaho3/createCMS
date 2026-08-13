@@ -134,39 +134,35 @@ jobs:
       # reaches vitest workers, as public ::notice:: annotations (job logs need
       # admin rights via the API).
       - name: Runner diagnostics
-        working-directory: packages/cms
-        env:
-          NODE_OPTIONS: --expose-gc
         run: |
-          echo "::notice title=runner::$(nproc) cpus | $(free -m | awk '/^Mem:/{print $2\" MB total, \"$7\" MB avail\"}') | node $(node --version) | bun $(bun --version)"
-          cat > gc-probe.test.ts <<'EOF'
-          import { expect, it } from 'vitest';
-          it('gc exposed in worker', () => {
-            expect(typeof (globalThis as { gc?: () => void }).gc).toBe('function');
-          });
-          EOF
-          if bunx vitest run gc-probe.test.ts >/dev/null 2>&1; then
-            echo "::notice title=gc-probe::gc IS exposed in vitest workers"
-          else
-            echo "::notice title=gc-probe::gc NOT exposed in vitest workers"
-          fi
-          rm -f gc-probe.test.ts
+          mem_total=$(free -m | awk 'NR==2 {print $2}')
+          mem_avail=$(free -m | awk 'NR==2 {print $7}')
+          echo "::notice title=runner::$(nproc) cpus | ${mem_total} MB total, ${mem_avail} MB avail | node $(node --version) | bun $(bun --version)"
 
       # --expose-gc arms the opportunistic gc() in the per-test PGlite release
-      # (src/test-utils/db.ts): without it, V8 collects the multi-hundred-MB
-      # WASM heaps lazily and several instances float uncollected per worker.
-      # --maxWorkers=2 caps concurrent memory on the 16GB runner — 4 workers
-      # OOM-killed the runner VM itself (jobs died as "canceled"/exit 143).
+      # (src/test-utils/db.ts). A background sampler records used memory every
+      # 10s, vitest output is teed, and both tails are emitted as public
+      # ::notice:: annotations afterwards — job logs need admin rights via the
+      # API, annotations do not. `timeout 600` guarantees the step ends before
+      # timeout-minutes would cancel the job, so the notice steps always run.
       - name: Test (shard ${{ matrix.shard }}/4)
         working-directory: packages/cms
         env:
           NODE_OPTIONS: --expose-gc
-        run: bunx vitest run --shard=${{ matrix.shard }}/4 --maxWorkers=2
-
-      - name: OOM check
-        if: failure()
         run: |
-          echo "::notice title=oom-check::$(sudo dmesg 2>/dev/null | grep -i 'out of memory' | tail -3 | tr '\n' '¶' || echo 'no OOM lines in dmesg')"
+          ( while true; do echo "$(date +%H:%M:%S) $(free -m | awk 'NR==2 {print $3}')MB used"; sleep 10; done ) > /tmp/mem.log 2>/dev/null &
+          sampler=$!
+          set +e
+          timeout --signal=TERM 600 bunx vitest run --shard=${{ matrix.shard }}/4 --maxWorkers=2 2>&1 | tee /tmp/vitest.log
+          rc=$?
+          kill $sampler 2>/dev/null
+          exit $rc
+
+      - name: Surface shard diagnostics
+        if: always()
+        run: |
+          echo "::notice title=vitest tail shard ${{ matrix.shard }}::$(tail -c 700 /tmp/vitest.log 2>/dev/null | tr '\n' '¶')"
+          echo "::notice title=memory timeline shard ${{ matrix.shard }}::$(tail -n 12 /tmp/mem.log 2>/dev/null | tr '\n' ' ')"
 
   build:
     runs-on: ubuntu-latest
