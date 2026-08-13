@@ -310,6 +310,14 @@ async function resetSharedDB(client: PGlite): Promise<void> {
 
 export const setupTestDB = async (options?: {
   plugins?: Array<{ name: string; schema: SchemaModule }>;
+  /**
+   * Forces a private throwaway instance instead of the shared per-worker
+   * singleton. Required for tests that mutate the SCHEMA (ALTER/CREATE
+   * TABLE): the truncate reset only clears rows, so DDL would leak into
+   * every later test on the shared instance. Costs a full instance — use
+   * only where needed.
+   */
+  isolated?: boolean;
 }) => {
   const plugins = options?.plugins;
   // The cache/singleton key is the ordered plugin-name list. This is sound
@@ -326,6 +334,13 @@ export const setupTestDB = async (options?: {
     plugins && plugins.length > 0
       ? getMigratedDataDir(key, () => generateMergedSchema(plugins))
       : getMigratedDataDir('__base__', async () => baseSchema);
+
+  if (options?.isolated) {
+    const client = new PGlite({ loadDataDir: await build() });
+    openClients.push(client);
+    const db = drizzle(client, { schema: baseSchema });
+    return { db, client, cleanup: async () => {} };
+  }
 
   let sharedPromise = testDBGlobals.shared.get(key);
   if (!sharedPromise) {
