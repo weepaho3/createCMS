@@ -43,6 +43,7 @@ import {
 } from '../db/schema.generated';
 import { buildAnnotatedTree } from '../diff/annotated-tree';
 import { classifyChanges } from '../diff/classify';
+import { analyzeThreeWay, type ThreeWayVerdict } from '../diff/three-way';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
 import { withNotifications } from '../notifications/service';
@@ -345,12 +346,28 @@ type ConflictEntry = {
   baseVersionId: string | null;
 };
 
-function detectConflicts(
+type AutoMergeEntry = {
+  blockId: string;
+  verdict: Exclude<ThreeWayVerdict, { verdict: 'conflict' }>;
+};
+
+/**
+ * Splits the blocks BOTH branches diverged on (by version id, vs the common
+ * ancestor) into real conflicts and blocks that `analyzeThreeWay` can
+ * auto-resolve. The four short-circuits below are unchanged from this
+ * function's original version-id-only form (CMS-11 added the property-level
+ * analysis on top): they decide WHICH blocks are even in play (one side
+ * unchanged, or both sides landed on the same version) before property-level
+ * analysis ever runs, so a block that isn't a conflict today never becomes
+ * one, and the analysis only ever narrows today's conflict set.
+ */
+function classifyMergeBlocks(
   baseBlocks: Map<string, ReconstructedBlock>,
   sourceBlocks: Map<string, ReconstructedBlock>,
   targetBlocks: Map<string, ReconstructedBlock>,
-): ConflictEntry[] {
+): { conflicts: ConflictEntry[]; autoMerges: AutoMergeEntry[] } {
   const conflicts: ConflictEntry[] = [];
+  const autoMerges: AutoMergeEntry[] = [];
 
   const allBlockIds = new Set<string>();
   for (const id of baseBlocks.keys()) allBlockIds.add(id);
@@ -371,15 +388,20 @@ function detectConflicts(
     if (sourceVid === baseVid && targetVid !== baseVid) continue;
     if (sourceVid === targetVid) continue;
 
-    conflicts.push({
-      blockId,
-      sourceVersionId: sourceVid ?? null,
-      targetVersionId: targetVid ?? null,
-      baseVersionId: baseVid ?? null,
-    });
+    const verdict = analyzeThreeWay(base, source, target);
+    if (verdict.verdict === 'conflict') {
+      conflicts.push({
+        blockId,
+        sourceVersionId: sourceVid ?? null,
+        targetVersionId: targetVid ?? null,
+        baseVersionId: baseVid ?? null,
+      });
+    } else {
+      autoMerges.push({ blockId, verdict });
+    }
   }
 
-  return conflicts;
+  return { conflicts, autoMerges };
 }
 
 type MergeResolution = {
@@ -705,7 +727,8 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      *
      * @param sourceBranchId - The source branch id.
      * @param targetBranchId - The target branch id.
-     * @returns A conflicts array and a hasConflicts flag, plus commit ids.
+     * @returns A conflicts array, a hasConflicts flag, the block ids that would
+     *   auto-resolve (disjoint property changes, per CMS-11), and commit ids.
      * @throws BRANCH_NOT_FOUND if either branch does not exist in this collection.
      * @throws BRANCHES_NOT_SAME_ROOT if the branches are from different roots.
      * @example await cmsClient.pages.checkConflicts({ sourceBranchId: 'src-id', targetBranchId: 'tgt-id' })
@@ -745,7 +768,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
         const { ancestor, baseSnapshot, sourceSnapshot, targetSnapshot } =
           await loadMergeSnapshots(db, sourceBranch, targetBranch);
 
-        const conflicts = detectConflicts(
+        const { conflicts, autoMerges } = classifyMergeBlocks(
           baseSnapshot.blocks,
           sourceSnapshot.blocks,
           targetSnapshot.blocks,
@@ -754,6 +777,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
         return {
           hasConflicts: conflicts.length > 0,
           conflicts,
+          autoMergeableBlockIds: autoMerges.map((a) => a.blockId),
           commonAncestorCommitId: ancestor.commonAncestorCommitId,
           sourceCommitId: sourceBranch.headCommitId,
           targetCommitId: targetBranch.headCommitId,
@@ -770,7 +794,9 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * @param title - A brief title for the merge request.
      * @param description - Optional longer description.
      * @param createdBy - Optional explicit actor id; used only when ctx.context.userId is absent (context takes precedence).
-     * @returns The created merge request row, conflicts array, and hasConflicts flag.
+     * @returns The created merge request row, conflicts array, hasConflicts flag,
+     *   and the block ids that would auto-resolve (disjoint property changes,
+     *   per CMS-11).
      * @throws MERGE_REQUEST_ALREADY_EXISTS if an open MR for this pair exists.
      * @throws BRANCH_NOT_FOUND if either branch does not exist.
      * @throws BRANCHES_NOT_SAME_ROOT if branches have different root ids.
@@ -845,7 +871,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
             const { ancestor, baseSnapshot, sourceSnapshot, targetSnapshot } =
               await loadMergeSnapshots(tx, sourceBranch, targetBranch);
 
-            const conflicts = detectConflicts(
+            const { conflicts, autoMerges } = classifyMergeBlocks(
               baseSnapshot.blocks,
               sourceSnapshot.blocks,
               targetSnapshot.blocks,
@@ -909,6 +935,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
               mergeRequest: mr,
               hasConflicts: conflicts.length > 0,
               conflicts,
+              autoMergeableBlockIds: autoMerges.map((a) => a.blockId),
             };
           },
         );
@@ -1729,6 +1756,27 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
               };
             }
 
+            // Created here — earlier than its old position after the
+            // fast-forward/three-way split — so the three-way (`else`) arm
+            // below has `mergeCommit.id` on hand for any auto-merged block
+            // versions it inserts. Nothing between here and its old position
+            // reads the commit, and both arms still use it identically.
+            const [mergeCommit] = await tx
+              .insert(commits)
+              .values({
+                rootId: sourceBranch.rootId,
+                parentCommitId: targetBranch.headCommitId,
+                mergeSourceCommitId: liveSourceCommitId,
+                message:
+                  message ??
+                  `Merge ${sourceBranch.name} into ${targetBranch.name}`,
+                createdBy: actor,
+                // The merge commit is created on the target branch.
+                branchId: mr.targetBranchId,
+                originBranchName: targetBranch.name,
+              })
+              .returning();
+
             // Build the merge commit's snapshot. When the target has NOT diverged
             // (we only reach here because a merge commit was forced), the result
             // is exactly the source tree — take it directly as a shortcut.
@@ -1763,11 +1811,12 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
                   ),
                 ]);
 
-              const freshConflicts = detectConflicts(
-                baseSnapshot.blocks,
-                sourceSnapshot.blocks,
-                targetSnapshot.blocks,
-              );
+              const { conflicts: freshConflicts, autoMerges } =
+                classifyMergeBlocks(
+                  baseSnapshot.blocks,
+                  sourceSnapshot.blocks,
+                  targetSnapshot.blocks,
+                );
 
               const existingResolutions = await tx
                 .select({
@@ -1814,6 +1863,84 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
                 }
               }
 
+              // Auto-merged blocks (CMS-11): a stored (human) resolution for
+              // the block still wins — same stale-resolution precedence as
+              // the freshConflicts loop above, applied here because an
+              // auto-merged block by definition has no entry in
+              // freshConflicts to have picked it up. Otherwise, materialize
+              // the verdict `classifyMergeBlocks` computed: `reuse` needs no
+              // new row, `merge` gets a brand-new block version on the merge
+              // commit.
+              for (const auto of autoMerges) {
+                const stored = resolutionMap.get(auto.blockId);
+                if (stored?.resolution) {
+                  let resolvedVersionId: string | null;
+                  if (stored.resolution === 'source') {
+                    resolvedVersionId =
+                      sourceSnapshot.blocks.get(auto.blockId)
+                        ?.blockVersionId ?? null;
+                  } else if (stored.resolution === 'target') {
+                    resolvedVersionId =
+                      targetSnapshot.blocks.get(auto.blockId)
+                        ?.blockVersionId ?? null;
+                  } else {
+                    resolvedVersionId = stored.resolvedVersionId!;
+                  }
+                  if (resolvedVersionId) {
+                    resolutions.push({
+                      blockId: auto.blockId,
+                      resolvedVersionId,
+                    });
+                  }
+                  continue;
+                }
+
+                if (auto.verdict.verdict === 'reuse') {
+                  resolutions.push({
+                    blockId: auto.blockId,
+                    resolvedVersionId: auto.verdict.blockVersionId,
+                  });
+                  continue;
+                }
+
+                const [version] = await tx
+                  .insert(blockVersions)
+                  .values({
+                    blockId: auto.blockId,
+                    rootId: sourceBranch.rootId,
+                    commitId: mergeCommit.id,
+                    type: auto.verdict.type,
+                    properties: auto.verdict.properties,
+                    children: auto.verdict.children,
+                  })
+                  .returning();
+
+                // Index the auto-merged version's asset/variable references —
+                // this is the FOURTH block-version insert site (besides
+                // commit-writer's two and createMergeBlockVersion's manual
+                // resolution insert). It becomes part of the merge commit's
+                // snapshot, so it must populate the same indexes or the GC
+                // would not see its references.
+                await indexVersionContent(
+                  tx,
+                  sourceBranch.rootId,
+                  [
+                    {
+                      blockVersionId: version.id,
+                      blockId: auto.blockId,
+                      type: auto.verdict.type,
+                      properties: auto.verdict.properties,
+                    },
+                  ],
+                  def,
+                );
+
+                resolutions.push({
+                  blockId: auto.blockId,
+                  resolvedVersionId: version.id,
+                });
+              }
+
               mergedVersionMap = buildMergedSnapshot(
                 baseSnapshot.blocks,
                 sourceSnapshot.blocks,
@@ -1821,22 +1948,6 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
                 resolutions,
               );
             }
-
-            const [mergeCommit] = await tx
-              .insert(commits)
-              .values({
-                rootId: sourceBranch.rootId,
-                parentCommitId: targetBranch.headCommitId,
-                mergeSourceCommitId: liveSourceCommitId,
-                message:
-                  message ??
-                  `Merge ${sourceBranch.name} into ${targetBranch.name}`,
-                createdBy: actor,
-                // The merge commit is created on the target branch.
-                branchId: mr.targetBranchId,
-                originBranchName: targetBranch.name,
-              })
-              .returning();
 
             const snapshotRows = Array.from(mergedVersionMap.entries()).map(
               ([blockId, bvId]) => ({
@@ -2008,7 +2119,8 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
             .returning();
 
           // Index the resolved version's asset/variable references — this is the
-          // THIRD block-version insert site (besides commit-writer's two). It
+          // THIRD block-version insert site (besides commit-writer's two; the
+          // FOURTH is executeMerge's auto-merge materialization, CMS-11). It
           // becomes the live head version once the merge is executed, so it must
           // populate the same indexes or the GC would not see its references.
           await indexVersionContent(
