@@ -73,7 +73,7 @@ describe('analyzeThreeWay', () => {
     });
   });
 
-  it('both sides removed the same key → conflict', () => {
+  it('both sides removed the same key (identical outcome) → reuse with source version id', () => {
     const base = block();
     const source = block({
       blockVersionId: 'v-source',
@@ -85,7 +85,8 @@ describe('analyzeThreeWay', () => {
     });
 
     expect(analyzeThreeWay(base, source, target)).toEqual({
-      verdict: 'conflict',
+      verdict: 'reuse',
+      blockVersionId: 'v-source',
     });
   });
 

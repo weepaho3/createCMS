@@ -92,30 +92,13 @@ export function analyzeThreeWay(
   const targetKeys = new Set(targetChanges.map((c) => String(c.path[0])));
 
   // Reuse shortcut (decision 6): checked BEFORE the key-disjointness test so
-  // that two sides changing the SAME key to the SAME value — which looks like
-  // an overlap by key alone — is recognized as a no-op difference instead of
-  // a spurious conflict. EXCLUDES the case where both sides removed the same
-  // key: a shared deletion still reaches an "identical" (absent) outcome, but
-  // a delete is a deliberate action, not a value that happens to coincide —
-  // it stays a conflict for a human to confirm, same as two different values
-  // would. Falling through here lets the ordinary overlap check below catch
-  // it (the key is in both changed-sets either way).
-  const sourceRemovedKeys = new Set(
-    sourceChanges
-      .filter((c) => c.kind === 'removed')
-      .map((c) => String(c.path[0])),
-  );
-  const targetRemovedKeys = new Set(
-    targetChanges
-      .filter((c) => c.kind === 'removed')
-      .map((c) => String(c.path[0])),
-  );
-  const bothRemovedSameKey = [...sourceRemovedKeys].some((key) =>
-    targetRemovedKeys.has(key),
-  );
-
+  // that any fully identical outcome — the same values written, the same
+  // keys removed, or both — is recognized as agreement instead of a spurious
+  // conflict, even though the two sides' changed-key sets overlap. Two
+  // branches converging on the same result have nothing left to disagree
+  // about; a conflict whose two resolution options are byte-identical would
+  // give a human nothing to decide.
   if (
-    !bothRemovedSameKey &&
     sameChildren(source.children, target.children) &&
     diffProperties(source.properties, target.properties).length === 0
   ) {
