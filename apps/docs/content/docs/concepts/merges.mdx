@@ -22,8 +22,8 @@ That comparison starts with **version identity**. Every block carries the id of 
 A block **both** sides changed gets a second, property-level pass before it is declared a conflict. In the git analogy the block is a file and its top-level properties are the lines — and like git, the merge reconciles within the block when the two sides touched different parts of it:
 
 - Source and target changed **disjoint sets of top-level properties**: the merge builds a combined version automatically — each changed property from the side that changed it, everything else from the base. The block never surfaces as a conflict.
-- Both sides arrived at the **identical result** (same properties, same children): the merge reuses the source's existing version. Agreement — including both sides removing the same property — is not a conflict.
-- Both sides changed the **same property** (richText included), or moved the block's children in different ways, or the two sides disagree on the block's type: a **conflict**, resolved by a person. The merge never combines edits *inside* a single property — two edits to the same rich text field are one conflict, not a word-level merge.
+- Both sides arrived at the **identical result** (same properties, same children): the merge reuses the source's existing version. Agreement — including both sides removing the same property — is not a conflict. Agreement is judged per property, so a shared identical edit merges together with each side's remaining changes.
+- Both sides changed the **same property to different values** (richText included), or moved the block's children in different ways, or the two sides disagree on the block's type: a **conflict**, resolved by a person. The merge never combines edits *inside* a single property — two edits to the same rich text field are one conflict, not a word-level merge.
 
 The combined version is written when the merge executes, as part of the merge commit. Until then nothing about an auto-merge is persisted; both `checkConflicts` and `createMergeRequest` report the affected blocks in `autoMergeableBlockIds` so a review UI can show what will combine on its own.
 
