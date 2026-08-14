@@ -156,11 +156,74 @@ jobs:
       # boot-per-test suite OOM-killed these runners. --maxWorkers=2 bounds
       # how many worker processes accumulate singletons. --expose-gc arms the
       # opportunistic gc() for the rare throwaway instances.
+      #
+      # Coverage rides along on the shards instead of getting its own full-suite
+      # job: the tests are already running here, and instrumenting them costs far
+      # less than executing all 1.3k of them a second time. `--reporter=blob`
+      # writes .vitest-reports/blob-<i>-<n>.json, which carries this shard's
+      # coverage map alongside its results; the `coverage` job merges the four.
+      # A shard sees a quarter of the suite, so its own numbers are meaningless —
+      # COVERAGE_THRESHOLDS=off keeps the floors from being checked here (see
+      # packages/cms/vitest.config.ts) and the merged report enforces them once.
       - name: Test (shard ${{ matrix.shard }}/4)
         working-directory: packages/cms
         env:
           NODE_OPTIONS: --expose-gc
-        run: bunx vitest run --shard=${{ matrix.shard }}/4 --maxWorkers=2
+          COVERAGE_THRESHOLDS: 'off'
+        run: >
+          bunx vitest run --shard=${{ matrix.shard }}/4 --maxWorkers=2
+          --coverage --coverage.reporter=text-summary
+          --reporter=default --reporter=blob
+
+      # include-hidden-files: .vitest-reports is a dotfile directory, which
+      # upload-artifact skips by default — without this the artifact is empty and
+      # the coverage job fails on missing blobs.
+      - name: Upload coverage blob
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-blob-${{ matrix.shard }}
+          path: packages/cms/.vitest-reports/
+          include-hidden-files: true
+          retention-days: 1
+
+  # Enforces the directory-level coverage floors in packages/cms/vitest.config.ts.
+  # `--merge-reports` re-runs the reporters over the four shards' blobs without
+  # re-running a single test, so the numbers it checks are the whole suite's.
+  # `needs: test` means a shard failure fails CI before this runs, rather than
+  # reporting a bogus coverage drop from a missing blob.
+  coverage:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+
+      - name: Cache bun
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-coverage-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-coverage-
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Download coverage blobs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: coverage-blob-*
+          merge-multiple: true
+          path: packages/cms/.vitest-reports
+
+      - name: Merge shard reports and check thresholds
+        working-directory: packages/cms
+        run: bunx vitest run --merge-reports --coverage
 
   build:
     runs-on: ubuntu-latest
@@ -236,7 +299,7 @@ jobs:
   # except `commits`, which only exists on pull requests and is skipped on push.
   ci:
     runs-on: ubuntu-latest
-    needs: [lint, commits, typecheck, test, build]
+    needs: [lint, commits, typecheck, test, coverage, build]
     if: always()
     steps:
       - uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2

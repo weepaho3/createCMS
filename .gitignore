@@ -39,6 +39,8 @@ npm-debug.log*
 # Testing
 coverage
 .nyc_output
+# vitest --reporter=blob output (per-shard results + coverage, merged in CI)
+.vitest-reports
 
 # Misc
 *.tgz

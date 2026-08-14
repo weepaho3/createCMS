@@ -42,6 +42,27 @@ Run the tests in watch mode from the package itself:
 bun run --filter=@createcms/core test:watch
 ```
 
+### Coverage
+
+```bash
+bun run --filter=@createcms/core test:coverage
+```
+
+CI enforces per-directory coverage floors, defined in
+[`packages/cms/vitest.config.ts`](./packages/cms/vitest.config.ts). They are a
+ratchet: each one sits a few points under the measured baseline, `core/**` and
+the merge machinery (`core/routes/merges.ts`, `core/blocks`, `core/diff`) are
+held to stricter numbers than `cli` or `client`, and the number to watch on the
+merge path is _branch_ coverage, not lines.
+
+The command above checks the same floors locally. If a directory climbs clear of
+its floor, raise the floor in the same PR. Do not lower one to get a run green —
+that drop is the regression the gate is there to report.
+
+CI itself does not run coverage separately: the four test shards run instrumented
+and write `--reporter=blob` reports, and a `coverage` job merges them and checks
+the thresholds against the whole suite.
+
 ### Repo map
 
 | Path                                                                         | What it is                                                                                                                            | Run it                                                |
@@ -95,7 +116,7 @@ both). Both trees are type-checked — `tsconfig` includes `src` and `test`.
    ```
    Pick the bump (patch/minor/major) and write a short summary — this becomes
    the changelog entry and drives the next release.
-5. Open a pull request. CI runs lint, type-check, test, and build.
+5. Open a pull request. CI runs lint, type-check, test, coverage, and build.
 
 ## Commit conventions
 
