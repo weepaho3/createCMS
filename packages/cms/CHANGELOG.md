@@ -1,5 +1,19 @@
 # @createcms/core
 
+## 0.6.0
+
+### Minor Changes
+
+- [#76](https://github.com/weepaho3/createCMS/pull/76) [`1e6edbf`](https://github.com/weepaho3/createCMS/commit/1e6edbf728c8c6707d4b9762b520298ea5f55cf2) Thanks [@weepaho3](https://github.com/weepaho3)! - Three-way merges now auto-resolve blocks where source and target changed
+  disjoint sets of top-level properties (git-style: block ≈ file, property ≈
+  line). Same-key edits — including richText — remain conflicts, as do
+  delete-vs-edit, type changes, and divergent children. `checkConflicts` and
+  `createMergeRequest` responses gain `autoMergeableBlockIds`.
+
+  Agreement counts per property: when both sides make the identical change to
+  the same property, that agreement merges together with each side's remaining
+  disjoint edits.
+
 ## 0.5.0
 
 ### Minor Changes
