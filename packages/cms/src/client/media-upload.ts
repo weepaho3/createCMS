@@ -105,23 +105,26 @@ function uploadWithXHR(
       );
     }
 
-    xhr.upload.onprogress = (event) => {
+    xhr.upload.addEventListener('progress', (event) => {
       if (event.lengthComputable) {
         onProgress(event.loaded, event.total);
       }
-    };
+    });
 
-    xhr.onload = () => {
+    xhr.addEventListener('load', () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve();
       } else {
         reject(new Error(`Upload failed with status ${xhr.status}`));
       }
-    };
+    });
 
-    xhr.onerror = () => reject(new Error('Network error during upload'));
-    xhr.onabort = () =>
-      reject(new DOMException('Upload aborted', 'AbortError'));
+    xhr.addEventListener('error', () =>
+      reject(new Error('Network error during upload')),
+    );
+    xhr.addEventListener('abort', () =>
+      reject(new DOMException('Upload aborted', 'AbortError')),
+    );
 
     xhr.send(file);
   });

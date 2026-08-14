@@ -3243,12 +3243,6 @@ describe('executeMerge', () => {
 
     expect(targetBranch.headCommitId).toBe(result.commit.id);
 
-    // The merged snapshot should contain the source edit for block A
-    const [snapA] = await db
-      .select({ blockVersionId: commitSnapshots.blockVersionId })
-      .from(commitSnapshots)
-      .where(eq(commitSnapshots.commitId, result.commit.id));
-
     // Verify the merge commit snapshot exists
     const allSnaps = await db
       .select()

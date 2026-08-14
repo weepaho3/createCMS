@@ -3,12 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { BlockTreeNode } from '../blocks/reconstruct-snapshot';
 
-import {
-  variables,
-  contentUsages,
-  templates,
-  templateVariableUsages,
-} from '../../schema';
+import { contentUsages, templateVariableUsages } from '../../schema';
 import { setupTestCMS } from '../../test-utils/cms';
 import { publishApprovedBranch } from '../../test-utils/helpers';
 import {
@@ -142,7 +137,7 @@ describe('resolveTemplateString', () => {
 
 describe('Variable CRUD endpoints', () => {
   it('creates, reads, updates, and deletes a variable', async () => {
-    const { cms, db } = await setupTestCMS();
+    const { cms } = await setupTestCMS();
 
     const { variable: created } = await cms.api.variables.createVariable({
       body: { key: 'brandName', value: 'Toerbo', description: 'Brand name' },
@@ -188,13 +183,13 @@ describe('Variable CRUD endpoints', () => {
 
 describe('Variable delete protection', () => {
   it('prevents deletion of a variable used in block properties', async () => {
-    const { cms, db } = await setupTestCMS();
+    const { cms } = await setupTestCMS();
 
     await cms.api.variables.createVariable({
       body: { key: 'brandName', value: 'Toerbo' },
     });
 
-    const root = await cms.api.pages.createRoot({
+    await cms.api.pages.createRoot({
       body: {
         slug: '/',
         properties: { title: '{{brandName}} Home' },

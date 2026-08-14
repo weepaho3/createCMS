@@ -14,14 +14,14 @@ function loadImage(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
-    img.onload = () => {
+    img.addEventListener('load', () => {
       URL.revokeObjectURL(url);
       resolve(img);
-    };
-    img.onerror = () => {
+    });
+    img.addEventListener('error', () => {
       URL.revokeObjectURL(url);
       reject(new Error(`Failed to load image: ${file.name}`));
-    };
+    });
     img.src = url;
   });
 }
@@ -64,10 +64,15 @@ function canvasToBlobAsync(
 ): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
-      (blob) =>
-        blob
-          ? resolve(blob)
-          : reject(new Error(`canvas.toBlob failed for ${mimeType}`)),
+      (blob) => {
+        // if/else (not a ternary) so the linter can see the two resolution
+        // calls are mutually exclusive (promise/no-multiple-resolved).
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error(`canvas.toBlob failed for ${mimeType}`));
+        }
+      },
       mimeType,
       quality,
     );

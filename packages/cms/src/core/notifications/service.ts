@@ -133,7 +133,7 @@ export function createNotificationService(
     // re-checking after each round because a settling batch dispatches handlers
     // that add fresh in-flight promises.
     async flush(): Promise<void> {
-      while (inFlight.size) await Promise.allSettled([...inFlight]);
+      while (inFlight.size) await Promise.allSettled(inFlight);
     },
 
     // Self-registers into the in-flight set so a floated

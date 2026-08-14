@@ -1,39 +1,54 @@
 {
-  "plugins": null,
-  "categories": {},
-  "rules": {},
-  "settings": {
-    "jsx-a11y": {
-      "polymorphicPropName": null,
-      "components": {},
-      "attributes": {}
-    },
-    "next": {
-      "rootDir": []
-    },
-    "react": {
-      "formComponents": [],
-      "linkComponents": [],
-      "version": null,
-      "componentWrapperFunctions": []
-    },
-    "jsdoc": {
-      "ignorePrivate": false,
-      "ignoreInternal": false,
-      "ignoreReplacesDocs": true,
-      "overrideReplacesDocs": true,
-      "augmentsExtendsReplacesDocs": false,
-      "implementsReplacesDocs": false,
-      "exemptDestructuredRootsFromChecks": false,
-      "tagNamePreference": {}
-    },
-    "vitest": {
-      "typecheck": false
-    }
+  // Ruleset rationale (CMS-8): every rule is either satisfied, fixed, or
+  // deliberately off with a reason — zero standing findings is the contract.
+  // `pedantic` was measured at ~1.7k hits on this codebase and rejected: a
+  // ruleset that noisy gets disabled, not followed.
+  "plugins": ["typescript", "unicorn", "oxc", "import", "promise"],
+  "categories": {
+    "correctness": "error",
+    // Heuristic rules stay warnings for now; flip to "error" once a few
+    // weeks prove them quiet on real changes.
+    "suspicious": "warn"
   },
-  "env": {
-    "builtin": true
-  },
-  "globals": {},
-  "ignorePatterns": []
+  "rules": {
+    "eslint/no-unused-vars": "error",
+    // `disallowTypeAnnotations: false`: inline `import('...').T` annotations
+    // stay allowed — the type-inference machinery in core/types uses them
+    // deliberately (18 sites); converting them to top-level type imports is
+    // a refactor of its own, not a lint fix.
+    "typescript/consistent-type-imports": [
+      "error",
+      { "disallowTypeAnnotations": false }
+    ],
+    // The closest type-free approximation of no-floating-promises: a promise
+    // chain must end in catch() or be returned. The codebase's deliberate
+    // fire-and-forget idiom `.catch(console.error)` satisfies it, so hits are
+    // exactly the UNINTENDED cases. Real no-floating-promises needs
+    // typescript-eslint (type-aware) — deliberately not added; oxlint stays
+    // the only linter until that trade-off is decided.
+    "promise/catch-or-return": "error",
+    // Fire-and-forget then() callbacks returning nothing is the point of the
+    // `.then(...).catch(console.error)` idiom — requiring a return value in
+    // every then() fights the codebase style without catching bugs.
+    "promise/always-return": "off",
+    // Conflicts with this repo's own convention: deliberately-unused
+    // bindings are _-prefixed (no-unused-vars is configured to expect that).
+    "eslint/no-underscore-dangle": "off",
+    // 28 hits, all renames-for-the-linter. Strict TS narrows the classic
+    // shadow foot-guns, and no shadow-caused bug is on record here. Revisit
+    // post-1.0 if one ever is.
+    "eslint/no-shadow": "off",
+    // 48 + 2 hits. In-place sort/reverse on locally-created arrays is the
+    // dominant pattern; a bulk toSorted()/toReversed() migration is churn
+    // with real behavior-change risk where mutation is relied on. Off until
+    // a mutation bug motivates it.
+    "unicorn/no-array-sort": "off",
+    "unicorn/no-array-reverse": "off",
+    // Function placement is a readability choice here (helpers live next to
+    // their single caller); no hot path recreates closures at a rate that
+    // matters, and every hit was a hoist-for-the-linter.
+    "unicorn/consistent-function-scoping": "off",
+    // Side-effect imports are the point for stylesheets.
+    "import/no-unassigned-import": ["error", { "allow": ["**/*.css"] }]
+  }
 }

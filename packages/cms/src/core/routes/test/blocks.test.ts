@@ -3324,7 +3324,7 @@ describe('updateBlocks', () => {
       },
     });
 
-    const b = await cms.api.pages.createBlock({
+    await cms.api.pages.createBlock({
       body: {
         rootId: root.rootId,
         branchId: root.branchId,

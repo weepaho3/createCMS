@@ -137,7 +137,7 @@ function makeIsRichText(
  */
 function lisPositions(seq: number[]): Set<number> {
   const tails: number[] = []; // tails[k] = position of the smallest tail of a length-(k+1) subsequence
-  const prev = new Array<number>(seq.length).fill(-1);
+  const prev = Array.from({ length: seq.length }, () => -1);
 
   for (let i = 0; i < seq.length; i++) {
     let lo = 0;

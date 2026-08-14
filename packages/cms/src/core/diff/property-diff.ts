@@ -93,7 +93,7 @@ function lcsPairs(from: unknown[], to: unknown[]): [number, number][] {
   const midM = m - prefixLength - suffixLength;
   if (midN > 0 && midM > 0 && midN * midM <= MAX_LCS_CELLS) {
     const dp: number[][] = Array.from({ length: midN + 1 }, () =>
-      new Array<number>(midM + 1).fill(0),
+      Array.from({ length: midM + 1 }, () => 0),
     );
     for (let i = 1; i <= midN; i++) {
       for (let j = 1; j <= midM; j++) {

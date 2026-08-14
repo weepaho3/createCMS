@@ -1,6 +1,5 @@
 import { highlight } from 'fumadocs-core/highlight';
 import { CodeBlock, Pre } from 'fumadocs-ui/components/codeblock';
-import { type ReactNode } from 'react';
 
 import {
   ApiMethodCard,
