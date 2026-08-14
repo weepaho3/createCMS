@@ -6037,4 +6037,178 @@ describe('property-level auto-merge', () => {
       '/a.png',
     );
   });
+
+  it("merges a shared identical edit with one side's own changes (partial agreement)", async () => {
+    const { cms, db } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/auto-9', properties: { title: 'Page' } },
+    });
+
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'image',
+        properties: { src: '/a.png', alt: 'Original alt' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    // Source makes the same alt edit as target, plus its own src change.
+    await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: block.blockId,
+        type: 'image',
+        properties: { src: '/b.png', alt: 'Shared alt' },
+      },
+    });
+
+    // Target makes only the shared alt edit.
+    await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        blockId: block.blockId,
+        type: 'image',
+        properties: { alt: 'Shared alt' },
+      },
+    });
+
+    const checked = await cms.api.pages.checkConflicts({
+      query: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+      },
+    });
+    expect(checked.hasConflicts).toBe(false);
+    expect(checked.autoMergeableBlockIds).toEqual([block.blockId]);
+
+    const [sourceBranchRow] = await db
+      .select()
+      .from(branches)
+      .where(eq(branches.id, draft.branch.id));
+
+    const [sourceSnap] = await db
+      .select({ blockVersionId: commitSnapshots.blockVersionId })
+      .from(commitSnapshots)
+      .where(
+        and(
+          eq(commitSnapshots.commitId, sourceBranchRow.headCommitId),
+          eq(commitSnapshots.blockId, block.blockId),
+        ),
+      );
+
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        title: 'Partial agreement test',
+        createdBy: 'user-1',
+      },
+    });
+    expect(mr.hasConflicts).toBe(false);
+
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
+
+    const result = await cms.api.pages.executeMerge({
+      body: { mergeRequestId: mr.mergeRequest.id, mergedBy: 'user-1' },
+    });
+
+    const { tree } = await cms.api.pages.getBlockTree({
+      query: { rootId: root.rootId, branchId: root.branchId },
+    });
+
+    const merged = tree.children.find((c: any) => c.blockId === block.blockId);
+    expect(merged).toBeDefined();
+    expect(merged!.properties).toEqual({ src: '/b.png', alt: 'Shared alt' });
+
+    const [mergedSnap] = await db
+      .select({ blockVersionId: commitSnapshots.blockVersionId })
+      .from(commitSnapshots)
+      .where(
+        and(
+          eq(commitSnapshots.commitId, result.commit.id),
+          eq(commitSnapshots.blockId, block.blockId),
+        ),
+      );
+
+    // Reused the source's existing version row — no new version created.
+    expect(mergedSnap.blockVersionId).toBe(sourceSnap.blockVersionId);
+  });
+
+  it('keeps a shared key with DIFFERENT values a conflict despite other disjoint edits', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/auto-10', properties: { title: 'Page' } },
+    });
+
+    const block = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'image',
+        properties: { src: '/a.png', alt: 'Original alt' },
+      },
+    });
+
+    const draft = await cms.api.pages.createBranch({
+      body: {
+        rootId: root.rootId,
+        name: 'draft',
+        sourceBranchId: root.branchId,
+      },
+    });
+
+    // Source disagrees on alt AND has its own disjoint src edit.
+    await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: draft.branch.id,
+        blockId: block.blockId,
+        type: 'image',
+        properties: { src: '/b.png', alt: 'A' },
+      },
+    });
+
+    await cms.api.pages.updateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        blockId: block.blockId,
+        type: 'image',
+        properties: { alt: 'B' },
+      },
+    });
+
+    const mr = await cms.api.pages.createMergeRequest({
+      body: {
+        sourceBranchId: draft.branch.id,
+        targetBranchId: root.branchId,
+        title: 'Disagreement despite disjoint edits',
+        createdBy: 'user-1',
+      },
+    });
+    expect(mr.hasConflicts).toBe(true);
+
+    await requestAndApproveMerge(cms, mr.mergeRequest.id);
+
+    await expect(
+      cms.api.pages.executeMerge({
+        body: { mergeRequestId: mr.mergeRequest.id, mergedBy: 'user-1' },
+      }),
+    ).rejects.toThrow(/unresolved conflicts/i);
+  });
 });

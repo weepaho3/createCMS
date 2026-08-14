@@ -230,4 +230,123 @@ describe('analyzeThreeWay', () => {
       verdict: 'conflict',
     });
   });
+
+  it("same key changed to the same value on both sides, each side its own disjoint edit → merge carrying the shared value and both sides' edits", () => {
+    const base = block({
+      properties: { src: '/a.png', alt: 'Tem', caption: 'Photo' },
+    });
+    const source = block({
+      blockVersionId: 'v-source',
+      properties: { src: '/b.png', alt: 'Team', caption: 'Photo' },
+    });
+    const target = block({
+      blockVersionId: 'v-target',
+      properties: { src: '/a.png', alt: 'Team', caption: 'Updated caption' },
+    });
+
+    expect(analyzeThreeWay(base, source, target)).toEqual({
+      verdict: 'merge',
+      type: 'image',
+      properties: {
+        src: '/b.png',
+        alt: 'Team',
+        caption: 'Updated caption',
+      },
+      children: [],
+    });
+  });
+
+  it("same key changed to the same value, source alone has an extra edit → reuse with SOURCE's version id", () => {
+    const base = block();
+    const source = block({
+      blockVersionId: 'v-source',
+      properties: { src: '/b.png', alt: 'Team' },
+    });
+    const target = block({
+      blockVersionId: 'v-target',
+      properties: { src: '/a.png', alt: 'Team' },
+    });
+
+    expect(analyzeThreeWay(base, source, target)).toEqual({
+      verdict: 'reuse',
+      blockVersionId: 'v-source',
+    });
+  });
+
+  it("same key changed to the same value, target alone has an extra edit → reuse with TARGET's version id", () => {
+    const base = block();
+    const source = block({
+      blockVersionId: 'v-source',
+      properties: { src: '/a.png', alt: 'Team' },
+    });
+    const target = block({
+      blockVersionId: 'v-target',
+      properties: { src: '/b.png', alt: 'Team' },
+    });
+
+    expect(analyzeThreeWay(base, source, target)).toEqual({
+      verdict: 'reuse',
+      blockVersionId: 'v-target',
+    });
+  });
+
+  it('same key changed to different values plus disjoint extras → conflict', () => {
+    const base = block();
+    const source = block({
+      blockVersionId: 'v-source',
+      properties: { src: '/b.png', alt: 'Team' },
+    });
+    const target = block({
+      blockVersionId: 'v-target',
+      properties: { src: '/a.png', alt: 'Squad' },
+    });
+
+    expect(analyzeThreeWay(base, source, target)).toEqual({
+      verdict: 'conflict',
+    });
+  });
+
+  it('same nested subkey changed identically on both sides plus disjoint extras → merge', () => {
+    const base = block({
+      properties: { meta: { a: 1, b: 1 }, caption: 'C', tag: 'old' },
+    });
+    const source = block({
+      blockVersionId: 'v-source',
+      properties: { meta: { a: 2, b: 1 }, caption: 'New caption', tag: 'old' },
+    });
+    const target = block({
+      blockVersionId: 'v-target',
+      properties: { meta: { a: 2, b: 1 }, caption: 'C', tag: 'new-tag' },
+    });
+
+    expect(analyzeThreeWay(base, source, target)).toEqual({
+      verdict: 'merge',
+      type: 'image',
+      properties: {
+        meta: { a: 2, b: 1 },
+        caption: 'New caption',
+        tag: 'new-tag',
+      },
+      children: [],
+    });
+  });
+
+  it("both sides removed the same key, source alone has an extra edit → reuse with SOURCE's version id", () => {
+    const base = block({
+      properties: { src: '/a.png', alt: 'Alt', caption: 'C' },
+    });
+    const source = block({
+      blockVersionId: 'v-source',
+      properties: { src: '/b.png', caption: 'C' },
+    });
+    const target = block({
+      blockVersionId: 'v-target',
+      properties: { src: '/a.png', caption: 'C' },
+    });
+
+    expect(analyzeThreeWay(base, source, target)).toEqual({
+      verdict: 'reuse',
+      blockVersionId: 'v-source',
+    });
+  });
 });
