@@ -11,6 +11,7 @@
     "reference",
     "resources",
     "---Releases---",
-    "changelog"
+    "changelog",
+    "breaking-changes"
   ]
 }

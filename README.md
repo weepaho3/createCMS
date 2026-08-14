@@ -9,6 +9,9 @@ Drizzle ORM (Postgres) with a fully type-safe API.
 > active development, and has **not been tested in production**. Expect breaking
 > changes, rough edges, and bugs (including possible data-loss edge cases). Use it
 > for prototyping and exploration — **not** for production workloads. Pin an exact version.
+>
+> Upgrading? [`BREAKING-CHANGES.md`](./BREAKING-CHANGES.md) lists every break since
+> 0.2.0, with the migration for each one.
 
 - 🌿 **Database-native versioning** — branches, copy-on-write drafts, diff & merge APIs (bring your own diff UI)
 - 🧱 **Composable blocks** — nested pages, reusable blocks, type-safe block trees

@@ -97,6 +97,70 @@ both). Both trees are type-checked — `tsconfig` includes `src` and `test`.
    the changelog entry and drives the next release.
 5. Open a pull request. CI runs lint, type-check, test, and build.
 
+## Commit conventions
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org):
+
+```
+<type>(<scope>)!: <subject>
+
+<body>
+
+BREAKING CHANGE: <what breaks, and what to do instead>
+```
+
+- **type** — one of `feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `build`,
+  `ci`, `chore`, `style`, `revert`.
+- **scope** — optional but encouraged; the area touched (`media`, `blocks`,
+  `routes`, `cli`, `react`, `next`, `release`, …).
+- **subject** — imperative, lower-case, no trailing period.
+
+Pull requests are **squash-merged**, so the PR title becomes the commit subject on
+`main`. That title is what the convention applies to, and what CI checks — write it
+in this format even if the branch's individual commits are messier.
+
+### Marking breaking changes
+
+A change is breaking if a consumer on the previous version has to do something to
+keep working. That includes:
+
+- removed or renamed public API (exports, endpoints, config keys, types);
+- a changed request or response shape, URL, or wire format;
+- validation that rejects input previously accepted;
+- a newly required config option, or a raised Node / peer-dependency floor;
+- a database schema change that needs a regenerate + migration.
+
+Mark it in **all four** places — the marker is not optional, and a `breaking` label
+on the Linear issue is the signal that the PR closing it must carry one:
+
+1. **`!` in the subject** — `feat(media)!: address the gate by asset id`.
+2. **A `BREAKING CHANGE:` footer** in the body, naming the migration. This is the
+   text future readers actually use, so write it for someone upgrading, not for a
+   reviewer.
+3. **A `minor` changeset** — pre-1.0, minor is the breaking channel (see
+   [Versioning](#versioning) below).
+4. **An entry in [`BREAKING-CHANGES.md`](./BREAKING-CHANGES.md)** under
+   `## Unreleased`, in the same PR. That file is the answer to "what broke since
+   version X?" and is the source for the migration guides; the release moves the
+   `Unreleased` entries under the new version heading.
+
+The `breaking` Linear label is the upstream hint. The commit marker, the changeset
+and the `BREAKING-CHANGES.md` entry are the record.
+
+### What CI checks
+
+The `commits` job runs on every pull request:
+
+```bash
+bun run check-commit "feat(media)!: address the gate by asset id"
+```
+
+It verifies that the PR title parses as a conventional commit, that a
+`BREAKING CHANGE:` footer (if present) is spelled and placed correctly, and — the
+point of the whole exercise — that a PR carrying a **`minor` changeset for
+`@createcms/core`** also carries a `!` or a `BREAKING CHANGE:` footer. Pre-1.0 those
+two things mean the same thing, so they must not disagree.
+
 ## Versioning
 
 createCMS is pre-1.0, so **minor is the breaking channel**. Choose the changeset
@@ -108,11 +172,30 @@ bump accordingly:
   URL format (for example the media-gate URL scheme). These are breaking pre-1.0
   and must not ship as a patch.
 
+Every release's breaks are collected in
+[`BREAKING-CHANGES.md`](./BREAKING-CHANGES.md), covering 0.2.0 onwards.
+
+### Deprecation policy
+
+**Pre-1.0 there is no deprecation window.** Breaking changes are applied cleanly in
+a minor — no aliases, no compat shims — because carrying two spellings of an API
+this early costs more than it saves. Deprecation is still the better move whenever
+the old form can keep working at no cost: mark it `@deprecated` in JSDoc, name the
+replacement in the tag, keep it working for at least one minor, and remove it in a
+later one. The removal is itself a breaking change and gets the full marker
+treatment above.
+
+**From 1.0 on**, the policy tightens: public API is removed only in a major, is
+marked `@deprecated` (with the replacement named) for at least one full minor
+release before that, and its removal is listed in `BREAKING-CHANGES.md` when the
+deprecation lands — not when the removal does — so consumers get the whole window
+to react.
+
 ## Code style
 
 - TypeScript, formatted with **oxfmt** (single quotes, 80 cols) and linted with
   **oxlint**. Run `bun run format` before committing.
-- Conventional, descriptive commit messages are appreciated.
+- Commit messages follow [Conventional Commits](#commit-conventions).
 
 ## Releases
 
