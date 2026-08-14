@@ -70,8 +70,13 @@ const NO_ROOT_COLLECTIONS = {
   },
 } as const;
 
-async function setupNestedCMS(collections: any = NESTED_COLLECTIONS) {
-  const { db } = await setupTestDB();
+async function setupNestedCMS(
+  collections: any = NESTED_COLLECTIONS,
+  opts?: { isolated?: boolean },
+) {
+  // `isolated` for tests that ALTER the schema — DDL must not leak into the
+  // shared per-worker instance (see setupTestDB).
+  const { db } = await setupTestDB({ isolated: opts?.isolated });
   const cms = createCMS({
     db,
     authMiddleware: allowAnonymous(),
@@ -359,7 +364,9 @@ describe('nested pages', () => {
     });
 
     it('validateSlugUniqueness scopes by the given scope columns (e.g. language)', async () => {
-      const { db } = await setupNestedCMS();
+      const { db } = await setupNestedCMS(NESTED_COLLECTIONS, {
+        isolated: true,
+      });
       // Simulate the i18n plugin's plugin-owned column.
       await db.execute(sql`ALTER TABLE cms.roots ADD COLUMN language text`);
       await db.execute(
@@ -387,7 +394,9 @@ describe('nested pages', () => {
     });
 
     it('resolvePathToRootId resolves within the active language', async () => {
-      const { db } = await setupNestedCMS();
+      const { db } = await setupNestedCMS(NESTED_COLLECTIONS, {
+        isolated: true,
+      });
       await db.execute(sql`ALTER TABLE cms.roots ADD COLUMN language text`);
       await db.execute(
         sql`INSERT INTO cms.roots (id, collection, slug, language) VALUES
