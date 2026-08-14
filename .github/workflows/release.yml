@@ -66,10 +66,13 @@ jobs:
 
       # Bookkeeping only: tells Linear which issues went out in which version by
       # moving everything in `Merged` to `Done`. Runs ONLY on an actual publish,
-      # never on the version PR. The script swallows its own errors so a Linear
-      # outage cannot turn a successful publish into a red run.
+      # never on the version PR. The script swallows its own errors — a missing
+      # LINEAR_API_KEY or a Linear outage must not turn a successful publish
+      # into a red run; `continue-on-error` covers whatever it cannot catch.
+      # Problems are reported as warning annotations on the run instead.
       - name: Close shipped Linear issues
         if: steps.changesets.outputs.published == 'true'
+        continue-on-error: true
         env:
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
           PUBLISHED: ${{ steps.changesets.outputs.publishedPackages }}
