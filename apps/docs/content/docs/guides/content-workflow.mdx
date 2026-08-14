@@ -49,7 +49,7 @@ const mr = await cms.api.pages.createMergeRequest({
 });
 ```
 
-If `mr.hasConflicts` is true, resolve the conflicts before merging: each conflict is settled as `source`, `target`, or a `manual` version through `applyConflictResolutions`. See [Merges](/docs/concepts/merges) for the model.
+If `mr.hasConflicts` is true, resolve the conflicts before merging: each conflict is settled as `source`, `target`, or a `manual` version through `applyConflictResolutions`. Edits that touched **different properties** of the same block merge automatically and never show up here — a conflict means both sides changed the same property, disagreed on children order or type, or one side deleted the block. See [Merges](/docs/concepts/merges) for the model.
 
 ### Approve and merge
 
