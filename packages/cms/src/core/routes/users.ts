@@ -66,7 +66,7 @@ async function fetchExposedUsers(
     id: row.user_id as string,
     // `extractUserFromRow` is null when every exposed column is null (or none
     // are exposed); the id alone is still a valid record.
-    ...(extractUserFromRow(row, 'u', uc, true) ?? {}),
+    ...extractUserFromRow(row, 'u', uc, true),
   }));
 }
 

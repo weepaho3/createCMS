@@ -175,7 +175,7 @@ export default function CreateCMSLogoAnimation({
     const FEAT = words;
     const N = FEAT.length;
 
-    for (const e of [...letters]) {
+    for (const e of letters) {
       e.style.setProperty('transform-box', 'fill-box');
       e.style.transformOrigin = '50% 100%'; // grow up from the baseline
     }
@@ -432,6 +432,9 @@ export default function CreateCMSLogoAnimation({
       raf = requestAnimationFrame(frame);
     };
 
+    // The two-arg then(start, start) already handles fulfillment AND
+    // rejection; the rule only recognizes the .catch() form.
+    // oxlint-disable-next-line promise/catch-or-return
     if (document.fonts?.ready) document.fonts.ready.then(start, start);
     else start();
 

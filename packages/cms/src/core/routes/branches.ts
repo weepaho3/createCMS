@@ -919,12 +919,13 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
 
         for (const row of sourceChain) {
           if (targetSet.has(row.id)) {
+            const targetAhead = targetSet.get(row.id)!;
             return {
               hasCommonAncestor: true,
               commonAncestorCommitId: row.id,
               sourceAhead: row.depth,
-              targetAhead: targetSet.get(row.id)!,
-              canFastForward: targetSet.get(row.id)! === 0,
+              targetAhead,
+              canFastForward: targetAhead === 0,
             };
           }
         }

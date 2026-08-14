@@ -9,11 +9,12 @@ import type {
 import type { DrizzleInstance } from '../types/drizzle';
 
 import { requireRootInScope } from '../blocks/guards';
+import type {
+  commentMessageTypeEnum,
+  commentSystemTypeEnum} from '../db/schema.generated';
 import {
   commentMentions,
   commentMessages,
-  commentMessageTypeEnum,
-  commentSystemTypeEnum,
   commentThreads,
   commentThreadStatusEnum,
   commentThreadTargetEnum,

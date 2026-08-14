@@ -273,7 +273,7 @@ describe('comments', () => {
     it('rejects parentMessageId from a different thread', async () => {
       const { cms, mr, root } = await setupCommentFixture();
 
-      const { thread: thread1, message: msg1 } =
+      const { message: msg1 } =
         await cms.api.pages.createCommentThread({
           body: {
             targetType: 'mergeRequest',
@@ -618,7 +618,7 @@ describe('comments', () => {
     it('updates message body and sets editedAt', async () => {
       const { cms, mr } = await setupCommentFixture();
 
-      const { thread, message } = await cms.api.pages.createCommentThread({
+      const { message } = await cms.api.pages.createCommentThread({
         body: {
           targetType: 'mergeRequest',
           mergeRequestId: mr.mergeRequest.id,

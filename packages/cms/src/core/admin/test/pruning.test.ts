@@ -272,7 +272,7 @@ describe('runPruning', () => {
       dataRetention: { keepDays: 7, keepMinCommits: 1 },
     });
 
-    const { rootId, branchId, allCommits } = await createRootWithCommits(
+    const { branchId, allCommits } = await createRootWithCommits(
       cms,
       db,
       3,
@@ -513,7 +513,7 @@ describe('runPruning', () => {
       dataRetention: { keepDays: 7, keepMinCommits: 1 },
     });
 
-    const { rootId, allCommits } = await createRootWithCommits(cms, db, 5);
+    const { allCommits } = await createRootWithCommits(cms, db, 5);
 
     const oldCommitIds = allCommits.slice(0, 4).map((c) => c.id);
     await backdateCommits(db, oldCommitIds, 30);
@@ -597,7 +597,7 @@ describe('runPruning', () => {
       dataRetention: { keepDays: 7, keepMinCommits: 1 },
     });
 
-    const { rootId, branchId, allCommits } = await createRootWithCommits(
+    const { branchId, allCommits } = await createRootWithCommits(
       cms,
       db,
       5,
@@ -813,7 +813,7 @@ describe('runPruning', () => {
       dataRetention: { keepDays: 7, keepMinCommits: 1 },
     });
 
-    const { rootId, branchId, allCommits } = await createRootWithCommits(
+    const { branchId, allCommits } = await createRootWithCommits(
       cms,
       db,
       3,
