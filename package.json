@@ -10,6 +10,7 @@
   "scripts": {
     "build": "turbo build",
     "changeset": "changeset",
+    "check-commit": "node scripts/check-commit-message.mjs",
     "check-types": "turbo check-types",
     "clean": "turbo clean",
     "format": "oxfmt --write",
