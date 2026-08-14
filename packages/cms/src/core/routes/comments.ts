@@ -2,6 +2,10 @@ import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
 import type {
+  commentMessageTypeEnum,
+  commentSystemTypeEnum,
+} from '../db/schema.generated';
+import type {
   CollectionWithName,
   CMSProcedureContext,
   ResolvedScope,
@@ -9,9 +13,6 @@ import type {
 import type { DrizzleInstance } from '../types/drizzle';
 
 import { requireRootInScope } from '../blocks/guards';
-import type {
-  commentMessageTypeEnum,
-  commentSystemTypeEnum} from '../db/schema.generated';
 import {
   commentMentions,
   commentMessages,

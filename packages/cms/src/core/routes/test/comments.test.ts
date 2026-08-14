@@ -273,14 +273,13 @@ describe('comments', () => {
     it('rejects parentMessageId from a different thread', async () => {
       const { cms, mr, root } = await setupCommentFixture();
 
-      const { message: msg1 } =
-        await cms.api.pages.createCommentThread({
-          body: {
-            targetType: 'mergeRequest',
-            mergeRequestId: mr.mergeRequest.id,
-            body: 'Thread 1',
-          },
-        });
+      const { message: msg1 } = await cms.api.pages.createCommentThread({
+        body: {
+          targetType: 'mergeRequest',
+          mergeRequestId: mr.mergeRequest.id,
+          body: 'Thread 1',
+        },
+      });
 
       const { thread: thread2 } = await cms.api.pages.createCommentThread({
         body: {

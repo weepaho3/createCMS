@@ -272,11 +272,7 @@ describe('runPruning', () => {
       dataRetention: { keepDays: 7, keepMinCommits: 1 },
     });
 
-    const { branchId, allCommits } = await createRootWithCommits(
-      cms,
-      db,
-      3,
-    );
+    const { branchId, allCommits } = await createRootWithCommits(cms, db, 3);
 
     await backdateCommits(
       db,
@@ -597,11 +593,7 @@ describe('runPruning', () => {
       dataRetention: { keepDays: 7, keepMinCommits: 1 },
     });
 
-    const { branchId, allCommits } = await createRootWithCommits(
-      cms,
-      db,
-      5,
-    );
+    const { branchId, allCommits } = await createRootWithCommits(cms, db, 5);
 
     // Request approvals: reviewer-1 will approve, reviewer-2 stays pending
     const result1 = await cms.api.pages.requestApproval({
@@ -813,11 +805,7 @@ describe('runPruning', () => {
       dataRetention: { keepDays: 7, keepMinCommits: 1 },
     });
 
-    const { branchId, allCommits } = await createRootWithCommits(
-      cms,
-      db,
-      3,
-    );
+    const { branchId, allCommits } = await createRootWithCommits(cms, db, 3);
 
     // Create an approval and approve it so it becomes resolved (prunable)
     const req = await cms.api.pages.requestApproval({
