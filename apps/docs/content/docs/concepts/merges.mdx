@@ -17,12 +17,20 @@ To see why, imagine comparing only source and target. You can tell they hold dif
 - Unchanged on both, or changed to the same version on both: nothing to do.
 - Changed differently on both sides: a **conflict**. Only a person can say which version wins.
 
-That comparison is by **version identity**. Every block carries the id of its active version in each snapshot, and the merge compares those ids, not the properties inside them. Reconciliation is therefore per block, not per property: a block both sides edited is a single conflict, resolved by choosing one whole version, even when their edits touched different fields. A delete is just another version (a tombstone, see [Commits](/docs/concepts/commits#deletes-are-tombstones)), so editing a block on one side while deleting it on the other is a conflict like any other.
+That comparison starts with **version identity**. Every block carries the id of its active version in each snapshot, and the merge compares those ids first — cheap, and decisive for every block that only one side touched. A delete is just another version (a tombstone, see [Commits](/docs/concepts/commits#deletes-are-tombstones)), so editing a block on one side while deleting it on the other is a conflict like any other.
+
+A block **both** sides changed gets a second, property-level pass before it is declared a conflict. In the git analogy the block is a file and its top-level properties are the lines — and like git, the merge reconciles within the block when the two sides touched different parts of it:
+
+- Source and target changed **disjoint sets of top-level properties**: the merge builds a combined version automatically — each changed property from the side that changed it, everything else from the base. The block never surfaces as a conflict.
+- Both sides arrived at the **identical result** (same properties, same children): the merge reuses the source's existing version. Agreement — including both sides removing the same property — is not a conflict. Agreement is judged per property, so a shared identical edit merges together with each side's remaining changes.
+- Both sides changed the **same property to different values** (richText included), or moved the block's children in different ways, or the two sides disagree on the block's type: a **conflict**, resolved by a person. The merge never combines edits *inside* a single property — two edits to the same rich text field are one conflict, not a word-level merge.
+
+The combined version is written when the merge executes, as part of the merge commit. Until then nothing about an auto-merge is persisted; both `checkConflicts` and `createMergeRequest` report the affected blocks in `autoMergeableBlockIds` so a review UI can show what will combine on its own.
 
 Two methods read this model, one two-way and one three-way:
 
 - [`getDiff`](/docs/reference/merges#getdiff) answers "what changed?". It classifies the source against the base as a flat change list plus an annotated render tree, marking each block `added`, `deleted`, `modified`, `moved`, or `childrenReordered`. Moves are detected by identity, so a block is `moved` only when it truly was, not when a sibling shifted around it. It is the input to visual review; [Review changes visually](/docs/guides/visual-diff) covers rendering it. Its two sides are refs, not only branches: a branch, a commit, or (for the target) the entry's current publication. When one ref is an ancestor of the other, the base **is** that ref and the diff becomes an exact two-way comparison, which is how a publish preview works.
-- [`checkConflicts`](/docs/reference/merges#checkconflicts) answers "will it conflict?". It runs the full three-way detection and returns each conflicting block with its source, target, and base version ids.
+- [`checkConflicts`](/docs/reference/merges#checkconflicts) answers "will it conflict?". It runs the full three-way detection and returns each conflicting block with its source, target, and base version ids, plus the ids of blocks that will auto-merge (`autoMergeableBlockIds`).
 
 ## The merge request lifecycle
 
@@ -41,7 +49,7 @@ const { mergeRequest, hasConflicts, conflicts } =
 
 When `hasConflicts` is `false`, the merge can execute as soon as it is approved. When it is `true`, `conflicts` lists the blocks that need a decision, each with its `blockId` and the three version ids, and `executeMerge` refuses to run until every one is resolved.
 
-A merge request is not frozen when you open it. Either branch can keep moving afterward, so `executeMerge` recomputes the base and re-detects conflicts against the **live** branch heads at execute time, then checks them against the resolutions on record. Resolutions you already made still count, and the merge stays blocked while any current conflict is unresolved.
+A merge request is not frozen when you open it. Either branch can keep moving afterward, so `executeMerge` recomputes the base and re-detects conflicts against the **live** branch heads at execute time, then checks them against the resolutions on record. Resolutions you already made still count — they even take precedence over the property-level auto-merge, so if a block you resolved by hand later becomes auto-mergeable because a branch moved, your recorded choice wins — and the merge stays blocked while any current conflict is unresolved.
 
 ## Resolving conflicts
 
