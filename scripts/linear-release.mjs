@@ -26,10 +26,26 @@ const FROM_STATE = 'Merged';
 const TO_STATE = 'Done';
 const DRY_RUN = process.env.DRY_RUN === '1';
 
+/** Surfaces a problem without failing the job. Bookkeeping must never turn a
+ *  successful publish red (see the tail of this file), but a silent skip would
+ *  let a missing secret go unnoticed for releases on end — so under Actions
+ *  this emits an annotation that shows up in the run summary. */
+const warn = (message) => {
+  console.error(
+    process.env.GITHUB_ACTIONS
+      ? `::warning title=linear-release::${message}`
+      : `[linear-release] ${message}`,
+  );
+};
+
+// No key is a setup error (repo secret missing), not a release error. The
+// package is already on npm by the time this runs, so exit clean.
 const apiKey = process.env.LINEAR_API_KEY;
 if (!apiKey) {
-  console.error('[linear-release] LINEAR_API_KEY is not set.');
-  process.exit(1);
+  warn(
+    'LINEAR_API_KEY is not set — skipping Linear bookkeeping. Add the secret under Settings → Secrets and variables → Actions.',
+  );
+  process.exit(0);
 }
 
 /** Minimal GraphQL client. Linear returns HTTP 200 with an `errors` array on
@@ -124,8 +140,8 @@ const main = async () => {
   // do NOT fail the workflow: the package is already on npm at this point, and
   // failing here would turn a successful publish into a red build.
   if (!fromId || !toId) {
-    console.error(
-      `[linear-release] Team "${TEAM_KEY}" is missing the "${FROM_STATE}" or "${TO_STATE}" state. Found: ${[...byName.keys()].join(', ')}`,
+    warn(
+      `Team "${TEAM_KEY}" is missing the "${FROM_STATE}" or "${TO_STATE}" state. Found: ${[...byName.keys()].join(', ')}`,
     );
     return;
   }
@@ -162,5 +178,6 @@ const main = async () => {
 // Linear hiccup must not turn the run red, or the next release starts from a
 // broken-looking main. Errors are logged for the run summary instead.
 main().catch((err) => {
-  console.error('[linear-release]', err);
+  warn(`Bookkeeping failed: ${err?.message ?? err}`);
+  console.error(err);
 });
