@@ -4,7 +4,9 @@ import type { ReconstructedBlock } from '../../blocks/reconstruct-snapshot';
 
 import { analyzeThreeWay } from '../three-way';
 
-function block(overrides: Partial<ReconstructedBlock> = {}): ReconstructedBlock {
+function block(
+  overrides: Partial<ReconstructedBlock> = {},
+): ReconstructedBlock {
   return {
     blockId: 'b1',
     blockVersionId: 'v-base',

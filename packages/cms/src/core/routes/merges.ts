@@ -1877,12 +1877,12 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
                   let resolvedVersionId: string | null;
                   if (stored.resolution === 'source') {
                     resolvedVersionId =
-                      sourceSnapshot.blocks.get(auto.blockId)
-                        ?.blockVersionId ?? null;
+                      sourceSnapshot.blocks.get(auto.blockId)?.blockVersionId ??
+                      null;
                   } else if (stored.resolution === 'target') {
                     resolvedVersionId =
-                      targetSnapshot.blocks.get(auto.blockId)
-                        ?.blockVersionId ?? null;
+                      targetSnapshot.blocks.get(auto.blockId)?.blockVersionId ??
+                      null;
                   } else {
                     resolvedVersionId = stored.resolvedVersionId!;
                   }
