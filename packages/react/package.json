@@ -50,7 +50,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "bunchee",
+    "build": "bunchee --dts-bundle",
     "check-types": "tsc --noEmit",
     "clean": "rm -rf dist .turbo",
     "lint": "oxlint",
@@ -58,10 +58,8 @@
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "test:watch": "vitest"
   },
-  "dependencies": {
-    "@createcms/schema": "^0.1.0"
-  },
   "devDependencies": {
+    "@createcms/schema": "workspace:*",
     "@testing-library/dom": "^10",
     "@testing-library/react": "^16",
     "@types/react": "^19.2.18",

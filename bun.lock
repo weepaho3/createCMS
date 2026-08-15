@@ -143,10 +143,8 @@
     "packages/react": {
       "name": "@createcms/react",
       "version": "0.1.0",
-      "dependencies": {
-        "@createcms/schema": "^0.1.0",
-      },
       "devDependencies": {
+        "@createcms/schema": "workspace:*",
         "@testing-library/dom": "^10",
         "@testing-library/react": "^16",
         "@types/react": "^19.2.18",

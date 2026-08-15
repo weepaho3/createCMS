@@ -1,7 +1,8 @@
 {
   "name": "@createcms/schema",
   "version": "0.1.0",
-  "description": "Shared, runtime-free type vocabulary for createcms blocks, collections and trees, consumed by @createcms/core and @createcms/react.",
+  "private": true,
+  "description": "Shared, runtime-free type vocabulary for createcms blocks, collections and trees. Not published: @createcms/core and @createcms/react inline these types at build time.",
   "keywords": [
     "cms",
     "createcms",
@@ -35,9 +36,6 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "scripts": {
     "build": "bunchee",
