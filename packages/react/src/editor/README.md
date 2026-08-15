@@ -5,7 +5,7 @@ styling happens in the consumer's wrapper components (registry).
 
 ## Usage
 
-(TODO — arrives with the state layer.)
+(TODO)
 
 ## Parts
 
@@ -15,9 +15,9 @@ styling happens in the consumer's wrapper components (registry).
 
 ## Hooks
 
-| Hook               | Returns              | Notes                                                                              |
-| ------------------ | -------------------- | ---------------------------------------------------------------------------------- |
-| `useEditorContext` | `EditorContextValue` | Throws when used outside `Editor.Root`. Internal-facing; typed hooks arrive later. |
+| Hook               | Returns              | Notes                                                    |
+| ------------------ | -------------------- | -------------------------------------------------------- |
+| `useEditorContext` | `EditorContextValue` | Throws when used outside `Editor.Root`. Internal-facing. |
 
 ## Schema helpers (pure, no React)
 
@@ -65,8 +65,7 @@ the server accepts).
 ## Store (framework-free)
 
 Layer 2 of the editor primitive: a small `getState`/`subscribe` core with no
-React and no `zustand` import (the React binding in a later issue wraps it
-with `useSyncExternalStore`). Every change is a small serialisable _op_ with
+React import, made to be wrapped with `useSyncExternalStore`. Every change is a small serialisable _op_ with
 an inverse, so undo/redo is a stack of op groups (`HistoryEntry`), rapid
 same-key updates coalesce into one undo step within `COALESCE_MS`, and
 `applyRemote` applies foreign ops without touching local history — the same

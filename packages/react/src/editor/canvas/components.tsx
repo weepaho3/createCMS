@@ -5,9 +5,8 @@ import { useEditorContext } from '../context';
 export type CanvasRootProps = React.ComponentPropsWithRef<'div'>;
 
 /**
- * Placeholder surface: proves the entry wiring (context shared with
- * `/editor`) and reserves the part name. Rendering, measurement and
- * interaction arrive with the canvas issues.
+ * Placeholder surface: a plain `div` that shares the editor context with
+ * `/editor` and reserves the part name.
  */
 export function CanvasRoot(props: CanvasRootProps) {
   useEditorContext('Canvas.Root');

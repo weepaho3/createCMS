@@ -11,9 +11,9 @@ export type EditorRootProps = {
 };
 
 /**
- * Provider-only root for now: renders no DOM element and exposes the schema
- * to every part below it. State, callbacks and the typed factory come with
- * the next issues; the prop contract (`schema` is required) is final.
+ * Provider-only root: renders no DOM element and exposes the schema to every
+ * part below it. `schema` is required — a tree alone cannot tell which
+ * collection it belongs to.
  */
 export function EditorRoot({ schema, children }: EditorRootProps) {
   const value = React.useMemo(() => ({ schema }), [schema]);

@@ -114,9 +114,9 @@ export type ApplyRemoteResult = {
 };
 
 /**
- * The framework-free editor store. Method-shorthand signatures on purpose:
- * they are bivariant, which lets the typed factory (next issue) narrow the
- * argument types without an `any` cast.
+ * The framework-free editor store. Method-shorthand signatures: they are
+ * bivariant, so a typed wrapper can narrow the argument types without an
+ * `any` cast.
  */
 export type EditorStore = {
   getState(): EditorStoreState;
