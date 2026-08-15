@@ -65,11 +65,13 @@ the thresholds against the whole suite.
 
 ### Repo map
 
-| Path                                                                         | What it is                                                                                                                            | Run it                                                |
-| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| [`packages/cms`](./packages/cms)                                             | `@createcms/core` — the package under active development. Tests run against an in-memory Postgres (PGlite), so no database is needed. | `bun run --filter=@createcms/core test`               |
-| [`apps/docs`](./apps/docs)                                                   | The documentation site (Fumadocs); content lives in [`apps/docs/content/docs`](./apps/docs/content/docs).                             | `bun run --filter=docs dev` → <http://localhost:4000> |
-| [`examples/minimal`](./examples/minimal), [`examples/blog`](./examples/blog) | Runnable example apps (PGlite in-memory, no DB setup).                                                                                | `bun run --filter=<name> dev`                         |
+| Path                                                                         | What it is                                                                                                                            | Run it                                                                                              |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| [`packages/cms`](./packages/cms)                                             | `@createcms/core` — the package under active development. Tests run against an in-memory Postgres (PGlite), so no database is needed. | `bun run --filter=@createcms/core test`                                                             |
+| [`packages/schema`](./packages/schema)                                       | `@createcms/schema` — runtime-free type vocabulary shared by core and react.                                                          | `bun run --filter=@createcms/schema check-types`                                                    |
+| [`packages/react`](./packages/react)                                         | `@createcms/react` — headless editor primitives.                                                                                      | `bun run --filter=@createcms/react test`, browser: `bun run --filter=@createcms/react test:browser` |
+| [`apps/docs`](./apps/docs)                                                   | The documentation site (Fumadocs); content lives in [`apps/docs/content/docs`](./apps/docs/content/docs).                             | `bun run --filter=docs dev` → <http://localhost:4000>                                               |
+| [`examples/minimal`](./examples/minimal), [`examples/blog`](./examples/blog) | Runnable example apps (PGlite in-memory, no DB setup).                                                                                | `bun run --filter=<name> dev`                                                                       |
 
 ### Package layout (`packages/cms/src`)
 
@@ -178,9 +180,18 @@ bun run check-commit "feat(media)!: address the gate by asset id"
 
 It verifies that the PR title parses as a conventional commit, that a
 `BREAKING CHANGE:` footer (if present) is spelled and placed correctly, and — the
-point of the whole exercise — that a PR carrying a **`minor` changeset for
-`@createcms/core`** also carries a `!` or a `BREAKING CHANGE:` footer. Pre-1.0 those
-two things mean the same thing, so they must not disagree.
+point of the whole exercise — that a PR carrying a **`minor` changeset for a
+published `@createcms` package** (`@createcms/core`, `@createcms/schema` or
+`@createcms/react`) also carries a `!` or a `BREAKING CHANGE:` footer. Pre-1.0
+those two things mean the same thing, so they must not disagree.
+
+Alongside `commits`, CI runs: `test` (the `@createcms/core` suite, 4 shards +
+merged coverage), `test-react` (the `@createcms/react` node/happy-dom suite,
+plus a type-check of `@createcms/schema` and `@createcms/react`),
+`browser-tests` (the `@createcms/react` suite in real Chromium via Playwright
+— skipped when nothing under `packages/react`, `packages/schema`, `bun.lock`
+or the CI workflow changed), and `build` (every package, plus `publint` and
+`@arethetypeswrong/cli` for the three published packages).
 
 ## Versioning
 
@@ -192,6 +203,10 @@ bump accordingly:
 - **minor** — anything that removes or renames public API, or changes a wire or
   URL format (for example the media-gate URL scheme). These are breaking pre-1.0
   and must not ship as a patch.
+
+`@createcms/core`, `@createcms/schema` and `@createcms/react` are versioned
+independently (Changesets, no `linked`/`fixed`); a bump of `@createcms/schema`
+bumps `@createcms/react`'s dependency range on it in the same version PR.
 
 Every release's breaks are collected in
 [`BREAKING-CHANGES.md`](./BREAKING-CHANGES.md), covering 0.2.0 onwards.
@@ -223,6 +238,23 @@ to react.
 Releases are automated via [Changesets](https://github.com/changesets/changesets):
 merging the "Version Packages" PR publishes to npm with provenance. Maintainers
 handle releases — contributors just add a changeset.
+
+### Packages
+
+| Package             | Directory                              | What it is                                             |
+| ------------------- | -------------------------------------- | ------------------------------------------------------ |
+| `@createcms/core`   | [`packages/cms`](./packages/cms)       | The composable, block-based headless CMS.              |
+| `@createcms/schema` | [`packages/schema`](./packages/schema) | Runtime-free type vocabulary shared by core and react. |
+| `@createcms/react`  | [`packages/react`](./packages/react)   | Headless editor primitives.                            |
+
+### First publish of a new package (maintainer checklist)
+
+1. From the branch that makes the package publishable: `bun install && bunx turbo run build --filter=<pkg>`; `cd packages/<dir> && npm publish --access public` with an npm account that owns the `@createcms` scope (2FA / granular token — this is the only publish that ever uses a token).
+2. On npmjs.com → package → Settings → Publishing access: choose "Require two-factor authentication and disallow tokens", and add a **Trusted publisher**: GitHub Actions, organization/user `weepaho3`, repository `createCMS`, workflow `release.yml`, environment empty.
+3. Merge the PR. From now on the release workflow publishes the package with OIDC + provenance like `@createcms/core`.
+4. Verify with the next release: add a `patch` changeset for the package, merge the "Version Packages" PR, check that the run's `Create release PR or publish` step lists the package and that npmjs.com shows the provenance badge.
+
+(Note the order: publish first, then merge — the release workflow runs on every push to `main` and would try to publish an unregistered name otherwise.)
 
 **Recovery:** publish and tagging are not atomic. If a release run dies after
 `npm publish` but before the tags are pushed (npm has the new version, but the
