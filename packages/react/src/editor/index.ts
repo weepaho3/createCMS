@@ -13,6 +13,52 @@ export const Editor = {
   Root: EditorRoot,
 };
 
+// React binding and untyped hooks.
+export type { EditorSelector } from './binding';
+export { shallowEqual, useEditorSelector, useEditorStore } from './binding';
+export type {
+  AnyBlockHandle,
+  AnyFieldHandle,
+  EditorApi,
+  HistoryApi,
+  SaveApi,
+} from './hooks';
+export {
+  useAnyBlock,
+  useAnyField,
+  useChildren,
+  useDirty,
+  useEditor,
+  useFields,
+  useHistory,
+  usePalette,
+  useSave,
+  useSelection,
+} from './hooks';
+
+// Typed factory.
+export type {
+  BlockHandle,
+  BlockHandleOf,
+  BlockPropsOf,
+  BlocksOf,
+  BlockTypeOf,
+  CreateEditorOptions,
+  EditorFactory,
+  EditorTypes,
+  FieldHandle,
+  FieldHandleOf,
+  PropsOf,
+  PropsSpecOf,
+  PropValueOf,
+  RootPropsOf,
+  TreeOf,
+  TypedAddOptions,
+  TypedEditorApi,
+  TypedPaletteItems,
+} from './factory';
+export { createEditor } from './factory';
+
 // Layer 1 — schema types and pure helpers (no React, no DOM).
 export type {
   AnyEditorSchema,
