@@ -34,6 +34,7 @@ next-env.d.ts
 # Agent tooling and local working notes — per-developer state, not repo content.
 .claude/
 plans/
+AGENTS.md
 
 # Logs
 logs
