@@ -1,28 +1,31 @@
-import type { AnyCollectionDefinition } from '@createcms/schema';
-
 // @vitest-environment happy-dom
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { Canvas } from './canvas/index';
 import { Editor, useEditorContext } from './index';
+import { makeTree, storeSchema } from './store/fixtures';
 
 afterEach(cleanup);
-
-const schema: AnyCollectionDefinition = {
-  label: 'Pages',
-  root: { properties: {} },
-};
 
 function Probe() {
   const { schema: fromContext } = useEditorContext('Probe');
   return <span data-testid="probe">{fromContext.label}</span>;
 }
 
+function StoreProbe() {
+  const { store, userId } = useEditorContext('StoreProbe');
+  return (
+    <span data-testid="store-probe">
+      {store.getState().rootId}/{userId}
+    </span>
+  );
+}
+
 describe('Editor.Root', () => {
   it('provides the schema to parts below it', () => {
     const { getByTestId } = render(
-      <Editor.Root schema={schema}>
+      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
         <Probe />
       </Editor.Root>,
     );
@@ -34,12 +37,21 @@ describe('Editor.Root', () => {
       'Probe must be used within an Editor.Root component.',
     );
   });
+
+  it('provides the store and the local user to parts below it', () => {
+    const { getByTestId } = render(
+      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+        <StoreProbe />
+      </Editor.Root>,
+    );
+    expect(getByTestId('store-probe').textContent).toBe('root_1/local');
+  });
 });
 
 describe('Canvas.Root shares the editor context', () => {
   it('renders inside Editor.Root with the presence marker attribute', () => {
     const { getByTestId } = render(
-      <Editor.Root schema={schema}>
+      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
         <Canvas.Root data-testid="c" />
       </Editor.Root>,
     );
