@@ -173,8 +173,8 @@ Publish every entry in the release atomically. Each item runs the same publish m
   path="/releases/publishRelease"
   fn="publishRelease"
   collection="releases"
-  resource="release"
-  operation="update"
+  resource="publication"
+  operation="create"
   args={`{
   body: { releaseId: 'rel_abc123' }, // required
 }`}

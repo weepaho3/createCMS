@@ -306,8 +306,8 @@ function AuthBadge({
           <TipBody title="Anonymous read">
             Still runs your <code>authMiddleware</code> (so plugin scope like
             multi-tenant and i18n resolves), passing the{' '}
-            <code>publishedContent</code> resource. You conventionally allow
-            that one for logged-out visitors.
+            <code>{resource ?? 'publishedContent'}</code> resource. You
+            conventionally allow that one for logged-out visitors.
           </TipBody>
         }
       >

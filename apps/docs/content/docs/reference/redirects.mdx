@@ -111,6 +111,8 @@ Resolve an incoming request path to its redirect decision, if one matches. This 
   method="GET"
   path="/{collection}/resolveRedirect"
   fn="resolveRedirect"
+  resource="publishedContent"
+  operation="read"
   anonymousRead
   args={`{
   query: { path: '/old-pricing' }, // required

@@ -135,6 +135,8 @@ Fetch the live, published content for an entry, looked up by `rootId`, `slug`, o
   method="GET"
   path="/{collection}/getPublishedContent"
   fn="getPublishedContent"
+  resource="publishedContent"
+  operation="read"
   anonymousRead
   args={`{
   query: { slug: 'welcome' }, // one of rootId, slug, or path required

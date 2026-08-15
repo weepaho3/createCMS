@@ -31,6 +31,10 @@ next-env.d.ts
 *.swo
 .DS_Store
 
+# Agent tooling and local working notes — per-developer state, not repo content.
+.claude/
+plans/
+
 # Logs
 logs
 *.log
