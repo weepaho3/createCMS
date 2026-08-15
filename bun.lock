@@ -144,7 +144,7 @@
       "name": "@createcms/react",
       "version": "0.1.0",
       "dependencies": {
-        "@createcms/schema": "workspace:*",
+        "@createcms/schema": "^0.1.0",
       },
       "devDependencies": {
         "@testing-library/dom": "^10",
