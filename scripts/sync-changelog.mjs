@@ -28,13 +28,12 @@ const pages = [
     // `missing` line for its section.
     sources: [
       { pkg: '@createcms/core', src: 'packages/cms/CHANGELOG.md' },
-      { pkg: '@createcms/schema', src: 'packages/schema/CHANGELOG.md' },
       { pkg: '@createcms/react', src: 'packages/react/CHANGELOG.md' },
     ],
     dest: 'apps/docs/content/docs/changelog.mdx',
     title: 'Changelog',
     description:
-      'Release notes for @createcms/core, @createcms/schema and @createcms/react, generated from Changesets.',
+      'Release notes for @createcms/core and @createcms/react, generated from Changesets.',
     missing: 'No releases yet.\n',
   },
   {
@@ -92,7 +91,6 @@ function demoteHeadingsOutsideCode(md) {
 // exist on the site at their site path, and everything else at GitHub.
 const SITE_PATHS = new Map([
   ['packages/cms/CHANGELOG.md', '/docs/changelog'],
-  ['packages/schema/CHANGELOG.md', '/docs/changelog'],
   ['packages/react/CHANGELOG.md', '/docs/changelog'],
   ['BREAKING-CHANGES.md', '/docs/breaking-changes'],
 ]);

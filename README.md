@@ -72,7 +72,7 @@ deployed.
 This is a bun + turbo monorepo:
 
 - **`packages/cms`** — [`@createcms/core`](./packages/cms), the composable headless CMS
-- **`packages/schema`** — [`@createcms/schema`](./packages/schema), the shared type vocabulary (types only)
+- **`packages/schema`** — [`@createcms/schema`](./packages/schema), the shared type vocabulary (types only, private; inlined into core and react)
 - **`packages/react`** — [`@createcms/react`](./packages/react), headless editor primitives
 - **`apps/docs`** — the documentation site + landing page (Fumadocs)
 - **`examples/`** — runnable example apps

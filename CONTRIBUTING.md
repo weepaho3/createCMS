@@ -68,7 +68,7 @@ the thresholds against the whole suite.
 | Path                                                                         | What it is                                                                                                                            | Run it                                                                                              |
 | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | [`packages/cms`](./packages/cms)                                             | `@createcms/core` — the package under active development. Tests run against an in-memory Postgres (PGlite), so no database is needed. | `bun run --filter=@createcms/core test`                                                             |
-| [`packages/schema`](./packages/schema)                                       | `@createcms/schema` — runtime-free type vocabulary shared by core and react.                                                          | `bun run --filter=@createcms/schema check-types`                                                    |
+| [`packages/schema`](./packages/schema)                                       | `@createcms/schema` — runtime-free type vocabulary shared by core and react; private, inlined into both at build time.                | `bun run --filter=@createcms/schema check-types`                                                    |
 | [`packages/react`](./packages/react)                                         | `@createcms/react` — headless editor primitives.                                                                                      | `bun run --filter=@createcms/react test`, browser: `bun run --filter=@createcms/react test:browser` |
 | [`apps/docs`](./apps/docs)                                                   | The documentation site (Fumadocs); content lives in [`apps/docs/content/docs`](./apps/docs/content/docs).                             | `bun run --filter=docs dev` → <http://localhost:4000>                                               |
 | [`examples/minimal`](./examples/minimal), [`examples/blog`](./examples/blog) | Runnable example apps (PGlite in-memory, no DB setup).                                                                                | `bun run --filter=<name> dev`                                                                       |
@@ -181,9 +181,9 @@ bun run check-commit "feat(media)!: address the gate by asset id"
 It verifies that the PR title parses as a conventional commit, that a
 `BREAKING CHANGE:` footer (if present) is spelled and placed correctly, and — the
 point of the whole exercise — that a PR carrying a **`minor` changeset for a
-published `@createcms` package** (`@createcms/core`, `@createcms/schema` or
-`@createcms/react`) also carries a `!` or a `BREAKING CHANGE:` footer. Pre-1.0
-those two things mean the same thing, so they must not disagree.
+published `@createcms` package** (`@createcms/core` or `@createcms/react`)
+also carries a `!` or a `BREAKING CHANGE:` footer. Pre-1.0 those two things
+mean the same thing, so they must not disagree.
 
 Alongside `commits`, CI runs: `test` (the `@createcms/core` suite, 4 shards +
 merged coverage), `test-react` (the `@createcms/react` node/happy-dom suite,
@@ -191,7 +191,8 @@ plus a type-check of `@createcms/schema` and `@createcms/react`),
 `browser-tests` (the `@createcms/react` suite in real Chromium via Playwright
 — skipped when nothing under `packages/react`, `packages/schema`, `bun.lock`
 or the CI workflow changed), and `build` (every package, plus `publint` and
-`@arethetypeswrong/cli` for the three published packages).
+`@arethetypeswrong/cli` for `packages/cms`, `packages/schema` (private, kept
+publish-clean) and `packages/react`).
 
 ## Versioning
 
@@ -204,9 +205,9 @@ bump accordingly:
   URL format (for example the media-gate URL scheme). These are breaking pre-1.0
   and must not ship as a patch.
 
-`@createcms/core`, `@createcms/schema` and `@createcms/react` are versioned
-independently (Changesets, no `linked`/`fixed`); a bump of `@createcms/schema`
-bumps `@createcms/react`'s dependency range on it in the same version PR.
+`@createcms/core` and `@createcms/react` are versioned independently
+(Changesets, no `linked`/`fixed`); `@createcms/schema` is private and never
+versioned or published — its types are inlined into both.
 
 Every release's breaks are collected in
 [`BREAKING-CHANGES.md`](./BREAKING-CHANGES.md), covering 0.2.0 onwards.
@@ -241,11 +242,11 @@ handle releases — contributors just add a changeset.
 
 ### Packages
 
-| Package             | Directory                              | What it is                                             |
-| ------------------- | -------------------------------------- | ------------------------------------------------------ |
-| `@createcms/core`   | [`packages/cms`](./packages/cms)       | The composable, block-based headless CMS.              |
-| `@createcms/schema` | [`packages/schema`](./packages/schema) | Runtime-free type vocabulary shared by core and react. |
-| `@createcms/react`  | [`packages/react`](./packages/react)   | Headless editor primitives.                            |
+| Package             | Directory                              | What it is                                                                              | Published |
+| ------------------- | -------------------------------------- | --------------------------------------------------------------------------------------- | --------- |
+| `@createcms/core`   | [`packages/cms`](./packages/cms)       | The composable, block-based headless CMS.                                               | yes       |
+| `@createcms/schema` | [`packages/schema`](./packages/schema) | Runtime-free type vocabulary shared by core and react — private, inlined at build time. | no        |
+| `@createcms/react`  | [`packages/react`](./packages/react)   | Headless editor primitives.                                                             | yes       |
 
 ### First publish of a new package (maintainer checklist)
 

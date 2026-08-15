@@ -30,6 +30,7 @@ hooks, types and data attributes.
 
 Published on npm as `@createcms/react`, pre-1.0: the API is not stable yet
 and every breaking change ships as a **minor** release (see the repository's
-CONTRIBUTING for the versioning rule). It depends on `@createcms/schema`
-(types only) and has no other runtime dependency; `react` ≥ 19 is a peer,
-`react-dom` ≥ 19 an optional peer for the canvas entry.
+CONTRIBUTING for the versioning rule). It has no runtime dependency — the
+shared block/collection/tree types are inlined into its `.d.ts` at build
+time; `react` ≥ 19 is a peer, `react-dom` ≥ 19 an optional peer for the
+canvas entry.

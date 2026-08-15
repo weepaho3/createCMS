@@ -11,14 +11,12 @@ primitive with zero runtime dependency on core) can share the exact same
 block/collection/tree/link/reference types instead of maintaining a
 hand-copied mirror that silently drifts.
 
-`@createcms/core` consumes this package as a `devDependency`. A TypeScript
-`paths` alias resolves it to source for `tsc --noEmit` and the IDE only; the
-types are **inlined** into core's published `.d.ts` files by building core
-with `bunchee --dts-bundle`, which keeps only real
-`dependencies`/`peerDependencies` external, and every one of those inlined
-types is re-exported from `@createcms/core` — so application code that uses
-core keeps importing from `@createcms/core` rather than depending on this
-package directly. `@createcms/react` depends on `@createcms/schema` directly
-(types only, no runtime dependency), since it has no `@createcms/core`
-dependency to inline them for it. This package is published on npm as
-`@createcms/schema`.
+Both `@createcms/core` and `@createcms/react` consume this package as a
+`devDependency`. A TypeScript `paths` alias resolves it to source for
+`tsc --noEmit` and the IDE only; the types are **inlined** into each
+package's published `.d.ts` files by building with `bunchee --dts-bundle`,
+which keeps only real `dependencies`/`peerDependencies` external. Every one
+of those inlined types is re-exported from `@createcms/core`, so application
+code imports them from `@createcms/core` — or gets them inlined through
+`@createcms/react`, which has no `@createcms/core` dependency to re-export
+them for it. This package itself is `private` and never published.

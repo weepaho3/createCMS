@@ -41,9 +41,9 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
-      # Gate the release on the PUBLISHED packages' own lint/type-check/test/build.
-      # Scoped to the packages that ship (not docs/examples) so an unrelated docs
-      # break cannot block a publish, while a failing package still stops the
+      # Gate the release on the packages that ship (core, react) and the private
+      # schema package they inline — scoped so an unrelated docs/example break
+      # cannot block a publish, while a failing package still stops the
       # release. Filters, not `bun run test`, so the cms suite runs the way this
       # job has always run it and nothing else piggybacks.
       - name: Verify & build published packages

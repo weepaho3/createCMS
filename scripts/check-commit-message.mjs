@@ -207,7 +207,7 @@ function declaresPublishedMinor(file) {
   return frontmatter
     .split(/\r?\n/)
     .some((line) =>
-      /^\s*['"]?@createcms\/(core|schema|react)['"]?\s*:\s*['"]?minor['"]?\s*$/.test(
+      /^\s*['"]?@createcms\/(core|react)['"]?\s*:\s*['"]?minor['"]?\s*$/.test(
         line,
       ),
     );
