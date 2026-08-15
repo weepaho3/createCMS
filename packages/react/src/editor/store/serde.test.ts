@@ -27,7 +27,9 @@ describe('serializeToTree', () => {
     const tree = serializeToTree(nodes, rootId);
     expect(tree.type).toBe('root');
     expect(tree.children.map((c) => c.type)).toEqual(['heading', 'section']);
-    expect(tree.children[1]?.children.map((c) => c.type)).toEqual(['paragraph']);
+    expect(tree.children[1]?.children.map((c) => c.type)).toEqual([
+      'paragraph',
+    ]);
   });
 
   it('round-trips to the original tree', () => {
@@ -44,7 +46,12 @@ describe('serializeToTree', () => {
       type: 'section',
       properties: { title: 'Sec' },
       children: [
-        { blockId: 'p1', type: 'paragraph', properties: { text: 'World' }, children: [] },
+        {
+          blockId: 'p1',
+          type: 'paragraph',
+          properties: { text: 'World' },
+          children: [],
+        },
       ],
     });
   });
@@ -53,7 +60,10 @@ describe('serializeToTree', () => {
     const { nodes, rootId } = flattenTree(makeTree());
     const broken = {
       ...nodes,
-      root_1: { ...nodes.root_1!, childIds: [...nodes.root_1!.childIds, 'ghost'] },
+      root_1: {
+        ...nodes.root_1!,
+        childIds: [...nodes.root_1!.childIds, 'ghost'],
+      },
     };
     expect(() => serializeToTree(broken, rootId)).toThrow(/dangling/);
   });

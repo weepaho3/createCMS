@@ -1,7 +1,8 @@
 import type { BlockTreeNode } from '@createcms/schema';
 
-import { flattenTree, serializeToTree } from './serde';
 import type { EditorNode, EditorNodes, EditorOp } from './types';
+
+import { flattenTree, serializeToTree } from './serde';
 
 export type ApplyResult = {
   readonly nodes: EditorNodes;
@@ -38,7 +39,11 @@ function isSelfOrDescendant(
   id: string,
   candidate: string,
 ): boolean {
-  for (let p: string | null = candidate; p !== null; p = nodes[p]?.parentId ?? null) {
+  for (
+    let p: string | null = candidate;
+    p !== null;
+    p = nodes[p]?.parentId ?? null
+  ) {
     if (p === id) return true;
   }
   return false;
@@ -69,10 +74,17 @@ export function applyOp(
       const next: Record<string, EditorNode> = {
         ...nodes,
         ...added,
-        [op.node.blockId]: { ...added[op.node.blockId]!, parentId: op.parentId },
+        [op.node.blockId]: {
+          ...added[op.node.blockId]!,
+          parentId: op.parentId,
+        },
         [op.parentId]: { ...parent, childIds },
       };
-      return { nodes: next, rootId, inverse: { op: 'remove', id: op.node.blockId } };
+      return {
+        nodes: next,
+        rootId,
+        inverse: { op: 'remove', id: op.node.blockId },
+      };
     }
     case 'remove': {
       const node = nodes[op.id];
@@ -121,7 +133,12 @@ export function applyOp(
       return {
         nodes: next,
         rootId,
-        inverse: { op: 'move', id: op.id, parentId: oldParent.id, index: oldIndex },
+        inverse: {
+          op: 'move',
+          id: op.id,
+          parentId: oldParent.id,
+          index: oldIndex,
+        },
       };
     }
     case 'update': {
@@ -130,7 +147,8 @@ export function applyOp(
       const properties: Record<string, unknown> = { ...node.properties };
       const inversePatch: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(op.patch)) {
-        inversePatch[key] = key in node.properties ? node.properties[key] : null;
+        inversePatch[key] =
+          key in node.properties ? node.properties[key] : null;
         if (value === null || value === undefined) delete properties[key];
         else properties[key] = value;
       }
@@ -143,7 +161,11 @@ export function applyOp(
     case 'load': {
       const previous = serializeToTree(nodes, rootId);
       const { nodes: next, rootId: nextRootId } = flattenTree(op.tree);
-      return { nodes: next, rootId: nextRootId, inverse: { op: 'load', tree: previous } };
+      return {
+        nodes: next,
+        rootId: nextRootId,
+        inverse: { op: 'load', tree: previous },
+      };
     }
   }
 }

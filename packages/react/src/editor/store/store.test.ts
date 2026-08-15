@@ -1,10 +1,16 @@
 import type { BlockTreeNode } from '@createcms/schema';
+
 import { describe, expect, it, vi } from 'vitest';
+
+import type {
+  CreateEditorStoreOptions,
+  EditorCallbacks,
+  EditorOp,
+} from './types';
 
 import { counterGenId, fakeClock, makeTree, storeSchema } from './fixtures';
 import { createBlockId } from './id';
 import { createEditorStore } from './store';
-import type { CreateEditorStoreOptions, EditorCallbacks, EditorOp } from './types';
 
 function makeStore(overrides: Partial<CreateEditorStoreOptions> = {}) {
   const clock = fakeClock();
@@ -45,7 +51,11 @@ describe('add', () => {
     const { store } = makeStore();
     const id = store.add('heading', { parentId: 'root_1' });
     expect(id).toBe('n1');
-    expect(store.getState().nodes.root_1?.childIds).toEqual(['h1', 'sec1', 'n1']);
+    expect(store.getState().nodes.root_1?.childIds).toEqual([
+      'h1',
+      'sec1',
+      'n1',
+    ]);
     expect(store.getState().selection.local?.selected).toBe('n1');
     expect(store.isDirty()).toBe(true);
     expect(store.getState().version).toBe(1);
@@ -56,14 +66,21 @@ describe('add', () => {
   it('inserts at an explicit index', () => {
     const { store } = makeStore();
     store.add('heading', { parentId: 'root_1', index: 0 });
-    expect(store.getState().nodes.root_1?.childIds).toEqual(['n1', 'h1', 'sec1']);
+    expect(store.getState().nodes.root_1?.childIds).toEqual([
+      'n1',
+      'h1',
+      'sec1',
+    ]);
   });
 
   it('seeds declared defaults; caller-supplied properties win', () => {
     const { store } = makeStore();
     const id1 = store.add('heading', { parentId: 'root_1' });
     expect(store.getState().nodes[id1 ?? '']?.properties).toEqual({ level: 2 });
-    const id2 = store.add('heading', { parentId: 'root_1', properties: { level: 5 } });
+    const id2 = store.add('heading', {
+      parentId: 'root_1',
+      properties: { level: 5 },
+    });
     expect(store.getState().nodes[id2 ?? '']?.properties).toEqual({ level: 5 });
   });
 
@@ -130,7 +147,11 @@ describe('update', () => {
     store.update('h1', { level: undefined });
     expect(store.getState().nodes.h1?.properties).toEqual({ text: 'Hello' });
     const change = onChange.mock.calls[0]?.[0];
-    expect(change.ops[0]).toEqual({ op: 'update', id: 'h1', patch: { level: null } });
+    expect(change.ops[0]).toEqual({
+      op: 'update',
+      id: 'h1',
+      patch: { level: null },
+    });
   });
 
   it('returns false for an unknown id', () => {
@@ -141,7 +162,10 @@ describe('update', () => {
   it('preserves undeclared root keys after an update', () => {
     const { store } = makeStore();
     store.update('root_1', { title: 'New Home' });
-    expect(store.getTree().properties).toEqual({ title: 'New Home', __slug: 'home' });
+    expect(store.getTree().properties).toEqual({
+      title: 'New Home',
+      __slug: 'home',
+    });
   });
 
   it('is clean again after changing a value back by hand', () => {
@@ -240,8 +264,15 @@ describe('duplicate', () => {
     const { store } = makeStore();
     const id = store.duplicate('h1');
     expect(id).toBe('n1');
-    expect(store.getState().nodes.root_1?.childIds).toEqual(['h1', 'n1', 'sec1']);
-    expect(store.getState().nodes.n1?.properties).toEqual({ text: 'Hello', level: 1 });
+    expect(store.getState().nodes.root_1?.childIds).toEqual([
+      'h1',
+      'n1',
+      'sec1',
+    ]);
+    expect(store.getState().nodes.n1?.properties).toEqual({
+      text: 'Hello',
+      level: 1,
+    });
     expect(store.getState().selection.local?.selected).toBe('n1');
     expect(store.isDirty()).toBe(true);
   });
@@ -395,7 +426,11 @@ describe('coalescing', () => {
     }
     const entry = store.getState().history.past[0];
     expect(entry?.ops).toHaveLength(3);
-    expect(entry?.inverse[0]).toEqual({ op: 'update', id: 'h1', patch: { text: 'He' } });
+    expect(entry?.inverse[0]).toEqual({
+      op: 'update',
+      id: 'h1',
+      patch: { text: 'He' },
+    });
   });
 
   it('a coalesced update after the window elapses starts a new entry', () => {
@@ -467,7 +502,9 @@ describe('applyRemote', () => {
     callbacks.onChange = onChange;
     const listener = vi.fn();
     store.subscribe(listener);
-    const result = store.applyRemote([{ op: 'update', id: 'h1', patch: { text: 'Remote' } }]);
+    const result = store.applyRemote([
+      { op: 'update', id: 'h1', patch: { text: 'Remote' } },
+    ]);
     expect(result.applied).toHaveLength(1);
     expect(store.getState().nodes.h1?.properties.text).toBe('Remote');
     expect(store.getState().version).toBe(1);
@@ -626,11 +663,13 @@ describe('markSaved / save', () => {
     const { store, callbacks } = makeStore();
     store.update('h1', { text: 'Changed' });
     let sawSavingDuringCall = false;
-    const onSave = vi.fn(async (tree: BlockTreeNode, meta: { message?: string }) => {
-      sawSavingDuringCall = store.getState().saving;
-      expect(meta).toEqual({ message: 'm' });
-      expect(tree).toEqual(store.getTree());
-    });
+    const onSave = vi.fn(
+      async (tree: BlockTreeNode, meta: { message?: string }) => {
+        sawSavingDuringCall = store.getState().saving;
+        expect(meta).toEqual({ message: 'm' });
+        expect(tree).toEqual(store.getTree());
+      },
+    );
     callbacks.onSave = onSave;
 
     await store.save({ message: 'm' });

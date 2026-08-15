@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
+import type { EditorNodes, EditorOp } from './types';
+
 import { makeTree } from './fixtures';
 import { applyOp } from './ops';
 import { flattenTree, serializeToTree } from './serde';
-import type { EditorNodes, EditorOp } from './types';
 
 function base(): { nodes: EditorNodes; rootId: string } {
   return flattenTree(makeTree());
@@ -36,7 +37,12 @@ describe('applyOp add', () => {
         type: 'section',
         properties: {},
         children: [
-          { blockId: 'newPara', type: 'paragraph', properties: {}, children: [] },
+          {
+            blockId: 'newPara',
+            type: 'paragraph',
+            properties: {},
+            children: [],
+          },
         ],
       },
     };
@@ -52,17 +58,35 @@ describe('applyOp add', () => {
       op: 'add',
       parentId: 'root_1',
       index: 99,
-      node: { blockId: 'appendedId', type: 'heading', properties: {}, children: [] },
+      node: {
+        blockId: 'appendedId',
+        type: 'heading',
+        properties: {},
+        children: [],
+      },
     });
-    expect(appended?.nodes.root_1?.childIds).toEqual(['h1', 'sec1', 'appendedId']);
+    expect(appended?.nodes.root_1?.childIds).toEqual([
+      'h1',
+      'sec1',
+      'appendedId',
+    ]);
 
     const prepended = applyOp(nodes, rootId, {
       op: 'add',
       parentId: 'root_1',
       index: -1,
-      node: { blockId: 'prependedId', type: 'heading', properties: {}, children: [] },
+      node: {
+        blockId: 'prependedId',
+        type: 'heading',
+        properties: {},
+        children: [],
+      },
     });
-    expect(prepended?.nodes.root_1?.childIds).toEqual(['prependedId', 'h1', 'sec1']);
+    expect(prepended?.nodes.root_1?.childIds).toEqual([
+      'prependedId',
+      'h1',
+      'sec1',
+    ]);
   });
 
   it('rejects an id collision with an existing id', () => {
@@ -86,7 +110,9 @@ describe('applyOp add', () => {
         blockId: 'dup',
         type: 'section',
         properties: {},
-        children: [{ blockId: 'dup', type: 'paragraph', properties: {}, children: [] }],
+        children: [
+          { blockId: 'dup', type: 'paragraph', properties: {}, children: [] },
+        ],
       },
     });
     expect(result).toBeNull();
@@ -150,7 +176,12 @@ describe('applyOp remove', () => {
 describe('applyOp move', () => {
   it('reparents: relinks both parents and updates parentId', () => {
     const { nodes, rootId } = base();
-    const result = applyOp(nodes, rootId, { op: 'move', id: 'h1', parentId: 'sec1', index: 0 });
+    const result = applyOp(nodes, rootId, {
+      op: 'move',
+      id: 'h1',
+      parentId: 'sec1',
+      index: 0,
+    });
     expect(result?.nodes.root_1?.childIds).toEqual(['sec1']);
     expect(result?.nodes.sec1?.childIds).toEqual(['h1', 'p1']);
     expect(result?.nodes.h1?.parentId).toBe('sec1');
@@ -158,35 +189,78 @@ describe('applyOp move', () => {
 
   it('reorders within the same parent, inverse moves it back', () => {
     const { nodes, rootId } = base();
-    const result = applyOp(nodes, rootId, { op: 'move', id: 'h1', parentId: 'root_1', index: 1 });
+    const result = applyOp(nodes, rootId, {
+      op: 'move',
+      id: 'h1',
+      parentId: 'root_1',
+      index: 1,
+    });
     expect(result?.nodes.root_1?.childIds).toEqual(['sec1', 'h1']);
-    expect(result?.inverse).toEqual({ op: 'move', id: 'h1', parentId: 'root_1', index: 0 });
+    expect(result?.inverse).toEqual({
+      op: 'move',
+      id: 'h1',
+      parentId: 'root_1',
+      index: 0,
+    });
   });
 
   it('clamps the index', () => {
     const { nodes, rootId } = base();
-    const result = applyOp(nodes, rootId, { op: 'move', id: 'h1', parentId: 'sec1', index: 99 });
+    const result = applyOp(nodes, rootId, {
+      op: 'move',
+      id: 'h1',
+      parentId: 'sec1',
+      index: 99,
+    });
     expect(result?.nodes.sec1?.childIds).toEqual(['p1', 'h1']);
   });
 
   it('rejects moving the root', () => {
     const { nodes, rootId } = base();
-    expect(applyOp(nodes, rootId, { op: 'move', id: rootId, parentId: 'sec1', index: 0 })).toBeNull();
+    expect(
+      applyOp(nodes, rootId, {
+        op: 'move',
+        id: rootId,
+        parentId: 'sec1',
+        index: 0,
+      }),
+    ).toBeNull();
   });
 
   it('rejects an unknown target', () => {
     const { nodes, rootId } = base();
-    expect(applyOp(nodes, rootId, { op: 'move', id: 'h1', parentId: 'ghost', index: 0 })).toBeNull();
+    expect(
+      applyOp(nodes, rootId, {
+        op: 'move',
+        id: 'h1',
+        parentId: 'ghost',
+        index: 0,
+      }),
+    ).toBeNull();
   });
 
   it('rejects moving a node into itself', () => {
     const { nodes, rootId } = base();
-    expect(applyOp(nodes, rootId, { op: 'move', id: 'sec1', parentId: 'sec1', index: 0 })).toBeNull();
+    expect(
+      applyOp(nodes, rootId, {
+        op: 'move',
+        id: 'sec1',
+        parentId: 'sec1',
+        index: 0,
+      }),
+    ).toBeNull();
   });
 
   it('rejects moving a node into its own descendant', () => {
     const { nodes, rootId } = base();
-    expect(applyOp(nodes, rootId, { op: 'move', id: 'sec1', parentId: 'p1', index: 0 })).toBeNull();
+    expect(
+      applyOp(nodes, rootId, {
+        op: 'move',
+        id: 'sec1',
+        parentId: 'p1',
+        index: 0,
+      }),
+    ).toBeNull();
   });
 });
 
@@ -208,7 +282,10 @@ describe('applyOp update', () => {
       id: rootId,
       patch: { title: 'New Home' },
     });
-    expect(result?.nodes[rootId]?.properties).toEqual({ title: 'New Home', __slug: 'home' });
+    expect(result?.nodes[rootId]?.properties).toEqual({
+      title: 'New Home',
+      __slug: 'home',
+    });
   });
 
   it('inverse patch holds previous values and null for keys that did not exist', () => {
@@ -239,7 +316,12 @@ describe('applyOp update', () => {
 describe('applyOp load', () => {
   it('replaces the table and root id', () => {
     const { nodes, rootId } = base();
-    const newTree = { blockId: 'other_root', type: 'root', properties: {}, children: [] };
+    const newTree = {
+      blockId: 'other_root',
+      type: 'root',
+      properties: {},
+      children: [],
+    };
     const result = applyOp(nodes, rootId, { op: 'load', tree: newTree });
     expect(result?.rootId).toBe('other_root');
     expect(Object.keys(result?.nodes ?? {})).toEqual(['other_root']);
@@ -247,9 +329,17 @@ describe('applyOp load', () => {
 
   it('inverse is load with the previous tree', () => {
     const { nodes, rootId } = base();
-    const newTree = { blockId: 'other_root', type: 'root', properties: {}, children: [] };
+    const newTree = {
+      blockId: 'other_root',
+      type: 'root',
+      properties: {},
+      children: [],
+    };
     const result = applyOp(nodes, rootId, { op: 'load', tree: newTree });
-    expect(result?.inverse).toEqual({ op: 'load', tree: serializeToTree(nodes, rootId) });
+    expect(result?.inverse).toEqual({
+      op: 'load',
+      tree: serializeToTree(nodes, rootId),
+    });
   });
 });
 
@@ -276,28 +366,47 @@ describe('applyOp roundtrip (op then inverse restores the original tree)', () =>
 
   it('move (reparent)', () => {
     const { nodes, rootId } = base();
-    const forward = applyOp(nodes, rootId, { op: 'move', id: 'h1', parentId: 'sec1', index: 0 });
+    const forward = applyOp(nodes, rootId, {
+      op: 'move',
+      id: 'h1',
+      parentId: 'sec1',
+      index: 0,
+    });
     const back = applyOp(forward!.nodes, forward!.rootId, forward!.inverse);
     expect(serializeToTree(back!.nodes, back!.rootId)).toEqual(makeTree());
   });
 
   it('move (reorder)', () => {
     const { nodes, rootId } = base();
-    const forward = applyOp(nodes, rootId, { op: 'move', id: 'h1', parentId: 'root_1', index: 1 });
+    const forward = applyOp(nodes, rootId, {
+      op: 'move',
+      id: 'h1',
+      parentId: 'root_1',
+      index: 1,
+    });
     const back = applyOp(forward!.nodes, forward!.rootId, forward!.inverse);
     expect(serializeToTree(back!.nodes, back!.rootId)).toEqual(makeTree());
   });
 
   it('update', () => {
     const { nodes, rootId } = base();
-    const forward = applyOp(nodes, rootId, { op: 'update', id: 'h1', patch: { text: 'Changed' } });
+    const forward = applyOp(nodes, rootId, {
+      op: 'update',
+      id: 'h1',
+      patch: { text: 'Changed' },
+    });
     const back = applyOp(forward!.nodes, forward!.rootId, forward!.inverse);
     expect(serializeToTree(back!.nodes, back!.rootId)).toEqual(makeTree());
   });
 
   it('load', () => {
     const { nodes, rootId } = base();
-    const newTree = { blockId: 'other_root', type: 'root', properties: {}, children: [] };
+    const newTree = {
+      blockId: 'other_root',
+      type: 'root',
+      properties: {},
+      children: [],
+    };
     const forward = applyOp(nodes, rootId, { op: 'load', tree: newTree });
     const back = applyOp(forward!.nodes, forward!.rootId, forward!.inverse);
     expect(serializeToTree(back!.nodes, back!.rootId)).toEqual(makeTree());
@@ -312,18 +421,28 @@ describe('applyOp ops stay JSON', () => {
         op: 'add',
         parentId: 'root_1',
         index: 0,
-        node: { blockId: 'newId', type: 'heading', properties: { text: 'x' }, children: [] },
+        node: {
+          blockId: 'newId',
+          type: 'heading',
+          properties: { text: 'x' },
+          children: [],
+        },
       },
       { op: 'remove', id: 'sec1' },
       { op: 'move', id: 'h1', parentId: 'sec1', index: 0 },
       { op: 'update', id: 'h1', patch: { text: 'Changed', level: null } },
-      { op: 'load', tree: { blockId: 'r2', type: 'root', properties: {}, children: [] } },
+      {
+        op: 'load',
+        tree: { blockId: 'r2', type: 'root', properties: {}, children: [] },
+      },
     ];
     for (const op of cases) {
       const result = applyOp(nodes, rootId, op);
       expect(result).not.toBeNull();
       expect(JSON.parse(JSON.stringify(op))).toEqual(op);
-      expect(JSON.parse(JSON.stringify(result?.inverse))).toEqual(result?.inverse);
+      expect(JSON.parse(JSON.stringify(result?.inverse))).toEqual(
+        result?.inverse,
+      );
     }
   });
 });

@@ -1,10 +1,5 @@
 import type { BlockTreeNode } from '@createcms/schema';
 
-import { canPlace, defaultValuesFor, getPlacement } from '../schema';
-import { stableHash } from './hash';
-import { createBlockId } from './id';
-import { applyOp } from './ops';
-import { flattenTree, serializeToTree } from './serde';
 import type {
   CreateEditorStoreOptions,
   EditorCallbacks,
@@ -15,6 +10,12 @@ import type {
   FieldRef,
   UserSelection,
 } from './types';
+
+import { canPlace, defaultValuesFor, getPlacement } from '../schema';
+import { stableHash } from './hash';
+import { createBlockId } from './id';
+import { applyOp } from './ops';
+import { flattenTree, serializeToTree } from './serde';
 
 /** Window in which repeated updates of the same keys collapse into one undo step. */
 export const COALESCE_MS = 400;
@@ -29,7 +30,9 @@ const EMPTY_SELECTION: UserSelection = {
 const NO_CALLBACKS: EditorCallbacks = {};
 
 /** `undefined` never enters an op: it means "delete", like `null`. */
-function normalizePatch(patch: Record<string, unknown>): Record<string, unknown> {
+function normalizePatch(
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(patch)) {
     out[key] = value === undefined ? null : value;
@@ -67,7 +70,9 @@ function pruneSelection(
   return out;
 }
 
-export function createEditorStore(options: CreateEditorStoreOptions): EditorStore {
+export function createEditorStore(
+  options: CreateEditorStoreOptions,
+): EditorStore {
   const {
     schema,
     initialTree,
@@ -167,7 +172,10 @@ export function createEditorStore(options: CreateEditorStoreOptions): EditorStor
       ...extra,
       nodes: result.nodes,
       rootId: result.rootId,
-      selection: pruneSelection(extra.selection ?? state.selection, result.nodes),
+      selection: pruneSelection(
+        extra.selection ?? state.selection,
+        result.nodes,
+      ),
       history: { past, future: [] },
       version,
     });
@@ -195,7 +203,8 @@ export function createEditorStore(options: CreateEditorStoreOptions): EditorStor
       coalesceOpen = false;
       const version = state.version + 1;
       const selection: Record<string, UserSelection> = {};
-      for (const id of Object.keys(state.selection)) selection[id] = EMPTY_SELECTION;
+      for (const id of Object.keys(state.selection))
+        selection[id] = EMPTY_SELECTION;
       setState({
         nodes,
         rootId,
@@ -360,7 +369,9 @@ export function createEditorStore(options: CreateEditorStoreOptions): EditorStor
     },
     setUserSelection(user, patch) {
       const current = state.selection[user] ?? EMPTY_SELECTION;
-      setState({ selection: { ...state.selection, [user]: { ...current, ...patch } } });
+      setState({
+        selection: { ...state.selection, [user]: { ...current, ...patch } },
+      });
     },
 
     markSaved() {
@@ -383,7 +394,9 @@ export function createEditorStore(options: CreateEditorStoreOptions): EditorStor
   };
 
   /** Local user's selection with `patch` applied — for `commit`'s `extra`. */
-  function withLocal(patch: Partial<UserSelection>): Record<string, UserSelection> {
+  function withLocal(
+    patch: Partial<UserSelection>,
+  ): Record<string, UserSelection> {
     const current = state.selection[userId] ?? EMPTY_SELECTION;
     return { ...state.selection, [userId]: { ...current, ...patch } };
   }

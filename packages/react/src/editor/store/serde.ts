@@ -29,7 +29,10 @@ export function flattenTree(tree: BlockTreeNode): {
  * Flat node table → nested tree, starting at `rootId` (or any subtree root).
  * Throws on a dangling child id — the table is corrupt, not the caller.
  */
-export function serializeToTree(nodes: EditorNodes, rootId: string): BlockTreeNode {
+export function serializeToTree(
+  nodes: EditorNodes,
+  rootId: string,
+): BlockTreeNode {
   const build = (id: string): BlockTreeNode => {
     const node = nodes[id];
     if (!node) throw new Error(`serializeToTree: dangling child id "${id}"`);

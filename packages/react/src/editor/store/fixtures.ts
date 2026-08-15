@@ -3,7 +3,9 @@ import type { BlockTreeNode, CollectionDefinition } from '@createcms/schema';
 /** Schema for the store tests: open root, a whitelist section, declared defaults, a required image. */
 export const storeSchema = {
   label: 'Pages',
-  root: { properties: { title: { type: 'string', label: 'Title', required: true } } },
+  root: {
+    properties: { title: { type: 'string', label: 'Title', required: true } },
+  },
   blocks: {
     heading: {
       label: 'Heading',
@@ -39,13 +41,23 @@ export function makeTree(): BlockTreeNode {
     type: 'root',
     properties: { title: 'Home', __slug: 'home' },
     children: [
-      { blockId: 'h1', type: 'heading', properties: { text: 'Hello', level: 1 }, children: [] },
+      {
+        blockId: 'h1',
+        type: 'heading',
+        properties: { text: 'Hello', level: 1 },
+        children: [],
+      },
       {
         blockId: 'sec1',
         type: 'section',
         properties: { title: 'Sec' },
         children: [
-          { blockId: 'p1', type: 'paragraph', properties: { text: 'World' }, children: [] },
+          {
+            blockId: 'p1',
+            type: 'paragraph',
+            properties: { text: 'World' },
+            children: [],
+          },
         ],
       },
     ],
@@ -59,7 +71,15 @@ export function counterGenId(): () => string {
 }
 
 /** Controllable clock for coalescing tests. */
-export function fakeClock(start = 1_000): { now: () => number; advance: (ms: number) => void } {
+export function fakeClock(start = 1_000): {
+  now: () => number;
+  advance: (ms: number) => void;
+} {
   let t = start;
-  return { now: () => t, advance: (ms) => { t += ms; } };
+  return {
+    now: () => t,
+    advance: (ms) => {
+      t += ms;
+    },
+  };
 }
