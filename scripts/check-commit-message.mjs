@@ -1,9 +1,10 @@
 // Validates a Conventional Commit message against the convention documented in
 // CONTRIBUTING.md ("Commit conventions"), with one project-specific rule on top:
-// pre-1.0, a `minor` changeset for @createcms/core IS a breaking change, so the
-// message must carry the marker (`!` in the subject, or a `BREAKING CHANGE:`
-// footer). That rule is the whole point — it stops a break from landing as an
-// ordinary-looking commit, which is how 223 commits ended up with zero markers.
+// pre-1.0, a `minor` changeset for any published @createcms package IS a
+// breaking change, so the message must carry the marker (`!` in the subject, or
+// a `BREAKING CHANGE:` footer). That rule is the whole point — it stops a break
+// from landing as an ordinary-looking commit, which is how 223 commits ended up
+// with zero markers.
 //
 // Pull requests are squash-merged, so the PR *title* becomes the subject on main:
 // that is what CI feeds in here.
@@ -164,8 +165,9 @@ if (hasFooter) notes.push('body carries a `BREAKING CHANGE:` footer');
 const marked = Boolean(match?.groups.bang) || hasFooter;
 
 // ── Cross-check against the changesets this PR adds ────────────────────────
-// Pre-1.0 a `minor` bump for @createcms/core means "breaking" (CONTRIBUTING.md
-// → Versioning), so the two signals must agree in both directions.
+// Pre-1.0, minor is the breaking channel for every published @createcms
+// package (CONTRIBUTING.md → Versioning), so the two signals must agree in
+// both directions.
 function git(args) {
   return execFileSync('git', args, {
     cwd: root,
@@ -195,7 +197,7 @@ function addedChangesetFiles() {
     .filter((line) => line && !line.endsWith('.changeset/README.md'));
 }
 
-function declaresCoreMinor(file) {
+function declaresPublishedMinor(file) {
   const absolute = path.join(root, file);
   // A changeset the branch deleted (or a rename entry) has nothing to read.
   if (!existsSync(absolute)) return false;
@@ -205,7 +207,9 @@ function declaresCoreMinor(file) {
   return frontmatter
     .split(/\r?\n/)
     .some((line) =>
-      /^\s*['"]?@createcms\/core['"]?\s*:\s*['"]?minor['"]?\s*$/.test(line),
+      /^\s*['"]?@createcms\/(core|schema|react)['"]?\s*:\s*['"]?minor['"]?\s*$/.test(
+        line,
+      ),
     );
 }
 
@@ -214,7 +218,7 @@ let changesetVerdict = null; // null = check did not run
 if (changesetCheck) {
   try {
     const files = addedChangesetFiles();
-    changesetVerdict = files.filter(declaresCoreMinor);
+    changesetVerdict = files.filter(declaresPublishedMinor);
   } catch (err) {
     // A shallow clone or a missing base ref is not the contributor's fault:
     // skip the cross-check rather than failing the run on it.
@@ -229,7 +233,7 @@ if (changesetVerdict !== null) {
 
   if (minorChangesets.length > 0 && !marked) {
     fail(
-      `This PR adds a \`minor\` changeset for @createcms/core (${minorChangesets.join(', ')}) ` +
+      `This PR adds a \`minor\` changeset for a published @createcms package (${minorChangesets.join(', ')}) ` +
         'but the message carries no breaking-change marker.',
       'Pre-1.0, minor IS the breaking channel. Add `!` to the subject ' +
         '(`feat(scope)!: …`) and a `BREAKING CHANGE:` footer describing the migration, ' +
@@ -240,7 +244,7 @@ if (changesetVerdict !== null) {
 
   if (minorChangesets.length === 0 && marked) {
     fail(
-      'The message is marked as breaking, but this PR adds no `minor` changeset for @createcms/core.',
+      'The message is marked as breaking, but this PR adds no `minor` changeset for a published @createcms package.',
       'Run `bunx changeset` and pick **minor** — pre-1.0 that is the breaking channel. ' +
         'Then add the entry to BREAKING-CHANGES.md under "## Unreleased".',
     );

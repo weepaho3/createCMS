@@ -1,11 +1,13 @@
 ---
 title: Changelog
-description: Release notes for @createcms/core, generated from Changesets.
+description: Release notes for @createcms/core, @createcms/schema and @createcms/react, generated from Changesets.
 ---
 
-## 0.6.0
+## @createcms/core
 
-### Minor Changes
+### 0.6.0
+
+#### Minor Changes
 
 - [#76](https://github.com/weepaho3/createCMS/pull/76) [`1e6edbf`](https://github.com/weepaho3/createCMS/commit/1e6edbf728c8c6707d4b9762b520298ea5f55cf2) Thanks [@weepaho3](https://github.com/weepaho3)! - Three-way merges now auto-resolve blocks where source and target changed
   disjoint sets of top-level properties (git-style: block ≈ file, property ≈
@@ -17,9 +19,9 @@ description: Release notes for @createcms/core, generated from Changesets.
   the same property, that agreement merges together with each side's remaining
   disjoint edits.
 
-## 0.5.0
+### 0.5.0
 
-### Minor Changes
+#### Minor Changes
 
 - [#70](https://github.com/weepaho3/createCMS/pull/70) [`e557806`](https://github.com/weepaho3/createCMS/commit/e557806620ef8ea1baa4f6d8ce468da7bcd2eca1) Thanks [@weepaho3](https://github.com/weepaho3)! - fix(media): add a browser-callable asset replace flow and stop leaking S3 objects on replace
 
@@ -78,9 +80,9 @@ description: Release notes for @createcms/core, generated from Changesets.
   signatures, same behavior, still fully callable. Only the client's inferred
   type surface shrank.
 
-## 0.4.0
+### 0.4.0
 
-### Minor Changes
+#### Minor Changes
 
 - [`17fdd6b`](https://github.com/weepaho3/createCMS/commit/17fdd6bae3534c49d8bb0634c24fb78f762938a2) Thanks [@weepaho3](https://github.com/weepaho3)! - fix(routes): close two permission-resource bypasses
 
@@ -193,9 +195,9 @@ description: Release notes for @createcms/core, generated from Changesets.
   constraints (`maxLength`, numeric ranges, required keys) apply to duplication
   too.
 
-## 0.3.0
+### 0.3.0
 
-### Minor Changes
+#### Minor Changes
 
 - [`f0b9dbd`](https://github.com/weepaho3/createCMS/commit/f0b9dbd4d4424313bebbdce4b90b74d4e41f34cf) Thanks [@weepaho3](https://github.com/weepaho3)! - fix(blocks): guard duplicateRoot as root:create, not block:create
 
@@ -219,7 +221,7 @@ description: Release notes for @createcms/core, generated from Changesets.
 
   New exported types: `ChangeType`, `PropertyChange`, `TextDiffSegment`, `MovedInfo`, `BlockChange`, `DiffSummary`, `BlockDiffAnnotation`, `AnnotatedBlockTreeNode`, `DiffView`.
 
-### Patch Changes
+#### Patch Changes
 
 - [`a3218b6`](https://github.com/weepaho3/createCMS/commit/a3218b67e643eeb306db95e2f94c5a7a57208c28) Thanks [@weepaho3](https://github.com/weepaho3)! - perf(blocks): batch updateBlocks reference-existence checks into a single asset query and one roots query per collection, shortening the write-transaction critical section for large page saves
 
@@ -272,9 +274,9 @@ description: Release notes for @createcms/core, generated from Changesets.
   true/false/absent distinct. In-process callers passing real booleans are
   unaffected.
 
-## 0.2.12
+### 0.2.12
 
-### Patch Changes
+#### Patch Changes
 
 - [#33](https://github.com/weepaho3/createCMS/pull/33) [`db59336`](https://github.com/weepaho3/createCMS/commit/db59336226f7ffa8f71954d0826fd54e5c4a4427) Thanks [@weepaho3](https://github.com/weepaho3)! - API-design consistency + hardening pass (api-02 … api-22). Pre-1.0, breaking
   changes are applied cleanly (no compat shims).
@@ -814,9 +816,9 @@ createdBy }, ... }` — one uniform shape instead of three divergent keys
     `CMSMiddlewareRequest` JSDoc; **ts-16** added type-check files for the client
     `Serialize`, block-property inference, the plugin schema DSL, and `definePlugin`.
 
-## 0.2.11
+### 0.2.11
 
-### Patch Changes
+#### Patch Changes
 
 - [#29](https://github.com/weepaho3/createCMS/pull/29) [`ba326e3`](https://github.com/weepaho3/createCMS/commit/ba326e39342a4b8c63570bd4f9d74625085abc30) Thanks [@weepaho3](https://github.com/weepaho3)! - Fix `createNotificationRouter<typeof cms>` typing when no plugin contributes
   notification types: the empty plugin registry resolved to `Record<string, never>`
@@ -837,9 +839,9 @@ createdBy }, ... }` — one uniform shape instead of three divergent keys
   fields typed. No schema change — these are `meta` (jsonb) fields populated from
   data already joined at emit time.
 
-## 0.2.10
+### 0.2.10
 
-### Patch Changes
+#### Patch Changes
 
 - [#26](https://github.com/weepaho3/createCMS/pull/26) [`ba13c71`](https://github.com/weepaho3/createCMS/commit/ba13c713319cf919a87312b9b0b1f30a2c6e96e1) Thanks [@weepaho3](https://github.com/weepaho3)! - Notifications now carry everything you need for deep links and showing the
   responsible user, with types to match:
@@ -876,9 +878,9 @@ createdBy }, ... }` — one uniform shape instead of three divergent keys
   `notif:<userId>` subscription once it resolves. The CMS has no current-user
   endpoint, so your app still supplies the id.
 
-## 0.2.9
+### 0.2.9
 
-### Patch Changes
+#### Patch Changes
 
 - [#24](https://github.com/weepaho3/createCMS/pull/24) [`238208f`](https://github.com/weepaho3/createCMS/commit/238208f1d142536a9e5f4257f9ded247a5b6454a) Thanks [@weepaho3](https://github.com/weepaho3)! - Add an optional **c15t adapter** for the consent gate at `@createcms/core/plugins/consent/c15t`.
 
@@ -923,9 +925,9 @@ createdBy }, ... }` — one uniform shape instead of three divergent keys
 
   Separately, `notifications: false` on `createCMS` fully disables the notifications feature: the tables aren't generated, the routes never register, and `client.notifications` plus `cms.notify` are absent from the inferred types (a stray call is a compile error). Default: enabled. Use a literal `false`. `notifications` and `realtime` are independent — A/B live results can use `realtime` with `notifications: false`.
 
-## 0.2.8
+### 0.2.8
 
-### Patch Changes
+#### Patch Changes
 
 - [#22](https://github.com/weepaho3/createCMS/pull/22) [`8ca638b`](https://github.com/weepaho3/createCMS/commit/8ca638b305d79300e02416af32a06295b4757678) Thanks [@weepaho3](https://github.com/weepaho3)! - Resolve `image` block properties to `{ id, slug }` on the rendered read path.
 
@@ -933,9 +935,9 @@ createdBy }, ... }` — one uniform shape instead of three divergent keys
 
   Resolves to `null` when the asset is archived or out of scope — the resolver is scoped, so a forged cross-tenant id in content never leaks another tenant's slug, symmetric with link resolution. A `raw` read keeps the stored id for editor re-picking. Type: in `resolved` mode an `image` property now infers as `ResolvedImage` (`{ id, slug } | null`).
 
-## 0.2.7
+### 0.2.7
 
-### Patch Changes
+#### Patch Changes
 
 - [#20](https://github.com/weepaho3/createCMS/pull/20) [`a78f391`](https://github.com/weepaho3/createCMS/commit/a78f3912d462d07e75e653b9266aff8a2c7c14b9) Thanks [@weepaho3](https://github.com/weepaho3)! - Media: ready public `url` per asset, new `listFolders`, removed `getAssetUrlAuthenticated`.
 
@@ -943,9 +945,9 @@ createdBy }, ... }` — one uniform shape instead of three divergent keys
   - **New `listFolders({ parentId? })`** read endpoint: returns the direct child folders of `parentId` (or the root-level folders when omitted), sorted by name. This is the missing read counterpart to `createFolder`/`moveFolder`/`deleteFolder`, so a media-library UI can navigate the folder tree.
   - **Removed `getAssetUrlAuthenticated`** (and the internal `signGetObject` helper). Uploaded objects are `public-read`, so the presigned-GET path was redundant — `status` is a visibility flag gating the public `/media/asset/{slug}` redirect, not a hard-privacy boundary. Serve assets through that gate; flip an asset to `public` with `updateAssetStatus` to serve it there.
 
-## 0.2.6
+### 0.2.6
 
-### Patch Changes
+#### Patch Changes
 
 - [#15](https://github.com/weepaho3/createCMS/pull/15) [`0fcc2b4`](https://github.com/weepaho3/createCMS/commit/0fcc2b4397cf89a450fc1634a02b31961340e9f2) Thanks [@weepaho3](https://github.com/weepaho3)! - Add a `link` block-property type — a language-aware link resolved to the current path at read time.
 
@@ -955,9 +957,9 @@ createdBy }, ... }` — one uniform shape instead of three divergent keys
 
   **Schema change, no backfill (beta):** the `content_usage_target` enum gains `'link'`. Recreate the database.
 
-## 0.2.5
+### 0.2.5
 
-### Patch Changes
+#### Patch Changes
 
 - [#13](https://github.com/weepaho3/createCMS/pull/13) [`341195c`](https://github.com/weepaho3/createCMS/commit/341195c356d8f8ad1271d1c725bd88bb08f7769d) Thanks [@weepaho3](https://github.com/weepaho3)! - Add an opt-in `getBlockTree({ includeReferencePreviews: true })` flag that returns a `references` sidecar alongside the tree.
 
@@ -985,9 +987,9 @@ createdBy }, ... }` — one uniform shape instead of three divergent keys
 
   **Schema change, no backfill (beta):** the `variables` unique index is demoted to non-unique, and the `i18n` / `multi-tenant` plugins add a `language` / `tenant_slug` column to `variables`. Recreate the database.
 
-## 0.2.4
+### 0.2.4
 
-### Patch Changes
+#### Patch Changes
 
 - [#11](https://github.com/weepaho3/createCMS/pull/11) [`bd91957`](https://github.com/weepaho3/createCMS/commit/bd91957a052f275b5e3ea41394e3be3744b3e2be) Thanks [@weepaho3](https://github.com/weepaho3)! - Fix a client/server path mismatch that made the `variables`, `templates`, and `search` namespaces unreachable from the client.
 
@@ -1016,9 +1018,9 @@ createdBy }, ... }` — one uniform shape instead of three divergent keys
 
   Migration: rename `protectMain: true` to `protectPublishedBranches: true`. Note the new semantics — protection now follows the publication state, not the branch name.
 
-## 0.2.3
+### 0.2.3
 
-### Patch Changes
+#### Patch Changes
 
 - [#9](https://github.com/weepaho3/createCMS/pull/9) [`be8c643`](https://github.com/weepaho3/createCMS/commit/be8c64337574fc780bf9714fe2acc8ab2402dbd0) Thanks [@weepaho3](https://github.com/weepaho3)! - Add branch-protection and approval governance to the CMS config, plus a configurable default branch name.
 
@@ -1040,17 +1042,17 @@ createdBy }, ... }` — one uniform shape instead of three divergent keys
 
   **Schema change, no backfill (beta):** the new `origin_branch_name` column is `NOT NULL`; recreate the database. There is no migration of existing commit rows.
 
-## 0.2.2
+### 0.2.2
 
-### Patch Changes
+#### Patch Changes
 
 - [#7](https://github.com/weepaho3/createCMS/pull/7) [`1cc595f`](https://github.com/weepaho3/createCMS/commit/1cc595fb6f6c6702322eb7425efa1a36c1b77788) Thanks [@weepaho3](https://github.com/weepaho3)! - Fix `createTrackedBlocks(...).useTrackedBlock('myBlock')` rejecting a block that declared `events` when the collection is used in its declared form (e.g. `typeof myCollection`). `events` is optional on `BlockDefinition`, so the `FunctionalBlocks` key-filter saw `TEvents | undefined` and filtered out every block (`(X | undefined) extends Record<…>` is false). The key-filter now `NonNullable`s the `events` access, matching the value side — functional blocks are detected again and `fire` stays narrowed.
 
 - [#7](https://github.com/weepaho3/createCMS/pull/7) [`9009209`](https://github.com/weepaho3/createCMS/commit/9009209774ee3f0861b15ba4e5983754b99a75f2) Thanks [@weepaho3](https://github.com/weepaho3)! - Add an optional `group` string to block property definitions — an editor hint for the field-group (fieldset/section) a field is shown under in the property panel (e.g. `group: 'SEO'`). Presentational only; free-form, use a shared `as const` for consistent, autocompleted group names. Mirrors the block-level `group`.
 
-## 0.2.1
+### 0.2.1
 
-### Patch Changes
+#### Patch Changes
 
 - [#5](https://github.com/weepaho3/createCMS/pull/5) [`d9f6988`](https://github.com/weepaho3/createCMS/commit/d9f6988dadc930c51ebdda9bd611ce2ea4857e69) Thanks [@weepaho3](https://github.com/weepaho3)! - Add an optional `group` string to block definitions — an editor hint for the block-picker category a block appears under (e.g. `group: 'Forms'`). Presentational only; the package does not act on it. Free-form by design; reference a shared `as const` object for consistent, autocompleted group names across blocks.
 
@@ -1058,9 +1060,9 @@ createdBy }, ... }` — one uniform shape instead of three divergent keys
 
 - [#5](https://github.com/weepaho3/createCMS/pull/5) [`060e6ae`](https://github.com/weepaho3/createCMS/commit/060e6ae16719d030f8f8e92cd432571d83b17ffa) Thanks [@weepaho3](https://github.com/weepaho3)! - `createBlocksMap` now bundles the collection definition on the returned `BlocksMap` (a typed `_collection`), so a single object can drive both rendering and an editor — components, events, and the collection's schema/placement/grouping in one handoff, with no separate `collection` prop. `BlocksMap` gained an optional type parameter that defaults to the erased collection type, so existing `BlocksMap` annotations and `BlocksRenderer` are unaffected.
 
-## 0.2.0
+### 0.2.0
 
-### Minor Changes
+#### Minor Changes
 
 - [#3](https://github.com/weepaho3/createCMS/pull/3) [`f263c1f`](https://github.com/weepaho3/createCMS/commit/f263c1fe36349bb35337ddfc158245acb5a946cd) Thanks [@weepaho3](https://github.com/weepaho3)! - Block placement constraints. Collections now take a `structure` map that controls which blocks may be nested where, replacing the removed `allowedChildBlocks` field.
 
@@ -1070,12 +1072,23 @@ createdBy }, ... }` — one uniform shape instead of three divergent keys
 
   **Breaking:** `allowedChildBlocks` is removed — express the same intent with `structure` (e.g. `structure: { section: { accepts: ['featureItem'] } }`). Blocks that hold children must now declare `allowChildren: true`.
 
-## 0.1.1
+### 0.1.1
 
-### Patch Changes
+#### Patch Changes
 
 - [`028d2f2`](https://github.com/weepaho3/createCMS/commit/028d2f2e98f916a965b643c4ce23c8f33622679a) Thanks [@weepaho3](https://github.com/weepaho3)! - Fix `createcms generate` failing on configs that use the idiomatic
   `defineCollection` / `defineCollections` / `defineAuthMiddleware` API. The
   config-loading shim now stubs these helpers (they are pure identity functions at
   runtime), so a config written exactly as the docs show loads correctly during
   schema generation.
+
+
+## @createcms/schema
+
+No releases yet.
+
+
+## @createcms/react
+
+No releases yet.
+
