@@ -1,6 +1,10 @@
 import type { AnyBlockDefinition } from './blocks';
 import type { AnyCollectionDefinition } from './collection';
-import type { BlockProperty, InferBlockProperties, RefMode } from './properties';
+import type {
+  BlockProperty,
+  InferBlockProperties,
+  RefMode,
+} from './properties';
 
 export type BlockTreeNode = {
   blockId: string;

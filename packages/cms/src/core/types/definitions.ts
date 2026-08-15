@@ -9,7 +9,8 @@ import type { MediaConfig } from './s3';
 
 // The block/collection/tree/link/reference vocabulary lives in the shared,
 // runtime-free @createcms/schema package (inlined into this package's d.ts by
-// bunchee — it is a devDependency on purpose). Re-exported here so every
+// `bunchee --dts-bundle` — it is a devDependency on purpose, see the `build`
+// script and the `paths` comment in tsconfig.json). Re-exported here so every
 // internal `../types/definitions` import and every public export path keeps
 // working unchanged.
 export type {

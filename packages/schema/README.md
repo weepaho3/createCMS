@@ -1,9 +1,9 @@
 # @createcms/schema
 
 Shared, runtime-free type vocabulary for createcms blocks, collections, and
-trees — the *schema* (`CollectionDefinition`: root + blocks + structure),
-*field kinds* (`BlockPropertyType` + `list`), the *tree* (`BlockTreeNode` /
-`InferBlockTreeNode`), and *raw vs resolved* (`RefMode`).
+trees — the _schema_ (`CollectionDefinition`: root + blocks + structure),
+_field kinds_ (`BlockPropertyType` + `list`), the _tree_ (`BlockTreeNode` /
+`InferBlockTreeNode`), and _raw vs resolved_ (`RefMode`).
 
 This package ships **no runtime code** — every export is `export type`. It
 exists so that `@createcms/core` and, later, `@createcms/react` (a headless

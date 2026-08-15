@@ -1,5 +1,10 @@
 import type { AnyCollectionDefinition } from './collection';
-import type { LinkKind, LinkValue, ResolvedLink, ResolvedReference } from './references';
+import type {
+  LinkKind,
+  LinkValue,
+  ResolvedLink,
+  ResolvedReference,
+} from './references';
 
 // ============================================================================
 // Block Property Types
