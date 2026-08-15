@@ -12,3 +12,37 @@ export { useEditorContext } from './context';
 export const Editor = {
   Root: EditorRoot,
 };
+
+// Layer 1 — schema types and pure helpers (no React, no DOM).
+export type {
+  AnyEditorSchema,
+  DefaultValuesOptions,
+  EditorSchema,
+  FieldError,
+  FieldErrorCode,
+  FieldGroup,
+  FieldKind,
+  FieldSpecOf,
+  FieldValueMap,
+  FieldValueOf,
+  MissingRequiredField,
+  MissingRequiredNode,
+  PaletteGroup,
+  PaletteItem,
+  PlacementIndex,
+  PlacementRule,
+  SchemaField,
+} from './schema';
+export {
+  allowedChildTypes,
+  canPlace,
+  defaultValuesFor,
+  getPlacement,
+  groupFields,
+  groupPaletteItems,
+  isEmptyValue,
+  missingRequired,
+  paletteItems,
+  propertiesOf,
+  validateField,
+} from './schema';
