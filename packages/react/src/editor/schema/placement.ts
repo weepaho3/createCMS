@@ -11,9 +11,10 @@ export type PlacementRule =
 
 /**
  * Precomputed placement lookup for one schema. Same shape and semantics as
- * `buildPlacementIndex` in @createcms/core (`core/blocks/placement.ts`), which
- * the server guard uses — the editor must never allow a drop the server
- * rejects, or reject one it accepts, so keep the two in lockstep.
+ * `buildPlacementIndex` in core
+ * (`packages/cms/src/core/blocks/placement.ts`), which the server guard
+ * uses — the editor must never allow a drop the server rejects, or reject
+ * one it accepts, so keep the two in lockstep.
  *
  * - `rules`: parent block type (or `'root'`) → rule; a parent absent here is open.
  * - `containers`: block types with `allowChildren: true`. The root is never
