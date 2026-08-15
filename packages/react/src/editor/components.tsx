@@ -1,23 +1,65 @@
-import type { AnyCollectionDefinition } from '@createcms/schema';
+import type { BlockTreeNode } from '@createcms/schema';
 
 import * as React from 'react';
 
+import type { AnyEditorSchema } from './schema';
+import type { EditorCallbacks, EditorStore } from './store';
+import type { EditorContextValue } from './types';
+
 import { EditorContext } from './context';
+import { createEditorStore } from './store';
 
 export type EditorRootProps = {
-  /** The collection definition (the editor's schema). */
-  schema: AnyCollectionDefinition;
+  /** The collection definition — required, a tree alone cannot name its collection. */
+  schema: AnyEditorSchema;
+  /** The initial tree (top node `type: 'root'`). Read once at mount; use `key` to load a different document. */
+  defaultValue: BlockTreeNode;
+  /** After every local structural change incl. undo/redo. */
+  onChange?: EditorCallbacks['onChange'];
+  /** Called by `save()` with the full tree. */
+  onSave?: EditorCallbacks['onSave'];
+  /** Id generator for new blocks (default: `createBlockId`). Read once at mount. */
+  genId?: () => string;
+  /** The user this editor edits as (default `'local'`). Read once at mount. */
+  userId?: string;
   children?: React.ReactNode;
 };
 
 /**
- * Provider-only root: renders no DOM element and exposes the schema to every
- * part below it. `schema` is required — a tree alone cannot tell which
- * collection it belongs to.
+ * Provider-only root: renders no DOM element, creates the editor store once
+ * from `schema` + `defaultValue` (uncontrolled — remount with `key` to reset)
+ * and exposes `{ schema, store, userId }` to every part below it. Callback
+ * props are read fresh on every call, so inline handlers are fine.
  */
-export function EditorRoot({ schema, children }: EditorRootProps) {
-  const value = React.useMemo(() => ({ schema }), [schema]);
+export function EditorRoot({
+  schema,
+  defaultValue,
+  onChange,
+  onSave,
+  genId,
+  userId = 'local',
+  children,
+}: EditorRootProps) {
+  const callbacksRef = React.useRef<EditorCallbacks>({ onChange, onSave });
+  React.useLayoutEffect(() => {
+    callbacksRef.current = { onChange, onSave };
+  });
+
+  const storeRef = React.useRef<EditorContextValue | null>(null);
+  if (storeRef.current === null) {
+    const store: EditorStore = createEditorStore({
+      schema,
+      initialTree: defaultValue,
+      genId,
+      userId,
+      getCallbacks: () => callbacksRef.current,
+    });
+    storeRef.current = { schema, store, userId };
+  }
+
   return (
-    <EditorContext.Provider value={value}>{children}</EditorContext.Provider>
+    <EditorContext.Provider value={storeRef.current}>
+      {children}
+    </EditorContext.Provider>
   );
 }
