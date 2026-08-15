@@ -137,7 +137,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "NODE_OPTIONS=--max-old-space-size=6144 bunchee && bun scripts/inject-endpoint-docs.mjs",
+    "build": "NODE_OPTIONS=--max-old-space-size=6144 bunchee --dts-bundle && bun scripts/inject-endpoint-docs.mjs",
     "check-types": "tsc --noEmit",
     "clean": "rm -rf dist .turbo",
     "generate:schema": "bun run scripts/generate-schema.ts",
@@ -162,6 +162,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@createcms/schema": "workspace:*",
     "@electric-sql/pglite": "^0.5.5",
     "@jsquash/webp": "^1.5.0",
     "@testing-library/dom": "^10",

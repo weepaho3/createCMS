@@ -1,3 +1,5 @@
+import type { BlockTreeNode } from '@createcms/schema';
+
 import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import type { DbOrTx, DrizzleInstance } from '../types/drizzle';
@@ -5,6 +7,8 @@ import type { BlockVersionRow } from './copy-subtree';
 
 import { blockVersions, commitSnapshots } from '../db/schema.generated';
 import { CMSError } from '../errors';
+
+export type { BlockTreeNode } from '@createcms/schema';
 
 export type ReconstructedBlock = {
   blockId: string;
@@ -18,13 +22,6 @@ export type ReconstructedBlock = {
 export type ReconstructionResult = {
   blocks: Map<string, ReconstructedBlock>;
   reconstructed: boolean;
-};
-
-export type BlockTreeNode = {
-  blockId: string;
-  type: string;
-  properties: Record<string, unknown>;
-  children: BlockTreeNode[];
 };
 
 /**

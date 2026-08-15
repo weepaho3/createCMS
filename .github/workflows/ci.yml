@@ -293,6 +293,10 @@ jobs:
           # Consumers require()-ing this package rely on Node's require(esm),
           # which is why engines.node is >=22.12.
           bunx --yes @arethetypeswrong/cli --pack packages/cms --profile esm-only
+          # @createcms/schema is private until CMS-40 wires it into the release,
+          # but its package.json/exports must already be publish-clean.
+          bunx --yes publint packages/schema
+          bunx --yes @arethetypeswrong/cli --pack packages/schema --profile esm-only
 
   # The one status check branch protection should require. Green only when
   # every needed job succeeded; red on any failure, skip, or cancellation —

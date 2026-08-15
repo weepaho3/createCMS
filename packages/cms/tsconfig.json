@@ -16,7 +16,24 @@
 
     "declaration": true,
     "declarationMap": false,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+
+    // Resolves @createcms/schema to its SOURCE (outside node_modules), not the
+    // devDependency package: tsc --noEmit (and the IDE) then need no prebuilt
+    // packages/schema/dist to typecheck or navigate this package.
+    //
+    // This alias is NOT what inlines the schema types into the published
+    // d.ts — bunchee doesn't forward tsconfig `paths` to its d.ts bundler
+    // (rollup-plugin-dts never sees them, so it still resolves
+    // @createcms/schema through node_modules and treats it as external).
+    // Inlining is done by building with `bunchee --dts-bundle`
+    // (`package.json`'s `build` script), which sets `respectExternal: true`:
+    // only `dependencies`/`peerDependencies` stay external, so the
+    // devDependency @createcms/schema gets bundled into the published d.ts.
+    // The package exports only types, so none of this affects runtime JS.
+    "paths": {
+      "@createcms/schema": ["../schema/src/index.ts"]
+    }
   },
   "include": ["src"],
   // Tests ARE type-checked (check-types = tsc --noEmit): a wrong-signature call

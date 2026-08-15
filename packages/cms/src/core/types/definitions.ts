@@ -1,98 +1,66 @@
 import type { AnyColumn, SQL } from 'drizzle-orm';
 import type { AnyPgTable } from 'drizzle-orm/pg-core';
 
-import type { BlockTreeNode } from '../blocks/reconstruct-snapshot';
 import type { OnNotificationHandler } from '../notifications/types';
 import type { ResolvedUserConfig } from '../user/resolve';
 import type { DrizzleInstance } from './drizzle';
 import type { CMSHookAction, CMSHooks, CMSPlugin } from './plugin';
 import type { MediaConfig } from './s3';
 
-// ============================================================================
-// Resolved Reference (populated at read time by getPublishedContent)
-// ============================================================================
+// The block/collection/tree/link/reference vocabulary lives in the shared,
+// runtime-free @createcms/schema package (inlined into this package's d.ts by
+// `bunchee --dts-bundle` — it is a devDependency on purpose, see the `build`
+// script and the `paths` comment in tsconfig.json). Re-exported here so every
+// internal `../types/definitions` import and every public export path keeps
+// working unchanged.
+export type {
+  PublishedBranchSnapshot,
+  ResolvedReference,
+  LinkKind,
+  LinkValue,
+  ResolvedLink,
+  RefMode,
+  BlockPropertyType,
+  SelectOption,
+  StringConstraints,
+  NumberConstraints,
+  ListElementType,
+  ListElementSpec,
+  ListBlockPropertySpec,
+  BlockProperty,
+  InferBlockProperties,
+  ScalarBlockProperty,
+  EventDeclaration,
+  InferEventParams,
+  BlockEventNames,
+  BlockEventFire,
+  RequireTrackingId,
+  BlockDefinition,
+  AnyBlockDefinition,
+  InferBlockInput,
+  InferCreateBlockInput,
+  InferMergeBlockVersionInput,
+  InferPartialBlockProperties,
+  InferUpdateBlockInput,
+  InferBlockTreeNode,
+  RootDefinition,
+  BlockStructureEntry,
+  CollectionStructure,
+  SlugConfig,
+  ResolvedSlugConfig,
+  CollectionDefinition,
+  AnyCollectionDefinition,
+  CollectionWithName,
+  BranchProtectionConfig,
+} from '@createcms/schema';
 
-/**
- * One published NON-CONTROL branch of a referenced root, as a snapshot. Used by
- * the block-level A/B `variants` (below). The CONTROL branch is NOT in this list
- * — it fills the top-level `tree`/`properties` of the `ResolvedReference` (the
- * no-JS / AB-off fallback), so re-embedding it here would serialize its subtree
- * twice. `variants` therefore carries only the ALTERNATIVE branches the client
- * pre-render pass can swap in. `properties` mirrors the (depth-1 typed)
- * reference `properties`.
- */
-export type PublishedBranchSnapshot<TProps = Record<string, unknown>> = {
-  branchId: string;
-  properties: TProps;
-  tree: BlockTreeNode;
-};
-
-export type ResolvedReference<TProps = Record<string, unknown>> = {
-  rootId: string;
-  collection: string;
-  properties: TProps;
-  tree: BlockTreeNode;
-  /**
-   * Present only when this referenced root has a RUNNING A/B test (server
-   * fan-out). The server stays a pure, cacheable function: top-level
-   * `tree`/`properties` are the CONTROL branch (a no-JS / AB-disabled client
-   * renders it as-is), and the client pre-render pass picks the visitor's
-   * variant from `variants` and swaps it in. `variants` lists ONLY the
-   * non-control ALTERNATIVE branches — the control is the top-level
-   * `tree`/`properties`, so it is NOT duplicated here. A pick that matches no
-   * `variants` entry (or the control branch) leaves the control tree in place.
-   * An OPTIONAL field (not a discriminated union) so `isResolvedReference` —
-   * which narrows on `tree`/`properties` — keeps matching.
-   */
-  abTest?: {
-    testId: string;
-    trafficPercentage: number;
-    variants: PublishedBranchSnapshot<TProps>[];
-  };
-};
-
-/** The kinds a `link` property can point at. */
-export type LinkKind = 'internal' | 'external' | 'email' | 'phone';
-
-/**
- * The AUTHORED value of a `link` property — a discriminated union over `kind`.
- * An `internal` link stores the target's `rootId` (a language-aware reference,
- * resolved to the current path at read time, NOT an embedded tree); the other
- * kinds store their literal target. Kept as the stored value in `raw` mode
- * (write input + the editor read).
- */
-export type LinkValue =
-  | {
-      kind: 'internal';
-      rootId: string;
-      /** The target's collection — needed to resolve its (language-aware) path. */
-      collection: string;
-      fragment?: string;
-      query?: string;
-    }
-  | { kind: 'external'; url: string }
-  | { kind: 'email'; email: string }
-  | { kind: 'phone'; phone: string };
-
-/**
- * The RESOLVED value of a `link` on the published read path (`resolved` mode):
- * every kind is normalised to an `href` for the renderer. An `internal` link's
- * `href` is the target's CURRENT, language-aware path (or `null` when the target
- * is gone / out of scope — the renderer disables the link). External / email /
- * phone are static pass-throughs (`href` = url / `mailto:` / `tel:`).
- */
-export type ResolvedLink =
-  | {
-      kind: 'internal';
-      targetRootId: string;
-      collection: string;
-      href: string | null;
-      fragment?: string;
-      query?: string;
-    }
-  | { kind: 'external'; href: string }
-  | { kind: 'email'; href: string }
-  | { kind: 'phone'; href: string };
+import type {
+  AnyCollectionDefinition,
+  BlockProperty,
+  BranchProtectionConfig,
+  CollectionWithName,
+  InferBlockProperties,
+} from '@createcms/schema';
 
 // ============================================================================
 // Scope Conditions (plugin-injected query/insert scoping)
@@ -285,486 +253,8 @@ export type ScopeConditionFactory = (
 export type CMSOperation = 'read' | 'create' | 'update' | 'delete';
 
 // ============================================================================
-// Block Property Types
-// ============================================================================
-
-type BlockTypes = {
-  string: string;
-  number: number;
-  boolean: boolean;
-  date: string;
-  richText: string;
-  // An image is the asset's id STRING, on both the write and read paths. The
-  // renderer serves it via the id-addressed gate `/media/asset/{id}`; nothing is
-  // resolved at read time (a slug swap behind the id propagates automatically).
-  image: string;
-  select: string;
-  // The AUTHORED value of a reference is the target's rootId STRING. It is
-  // inlined to a `ResolvedReference` only on the published read path (the
-  // `resolved` inference mode); write input + the editor read keep the string.
-  reference: string;
-  // The AUTHORED value of a link is a `LinkValue` union; it resolves to a
-  // `ResolvedLink` (an href) only on the read path (the `resolved` mode).
-  link: LinkValue;
-};
-
-/** Reference inference mode: `raw` (write input + getBlockTree editor read) keeps
- *  a `reference` as its stored rootId string; `resolved` (getPublishedContent)
- *  surfaces the inlined `ResolvedReference`. */
-export type RefMode = 'raw' | 'resolved';
-
-export type BlockPropertyType = keyof BlockTypes;
-
-// ============================================================================
-// Blocks
-// ============================================================================
-
-export type SelectOption = { readonly label: string; readonly value: string };
-
-/**
- * Declarative length/format constraints for text-like properties (`string`,
- * `richText`) and list elements of those types. Honoured by the zod builder
- * (`buildPropertiesSchema`): `minLength`/`maxLength` bound the string length and
- * `pattern` is a JS regex SOURCE string the value must match.
- */
-export type StringConstraints = {
-  minLength?: number;
-  maxLength?: number;
-  /** A JS `RegExp` SOURCE string the value must match (e.g. `'^[a-z]+$'`). */
-  pattern?: string;
-};
-
-/** Declarative range constraints for `number` properties / list elements. */
-export type NumberConstraints = {
-  min?: number;
-  max?: number;
-};
-
-type BlockPropertySpec<T extends BlockPropertyType> = {
-  type: T;
-  required?: boolean;
-  defaultValue?: BlockTypes[T];
-
-  label: string;
-  description?: string;
-  placeholder?: string;
-  /**
-   * Editor hint: the field-group (fieldset/section) this property is shown under
-   * in the property panel (e.g. `'SEO'`, `'Layout'`). Purely presentational —
-   * the editor groups fields by this label; the package never acts on it.
-   * Free-form by design; for consistent, autocompleted group names across
-   * fields, reference a shared `as const` object (e.g. `group: FIELD_GROUPS.seo`).
-   */
-  group?: string;
-} & (T extends 'select' ? { options: readonly SelectOption[] } : {}) &
-  (T extends 'reference' ? { collection: string } : {}) &
-  // Declarative zod-level constraints (cms-04): text length/format on
-  // string/richText, numeric range on number. Honoured by buildPropertiesSchema.
-  (T extends 'string' | 'richText' ? StringConstraints : {}) &
-  (T extends 'number' ? NumberConstraints : {}) &
-  (T extends 'link'
-    ? {
-        /** Which kinds may be picked. Default: all. */
-        allowedKinds?: readonly LinkKind[];
-        /** Restrict `internal` targets to these collections (default: any). */
-        allowedCollections?: readonly string[];
-      }
-    : {});
-
-/**
- * Element kinds a {@link ListBlockPropertySpec} may hold — every single-value
- * property type EXCEPT `link` (links are not list-able). A `reference` element
- * makes the list a MULTI-REFERENCE.
- */
-export type ListElementType = Exclude<BlockPropertyType, 'link'>;
-
-/**
- * One element descriptor of a `list` property. Mirrors the single-value specs:
- * a `select` element carries its `options`, a `reference` element its target
- * `collection`, and text/number elements may carry the same declarative
- * constraints as their scalar counterparts. Each array item is validated against
- * this by the array schema.
- */
-export type ListElementSpec = {
-  [K in ListElementType]: { type: K } & (K extends 'select'
-    ? { options: readonly SelectOption[] }
-    : {}) &
-    (K extends 'reference' ? { collection: string } : {}) &
-    (K extends 'string' | 'richText' ? StringConstraints : {}) &
-    (K extends 'number' ? NumberConstraints : {});
-}[ListElementType];
-
-/**
- * A `list` property: an ordered JSON array whose every element matches `of`
- * (a scalar OR a `reference`). A list OF `reference` is a MULTI-REFERENCE — its
- * elements are walked by the reference/usage extraction machinery exactly like a
- * single `reference`. `min`/`max` bound the array LENGTH (honoured by the zod
- * builder). Nested-object elements and structure cardinality are intentionally
- * out of scope.
- */
-export type ListBlockPropertySpec = {
-  type: 'list';
-  of: ListElementSpec;
-  required?: boolean;
-  /** Minimum number of elements (inclusive). */
-  min?: number;
-  /** Maximum number of elements (inclusive). */
-  max?: number;
-
-  label: string;
-  description?: string;
-  placeholder?: string;
-  /** Editor field-group hint — see {@link BlockPropertySpec}. */
-  group?: string;
-};
-
-/** Discriminated union over all concrete block-property specs. */
-export type BlockProperty =
-  | {
-      [K in BlockPropertyType]: BlockPropertySpec<K>;
-    }[BlockPropertyType]
-  | ListBlockPropertySpec;
-
-type Simplify<T> = { [K in keyof T]: T[K] };
-
-/** Extracts the runtime value type of ONE {@link ListElementSpec} — the same
- *  select/reference/scalar logic as {@link InferPropertyValue}, but for a list's
- *  element. A `reference` element is a rootId string in `raw` mode and a
- *  `ResolvedReference` in `resolved` mode (bounded to depth 1, like single refs). */
-type InferElementValue<
-  E extends ListElementSpec,
-  M extends RefMode = 'raw',
-  TCol extends Record<string, AnyCollectionDefinition> = {},
-> = E extends {
-  type: 'select';
-  options: readonly { readonly value: infer V extends string }[];
-}
-  ? V
-  : E extends { type: 'reference'; collection: infer C extends string }
-    ? M extends 'resolved'
-      ? C extends keyof TCol
-        ? ResolvedReference<
-            NonNullable<
-              InferBlockProperties<TCol[C]['root']['properties'], 'resolved'>
-            >
-          >
-        : ResolvedReference
-      : string
-    : E extends { type: infer ET extends keyof BlockTypes }
-      ? BlockTypes[ET]
-      : never;
-
-/** Extracts the runtime value type for a block property.
- *  For `select` properties with options, returns the union of option values.
- *  A `reference` is a rootId string in `raw` mode (write input + editor read) and
- *  a `ResolvedReference` in `resolved` mode (published read).
- *  A `list` becomes an ARRAY of its element's inferred value (a list of
- *  `reference` → `string[]` raw / `ResolvedReference[]` resolved).
- *  For all other types, returns the corresponding primitive type. */
-type InferPropertyValue<
-  T extends BlockProperty,
-  M extends RefMode = 'raw',
-  TCol extends Record<string, AnyCollectionDefinition> = {},
-> = T extends { type: 'list'; of: infer E extends ListElementSpec }
-  ? InferElementValue<E, M, TCol>[]
-  : T extends {
-        type: 'select';
-        options: readonly { readonly value: infer V extends string }[];
-      }
-    ? V
-    : T extends { type: 'reference'; collection: infer C extends string }
-      ? M extends 'resolved'
-        ? // Resolved read: a reference is the inlined target. When the target
-          // collection is in the threaded map, its `properties` are typed from the
-          // target's root definition. Nested references inside the target stay
-          // UNTYPED (the inner InferBlockProperties defaults TCol to `{}`), which
-          // bounds resolution to depth 1 and avoids cyclic-reference type blowup.
-          C extends keyof TCol
-          ? ResolvedReference<
-              NonNullable<
-                InferBlockProperties<TCol[C]['root']['properties'], 'resolved'>
-              >
-            >
-          : ResolvedReference
-        : string
-      : T extends { type: 'link' }
-        ? // A link is the stored `LinkValue` in `raw` mode (write input + editor
-          // read) and a `ResolvedLink` (an href) on the `resolved` read path.
-          M extends 'resolved'
-          ? ResolvedLink
-          : LinkValue
-        : // `image` is the asset-id string in BOTH modes (served via the
-          // id-addressed gate; nothing is resolved at read time). Intersecting
-          // with `keyof BlockTypes` keeps this a direct indexed access (no extra
-          // deferred conditional) while excluding the non-scalar `'list'` tag,
-          // which the branches above have already handled.
-          BlockTypes[T['type'] & keyof BlockTypes];
-
-type RequiredPart<
-  T extends Record<string, BlockProperty>,
-  M extends RefMode,
-  TCol extends Record<string, AnyCollectionDefinition>,
-> = {
-  [K in keyof T as T[K] extends { required: true }
-    ? K
-    : never]: InferPropertyValue<T[K], M, TCol>;
-};
-
-type OptionalPart<
-  T extends Record<string, BlockProperty>,
-  M extends RefMode,
-  TCol extends Record<string, AnyCollectionDefinition>,
-> = {
-  [K in keyof T as T[K] extends { required: true }
-    ? never
-    : K]?: InferPropertyValue<T[K], M, TCol>;
-};
-
-type HasRequiredKeys<T extends Record<string, BlockProperty>> = true extends {
-  [K in keyof T]: T[K] extends { required: true } ? true : never;
-}[keyof T]
-  ? true
-  : false;
-
-/** Maps a properties record to its runtime value types, respecting `required`.
- *  When all properties are optional, the entire input becomes optional (| undefined). */
-export type InferBlockProperties<
-  T extends Record<string, BlockProperty>,
-  M extends RefMode = 'raw',
-  TCol extends Record<string, AnyCollectionDefinition> = {},
-> =
-  HasRequiredKeys<T> extends true
-    ? Simplify<RequiredPart<T, M, TCol> & OptionalPart<T, M, TCol>>
-    : Simplify<RequiredPart<T, M, TCol> & OptionalPart<T, M, TCol>> | undefined;
-
-// ============================================================================
-// Event declarations (functional blocks declare the events they emit)
-// ============================================================================
-
-/** Scalar property subset usable as an event parameter (no references/media). */
-export type ScalarBlockProperty = Extract<
-  BlockProperty,
-  { type: 'string' | 'number' | 'boolean' | 'select' | 'date' }
->;
-
-/**
- * Declares a meaningful event a functional block can emit (e.g. a form's
- * `submitSuccess`). Living on the block DEFINITION makes it the single source of
- * truth for the typed `fire(...)` union, the test-creation goal picker, and the
- * analytics wire name. `name` overrides the GA4/dataLayer wire name (defaults to
- * `cms_<blockType>_<eventKey>`, computed by the measurement layer). Whether an
- * event counts as a conversion is decided per test in the UI, not here.
- */
-export type EventDeclaration = {
-  /** Analytics wire-name override (snake_case). Defaults to cms_<type>_<key>. */
-  name?: string;
-  /** Typed parameters carried with the event (scalar only). */
-  params?: Record<string, ScalarBlockProperty>;
-  /** Human label for the goal picker. */
-  label?: string;
-};
-
-/** Parameters object type for one event declaration (or `undefined` if none). */
-export type InferEventParams<E extends EventDeclaration> = E extends {
-  params: infer P extends Record<string, BlockProperty>;
-}
-  ? InferBlockProperties<P>
-  : undefined;
-
-/** Call-args tuple for `fire`: required iff the event declares a required param. */
-type EventFireArgs<E extends EventDeclaration> = E extends {
-  params: infer P extends Record<string, BlockProperty>;
-}
-  ? HasRequiredKeys<P> extends true
-    ? [params: InferBlockProperties<P>]
-    : [params?: InferBlockProperties<P>]
-  : [];
-
-/** Event keys a block declares. */
-export type BlockEventNames<TEvents extends Record<string, EventDeclaration>> =
-  keyof TEvents & string;
-
-/**
- * The typed `fire` signature derived from a block's event declarations — the
- * runtime tracker (M3) implements this. `fire('unknown')`, a missing required
- * param, and a wrong-typed param are all compile errors.
- */
-export type BlockEventFire<TEvents extends Record<string, EventDeclaration>> = <
-  K extends BlockEventNames<TEvents>,
->(
-  name: K,
-  ...args: EventFireArgs<TEvents[K]>
-) => void;
-
-/**
- * Compile-time requirement: a block that declares `events` (a functional block)
- * MUST carry a `trackingId` string property — the stable, per-instance,
- * cross-branch goal anchor. Intersected into `defineBlock`'s parameter so a
- * functional block missing it fails to compile. Spread `...trackingId()` into
- * `properties` to satisfy it. (The property is optional at create; the VALUE is
- * enforced at publish by the tracking-id guard.)
- */
-export type RequireTrackingId<
-  TProps extends Record<string, BlockProperty>,
-  TEvents extends Record<string, EventDeclaration>,
-> = [keyof TEvents] extends [never]
-  ? unknown // no events at all (empty)
-  : string extends keyof TEvents
-    ? unknown // the `Record<string, never>` default (index signature) = no events
-    : TProps extends { trackingId: { type: 'string' } }
-      ? unknown
-      : {
-          __error_missing_trackingId: "A block that declares `events` must include a `trackingId` property of type 'string' — spread `...trackingId()` into `properties`.";
-        };
-
-export type BlockDefinition<
-  TProps extends Record<string, BlockProperty> = Record<string, BlockProperty>,
-  TEvents extends Record<string, EventDeclaration> = Record<string, never>,
-> = {
-  properties: TProps;
-  label: string;
-  description?: string;
-  previewImageUrl?: string;
-  /**
-   * Editor hint: the block-picker category this block is shown under (e.g.
-   * `'Forms'`, `'Layout'`). Purely presentational — the editor groups blocks by
-   * this label; the package never acts on it. Free-form by design; for
-   * consistent, autocompleted group names across blocks, reference a shared
-   * `as const` object (e.g. `group: BLOCK_GROUPS.forms`).
-   */
-  group?: string;
-  /** Events this (functional) block can emit — see {@link EventDeclaration}. */
-  events?: TEvents;
-} & ({ allowChildren?: false } | { allowChildren: true });
-
-export type AnyBlockDefinition = BlockDefinition<
-  Record<string, BlockProperty>,
-  Record<string, EventDeclaration>
->;
-
-/** Discriminated union input for creating a block: `{ type: 'paragraph', properties: { text: '...' } }`. */
-export type InferBlockInput<
-  TBlocks extends Record<string, AnyBlockDefinition>,
-> = {
-  [K in keyof TBlocks & string]: {
-    type: K;
-    properties: InferBlockProperties<TBlocks[K]['properties']>;
-  };
-}[keyof TBlocks & string];
-
-/** createBlock input — routing fields at top level, discriminated block union nested.
- *  Nesting avoids oRPC's Schema brand breaking discriminated-union autocomplete. */
-export type InferCreateBlockInput<
-  TBlocks extends Record<string, AnyBlockDefinition>,
-> = {
-  rootId: string;
-  branchId: string;
-  parentBlockId: string;
-  position?: number;
-  message?: string;
-  /**
-   * Optimistic-concurrency guard (cms-18): when provided, the mutation is
-   * rejected with a typed conflict if the branch head has advanced past this
-   * commit id since the caller last read. Enforcement lives in the blocks route.
-   */
-  expectedHeadCommitId?: string;
-} & InferBlockInput<TBlocks>;
-
-/** createMergeBlockVersion input — discriminated union of all block types
- *  (child blocks + root block) with merge-specific routing fields. */
-export type InferMergeBlockVersionInput<
-  TBlocks extends Record<string, AnyBlockDefinition>,
-  TRootProps extends Record<string, BlockProperty> = never,
-> = {
-  mergeRequestId: string;
-  blockId: string;
-  children?: string[];
-} & (
-  | {
-      [K in keyof TBlocks & string]: {
-        type: K;
-        properties: InferBlockProperties<TBlocks[K]['properties']>;
-      };
-    }[keyof TBlocks & string]
-  | ([TRootProps] extends [never]
-      ? never
-      : { type: 'root'; properties: InferBlockProperties<TRootProps> })
-);
-
-/** Partial properties variant for updates (PATCH semantics): every key is
- *  optional; setting a key to a value overwrites it, setting it to `null`
- *  deletes it, and omitting it leaves it unchanged. */
-export type InferPartialBlockProperties<
-  T extends Record<string, BlockProperty>,
-> = Simplify<{ [K in keyof T]?: InferPropertyValue<T[K]> | null }>;
-
-/** updateBlock input — identifies the block and provides a partial properties object.
- *  Only supplied fields are merged; omitted fields keep their current values.
- *  When TRootProps is provided, a `type: 'root'` variant is included for
- *  updating the root block's properties. */
-export type InferUpdateBlockInput<
-  TBlocks extends Record<string, AnyBlockDefinition>,
-  TRootProps extends Record<string, BlockProperty> = never,
-> = {
-  rootId: string;
-  branchId: string;
-  blockId: string;
-  message?: string;
-  /**
-   * Optimistic-concurrency guard (cms-18): reject with a typed conflict if the
-   * branch head advanced past this commit id. Enforced in the blocks route.
-   */
-  expectedHeadCommitId?: string;
-} & (
-  | {
-      [K in keyof TBlocks & string]: {
-        type: K;
-        properties: InferPartialBlockProperties<TBlocks[K]['properties']>;
-      };
-    }[keyof TBlocks & string]
-  | ([TRootProps] extends [never]
-      ? never
-      : { type: 'root'; properties: InferPartialBlockProperties<TRootProps> })
-);
-
-// ============================================================================
 // Read Response Types (typed by the collection definition)
 // ============================================================================
-
-/**
- * A block tree node as returned by read endpoints (`getBlockTree`,
- * `getPublishedContent`), typed by the collection's block definitions.
- *
- * It is a discriminated union over `type` — narrow on `node.type` to get the
- * matching `properties`. A `root` member carries the collection's root
- * properties (the top-level node of a tree is always `type: 'root'`).
- *
- * The types reflect the *current* collection definition. Content stored
- * against an older definition (before a schema change) may differ at runtime —
- * that is a data-migration concern, not a type error.
- */
-export type InferBlockTreeNode<
-  TBlocks extends Record<string, AnyBlockDefinition>,
-  TRootProps extends Record<string, BlockProperty> = Record<string, never>,
-  M extends RefMode = 'raw',
-  TCol extends Record<string, AnyCollectionDefinition> = {},
-> =
-  | {
-      [K in keyof TBlocks & string]: {
-        blockId: string;
-        type: K;
-        properties: NonNullable<
-          InferBlockProperties<TBlocks[K]['properties'], M, TCol>
-        >;
-        children: InferBlockTreeNode<TBlocks, TRootProps, M, TCol>[];
-      };
-    }[keyof TBlocks & string]
-  | {
-      blockId: string;
-      type: 'root';
-      properties: NonNullable<InferBlockProperties<TRootProps, M, TCol>>;
-      children: InferBlockTreeNode<TBlocks, TRootProps, M, TCol>[];
-    };
 
 /** A single row returned by `listRoots`, typed by the root properties. */
 /**
@@ -879,136 +369,6 @@ export type ListBranchesResult = {
   branches: BranchListItem[];
   total: number;
   hasMore: boolean;
-};
-
-// ============================================================================
-// Collections
-// ============================================================================
-
-export type RootDefinition<
-  TProps extends Record<string, BlockProperty> = Record<string, BlockProperty>,
-> = {
-  properties: TProps;
-};
-
-/**
- * One PARENT's placement rule inside a collection's {@link CollectionStructure}
- * — declares which child block types that parent (or the literal `'root'`) may
- * contain. There are three mutually-exclusive modes, enforced by the type:
- *
- * - **open** — `{}` or `{ accepts: '*' }`: holds any block. (Same as having no
- *   entry at all; `'*'` is just an explicit, readable form.)
- * - **whitelist** — `{ accepts: ['a', 'b'] }`: holds ONLY `a`/`b`. Fail-closed —
- *   a block added to the collection later is rejected until listed. `excludes`
- *   is forbidden here (a concrete `accepts` already says exactly what's allowed).
- * - **blacklist** — `{ excludes: ['z'] }` (or `{ accepts: '*', excludes: ['z'] }`):
- *   holds anything EXCEPT `z`. Fail-open — a block added later is accepted.
- *
- * Whether a parent accepts children AT ALL is the separate, coarser
- * `allowChildren` gate on the block (the root always accepts children); these
- * rules only refine WHICH children an accepting parent may hold.
- */
-export type BlockStructureEntry<TBlockName extends string> =
-  | {
-      /** `'*'` = open base (optional, for readability). */
-      accepts?: '*';
-      /** Holds anything except these. */
-      excludes?: readonly TBlockName[];
-    }
-  | {
-      /** Holds ONLY these block types. */
-      accepts: readonly TBlockName[];
-      /**
-       * Forbidden alongside a concrete `accepts` list — the list already names
-       * exactly what is allowed, so `excludes` would be ignored.
-       */
-      excludes?: "Remove 'excludes': a concrete 'accepts' list already defines exactly which blocks are allowed. Use accepts: '*' with excludes for an all-except list.";
-    };
-
-/**
- * Placement rules for a collection, keyed by PARENT block name (or the literal
- * `'root'` for the top level). Open by default: a parent with no entry holds any
- * block. The keys and the `accepts` / `excludes` block names autocomplete against
- * the collection's block names and are checked at compile time by
- * {@link defineCollection} (the field type alone enforces this — no extra step).
- *
- * This is the single source of truth that the visual editor (drop-zone gating)
- * and the server guard (createBlock / moveBlock / duplicateBlock) both read,
- * alongside each block's `allowChildren` flag, so they can never diverge.
- */
-export type CollectionStructure<
-  TBlocks extends Record<string, AnyBlockDefinition>,
-> = {
-  [K in keyof TBlocks | 'root']?: BlockStructureEntry<keyof TBlocks & string>;
-};
-
-type SlugConfig =
-  | { enabled: false }
-  | {
-      enabled: true;
-      prefix: string;
-      allowIndex?: boolean;
-      normalize?: boolean;
-      nested?: boolean;
-    };
-
-export type ResolvedSlugConfig =
-  | { enabled: false }
-  | {
-      enabled: true;
-      prefix: string;
-      allowIndex: boolean;
-      normalize: boolean;
-      nested: boolean;
-    };
-
-export type CollectionDefinition<
-  TProps extends Record<string, BlockProperty> = Record<string, BlockProperty>,
-  TBlocks extends Record<string, AnyBlockDefinition> = Record<
-    string,
-    AnyBlockDefinition
-  >,
-> = {
-  slug?: SlugConfig;
-  root: RootDefinition<TProps>;
-  blocks?: TBlocks;
-  label: string;
-  description?: string;
-  /**
-   * Marks this collection as one whose roots are meant to be EMBEDDED into other
-   * roots via a `reference` property (a "reusable block" library). Purely an
-   * ergonomic hint — it informs editor pickers and which endpoints to surface; it
-   * NEVER gates safety (the delete-in-use guard protects every referenced root
-   * regardless of this flag). Any collection can still be a reference target.
-   */
-  reusableBlock?: boolean;
-  /**
-   * Placement rules keyed by PARENT block name (or `'root'`) — which children
-   * each container may hold, via `accepts` (whitelist) / `excludes` (blacklist)
-   * (see {@link CollectionStructure}). Read by the editor and the server guard
-   * together with each block's `allowChildren` flag. Open by default; block
-   * names are checked at compile time by the field type itself, so a typo is a
-   * compile error at the `defineCollection` call site.
-   */
-  structure?: CollectionStructure<TBlocks>;
-  /**
-   * Per-collection branch-protection overrides. Each field set here wins over the
-   * global `branchProtection` config for THIS collection only; unset fields
-   * inherit the global value (then the default). Lets, e.g., a `reusableBlock`
-   * collection opt out of `protectPublishedBranches` while pages keep it. See
-   * {@link BranchProtectionConfig}.
-   */
-  branchProtection?: Partial<BranchProtectionConfig>;
-};
-
-export type AnyCollectionDefinition = CollectionDefinition<
-  Record<string, BlockProperty>,
-  Record<string, AnyBlockDefinition>
->;
-
-export type CollectionWithName = Omit<AnyCollectionDefinition, 'blocks'> & {
-  name: string;
-  blocks: Record<string, AnyBlockDefinition>;
 };
 
 // ============================================================================
@@ -1192,49 +552,6 @@ export type CMSUserConfig<TTable extends AnyPgTable = AnyPgTable> = {
    * hashes, tokens, internal flags) can never leak by default.
    */
   exposeColumns: (keyof TTable['$inferSelect'] & string)[];
-};
-
-/**
- * Governance for the default ("main") branch and the merge/publish gates.
- * Every field is opt-in; an empty/absent config preserves today's behavior.
- */
-export type BranchProtectionConfig = {
-  /**
-   * Lock a branch against direct content mutations for exactly as long as it is
-   * published. Published content is the live, production-facing tree, so it is
-   * made immutable in place: changes go via another branch + merge, then a
-   * re-publish. Unpublishing a branch makes it directly editable again. This
-   * applies to ANY published branch, not just the default one (a root can have
-   * several published branches at once, e.g. A/B variants). A freshly created,
-   * never-published branch is freely editable. Default `false`.
-   */
-  protectPublishedBranches?: boolean;
-  /**
-   * Whether `executeMerge` requires approvals. Default `false` — a merge needs
-   * no approval unless you opt in. (Set `true` to gate merges on approvals.)
-   */
-  requireApprovalToMerge?: boolean;
-  /**
-   * Whether `publishBranch` ALWAYS requires approvals — not just when an approval
-   * was explicitly requested. Default `false` (the existing conditional behavior:
-   * if approvals were requested they must pass, otherwise publish proceeds).
-   */
-  requireApprovalBeforePublish?: boolean;
-  /**
-   * Whether pushing new commits to a merge request's source branch invalidates
-   * existing approvals. Default `false` — an approval keeps counting after a
-   * push, matching GitHub's default pull-request behaviour. Set `true` for
-   * GitHub's "Dismiss stale pull request approvals when new commits are pushed":
-   * the merge gate then only counts approvals recorded against the source
-   * branch's current head commit, and a superseded approval fails with
-   * `APPROVALS_STALE`.
-   */
-  dismissStaleApprovals?: boolean;
-  /**
-   * Minimum distinct approved reviewers required by the merge / publish gates,
-   * on top of "all requested reviewers approved". Default `1`.
-   */
-  requiredReviewers?: number;
 };
 
 /**
