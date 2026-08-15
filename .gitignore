@@ -31,6 +31,13 @@ next-env.d.ts
 *.swo
 .DS_Store
 
+# Agent tooling and local working notes. `.claude/settings.json` is the SHARED
+# project config and stays versionable; everything else under .claude (local
+# overrides, caches) is per-developer. Same shape as the .vscode rules above.
+.claude/*
+!.claude/settings.json
+plans/
+
 # Logs
 logs
 *.log
