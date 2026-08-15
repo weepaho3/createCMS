@@ -8,7 +8,7 @@ import {
   mentionsToken,
   parseSourceFile,
   readDoc,
-  sourcePath,
+  schemaSourcePath,
   typeMemberNames,
 } from '../../../test-utils/docs';
 
@@ -23,12 +23,13 @@ import {
  * an option the docs still advertise after it was removed.
  *
  * Source of truth: `BlockTypes`, `BlockPropertySpec`, `ListBlockPropertySpec`,
- * and `ListElementSpec` read out of `core/types/definitions.ts` via the TS AST.
+ * and `ListElementSpec` read out of the shared `@createcms/schema` package's
+ * `properties.ts` via the TS AST.
  */
 
 const DEFINE_MDX = 'reference/define.mdx';
 
-const sourceFile = parseSourceFile(sourcePath('core/types/definitions.ts'));
+const sourceFile = parseSourceFile(schemaSourcePath('properties.ts'));
 const define = readDoc(DEFINE_MDX);
 
 /** Header of the field-type table under `## Block properties`. */

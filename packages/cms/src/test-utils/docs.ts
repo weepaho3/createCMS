@@ -50,6 +50,13 @@ export function sourcePath(relative: string): string {
   return path.join(PACKAGE_ROOT, 'src', relative);
 }
 
+/** Absolute path of a source file inside the shared @createcms/schema package
+ *  (`packages/schema/src/<relative>`), for docs tests that pin type aliases
+ *  which moved there. */
+export function schemaSourcePath(relative: string): string {
+  return path.join(REPO_ROOT, 'packages/schema/src', relative);
+}
+
 /** Absolute path of a docs page, given its path relative to {@link DOCS_ROOT}. */
 export function docPath(relative: string): string {
   return path.join(DOCS_ROOT, relative);
