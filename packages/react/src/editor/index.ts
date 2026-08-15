@@ -46,3 +46,31 @@ export {
   propertiesOf,
   validateField,
 } from './schema';
+
+// Layer 2 — framework-free store (ops, inverse ops, history, applyRemote).
+export type {
+  AddOptions,
+  ApplyRemoteResult,
+  ApplyResult,
+  CreateEditorStoreOptions,
+  EditorCallbacks,
+  EditorChange,
+  EditorNode,
+  EditorNodes,
+  EditorOp,
+  EditorStore,
+  EditorStoreState,
+  FieldRef,
+  HistoryEntry,
+  UpdateOptions,
+  UserSelection,
+} from './store';
+export {
+  COALESCE_MS,
+  applyOp,
+  createBlockId,
+  createEditorStore,
+  flattenTree,
+  serializeToTree,
+  stableHash,
+} from './store';
