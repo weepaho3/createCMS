@@ -28,8 +28,8 @@ hooks, types and data attributes.
 
 ## Status
 
-Private and unpublished for now: it depends on the also-unpublished
-`@createcms/schema` package. Both flip to public with a semver range once the
-release wiring lands. No store, hooks with behavior, field or canvas parts
-exist yet — this package is currently a skeleton (context, namespace
-placeholders, the local `useRender` helper).
+Published on npm as `@createcms/react`, pre-1.0: the API is not stable yet
+and every breaking change ships as a **minor** release (see the repository's
+CONTRIBUTING for the versioning rule). It depends on `@createcms/schema`
+(types only) and has no other runtime dependency; `react` ≥ 19 is a peer,
+`react-dom` ≥ 19 an optional peer for the canvas entry.

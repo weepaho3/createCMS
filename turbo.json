@@ -18,6 +18,13 @@
       // point of the tests (catching docs drift) would be defeated.
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/apps/docs/content/docs/**"]
     },
+    // Browser tests are their own task so the cms suite and the browser run
+    // can never be started by one accident of a root script; `bun run test`
+    // stays the node/happy-dom suites.
+    "test:browser": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$"]
+    },
     "clean": {
       "cache": false
     }
