@@ -16,7 +16,17 @@
 
     "declaration": true,
     "declarationMap": false,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+
+    // Resolves @createcms/schema to its SOURCE (outside node_modules), not the
+    // devDependency package: tsc then needs no prebuilt packages/schema/dist,
+    // and bunchee's d.ts bundler (rollup-plugin-dts, respectExternal: false)
+    // inlines the schema types into this package's published .d.ts instead of
+    // leaving an unresolvable `from '@createcms/schema'` import. The package
+    // exports only types, so this alias never affects runtime JS.
+    "paths": {
+      "@createcms/schema": ["../schema/src/index.ts"]
+    }
   },
   "include": ["src"],
   // Tests ARE type-checked (check-types = tsc --noEmit): a wrong-signature call

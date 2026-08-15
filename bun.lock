@@ -46,7 +46,7 @@
     },
     "examples/blog": {
       "name": "@createcms/example-blog",
-      "version": "0.0.17",
+      "version": "0.0.18",
       "dependencies": {
         "@createcms/core": "workspace:*",
         "@electric-sql/pglite": "^0.5.4",
@@ -65,7 +65,7 @@
     },
     "examples/minimal": {
       "name": "@createcms/example-minimal",
-      "version": "0.0.17",
+      "version": "0.0.18",
       "dependencies": {
         "@createcms/core": "workspace:*",
         "@electric-sql/pglite": "^0.5.4",
@@ -84,7 +84,7 @@
     },
     "packages/cms": {
       "name": "@createcms/core",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "bin": {
         "createcms": "dist/bin/createcms.js",
       },
@@ -103,6 +103,7 @@
         "zod": "^4.3.6",
       },
       "devDependencies": {
+        "@createcms/schema": "workspace:*",
         "@electric-sql/pglite": "^0.5.5",
         "@jsquash/webp": "^1.5.0",
         "@testing-library/dom": "^10",
@@ -138,6 +139,14 @@
         "@upstash/redis",
         "next",
       ],
+    },
+    "packages/schema": {
+      "name": "@createcms/schema",
+      "version": "0.1.0",
+      "devDependencies": {
+        "bunchee": "^7.0.0",
+        "typescript": "^5.7.2",
+      },
     },
   },
   "packages": {
@@ -208,6 +217,8 @@
     "@createcms/example-blog": ["@createcms/example-blog@workspace:examples/blog"],
 
     "@createcms/example-minimal": ["@createcms/example-minimal@workspace:examples/minimal"],
+
+    "@createcms/schema": ["@createcms/schema@workspace:packages/schema"],
 
     "@drizzle-team/brocli": ["@drizzle-team/brocli@0.10.2", "", {}, "sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w=="],
 
