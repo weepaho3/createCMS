@@ -140,6 +140,32 @@
         "next",
       ],
     },
+    "packages/react": {
+      "name": "@createcms/react",
+      "version": "0.1.0",
+      "dependencies": {
+        "@createcms/schema": "workspace:*",
+      },
+      "devDependencies": {
+        "@testing-library/dom": "^10",
+        "@testing-library/react": "^16",
+        "@types/react": "^19.2.18",
+        "@types/react-dom": "^19.2.4",
+        "bunchee": "^7.0.0",
+        "happy-dom": "^20.11.1",
+        "react": "^19.2.4",
+        "react-dom": "^19.2.4",
+        "typescript": "^5.7.2",
+        "vitest": "^4.1.10",
+      },
+      "peerDependencies": {
+        "react": ">=19",
+        "react-dom": ">=19",
+      },
+      "optionalPeers": [
+        "react-dom",
+      ],
+    },
     "packages/schema": {
       "name": "@createcms/schema",
       "version": "0.1.0",
@@ -217,6 +243,8 @@
     "@createcms/example-blog": ["@createcms/example-blog@workspace:examples/blog"],
 
     "@createcms/example-minimal": ["@createcms/example-minimal@workspace:examples/minimal"],
+
+    "@createcms/react": ["@createcms/react@workspace:packages/react"],
 
     "@createcms/schema": ["@createcms/schema@workspace:packages/schema"],
 

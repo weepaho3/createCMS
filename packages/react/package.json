@@ -1,0 +1,61 @@
+{
+  "name": "@createcms/react",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Headless, unstyled editor primitives for createcms (shadcn-style: namespace parts, render prop, data-* state, zero runtime dependencies).",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md",
+    "THIRD_PARTY_NOTICES"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./package.json": "./package.json",
+    "./editor": {
+      "types": "./dist/editor/index.d.ts",
+      "default": "./dist/editor/index.js"
+    },
+    "./editor/canvas": {
+      "types": "./dist/editor/canvas/index.d.ts",
+      "default": "./dist/editor/canvas/index.js"
+    },
+    "./editor/cms": {
+      "types": "./dist/editor/cms/index.d.ts",
+      "default": "./dist/editor/cms/index.js"
+    }
+  },
+  "scripts": {
+    "build": "bunchee",
+    "check-types": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo",
+    "lint": "oxlint",
+    "test": "vitest run --maxWorkers=2",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@createcms/schema": "workspace:*"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10",
+    "@testing-library/react": "^16",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "bunchee": "^7.0.0",
+    "happy-dom": "^20.11.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.10"
+  },
+  "peerDependencies": {
+    "react": ">=19",
+    "react-dom": ">=19"
+  },
+  "peerDependenciesMeta": {
+    "react-dom": {
+      "optional": true
+    }
+  }
+}

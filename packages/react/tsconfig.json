@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": false,
+    "esModuleInterop": true,
+    // Same alias as packages/cms: resolve @createcms/schema from source so
+    // `tsc --noEmit` and the IDE work without a prebuilt packages/schema/dist.
+    // It does not affect the build: bunchee resolves the dependency through
+    // node_modules and keeps the import external in the emitted d.ts.
+    "paths": {
+      "@createcms/schema": ["../schema/src/index.ts"]
+    }
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}
