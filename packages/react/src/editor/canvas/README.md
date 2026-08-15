@@ -5,7 +5,7 @@ Unstyled; styling happens in the consumer's wrapper components (registry).
 
 ## Usage
 
-(TODO — arrives with the canvas issues.)
+(TODO)
 
 ## Parts
 

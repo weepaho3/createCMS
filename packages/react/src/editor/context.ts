@@ -11,7 +11,7 @@ export const EditorContext = React.createContext<EditorContextValue | null>(
 
 /**
  * Reads the editor context and throws a precise error when a part is
- * rendered outside `Editor.Root` (shadcn's guard pattern).
+ * rendered outside `Editor.Root`.
  */
 export function useEditorContext(componentName: string): EditorContextValue {
   const value = React.useContext(EditorContext);
