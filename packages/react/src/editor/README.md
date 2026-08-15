@@ -9,15 +9,83 @@ styling happens in the consumer's wrapper components (registry).
 
 ## Parts
 
-| Part          | Default element | Props                           | Data attributes |
-| ------------- | --------------- | ------------------------------- | --------------- |
-| `Editor.Root` | none (provider) | `schema` (required), `children` | —               |
+| Part          | Default element | Props                                                                                               | Data attributes |
+| ------------- | --------------- | --------------------------------------------------------------------------------------------------- | --------------- |
+| `Editor.Root` | none (provider) | `schema` (required), `defaultValue` (required), `onChange`, `onSave`, `genId`, `userId`, `children` | —               |
+
+Uncontrolled — `key` resets: `schema`, `defaultValue`, `genId` and `userId`
+are read once at mount; render with a different `key` to load another
+document. `onChange`/`onSave` are read fresh on every call, so inline
+handlers are fine.
 
 ## Hooks
 
-| Hook               | Returns              | Notes                                                    |
-| ------------------ | -------------------- | -------------------------------------------------------- |
-| `useEditorContext` | `EditorContextValue` | Throws when used outside `Editor.Root`. Internal-facing. |
+| Hook                | Returns                                        | Notes                                                                                                           |
+| ------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `useEditorContext`  | `EditorContextValue`                           | Throws when used outside `Editor.Root`. Internal-facing.                                                        |
+| `useEditorSelector` | `T` (from `selector(state, store)`)            | Subscribes through `useStoreSelector`; returns the previous reference when the selected value is shallow-equal. |
+| `useEditorStore`    | `EditorStore`                                  | No subscription — imperative access to the enclosing `Editor.Root`'s store.                                     |
+| `useEditor`         | `EditorApi` (no args) or `T` (with a selector) | No-arg form returns a stable object (`{ ...store, schema, userId, store }`); with a selector, a reactive slice. |
+| `useAnyBlock`       | `AnyBlockHandle \| null`                       | `null` for an unknown or `null` id; the handle is stable while the node is unchanged.                           |
+| `useAnyField`       | `AnyFieldHandle`                               | Re-renders only when that property's value or the node's type changes.                                          |
+| `useFields`         | `SchemaField[]`                                | The block's property specs in schema order; `[]` for an unknown block; stable array identity.                   |
+| `useChildren`       | `readonly string[]`                            | The parent's child ids in order; stable array identity until they change.                                       |
+| `useSelection`      | `UserSelection`                                | Defaults to the enclosing editor's user.                                                                        |
+| `useHistory`        | `HistoryApi`                                   | `{ canUndo, canRedo, undo, redo }`.                                                                             |
+| `useSave`           | `SaveApi`                                      | `{ dirty, saving, save, markSaved }`.                                                                           |
+| `useDirty`          | `boolean`                                      | Shorthand for `useSave().dirty`.                                                                                |
+| `usePalette`        | `PaletteItem[]`                                | Every insertable block type, memoised per schema.                                                               |
+
+## createEditor(options)
+
+`createEditor({ schema })` binds `Editor.Root` and every hook above to one
+schema: `Root` has `schema` pre-set and `defaultValue` typed as
+`TreeOf<typeof schema>`; `useBlock`/`useField` narrow on the schema's
+declared block types; `add` and `usePalette` resolve to `never` for a schema
+without statically known blocks. Every returned hook first checks that the
+enclosing `Editor.Root` uses the SAME schema object (`===`) and throws
+otherwise, so a nested editor or a generic route under a different schema
+gets a precise error instead of a silently wrong type.
+
+```tsx
+const pageEditor = createEditor({ schema: pages });
+
+// <pageEditor.Root defaultValue={tree} onSave={savePage}>{children}</pageEditor.Root>
+
+function Toolbar({ parentId }: { parentId: string }) {
+  const { add } = pageEditor.useEditor();
+  return <button onClick={() => add('hero', { parentId })}>Add hero</button>;
+}
+
+function Block({ id }: { id: string }) {
+  const block = pageEditor.useBlock(id);
+  if (block?.type === 'hero') {
+    return <button onClick={() => block.set('headline', 'x')}>Edit</button>;
+  }
+  return null;
+}
+```
+
+| Type                     | Description                                                                              |
+| ------------------------ | ---------------------------------------------------------------------------------------- |
+| `TreeOf<S>`              | The tree of `S` as `getBlockTree` delivers it (raw mode).                                |
+| `BlockTypeOf<S>`         | The block type names of `S`; `never` for a block-less or dynamic schema.                 |
+| `BlockPropsOf<S, K>`     | The property values of block `K` (or `'root'`).                                          |
+| `RootPropsOf<S>`         | `BlockPropsOf<S, 'root'>`.                                                               |
+| `BlocksOf<S>`            | The statically known blocks of `S`; `{}` when none are declared.                         |
+| `PropsSpecOf<S, K>`      | The property specs of block `K` (or `'root'`).                                           |
+| `PropsOf<TSpec>`         | The raw property values of a spec record.                                                |
+| `PropValueOf<TSpec, P>`  | The value type of one property `P` in `TSpec`.                                           |
+| `BlockHandle<K, TSpec>`  | A typed block handle for block type `K` with property specs `TSpec`.                     |
+| `BlockHandleOf<S>`       | The discriminated union over every block handle of `S`, plus the root handle.            |
+| `FieldHandle<V, Spec>`   | A typed field handle: value, spec and setter of one property.                            |
+| `FieldHandleOf<S, K, P>` | `FieldHandle` for property `P` of block type `K` (or `'root'`) in `S`.                   |
+| `TypedEditorApi<S>`      | `useEditor()`'s return type, with `add` restricted to `S`'s block types.                 |
+| `TypedAddOptions<S, K>`  | `add`'s options for block type `K`: `parentId`, optional `index`, optional `properties`. |
+| `TypedPaletteItems<S>`   | `PaletteItem[]` with `type` narrowed; `never` when `S` has no static blocks.             |
+| `EditorTypes<S>`         | Phantom bag of the derived types (`typeof editor.types.tree`, …); `{}` at runtime.       |
+| `EditorFactory<S>`       | What `createEditor` returns.                                                             |
+| `CreateEditorOptions<S>` | `createEditor`'s options: `{ schema: S }`.                                               |
 
 ## Schema helpers (pure, no React)
 
@@ -124,10 +192,16 @@ changing a value back by hand counts as clean again. Structural changes call
 
 ## Types
 
-| Type                 | Description                               |
-| -------------------- | ----------------------------------------- |
-| `EditorRootProps`    | Props of `Editor.Root`.                   |
-| `EditorContextValue` | What `Editor.Root` shares with its parts. |
+| Type                 | Description                                                                        |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| `EditorRootProps`    | Props of `Editor.Root`.                                                            |
+| `EditorContextValue` | What `Editor.Root` shares with its parts.                                          |
+| `EditorSelector<T>`  | A `useEditorSelector`/`useStoreSelector` selector function.                        |
+| `EditorApi`          | `useEditor()`'s return type: the store's methods plus `schema`, `userId`, `store`. |
+| `AnyBlockHandle`     | `useAnyBlock`'s return type: a block's data, specs and setters.                    |
+| `AnyFieldHandle`     | `useAnyField`'s return type: one property's value, spec and setter.                |
+| `HistoryApi`         | `useHistory`'s return type: `{ canUndo, canRedo, undo, redo }`.                    |
+| `SaveApi`            | `useSave`'s return type: `{ dirty, saving, save, markSaved }`.                     |
 
 ## Data attributes
 
@@ -137,7 +211,11 @@ changing a value back by hand counts as clean again. Structural changes call
 
 | File                        | Covers                                                                                                      |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `editor.test.tsx`           | Root provides context; parts outside Root throw.                                                            |
+| `editor.test.tsx`           | Root provides context, store and user; parts outside Root throw.                                            |
+| `binding.test.tsx`          | `shallowEqual`; `useEditorSelector` re-render/memoisation behaviour; prop-closure recomputation.            |
+| `hooks.test.tsx`            | Every untyped hook, Root callbacks (`onChange`/`onSave`, latest-callback semantics), `key`-based reset.     |
+| `factory.test.tsx`          | `createEditor`'s runtime shape, typed narrowing at runtime, the schema guard, nested factories.             |
+| `factory.type-check.ts`     | Compile-time: the derived types (`TreeOf`, `BlockHandleOf`, …) against a representative schema.             |
 | `schema/placement.test.ts`  | `getPlacement`/`canPlace`/`allowedChildTypes` — placement semantics table, edge cases with ad-hoc schemas.  |
 | `schema/defaults.test.ts`   | `defaultValuesFor` — declared-default-only semantics, `fillDefaults`, fresh-object-per-call.                |
 | `schema/fields.test.ts`     | `propertiesOf`/`groupFields`/`paletteItems`/`groupPaletteItems` — ordering and grouping rules.              |
