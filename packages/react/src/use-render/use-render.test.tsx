@@ -105,7 +105,10 @@ describe('useRender — render as element', () => {
     function StyledProbe() {
       return useRender({
         defaultTagName: 'button',
-        props: { style: { color: 'red' }, 'data-testid': 'probe' } as never,
+        props: {
+          style: { color: 'red' },
+          'data-testid': 'probe',
+        } as React.ComponentPropsWithRef<'button'>,
         render: <button style={{ background: 'blue' }} />,
       });
     }
@@ -121,7 +124,10 @@ describe('useRender — render as element', () => {
     function RefProbe() {
       return useRender({
         defaultTagName: 'button',
-        props: { ref: internalRef, 'data-testid': 'probe' } as never,
+        props: {
+          ref: internalRef,
+          'data-testid': 'probe',
+        } as React.ComponentPropsWithRef<'button'>,
         render: <button ref={consumerRef} />,
       });
     }
@@ -139,7 +145,10 @@ describe('useRender — render as element', () => {
     function ClickProbe() {
       return useRender({
         defaultTagName: 'button',
-        props: { onClick: internalOnClick, 'data-testid': 'probe' } as never,
+        props: {
+          onClick: internalOnClick,
+          'data-testid': 'probe',
+        } as React.ComponentPropsWithRef<'button'>,
         render: <button onClick={consumerOnClick} />,
       });
     }
@@ -161,7 +170,9 @@ describe('useRender — render as function', () => {
         render: (props, state) => (
           <button {...props} type="button" data-was-open={String(state.open)} />
         ),
-        props: { 'data-testid': 'probe' } as never,
+        props: {
+          'data-testid': 'probe',
+        } as React.ComponentPropsWithRef<'button'>,
       });
     }
     const { getByTestId } = render(<FunctionProbe />);
