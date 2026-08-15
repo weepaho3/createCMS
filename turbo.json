@@ -11,7 +11,12 @@
       "dependsOn": ["^build"]
     },
     "test": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build"],
+      // The docs-coverage tests (src/**/docs-*.test.ts) read the MDX under
+      // apps/docs as an input, so a docs-only edit MUST bust this cache —
+      // without the extra input turbo would replay a stale pass and the whole
+      // point of the tests (catching docs drift) would be defeated.
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/apps/docs/content/docs/**"]
     },
     "clean": {
       "cache": false

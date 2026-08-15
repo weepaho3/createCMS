@@ -91,7 +91,7 @@ Identity helper for the auth middleware, for full inference. The middleware rece
 
 ## Block properties
 
-Every property is one of nine field types. The common shape:
+Every property is one of ten field types. The common shape:
 
 ```ts
 {
@@ -107,15 +107,56 @@ Every property is one of nine field types. The common shape:
 
 | `type` | Value | Extra config |
 | --- | --- | --- |
-| `string` | `string` | |
-| `number` | `number` | |
+| `string` | `string` | `minLength?`, `maxLength?`, `pattern?` |
+| `number` | `number` | `min?`, `max?` |
 | `boolean` | `boolean` | |
 | `date` | `string` (ISO) | |
-| `richText` | `string` (HTML) | |
+| `richText` | `string` (HTML) | `minLength?`, `maxLength?`, `pattern?` |
 | `image` | `string` (asset reference) | |
 | `select` | one of `options[].value` | `options: { label, value }[]` |
 | `reference` | target `rootId` string | `collection: string` |
 | `link` | `LinkValue` (internal / external / email / phone) | `allowedKinds?`, `allowedCollections?` |
+| `list` | ordered array of `of` values | `of` (required), `min?`, `max?` — see [`list` properties](#list-properties) |
+
+### Constraints
+
+The extra config on the text and number types is declarative validation, enforced server-side by the generated zod schema — not an editor hint.
+
+| Field | Applies to | Meaning |
+| --- | --- | --- |
+| `minLength` / `maxLength` | `string`, `richText` | Bounds on the string length. |
+| `pattern` | `string`, `richText` | A JS `RegExp` **source** string the value must match, e.g. `'^[a-z-]+$'`. Write the source, not `/…/`. |
+| `min` / `max` | `number` | Inclusive bounds on the value. |
+
+The same constraints apply to list elements of those types (`of: { type: 'string', maxLength: 24 }`). On a `list` itself, `min` / `max` bound the array **length** instead.
+
+## `list` properties
+
+A `list` holds an ordered JSON array whose every element matches `of`. A list **of `reference`** is a multi-reference: its elements are walked by the reference and usage machinery exactly like a single `reference`. A list has no `defaultValue`, and nested-object elements are deliberately out of scope.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `type` | `'list'` | yes | Discriminates the spec. |
+| `of` | `ListElementSpec` | yes | The element descriptor (see below). |
+| `label` | `string` | yes | Human label for the field. |
+| `required` | `boolean` | no | Whether the property must be present. |
+| `min` | `number` | no | Minimum number of elements (inclusive). |
+| `max` | `number` | no | Maximum number of elements (inclusive). |
+| `description` | `string` | no | Optional description. |
+| `placeholder` | `string` | no | Editor placeholder. |
+| `group` | `string` | no | Editor field-group hint, as on any other property. |
+
+`of` is `{ type }` plus whatever extra config that type carries as a scalar — `options` for `select`, `collection` for `reference`, the constraints above for `string` / `richText` / `number`. Every single-value type may be an element **except `link`**.
+
+```ts
+const post = defineBlock({
+  label: 'Post',
+  properties: {
+    tags: { type: 'list', label: 'Tags', of: { type: 'string', maxLength: 24 }, max: 10 },
+    related: { type: 'list', label: 'Related', of: { type: 'reference', collection: 'posts' } },
+  },
+});
+```
 
 ## Slug config
 
