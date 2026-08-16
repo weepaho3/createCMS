@@ -84,7 +84,21 @@ describe('namespace shape', () => {
     ]);
   });
 
-  it('Canvas exposes exactly Root', () => {
-    expect(Object.keys(Canvas)).toEqual(['Root']);
+  it('Canvas exposes exactly Root, Overlay and the rings', () => {
+    expect(Object.keys(Canvas)).toEqual([
+      'Root',
+      'Overlay',
+      'SelectionRing',
+      'HoverRing',
+      'FieldRing',
+    ]);
+  });
+});
+
+describe('Canvas.Overlay', () => {
+  it('throws a precise error when used outside Canvas.Root', () => {
+    expect(() => render(<Canvas.Overlay />)).toThrow(
+      'Canvas.Overlay must be used within a Canvas.Root component.',
+    );
   });
 });

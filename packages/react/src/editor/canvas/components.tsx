@@ -3,17 +3,19 @@ import type { BlockProperty } from '@createcms/schema';
 import * as React from 'react';
 
 import type { UseRenderComponentProps } from '../../use-render';
-import type { CanvasResolveContextValue } from './context';
+import type { CanvasContextValue } from './context';
 import type { CanvasComponents } from './map';
+import type { Measurer } from './measurer';
 import type { CanvasResolve, ResolveKind } from './resolve';
 
 import { composeRefs, useRender } from '../../use-render';
 import { useEditorSelector } from '../binding';
 import { useEditorContext } from '../context';
-import { CanvasResolveContext } from './context';
+import { CanvasContext } from './context';
 import { createEditCache, type EditCache } from './edit';
 import { handleCanvasClick, handleCanvasPointerOver } from './interact';
 import { resolveComponentMap } from './map';
+import { createMeasurer } from './measurer';
 import { renderStoreTree } from './renderer';
 import { createResolveCache, readResolved, type ResolveCache } from './resolve';
 
@@ -99,6 +101,22 @@ export function CanvasRoot({
   }
 
   const hostRef = React.useRef<HTMLDivElement | null>(null);
+  const measurerRef = React.useRef<Measurer | null>(null);
+  const [hostEl, setHostEl] = React.useState<HTMLElement | null>(null);
+  const [measurer, setMeasurer] = React.useState<Measurer | null>(null);
+
+  React.useLayoutEffect(() => {
+    const node = hostRef.current;
+    if (!node) return;
+    const next = createMeasurer(node);
+    measurerRef.current = next;
+    setHostEl(node);
+    setMeasurer(next);
+    return () => {
+      next.destroy();
+      measurerRef.current = null;
+    };
+  }, []);
 
   React.useLayoutEffect(() => {
     const host = hostRef.current;
@@ -157,14 +175,21 @@ export function CanvasRoot({
     edits: editsRef.current,
   });
 
-  const resolveContext = React.useMemo((): CanvasResolveContextValue => {
+  const read = React.useMemo(() => {
     const cache = cacheRef.current!;
-    return {
-      read(kind: ResolveKind, value: unknown, spec: BlockProperty) {
-        return readResolved(kind, value, spec, resolveRef.current, cache);
-      },
-    };
+    return (kind: ResolveKind, value: unknown, spec: BlockProperty) =>
+      readResolved(kind, value, spec, resolveRef.current, cache);
   }, []);
+
+  const canvasContext = React.useMemo((): CanvasContextValue => {
+    return {
+      read,
+      host: hostEl,
+      measurer,
+      dragging: false,
+      editing,
+    };
+  }, [read, hostEl, measurer, editing]);
 
   const host = useRender<'div', CanvasRootState>({
     defaultTagName: 'div',
@@ -188,8 +213,8 @@ export function CanvasRoot({
   });
 
   return (
-    <CanvasResolveContext.Provider value={resolveContext}>
+    <CanvasContext.Provider value={canvasContext}>
       {host}
-    </CanvasResolveContext.Provider>
+    </CanvasContext.Provider>
   );
 }

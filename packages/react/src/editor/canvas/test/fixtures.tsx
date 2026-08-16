@@ -1,4 +1,9 @@
-import type { EditAttrs, EditProps } from '@createcms/schema';
+import type {
+  BlockTreeNode,
+  CollectionDefinition,
+  EditAttrs,
+  EditProps,
+} from '@createcms/schema';
 import type { ReactNode } from 'react';
 
 import type { CanvasComponents } from '../map';
@@ -85,4 +90,122 @@ export const canvasBlocks = {
   heading: Heading,
   paragraph: Paragraph,
   section: Section,
+} as unknown as CanvasComponents;
+
+export const nestedTextSchema = {
+  label: 'Pages',
+  root: { properties: {} },
+  blocks: {
+    outer: {
+      label: 'Outer',
+      allowChildren: true,
+      properties: { text: { type: 'string', label: 'Text' } },
+    },
+    inner: {
+      label: 'Inner',
+      properties: { text: { type: 'string', label: 'Text' } },
+    },
+  },
+  structure: { outer: { accepts: ['inner'] } },
+} satisfies CollectionDefinition;
+
+export function nestedTextTree(): BlockTreeNode {
+  return {
+    blockId: 'root_1',
+    type: 'root',
+    properties: {},
+    children: [
+      {
+        blockId: 'outer1',
+        type: 'outer',
+        properties: { text: 'Outer' },
+        children: [
+          {
+            blockId: 'inner1',
+            type: 'inner',
+            properties: { text: 'Inner' },
+            children: [],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+export function TextNest({
+  properties,
+  edit,
+  children,
+}: {
+  properties: { text: string };
+  edit: EditProps;
+  children?: ReactNode;
+}) {
+  return (
+    <section {...edit.block}>
+      <p
+        {...edit.field.text}
+        style={{
+          boxSizing: 'border-box',
+          width: 200,
+          height: 24,
+          margin: 0,
+        }}
+      >
+        {properties.text}
+      </p>
+      {children}
+    </section>
+  );
+}
+
+export const nestedTextBlocks = {
+  outer: TextNest,
+  inner: TextNest,
+} as unknown as CanvasComponents;
+
+export const unionSchema = {
+  label: 'Pages',
+  root: { properties: {} },
+  blocks: {
+    pair: {
+      label: 'Pair',
+      properties: {},
+    },
+  },
+} satisfies CollectionDefinition;
+
+export function unionTree(): BlockTreeNode {
+  return {
+    blockId: 'root_1',
+    type: 'root',
+    properties: {},
+    children: [
+      {
+        blockId: 'pair1',
+        type: 'pair',
+        properties: {},
+        children: [],
+      },
+    ],
+  };
+}
+
+export function Pair({ edit }: { edit: EditProps }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'row' }}>
+      <div
+        {...edit.block}
+        style={{ boxSizing: 'border-box', width: 80, height: 40 }}
+      />
+      <div
+        {...edit.block}
+        style={{ boxSizing: 'border-box', width: 80, height: 40 }}
+      />
+    </div>
+  );
+}
+
+export const unionBlocks = {
+  pair: Pair,
 } as unknown as CanvasComponents;
