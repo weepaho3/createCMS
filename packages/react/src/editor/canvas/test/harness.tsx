@@ -1,10 +1,18 @@
+import type { BlockTreeNode } from '@createcms/schema';
 import type { ReactNode } from 'react';
 
 import { render, type RenderResult } from '@testing-library/react';
 
-import { Editor } from '../../index';
+import type { AnyEditorSchema } from '../../schema';
+import type { EditorStore } from '../../store';
+import type { CanvasInteractive } from '../components';
+import type { CanvasComponents } from '../map';
+import type { CanvasResolve } from '../resolve';
+
+import { Editor, useEditorContext } from '../../index';
 import { makeTree, storeSchema } from '../../store/fixtures';
 import { Canvas } from '../index';
+import { canvasBlocks } from './fixtures';
 
 export const CANVAS_HOST = { width: 800, height: 600 } as const;
 
@@ -36,21 +44,36 @@ export function rectClose(
 }
 
 export type RenderCanvasOptions = {
-  schema?: typeof storeSchema;
-  tree?: ReturnType<typeof makeTree>;
+  schema?: AnyEditorSchema;
+  tree?: BlockTreeNode;
+  components?: CanvasComponents;
+  interactive?: CanvasInteractive;
+  resolve?: CanvasResolve;
 };
 
+type StoreProbeBag = { store: EditorStore | null };
+
+function StoreProbe({ probe }: { probe: StoreProbeBag }) {
+  probe.store = useEditorContext('StoreProbe').store;
+  return null;
+}
+
 export function renderCanvas(
-  children: ReactNode,
+  overlayChildren?: ReactNode,
   options?: RenderCanvasOptions,
-): RenderResult & { host: HTMLElement } {
+): RenderResult & { host: HTMLElement; store: EditorStore } {
+  const probe: StoreProbeBag = { store: null };
   const utils = render(
     <Editor.Root
       schema={options?.schema ?? storeSchema}
       defaultValue={options?.tree ?? makeTree()}
     >
+      <StoreProbe probe={probe} />
       <Canvas.Root
         data-testid="canvas"
+        components={options?.components ?? canvasBlocks}
+        interactive={options?.interactive}
+        resolve={options?.resolve}
         style={{
           position: 'relative',
           boxSizing: 'border-box',
@@ -59,12 +82,13 @@ export function renderCanvas(
           overflow: 'auto',
         }}
       >
-        {children}
+        {overlayChildren}
       </Canvas.Root>
     </Editor.Root>,
   );
+  if (!probe.store) throw new Error('store probe did not mount');
   const host = utils.getByTestId('canvas');
-  return { ...utils, host };
+  return { ...utils, host, store: probe.store };
 }
 
 export function waitForLayout(element: Element): Promise<DOMRect> {

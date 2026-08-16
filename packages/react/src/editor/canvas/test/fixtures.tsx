@@ -1,6 +1,8 @@
 import type { EditAttrs, EditProps } from '@createcms/schema';
 import type { ReactNode } from 'react';
 
+import type { CanvasComponents } from '../map';
+
 import { makeTree, storeSchema } from '../../store/fixtures';
 
 export { makeTree, storeSchema };
@@ -83,4 +85,4 @@ export const canvasBlocks = {
   heading: Heading,
   paragraph: Paragraph,
   section: Section,
-} as const;
+} as unknown as CanvasComponents;

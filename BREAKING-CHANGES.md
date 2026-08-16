@@ -52,6 +52,14 @@ on, schema changes are picked up with `createcms generate` + a Drizzle migration
 
 ## Unreleased
 
+- **`@createcms/react`: `Canvas.Root` requires `components` and renders the
+  store tree.** Pass a block map (the same object `createBlocksMap` returns
+  is accepted via `_components`). `children` are no longer the document;
+  they render after the tree (overlay). `surface="frame"` throws.
+  → **Migration:** `<Canvas.Root components={pageBlocks} />` under
+  `Editor.Root`; move previous children that were the page markup into the
+  map.
+
 - **`BlockComponentProps` gains a required `edit` prop and its `properties`
   is no longer `| undefined`.** Every block component the renderer calls now
   receives `edit` (`{ active, block, field }`, plain data — `NO_EDIT` outside

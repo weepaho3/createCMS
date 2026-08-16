@@ -3,6 +3,7 @@ import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { Canvas } from './canvas/index';
+import { canvasBlocks } from './canvas/test/fixtures';
 import { Editor, useEditorContext } from './index';
 import { makeTree, storeSchema } from './store/fixtures';
 
@@ -52,7 +53,7 @@ describe('Canvas.Root shares the editor context', () => {
   it('renders inside Editor.Root with the presence marker attribute', () => {
     const { getByTestId } = render(
       <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
-        <Canvas.Root data-testid="c" />
+        <Canvas.Root data-testid="c" components={canvasBlocks} />
       </Editor.Root>,
     );
     const el = getByTestId('c');
@@ -60,7 +61,7 @@ describe('Canvas.Root shares the editor context', () => {
   });
 
   it('throws a precise error when used outside Editor.Root', () => {
-    expect(() => render(<Canvas.Root />)).toThrow(
+    expect(() => render(<Canvas.Root components={{}} />)).toThrow(
       'Canvas.Root must be used within an Editor.Root component.',
     );
   });
