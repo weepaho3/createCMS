@@ -46,6 +46,7 @@ const EXPECTED: Record<string, Record<string, Expected>> = {
     listRoots: { permissionResource: 'root', operation: 'read' },
     createBlock: { permissionResource: 'block', operation: 'create' },
     getBlockTree: { permissionResource: 'block', operation: 'read' },
+    resolveTree: { permissionResource: 'block', operation: 'read' },
     moveBlock: { permissionResource: 'block', operation: 'update' },
     deleteBlock: { permissionResource: 'block', operation: 'delete' },
     // duplicateBlock is now child-duplication only — the root-mode branch

@@ -35,7 +35,10 @@ import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError, errorMessages } from '../errors';
 import { resolveLinkPaths } from '../links';
 import { coreReferenceResolver, getReferenceUsageDetails } from '../references';
-import { buildReferencePreviews } from '../references-render';
+import {
+  buildReferencePreviews,
+  resolveTreeReferences,
+} from '../references-render';
 import {
   buildBlockInputSchema,
   buildPropertiesSchema,
@@ -48,7 +51,7 @@ import { loadVariables, substituteVariables } from '../variables';
 import { blockTreeNodeSchema, type BlocksContext } from './blocks-context';
 
 // ============================================================================
-// Block endpoints (8): createBlock, getBlockTree, moveBlock, deleteBlock,
+// Block endpoints (9): createBlock, getBlockTree, resolveTree, moveBlock, deleteBlock,
 // duplicateBlock, updateBlock, updateBlocks, getReferenceUsages
 // ============================================================================
 
@@ -380,6 +383,135 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
         } as unknown as {
           tree: InferBlockTreeNode<TDef['blocks'], TDef['root']['properties']>;
           reconstructed: boolean;
+          references?: Record<string, BlockTreeNode>;
+        };
+      },
+    ),
+
+    /**
+     * Resolve a posted, unsaved tree the way `getBlockTree` (without `raw`)
+     * resolves a stored one: variables substituted, links resolved to their
+     * current href, and — on request — the published preview of every embedded
+     * reference as a `references` sidecar and/or the references inlined into
+     * the tree. Nothing is persisted and no commit is written; the tree is not
+     * validated against the schema (unknown block types and undeclared
+     * properties pass through untouched), so an editor can preview a
+     * half-finished tree.
+     * @param rootId Root id (scope gate: the root must exist in the caller's scope and this collection).
+     * @param branchId Branch of that root (must exist; not read).
+     * @param tree The tree to resolve, root node first (`type: 'root'` as `getBlockTree` returns it).
+     * @param includeReferencePreviews Also return the `references` sidecar (published previews keyed by the stored reference value).
+     * @param inlineReferences Replace reference values by their resolved published trees inside `tree` (the `getPublishedContent` shape).
+     * @returns The resolved tree and, when requested, the `references` sidecar.
+     * @throws ROOT_NOT_FOUND when the root is not in scope or not in this collection.
+     * @throws BRANCH_NOT_FOUND when the branch does not belong to the root.
+     * @example
+     * const { tree } = await cmsClient.pages.resolveTree({
+     *   rootId: 'root_123',
+     *   branchId: 'br_main',
+     *   tree: editedTree,
+     * });
+     */
+    resolveTree: createCMSEndpoint(
+      `/${collectionName}/resolveTree`,
+      {
+        method: 'POST',
+        body: z.object({
+          rootId: z.string(),
+          branchId: z.string(),
+          tree: z.lazy(() => blockTreeNodeSchema) as z.ZodType<BlockTreeNode>,
+          includeReferencePreviews: z.boolean().optional(),
+          inlineReferences: z.boolean().optional(),
+        }),
+        metadata: cmsMeta(
+          {
+            $Infer: {
+              body: {} as {
+                rootId: string;
+                branchId: string;
+                tree: BlockTreeNode;
+                includeReferencePreviews?: boolean;
+                inlineReferences?: boolean;
+              },
+            },
+          },
+          {
+            permissionResource: 'block',
+            operation: 'read',
+            scope: 'collection',
+            collection: collectionName,
+          },
+        ),
+      },
+      async (ctx) => {
+        const { rootId, branchId, tree, includeReferencePreviews, inlineReferences } =
+          ctx.body;
+
+        // Scope gate first (closes IDOR via rootId): the root must exist in the
+        // caller's scope and belong to this collection.
+        await requireRootInScope(
+          db,
+          rootId,
+          collectionName,
+          ctx.context.scope.roots,
+        );
+        const [branch] = await db
+          .select({ id: branches.id })
+          .from(branches)
+          .where(and(eq(branches.id, branchId), eq(branches.rootId, rootId)));
+        if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
+
+        const scope = ctx.context.scope;
+        const resolver = scope.referenceResolver ?? coreReferenceResolver;
+        const scopeColumns = crossScopeColumns(scope.roots);
+        const vars = await loadVariables(db, scope);
+
+        // The sidecar is keyed by the STORED reference values, so it is built
+        // from the tree as posted — before any inlining replaces those values.
+        let references: Record<string, BlockTreeNode> | undefined;
+        if (includeReferencePreviews) {
+          references = await buildReferencePreviews(
+            db,
+            tree,
+            def,
+            cmsCtx.collections,
+            resolver,
+            scopeColumns,
+            vars,
+            scope.abTestResolver,
+          );
+        }
+
+        // Same order as the published render: inline references first, then
+        // variables and links, so both also apply inside inlined subtrees.
+        if (inlineReferences) {
+          await resolveTreeReferences(
+            db,
+            tree,
+            def,
+            cmsCtx.collections,
+            resolver,
+            scopeColumns,
+            new Set([rootId]),
+            0,
+            scope.abTestResolver,
+          );
+        }
+        substituteVariables(tree, vars);
+        await resolveLinkPaths(
+          db,
+          tree,
+          def,
+          cmsCtx.collections,
+          resolver,
+          scopeColumns,
+        );
+
+        return {
+          tree,
+          ...(references ? { references } : {}),
+        } as unknown as {
+          tree: InferBlockTreeNode<TDef['blocks'], TDef['root']['properties']>;
           references?: Record<string, BlockTreeNode>;
         };
       },
