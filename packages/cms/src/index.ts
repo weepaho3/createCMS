@@ -95,6 +95,12 @@ export type {
   CollectionStructure,
   BlockProperty,
   BlockPropertyType,
+  ListBlockPropertySpec,
+  ListElementSpec,
+  ListElementType,
+  SelectOption,
+  StringConstraints,
+  NumberConstraints,
   AnyBlockDefinition,
   ScalarBlockProperty,
   EventDeclaration,
@@ -139,6 +145,11 @@ export type {
 } from './core/types/definitions';
 
 export { normalizeSlug, buildFullPath, splitPath } from './core/slug';
+export {
+  VAR_PATTERN,
+  extractVariableKeys,
+  resolveTemplateString,
+} from './core/variables-template';
 export { rootRevalidateTag } from './core/revalidation';
 
 // Block placement — build a per-collection index once, then query it with the
