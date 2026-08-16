@@ -55,18 +55,19 @@ function BlockFields({ blockId }: { blockId: string }) {
 
 ## Parts
 
-| Part                      | Default element                                 | Props                                                                                                         | Data attributes                                                                                  |
-| ------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `Editor.Root`             | none (provider)                                 | `schema` (required), `defaultValue` (required), `onChange`, `onSave`, `genId`, `userId`, `fields`, `children` | none                                                                                             |
-| `Editor.Field`            | `div`                                           | `blockId` (required), `name` (required), `disabled`, `render`, div props                                      | `data-kind`, `data-required`, `data-invalid`, `data-disabled`, `data-focused`                    |
-| `Editor.FieldLabel`       | `label`                                         | `render`, label props (`children` replaces the spec's `label`)                                                | `data-required`, `data-invalid`, `data-disabled`                                                 |
-| `Editor.FieldControl`     | the resolved control (see below)                | `render`                                                                                                      | none                                                                                             |
-| `Editor.FieldDescription` | `p`                                             | `render`, p props (`children` replaces the spec's `description`)                                              | none                                                                                             |
-| `Editor.FieldError`       | `p` with `role="alert"`, rendered while invalid | `render`, p props (`children` replaces the joined messages)                                                   | `data-invalid`                                                                                   |
-| `Editor.Form`             | `div`                                           | `blockId` (required), `disabled`, `autoScroll`, `render`, div props                                           | `data-block-type`, `data-block-id`; each named group is a `fieldset[data-group]` with a `legend` |
-| `Editor.Preview`          | `div`                                           | `render` (required, tree callback), `debounceMs`, div props                                                   | `data-stale` while a version change is pending                                                   |
-| `Editor.OutlineItem`      | `div` with `role="treeitem"`                    | `blockId` (required), `onDelete`, `render`, div props                                                         | `data-selected`, `data-depth`, `data-has-children`, `data-block-id`, `data-block-type`           |
-| `Editor.AddBlock`         | `button`                                        | `type` (required), `parentId`, `index`, `render`, button props (`children` replaces the palette label)        | `data-block-type`                                                                                |
+| Part                      | Default element                                 | Props                                                                                                                                  | Data attributes                                                                                  |
+| ------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `Editor.Root`             | none (provider)                                 | `schema` (required), `defaultValue` (required), `onChange`, `onSave`, `genId`, `userId`, `fields`, `children`                          | none                                                                                             |
+| `Editor.Field`            | `div`                                           | `blockId` (required), `name` (required), `disabled`, `render`, div props                                                               | `data-kind`, `data-required`, `data-invalid`, `data-disabled`, `data-focused`                    |
+| `Editor.FieldLabel`       | `label`                                         | `render`, label props (`children` replaces the spec's `label`)                                                                         | `data-required`, `data-invalid`, `data-disabled`                                                 |
+| `Editor.FieldControl`     | the resolved control (see below)                | `render`                                                                                                                               | none                                                                                             |
+| `Editor.FieldDescription` | `p`                                             | `render`, p props (`children` replaces the spec's `description`)                                                                       | none                                                                                             |
+| `Editor.FieldError`       | `p` with `role="alert"`, rendered while invalid | `render`, p props (`children` replaces the joined messages)                                                                            | `data-invalid`                                                                                   |
+| `Editor.Form`             | `div`                                           | `blockId` (required), `disabled`, `autoScroll`, `render`, div props                                                                    | `data-block-type`, `data-block-id`; each named group is a `fieldset[data-group]` with a `legend` |
+| `Editor.Preview`          | `div`                                           | `render` (required, tree callback), `debounceMs`, div props                                                                            | `data-stale` while a version change is pending                                                   |
+| `Editor.FramePreview`     | `div` wrapping two iframes                      | `render` (required, async compiler), `debounceMs`, `selectable`, `resolveAnchor`, `onIssues`, `onError`, `sandbox`, `title`, div props | `data-loading`, `data-stale`, `data-error`, `data-kind` (`html` or `blob`)                       |
+| `Editor.OutlineItem`      | `div` with `role="treeitem"`                    | `blockId` (required), `onDelete`, `render`, div props                                                                                  | `data-selected`, `data-depth`, `data-has-children`, `data-block-id`, `data-block-type`           |
+| `Editor.AddBlock`         | `button`                                        | `type` (required), `parentId`, `index`, `render`, button props (`children` replaces the palette label)                                 | `data-block-type`                                                                                |
 
 Uncontrolled (`key` resets): `schema`, `defaultValue`, `genId`, `userId` and
 `fields` are read once at mount; render with a different `key` to load
@@ -79,6 +80,29 @@ animation frame; `debounceMs={0}` still waits one frame). The consumer maps
 that tree (for example a `BlocksRenderer` or a PDF viewer). `data-stale` is
 present while an update is pending. `render` is the tree callback, not a
 host swap: the host is always a `div`.
+
+`Editor.FramePreview` compiles the raw store tree through
+`render(tree, { signal })` after the same delay. `render` is typically a
+Server Action (email HTML) or an in-browser compile (WASM PDF). The
+callback receives the raw tree; the consumer resolves unsaved state
+themselves (for example a `resolveTree` POST) before compiling. A string
+result is shown as `srcDoc`; a Blob is shown as an object URL. The host is
+always a `div` wrapping two stacked iframes. `data-stale` is present while
+a newer version is pending; `data-loading` while a compile for the current
+version is in flight; `data-error` when the latest non-aborted compile
+failed; `data-kind` is `html` or `blob` after the first successful display.
+`title` (default `"Preview"`) is the accessible name of both iframes, not a
+div title.
+
+The default sandbox is empty. `selectable` adds `allow-same-origin` so
+clicks can be read. Scripts, forms and top navigation stay out of the
+sandbox (those tokens are stripped if passed). `selectable` is HTML only:
+a click on `[data-editor-block]` / `[data-editor-field]` (or a
+`resolveAnchor` hit) writes `store.select` / `store.focus`. Blob output has
+no reverse click. `onIssues` runs after an HTML compile with
+`relative-url` (relative `src`/`href`), `missing-href` (an `a` without
+`href`), and one `preview-anchors` when leftover `data-editor-*`
+attributes remain. Send-time HTML must not carry editor anchors.
 
 `Editor.Form autoScroll` scrolls this form into view on each store focus
 change that targets its `blockId` (`scrollIntoView` with `block: 'nearest'`;
@@ -216,14 +240,15 @@ drag and drop in `/editor`.
 
 ## Focus
 
-| Event                                     | Focus                                                                                                                         |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Tab into a field                          | `store.focus({ blockId, key })` once (not on every keystroke). `data-focused` mirrors that.                                   |
-| `Editor.Form autoScroll`                  | The form host scrolls into view (`block: 'nearest'`) on each store focus change that targets that form.                       |
-| Delete/Backspace on `Editor.OutlineItem`  | Neighbour row (next treeitem outside this subtree, else previous) is selected and focused; no neighbour clears the selection. |
-| Alt+Arrow reorder on `Editor.OutlineItem` | Focus is restored on the moved row after the DOM move.                                                                        |
-| `useEditorKeyboard` Delete/Escape         | Store only; the hook does not move DOM focus.                                                                                 |
-| Escape on `Editor.OutlineItem`            | Selection cleared; focus stays.                                                                                               |
+| Event                                                          | Focus                                                                                                                         |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Tab into a field                                               | `store.focus({ blockId, key })` once (not on every keystroke). `data-focused` mirrors that.                                   |
+| Click a preview anchor in `Editor.FramePreview` (`selectable`) | `store.select` / `store.focus`; the matching `[data-editor-block]` gets `data-editor-focused` and scrolls into view.          |
+| `Editor.Form autoScroll`                                       | The form host scrolls into view (`block: 'nearest'`) on each store focus change that targets that form.                       |
+| Delete/Backspace on `Editor.OutlineItem`                       | Neighbour row (next treeitem outside this subtree, else previous) is selected and focused; no neighbour clears the selection. |
+| Alt+Arrow reorder on `Editor.OutlineItem`                      | Focus is restored on the moved row after the DOM move.                                                                        |
+| `useEditorKeyboard` Delete/Escape                              | Store only; the hook does not move DOM focus.                                                                                 |
+| Escape on `Editor.OutlineItem`                                 | Selection cleared; focus stays.                                                                                               |
 
 A canvas that is not interactive sets `inert` on its surface so pointer and
 keyboard do not reach the host markup. Motion (rings, indicators, reorder)
@@ -254,11 +279,12 @@ the end state immediately.
 
 ## createEditor(options)
 
-`createEditor({ schema })` binds `Editor.Root`, `Preview` and every hook
-above (including `useEditorKeyboard`) to one schema: `Root` has `schema`
-pre-set and `defaultValue` typed as
-`TreeOf<typeof schema>`; `Preview`'s `render` callback receives
-`TreeOf<typeof schema>`; `useBlock`/`useField` narrow on the schema's
+`createEditor({ schema })` binds `Editor.Root`, `Preview`, `FramePreview`
+and every hook above (including `useEditorKeyboard`) to one schema: `Root`
+has `schema` pre-set and `defaultValue` typed as `TreeOf<typeof schema>`;
+`Preview`'s `render` callback receives `TreeOf<typeof schema>`;
+`FramePreview`'s `render` callback receives `TreeOf<typeof schema>` plus
+`{ signal }`; `useBlock`/`useField` narrow on the schema's
 declared block types; `useChildren` returns `ChildRefOf<S>[]` and
 `useBlockActions` returns `TypedBlockActions<S>`; `add` and `usePalette`
 resolve to `never` for a schema without statically known blocks. Every
@@ -414,76 +440,86 @@ changing a value back by hand counts as clean again. Structural changes call
 
 ## Types
 
-| Type                          | Description                                                                                                           |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `EditorRootProps`             | Props of `Editor.Root`.                                                                                               |
-| `EditorContextValue`          | What `Editor.Root` shares with its parts (`schema`, `store`, `userId`, `fields`, `registerScrollTarget`, `scrollTo`). |
-| `EditorKeyboardOptions`       | Options for `useEditorKeyboard`: `{ delete?, escape? }`.                                                              |
-| `EditorSelector<T>`           | A `useEditorSelector`/`useStoreSelector` selector function.                                                           |
-| `EditorApi`                   | `useEditor()`'s return type: the store's methods plus `schema`, `userId`, `store`, `scrollTo`.                        |
-| `EditorScrollToOptions`       | `scrollTo` options: `ScrollIntoViewOptions` plus optional `container`.                                                |
-| `EditorPreviewProps`          | Props of `Editor.Preview`: `render(tree)`, `debounceMs?`, div props.                                                  |
-| `AnyBlockHandle`              | `useAnyBlock`'s return type: a block's data, specs and setters.                                                       |
-| `AnyFieldHandle`              | `useAnyField`'s return type: one property's value, spec and setter.                                                   |
-| `HistoryApi`                  | `useHistory`'s return type: `{ canUndo, canRedo, undo, redo }`.                                                       |
-| `SaveApi`                     | `useSave`'s return type: `{ dirty, saving, save, markSaved }`.                                                        |
-| `EditorFieldProps`            | Props of `Editor.Field`: `blockId`, `name`, `disabled?`, `render?`, div props.                                        |
-| `EditorFieldLabelProps`       | Props of `Editor.FieldLabel`: `render?`, label props.                                                                 |
-| `EditorFieldControlProps`     | Props of `Editor.FieldControl`: `render?(props: AnyFieldControlProps)`.                                               |
-| `EditorFieldDescriptionProps` | Props of `Editor.FieldDescription`: `render?`, p props.                                                               |
-| `EditorFieldErrorProps`       | Props of `Editor.FieldError`: `render?`, p props.                                                                     |
-| `EditorFormProps`             | Props of `Editor.Form`: `blockId`, `disabled?`, `autoScroll?`, `render?`, div props.                                  |
-| `FieldControlProps<K>`        | What a control of kind `K` receives (`spec`, `value`, `onChange`, ids, flags).                                        |
-| `AnyFieldControlProps`        | The wide form (`spec: BlockProperty`, `value: unknown`) `render` receives.                                            |
-| `FieldControls`               | The `fields` map of `Editor.Root`: one optional control component per kind.                                           |
-| `FieldContextValue`           | What `Editor.Field` shares with the parts below it (`useFieldContext`).                                               |
-| `ListElementControlProps`     | What a list element's control receives (`spec`, `value`, `index`, ...).                                               |
-| `ListElementRender`           | `(props: ListElementControlProps) => ReactElement \| null`, passed to `list` controls.                                |
-| `ChildRef`                    | One child of a block: `{ id, type, index }`.                                                                          |
-| `BlockActions`                | Structural actions of one block (`add`/`remove`/`duplicate`/`moveUp`/`moveDown`).                                     |
-| `EditorOutlineItemProps`      | Props of `Editor.OutlineItem`: `blockId`, `onDelete?`, `render?`, div props.                                          |
-| `EditorAddBlockProps`         | Props of `Editor.AddBlock`: `type`, `parentId?`, `index?`, `render?`, button props.                                   |
-| `OutlineItemState`            | `useRender` state of `Editor.OutlineItem`.                                                                            |
-| `AddBlockState`               | `useRender` state of `Editor.AddBlock` (`{ blockType }`).                                                             |
+| Type                          | Description                                                                                                                                                           |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `EditorRootProps`             | Props of `Editor.Root`.                                                                                                                                               |
+| `EditorContextValue`          | What `Editor.Root` shares with its parts (`schema`, `store`, `userId`, `fields`, `registerScrollTarget`, `scrollTo`).                                                 |
+| `EditorKeyboardOptions`       | Options for `useEditorKeyboard`: `{ delete?, escape? }`.                                                                                                              |
+| `EditorSelector<T>`           | A `useEditorSelector`/`useStoreSelector` selector function.                                                                                                           |
+| `EditorApi`                   | `useEditor()`'s return type: the store's methods plus `schema`, `userId`, `store`, `scrollTo`.                                                                        |
+| `EditorScrollToOptions`       | `scrollTo` options: `ScrollIntoViewOptions` plus optional `container`.                                                                                                |
+| `EditorPreviewProps`          | Props of `Editor.Preview`: `render(tree)`, `debounceMs?`, div props.                                                                                                  |
+| `EditorFramePreviewProps`     | Props of `Editor.FramePreview`: `render(tree, { signal })`, `debounceMs?`, `selectable?`, `resolveAnchor?`, `onIssues?`, `onError?`, `sandbox?`, `title?`, div props. |
+| `FramePreviewIssue`           | One `onIssues` finding: `relative-url`, `missing-href`, or `preview-anchors`.                                                                                         |
+| `FramePreviewAnchor`          | `{ blockId, key? }` resolved from a click in a selectable frame.                                                                                                      |
+| `FramePreviewKind`            | `'html'` or `'blob'`, the last successfully displayed compile kind.                                                                                                   |
+| `AnyBlockHandle`              | `useAnyBlock`'s return type: a block's data, specs and setters.                                                                                                       |
+| `AnyFieldHandle`              | `useAnyField`'s return type: one property's value, spec and setter.                                                                                                   |
+| `HistoryApi`                  | `useHistory`'s return type: `{ canUndo, canRedo, undo, redo }`.                                                                                                       |
+| `SaveApi`                     | `useSave`'s return type: `{ dirty, saving, save, markSaved }`.                                                                                                        |
+| `EditorFieldProps`            | Props of `Editor.Field`: `blockId`, `name`, `disabled?`, `render?`, div props.                                                                                        |
+| `EditorFieldLabelProps`       | Props of `Editor.FieldLabel`: `render?`, label props.                                                                                                                 |
+| `EditorFieldControlProps`     | Props of `Editor.FieldControl`: `render?(props: AnyFieldControlProps)`.                                                                                               |
+| `EditorFieldDescriptionProps` | Props of `Editor.FieldDescription`: `render?`, p props.                                                                                                               |
+| `EditorFieldErrorProps`       | Props of `Editor.FieldError`: `render?`, p props.                                                                                                                     |
+| `EditorFormProps`             | Props of `Editor.Form`: `blockId`, `disabled?`, `autoScroll?`, `render?`, div props.                                                                                  |
+| `FieldControlProps<K>`        | What a control of kind `K` receives (`spec`, `value`, `onChange`, ids, flags).                                                                                        |
+| `AnyFieldControlProps`        | The wide form (`spec: BlockProperty`, `value: unknown`) `render` receives.                                                                                            |
+| `FieldControls`               | The `fields` map of `Editor.Root`: one optional control component per kind.                                                                                           |
+| `FieldContextValue`           | What `Editor.Field` shares with the parts below it (`useFieldContext`).                                                                                               |
+| `ListElementControlProps`     | What a list element's control receives (`spec`, `value`, `index`, ...).                                                                                               |
+| `ListElementRender`           | `(props: ListElementControlProps) => ReactElement \| null`, passed to `list` controls.                                                                                |
+| `ChildRef`                    | One child of a block: `{ id, type, index }`.                                                                                                                          |
+| `BlockActions`                | Structural actions of one block (`add`/`remove`/`duplicate`/`moveUp`/`moveDown`).                                                                                     |
+| `EditorOutlineItemProps`      | Props of `Editor.OutlineItem`: `blockId`, `onDelete?`, `render?`, div props.                                                                                          |
+| `EditorAddBlockProps`         | Props of `Editor.AddBlock`: `type`, `parentId?`, `index?`, `render?`, button props.                                                                                   |
+| `OutlineItemState`            | `useRender` state of `Editor.OutlineItem`.                                                                                                                            |
+| `AddBlockState`               | `useRender` state of `Editor.AddBlock` (`{ blockType }`).                                                                                                             |
 
 ## Data attributes
 
-| Attribute           | On                                                       | Meaning                                                                         |
-| ------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `data-kind`         | `Editor.Field`                                           | The property kind (`spec.type`).                                                |
-| `data-required`     | `Editor.Field`, `Editor.FieldLabel`                      | Present when the spec is `required`.                                            |
-| `data-invalid`      | `Editor.Field`, `Editor.FieldLabel`, `Editor.FieldError` | Present while `validateField` reports at least one finding.                     |
-| `data-disabled`     | `Editor.Field`, `Editor.FieldLabel`                      | Present when the field is `disabled`.                                           |
-| `data-focused`      | `Editor.Field`                                           | Present while the store's focused field (local user) is this one.               |
-| `data-stale`        | `Editor.Preview`                                         | Present while a store version change is pending display.                        |
-| `data-block-type`   | `Editor.Form`, `Editor.OutlineItem`, `Editor.AddBlock`   | The block type (`root` on a form for the root; the palette type on `AddBlock`). |
-| `data-block-id`     | `Editor.Form`, `Editor.OutlineItem`                      | The block this form or row represents.                                          |
-| `data-group`        | `fieldset` inside `Editor.Form`                          | The group label of the fields inside.                                           |
-| `data-selected`     | `Editor.OutlineItem`                                     | Present while this row is the local user's selected block.                      |
-| `data-depth`        | `Editor.OutlineItem`                                     | Hops from the root (root children are `1`).                                     |
-| `data-has-children` | `Editor.OutlineItem`                                     | Present when the block has at least one child.                                  |
+| Attribute           | On                                                       | Meaning                                                                                                          |
+| ------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `data-kind`         | `Editor.Field`, `Editor.FramePreview`                    | On Field: the property kind (`spec.type`). On FramePreview: `html` or `blob` after the first successful display. |
+| `data-required`     | `Editor.Field`, `Editor.FieldLabel`                      | Present when the spec is `required`.                                                                             |
+| `data-invalid`      | `Editor.Field`, `Editor.FieldLabel`, `Editor.FieldError` | Present while `validateField` reports at least one finding.                                                      |
+| `data-disabled`     | `Editor.Field`, `Editor.FieldLabel`                      | Present when the field is `disabled`.                                                                            |
+| `data-focused`      | `Editor.Field`                                           | Present while the store's focused field (local user) is this one.                                                |
+| `data-stale`        | `Editor.Preview`, `Editor.FramePreview`                  | Present while a store version change is pending display.                                                         |
+| `data-loading`      | `Editor.FramePreview`                                    | Present while a compile for the current version is in flight.                                                    |
+| `data-error`        | `Editor.FramePreview`                                    | Present when the latest non-aborted compile failed.                                                              |
+| `data-block-type`   | `Editor.Form`, `Editor.OutlineItem`, `Editor.AddBlock`   | The block type (`root` on a form for the root; the palette type on `AddBlock`).                                  |
+| `data-block-id`     | `Editor.Form`, `Editor.OutlineItem`                      | The block this form or row represents.                                                                           |
+| `data-group`        | `fieldset` inside `Editor.Form`                          | The group label of the fields inside.                                                                            |
+| `data-selected`     | `Editor.OutlineItem`                                     | Present while this row is the local user's selected block.                                                       |
+| `data-depth`        | `Editor.OutlineItem`                                     | Hops from the root (root children are `1`).                                                                      |
+| `data-has-children` | `Editor.OutlineItem`                                     | Present when the block has at least one child.                                                                   |
 
 ## Tests
 
-| File                                | Covers                                                                                                                                                                                              |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `editor.test.tsx`                   | Root provides context, store and user; parts outside Root throw; namespace keys.                                                                                                                    |
-| `keyboard.test.tsx`                 | `useEditorKeyboard`: undo/redo (including inside inputs), `preventDefault`, optional Delete/Escape, throw outside Root.                                                                             |
-| `editor-ssr.test.tsx`               | `renderToString` then `hydrateRoot` of `Editor.Root` + `Editor.Form`; no hydration mismatch.                                                                                                        |
-| `binding.test.tsx`                  | `shallowEqual`; `useEditorSelector` re-render/memoisation behaviour; prop-closure recomputation.                                                                                                    |
-| `hooks.test.tsx`                    | Every untyped hook including `useChildren` child refs and `useBlockActions`, Root callbacks, `key`-based reset, `scrollTo`.                                                                         |
-| `factory.test.tsx`                  | `createEditor`'s runtime shape (incl. `useBlockActions`, `useEditorKeyboard`, `Preview`), typed narrowing at runtime, the schema guard, nested factories.                                           |
-| `factory.type-check.ts`             | Compile-time: the derived types (`TreeOf`, `BlockHandleOf`, `ChildRefOf`, `TypedBlockActions`, factory `Preview` tree arg, `scrollTo`) against a representative schema.                             |
-| `field/field.test.tsx`              | Built-in controls, control resolution (render/map/default, warn-once), label/description/error wiring, focus sync, coalesced typing, `Editor.Form` grouping and `autoScroll`, `useMissingRequired`. |
-| `field/field.type-check.ts`         | Compile-time: per-kind `FieldControlProps`, the `FieldControls` map, `fields` on Root and context.                                                                                                  |
-| `preview/preview.test.tsx`          | Debounced raw-tree updates, collapse of rapid ops, no update on focus, throw outside Root, Field/store focus roundtrip, invoice form + PDFViewer placeholder.                                       |
-| `structure/structure.test.tsx`      | `Editor.OutlineItem` keyboard/aria/selection, `Editor.AddBlock` insert-point rule, stacked-form acceptance.                                                                                         |
-| `structure/structure.type-check.ts` | Compile-time: `onDelete` return, required `type` on `AddBlock`, factory `useChildren`/`TypedBlockActions`.                                                                                          |
-| `schema/placement.test.ts`          | `getPlacement`/`canPlace`/`allowedChildTypes`: placement semantics table, edge cases with ad-hoc schemas.                                                                                           |
-| `schema/defaults.test.ts`           | `defaultValuesFor`: declared-default-only semantics, `fillDefaults`, fresh-object-per-call.                                                                                                         |
-| `schema/fields.test.ts`             | `propertiesOf`/`groupFields`/`paletteItems`/`groupPaletteItems`: ordering and grouping rules.                                                                                                       |
-| `schema/validation.test.ts`         | `isEmptyValue`/`validateField`/`missingRequired`: required gate, per-kind constraints, list elements.                                                                                               |
-| `store/hash.test.ts`                | `stableHash`: key-order-insensitive, array-order-sensitive, `undefined` dropped, `null` kept.                                                                                                       |
-| `store/serde.test.ts`               | `flattenTree`/`serializeToTree`: shape, root type kept, round-trip, subtree, dangling id, property copies.                                                                                          |
-| `store/ops.test.ts`                 | `applyOp`: every op kind, its guards, its inverse, roundtrips, JSON-serialisability.                                                                                                                |
-| `store/store.test.ts`               | `createEditorStore`: actions, placement guards, undo/redo, coalescing, `applyRemote`, selection, save.                                                                                              |
+| File                                     | Covers                                                                                                                                                                                              |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `editor.test.tsx`                        | Root provides context, store and user; parts outside Root throw; namespace keys.                                                                                                                    |
+| `keyboard.test.tsx`                      | `useEditorKeyboard`: undo/redo (including inside inputs), `preventDefault`, optional Delete/Escape, throw outside Root.                                                                             |
+| `editor-ssr.test.tsx`                    | `renderToString` then `hydrateRoot` of `Editor.Root` + `Editor.Form`; no hydration mismatch.                                                                                                        |
+| `binding.test.tsx`                       | `shallowEqual`; `useEditorSelector` re-render/memoisation behaviour; prop-closure recomputation.                                                                                                    |
+| `hooks.test.tsx`                         | Every untyped hook including `useChildren` child refs and `useBlockActions`, Root callbacks, `key`-based reset, `scrollTo`.                                                                         |
+| `factory.test.tsx`                       | `createEditor`'s runtime shape (incl. `useBlockActions`, `useEditorKeyboard`, `Preview`, `FramePreview`), typed narrowing at runtime, the schema guard, nested factories.                           |
+| `factory.type-check.ts`                  | Compile-time: the derived types (`TreeOf`, `BlockHandleOf`, `ChildRefOf`, `TypedBlockActions`, factory `Preview`/`FramePreview` tree arg, `scrollTo`) against a representative schema.              |
+| `field/field.test.tsx`                   | Built-in controls, control resolution (render/map/default, warn-once), label/description/error wiring, focus sync, coalesced typing, `Editor.Form` grouping and `autoScroll`, `useMissingRequired`. |
+| `field/field.type-check.ts`              | Compile-time: per-kind `FieldControlProps`, the `FieldControls` map, `fields` on Root and context.                                                                                                  |
+| `preview/preview.test.tsx`               | Debounced raw-tree updates, collapse of rapid ops, no update on focus, throw outside Root, Field/store focus roundtrip, invoice form + PDFViewer placeholder.                                       |
+| `preview/frame-sandbox.test.ts`          | Sandbox token default, `selectable` `allow-same-origin`, forbidden tokens stripped, no duplicate `allow-same-origin`.                                                                               |
+| `preview/frame-issues.test.ts`           | Relative `src`/`href`, absolute forms, missing `href`, one `preview-anchors` finding.                                                                                                               |
+| `preview/frame-anchor.test.ts`           | Field inside its block, nested block does not steal the outer id, `resolveAnchor` win and fallthrough.                                                                                              |
+| `preview/frame-preview.browser.test.tsx` | Chromium: double buffer, sequence race, selectable click, reverse `data-editor-focused`, blob revoke, sandbox attributes, stacked form + FramePreview, invoice Blob.                                |
+| `structure/structure.test.tsx`           | `Editor.OutlineItem` keyboard/aria/selection, `Editor.AddBlock` insert-point rule, stacked-form acceptance.                                                                                         |
+| `structure/structure.type-check.ts`      | Compile-time: `onDelete` return, required `type` on `AddBlock`, factory `useChildren`/`TypedBlockActions`.                                                                                          |
+| `schema/placement.test.ts`               | `getPlacement`/`canPlace`/`allowedChildTypes`: placement semantics table, edge cases with ad-hoc schemas.                                                                                           |
+| `schema/defaults.test.ts`                | `defaultValuesFor`: declared-default-only semantics, `fillDefaults`, fresh-object-per-call.                                                                                                         |
+| `schema/fields.test.ts`                  | `propertiesOf`/`groupFields`/`paletteItems`/`groupPaletteItems`: ordering and grouping rules.                                                                                                       |
+| `schema/validation.test.ts`              | `isEmptyValue`/`validateField`/`missingRequired`: required gate, per-kind constraints, list elements.                                                                                               |
+| `store/hash.test.ts`                     | `stableHash`: key-order-insensitive, array-order-sensitive, `undefined` dropped, `null` kept.                                                                                                       |
+| `store/serde.test.ts`                    | `flattenTree`/`serializeToTree`: shape, root type kept, round-trip, subtree, dangling id, property copies.                                                                                          |
+| `store/ops.test.ts`                      | `applyOp`: every op kind, its guards, its inverse, roundtrips, JSON-serialisability.                                                                                                                |
+| `store/store.test.ts`                    | `createEditorStore`: actions, placement guards, undo/redo, coalescing, `applyRemote`, selection, save.                                                                                              |

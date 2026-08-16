@@ -17,7 +17,7 @@ import type {
   HistoryApi,
   SaveApi,
 } from './hooks';
-import type { EditorPreviewProps } from './preview';
+import type { EditorFramePreviewProps, EditorPreviewProps } from './preview';
 import type { AnyEditorSchema, PaletteItem } from './schema';
 import type { UpdateOptions, UserSelection } from './store';
 
@@ -36,7 +36,7 @@ import {
   useSelection,
 } from './hooks';
 import { useEditorKeyboard } from './keyboard';
-import { EditorPreview } from './preview';
+import { EditorFramePreview, EditorPreview } from './preview';
 
 // ---------------------------------------------------------------------------
 // Type derivations from a schema
@@ -223,6 +223,14 @@ export type EditorFactory<S extends AnyEditorSchema> = {
       render: (tree: TreeOf<S>) => React.ReactNode;
     },
   ) => React.JSX.Element;
+  FramePreview: (
+    props: Omit<EditorFramePreviewProps, 'render'> & {
+      render: (
+        tree: TreeOf<S>,
+        ctx: { signal: AbortSignal },
+      ) => Promise<string | Blob>;
+    },
+  ) => React.JSX.Element;
   useEditor(): TypedEditorApi<S>;
   useBlock(id: string | null): BlockHandleOf<S> | null;
   useField<
@@ -299,10 +307,34 @@ export function createEditor<const S extends AnyEditorSchema>(
     );
   }
 
+  function FramePreview(
+    props: Omit<EditorFramePreviewProps, 'render'> & {
+      render: (
+        tree: TreeOf<S>,
+        ctx: { signal: AbortSignal },
+      ) => Promise<string | Blob>;
+    },
+  ): React.JSX.Element {
+    assertSchema('FramePreview');
+    const { render, ...rest } = props;
+    return (
+      <EditorFramePreview
+        {...rest}
+        render={
+          render as (
+            tree: BlockTreeNode,
+            ctx: { signal: AbortSignal },
+          ) => Promise<string | Blob>
+        }
+      />
+    );
+  }
+
   return {
     schema,
     Root,
     Preview,
+    FramePreview,
     useEditor() {
       assertSchema('useEditor');
       return useEditor() as TypedEditorApi<S>;

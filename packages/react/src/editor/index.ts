@@ -12,7 +12,7 @@ import {
   EditorFieldLabel,
   EditorForm,
 } from './field';
-import { EditorPreview } from './preview';
+import { EditorFramePreview, EditorPreview } from './preview';
 import { EditorAddBlock, EditorOutlineItem } from './structure';
 
 export type { EditorRootProps } from './components';
@@ -28,6 +28,7 @@ export const Editor = {
   FieldError: EditorFieldError,
   Form: EditorForm,
   Preview: EditorPreview,
+  FramePreview: EditorFramePreview,
   OutlineItem: EditorOutlineItem,
   AddBlock: EditorAddBlock,
 };
@@ -55,8 +56,14 @@ export {
   useFieldContext,
 } from './field';
 
-// Preview: delayed raw-tree render.
-export type { EditorPreviewProps } from './preview';
+// Preview: delayed raw-tree render and compiled iframe output.
+export type {
+  EditorFramePreviewProps,
+  EditorPreviewProps,
+  FramePreviewAnchor,
+  FramePreviewIssue,
+  FramePreviewKind,
+} from './preview';
 export { PREVIEW_DEBOUNCE_MS } from './preview';
 
 // Structure parts: outline row and palette insert button.
