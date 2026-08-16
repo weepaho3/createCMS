@@ -93,6 +93,10 @@ describe('namespace shape', () => {
       'FieldRing',
       'BlockToolbar',
       'InsertButton',
+      'DragHandle',
+      'PaletteItem',
+      'DropIndicator',
+      'DragPreview',
     ]);
   });
 });

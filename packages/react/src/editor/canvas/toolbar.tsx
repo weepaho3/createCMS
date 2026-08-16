@@ -8,14 +8,13 @@ import { useEditorSelector } from '../binding';
 import { useEditorContext } from '../context';
 import { placementOf, useBlockActions } from '../hooks';
 import { canPlace } from '../schema';
-import { blockElements } from './anchors';
 import { useCanvasContext } from './context';
 import {
-  flowIsHorizontal,
   parentTypeOf,
   resolveInsertAt,
   type InsertOrientation,
 } from './insert';
+import { createInsertAdapters } from './insert-dom';
 import { useBlockRect } from './rects';
 
 const subscribeNoop = () => () => {};
@@ -68,30 +67,7 @@ export function useInsertTarget(options?: {
     return null;
   }
 
-  const getRect = (id: string) => {
-    const measured = measurer.getBlockRect(id);
-    if (measured) return measured;
-    if (id === rootId) {
-      return {
-        x: 0,
-        y: 0,
-        width: host.clientWidth,
-        height: host.clientHeight,
-      };
-    }
-    return null;
-  };
-
-  const isRowFlow = (parentId: string) => {
-    const parent = nodes[parentId];
-    if (!parent) return false;
-    for (const childId of parent.childIds) {
-      const els = blockElements(host, childId);
-      const el = els[0];
-      if (el instanceof HTMLElement) return flowIsHorizontal(el);
-    }
-    return false;
-  };
+  const adapters = createInsertAdapters(host, measurer, nodes, rootId);
 
   const next = resolveInsertAt(
     nodes,
@@ -103,8 +79,8 @@ export function useInsertTarget(options?: {
     {
       draggedType: options?.type,
       draggedId: options?.draggedId,
-      getRect,
-      isRowFlow,
+      getRect: adapters.getRect,
+      isRowFlow: adapters.isRowFlow,
     },
   );
 

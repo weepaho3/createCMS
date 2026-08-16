@@ -5,6 +5,12 @@
 // so form-only consumers never install it.
 import { CanvasRoot } from './components';
 import {
+  CanvasDragHandle,
+  CanvasDragPreview,
+  CanvasDropIndicator,
+  CanvasPaletteItem,
+} from './dnd-parts';
+import {
   CanvasFieldRing,
   CanvasHoverRing,
   CanvasOverlay,
@@ -29,6 +35,12 @@ export type {
   CanvasInsertButtonProps,
 } from './toolbar';
 export type {
+  CanvasDragHandleProps,
+  CanvasDragPreviewProps,
+  CanvasDropIndicatorProps,
+  CanvasPaletteItemProps,
+} from './dnd-parts';
+export type {
   CanvasFieldRingProps,
   CanvasHoverRingProps,
   CanvasOverlayProps,
@@ -38,6 +50,7 @@ export type {
 export type { CanvasRect } from './rect';
 export type { CanvasResolve, ResolveKind } from './resolve';
 export type { PointerSnapshot, PointerStore } from './pointer';
+export type { DragSession } from './dnd';
 export { useBlockRect, useFieldRect } from './rects';
 export { useResolved } from './resolve';
 export {
@@ -45,6 +58,7 @@ export {
   INSERT_LINE_THICKNESS,
   resolveInsertAt,
 } from './insert';
+export { adjustMoveIndex, blockIdAtPoint, DND_THRESHOLD_PX } from './dnd';
 export { useInsertTarget } from './toolbar';
 
 export const Canvas = {
@@ -55,4 +69,8 @@ export const Canvas = {
   FieldRing: CanvasFieldRing,
   BlockToolbar: CanvasBlockToolbar,
   InsertButton: CanvasInsertButton,
+  DragHandle: CanvasDragHandle,
+  PaletteItem: CanvasPaletteItem,
+  DropIndicator: CanvasDropIndicator,
+  DragPreview: CanvasDragPreview,
 };
