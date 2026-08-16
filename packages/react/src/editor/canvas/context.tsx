@@ -3,6 +3,7 @@ import type { BlockProperty } from '@createcms/schema';
 import * as React from 'react';
 
 import type { CanvasInteractive } from './components';
+import type { DndStore } from './dnd';
 import type { Measurer } from './measurer';
 import type { PointerStore } from './pointer';
 
@@ -18,6 +19,7 @@ export type CanvasContextValue = CanvasResolveContextValue & {
   host: HTMLElement | null;
   measurer: Measurer | null;
   pointer: PointerStore | null;
+  dnd: DndStore | null;
   interactive: CanvasInteractive;
   dragging: boolean;
   editing: boolean;

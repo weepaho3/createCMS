@@ -26,6 +26,10 @@ function PageCanvas({ schema, tree, pageBlocks }) {
             {/* consumer buttons via useBlockActions(selectedId) */}
           </Canvas.BlockToolbar>
           <Canvas.InsertButton placement="between" type="paragraph" />
+          <Canvas.DragHandle blockId="selectedBlockId" />
+          <Canvas.PaletteItem type="paragraph" />
+          <Canvas.DropIndicator />
+          <Canvas.DragPreview />
         </Canvas.Overlay>
       </Canvas.Root>
     </Editor.Root>
@@ -52,15 +56,19 @@ The primitive does not set `position` on the host. Overlay is
 
 ## Parts
 
-| Part                   | Default element | Props                                                                                                                       | Data attributes                                                                                        |
-| ---------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `Canvas.Root`          | `div`           | `components` (required), `surface`, `interactive`, `resolve`, `children` (overlay), `render`, div props                     | `data-editor-canvas`, `data-interactive`, `data-dragging`, `data-editing`                              |
-| `Canvas.Overlay`       | `div`           | `render`, div props. Portals into the canvas host.                                                                          | `data-editor-overlay`                                                                                  |
-| `Canvas.SelectionRing` | `div`           | `render`, div props. Sized from the selected block rect.                                                                    | `data-editor-selection-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved` |
-| `Canvas.HoverRing`     | `div`           | `render`, div props. Hidden while dragging, editing, or when hovered equals selected.                                       | `data-editor-hover-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`     |
-| `Canvas.FieldRing`     | `div`           | `render`, div props. Sized from the focused field rect (own-block only).                                                    | `data-editor-field-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`     |
-| `Canvas.BlockToolbar`  | `div`           | `align`, `side`, `offset`, `render`, div props. Consumer supplies buttons. Shown in `edit` and `select`.                    | `data-editor-block-toolbar`, `data-side`, `data-block-type`                                            |
-| `Canvas.InsertButton`  | `button`        | `placement` (`between` \| `container`), optional `type`, optional `onInsert`, `render`, button props. Shown only in `edit`. | `data-editor-insert-button`, `data-orientation`, `data-empty-container`                                |
+| Part                   | Default element | Props                                                                                                                          | Data attributes                                                                                           |
+| ---------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `Canvas.Root`          | `div`           | `components` (required), `surface`, `interactive`, `resolve`, `children` (overlay), `render`, div props                        | `data-editor-canvas`, `data-interactive`, `data-dragging`, `data-editing`                                 |
+| `Canvas.Overlay`       | `div`           | `render`, div props. Portals into the canvas host.                                                                             | `data-editor-overlay`                                                                                     |
+| `Canvas.SelectionRing` | `div`           | `render`, div props. Sized from the selected block rect.                                                                       | `data-editor-selection-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`    |
+| `Canvas.HoverRing`     | `div`           | `render`, div props. Hidden while dragging, editing, or when hovered equals selected.                                          | `data-editor-hover-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
+| `Canvas.FieldRing`     | `div`           | `render`, div props. Sized from the focused field rect (own-block only).                                                       | `data-editor-field-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
+| `Canvas.BlockToolbar`  | `div`           | `align`, `side`, `offset`, `render`, div props. Consumer supplies buttons. Shown in `edit` and `select`.                       | `data-editor-block-toolbar`, `data-side`, `data-block-type`                                               |
+| `Canvas.InsertButton`  | `button`        | `placement` (`between` \| `container`), optional `type`, optional `onInsert`, `render`, button props. Shown only in `edit`.    | `data-editor-insert-button`, `data-orientation`, `data-empty-container`                                   |
+| `Canvas.DragHandle`    | `button`        | `blockId` (required), `render`, button props. Move an existing block by pointer drag. Shown only in `edit`.                    | `data-editor-drag-handle`, `data-dragging` on the handle while its block is the move session              |
+| `Canvas.PaletteItem`   | `button`        | `type` (required), optional `properties`, `render`, button props. Click inserts like `Editor.AddBlock`; drag adds by geometry. | `data-editor-palette-item`, `data-block-type`, `data-dragging` while this item starts a new-block session |
+| `Canvas.DropIndicator` | `div`           | `render`, div props. Line or box from the active drop target. Presentational.                                                  | `data-editor-drop-indicator`, `data-orientation`, `data-variant`, `data-kind` (`new` \| `move`)           |
+| `Canvas.DragPreview`   | `div`           | `render`, div props, optional children. Follows the pointer during a session. Presentational.                                  | `data-editor-drag-preview`, `data-kind` (`new` \| `move`)                                                 |
 
 ## Hooks
 
@@ -100,7 +108,7 @@ The primitive does not set `position` on the host. Overlay is
 | ---------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `data-editor-canvas`         | host                                 | Presence marker.                                                                                                                                        |
 | `data-interactive`           | host                                 | `'edit'`, `'select'`, or `'none'`.                                                                                                                      |
-| `data-dragging`              | host                                 | Present while dragging. Absent in this surface (no drag).                                                                                               |
+| `data-dragging`              | host, drag handle, palette item      | Present on the host while any canvas drag session is active; on a handle or palette item while that part owns the session.                              |
 | `data-editing`               | host                                 | Present while the local selection has an inline-editing target.                                                                                         |
 | `data-editor-block`          | block root via `edit.block`          | Document-tree block id.                                                                                                                                 |
 | `data-editor-field`          | field element via `edit.field.<key>` | Property key, counted only inside its own block.                                                                                                        |
@@ -112,6 +120,12 @@ The primitive does not set `position` on the host. Overlay is
 | `data-side`                  | `Canvas.BlockToolbar`                | `'top'` or `'bottom'`.                                                                                                                                  |
 | `data-orientation`           | `Canvas.InsertButton`                | `'horizontal'` or `'vertical'`.                                                                                                                         |
 | `data-empty-container`       | `Canvas.InsertButton`                | Present when the target variant is `box`.                                                                                                               |
+| `data-editor-drag-handle`    | `Canvas.DragHandle`                  | Presence marker.                                                                                                                                        |
+| `data-editor-palette-item`   | `Canvas.PaletteItem`                 | Presence marker.                                                                                                                                        |
+| `data-editor-drop-indicator` | `Canvas.DropIndicator`               | Presence marker. `aria-hidden`.                                                                                                                         |
+| `data-editor-drag-preview`   | `Canvas.DragPreview`                 | Presence marker. `aria-hidden`.                                                                                                                         |
+| `data-kind`                  | drop indicator, drag preview         | `'new'` or `'move'`.                                                                                                                                    |
+| `data-variant`               | `Canvas.DropIndicator`               | `'line'` or `'box'`.                                                                                                                                    |
 | `data-editor-selection-ring` | `Canvas.SelectionRing`               | Presence marker.                                                                                                                                        |
 | `data-editor-hover-ring`     | `Canvas.HoverRing`                   | Presence marker.                                                                                                                                        |
 | `data-editor-field-ring`     | `Canvas.FieldRing`                   | Presence marker.                                                                                                                                        |
@@ -122,18 +136,22 @@ The primitive does not set `position` on the host. Overlay is
 ## Tests
 
 happy-dom (`editor.test.tsx`, `renderer.test.tsx`, `rect.test.ts`,
-`overlay.test.tsx`, `insert.test.ts`, `toolbar.test.tsx`) covers context
-sharing, the throw outside `Editor.Root` / `Canvas.Root`, the store-tree
-walk, resolve cache, referenced readonly trees, click intercept, rect
-unions, readonly skip, nested field keys, Overlay portal, ring presence /
-hover suppression, pure insert geometry, toolbar / insert presence, and
-overlay chrome hover. Chromium (`canvas.browser.test.tsx`,
-`insert.browser.test.tsx`) covers layout, pointer coordinates, click
-select/focus, `interactive="select"` (no drag), `interactive="none"`, ring
+`overlay.test.tsx`, `insert.test.ts`, `toolbar.test.tsx`, `dnd.test.ts`,
+`dnd-parts.test.tsx`) covers context sharing, the throw outside
+`Editor.Root` / `Canvas.Root`, the store-tree walk, resolve cache,
+referenced readonly trees, click intercept, rect unions, readonly skip,
+nested field keys, Overlay portal, ring presence / hover suppression, pure
+insert geometry, toolbar / insert presence, overlay chrome hover, DnD
+store helpers, drag-handle threshold, palette click insert, escape cancel
+and drop-indicator gating. Chromium (`canvas.browser.test.tsx`,
+`insert.browser.test.tsx`, `dnd.browser.test.tsx`) covers layout, pointer
+coordinates, click select/focus, `interactive="select"` (no drag), `interactive="none"`, ring
 vs block `getBoundingClientRect` (1 px), resize, scroll without remeasure,
 nested field key, same-id union, column / row / grid insert lines, empty
-container box, toolbar placement, insert disabled gating, and select-mode
-toolbar without insert.
+container box, toolbar placement, insert disabled gating, select-mode
+toolbar without insert, pointer drag move and palette drop, drop
+indicator orientation, escape cancel, auto-scroll, touch input, forbidden
+placement, focus after drop and select-mode drag suppression.
 Unit tests never assert rects. Browser tests never screenshot; they assert
 rects and DOM. Helpers: `test/harness.tsx`, `test/fixtures.tsx` and
 `test/hero-fixtures.tsx` (not test files).
@@ -146,5 +164,8 @@ rects and DOM. Helpers: `test/harness.tsx`, `test/fixtures.tsx` and
 | `overlay.test.tsx`        | Overlay portal into host, `useBlockRect` callable, SelectionRing / FieldRing presence, HoverRing suppression.                                                                                          |
 | `insert.test.ts`          | Pure `resolveInsertAt`: column, row, grid wrap, empty box, walk-up `canPlace`, `draggedId` exclusion, globally nearest ancestor.                                                                       |
 | `toolbar.test.tsx`        | BlockToolbar / InsertButton throw outside Root, selection and `interactive="none"` gating, overlay chrome keeps hover.                                                                                 |
+| `dnd.test.ts`             | Pure DnD helpers: `adjustMoveIndex`, `blockIdAtPoint`, store threshold, session vs target subscriptions.                                                                                               |
+| `dnd-parts.test.tsx`      | DragHandle / PaletteItem / DropIndicator / DragPreview throw outside Root; palette click insert; disabled palette; drag threshold; escape cancel.                                                      |
 | `canvas.browser.test.tsx` | Chromium: host box, heading anchor rect, layout wait, pointer coordinates, click select/focus, select mode, none mode, ring alignment after layout / resize / scroll, nested field key, same-id union. |
 | `insert.browser.test.tsx` | Chromium: column / row / grid insert lines, empty container box, toolbar side / align, insert disabled gating, select mode without insert.                                                             |
+| `dnd.browser.test.tsx`    | Chromium: palette drop into empty stack, column and row sibling moves, escape cancel, auto-scroll, touch drag, forbidden placement, focus after drop, select mode without drag.                        |

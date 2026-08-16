@@ -49,6 +49,7 @@ export type RenderCanvasOptions = {
   components?: CanvasComponents;
   interactive?: CanvasInteractive;
   resolve?: CanvasResolve;
+  style?: React.CSSProperties;
 };
 
 type StoreProbeBag = { store: EditorStore | null };
@@ -80,6 +81,7 @@ export function renderCanvas(
           width: CANVAS_HOST.width,
           height: CANVAS_HOST.height,
           overflow: 'auto',
+          ...options?.style,
         }}
       >
         {overlayChildren}

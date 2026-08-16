@@ -12,6 +12,8 @@ import { composeRefs, useRender } from '../../use-render';
 import { useEditorSelector } from '../binding';
 import { useEditorContext } from '../context';
 import { CanvasContext } from './context';
+import { createDndStore, type DndStore } from './dnd';
+import { CanvasDndEffects } from './dnd-parts';
 import { createEditCache, type EditCache } from './edit';
 import { handleCanvasClick, handleCanvasPointerOver } from './interact';
 import { resolveComponentMap } from './map';
@@ -19,6 +21,8 @@ import { createMeasurer } from './measurer';
 import { createPointerStore, type PointerStore } from './pointer';
 import { renderStoreTree } from './renderer';
 import { createResolveCache, readResolved, type ResolveCache } from './resolve';
+
+const subscribeNoop = () => () => {};
 
 const warned = new Set<string>();
 
@@ -104,12 +108,17 @@ export function CanvasRoot({
   const hostRef = React.useRef<HTMLDivElement | null>(null);
   const measurerRef = React.useRef<Measurer | null>(null);
   const pointerRef = React.useRef<PointerStore | null>(null);
+  const dndRef = React.useRef<DndStore | null>(null);
   const [hostEl, setHostEl] = React.useState<HTMLElement | null>(null);
   const [measurer, setMeasurer] = React.useState<Measurer | null>(null);
   const [pointer, setPointer] = React.useState<PointerStore | null>(null);
+  const [dnd, setDnd] = React.useState<DndStore | null>(null);
 
   if (pointerRef.current === null) {
     pointerRef.current = createPointerStore();
+  }
+  if (dndRef.current === null) {
+    dndRef.current = createDndStore();
   }
 
   React.useLayoutEffect(() => {
@@ -120,8 +129,10 @@ export function CanvasRoot({
     setHostEl(node);
     setMeasurer(next);
     setPointer(pointerRef.current);
+    setDnd(dndRef.current);
     return () => {
       next.destroy();
+      dndRef.current?.destroy();
       measurerRef.current = null;
     };
   }, []);
@@ -157,6 +168,29 @@ export function CanvasRoot({
       host.removeEventListener('pointerover', onPointerOver);
       host.removeEventListener('pointermove', onPointerMove);
       host.removeEventListener('pointerleave', onPointerLeave);
+    };
+  }, [version]);
+
+  const dragging = React.useSyncExternalStore(
+    dnd ? dnd.subscribeSession : subscribeNoop,
+    () => (dnd ? dnd.getSession() !== null : false),
+    () => false,
+  );
+
+  React.useLayoutEffect(() => {
+    const host = hostRef.current;
+    const dndStore = dndRef.current;
+    if (!host || !dndStore) return;
+    const doc = host.ownerDocument;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || dndStore.getSession() === null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      dndStore.end();
+    };
+    doc.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      doc.removeEventListener('keydown', onKeyDown, true);
     };
   }, [version]);
 
@@ -207,11 +241,12 @@ export function CanvasRoot({
       host: hostEl,
       measurer,
       pointer,
+      dnd,
       interactive,
-      dragging: false,
+      dragging,
       editing,
     };
-  }, [read, hostEl, measurer, pointer, interactive, editing]);
+  }, [read, hostEl, measurer, pointer, dnd, interactive, dragging, editing]);
 
   const host = useRender<'div', CanvasRootState>({
     defaultTagName: 'div',
@@ -222,13 +257,14 @@ export function CanvasRoot({
       children: (
         <>
           {tree}
+          <CanvasDndEffects />
           {children}
         </>
       ),
     },
     state: {
       interactive,
-      dragging: false,
+      dragging,
       editing,
       editorCanvas: true,
     },
