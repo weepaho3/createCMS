@@ -12,6 +12,7 @@ import {
   EditorFieldLabel,
   EditorForm,
 } from './field';
+import { EditorAddBlock, EditorOutlineItem } from './structure';
 
 export type { EditorRootProps } from './components';
 export type { EditorContextValue } from './types';
@@ -25,6 +26,8 @@ export const Editor = {
   FieldDescription: EditorFieldDescription,
   FieldError: EditorFieldError,
   Form: EditorForm,
+  OutlineItem: EditorOutlineItem,
+  AddBlock: EditorAddBlock,
 };
 
 // Field parts: context, built-in controls and their prop types.
@@ -50,12 +53,22 @@ export {
   useFieldContext,
 } from './field';
 
+// Structure parts: outline row and palette insert button.
+export type {
+  AddBlockState,
+  EditorAddBlockProps,
+  EditorOutlineItemProps,
+  OutlineItemState,
+} from './structure';
+
 // React binding and untyped hooks.
 export type { EditorSelector } from './binding';
 export { shallowEqual, useEditorSelector, useEditorStore } from './binding';
 export type {
   AnyBlockHandle,
   AnyFieldHandle,
+  BlockActions,
+  ChildRef,
   EditorApi,
   HistoryApi,
   SaveApi,
@@ -63,6 +76,7 @@ export type {
 export {
   useAnyBlock,
   useAnyField,
+  useBlockActions,
   useChildren,
   useDirty,
   useEditor,
@@ -81,6 +95,7 @@ export type {
   BlockPropsOf,
   BlocksOf,
   BlockTypeOf,
+  ChildRefOf,
   CreateEditorOptions,
   EditorFactory,
   EditorTypes,
@@ -92,6 +107,7 @@ export type {
   RootPropsOf,
   TreeOf,
   TypedAddOptions,
+  TypedBlockActions,
   TypedEditorApi,
   TypedPaletteItems,
 } from './factory';

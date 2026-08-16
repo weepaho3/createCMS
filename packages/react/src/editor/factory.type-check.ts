@@ -209,9 +209,23 @@ type Palette = ReturnType<typeof factory.usePalette>;
 export type _paletteType = Expect<
   Equal<Palette[number]['type'], 'hero' | 'section'>
 >;
+type ChildType = ReturnType<typeof factory.useChildren>[number]['type'];
+export type _childType = Expect<Equal<ChildType, 'hero' | 'section'>>;
+factory.useBlockActions('x').add('hero', { properties: {} });
+// @ts-expect-error - unknown block type
+factory.useBlockActions('x').add('nope');
+export type _allowedChildTypes = Expect<
+  Equal<
+    ReturnType<typeof factory.useBlockActions>['allowedChildTypes'],
+    readonly ('hero' | 'section')[]
+  >
+>;
 declare const settingsFactory: EditorFactory<Settings>;
 export type _settingsPalette = Expect<
   Equal<ReturnType<typeof settingsFactory.usePalette>, never>
+>;
+export type _settingsChildType = Expect<
+  Equal<ReturnType<typeof settingsFactory.useChildren>[number]['type'], never>
 >;
 export type _typesTree = Expect<
   MutuallyAssignable<(typeof factory.types)['tree'], TreeOf<Pages>>

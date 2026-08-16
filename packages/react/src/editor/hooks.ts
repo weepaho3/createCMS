@@ -7,6 +7,7 @@ import type {
   AnyEditorSchema,
   MissingRequiredField,
   PaletteItem,
+  PlacementIndex,
   SchemaField,
 } from './schema';
 import type {
@@ -18,9 +19,14 @@ import type {
 
 import { useStoreSelector } from './binding';
 import { useEditorContext } from './context';
-import { missingRequired, paletteItems, propertiesOf } from './schema';
+import {
+  allowedChildTypes,
+  getPlacement,
+  missingRequired,
+  paletteItems,
+  propertiesOf,
+} from './schema';
 
-const EMPTY_IDS: readonly string[] = [];
 const EMPTY_SELECTION: UserSelection = {
   selected: null,
   hovered: null,
@@ -90,6 +96,42 @@ export type AnyBlockHandle = {
   set(key: string, value: unknown, options?: UpdateOptions): void;
   setProperties(patch: Record<string, unknown>, options?: UpdateOptions): void;
   field(key: string): AnyFieldHandle;
+};
+
+/** One child of a block: its id, type and position among its siblings. */
+export type ChildRef = {
+  readonly id: string;
+  readonly type: string;
+  readonly index: number;
+};
+
+/**
+ * The structural actions of one block, gated by the schema's placement
+ * rules; every action returns the store's verdict (`false`/`null` when
+ * the store rejects it). For the root only `add` applies. For an unknown
+ * id `type` is `null` and everything is inert.
+ */
+export type BlockActions = {
+  readonly id: string;
+  readonly type: string | null;
+  readonly parentId: string | null;
+  /** Position among the siblings; `-1` for the root or an unknown id. */
+  readonly index: number;
+  readonly canMoveUp: boolean;
+  readonly canMoveDown: boolean;
+  /** Whether the block may hold children at all (root: always). */
+  readonly canHaveChildren: boolean;
+  /** Block types this block accepts as children, in definition order. */
+  readonly allowedChildTypes: readonly string[];
+  /** Inserts a child of `type` under this block (append by default). */
+  add(
+    type: string,
+    options?: { index?: number; properties?: Record<string, unknown> },
+  ): string | null;
+  remove(): boolean;
+  duplicate(): string | null;
+  moveUp(): boolean;
+  moveDown(): boolean;
 };
 
 function makeBlockHandle(
@@ -180,13 +222,126 @@ export function useFields(blockId: string): SchemaField[] {
   );
 }
 
-/** The child ids of `parentId` in order — the same array reference until they change. */
-export function useChildren(parentId: string): readonly string[] {
+const EMPTY_CHILDREN: readonly ChildRef[] = [];
+
+function sameChildren(a: readonly ChildRef[], b: readonly ChildRef[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (x === undefined || y === undefined) return false;
+    if (x.id !== y.id || x.type !== y.type) return false;
+  }
+  return true;
+}
+
+/**
+ * The children of `parentId` in order as `{ id, type, index }`; the same
+ * array reference until ids or types change.
+ */
+export function useChildren(parentId: string): readonly ChildRef[] {
   const ctx = useEditorContext('useChildren');
   return useStoreSelector(
     ctx.store,
-    (state) => state.nodes[parentId]?.childIds ?? EMPTY_IDS,
+    (state) => {
+      const ids = state.nodes[parentId]?.childIds;
+      if (!ids || ids.length === 0) return EMPTY_CHILDREN;
+      return ids.map((id, index) => ({
+        id,
+        type: state.nodes[id]?.type ?? '',
+        index,
+      }));
+    },
+    sameChildren,
   );
+}
+
+const placementCache = new WeakMap<AnyEditorSchema, PlacementIndex>();
+
+/** `getPlacement(schema)`, built once per schema object. */
+export function placementOf(schema: AnyEditorSchema): PlacementIndex {
+  let index = placementCache.get(schema);
+  if (!index) {
+    index = getPlacement(schema);
+    placementCache.set(schema, index);
+  }
+  return index;
+}
+
+/**
+ * The structural actions of block `id` (see {@link BlockActions});
+ * re-renders when its type, parent or sibling position changes.
+ */
+export function useBlockActions(id: string): BlockActions {
+  const ctx = useEditorContext('useBlockActions');
+  const slice = useStoreSelector(ctx.store, (state) => {
+    const node = state.nodes[id];
+    if (!node) return { type: null, parentId: null, index: -1, siblings: 0 };
+    const parent = node.parentId === null ? null : state.nodes[node.parentId];
+    return {
+      type: node.type,
+      parentId: node.parentId,
+      index: parent ? parent.childIds.indexOf(id) : -1,
+      siblings: parent ? parent.childIds.length : 0,
+    };
+  });
+  const placement = placementOf(ctx.schema);
+  return React.useMemo<BlockActions>(() => {
+    const { type, parentId, index, siblings } = slice;
+    const store = ctx.store;
+    const isRoot = type !== null && parentId === null;
+    const placementType = isRoot ? 'root' : type;
+    const canHaveChildren =
+      placementType !== null &&
+      (placementType === 'root' || placement.containers.has(placementType));
+    return {
+      id,
+      type,
+      parentId,
+      index,
+      canMoveUp: type !== null && !isRoot && index > 0,
+      canMoveDown:
+        type !== null && !isRoot && index >= 0 && index < siblings - 1,
+      canHaveChildren,
+      allowedChildTypes:
+        placementType === null
+          ? []
+          : allowedChildTypes(placement, placementType),
+      add(childType, options) {
+        if (type === null) return null;
+        return store.add(childType, {
+          parentId: id,
+          index: options?.index,
+          properties: options?.properties,
+        });
+      },
+      remove() {
+        return type === null || isRoot ? false : store.remove(id);
+      },
+      duplicate() {
+        return type === null || isRoot ? null : store.duplicate(id);
+      },
+      moveUp() {
+        if (type === null || isRoot || parentId === null || index <= 0) {
+          return false;
+        }
+        return store.move(id, parentId, index - 1);
+      },
+      moveDown() {
+        if (
+          type === null ||
+          isRoot ||
+          parentId === null ||
+          index < 0 ||
+          index >= siblings - 1
+        ) {
+          return false;
+        }
+        return store.move(id, parentId, index + 1);
+      },
+    };
+  }, [ctx.store, id, slice, placement]);
 }
 
 /** The selection of `userId` (default: this editor's user). */

@@ -33,7 +33,7 @@ function rootWrapper(factory: EditorFactory<typeof storeSchema>) {
 }
 
 describe('createEditor', () => {
-  it('returns an object with schema, Root, the nine hooks and types', () => {
+  it('returns an object with schema, Root, the hooks and types', () => {
     const factory = createEditor({ schema: storeSchema });
     expect(factory.schema).toBe(storeSchema);
     expect(typeof factory.Root).toBe('function');
@@ -41,6 +41,7 @@ describe('createEditor', () => {
     expect(typeof factory.useBlock).toBe('function');
     expect(typeof factory.useField).toBe('function');
     expect(typeof factory.useChildren).toBe('function');
+    expect(typeof factory.useBlockActions).toBe('function');
     expect(typeof factory.useSelection).toBe('function');
     expect(typeof factory.useHistory).toBe('function');
     expect(typeof factory.useSave).toBe('function');
@@ -142,12 +143,23 @@ describe('the remaining factory hooks mirror the untyped ones', () => {
     expect(result.current).toHaveLength(4);
   });
 
-  it("useChildren('root_1') returns 2 ids", () => {
+  it("useChildren('root_1') returns 2 child refs", () => {
     const factory = createEditor({ schema: storeSchema });
     const { result } = renderHook(() => factory.useChildren('root_1'), {
       wrapper: rootWrapper(factory),
     });
-    expect(result.current).toEqual(['h1', 'sec1']);
+    expect(result.current).toEqual([
+      { id: 'h1', type: 'heading', index: 0 },
+      { id: 'sec1', type: 'section', index: 1 },
+    ]);
+  });
+
+  it("useBlockActions('sec1') lists heading and paragraph", () => {
+    const factory = createEditor({ schema: storeSchema });
+    const { result } = renderHook(() => factory.useBlockActions('sec1'), {
+      wrapper: rootWrapper(factory),
+    });
+    expect(result.current.allowedChildTypes).toEqual(['heading', 'paragraph']);
   });
 
   it('useHistory().canUndo goes false → true after an add', () => {

@@ -67,7 +67,7 @@ describe('Canvas.Root shares the editor context', () => {
 });
 
 describe('namespace shape', () => {
-  it('Editor exposes exactly Root and the field parts', () => {
+  it('Editor exposes exactly Root, the field parts and the structure parts', () => {
     expect(Object.keys(Editor)).toEqual([
       'Root',
       'Field',
@@ -76,6 +76,8 @@ describe('namespace shape', () => {
       'FieldDescription',
       'FieldError',
       'Form',
+      'OutlineItem',
+      'AddBlock',
     ]);
   });
 
