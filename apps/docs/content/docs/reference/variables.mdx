@@ -9,6 +9,23 @@ A `key` is alphanumeric plus underscores. Updating a variable's `value` revalida
 
 Reference a variable in any string property, for example `{ title: 'Hello {{siteName}}' }`. An unknown key is left literal.
 
+## Client-side substitution
+
+The `{{key}}` helpers the server uses on read are exported as pure functions, so an editor can preview substitution from a variables map it already loaded (for example from `variables.list`) without another request. Import them from `@createcms/core` on the server and from `@createcms/core/react` in the browser.
+
+```ts
+import { extractVariableKeys, resolveTemplateString } from '@createcms/core/react';
+
+const { variables } = await client.variables.list();
+const vars = new Map(variables.map((v) => [v.key, v.value]));
+resolveTemplateString('Hello {{siteName}}', vars); // 'Hello Acme'
+extractVariableKeys('{{a}} and {{b}}'); // ['a', 'b']
+```
+
+`VAR_PATTERN` (the `{{key}}` regex, global) is exported as well; reset its `lastIndex` before a manual `exec` or `test`, or use `extractVariableKeys`.
+
+## Methods
+
 ### List Variables [#list]
 
 List every variable, ordered by key, so you can browse or search what's defined. All query fields are optional — call it with no arguments to page through everything from the top.
