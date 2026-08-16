@@ -238,6 +238,12 @@ type PreviewRenderArg = Parameters<
 export type _previewTreeArg = Expect<
   MutuallyAssignable<PreviewRenderArg, TreeOf<Pages>>
 >;
+type FramePreviewRenderArg = Parameters<
+  Parameters<EditorFactory<Pages>['FramePreview']>[0]['render']
+>[0];
+export type _framePreviewTreeArg = Expect<
+  MutuallyAssignable<FramePreviewRenderArg, TreeOf<Pages>>
+>;
 const scrolled: boolean = api.scrollTo('root_1');
 void scrolled;
 api.scrollTo('h1', { block: 'nearest' });

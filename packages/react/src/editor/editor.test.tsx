@@ -77,6 +77,7 @@ describe('namespace shape', () => {
       'FieldError',
       'Form',
       'Preview',
+      'FramePreview',
       'OutlineItem',
       'AddBlock',
     ]);
