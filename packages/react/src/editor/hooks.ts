@@ -3,7 +3,12 @@ import type { BlockProperty } from '@createcms/schema';
 import * as React from 'react';
 
 import type { EditorSelector } from './binding';
-import type { AnyEditorSchema, PaletteItem, SchemaField } from './schema';
+import type {
+  AnyEditorSchema,
+  MissingRequiredField,
+  PaletteItem,
+  SchemaField,
+} from './schema';
 import type {
   EditorNode,
   EditorStore,
@@ -13,7 +18,7 @@ import type {
 
 import { useStoreSelector } from './binding';
 import { useEditorContext } from './context';
-import { paletteItems, propertiesOf } from './schema';
+import { missingRequired, paletteItems, propertiesOf } from './schema';
 
 const EMPTY_IDS: readonly string[] = [];
 const EMPTY_SELECTION: UserSelection = {
@@ -242,4 +247,14 @@ export function useDirty(): boolean {
 export function usePalette(): PaletteItem[] {
   const ctx = useEditorContext('usePalette');
   return React.useMemo(() => paletteItems(ctx.schema), [ctx.schema]);
+}
+
+/** Every `required` property left empty across the whole document (blocks and root), for the Save/Publish gate. */
+export function useMissingRequired(): MissingRequiredField[] {
+  const ctx = useEditorContext('useMissingRequired');
+  const nodes = useStoreSelector(ctx.store, (state) => state.nodes);
+  return React.useMemo(
+    () => missingRequired(ctx.schema, Object.values(nodes)),
+    [ctx.schema, nodes],
+  );
 }
