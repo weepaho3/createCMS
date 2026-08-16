@@ -10,6 +10,7 @@ import {
   CanvasOverlay,
   CanvasSelectionRing,
 } from './overlay';
+import { CanvasBlockToolbar, CanvasInsertButton } from './toolbar';
 
 export type {
   CanvasInteractive,
@@ -17,6 +18,16 @@ export type {
   CanvasSurface,
 } from './components';
 export type { CanvasComponent, CanvasComponents } from './map';
+export type {
+  InsertOrientation,
+  InsertTarget,
+  InsertVariant,
+  ResolveInsertAtOptions,
+} from './insert';
+export type {
+  CanvasBlockToolbarProps,
+  CanvasInsertButtonProps,
+} from './toolbar';
 export type {
   CanvasFieldRingProps,
   CanvasHoverRingProps,
@@ -26,8 +37,15 @@ export type {
 } from './overlay';
 export type { CanvasRect } from './rect';
 export type { CanvasResolve, ResolveKind } from './resolve';
+export type { PointerSnapshot, PointerStore } from './pointer';
 export { useBlockRect, useFieldRect } from './rects';
 export { useResolved } from './resolve';
+export {
+  INSERT_BOX_PAD,
+  INSERT_LINE_THICKNESS,
+  resolveInsertAt,
+} from './insert';
+export { useInsertTarget } from './toolbar';
 
 export const Canvas = {
   Root: CanvasRoot,
@@ -35,4 +53,6 @@ export const Canvas = {
   SelectionRing: CanvasSelectionRing,
   HoverRing: CanvasHoverRing,
   FieldRing: CanvasFieldRing,
+  BlockToolbar: CanvasBlockToolbar,
+  InsertButton: CanvasInsertButton,
 };

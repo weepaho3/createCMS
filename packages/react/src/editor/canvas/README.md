@@ -22,6 +22,10 @@ function PageCanvas({ schema, tree, pageBlocks }) {
           <Canvas.SelectionRing />
           <Canvas.HoverRing />
           <Canvas.FieldRing />
+          <Canvas.BlockToolbar side="top" align="start">
+            {/* consumer buttons via useBlockActions(selectedId) */}
+          </Canvas.BlockToolbar>
+          <Canvas.InsertButton placement="between" type="paragraph" />
         </Canvas.Overlay>
       </Canvas.Root>
     </Editor.Root>
@@ -42,42 +46,53 @@ literal re-runs every resolver. `surface="frame"` throws
 The canvas host needs a positioning context (`position: relative` or
 similar) so `Canvas.Overlay`'s `absolute; inset: 0` covers the surface.
 The primitive does not set `position` on the host. Overlay is
-`pointer-events: none`. A child that must receive pointer input sets
+`pointer-events: none` and is not `aria-hidden`. Rings set
+`aria-hidden`. A child that must receive pointer input sets
 `pointer-events: auto` on itself.
 
 ## Parts
 
-| Part                   | Default element | Props                                                                                                   | Data attributes                                                                                        |
-| ---------------------- | --------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `Canvas.Root`          | `div`           | `components` (required), `surface`, `interactive`, `resolve`, `children` (overlay), `render`, div props | `data-editor-canvas`, `data-interactive`, `data-dragging`, `data-editing`                              |
-| `Canvas.Overlay`       | `div`           | `render`, div props. Portals into the canvas host.                                                      | `data-editor-overlay`                                                                                  |
-| `Canvas.SelectionRing` | `div`           | `render`, div props. Sized from the selected block rect.                                                | `data-editor-selection-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved` |
-| `Canvas.HoverRing`     | `div`           | `render`, div props. Hidden while dragging, editing, or when hovered equals selected.                   | `data-editor-hover-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`     |
-| `Canvas.FieldRing`     | `div`           | `render`, div props. Sized from the focused field rect (own-block only).                                | `data-editor-field-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`     |
+| Part                   | Default element | Props                                                                                                                       | Data attributes                                                                                        |
+| ---------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `Canvas.Root`          | `div`           | `components` (required), `surface`, `interactive`, `resolve`, `children` (overlay), `render`, div props                     | `data-editor-canvas`, `data-interactive`, `data-dragging`, `data-editing`                              |
+| `Canvas.Overlay`       | `div`           | `render`, div props. Portals into the canvas host.                                                                          | `data-editor-overlay`                                                                                  |
+| `Canvas.SelectionRing` | `div`           | `render`, div props. Sized from the selected block rect.                                                                    | `data-editor-selection-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved` |
+| `Canvas.HoverRing`     | `div`           | `render`, div props. Hidden while dragging, editing, or when hovered equals selected.                                       | `data-editor-hover-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`     |
+| `Canvas.FieldRing`     | `div`           | `render`, div props. Sized from the focused field rect (own-block only).                                                    | `data-editor-field-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`     |
+| `Canvas.BlockToolbar`  | `div`           | `align`, `side`, `offset`, `render`, div props. Consumer supplies buttons. Shown in `edit` and `select`.                    | `data-editor-block-toolbar`, `data-side`, `data-block-type`                                            |
+| `Canvas.InsertButton`  | `button`        | `placement` (`between` \| `container`), optional `type`, optional `onInsert`, `render`, button props. Shown only in `edit`. | `data-editor-insert-button`, `data-orientation`, `data-empty-container`                                |
 
 ## Hooks
 
-| Hook           | Returns              | Notes                                                                                         |
-| -------------- | -------------------- | --------------------------------------------------------------------------------------------- |
-| `useResolved`  | `T \| undefined`     | Reads the canvas resolve cache. Throws outside `Canvas.Root`. `undefined` is miss or pending. |
-| `useBlockRect` | `CanvasRect \| null` | Content coordinates of a block id (union of same-id nodes). Throws outside `Canvas.Root`.     |
-| `useFieldRect` | `CanvasRect \| null` | Content coordinates of a field on its own block. Throws outside `Canvas.Root`.                |
+| Hook              | Returns                | Notes                                                                                                                                                        |
+| ----------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `useResolved`     | `T \| undefined`       | Reads the canvas resolve cache. Throws outside `Canvas.Root`. `undefined` is miss or pending.                                                                |
+| `useBlockRect`    | `CanvasRect \| null`   | Content coordinates of a block id (union of same-id nodes). Throws outside `Canvas.Root`.                                                                    |
+| `useFieldRect`    | `CanvasRect \| null`   | Content coordinates of a field on its own block. Throws outside `Canvas.Root`.                                                                               |
+| `useInsertTarget` | `InsertTarget \| null` | Resolved line or box from pointer and hover. Throws outside `Canvas.Root`. Null in `select` / `none`, while dragging or editing, or without pointer / hover. |
 
 ## Types
 
-| Type                       | Description                                                                    |
-| -------------------------- | ------------------------------------------------------------------------------ |
-| `CanvasRootProps`          | Props of `Canvas.Root`.                                                        |
-| `CanvasOverlayProps`       | Props of `Canvas.Overlay`.                                                     |
-| `CanvasSelectionRingProps` | Props of `Canvas.SelectionRing`.                                               |
-| `CanvasHoverRingProps`     | Props of `Canvas.HoverRing`.                                                   |
-| `CanvasFieldRingProps`     | Props of `Canvas.FieldRing`.                                                   |
-| `CanvasRingState`          | `blockType`, `canMove`, `canDelete`, `unresolved` on every ring.               |
-| `CanvasRect`               | `{ x, y, width, height }` in canvas content coordinates.                       |
-| `CanvasComponents`         | A plain block map, or `{ _components }` as `createBlocksMap` returns.          |
-| `CanvasResolve`            | Optional `reference` / `link` / `string` resolvers. `image` is never resolved. |
-| `CanvasInteractive`        | `'edit' \| 'select' \| 'none'`. Default `'edit'`.                              |
-| `CanvasSurface`            | `'inline' \| 'frame'`. Default `'inline'`. `'frame'` throws.                   |
+| Type                       | Description                                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------------------- |
+| `CanvasRootProps`          | Props of `Canvas.Root`.                                                                           |
+| `CanvasOverlayProps`       | Props of `Canvas.Overlay`.                                                                        |
+| `CanvasSelectionRingProps` | Props of `Canvas.SelectionRing`.                                                                  |
+| `CanvasHoverRingProps`     | Props of `Canvas.HoverRing`.                                                                      |
+| `CanvasFieldRingProps`     | Props of `Canvas.FieldRing`.                                                                      |
+| `CanvasRingState`          | `blockType`, `canMove`, `canDelete`, `unresolved` on every ring.                                  |
+| `CanvasRect`               | `{ x, y, width, height }` in canvas content coordinates.                                          |
+| `CanvasComponents`         | A plain block map, or `{ _components }` as `createBlocksMap` returns.                             |
+| `CanvasResolve`            | Optional `reference` / `link` / `string` resolvers. `image` is never resolved.                    |
+| `CanvasInteractive`        | `'edit' \| 'select' \| 'none'`. Default `'edit'`.                                                 |
+| `CanvasSurface`            | `'inline' \| 'frame'`. Default `'inline'`. `'frame'` throws.                                      |
+| `InsertTarget`             | Resolved insert: `parentId`, `index`, `orientation`, `variant`, `rect`, `allowedTypes`, `nested`. |
+| `InsertOrientation`        | `'horizontal'` \| `'vertical'`.                                                                   |
+| `InsertVariant`            | `'line'` \| `'box'`.                                                                              |
+| `ResolveInsertAtOptions`   | Injected rects and row-flow stub for `resolveInsertAt`.                                           |
+| `CanvasBlockToolbarProps`  | Props of `Canvas.BlockToolbar`.                                                                   |
+| `CanvasInsertButtonProps`  | Props of `Canvas.InsertButton`.                                                                   |
+| `PointerStore`             | External pointer snapshot store on the canvas context.                                            |
 
 ## Data attributes
 
@@ -91,7 +106,12 @@ The primitive does not set `position` on the host. Overlay is
 | `data-editor-field`          | field element via `edit.field.<key>` | Property key, counted only inside its own block.                                                                                                        |
 | `data-unresolved`            | block root via `edit.block`; rings   | Present when a routed `reference` / `link` / `string` value is pending or missing. On a ring: any measured block element for that id has the attribute. |
 | `data-editor-readonly`       | wrapper around referenced children   | Together with `inert`, excludes the subtree from click-select and measurement.                                                                          |
-| `data-editor-overlay`        | Overlay host                         | Presence marker. `pointer-events: none`; `aria-hidden`.                                                                                                 |
+| `data-editor-overlay`        | Overlay host                         | Presence marker. `pointer-events: none`; not `aria-hidden`.                                                                                             |
+| `data-editor-block-toolbar`  | `Canvas.BlockToolbar` inner chrome   | Presence marker. `role="toolbar"`.                                                                                                                      |
+| `data-editor-insert-button`  | `Canvas.InsertButton`                | Presence marker.                                                                                                                                        |
+| `data-side`                  | `Canvas.BlockToolbar`                | `'top'` or `'bottom'`.                                                                                                                                  |
+| `data-orientation`           | `Canvas.InsertButton`                | `'horizontal'` or `'vertical'`.                                                                                                                         |
+| `data-empty-container`       | `Canvas.InsertButton`                | Present when the target variant is `box`.                                                                                                               |
 | `data-editor-selection-ring` | `Canvas.SelectionRing`               | Presence marker.                                                                                                                                        |
 | `data-editor-hover-ring`     | `Canvas.HoverRing`                   | Presence marker.                                                                                                                                        |
 | `data-editor-field-ring`     | `Canvas.FieldRing`                   | Presence marker.                                                                                                                                        |
@@ -102,14 +122,18 @@ The primitive does not set `position` on the host. Overlay is
 ## Tests
 
 happy-dom (`editor.test.tsx`, `renderer.test.tsx`, `rect.test.ts`,
-`overlay.test.tsx`) covers context sharing, the throw outside
-`Editor.Root` / `Canvas.Root`, the store-tree walk, resolve cache,
-referenced readonly trees, click intercept, rect unions, readonly skip,
-nested field keys, Overlay portal, and ring presence / hover
-suppression. Chromium (`canvas.browser.test.tsx`) covers layout, pointer
-coordinates, click select/focus, `interactive="select"` (no drag),
-`interactive="none"`, ring vs block `getBoundingClientRect` (1 px),
-resize, scroll without remeasure, nested field key, and same-id union.
+`overlay.test.tsx`, `insert.test.ts`, `toolbar.test.tsx`) covers context
+sharing, the throw outside `Editor.Root` / `Canvas.Root`, the store-tree
+walk, resolve cache, referenced readonly trees, click intercept, rect
+unions, readonly skip, nested field keys, Overlay portal, ring presence /
+hover suppression, pure insert geometry, toolbar / insert presence, and
+overlay chrome hover. Chromium (`canvas.browser.test.tsx`,
+`insert.browser.test.tsx`) covers layout, pointer coordinates, click
+select/focus, `interactive="select"` (no drag), `interactive="none"`, ring
+vs block `getBoundingClientRect` (1 px), resize, scroll without remeasure,
+nested field key, same-id union, column / row / grid insert lines, empty
+container box, toolbar placement, insert disabled gating, and select-mode
+toolbar without insert.
 Unit tests never assert rects. Browser tests never screenshot; they assert
 rects and DOM. Helpers: `test/harness.tsx`, `test/fixtures.tsx` and
 `test/hero-fixtures.tsx` (not test files).
@@ -120,4 +144,7 @@ rects and DOM. Helpers: `test/harness.tsx`, `test/fixtures.tsx` and
 | `renderer.test.tsx`       | Root fragment, edit anchors, unknown type, resolve cache, unresolved omit, referenced readonly, intercept, Hero snapshot.                                                                              |
 | `rect.test.ts`            | `unionRects`, readonly skip, nested field key own-block lookup.                                                                                                                                        |
 | `overlay.test.tsx`        | Overlay portal into host, `useBlockRect` callable, SelectionRing / FieldRing presence, HoverRing suppression.                                                                                          |
+| `insert.test.ts`          | Pure `resolveInsertAt`: column, row, grid wrap, empty box, walk-up `canPlace`, `draggedId` exclusion, globally nearest ancestor.                                                                       |
+| `toolbar.test.tsx`        | BlockToolbar / InsertButton throw outside Root, selection and `interactive="none"` gating, overlay chrome keeps hover.                                                                                 |
 | `canvas.browser.test.tsx` | Chromium: host box, heading anchor rect, layout wait, pointer coordinates, click select/focus, select mode, none mode, ring alignment after layout / resize / scroll, nested field key, same-id union. |
+| `insert.browser.test.tsx` | Chromium: column / row / grid insert lines, empty container box, toolbar side / align, insert disabled gating, select mode without insert.                                                             |
