@@ -10,7 +10,13 @@ import type {
 import * as React from 'react';
 
 import type { EditorRootProps } from './components';
-import type { EditorApi, HistoryApi, SaveApi } from './hooks';
+import type {
+  BlockActions,
+  ChildRef,
+  EditorApi,
+  HistoryApi,
+  SaveApi,
+} from './hooks';
 import type { AnyEditorSchema, PaletteItem } from './schema';
 import type { UpdateOptions, UserSelection } from './store';
 
@@ -19,6 +25,7 @@ import { useEditorContext } from './context';
 import {
   useAnyBlock,
   useAnyField,
+  useBlockActions,
   useChildren,
   useDirty,
   useEditor,
@@ -167,6 +174,26 @@ export type TypedPaletteItems<S extends AnyEditorSchema> = [
   ? never
   : Array<PaletteItem & { type: BlockTypeOf<S> }>;
 
+/** `ChildRef` with `type` narrowed to the schema's block types. */
+export type ChildRefOf<S extends AnyEditorSchema> = Omit<ChildRef, 'type'> & {
+  readonly type: BlockTypeOf<S>;
+};
+
+/**
+ * `BlockActions` with `add` and `allowedChildTypes` restricted to the
+ * schema's block types.
+ */
+export type TypedBlockActions<S extends AnyEditorSchema> = Omit<
+  BlockActions,
+  'add' | 'allowedChildTypes'
+> & {
+  readonly allowedChildTypes: readonly BlockTypeOf<S>[];
+  add<K extends BlockTypeOf<S>>(
+    type: K,
+    options?: { index?: number; properties?: Partial<BlockPropsOf<S, K>> },
+  ): string | null;
+};
+
 /** Phantom bag of the derived types (`typeof editor.types.tree`, …). `{}` at runtime. */
 export type EditorTypes<S extends AnyEditorSchema> = {
   readonly schema: S;
@@ -197,7 +224,8 @@ export type EditorFactory<S extends AnyEditorSchema> = {
     ref: { id: string; type: K },
     key: P,
   ): FieldHandleOf<S, K, P>;
-  useChildren(parentId: string): readonly string[];
+  useChildren(parentId: string): readonly ChildRefOf<S>[];
+  useBlockActions(id: string): TypedBlockActions<S>;
   useSelection(userId?: string): UserSelection;
   useHistory(): HistoryApi;
   useSave(): SaveApi;
@@ -268,7 +296,11 @@ export function createEditor<const S extends AnyEditorSchema>(
     },
     useChildren(parentId) {
       assertSchema('useChildren');
-      return useChildren(parentId);
+      return useChildren(parentId) as readonly ChildRefOf<S>[];
+    },
+    useBlockActions(id) {
+      assertSchema('useBlockActions');
+      return useBlockActions(id) as TypedBlockActions<S>;
     },
     useSelection(userId) {
       assertSchema('useSelection');
