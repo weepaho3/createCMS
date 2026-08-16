@@ -65,6 +65,69 @@ Load an entry's block tree for editing, at a branch head or a specific commit. Y
 
 The `tree` is a discriminated union over `type`, and the top node is `type: 'root'`. `reconstructed` is `true` when the commit was rebuilt from a partial snapshot. With `includeReferencePreviews: true`, `references` is a `Record<storedReferenceValue, tree>` holding the published render tree of every reference embedded in the entry, resolved through the active scope.
 
+### Resolve an Unsaved Tree [#resolvetree]
+
+Run the same resolution `getBlockTree` applies to a stored tree — variables substituted, links resolved to their current href, references as a published-preview sidecar or inlined — on a tree you post. Nothing is written: this is how an editor previews its unsaved working copy (live canvas, HTML/PDF preview, e-mail send-preview). The tree is not validated against the schema; unknown block types and undeclared properties pass through untouched.
+
+<APIMethod
+  method="POST"
+  path="/{collection}/resolveTree"
+  fn="resolveTree"
+  resource="block"
+  operation="read"
+  args={`{
+  body: {
+    rootId: 'root_home', // required
+    branchId: 'br_main', // required
+    tree, // required: the (edited) tree, root node first
+    includeReferencePreviews: true,
+  },
+}`}
+  returns={{
+    tree: {
+      type: 'BlockTreeNode',
+      description:
+        'The posted tree with variables substituted and links resolved. With `inlineReferences` every reference value is replaced by its resolved published tree (the `getPublishedContent` shape).',
+    },
+    references: {
+      type: 'Record<string, BlockTreeNode>',
+      optional: true,
+      description:
+        'Published preview tree of every embedded reference, keyed by its stored reference value. Only when `includeReferencePreviews` is set.',
+    },
+  }}
+  params={{
+    rootId: {
+      type: 'string',
+      required: true,
+      description: 'The entry the tree belongs to (scope check only).',
+    },
+    branchId: {
+      type: 'string',
+      required: true,
+      description: 'A branch of that entry (must exist; nothing is read from it).',
+    },
+    tree: {
+      type: 'block tree node',
+      required: true,
+      description:
+        'The tree to resolve, root node first: `{ blockId, type, properties, children }` — the shape `getBlockTree` returns, with your unsaved edits applied.',
+    },
+    includeReferencePreviews: {
+      type: 'boolean',
+      description:
+        'Also return the `references` sidecar (published previews of embedded references).',
+    },
+    inlineReferences: {
+      type: 'boolean',
+      description:
+        'Replace reference values inside `tree` by their resolved published trees, like `getPublishedContent` does.',
+    },
+  }}
+/>
+
+`resolveTree` never persists anything and creates no commit; save with `updateBlocks` when you are done. Roots outside your scope (or of another collection) are rejected with `ROOT_NOT_FOUND`, exactly like `getBlockTree`.
+
 ### Add a Block [#createblock]
 
 Add a block as a child of a parent block. The body is a discriminated union over `type`: each block type accepts its own typed `properties`. You get back the new commit and the id of the block you just created.

@@ -85,6 +85,17 @@ const { tree, references } = await cmsClient.pages.getBlockTree({
 });
 ```
 
+To preview edits that are not saved yet, post the editor's working tree to `resolveTree` — same variables, links and reference handling, applied to the tree you send, nothing written:
+
+```ts
+const { tree: resolved, references } = await cmsClient.pages.resolveTree({
+  rootId,
+  branchId: branch.id,
+  tree: editedTree,
+  includeReferencePreviews: true,
+});
+```
+
 For the exact published view an anonymous visitor would get, call `getPublishedContent` instead (it returns resolved `variants`).
 
 ### 5. Propose the change (merge request)
