@@ -34,10 +34,15 @@ export function emptyListElement(
   }
 }
 
-function aria(props: { describedBy: string | undefined; invalid: boolean }) {
+function aria(props: {
+  describedBy: string | undefined;
+  invalid: boolean;
+  required: boolean;
+}) {
   return {
     'aria-describedby': props.describedBy,
     'aria-invalid': props.invalid || undefined,
+    'aria-required': props.required || undefined,
   } as const;
 }
 

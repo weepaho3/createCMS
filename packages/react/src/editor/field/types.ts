@@ -13,7 +13,8 @@ import type {
  * spec (`select` carries `options`, `list` carries `of`), `value` its wide
  * runtime value or `undefined`, `onChange(undefined)` clears the property.
  * `describedBy` and `invalid` come from `Editor.FieldControl`; a control
- * sets `aria-describedby={describedBy}` and `aria-invalid={invalid || undefined}`
+ * sets `aria-describedby={describedBy}`, `aria-invalid={invalid || undefined}`
+ * and `aria-required={required || undefined}` (absent when not required)
  * on its focusable element. `renderElement` is set for `list` only.
  */
 export type FieldControlProps<K extends FieldKind = FieldKind> = {

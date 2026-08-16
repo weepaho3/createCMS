@@ -91,7 +91,8 @@ Accessibility wiring, per part:
   time. A custom `render` reads the structured findings from
   `useFieldContext().errors` (the state carries `invalid` only).
 - Controls set `aria-invalid="true"` while invalid and omit the attribute
-  otherwise.
+  otherwise. They set `aria-required="true"` when the spec is `required`
+  and omit the attribute otherwise.
 
 ### Field controls
 
@@ -122,8 +123,9 @@ Every control, built-in or custom, receives `FieldControlProps<K>`: `spec`,
 (`undefined` clears the property), `id`, `name`, `required`, `disabled`,
 `invalid`, `describedBy`, and for `list` also `renderElement`. A control sets
 `id` on its focusable element (that is what `FieldLabel` points at) and
-forwards `aria-describedby={describedBy}` and
-`aria-invalid={invalid || undefined}` itself; the built-ins do.
+forwards `aria-describedby={describedBy}`,
+`aria-invalid={invalid || undefined}` and
+`aria-required={required || undefined}` itself; the built-ins do.
 
 List elements go through the same map/defaults: `renderElement(props)`
 receives `ListElementControlProps` (the element spec widened to a labelled
@@ -147,16 +149,8 @@ otherwise), `defaultFieldControls` (the built-in map).
 root). Nest rows in the DOM so a parent contains its children, and wrap the
 tree in `[role="tree"]` so arrow navigation stays inside that outline.
 
-| Key                             | Action                                                                                                                                                             |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Click                           | Select the row.                                                                                                                                                    |
-| `ArrowUp` / `ArrowDown`         | Select and focus the previous/next `[role="treeitem"]` in DOM order inside the closest `[role="tree"]` (fallback: the document).                                   |
-| `Alt+ArrowUp` / `Alt+ArrowDown` | Move the block among its siblings.                                                                                                                                 |
-| `Delete` / `Backspace`          | Remove after `onDelete` (return `false` to keep). Focus lands on the next item outside the subtree, else the previous; with no neighbour the selection is cleared. |
-| `Escape`                        | Clear the selection.                                                                                                                                               |
-
-Roving `tabIndex`: `0` when the row is selected, or when nothing is selected
-and this is the first child of the root; otherwise `-1`.
+Keys: see Keyboard. Roving `tabIndex`: `0` when the row is selected, or when
+nothing is selected and this is the first child of the root; otherwise `-1`.
 
 `aria-selected` follows the selection, `aria-level` is the depth (root
 children are 1), `aria-expanded="true"` when the block has children (there is
@@ -168,31 +162,85 @@ the new id. When `parentId` is omitted: the selected block if it accepts
 (append). The button is disabled when the target parent cannot take `type`.
 There is no drag and drop.
 
+## Keyboard
+
+| Where                                           | Keys                        | Action                                                                                                                           |
+| ----------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Field controls                                  | Tab / Shift+Tab             | Native tab order. Typing edits the value (one undo step via `coalesce`).                                                         |
+| `Editor.OutlineItem`                            | Click                       | Select the row.                                                                                                                  |
+| `Editor.OutlineItem`                            | ArrowUp / ArrowDown         | Select and focus the previous/next `[role="treeitem"]` in DOM order inside the closest `[role="tree"]` (fallback: the document). |
+| `Editor.OutlineItem`                            | Alt+ArrowUp / Alt+ArrowDown | Move among siblings.                                                                                                             |
+| `Editor.OutlineItem`                            | Delete / Backspace          | Remove after `onDelete` (return `false` to keep).                                                                                |
+| `Editor.OutlineItem`                            | Escape                      | Clear the selection.                                                                                                             |
+| `useEditorKeyboard(scopeRef)`                   | Ctrl/Cmd+Z                  | Undo.                                                                                                                            |
+| `useEditorKeyboard(scopeRef)`                   | Ctrl/Cmd+Shift+Z or Ctrl+Y  | Redo.                                                                                                                            |
+| `useEditorKeyboard(scopeRef, { delete: true })` | Delete / Backspace          | Remove the selected block when the target is not an editable field.                                                              |
+| `useEditorKeyboard(scopeRef, { escape: true })` | Escape                      | Clear the selection when the target is not an editable field.                                                                    |
+
+The listener is a bubbling `keydown` on the document, ignored unless the
+target is inside `scopeRef.current`. A consumer `onKeyDown` that
+`preventDefault`s skips the built-in handling. `Editor.Root` renders no DOM,
+so the consumer puts the ref on their shell and calls the hook under `Root`.
+Undo/redo run even inside inputs. Optional Delete/Escape do not. There is no
+drag and drop in `/editor`.
+
+## ARIA
+
+| Attribute          | On                                  | Rule                                                                                                         |
+| ------------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `aria-describedby` | the control's focusable element     | Space-joined ids of the mounted description and, while invalid, the error. Omitted when empty.               |
+| `aria-invalid`     | the control's focusable element     | `"true"` while `validateField` reports a finding; omitted when valid (never `"false"`).                      |
+| `aria-required`    | the control's focusable element     | `"true"` when the spec is `required`; omitted otherwise. Native `required` is also set on built-in controls. |
+| `role="alert"`     | `Editor.FieldError`                 | Rendered only while invalid.                                                                                 |
+| `htmlFor` / `id`   | `Editor.FieldLabel` / control       | Label points at the control id from `useId`.                                                                 |
+| `aria-selected`    | `Editor.OutlineItem`                | Follows the local user's selected block.                                                                     |
+| `aria-level`       | `Editor.OutlineItem`                | Depth; root children are 1.                                                                                  |
+| `aria-expanded`    | `Editor.OutlineItem`                | `"true"` when the block has children. No collapse state; a consumer overrides the attribute through props.   |
+| `role="treeitem"`  | `Editor.OutlineItem`                | Default. Wrap the tree in `[role="tree"]`.                                                                   |
+| `data-required`    | `Editor.Field`, `Editor.FieldLabel` | Present when the spec is `required` (styling hook; not a substitute for `aria-required`).                    |
+
+## Focus
+
+| Event                                     | Focus                                                                                                                         |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Tab into a field                          | `store.focus({ blockId, key })` once (not on every keystroke). `data-focused` mirrors that.                                   |
+| Delete/Backspace on `Editor.OutlineItem`  | Neighbour row (next treeitem outside this subtree, else previous) is selected and focused; no neighbour clears the selection. |
+| Alt+Arrow reorder on `Editor.OutlineItem` | Focus is restored on the moved row after the DOM move.                                                                        |
+| `useEditorKeyboard` Delete/Escape         | Store only; the hook does not move DOM focus.                                                                                 |
+| Escape on `Editor.OutlineItem`            | Selection cleared; focus stays.                                                                                               |
+
+A canvas that is not interactive sets `inert` on its surface so pointer and
+keyboard do not reach the host markup. Motion (rings, indicators, reorder)
+honours `prefers-reduced-motion: reduce` by skipping animation and applying
+the end state immediately.
+
 ## Hooks
 
-| Hook                 | Returns                                        | Notes                                                                                                                                   |
-| -------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `useEditorContext`   | `EditorContextValue`                           | Throws when used outside `Editor.Root`. Internal-facing.                                                                                |
-| `useEditorSelector`  | `T` (from `selector(state, store)`)            | Subscribes through `useStoreSelector`; returns the previous reference when the selected value is shallow-equal.                         |
-| `useEditorStore`     | `EditorStore`                                  | No subscription: imperative access to the enclosing `Editor.Root`'s store.                                                              |
-| `useEditor`          | `EditorApi` (no args) or `T` (with a selector) | No-arg form returns a stable object (`{ ...store, schema, userId, store }`); with a selector, a reactive slice.                         |
-| `useAnyBlock`        | `AnyBlockHandle \| null`                       | `null` for an unknown or `null` id; the handle is stable while the node is unchanged.                                                   |
-| `useAnyField`        | `AnyFieldHandle`                               | Re-renders only when that property's value or the node's type changes.                                                                  |
-| `useFields`          | `SchemaField[]`                                | The block's property specs in schema order; `[]` for an unknown block; stable array identity.                                           |
-| `useChildren`        | `readonly ChildRef[]`                          | `{ id, type, index }` in order; same array reference until ids or types change.                                                         |
-| `useBlockActions`    | `BlockActions`                                 | Placement-gated `add`/`remove`/`duplicate`/`moveUp`/`moveDown` plus `canMoveUp`, `canMoveDown`, `canHaveChildren`, `allowedChildTypes`. |
-| `useSelection`       | `UserSelection`                                | Defaults to the enclosing editor's user.                                                                                                |
-| `useHistory`         | `HistoryApi`                                   | `{ canUndo, canRedo, undo, redo }`.                                                                                                     |
-| `useSave`            | `SaveApi`                                      | `{ dirty, saving, save, markSaved }`.                                                                                                   |
-| `useDirty`           | `boolean`                                      | Shorthand for `useSave().dirty`.                                                                                                        |
-| `usePalette`         | `PaletteItem[]`                                | Every insertable block type, memoised per schema.                                                                                       |
-| `useMissingRequired` | `MissingRequiredField[]`                       | Every `required` property left empty across the document (blocks and root); memoised per `nodes` identity.                              |
-| `useFieldContext`    | `FieldContextValue`                            | The enclosing `Editor.Field`'s spec, value, `setValue`, ids, `errors`, flags; throws outside `Editor.Field`.                            |
+| Hook                 | Returns                                        | Notes                                                                                                                                                                                                                                                                                             |
+| -------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `useEditorContext`   | `EditorContextValue`                           | Throws when used outside `Editor.Root`. Internal-facing.                                                                                                                                                                                                                                          |
+| `useEditorSelector`  | `T` (from `selector(state, store)`)            | Subscribes through `useStoreSelector`; returns the previous reference when the selected value is shallow-equal.                                                                                                                                                                                   |
+| `useEditorStore`     | `EditorStore`                                  | No subscription: imperative access to the enclosing `Editor.Root`'s store.                                                                                                                                                                                                                        |
+| `useEditor`          | `EditorApi` (no args) or `T` (with a selector) | No-arg form returns a stable object (`{ ...store, schema, userId, store }`); with a selector, a reactive slice.                                                                                                                                                                                   |
+| `useAnyBlock`        | `AnyBlockHandle \| null`                       | `null` for an unknown or `null` id; the handle is stable while the node is unchanged.                                                                                                                                                                                                             |
+| `useAnyField`        | `AnyFieldHandle`                               | Re-renders only when that property's value or the node's type changes.                                                                                                                                                                                                                            |
+| `useFields`          | `SchemaField[]`                                | The block's property specs in schema order; `[]` for an unknown block; stable array identity.                                                                                                                                                                                                     |
+| `useChildren`        | `readonly ChildRef[]`                          | `{ id, type, index }` in order; same array reference until ids or types change.                                                                                                                                                                                                                   |
+| `useBlockActions`    | `BlockActions`                                 | Placement-gated `add`/`remove`/`duplicate`/`moveUp`/`moveDown` plus `canMoveUp`, `canMoveDown`, `canHaveChildren`, `allowedChildTypes`.                                                                                                                                                           |
+| `useSelection`       | `UserSelection`                                | Defaults to the enclosing editor's user.                                                                                                                                                                                                                                                          |
+| `useHistory`         | `HistoryApi`                                   | `{ canUndo, canRedo, undo, redo }`.                                                                                                                                                                                                                                                               |
+| `useEditorKeyboard`  | `void`                                         | `useEditorKeyboard(scopeRef, { delete?, escape? })`. Bubbling `keydown` on the document, ignored unless the target is inside `scopeRef.current`; a consumer `onKeyDown` that `preventDefault`s skips the built-in handling. Undo/redo always; Delete/Escape opt-in. Throws outside `Editor.Root`. |
+| `useSave`            | `SaveApi`                                      | `{ dirty, saving, save, markSaved }`.                                                                                                                                                                                                                                                             |
+| `useDirty`           | `boolean`                                      | Shorthand for `useSave().dirty`.                                                                                                                                                                                                                                                                  |
+| `usePalette`         | `PaletteItem[]`                                | Every insertable block type, memoised per schema.                                                                                                                                                                                                                                                 |
+| `useMissingRequired` | `MissingRequiredField[]`                       | Every `required` property left empty across the document (blocks and root); memoised per `nodes` identity.                                                                                                                                                                                        |
+| `useFieldContext`    | `FieldContextValue`                            | The enclosing `Editor.Field`'s spec, value, `setValue`, ids, `errors`, flags; throws outside `Editor.Field`.                                                                                                                                                                                      |
 
 ## createEditor(options)
 
-`createEditor({ schema })` binds `Editor.Root` and every hook above to one
-schema: `Root` has `schema` pre-set and `defaultValue` typed as
+`createEditor({ schema })` binds `Editor.Root` and every hook above
+(including `useEditorKeyboard`) to one schema: `Root` has `schema`
+pre-set and `defaultValue` typed as
 `TreeOf<typeof schema>`; `useBlock`/`useField` narrow on the schema's
 declared block types; `useChildren` returns `ChildRefOf<S>[]` and
 `useBlockActions` returns `TypedBlockActions<S>`; `add` and `usePalette`
@@ -353,6 +401,7 @@ changing a value back by hand counts as clean again. Structural changes call
 | ----------------------------- | -------------------------------------------------------------------------------------- |
 | `EditorRootProps`             | Props of `Editor.Root`.                                                                |
 | `EditorContextValue`          | What `Editor.Root` shares with its parts.                                              |
+| `EditorKeyboardOptions`       | Options for `useEditorKeyboard`: `{ delete?, escape? }`.                               |
 | `EditorSelector<T>`           | A `useEditorSelector`/`useStoreSelector` selector function.                            |
 | `EditorApi`                   | `useEditor()`'s return type: the store's methods plus `schema`, `userId`, `store`.     |
 | `AnyBlockHandle`              | `useAnyBlock`'s return type: a block's data, specs and setters.                        |
@@ -399,9 +448,11 @@ changing a value back by hand counts as clean again. Structural changes call
 | File                                | Covers                                                                                                                                                                             |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `editor.test.tsx`                   | Root provides context, store and user; parts outside Root throw; namespace keys.                                                                                                   |
+| `keyboard.test.tsx`                 | `useEditorKeyboard`: undo/redo (including inside inputs), `preventDefault`, optional Delete/Escape, throw outside Root.                                                            |
+| `editor-ssr.test.tsx`               | `renderToString` then `hydrateRoot` of `Editor.Root` + `Editor.Form`; no hydration mismatch.                                                                                       |
 | `binding.test.tsx`                  | `shallowEqual`; `useEditorSelector` re-render/memoisation behaviour; prop-closure recomputation.                                                                                   |
 | `hooks.test.tsx`                    | Every untyped hook including `useChildren` child refs and `useBlockActions`, Root callbacks, `key`-based reset.                                                                    |
-| `factory.test.tsx`                  | `createEditor`'s runtime shape (incl. `useBlockActions`), typed narrowing at runtime, the schema guard, nested factories.                                                          |
+| `factory.test.tsx`                  | `createEditor`'s runtime shape (incl. `useBlockActions`, `useEditorKeyboard`), typed narrowing at runtime, the schema guard, nested factories.                                     |
 | `factory.type-check.ts`             | Compile-time: the derived types (`TreeOf`, `BlockHandleOf`, `ChildRefOf`, `TypedBlockActions`, …) against a representative schema.                                                 |
 | `field/field.test.tsx`              | Built-in controls, control resolution (render/map/default, warn-once), label/description/error wiring, focus sync, coalesced typing, `Editor.Form` grouping, `useMissingRequired`. |
 | `field/field.type-check.ts`         | Compile-time: per-kind `FieldControlProps`, the `FieldControls` map, `fields` on Root and context.                                                                                 |

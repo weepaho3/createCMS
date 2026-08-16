@@ -44,6 +44,7 @@ describe('createEditor', () => {
     expect(typeof factory.useBlockActions).toBe('function');
     expect(typeof factory.useSelection).toBe('function');
     expect(typeof factory.useHistory).toBe('function');
+    expect(typeof factory.useEditorKeyboard).toBe('function');
     expect(typeof factory.useSave).toBe('function');
     expect(typeof factory.useDirty).toBe('function');
     expect(typeof factory.usePalette).toBe('function');
