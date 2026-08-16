@@ -4,6 +4,14 @@
 // editor primitive. Parts live on the `Editor` namespace (`Editor.Root`, …);
 // helpers and hooks are flat named exports next to it.
 import { EditorRoot } from './components';
+import {
+  EditorField,
+  EditorFieldControl,
+  EditorFieldDescription,
+  EditorFieldError,
+  EditorFieldLabel,
+  EditorForm,
+} from './field';
 
 export type { EditorRootProps } from './components';
 export type { EditorContextValue } from './types';
@@ -11,7 +19,36 @@ export { useEditorContext } from './context';
 
 export const Editor = {
   Root: EditorRoot,
+  Field: EditorField,
+  FieldLabel: EditorFieldLabel,
+  FieldControl: EditorFieldControl,
+  FieldDescription: EditorFieldDescription,
+  FieldError: EditorFieldError,
+  Form: EditorForm,
 };
+
+// Field parts: context, built-in controls and their prop types.
+export type {
+  AnyFieldControlProps,
+  EditorFieldControlProps,
+  EditorFieldDescriptionProps,
+  EditorFieldErrorProps,
+  EditorFieldLabelProps,
+  EditorFieldProps,
+  EditorFormProps,
+  FieldContextValue,
+  FieldControlProps,
+  FieldControls,
+  ListElementControlProps,
+  ListElementRender,
+} from './field';
+export {
+  defaultFieldControls,
+  emptyListElement,
+  fromDatetimeLocal,
+  toDatetimeLocal,
+  useFieldContext,
+} from './field';
 
 // React binding and untyped hooks.
 export type { EditorSelector } from './binding';
@@ -31,6 +68,7 @@ export {
   useEditor,
   useFields,
   useHistory,
+  useMissingRequired,
   usePalette,
   useSave,
   useSelection,

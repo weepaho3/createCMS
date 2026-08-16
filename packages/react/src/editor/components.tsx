@@ -2,12 +2,15 @@ import type { BlockTreeNode } from '@createcms/schema';
 
 import * as React from 'react';
 
+import type { FieldControls } from './field/types';
 import type { AnyEditorSchema } from './schema';
 import type { EditorCallbacks, EditorStore } from './store';
 import type { EditorContextValue } from './types';
 
 import { EditorContext } from './context';
 import { createEditorStore } from './store';
+
+const EMPTY_FIELDS: FieldControls = {};
 
 export type EditorRootProps = {
   /** The collection definition — required, a tree alone cannot name its collection. */
@@ -22,14 +25,16 @@ export type EditorRootProps = {
   genId?: () => string;
   /** The user this editor edits as (default `'local'`). Read once at mount. */
   userId?: string;
+  /** Control components per field kind, used by `Editor.FieldControl` (kinds without an entry use the built-in default). Read once at mount. */
+  fields?: FieldControls;
   children?: React.ReactNode;
 };
 
 /**
  * Provider-only root: renders no DOM element, creates the editor store once
  * from `schema` + `defaultValue` (uncontrolled — remount with `key` to reset)
- * and exposes `{ schema, store, userId }` to every part below it. Callback
- * props are read fresh on every call, so inline handlers are fine.
+ * and exposes `{ schema, store, userId, fields }` to every part below it.
+ * Callback props are read fresh on every call, so inline handlers are fine.
  */
 export function EditorRoot({
   schema,
@@ -38,6 +43,7 @@ export function EditorRoot({
   onSave,
   genId,
   userId = 'local',
+  fields = EMPTY_FIELDS,
   children,
 }: EditorRootProps) {
   const callbacksRef = React.useRef<EditorCallbacks>({ onChange, onSave });
@@ -54,7 +60,7 @@ export function EditorRoot({
       userId,
       getCallbacks: () => callbacksRef.current,
     });
-    storeRef.current = { schema, store, userId };
+    storeRef.current = { schema, store, userId, fields };
   }
 
   return (
