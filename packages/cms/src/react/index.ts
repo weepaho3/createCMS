@@ -16,6 +16,7 @@ export {
   createContentRenderer,
   getBlockDiff,
   diffSegmentsToHtml,
+  NO_EDIT,
 } from './blocks';
 export type {
   BlocksMap,
@@ -26,6 +27,9 @@ export type {
   AnnotatedBlockTreeNode,
   BlockDiffAnnotation,
   TextDiffSegment,
+  EditAttrs,
+  EditProps,
+  RendererEditMode,
 } from './blocks';
 export type { EventDeclaration } from '../core/types/definitions';
 export { pickVariant } from './variant';

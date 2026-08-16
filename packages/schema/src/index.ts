@@ -8,6 +8,8 @@ export type {
 
 export type { BlockTreeNode, InferBlockTreeNode } from './tree';
 
+export type { EditAttrs, EditProps } from './edit';
+
 export type {
   BlockProperty,
   BlockPropertyType,

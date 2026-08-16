@@ -32,17 +32,62 @@ function BlocksRenderer(props: {
   blocks: BlocksMap;
   tree: BlockTreeNode;
   diff?: BlocksDiffOptions;
+  edit?: 'preview';
 }): ReactNode;
 ```
 
 The optional `diff` prop turns on diff-aware rendering for an annotated tree from `getDiff({ view: 'tree' })`: changed blocks get wrapped in a `<div data-diff="added | deleted | modified | moved">` element (or your own `wrap` callback). See [Review changes visually](/docs/guides/visual-diff).
+
+The optional `edit` prop selects how the `edit` prop of every block component is filled: absent → `NO_EDIT` (no anchors in the HTML); `'preview'` → `data-editor-block` / `data-editor-field` anchors on every block of the tree (referenced trees never get anchors), so an HTML preview can map a click back to a block and a field. `edit.active` is `false` in both cases.
 
 ### `createContentRenderer`
 
 The convenience factory: pass a collection and a **partial** component map (components only for the block types you render) and get back a ready `({ tree }) => ReactNode` component in one step — no separate `createBlocksMap` call. This is the recommended entry point. Both paths resolve inline references; this one differs by accepting a partial map.
 
 ```ts
-function createContentRenderer(collection, components): (props: { tree: BlockTreeNode; diff?: BlocksDiffOptions }) => ReactNode;
+function createContentRenderer(collection, components): (props: { tree: BlockTreeNode; diff?: BlocksDiffOptions; edit?: 'preview' }) => ReactNode;
+```
+
+### `BlockComponentProps`
+
+The props every block component receives from the renderer map.
+
+```ts
+type BlockComponentProps = {
+  properties: InferBlockProperties; // always an object; pass M = 'raw' to type against the editor's raw store values
+  children: ReactNode;
+  blockId: string;
+  node: BlockTreeNode;
+  edit: EditProps;
+};
+```
+
+`edit` carries the editor anchors as plain data — no functions, so the object crosses the server → client component boundary. Outside an editor it is `NO_EDIT`; with `edit="preview"` on the renderer it carries real anchors. `edit.field` has one entry per property key from the block DEFINITION (all-optional blocks still have them), and each entry is OPTIONAL, so `{...edit.field.x}` is a no-op outside an editor.
+
+```ts
+type EditAttrs = {
+  'data-editor-block'?: string;
+  'data-editor-field'?: string;
+};
+
+type EditProps = {
+  active: boolean; // true only inside an interactive editor canvas
+  block: EditAttrs;
+  field: { [key: string]: EditAttrs | undefined };
+};
+```
+
+```tsx
+import { NO_EDIT, type BlockProps } from '@createcms/core/react/blocks';
+
+export function Hero({ properties, edit }: BlockProps<typeof pages, 'hero'>) {
+  return (
+    <section {...edit.block}>
+      <h1 {...edit.field.headline}>{properties.headline}</h1>
+    </section>
+  );
+}
+// Rendering a block by hand (tests, stories): <Hero {...props} edit={NO_EDIT} />
 ```
 
 ### `getBlockDiff`

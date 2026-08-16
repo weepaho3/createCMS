@@ -52,6 +52,8 @@ export type {
   AnyCollectionDefinition,
   CollectionWithName,
   BranchProtectionConfig,
+  EditAttrs,
+  EditProps,
 } from '@createcms/schema';
 
 import type {
