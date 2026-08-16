@@ -14,9 +14,13 @@ the overlay slot, rendered after the tree inside the host.
 import { Editor } from '@createcms/react/editor';
 import { Canvas } from '@createcms/react/editor/canvas';
 
-<Editor.Root schema={schema} defaultValue={tree}>
-  <Canvas.Root components={pageBlocks} />
-</Editor.Root>
+function PageCanvas({ schema, tree, pageBlocks }) {
+  return (
+    <Editor.Root schema={schema} defaultValue={tree}>
+      <Canvas.Root components={pageBlocks} />
+    </Editor.Root>
+  );
+}
 ```
 
 Spread `edit.block` on each block's root element and `edit.field.<key>` on
