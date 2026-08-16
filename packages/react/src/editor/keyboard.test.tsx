@@ -8,7 +8,7 @@ import {
   render,
   renderHook,
 } from '@testing-library/react';
-import { useLayoutEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { EditorKeyboardOptions } from './keyboard';
@@ -109,17 +109,14 @@ describe('useEditorKeyboard', () => {
     const probe: Probe = { store: null };
     function Guarded() {
       const ref = useRef<HTMLDivElement | null>(null);
-      useLayoutEffect(() => {
-        const el = ref.current;
-        if (!el) return;
-        const guard = (event: KeyboardEvent) => {
-          event.preventDefault();
-        };
-        el.addEventListener('keydown', guard);
-        return () => el.removeEventListener('keydown', guard);
-      }, []);
       useEditorKeyboard(ref);
-      return <div ref={ref} data-testid="scope" />;
+      return (
+        <div
+          ref={ref}
+          data-testid="scope"
+          onKeyDown={(event) => event.preventDefault()}
+        />
+      );
     }
     const { getByTestId } = render(
       <Editor.Root

@@ -17,9 +17,10 @@ function isEditableTarget(event: KeyboardEvent): boolean {
 }
 
 /**
- * Binds undo/redo (and optionally Delete/Escape) to `scopeRef`'s element.
- * Must run under `Editor.Root`. The listener is bubbling, so a consumer
- * `onKeyDown` that calls `preventDefault` disables the built-in handling.
+ * Binds undo/redo (and optionally Delete/Escape) for keys whose target is
+ * inside `scopeRef`. Must run under `Editor.Root`. The listener is bubbling
+ * on the document, so a consumer React `onKeyDown` that `preventDefault`s
+ * wins.
  */
 export function useEditorKeyboard(
   scopeRef: React.RefObject<HTMLElement | null>,
@@ -33,7 +34,15 @@ export function useEditorKeyboard(
   React.useEffect(() => {
     const el = scopeRef.current;
     if (!el) return;
+    const doc = el.ownerDocument;
     const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (
+        !(target instanceof Node) ||
+        (target !== el && !el.contains(target))
+      ) {
+        return;
+      }
       if (event.defaultPrevented) return;
       const key = event.key.toLowerCase();
       const mod = event.metaKey || event.ctrlKey;
@@ -69,7 +78,7 @@ export function useEditorKeyboard(
         store.select(null);
       }
     };
-    el.addEventListener('keydown', onKeyDown);
-    return () => el.removeEventListener('keydown', onKeyDown);
+    doc.addEventListener('keydown', onKeyDown);
+    return () => doc.removeEventListener('keydown', onKeyDown);
   }, [scopeRef, store, userId, allowDelete, allowEscape]);
 }
