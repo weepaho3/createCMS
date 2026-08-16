@@ -33,6 +33,13 @@ export type {
 } from './blocks';
 export type { EventDeclaration } from '../core/types/definitions';
 export { pickVariant } from './variant';
+// Pure `{{key}}` helpers (no server dependency): resolve variables in the
+// browser from an already loaded map.
+export {
+  VAR_PATTERN,
+  extractVariableKeys,
+  resolveTemplateString,
+} from '../core/variables-template';
 export type {
   CMSClientInstance,
   CMSClientOptions,
