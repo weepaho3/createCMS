@@ -10,6 +10,7 @@ import type { EditorApi } from './hooks';
 import {
   useAnyBlock,
   useAnyField,
+  useBlockActions,
   useChildren,
   useEditor,
   useFields,
@@ -213,17 +214,25 @@ describe('useFields', () => {
 });
 
 describe('useChildren', () => {
-  it("returns ['h1','sec1'] for 'root_1', same array reference across re-renders", () => {
-    const { result, rerender } = renderHook(() => useChildren('root_1'), {
-      wrapper: makeWrapper(),
-    });
-    expect(result.current).toEqual(['h1', 'sec1']);
-    const first = result.current;
+  it("returns child refs for 'root_1', same array reference across re-renders and unrelated updates", () => {
+    const { result, rerender } = renderHook(
+      () => ({ api: useEditor(), children: useChildren('root_1') }),
+      { wrapper: makeWrapper() },
+    );
+    expect(result.current.children).toEqual([
+      { id: 'h1', type: 'heading', index: 0 },
+      { id: 'sec1', type: 'section', index: 1 },
+    ]);
+    const first = result.current.children;
     rerender();
-    expect(result.current).toBe(first);
+    expect(result.current.children).toBe(first);
+    act(() => {
+      result.current.api.update('h1', { text: 'x' });
+    });
+    expect(result.current.children).toBe(first);
   });
 
-  it('grows to three ids after add', () => {
+  it('grows to three refs after add', () => {
     const { result } = renderHook(
       () => ({ api: useEditor(), children: useChildren('root_1') }),
       { wrapper: makeWrapper() },
@@ -231,14 +240,192 @@ describe('useChildren', () => {
     act(() => {
       result.current.api.add('heading', { parentId: 'root_1' });
     });
-    expect(result.current.children).toEqual(['h1', 'sec1', 'n1']);
+    expect(result.current.children).toEqual([
+      { id: 'h1', type: 'heading', index: 0 },
+      { id: 'sec1', type: 'section', index: 1 },
+      { id: 'n1', type: 'heading', index: 2 },
+    ]);
   });
 
-  it('returns [] for an unknown parent', () => {
-    const { result } = renderHook(() => useChildren('nope'), {
+  it('returns [] for an unknown parent, same EMPTY reference twice', () => {
+    const { result } = renderHook(
+      () => ({ a: useChildren('nope'), b: useChildren('also-nope') }),
+      { wrapper: makeWrapper() },
+    );
+    expect(result.current.a).toEqual([]);
+    expect(result.current.b).toEqual([]);
+    expect(result.current.a).toBe(result.current.b);
+  });
+});
+
+describe('useBlockActions', () => {
+  it('h1 is index 0, cannot move up, can move down, cannot have children', () => {
+    const { result } = renderHook(() => useBlockActions('h1'), {
       wrapper: makeWrapper(),
     });
-    expect(result.current).toEqual([]);
+    expect(result.current.index).toBe(0);
+    expect(result.current.canMoveUp).toBe(false);
+    expect(result.current.canMoveDown).toBe(true);
+    expect(result.current.canHaveChildren).toBe(false);
+    expect(result.current.allowedChildTypes).toEqual([]);
+  });
+
+  it('sec1 can have children and accepts heading and paragraph', () => {
+    const { result } = renderHook(() => useBlockActions('sec1'), {
+      wrapper: makeWrapper(),
+    });
+    expect(result.current.canHaveChildren).toBe(true);
+    expect(result.current.allowedChildTypes).toEqual(['heading', 'paragraph']);
+  });
+
+  it("add('heading') under sec1 returns an id and the child appears", () => {
+    const { result } = renderHook(
+      () => ({
+        api: useEditor(),
+        actions: useBlockActions('sec1'),
+        children: useChildren('sec1'),
+      }),
+      { wrapper: makeWrapper() },
+    );
+    let id: string | null = null;
+    act(() => {
+      id = result.current.actions.add('heading');
+    });
+    expect(id).toBe('n1');
+    expect(result.current.children.map((child) => child.id)).toEqual([
+      'p1',
+      'n1',
+    ]);
+  });
+
+  it("add('image') under sec1 returns null (placement)", () => {
+    const { result } = renderHook(() => useBlockActions('sec1'), {
+      wrapper: makeWrapper(),
+    });
+    let id: string | null = 'unset';
+    act(() => {
+      id = result.current.add('image');
+    });
+    expect(id).toBeNull();
+  });
+
+  it('moveDown() on h1 reorders root children and then canMoveDown is false', () => {
+    const { result } = renderHook(
+      () => ({ api: useEditor(), actions: useBlockActions('h1') }),
+      { wrapper: makeWrapper() },
+    );
+    let moved = false;
+    act(() => {
+      moved = result.current.actions.moveDown();
+    });
+    expect(moved).toBe(true);
+    expect(result.current.api.getState().nodes.root_1?.childIds).toEqual([
+      'sec1',
+      'h1',
+    ]);
+    expect(result.current.actions.canMoveDown).toBe(false);
+  });
+
+  it('moveUp() on the first child returns false', () => {
+    const { result } = renderHook(() => useBlockActions('h1'), {
+      wrapper: makeWrapper(),
+    });
+    let moved = true;
+    act(() => {
+      moved = result.current.moveUp();
+    });
+    expect(moved).toBe(false);
+  });
+
+  it('remove() on p1 returns true and the node is gone', () => {
+    const { result } = renderHook(
+      () => ({ api: useEditor(), actions: useBlockActions('p1') }),
+      { wrapper: makeWrapper() },
+    );
+    let removed = false;
+    act(() => {
+      removed = result.current.actions.remove();
+    });
+    expect(removed).toBe(true);
+    expect(result.current.api.getState().nodes.p1).toBeUndefined();
+  });
+
+  it('duplicate() on h1 returns a new id right after h1', () => {
+    const { result } = renderHook(
+      () => ({ api: useEditor(), actions: useBlockActions('h1') }),
+      { wrapper: makeWrapper() },
+    );
+    let id: string | null = null;
+    act(() => {
+      id = result.current.actions.duplicate();
+    });
+    expect(id).toBe('n1');
+    expect(result.current.api.getState().nodes.root_1?.childIds).toEqual([
+      'h1',
+      'n1',
+      'sec1',
+    ]);
+  });
+
+  it('root: cannot move or remove or duplicate; can have children', () => {
+    const { result } = renderHook(() => useBlockActions('root_1'), {
+      wrapper: makeWrapper(),
+    });
+    expect(result.current.canMoveUp).toBe(false);
+    expect(result.current.canMoveDown).toBe(false);
+    expect(result.current.canHaveChildren).toBe(true);
+    let removed = true;
+    let duplicated: string | null = 'unset';
+    act(() => {
+      removed = result.current.remove();
+      duplicated = result.current.duplicate();
+    });
+    expect(removed).toBe(false);
+    expect(duplicated).toBeNull();
+  });
+
+  it('unknown id: type is null and everything is inert', () => {
+    const { result } = renderHook(() => useBlockActions('nope'), {
+      wrapper: makeWrapper(),
+    });
+    expect(result.current.type).toBeNull();
+    expect(result.current.parentId).toBeNull();
+    expect(result.current.index).toBe(-1);
+    expect(result.current.canMoveUp).toBe(false);
+    expect(result.current.canMoveDown).toBe(false);
+    expect(result.current.canHaveChildren).toBe(false);
+    expect(result.current.allowedChildTypes).toEqual([]);
+    let added: string | null = 'unset';
+    let removed = true;
+    let duplicated: string | null = 'unset';
+    let up = true;
+    let down = true;
+    act(() => {
+      added = result.current.add('heading');
+      removed = result.current.remove();
+      duplicated = result.current.duplicate();
+      up = result.current.moveUp();
+      down = result.current.moveDown();
+    });
+    expect(added).toBeNull();
+    expect(removed).toBe(false);
+    expect(duplicated).toBeNull();
+    expect(up).toBe(false);
+    expect(down).toBe(false);
+  });
+
+  it('returned object identity is stable across an unrelated re-render', () => {
+    const { result, rerender } = renderHook(
+      () => ({ api: useEditor(), actions: useBlockActions('sec1') }),
+      { wrapper: makeWrapper() },
+    );
+    const first = result.current.actions;
+    rerender();
+    expect(result.current.actions).toBe(first);
+    act(() => {
+      result.current.api.update('h1', { text: 'x' });
+    });
+    expect(result.current.actions).toBe(first);
   });
 });
 
