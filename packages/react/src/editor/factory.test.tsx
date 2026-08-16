@@ -37,6 +37,7 @@ describe('createEditor', () => {
     const factory = createEditor({ schema: storeSchema });
     expect(factory.schema).toBe(storeSchema);
     expect(typeof factory.Root).toBe('function');
+    expect(typeof factory.Preview).toBe('function');
     expect(typeof factory.useEditor).toBe('function');
     expect(typeof factory.useBlock).toBe('function');
     expect(typeof factory.useField).toBe('function');

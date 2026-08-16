@@ -230,3 +230,16 @@ export type _settingsChildType = Expect<
 export type _typesTree = Expect<
   MutuallyAssignable<(typeof factory.types)['tree'], TreeOf<Pages>>
 >;
+
+// --- factory Preview render argument + scrollTo -----------------------------
+type PreviewRenderArg = Parameters<
+  Parameters<EditorFactory<Pages>['Preview']>[0]['render']
+>[0];
+export type _previewTreeArg = Expect<
+  MutuallyAssignable<PreviewRenderArg, TreeOf<Pages>>
+>;
+const scrolled: boolean = api.scrollTo('root_1');
+void scrolled;
+api.scrollTo('h1', { block: 'nearest' });
+declare const scrollContainer: ParentNode;
+api.scrollTo('h1', { container: scrollContainer });

@@ -9,7 +9,7 @@ import {
   render,
   renderHook,
 } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { EditorStore } from '../store';
 import type {
@@ -699,6 +699,7 @@ describe('Editor.Form', () => {
     const { getByTestId, container } = renderForm(DEMO);
     const form = getByTestId('form');
     expect(form.getAttribute('data-block-type')).toBe('demo');
+    expect(form.getAttribute('data-block-id')).toBe(DEMO);
     const labels = Array.from(container.querySelectorAll('label'));
     expect(labels.map((label) => label.textContent)).toEqual([
       'Cover',
@@ -766,6 +767,102 @@ describe('Editor.Form', () => {
         (field) => field.getAttribute('data-disabled') === '',
       ),
     ).toBe(true);
+  });
+});
+
+describe('Editor.Form autoScroll', () => {
+  const originalMatchMedia = window.matchMedia;
+  const originalScrollIntoView = Element.prototype.scrollIntoView;
+
+  function stubMatchMedia(matchesReduce: boolean) {
+    window.matchMedia = ((query: string) => ({
+      matches: matchesReduce && query === '(prefers-reduced-motion: reduce)',
+      media: query,
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
+      dispatchEvent() {
+        return false;
+      },
+      onchange: null,
+    })) as typeof window.matchMedia;
+  }
+
+  beforeEach(() => {
+    stubMatchMedia(false);
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+
+  afterEach(() => {
+    window.matchMedia = originalMatchMedia;
+    Element.prototype.scrollIntoView = originalScrollIntoView;
+  });
+
+  function renderAutoForm(autoScroll = true) {
+    const probe: Probe = { store: null };
+    const utils = render(
+      <Editor.Root schema={formSchema} defaultValue={makeTree()} fields={stubs}>
+        <StoreProbe probe={probe} />
+        <Editor.Form
+          blockId={DEMO}
+          autoScroll={autoScroll}
+          data-testid="form"
+        />
+      </Editor.Root>,
+    );
+    if (!probe.store) throw new Error('store probe did not mount');
+    return { ...utils, store: probe.store };
+  }
+
+  it('scrolls the form once per store focus change that targets it', () => {
+    const { getByTestId, store } = renderAutoForm();
+    const form = getByTestId('form');
+    const spy = vi.spyOn(form, 'scrollIntoView');
+    act(() => {
+      store.focus({ blockId: DEMO, key: 'text' });
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({ block: 'nearest', inline: 'nearest' }),
+    );
+    act(() => {
+      store.focus({ blockId: DEMO, key: 'text' });
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('scrolls again when focus moves to a second field of the same block', () => {
+    const { getByTestId, store } = renderAutoForm();
+    const spy = vi.spyOn(getByTestId('form'), 'scrollIntoView');
+    act(() => {
+      store.focus({ blockId: DEMO, key: 'text' });
+    });
+    act(() => {
+      store.focus({ blockId: DEMO, key: 'body' });
+    });
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not scroll without autoScroll', () => {
+    const { getByTestId, store } = renderAutoForm(false);
+    const spy = vi.spyOn(getByTestId('form'), 'scrollIntoView');
+    act(() => {
+      store.focus({ blockId: DEMO, key: 'text' });
+    });
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('uses behavior auto when prefers-reduced-motion is reduce', () => {
+    stubMatchMedia(true);
+    const { getByTestId, store } = renderAutoForm();
+    const spy = vi.spyOn(getByTestId('form'), 'scrollIntoView');
+    act(() => {
+      store.focus({ blockId: DEMO, key: 'text' });
+    });
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: 'auto', block: 'nearest' }),
+    );
   });
 });
 

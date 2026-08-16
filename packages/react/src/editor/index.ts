@@ -12,10 +12,11 @@ import {
   EditorFieldLabel,
   EditorForm,
 } from './field';
+import { EditorPreview } from './preview';
 import { EditorAddBlock, EditorOutlineItem } from './structure';
 
 export type { EditorRootProps } from './components';
-export type { EditorContextValue } from './types';
+export type { EditorContextValue, EditorScrollToOptions } from './types';
 export { useEditorContext } from './context';
 
 export const Editor = {
@@ -26,6 +27,7 @@ export const Editor = {
   FieldDescription: EditorFieldDescription,
   FieldError: EditorFieldError,
   Form: EditorForm,
+  Preview: EditorPreview,
   OutlineItem: EditorOutlineItem,
   AddBlock: EditorAddBlock,
 };
@@ -52,6 +54,10 @@ export {
   toDatetimeLocal,
   useFieldContext,
 } from './field';
+
+// Preview: delayed raw-tree render.
+export type { EditorPreviewProps } from './preview';
+export { PREVIEW_DEBOUNCE_MS } from './preview';
 
 // Structure parts: outline row and palette insert button.
 export type {

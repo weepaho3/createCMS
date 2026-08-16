@@ -17,6 +17,7 @@ import type {
   HistoryApi,
   SaveApi,
 } from './hooks';
+import type { EditorPreviewProps } from './preview';
 import type { AnyEditorSchema, PaletteItem } from './schema';
 import type { UpdateOptions, UserSelection } from './store';
 
@@ -35,6 +36,7 @@ import {
   useSelection,
 } from './hooks';
 import { useEditorKeyboard } from './keyboard';
+import { EditorPreview } from './preview';
 
 // ---------------------------------------------------------------------------
 // Type derivations from a schema
@@ -216,6 +218,11 @@ export type EditorFactory<S extends AnyEditorSchema> = {
       defaultValue: TreeOf<S>;
     },
   ) => React.JSX.Element;
+  Preview: (
+    props: Omit<EditorPreviewProps, 'render'> & {
+      render: (tree: TreeOf<S>) => React.ReactNode;
+    },
+  ) => React.JSX.Element;
   useEditor(): TypedEditorApi<S>;
   useBlock(id: string | null): BlockHandleOf<S> | null;
   useField<
@@ -277,9 +284,25 @@ export function createEditor<const S extends AnyEditorSchema>(
     );
   }
 
+  function Preview(
+    props: Omit<EditorPreviewProps, 'render'> & {
+      render: (tree: TreeOf<S>) => React.ReactNode;
+    },
+  ): React.JSX.Element {
+    assertSchema('Preview');
+    const { render, ...rest } = props;
+    return (
+      <EditorPreview
+        {...rest}
+        render={render as (tree: BlockTreeNode) => React.ReactNode}
+      />
+    );
+  }
+
   return {
     schema,
     Root,
+    Preview,
     useEditor() {
       assertSchema('useEditor');
       return useEditor() as TypedEditorApi<S>;
