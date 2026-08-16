@@ -13,6 +13,8 @@ import type {
   AnyCollectionDefinition,
   BlockProperty,
   CollectionDefinition,
+  EditAttrs,
+  EditProps,
   EventDeclaration,
   InferBlockProperties,
   RefMode,
@@ -34,6 +36,11 @@ export type {
   TextDiffSegment,
 } from '../core/diff/types';
 
+// The editor-anchor vocabulary lives in @createcms/schema (inlined into this
+// package's d.ts like every schema type); re-exported so block components
+// import it from the same entry as `BlockProps`.
+export type { EditAttrs, EditProps } from '../core/types/definitions';
+
 // `RefMode` — which side of the reference seam a component's props reflect:
 // `raw` (store values — the editor canvas) or `resolved` (published read) — is
 // imported from `../core/types/definitions` (re-exported from the package root).
@@ -47,15 +54,21 @@ export type {
  *  properties surface as `ResolvedReference` objects — hence `M` defaults to
  *  `'resolved'`. Pass `M = 'raw'` to type a dual-use component against the raw
  *  store values the editor canvas holds (`reference` → stored rootId string),
- *  instead of falling back to `any`. */
+ *  instead of falling back to `any`. `properties` is always an object here
+ *  (the renderer passes `node.properties`), so the `| undefined` that
+ *  `InferBlockProperties` carries for all-optional blocks is stripped.
+ *  `edit` carries the editor anchors as plain data (`NO_EDIT` outside an
+ *  editor); spread `edit.block` on the root element and `edit.field.<key>`
+ *  on the element that shows that property. */
 export type BlockComponentProps<
   TProps extends Record<string, BlockProperty> = Record<string, BlockProperty>,
   M extends RefMode = 'resolved',
 > = {
-  properties: InferBlockProperties<TProps, M>;
+  properties: NonNullable<InferBlockProperties<TProps, M>>;
   children: ReactNode;
   blockId: string;
   node: BlockTreeNode;
+  edit: EditProps<TProps>;
 };
 
 /** Shorthand to derive block component props from a collection definition.
@@ -77,6 +90,18 @@ export type BlockComponentMap<
     props: BlockComponentProps<TBlocks[K]['properties']>,
   ) => ReactNode;
 };
+
+/**
+ * The `edit` value a block component receives outside an editor: no anchors,
+ * `active: false`. Pass it yourself when rendering a block component by hand
+ * (tests, stories). Its `field` is an index signature of OPTIONAL entries, so
+ * it is assignable to `EditProps<…>` of every block definition.
+ */
+export const NO_EDIT: EditProps<Record<string, BlockProperty>> = Object.freeze({
+  active: false,
+  block: Object.freeze({}),
+  field: Object.freeze({}),
+});
 
 // ============================================================================
 // BlocksMap
@@ -341,6 +366,38 @@ function applyDiffWrapper(
 // BlocksRenderer
 // ============================================================================
 
+/** How the renderer fills the `edit` prop: absent → `NO_EDIT` for every block;
+ *  `'preview'` → anchors on every block of the tree (not on referenced trees)
+ *  so an HTML preview can map clicks back to blocks and fields; `active` stays
+ *  `false` — an interactive canvas builds its own `edit` objects. */
+export type RendererEditMode = 'preview';
+
+type RenderContext = {
+  components: Record<string, (props: any) => ReactNode>;
+  events: Record<string, Record<string, EventDeclaration>>;
+  /** Block definitions — the source of the `field` keys in preview mode. */
+  blocks: Record<string, AnyBlockDefinition> | undefined;
+  diff: BlocksDiffOptions | undefined;
+  edit: RendererEditMode | undefined;
+};
+
+/** Anchors for one block in preview mode: the block id and one entry per
+ *  DECLARED property key (from the definition, not from the stored values). */
+function previewEdit(
+  node: BlockTreeNode,
+  blocks: Record<string, AnyBlockDefinition> | undefined,
+): EditProps<Record<string, BlockProperty>> {
+  const field: Record<string, EditAttrs> = {};
+  for (const key of Object.keys(blocks?.[node.type]?.properties ?? {})) {
+    field[key] = { 'data-editor-field': key };
+  }
+  return {
+    active: false,
+    block: { 'data-editor-block': node.blockId },
+    field,
+  };
+}
+
 /**
  * Renders a `BlockTreeNode` tree using a block component map.
  *
@@ -364,13 +421,22 @@ export function BlocksRenderer({
   blocks,
   tree,
   diff,
+  edit,
 }: {
   blocks: BlocksMap;
   tree: BlockTreeNode;
   /** Opt-in diff-aware rendering for annotated trees (`getDiff`). */
   diff?: BlocksDiffOptions;
+  /** `'preview'` emits `data-editor-block` / `data-editor-field` anchors. */
+  edit?: RendererEditMode;
 }): ReactNode {
-  return renderContentNode(tree, blocks._components, blocks._events, diff);
+  return renderContentNode(tree, {
+    components: blocks._components,
+    events: blocks._events,
+    blocks: blocks._collection.blocks,
+    diff,
+    edit,
+  });
 }
 
 // ============================================================================
@@ -379,33 +445,23 @@ export function BlocksRenderer({
 
 function renderContentNode(
   node: BlockTreeNode,
-  components: Record<string, (props: any) => ReactNode>,
-  events: Record<string, Record<string, EventDeclaration>>,
-  diff?: BlocksDiffOptions,
+  ctx: RenderContext,
   fromReference = false,
 ): ReactNode {
-  const rendered = renderNodeElement(
-    node,
-    components,
-    events,
-    diff,
-    fromReference,
-  );
+  const rendered = renderNodeElement(node, ctx, fromReference);
   // Diff wrapping is applied OUTSIDE the node's own render: never for the root
   // (it renders as a bare fragment) and never when the node rendered nothing.
-  if (!diff || node.type === 'root' || rendered === null) return rendered;
-  return applyDiffWrapper(rendered, node, diff);
+  if (!ctx.diff || node.type === 'root' || rendered === null) return rendered;
+  return applyDiffWrapper(rendered, node, ctx.diff);
 }
 
 function renderNodeElement(
   node: BlockTreeNode,
-  components: Record<string, (props: any) => ReactNode>,
-  events: Record<string, Record<string, EventDeclaration>>,
-  diff: BlocksDiffOptions | undefined,
+  ctx: RenderContext,
   fromReference: boolean,
 ): ReactNode {
   const renderedChildren = node.children.map((child) =>
-    renderContentNode(child, components, events, diff, fromReference),
+    renderContentNode(child, ctx, fromReference),
   );
 
   const childrenNode =
@@ -415,7 +471,7 @@ function renderNodeElement(
     return <>{childrenNode}</>;
   }
 
-  const Component = components[node.type];
+  const Component = ctx.components[node.type];
 
   if (!Component) {
     // No component mapped for this block type.
@@ -425,7 +481,7 @@ function renderNodeElement(
       if (isResolvedReference(value) && value.tree.children.length > 0) {
         const refChildren = value.tree.children.map((child) => (
           <Fragment key={child.blockId}>
-            {renderContentNode(child, components, events, diff, true)}
+            {renderContentNode(child, ctx, true)}
           </Fragment>
         ));
         return <>{refChildren}</>;
@@ -450,7 +506,7 @@ function renderNodeElement(
       for (const child of value.tree.children) {
         refRendered.push(
           <Fragment key={child.blockId}>
-            {renderContentNode(child, components, events, diff, true)}
+            {renderContentNode(child, ctx, true)}
           </Fragment>,
         );
       }
@@ -465,6 +521,13 @@ function renderNodeElement(
       </>
     ) : null;
 
+  // Reference subtrees always render with `NO_EDIT` — anchors belong to the
+  // tree the renderer was asked to render, not to embedded referenced data.
+  const edit =
+    ctx.edit === 'preview' && !fromReference
+      ? previewEdit(node, ctx.blocks)
+      : NO_EDIT;
+
   const element = (
     <Component
       key={node.blockId}
@@ -472,6 +535,7 @@ function renderNodeElement(
       children={allChildren}
       blockId={node.blockId}
       node={node}
+      edit={edit}
     />
   );
 
@@ -487,7 +551,7 @@ function renderNodeElement(
   // fire() inside it unscoped (no source, dev-warned), instead of attributing
   // events to a block the draft removed.
   const isGhost = getBlockDiff(node)?.changeTypes.includes('deleted') === true;
-  if (node.type in events && !isGhost) {
+  if (node.type in ctx.events && !isGhost) {
     const rawTrackingId = node.properties.trackingId;
     return (
       <BlockTracker
@@ -497,7 +561,7 @@ function renderNodeElement(
         trackingId={
           typeof rawTrackingId === 'string' ? rawTrackingId : undefined
         }
-        events={events[node.type]}
+        events={ctx.events[node.type]}
       >
         {element}
       </BlockTracker>
@@ -547,12 +611,21 @@ export function createContentRenderer<
   function ContentRendererComponent({
     tree,
     diff,
+    edit,
   }: {
     tree: BlockTreeNode;
     /** Opt-in diff-aware rendering for annotated trees (`getDiff`). */
     diff?: BlocksDiffOptions;
+    /** `'preview'` emits `data-editor-block` / `data-editor-field` anchors. */
+    edit?: RendererEditMode;
   }): ReactNode {
-    return renderContentNode(tree, componentMap, events, diff);
+    return renderContentNode(tree, {
+      components: componentMap,
+      events,
+      blocks: collection.blocks,
+      diff,
+      edit,
+    });
   }
 
   ContentRendererComponent.displayName = `ContentRenderer(${collection.label})`;
