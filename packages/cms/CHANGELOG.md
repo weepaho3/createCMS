@@ -1,5 +1,29 @@
 # @createcms/core
 
+## 0.7.0
+
+### Minor Changes
+
+- [#91](https://github.com/weepaho3/createCMS/pull/91) [`2e132f7`](https://github.com/weepaho3/createCMS/commit/2e132f74bc4e762bcd0048a3b9f3164454948f49) Thanks [@weepaho3](https://github.com/weepaho3)! - Block components receive an `edit` prop with the editor anchors as plain
+  data (`edit.block`, `edit.field.<key>`, `edit.active`) — `NO_EDIT` outside an
+  editor, real `data-editor-block` / `data-editor-field` anchors when the
+  renderer is given `edit="preview"`. `BlockComponentProps.properties` is now
+  typed as an object (never `undefined`). Breaking for code that renders a
+  block component by hand: pass `edit={NO_EDIT}`.
+
+### Patch Changes
+
+- [#93](https://github.com/weepaho3/createCMS/pull/93) [`c449046`](https://github.com/weepaho3/createCMS/commit/c4490467cfb2d8c5004761bb08afa4ac69c14f5a) Thanks [@weepaho3](https://github.com/weepaho3)! - `POST /{collection}/resolveTree` resolves a posted, unsaved tree the way
+  `getBlockTree` resolves a stored one — variables substituted, links resolved,
+  references as a `references` sidecar (`includeReferencePreviews`) and/or
+  inlined into the tree (`inlineReferences`) — without writing anything, so an
+  editor can preview its working copy.
+
+- [#94](https://github.com/weepaho3/createCMS/pull/94) [`db18bed`](https://github.com/weepaho3/createCMS/commit/db18bed1b49402a470ba38399919169c79fc8cbb) Thanks [@weepaho3](https://github.com/weepaho3)! - Export the pure `{{key}}` helpers `resolveTemplateString`, `extractVariableKeys`
+  and `VAR_PATTERN` from `@createcms/core` and `@createcms/core/react`, and the
+  spec types `ListBlockPropertySpec`, `ListElementSpec`, `ListElementType`,
+  `SelectOption`, `StringConstraints`, `NumberConstraints` from the package root.
+
 ## 0.6.0
 
 ### Minor Changes
