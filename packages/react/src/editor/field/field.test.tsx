@@ -494,11 +494,17 @@ describe('Editor.FieldLabel', () => {
     expect(
       optional.container.querySelector('label')?.hasAttribute('data-required'),
     ).toBe(false);
+    expect(
+      optional.container.querySelector('input')?.hasAttribute('aria-required'),
+    ).toBe(false);
     cleanup();
     const required = renderField('title', { blockId: ROOT });
     expect(
       required.container.querySelector('label')?.getAttribute('data-required'),
     ).toBe('');
+    expect(
+      required.container.querySelector('input')?.getAttribute('aria-required'),
+    ).toBe('true');
   });
 });
 

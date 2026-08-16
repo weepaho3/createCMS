@@ -87,6 +87,8 @@ export {
   useSave,
   useSelection,
 } from './hooks';
+export type { EditorKeyboardOptions } from './keyboard';
+export { useEditorKeyboard } from './keyboard';
 
 // Typed factory.
 export type {

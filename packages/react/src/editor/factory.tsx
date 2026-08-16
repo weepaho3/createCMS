@@ -34,6 +34,7 @@ import {
   useSave,
   useSelection,
 } from './hooks';
+import { useEditorKeyboard } from './keyboard';
 
 // ---------------------------------------------------------------------------
 // Type derivations from a schema
@@ -228,6 +229,7 @@ export type EditorFactory<S extends AnyEditorSchema> = {
   useBlockActions(id: string): TypedBlockActions<S>;
   useSelection(userId?: string): UserSelection;
   useHistory(): HistoryApi;
+  useEditorKeyboard: typeof useEditorKeyboard;
   useSave(): SaveApi;
   useDirty(): boolean;
   usePalette(): TypedPaletteItems<S>;
@@ -309,6 +311,10 @@ export function createEditor<const S extends AnyEditorSchema>(
     useHistory() {
       assertSchema('useHistory');
       return useHistory();
+    },
+    useEditorKeyboard(scopeRef, options) {
+      assertSchema('useEditorKeyboard');
+      return useEditorKeyboard(scopeRef, options);
     },
     useSave() {
       assertSchema('useSave');
