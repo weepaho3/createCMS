@@ -1,3 +1,4 @@
+import type { FieldControls } from './field/types';
 import type { AnyEditorSchema } from './schema';
 import type { EditorStore } from './store';
 
@@ -10,4 +11,6 @@ export type EditorContextValue = {
   readonly store: EditorStore;
   /** The user this editor edits as — the store's local user. */
   readonly userId: string;
+  /** Per-kind control components from `Editor.Root`'s `fields` prop (`{}` when none). */
+  readonly fields: FieldControls;
 };
