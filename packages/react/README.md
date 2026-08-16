@@ -34,3 +34,12 @@ CONTRIBUTING for the versioning rule). It has no runtime dependency — the
 shared block/collection/tree types are inlined into its `.d.ts` at build
 time; `react` ≥ 19 is a peer, `react-dom` ≥ 19 an optional peer for the
 canvas entry.
+
+## Tests
+
+- Node / happy-dom: `bun run test` (from this package; `--maxWorkers=2`).
+  Schema, store, form, structure. No layout.
+- Chromium: `bun run test:browser` (`src/**/*.browser.test.tsx`,
+  Playwright). Measurement, pointer coordinates, iframe `load`,
+  `contentEditable`. Includes `canvas.browser.test.tsx`.
+- Never run the `@createcms/core` vitest suite unbounded.
