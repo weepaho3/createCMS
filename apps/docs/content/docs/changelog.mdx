@@ -1109,6 +1109,39 @@ createdBy }, ... }` — one uniform shape instead of three divergent keys
 
 ## @createcms/react
 
+### 0.3.0
+
+#### Minor Changes
+
+- [#105](https://github.com/weepaho3/createCMS/pull/105) [`6c9a64b`](https://github.com/weepaho3/createCMS/commit/6c9a64b6c866a8b3d3dc9929dd689d20505858ea) Thanks [@weepaho3](https://github.com/weepaho3)! - `Canvas.Root` renders the store tree through a `components` map (plain or
+  `{ _components }`), with data-only `edit` anchors, a `resolve` layer, and
+  `interactive` modes. `components` is required; `children` are the overlay
+  slot, not the tree.
+
+#### Patch Changes
+
+- [#100](https://github.com/weepaho3/createCMS/pull/100) [`ee68b60`](https://github.com/weepaho3/createCMS/commit/ee68b60ad4ed5131422b8e37014a4adb74c35118) Thanks [@weepaho3](https://github.com/weepaho3)! - A11y contract for `@createcms/react/editor`: `useEditorKeyboard(scopeRef)`
+  binds undo/redo (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y) and optionally
+  Delete/Escape; built-in controls set `aria-required` when the spec is
+  required; README tables for keyboard, ARIA and focus; SSR hydration test
+  for `Editor.Root` + `Editor.Form`.
+
+- [#107](https://github.com/weepaho3/createCMS/pull/107) [`d9df66b`](https://github.com/weepaho3/createCMS/commit/d9df66b0fa99a2d70c7fe0e7c442063017a6681b) Thanks [@weepaho3](https://github.com/weepaho3)! - `Canvas.BlockToolbar` and `Canvas.InsertButton` sit on the overlay.
+  `resolveInsertAt` / `useInsertTarget` pick a line or box insert from
+  measured rects and the parent layout flow.
+
+- [#106](https://github.com/weepaho3/createCMS/pull/106) [`45a51e3`](https://github.com/weepaho3/createCMS/commit/45a51e3958414398709083b1cba8f9f536fd9ab2) Thanks [@weepaho3](https://github.com/weepaho3)! - `Canvas.Overlay` portals an unstyled layer over the canvas. Selection,
+  hover and field rings follow measured block and field rects via
+  `useBlockRect` / `useFieldRect`.
+
+- [#103](https://github.com/weepaho3/createCMS/pull/103) [`be7d148`](https://github.com/weepaho3/createCMS/commit/be7d148942341cc52bcd69deab11c5313c180922) Thanks [@weepaho3](https://github.com/weepaho3)! - `Editor.FramePreview` shows compiled HTML or Blob output in a double-buffered
+  sandboxed iframe, with selectable anchors, stale-response discarding, and
+  `onIssues` for relative URLs, missing hrefs and leftover editor anchors.
+
+- [#102](https://github.com/weepaho3/createCMS/pull/102) [`c0e0db3`](https://github.com/weepaho3/createCMS/commit/c0e0db3177c47c087578680caa45a2d9d2f40058) Thanks [@weepaho3](https://github.com/weepaho3)! - `Editor.Preview` renders a delayed raw store tree; `Editor.Form autoScroll`
+  scrolls the focused block into view; `useEditor().scrollTo` scrolls a
+  registered form or a `[data-block-id]` inside an optional container.
+
 ### 0.2.0
 
 #### Minor Changes
