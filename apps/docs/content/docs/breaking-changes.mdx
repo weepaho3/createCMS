@@ -55,7 +55,16 @@ on, schema changes are picked up with `createcms generate` + a Drizzle migration
 
 ## Unreleased
 
-_No breaking changes yet._
+- **`BlockComponentProps` gains a required `edit` prop and its `properties`
+  is no longer `| undefined`.** Every block component the renderer calls now
+  receives `edit` (`{ active, block, field }`, plain data — `NO_EDIT` outside
+  an editor, anchors with `edit="preview"`). Components that ignore `edit`
+  keep compiling. `properties` is always an object at runtime and is typed
+  that way now.
+  → **Migration:** code that renders a block component itself (tests,
+  stories, custom canvases) passes `edit={NO_EDIT}` (from
+  `@createcms/core/react/blocks`); drop `properties?.` optional chaining if
+  you like — it still compiles.
 
 ---
 
