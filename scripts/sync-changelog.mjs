@@ -22,16 +22,19 @@ const check = process.argv.includes('--check');
 
 const pages = [
   {
-    src: 'packages/cms/CHANGELOG.md',
+    // One page for every published package: a section per package (in
+    // this order), version headings demoted one level so the page has a
+    // single heading hierarchy. A package without a CHANGELOG yet gets the
+    // `missing` line for its section.
+    sources: [
+      { pkg: '@createcms/core', src: 'packages/cms/CHANGELOG.md' },
+      { pkg: '@createcms/react', src: 'packages/react/CHANGELOG.md' },
+    ],
     dest: 'apps/docs/content/docs/changelog.mdx',
     title: 'Changelog',
     description:
-      'Release notes for @createcms/core, generated from Changesets.',
-    // Drop the leading "# @createcms/core" package heading (the frontmatter
-    // title replaces it); keep the "## <version>" sections.
-    stripHeading: /^#\s+@createcms\/core\s*\n+/,
-    missing:
-      'No releases yet. Release notes will appear here after the first publish.\n',
+      'Release notes for @createcms/core and @createcms/react, generated from Changesets.',
+    missing: 'No releases yet.\n',
   },
   {
     src: 'BREAKING-CHANGES.md',
@@ -69,11 +72,26 @@ function escapeMdxOutsideCode(md) {
     .join('');
 }
 
+// A multi-source page demotes every package's "## <version>" heading to
+// "### <version>" so the whole page has a single heading hierarchy under its
+// "## <package>" section headings. Only lines starting with `#{1,5} ` (never
+// an h6, which would overflow ATX syntax) are touched, and only outside code
+// — same fence-splitting approach as escapeMdxOutsideCode.
+function demoteHeadingsOutsideCode(md) {
+  return md
+    .split(/(```[\s\S]*?```|~~~[\s\S]*?~~~)/g)
+    .map((part, i) =>
+      i % 2 === 1 ? part : part.replace(/^(#{1,5}) /gm, '#$1 '),
+    )
+    .join('');
+}
+
 // Repo-relative links (`./CONTRIBUTING.md`) resolve against the repository, not
 // against the docs site, so they 404 once mirrored. Point the two pages that
 // exist on the site at their site path, and everything else at GitHub.
 const SITE_PATHS = new Map([
   ['packages/cms/CHANGELOG.md', '/docs/changelog'],
+  ['packages/react/CHANGELOG.md', '/docs/changelog'],
   ['BREAKING-CHANGES.md', '/docs/breaking-changes'],
 ]);
 
@@ -91,21 +109,41 @@ function rewriteRepoLinks(md) {
 let drifted = 0;
 
 for (const page of pages) {
-  const src = path.join(root, page.src);
   const dest = path.join(root, page.dest);
 
   let body;
-  try {
-    const raw = await readFile(src, 'utf8');
-    body = escapeMdxOutsideCode(
-      rewriteRepoLinks(raw.replace(page.stripHeading, '')),
-    );
-  } catch (err) {
-    // Only "source not there yet" is a soft fallback; any other error
-    // (permissions, I/O) must throw so it can never silently overwrite the page
-    // with a placeholder.
-    if (err.code !== 'ENOENT') throw err;
-    body = page.missing;
+  if (page.sources) {
+    const sections = [];
+    for (const { pkg, src } of page.sources) {
+      const absolute = path.join(root, src);
+      const heading = new RegExp(`^#\\s+${pkg.replace('/', '\\/')}\\s*\\n+`);
+      let section;
+      try {
+        const raw = await readFile(absolute, 'utf8');
+        section = rewriteRepoLinks(
+          demoteHeadingsOutsideCode(raw.replace(heading, '')),
+        );
+      } catch (err) {
+        // Only "source not there yet" is a soft fallback; any other error
+        // (permissions, I/O) must throw so it can never silently overwrite
+        // the page with a placeholder.
+        if (err.code !== 'ENOENT') throw err;
+        section = page.missing;
+      }
+      sections.push(`## ${pkg}\n\n${section}\n`);
+    }
+    body = escapeMdxOutsideCode(sections.join('\n'));
+  } else {
+    const src = path.join(root, page.src);
+    try {
+      const raw = await readFile(src, 'utf8');
+      body = escapeMdxOutsideCode(
+        rewriteRepoLinks(raw.replace(page.stripHeading, '')),
+      );
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+      body = page.missing;
+    }
   }
 
   const contents = `---
@@ -119,13 +157,14 @@ ${body}`;
     const current = await readFile(dest, 'utf8').catch(() => null);
     if (current === contents) continue;
     drifted++;
+    const label = page.src ?? page.sources.map((s) => s.src).join(', ');
     console.error(
-      `[sync-changelog] ${page.dest} is out of sync with ${page.src}.\n` +
+      `[sync-changelog] ${page.dest} is out of sync with ${label}.\n` +
         '  → Run `node scripts/sync-changelog.mjs` and commit the result.',
     );
     if (process.env.GITHUB_ACTIONS) {
       console.error(
-        `::error file=${page.dest}::Out of sync with ${page.src} — run \`node scripts/sync-changelog.mjs\`.`,
+        `::error file=${page.dest}::Out of sync with ${label} — run \`node scripts/sync-changelog.mjs\`.`,
       );
     }
     continue;

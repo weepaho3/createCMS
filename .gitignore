@@ -46,6 +46,9 @@ coverage
 .nyc_output
 # vitest --reporter=blob output (per-shard results + coverage, merged in CI)
 .vitest-reports
+# vitest browser-mode artifacts (failure screenshots + attachments)
+.vitest-attachments/
+__screenshots__/
 
 # Misc
 *.tgz

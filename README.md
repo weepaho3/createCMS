@@ -71,7 +71,9 @@ deployed.
 
 This is a bun + turbo monorepo:
 
-- **`packages/cms`** — [`@createcms/core`](./packages/cms), the published package
+- **`packages/cms`** — [`@createcms/core`](./packages/cms), the composable headless CMS
+- **`packages/schema`** — [`@createcms/schema`](./packages/schema), the shared type vocabulary (types only, private; inlined into core and react)
+- **`packages/react`** — [`@createcms/react`](./packages/react), headless editor primitives
 - **`apps/docs`** — the documentation site + landing page (Fumadocs)
 - **`examples/`** — runnable example apps
 
@@ -82,6 +84,7 @@ bun install
 bun run build        # turbo build (bunchee)
 bun run check-types  # tsc --noEmit
 bun run test         # vitest (PGlite-backed)
+bun run --filter=@createcms/react test:browser  # Chromium via Playwright
 ```
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md).

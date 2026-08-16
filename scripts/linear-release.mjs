@@ -16,7 +16,8 @@
 // Env:
 //   LINEAR_API_KEY  — personal API key (repo secret)
 //   PUBLISHED       — changesets/action `publishedPackages` output:
-//                     [{"name":"@createcms/core","version":"0.6.0"}]
+//                     [{"name":"@createcms/core","version":"0.6.0"}, {"name":"@createcms/react","version":"0.2.0"}]
+//                     (one entry per package the run published; independent versions)
 //   LINEAR_TEAM_KEY — optional, defaults to CMS
 //   DRY_RUN         — optional, set to "1" to log without writing
 

@@ -1,9 +1,29 @@
 {
   "name": "@createcms/react",
   "version": "0.1.0",
-  "private": true,
   "description": "Headless, unstyled editor primitives for createcms (shadcn-style: namespace parts, render prop, data-* state, zero runtime dependencies).",
+  "keywords": [
+    "cms",
+    "createcms",
+    "editor",
+    "headless",
+    "react",
+    "typescript"
+  ],
+  "homepage": "https://github.com/weepaho3/createCMS#readme",
+  "bugs": {
+    "url": "https://github.com/weepaho3/createCMS/issues"
+  },
   "license": "MIT",
+  "author": {
+    "name": "weepaho3",
+    "url": "https://github.com/weepaho3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/weepaho3/createCMS.git",
+    "directory": "packages/react"
+  },
   "files": [
     "dist",
     "README.md",
@@ -26,24 +46,28 @@
       "default": "./dist/editor/cms/index.js"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "bunchee",
+    "build": "bunchee --dts-bundle",
     "check-types": "tsc --noEmit",
     "clean": "rm -rf dist .turbo",
     "lint": "oxlint",
     "test": "vitest run --maxWorkers=2",
+    "test:browser": "vitest run --config vitest.browser.config.ts",
     "test:watch": "vitest"
   },
-  "dependencies": {
-    "@createcms/schema": "workspace:*"
-  },
   "devDependencies": {
+    "@createcms/schema": "workspace:*",
     "@testing-library/dom": "^10",
     "@testing-library/react": "^16",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
+    "@vitest/browser-playwright": "4.1.10",
     "bunchee": "^7.0.0",
     "happy-dom": "^20.11.1",
+    "playwright": "^1.62.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "typescript": "^5.7.2",
@@ -57,5 +81,8 @@
     "react-dom": {
       "optional": true
     }
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

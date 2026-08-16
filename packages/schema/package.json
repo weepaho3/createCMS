@@ -2,8 +2,27 @@
   "name": "@createcms/schema",
   "version": "0.1.0",
   "private": true,
-  "description": "Shared, runtime-free type vocabulary for createcms blocks, collections and trees. Consumed by @createcms/core (inlined at build time) and, later, @createcms/react.",
+  "description": "Shared, runtime-free type vocabulary for createcms blocks, collections and trees. Not published: @createcms/core and @createcms/react inline these types at build time.",
+  "keywords": [
+    "cms",
+    "createcms",
+    "types",
+    "typescript"
+  ],
+  "homepage": "https://github.com/weepaho3/createCMS#readme",
+  "bugs": {
+    "url": "https://github.com/weepaho3/createCMS/issues"
+  },
   "license": "MIT",
+  "author": {
+    "name": "weepaho3",
+    "url": "https://github.com/weepaho3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/weepaho3/createCMS.git",
+    "directory": "packages/schema"
+  },
   "files": [
     "dist",
     "README.md"
@@ -27,5 +46,8 @@
   "devDependencies": {
     "bunchee": "^7.0.0",
     "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

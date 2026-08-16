@@ -41,14 +41,16 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
-      # Gate the release on the PUBLISHED package's own lint/type-check/test/build.
-      # Scoped to @createcms/core so an unrelated docs/example break cannot block a
-      # package publish (rel-08), while a failing package still stops the release
-      # (ci-02 / rel-01).
-      - name: Verify & build @createcms/core
+      # Gate the release on the packages that ship (core, react) and the private
+      # schema package they inline — scoped so an unrelated docs/example break
+      # cannot block a publish, while a failing package still stops the
+      # release. Filters, not `bun run test`, so the cms suite runs the way this
+      # job has always run it and nothing else piggybacks.
+      - name: Verify & build published packages
         run: |
-          bunx oxlint packages/cms
-          bunx turbo run check-types test build --filter=@createcms/core
+          bunx oxlint packages/cms packages/schema packages/react
+          bunx turbo run check-types test build \
+            --filter=@createcms/core --filter=@createcms/schema --filter=@createcms/react
 
       - name: Create release PR or publish
         id: changesets
@@ -61,7 +63,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # No NODE_AUTH_TOKEN: publishing uses OIDC trusted publishing
-          # (configured on npmjs.com). The package is set to "disallow tokens".
+          # (configured per package on npmjs.com; every published package is
+          # set to "disallow tokens").
           NPM_CONFIG_PROVENANCE: true
 
       # Bookkeeping only: tells Linear which issues went out in which version by
