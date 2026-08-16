@@ -1,5 +1,15 @@
 # @createcms/react
 
+## 0.1.1
+
+### Patch Changes
+
+- [#96](https://github.com/weepaho3/createCMS/pull/96) [`e510694`](https://github.com/weepaho3/createCMS/commit/e51069475a2162e3b1f4d2bbf0950a8c0fc04f91) Thanks [@weepaho3](https://github.com/weepaho3)! - Field parts for `@createcms/react/editor`: `Editor.Field`, `Editor.FieldLabel`,
+  `Editor.FieldControl`, `Editor.FieldDescription`, `Editor.FieldError` and
+  `Editor.Form`, a typed `fields` map on `Editor.Root` for per-kind controls,
+  built-in headless controls for `string`, `richText`, `number`, `boolean`,
+  `date`, `select` and `list`, and `useMissingRequired()`.
+
 ## 0.1.0
 
 ### Minor Changes
