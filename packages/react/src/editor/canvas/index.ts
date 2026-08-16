@@ -5,7 +5,14 @@
 // so form-only consumers never install it.
 import { CanvasRoot } from './components';
 
-export type { CanvasRootProps } from './components';
+export type {
+  CanvasInteractive,
+  CanvasRootProps,
+  CanvasSurface,
+} from './components';
+export type { CanvasComponent, CanvasComponents } from './map';
+export type { CanvasResolve, ResolveKind } from './resolve';
+export { useResolved } from './resolve';
 
 export const Canvas = {
   Root: CanvasRoot,

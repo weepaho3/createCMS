@@ -17,6 +17,8 @@ component registry, not in this package.
 | `@createcms/react/editor/canvas` | Live surface, overlay and interaction layer (`Canvas.Root`).               |
 | `@createcms/react/editor/cms`    | Optional adapter to a createcms client. Reserved, empty for now.           |
 
+`Canvas.Root` renders the store tree through a `components` map.
+
 See each entry's own README (`src/editor/README.md`,
 `src/editor/canvas/README.md`, `src/editor/cms/README.md`) for its parts,
 hooks, types and data attributes.
