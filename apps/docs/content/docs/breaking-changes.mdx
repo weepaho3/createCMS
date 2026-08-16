@@ -66,6 +66,14 @@ on, schema changes are picked up with `createcms generate` + a Drizzle migration
   `@createcms/core/react/blocks`); drop `properties?.` optional chaining if
   you like — it still compiles.
 
+- **`@createcms/react`: `useChildren(parentId)` returns child refs instead of
+  ids.** Each entry is `{ id, type, index }` (the factory's `useChildren`
+  narrows `type` to the schema's block types), so a row can render its label
+  and position without a second hook. The array keeps its identity until ids
+  or types change.
+  → **Migration:** replace `useChildren(id).map((childId) => ...)` with
+  `useChildren(id).map((child) => ... child.id ...)`; nothing else changes.
+
 ---
 
 ## 0.6.0 — 2026-08-14

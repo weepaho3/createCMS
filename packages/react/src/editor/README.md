@@ -55,15 +55,17 @@ function BlockFields({ blockId }: { blockId: string }) {
 
 ## Parts
 
-| Part                      | Default element                                 | Props                                                                                                         | Data attributes                                                                 |
-| ------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `Editor.Root`             | none (provider)                                 | `schema` (required), `defaultValue` (required), `onChange`, `onSave`, `genId`, `userId`, `fields`, `children` | none                                                                            |
-| `Editor.Field`            | `div`                                           | `blockId` (required), `name` (required), `disabled`, `render`, div props                                      | `data-kind`, `data-required`, `data-invalid`, `data-disabled`, `data-focused`   |
-| `Editor.FieldLabel`       | `label`                                         | `render`, label props (`children` replaces the spec's `label`)                                                | `data-required`, `data-invalid`, `data-disabled`                                |
-| `Editor.FieldControl`     | the resolved control (see below)                | `render`                                                                                                      | none                                                                            |
-| `Editor.FieldDescription` | `p`                                             | `render`, p props (`children` replaces the spec's `description`)                                              | none                                                                            |
-| `Editor.FieldError`       | `p` with `role="alert"`, rendered while invalid | `render`, p props (`children` replaces the joined messages)                                                   | `data-invalid`                                                                  |
-| `Editor.Form`             | `div`                                           | `blockId` (required), `disabled`, `render`, div props                                                         | `data-block-type`; each named group is a `fieldset[data-group]` with a `legend` |
+| Part                      | Default element                                 | Props                                                                                                         | Data attributes                                                                        |
+| ------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `Editor.Root`             | none (provider)                                 | `schema` (required), `defaultValue` (required), `onChange`, `onSave`, `genId`, `userId`, `fields`, `children` | none                                                                                   |
+| `Editor.Field`            | `div`                                           | `blockId` (required), `name` (required), `disabled`, `render`, div props                                      | `data-kind`, `data-required`, `data-invalid`, `data-disabled`, `data-focused`          |
+| `Editor.FieldLabel`       | `label`                                         | `render`, label props (`children` replaces the spec's `label`)                                                | `data-required`, `data-invalid`, `data-disabled`                                       |
+| `Editor.FieldControl`     | the resolved control (see below)                | `render`                                                                                                      | none                                                                                   |
+| `Editor.FieldDescription` | `p`                                             | `render`, p props (`children` replaces the spec's `description`)                                              | none                                                                                   |
+| `Editor.FieldError`       | `p` with `role="alert"`, rendered while invalid | `render`, p props (`children` replaces the joined messages)                                                   | `data-invalid`                                                                         |
+| `Editor.Form`             | `div`                                           | `blockId` (required), `disabled`, `render`, div props                                                         | `data-block-type`; each named group is a `fieldset[data-group]` with a `legend`        |
+| `Editor.OutlineItem`      | `div` with `role="treeitem"`                    | `blockId` (required), `onDelete`, `render`, div props                                                         | `data-selected`, `data-depth`, `data-has-children`, `data-block-id`, `data-block-type` |
+| `Editor.AddBlock`         | `button`                                        | `type` (required), `parentId`, `index`, `render`, button props (`children` replaces the palette label)        | `data-block-type`                                                                      |
 
 Uncontrolled (`key` resets): `schema`, `defaultValue`, `genId`, `userId` and
 `fields` are read once at mount; render with a different `key` to load
@@ -139,36 +141,66 @@ UTC, `undefined` for empty/invalid), `emptyListElement(of)` (`0` for
 `number`, `false` for `boolean`, the first option for `select`, `''`
 otherwise), `defaultFieldControls` (the built-in map).
 
+### Structure parts
+
+`Editor.OutlineItem` is a keyboard-operable tree row for one block (never the
+root). Nest rows in the DOM so a parent contains its children, and wrap the
+tree in `[role="tree"]` so arrow navigation stays inside that outline.
+
+| Key                             | Action                                                                                                                                                             |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Click                           | Select the row.                                                                                                                                                    |
+| `ArrowUp` / `ArrowDown`         | Select and focus the previous/next `[role="treeitem"]` in DOM order inside the closest `[role="tree"]` (fallback: the document).                                   |
+| `Alt+ArrowUp` / `Alt+ArrowDown` | Move the block among its siblings.                                                                                                                                 |
+| `Delete` / `Backspace`          | Remove after `onDelete` (return `false` to keep). Focus lands on the next item outside the subtree, else the previous; with no neighbour the selection is cleared. |
+| `Escape`                        | Clear the selection.                                                                                                                                               |
+
+Roving `tabIndex`: `0` when the row is selected, or when nothing is selected
+and this is the first child of the root; otherwise `-1`.
+
+`aria-selected` follows the selection, `aria-level` is the depth (root
+children are 1), `aria-expanded="true"` when the block has children (there is
+no collapse state; a consumer overrides the attribute through props).
+
+`Editor.AddBlock` inserts a palette type at the selection point and selects
+the new id. When `parentId` is omitted: the selected block if it accepts
+`type` (append), else after the selected block in its parent, else the root
+(append). The button is disabled when the target parent cannot take `type`.
+There is no drag and drop.
+
 ## Hooks
 
-| Hook                 | Returns                                        | Notes                                                                                                           |
-| -------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `useEditorContext`   | `EditorContextValue`                           | Throws when used outside `Editor.Root`. Internal-facing.                                                        |
-| `useEditorSelector`  | `T` (from `selector(state, store)`)            | Subscribes through `useStoreSelector`; returns the previous reference when the selected value is shallow-equal. |
-| `useEditorStore`     | `EditorStore`                                  | No subscription: imperative access to the enclosing `Editor.Root`'s store.                                      |
-| `useEditor`          | `EditorApi` (no args) or `T` (with a selector) | No-arg form returns a stable object (`{ ...store, schema, userId, store }`); with a selector, a reactive slice. |
-| `useAnyBlock`        | `AnyBlockHandle \| null`                       | `null` for an unknown or `null` id; the handle is stable while the node is unchanged.                           |
-| `useAnyField`        | `AnyFieldHandle`                               | Re-renders only when that property's value or the node's type changes.                                          |
-| `useFields`          | `SchemaField[]`                                | The block's property specs in schema order; `[]` for an unknown block; stable array identity.                   |
-| `useChildren`        | `readonly string[]`                            | The parent's child ids in order; stable array identity until they change.                                       |
-| `useSelection`       | `UserSelection`                                | Defaults to the enclosing editor's user.                                                                        |
-| `useHistory`         | `HistoryApi`                                   | `{ canUndo, canRedo, undo, redo }`.                                                                             |
-| `useSave`            | `SaveApi`                                      | `{ dirty, saving, save, markSaved }`.                                                                           |
-| `useDirty`           | `boolean`                                      | Shorthand for `useSave().dirty`.                                                                                |
-| `usePalette`         | `PaletteItem[]`                                | Every insertable block type, memoised per schema.                                                               |
-| `useMissingRequired` | `MissingRequiredField[]`                       | Every `required` property left empty across the document (blocks and root); memoised per `nodes` identity.      |
-| `useFieldContext`    | `FieldContextValue`                            | The enclosing `Editor.Field`'s spec, value, `setValue`, ids, `errors`, flags; throws outside `Editor.Field`.    |
+| Hook                 | Returns                                        | Notes                                                                                                                                   |
+| -------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `useEditorContext`   | `EditorContextValue`                           | Throws when used outside `Editor.Root`. Internal-facing.                                                                                |
+| `useEditorSelector`  | `T` (from `selector(state, store)`)            | Subscribes through `useStoreSelector`; returns the previous reference when the selected value is shallow-equal.                         |
+| `useEditorStore`     | `EditorStore`                                  | No subscription: imperative access to the enclosing `Editor.Root`'s store.                                                              |
+| `useEditor`          | `EditorApi` (no args) or `T` (with a selector) | No-arg form returns a stable object (`{ ...store, schema, userId, store }`); with a selector, a reactive slice.                         |
+| `useAnyBlock`        | `AnyBlockHandle \| null`                       | `null` for an unknown or `null` id; the handle is stable while the node is unchanged.                                                   |
+| `useAnyField`        | `AnyFieldHandle`                               | Re-renders only when that property's value or the node's type changes.                                                                  |
+| `useFields`          | `SchemaField[]`                                | The block's property specs in schema order; `[]` for an unknown block; stable array identity.                                           |
+| `useChildren`        | `readonly ChildRef[]`                          | `{ id, type, index }` in order; same array reference until ids or types change.                                                         |
+| `useBlockActions`    | `BlockActions`                                 | Placement-gated `add`/`remove`/`duplicate`/`moveUp`/`moveDown` plus `canMoveUp`, `canMoveDown`, `canHaveChildren`, `allowedChildTypes`. |
+| `useSelection`       | `UserSelection`                                | Defaults to the enclosing editor's user.                                                                                                |
+| `useHistory`         | `HistoryApi`                                   | `{ canUndo, canRedo, undo, redo }`.                                                                                                     |
+| `useSave`            | `SaveApi`                                      | `{ dirty, saving, save, markSaved }`.                                                                                                   |
+| `useDirty`           | `boolean`                                      | Shorthand for `useSave().dirty`.                                                                                                        |
+| `usePalette`         | `PaletteItem[]`                                | Every insertable block type, memoised per schema.                                                                                       |
+| `useMissingRequired` | `MissingRequiredField[]`                       | Every `required` property left empty across the document (blocks and root); memoised per `nodes` identity.                              |
+| `useFieldContext`    | `FieldContextValue`                            | The enclosing `Editor.Field`'s spec, value, `setValue`, ids, `errors`, flags; throws outside `Editor.Field`.                            |
 
 ## createEditor(options)
 
 `createEditor({ schema })` binds `Editor.Root` and every hook above to one
 schema: `Root` has `schema` pre-set and `defaultValue` typed as
 `TreeOf<typeof schema>`; `useBlock`/`useField` narrow on the schema's
-declared block types; `add` and `usePalette` resolve to `never` for a schema
-without statically known blocks. Every returned hook first checks that the
-enclosing `Editor.Root` uses the SAME schema object (`===`) and throws
-otherwise, so a nested editor or a generic route under a different schema
-gets a precise error instead of a silently wrong type.
+declared block types; `useChildren` returns `ChildRefOf<S>[]` and
+`useBlockActions` returns `TypedBlockActions<S>`; `add` and `usePalette`
+resolve to `never` for a schema without statically known blocks. Every
+returned hook first checks that the enclosing `Editor.Root` uses the SAME
+schema object (`===`) and throws otherwise, so a nested editor or a generic
+route under a different schema gets a precise error instead of a silently
+wrong type.
 
 ```tsx
 const pageEditor = createEditor({ schema: pages });
@@ -206,6 +238,8 @@ function Block({ id }: { id: string }) {
 | `TypedEditorApi<S>`      | `useEditor()`'s return type, with `add` restricted to `S`'s block types.                 |
 | `TypedAddOptions<S, K>`  | `add`'s options for block type `K`: `parentId`, optional `index`, optional `properties`. |
 | `TypedPaletteItems<S>`   | `PaletteItem[]` with `type` narrowed; `never` when `S` has no static blocks.             |
+| `ChildRefOf<S>`          | `ChildRef` with `type` narrowed to `S`'s block types.                                    |
+| `TypedBlockActions<S>`   | `BlockActions` with `add` and `allowedChildTypes` restricted to `S`'s block types.       |
 | `EditorTypes<S>`         | Phantom bag of the derived types (`typeof editor.types.tree`, …); `{}` at runtime.       |
 | `EditorFactory<S>`       | What `createEditor` returns.                                                             |
 | `CreateEditorOptions<S>` | `createEditor`'s options: `{ schema: S }`.                                               |
@@ -337,35 +371,47 @@ changing a value back by hand counts as clean again. Structural changes call
 | `FieldContextValue`           | What `Editor.Field` shares with the parts below it (`useFieldContext`).                |
 | `ListElementControlProps`     | What a list element's control receives (`spec`, `value`, `index`, ...).                |
 | `ListElementRender`           | `(props: ListElementControlProps) => ReactElement \| null`, passed to `list` controls. |
+| `ChildRef`                    | One child of a block: `{ id, type, index }`.                                           |
+| `BlockActions`                | Structural actions of one block (`add`/`remove`/`duplicate`/`moveUp`/`moveDown`).      |
+| `EditorOutlineItemProps`      | Props of `Editor.OutlineItem`: `blockId`, `onDelete?`, `render?`, div props.           |
+| `EditorAddBlockProps`         | Props of `Editor.AddBlock`: `type`, `parentId?`, `index?`, `render?`, button props.    |
+| `OutlineItemState`            | `useRender` state of `Editor.OutlineItem`.                                             |
+| `AddBlockState`               | `useRender` state of `Editor.AddBlock` (`{ blockType }`).                              |
 
 ## Data attributes
 
-| Attribute         | On                                                       | Meaning                                                               |
-| ----------------- | -------------------------------------------------------- | --------------------------------------------------------------------- |
-| `data-kind`       | `Editor.Field`                                           | The property kind (`spec.type`).                                      |
-| `data-required`   | `Editor.Field`, `Editor.FieldLabel`                      | Present when the spec is `required`.                                  |
-| `data-invalid`    | `Editor.Field`, `Editor.FieldLabel`, `Editor.FieldError` | Present while `validateField` reports at least one finding.           |
-| `data-disabled`   | `Editor.Field`, `Editor.FieldLabel`                      | Present when the field is `disabled`.                                 |
-| `data-focused`    | `Editor.Field`                                           | Present while the store's focused field (local user) is this one.     |
-| `data-block-type` | `Editor.Form`                                            | The block type whose properties the form edits (`root` for the root). |
-| `data-group`      | `fieldset` inside `Editor.Form`                          | The group label of the fields inside.                                 |
+| Attribute           | On                                                       | Meaning                                                                         |
+| ------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `data-kind`         | `Editor.Field`                                           | The property kind (`spec.type`).                                                |
+| `data-required`     | `Editor.Field`, `Editor.FieldLabel`                      | Present when the spec is `required`.                                            |
+| `data-invalid`      | `Editor.Field`, `Editor.FieldLabel`, `Editor.FieldError` | Present while `validateField` reports at least one finding.                     |
+| `data-disabled`     | `Editor.Field`, `Editor.FieldLabel`                      | Present when the field is `disabled`.                                           |
+| `data-focused`      | `Editor.Field`                                           | Present while the store's focused field (local user) is this one.               |
+| `data-block-type`   | `Editor.Form`, `Editor.OutlineItem`, `Editor.AddBlock`   | The block type (`root` on a form for the root; the palette type on `AddBlock`). |
+| `data-group`        | `fieldset` inside `Editor.Form`                          | The group label of the fields inside.                                           |
+| `data-selected`     | `Editor.OutlineItem`                                     | Present while this row is the local user's selected block.                      |
+| `data-depth`        | `Editor.OutlineItem`                                     | Hops from the root (root children are `1`).                                     |
+| `data-has-children` | `Editor.OutlineItem`                                     | Present when the block has at least one child.                                  |
+| `data-block-id`     | `Editor.OutlineItem`                                     | The block this row represents.                                                  |
 
 ## Tests
 
-| File                        | Covers                                                                                                                                                                             |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `editor.test.tsx`           | Root provides context, store and user; parts outside Root throw.                                                                                                                   |
-| `binding.test.tsx`          | `shallowEqual`; `useEditorSelector` re-render/memoisation behaviour; prop-closure recomputation.                                                                                   |
-| `hooks.test.tsx`            | Every untyped hook, Root callbacks (`onChange`/`onSave`, latest-callback semantics), `key`-based reset.                                                                            |
-| `factory.test.tsx`          | `createEditor`'s runtime shape, typed narrowing at runtime, the schema guard, nested factories.                                                                                    |
-| `factory.type-check.ts`     | Compile-time: the derived types (`TreeOf`, `BlockHandleOf`, …) against a representative schema.                                                                                    |
-| `field/field.test.tsx`      | Built-in controls, control resolution (render/map/default, warn-once), label/description/error wiring, focus sync, coalesced typing, `Editor.Form` grouping, `useMissingRequired`. |
-| `field/field.type-check.ts` | Compile-time: per-kind `FieldControlProps`, the `FieldControls` map, `fields` on Root and context.                                                                                 |
-| `schema/placement.test.ts`  | `getPlacement`/`canPlace`/`allowedChildTypes`: placement semantics table, edge cases with ad-hoc schemas.                                                                          |
-| `schema/defaults.test.ts`   | `defaultValuesFor`: declared-default-only semantics, `fillDefaults`, fresh-object-per-call.                                                                                        |
-| `schema/fields.test.ts`     | `propertiesOf`/`groupFields`/`paletteItems`/`groupPaletteItems`: ordering and grouping rules.                                                                                      |
-| `schema/validation.test.ts` | `isEmptyValue`/`validateField`/`missingRequired`: required gate, per-kind constraints, list elements.                                                                              |
-| `store/hash.test.ts`        | `stableHash`: key-order-insensitive, array-order-sensitive, `undefined` dropped, `null` kept.                                                                                      |
-| `store/serde.test.ts`       | `flattenTree`/`serializeToTree`: shape, root type kept, round-trip, subtree, dangling id, property copies.                                                                         |
-| `store/ops.test.ts`         | `applyOp`: every op kind, its guards, its inverse, roundtrips, JSON-serialisability.                                                                                               |
-| `store/store.test.ts`       | `createEditorStore`: actions, placement guards, undo/redo, coalescing, `applyRemote`, selection, save.                                                                             |
+| File                                | Covers                                                                                                                                                                             |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `editor.test.tsx`                   | Root provides context, store and user; parts outside Root throw; namespace keys.                                                                                                   |
+| `binding.test.tsx`                  | `shallowEqual`; `useEditorSelector` re-render/memoisation behaviour; prop-closure recomputation.                                                                                   |
+| `hooks.test.tsx`                    | Every untyped hook including `useChildren` child refs and `useBlockActions`, Root callbacks, `key`-based reset.                                                                    |
+| `factory.test.tsx`                  | `createEditor`'s runtime shape (incl. `useBlockActions`), typed narrowing at runtime, the schema guard, nested factories.                                                          |
+| `factory.type-check.ts`             | Compile-time: the derived types (`TreeOf`, `BlockHandleOf`, `ChildRefOf`, `TypedBlockActions`, …) against a representative schema.                                                 |
+| `field/field.test.tsx`              | Built-in controls, control resolution (render/map/default, warn-once), label/description/error wiring, focus sync, coalesced typing, `Editor.Form` grouping, `useMissingRequired`. |
+| `field/field.type-check.ts`         | Compile-time: per-kind `FieldControlProps`, the `FieldControls` map, `fields` on Root and context.                                                                                 |
+| `structure/structure.test.tsx`      | `Editor.OutlineItem` keyboard/aria/selection, `Editor.AddBlock` insert-point rule, stacked-form acceptance.                                                                        |
+| `structure/structure.type-check.ts` | Compile-time: `onDelete` return, required `type` on `AddBlock`, factory `useChildren`/`TypedBlockActions`.                                                                         |
+| `schema/placement.test.ts`          | `getPlacement`/`canPlace`/`allowedChildTypes`: placement semantics table, edge cases with ad-hoc schemas.                                                                          |
+| `schema/defaults.test.ts`           | `defaultValuesFor`: declared-default-only semantics, `fillDefaults`, fresh-object-per-call.                                                                                        |
+| `schema/fields.test.ts`             | `propertiesOf`/`groupFields`/`paletteItems`/`groupPaletteItems`: ordering and grouping rules.                                                                                      |
+| `schema/validation.test.ts`         | `isEmptyValue`/`validateField`/`missingRequired`: required gate, per-kind constraints, list elements.                                                                              |
+| `store/hash.test.ts`                | `stableHash`: key-order-insensitive, array-order-sensitive, `undefined` dropped, `null` kept.                                                                                      |
+| `store/serde.test.ts`               | `flattenTree`/`serializeToTree`: shape, root type kept, round-trip, subtree, dangling id, property copies.                                                                         |
+| `store/ops.test.ts`                 | `applyOp`: every op kind, its guards, its inverse, roundtrips, JSON-serialisability.                                                                                               |
+| `store/store.test.ts`               | `createEditorStore`: actions, placement guards, undo/redo, coalescing, `applyRemote`, selection, save.                                                                             |
