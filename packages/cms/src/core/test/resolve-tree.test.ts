@@ -320,8 +320,8 @@ describe('resolveTree', () => {
         .headline,
     ).toBe('Bye Toerbo');
     expect(
-      resolved.tree.children.find((c: any) => c.type === 'paragraph')
-        .properties.text,
+      resolved.tree.children.find((c: any) => c.type === 'paragraph').properties
+        .text,
     ).toBe('Toerbo says hi');
 
     // Nothing persisted: the stored tree and branch head are unchanged.
@@ -390,9 +390,7 @@ describe('resolveTree', () => {
         tree: asCollectionName,
       },
     });
-    expect(resolvedAsCollectionName.tree.properties.title).toBe(
-      'Toerbo Home',
-    );
+    expect(resolvedAsCollectionName.tree.properties.title).toBe('Toerbo Home');
   });
 
   describe('scope gate', () => {

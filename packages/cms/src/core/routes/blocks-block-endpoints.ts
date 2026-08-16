@@ -444,8 +444,13 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
         ),
       },
       async (ctx) => {
-        const { rootId, branchId, tree, includeReferencePreviews, inlineReferences } =
-          ctx.body;
+        const {
+          rootId,
+          branchId,
+          tree,
+          includeReferencePreviews,
+          inlineReferences,
+        } = ctx.body;
 
         // Scope gate first (closes IDOR via rootId): the root must exist in the
         // caller's scope and belong to this collection.
