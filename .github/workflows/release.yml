@@ -67,9 +67,10 @@ jobs:
           # set to "disallow tokens").
           NPM_CONFIG_PROVENANCE: true
 
-      # Bookkeeping only: tells Linear which issues went out in which version by
-      # moving everything in `Merged` to `Done`. Runs ONLY on an actual publish,
-      # never on the version PR. The script swallows its own errors — a missing
+      # Bookkeeping only: moves everything in `Merged` to `Done` and comments the
+      # package version whose changelog lists the issue's PR (a neutral note when
+      # none does, e.g. repo tooling). Runs ONLY on an actual publish, never on
+      # the version PR. The script swallows its own errors: a missing
       # LINEAR_API_KEY or a Linear outage must not turn a successful publish
       # into a red run; `continue-on-error` covers whatever it cannot catch.
       # Problems are reported as warning annotations on the run instead.

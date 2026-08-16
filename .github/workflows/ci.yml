@@ -120,6 +120,11 @@ jobs:
       - name: Docs pages in sync with their sources
         run: node scripts/sync-changelog.mjs --check
 
+      # The release bookkeeping helpers are plain Node too: `node --test` keeps
+      # the PR-to-package attribution honest without a Linear connection.
+      - name: Release bookkeeping unit tests
+        run: node --test scripts/linear-release-attribution.test.mjs
+
   typecheck:
     runs-on: ubuntu-latest
     timeout-minutes: 15

@@ -7,8 +7,12 @@
 //
 // Contract: every issue sitting in the `Merged` state on the CMS team is code
 // that was merged but not yet published. A successful publish is exactly the
-// moment that stops being true, so this moves them to `Done` and records the
-// version that shipped them.
+// moment that stops being true, so this moves them to `Done`. The comment
+// names the package version whose changelog lists the issue's PR (Linear's
+// GitHub integration attaches the PR to the issue; Changesets links every
+// changelog entry to its PR). An issue whose PR appears in no published
+// changelog (repo tooling, tests, docs) gets a neutral note instead of a
+// version. Attribution logic lives in ./linear-release-attribution.mjs.
 //
 // Runs from `.github/workflows/release.yml` only when
 // `steps.changesets.outputs.published == 'true'`.
@@ -20,6 +24,18 @@
 //                     (one entry per package the run published; independent versions)
 //   LINEAR_TEAM_KEY — optional, defaults to CMS
 //   DRY_RUN         — optional, set to "1" to log without writing
+//   ATTRIBUTION_ONLY: optional, "1" prints the PR -> version attribution from
+//                     the local changelogs and exits (no Linear call)
+
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import {
+  attributePublished,
+  commentFor,
+  prNumbersIn,
+} from './linear-release-attribution.mjs';
 
 const API = 'https://api.linear.app/graphql';
 const TEAM_KEY = process.env.LINEAR_TEAM_KEY ?? 'CMS';
@@ -42,7 +58,7 @@ const warn = (message) => {
 // No key is a setup error (repo secret missing), not a release error. The
 // package is already on npm by the time this runs, so exit clean.
 const apiKey = process.env.LINEAR_API_KEY;
-if (!apiKey) {
+if (!apiKey && process.env.ATTRIBUTION_ONLY !== '1') {
   warn(
     'LINEAR_API_KEY is not set — skipping Linear bookkeeping. Add the secret under Settings → Secrets and variables → Actions.',
   );
@@ -74,7 +90,7 @@ const gql = async (query, variables = {}) => {
   return json.data;
 };
 
-/** Parses the changesets `publishedPackages` output into "name@version" lines.
+/** Parses the changesets `publishedPackages` output into [{ name, version }].
  *  Tolerates an empty/missing value so a manual run cannot crash the release. */
 const parsePublished = (raw) => {
   if (!raw) return [];
@@ -83,11 +99,33 @@ const parsePublished = (raw) => {
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter((p) => p && p.name && p.version)
-      .map((p) => `${p.name}@${p.version}`);
+      .map((p) => ({ name: String(p.name), version: String(p.version) }));
   } catch {
     console.warn('[linear-release] Could not parse PUBLISHED; continuing.');
     return [];
   }
+};
+
+/** CHANGELOG.md text per workspace package name (packages without one are
+ *  absent). Read from the checkout the release ran in, where the version PR
+ *  has just been merged, so the published versions' sections are present. */
+const loadChangelogs = () => {
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const changelogs = new Map();
+  const packagesDir = path.join(root, 'packages');
+  if (!existsSync(packagesDir)) return changelogs;
+  for (const dir of readdirSync(packagesDir)) {
+    const manifest = path.join(packagesDir, dir, 'package.json');
+    const changelog = path.join(packagesDir, dir, 'CHANGELOG.md');
+    if (!existsSync(manifest) || !existsSync(changelog)) continue;
+    try {
+      const { name } = JSON.parse(readFileSync(manifest, 'utf8'));
+      if (name) changelogs.set(name, readFileSync(changelog, 'utf8'));
+    } catch (err) {
+      warn(`Could not read ${manifest}: ${err?.message ?? err}`);
+    }
+  }
+  return changelogs;
 };
 
 const STATE_QUERY = `
@@ -110,7 +148,12 @@ const ISSUES_QUERY = `
       }
       first: 250
     ) {
-      nodes { id identifier title }
+      nodes {
+        id
+        identifier
+        title
+        attachments(first: 20) { nodes { url } }
+      }
     }
   }
 `;
@@ -128,8 +171,21 @@ const COMMENT_MUTATION = `
 `;
 
 const main = async () => {
-  const versions = parsePublished(process.env.PUBLISHED);
+  const published = parsePublished(process.env.PUBLISHED);
+  const versions = published.map((p) => `${p.name}@${p.version}`);
   const versionLine = versions.length ? versions.join(', ') : 'a new release';
+  const byPr = attributePublished(published, loadChangelogs());
+
+  // Local self-check: print the PR -> version attribution read from the
+  // workspace changelogs and exit without touching Linear.
+  if (process.env.ATTRIBUTION_ONLY === '1') {
+    for (const [pr, shipped] of [...byPr.entries()].sort(
+      (a, b) => a[0] - b[0],
+    )) {
+      console.log(`  #${pr}  ${shipped.join(', ')}`);
+    }
+    return;
+  }
 
   const { workflowStates } = await gql(STATE_QUERY, { teamKey: TEAM_KEY });
   const byName = new Map(workflowStates.nodes.map((s) => [s.name, s.id]));
@@ -160,18 +216,20 @@ const main = async () => {
   }
 
   console.log(
-    `[linear-release] Shipping ${issues.nodes.length} issue(s) in ${versionLine}${DRY_RUN ? ' (dry run)' : ''}:`,
+    `[linear-release] Closing ${issues.nodes.length} issue(s) after publishing ${versionLine}${DRY_RUN ? ' (dry run)' : ''}:`,
   );
 
   for (const issue of issues.nodes) {
-    console.log(`  ${issue.identifier}  ${issue.title}`);
+    const prNumbers = prNumbersIn(
+      (issue.attachments?.nodes ?? []).map((a) => a.url),
+    );
+    const shipped = prNumbers.flatMap((pr) => byPr.get(pr) ?? []);
+    const body = commentFor({ prNumbers, shipped, releaseLine: versionLine });
+    console.log(`  ${issue.identifier}  ${issue.title}\n      ${body}`);
     if (DRY_RUN) continue;
 
     await gql(UPDATE_MUTATION, { id: issue.id, stateId: toId });
-    await gql(COMMENT_MUTATION, {
-      issueId: issue.id,
-      body: `Shipped in ${versionLine}.`,
-    });
+    await gql(COMMENT_MUTATION, { issueId: issue.id, body });
   }
 };
 

@@ -17,6 +17,7 @@
     "lint": "oxlint",
     "release": "changeset publish",
     "test": "turbo test",
+    "test:scripts": "node --test scripts/linear-release-attribution.test.mjs",
     "version-packages": "changeset version && node scripts/sync-changelog.mjs"
   },
   "devDependencies": {
