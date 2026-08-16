@@ -2,7 +2,7 @@
 import type * as React from 'react';
 
 import { act, cleanup, render, renderHook } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { EditorRootProps } from './components';
 import type { EditorApi } from './hooks';
@@ -64,6 +64,86 @@ describe('useEditor', () => {
     });
     expect(id).toBe('n1');
     expect(result.current.getState().nodes.n1).toBeDefined();
+  });
+});
+
+describe('useEditor().scrollTo', () => {
+  const originalScrollIntoView = Element.prototype.scrollIntoView;
+  const scrolled: Element[] = [];
+
+  beforeEach(() => {
+    scrolled.length = 0;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+  });
+
+  afterEach(() => {
+    Element.prototype.scrollIntoView = originalScrollIntoView;
+  });
+
+  it('scrolls the registered form and returns true', () => {
+    let api: EditorApi | undefined;
+    function Probe() {
+      api = useEditor();
+      return null;
+    }
+    const { getByTestId } = render(
+      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+        <Editor.Form blockId="root_1" data-testid="form" />
+        <Probe />
+      </Editor.Root>,
+    );
+    let ok = false;
+    act(() => {
+      ok = api?.scrollTo('root_1') ?? false;
+    });
+    expect(ok).toBe(true);
+    expect(scrolled).toEqual([getByTestId('form')]);
+  });
+
+  it('returns false for a missing id and does not scroll', () => {
+    let api: EditorApi | undefined;
+    function Probe() {
+      api = useEditor();
+      return null;
+    }
+    render(
+      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+        <Editor.Form blockId="root_1" data-testid="form" />
+        <Probe />
+      </Editor.Root>,
+    );
+    let ok = true;
+    act(() => {
+      ok = api?.scrollTo('missing-id') ?? true;
+    });
+    expect(ok).toBe(false);
+    expect(scrolled).toEqual([]);
+  });
+
+  it('scrolls the container data-block-id match, not the form', () => {
+    let api: EditorApi | undefined;
+    function Probe() {
+      api = useEditor();
+      return null;
+    }
+    const { getByTestId } = render(
+      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+        <Editor.Form blockId="root_1" data-testid="form" />
+        <div data-testid="container">
+          <div data-block-id="h1" data-testid="h1-anchor" />
+        </div>
+        <Probe />
+      </Editor.Root>,
+    );
+    let ok = false;
+    act(() => {
+      ok =
+        api?.scrollTo('h1', { container: getByTestId('container') }) ?? false;
+    });
+    expect(ok).toBe(true);
+    expect(scrolled).toEqual([getByTestId('h1-anchor')]);
   });
 });
 

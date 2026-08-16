@@ -10,6 +10,7 @@ import type {
   PlacementIndex,
   SchemaField,
 } from './schema';
+import type { EditorScrollToOptions } from './scroll';
 import type {
   EditorNode,
   EditorStore,
@@ -35,16 +36,18 @@ const EMPTY_SELECTION: UserSelection = {
 };
 const NO_SLICE: EditorSelector<null> = () => null;
 
-/** Everything a part needs from the editor: the store's methods plus `schema`, `userId` and the store itself. */
+/** Everything a part needs from the editor: the store's methods plus `schema`, `userId`, `store` and `scrollTo`. */
 export type EditorApi = EditorStore & {
   readonly schema: AnyEditorSchema;
   readonly userId: string;
   readonly store: EditorStore;
+  scrollTo(blockId: string, opts?: EditorScrollToOptions): boolean;
 };
 
 /**
- * `useEditor()` → a stable API object (actions + `schema` + `userId` + `store`);
- * `useEditor(selector)` → a reactive slice of the store state.
+ * `useEditor()` → a stable API object (actions + `schema` + `userId` +
+ * `store` + `scrollTo`); `useEditor(selector)` → a reactive slice of the
+ * store state.
  */
 export function useEditor(): EditorApi;
 export function useEditor<T>(
@@ -62,6 +65,7 @@ export function useEditor<T>(
       schema: ctx.schema,
       userId: ctx.userId,
       store: ctx.store,
+      scrollTo: ctx.scrollTo,
     }),
     [ctx],
   );

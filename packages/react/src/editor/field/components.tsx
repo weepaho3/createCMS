@@ -8,11 +8,12 @@ import type {
   ListElementRender,
 } from './types';
 
-import { useRender } from '../../use-render';
+import { composeRefs, useRender } from '../../use-render';
 import { useEditorSelector } from '../binding';
 import { useEditorContext } from '../context';
 import { useAnyField, useFields } from '../hooks';
 import { groupFields, validateField } from '../schema';
+import { scrollElementIntoView } from '../scroll';
 import { FieldContext, useFieldContext } from './context';
 import { defaultFieldControls } from './controls';
 
@@ -347,7 +348,7 @@ export function EditorFieldControl({ render }: EditorFieldControlProps) {
 
 // --- Editor.Form ------------------------------------------------------------
 
-type FormState = { blockType: string | null };
+type FormState = { blockType: string | null; blockId: string };
 
 export type EditorFormProps = Omit<
   UseRenderComponentProps<'div', FormState>,
@@ -357,6 +358,11 @@ export type EditorFormProps = Omit<
   blockId: string;
   /** Disables every field of the form. */
   disabled?: boolean;
+  /**
+   * When true, scrolls this form into view on each store focus change that
+   * targets this block (`scrollIntoView` with `block: 'nearest'`).
+   */
+  autoScroll?: boolean;
 };
 
 /**
@@ -368,9 +374,12 @@ export type EditorFormProps = Omit<
 export function EditorForm({
   blockId,
   disabled = false,
+  autoScroll = false,
   render,
   ...rest
 }: EditorFormProps) {
+  const ctx = useEditorContext('Editor.Form');
+  const elRef = React.useRef<HTMLDivElement | null>(null);
   const blockType = useEditorSelector(
     (state) => state.nodes[blockId]?.type ?? null,
   );
@@ -410,11 +419,30 @@ export function EditorForm({
       );
     }
   }
+  React.useLayoutEffect(() => {
+    const el = elRef.current;
+    if (!el) return;
+    return ctx.registerScrollTarget(blockId, el);
+  }, [ctx, blockId, blockType]);
+  const focusSig = useEditorSelector((state) => {
+    const focus = state.selection[ctx.userId]?.focus;
+    return focus && focus.blockId === blockId
+      ? `${focus.blockId}:${focus.key}`
+      : null;
+  });
+  React.useLayoutEffect(() => {
+    if (!autoScroll || !focusSig || !elRef.current) return;
+    scrollElementIntoView(elRef.current);
+  }, [autoScroll, focusSig]);
   const element = useRender<'div', FormState>({
     defaultTagName: 'div',
-    props: { ...rest, children: content },
+    props: {
+      ...rest,
+      ref: composeRefs(elRef, rest.ref),
+      children: content,
+    },
     render,
-    state: { blockType },
+    state: { blockType, blockId },
   });
   return blockType === null ? null : element;
 }

@@ -4,10 +4,12 @@ import * as React from 'react';
 
 import type { FieldControls } from './field/types';
 import type { AnyEditorSchema } from './schema';
+import type { EditorScrollToOptions } from './scroll';
 import type { EditorCallbacks, EditorStore } from './store';
 import type { EditorContextValue } from './types';
 
 import { EditorContext } from './context';
+import { scrollElementIntoView } from './scroll';
 import { createEditorStore } from './store';
 
 const EMPTY_FIELDS: FieldControls = {};
@@ -33,8 +35,9 @@ export type EditorRootProps = {
 /**
  * Provider-only root: renders no DOM element, creates the editor store once
  * from `schema` + `defaultValue` (uncontrolled — remount with `key` to reset)
- * and exposes `{ schema, store, userId, fields }` to every part below it.
- * Callback props are read fresh on every call, so inline handlers are fine.
+ * and exposes `{ schema, store, userId, fields, registerScrollTarget,
+ * scrollTo }` to every part below it. Callback props are read fresh on every
+ * call, so inline handlers are fine.
  */
 export function EditorRoot({
   schema,
@@ -60,7 +63,41 @@ export function EditorRoot({
       userId,
       getCallbacks: () => callbacksRef.current,
     });
-    storeRef.current = { schema, store, userId, fields };
+    const targets = new Map<string, HTMLElement>();
+    const registerScrollTarget = (
+      blockId: string,
+      el: HTMLElement,
+    ): (() => void) => {
+      targets.set(blockId, el);
+      return () => {
+        if (targets.get(blockId) === el) targets.delete(blockId);
+      };
+    };
+    const scrollTo = (
+      blockId: string,
+      opts?: EditorScrollToOptions,
+    ): boolean => {
+      if (opts?.container) {
+        const found = opts.container.querySelector(
+          '[data-block-id="' + CSS.escape(blockId) + '"]',
+        );
+        if (!(found instanceof HTMLElement)) return false;
+        scrollElementIntoView(found, opts);
+        return true;
+      }
+      const el = targets.get(blockId);
+      if (!el) return false;
+      scrollElementIntoView(el, opts);
+      return true;
+    };
+    storeRef.current = {
+      schema,
+      store,
+      userId,
+      fields,
+      registerScrollTarget,
+      scrollTo,
+    };
   }
 
   return (
