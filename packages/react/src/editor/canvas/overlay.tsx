@@ -118,7 +118,6 @@ export function CanvasOverlay({
     render,
     props: {
       ...rest,
-      'aria-hidden': true,
       style: {
         position: 'absolute',
         inset: 0,
@@ -170,6 +169,7 @@ export function CanvasSelectionRing({
     render,
     props: {
       ...rest,
+      'aria-hidden': true,
       style: { ...(rect ? ringStyle(rect) : {}), ...style },
     },
     state: { ...flags, editorSelectionRing: true },
@@ -201,6 +201,7 @@ export function CanvasHoverRing({
     render,
     props: {
       ...rest,
+      'aria-hidden': true,
       style: { ...(rect ? ringStyle(rect) : {}), ...style },
     },
     state: { ...flags, editorHoverRing: true },
@@ -229,6 +230,7 @@ export function CanvasFieldRing({
     render,
     props: {
       ...rest,
+      'aria-hidden': true,
       style: { ...(rect ? ringStyle(rect) : {}), ...style },
     },
     state: { ...flags, editorFieldRing: true },

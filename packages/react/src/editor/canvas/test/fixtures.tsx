@@ -209,3 +209,214 @@ export function Pair({ edit }: { edit: EditProps }) {
 export const unionBlocks = {
   pair: Pair,
 } as unknown as CanvasComponents;
+
+export const insertStackSchema = {
+  label: 'Insert',
+  root: { properties: {} },
+  blocks: {
+    stack: {
+      label: 'Stack',
+      allowChildren: true,
+      properties: {},
+    },
+    cell: {
+      label: 'Cell',
+      properties: { text: { type: 'string', label: 'Text' } },
+    },
+    heading: {
+      label: 'Heading',
+      properties: { text: { type: 'string', label: 'Text' } },
+    },
+  },
+  structure: { stack: { accepts: ['cell'] } },
+} satisfies CollectionDefinition;
+
+function InsertCell({
+  properties,
+  edit,
+}: {
+  properties: { text: string };
+  edit: EditProps;
+}) {
+  return (
+    <div
+      {...edit.block}
+      {...edit.field.text}
+      style={{
+        boxSizing: 'border-box',
+        width: 80,
+        height: 40,
+        margin: 0,
+        padding: 4,
+        overflow: 'hidden',
+      }}
+    >
+      {properties.text}
+    </div>
+  );
+}
+
+function ColumnStack({
+  edit,
+  children,
+}: {
+  edit: EditProps;
+  children?: ReactNode;
+}) {
+  return (
+    <div
+      {...edit.block}
+      style={{ display: 'flex', flexDirection: 'column', width: 80 }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function RowStack({
+  edit,
+  children,
+}: {
+  edit: EditProps;
+  children?: ReactNode;
+}) {
+  return (
+    <div
+      {...edit.block}
+      style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function GridStack({
+  edit,
+  children,
+}: {
+  edit: EditProps;
+  children?: ReactNode;
+}) {
+  return (
+    <div
+      {...edit.block}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '80px 80px',
+        width: 160,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function EmptyStack({ edit }: { edit: EditProps }) {
+  return (
+    <div
+      {...edit.block}
+      style={{
+        boxSizing: 'border-box',
+        width: 160,
+        height: 80,
+      }}
+    />
+  );
+}
+
+function cell(id: string, text: string): BlockTreeNode {
+  return {
+    blockId: id,
+    type: 'cell',
+    properties: { text },
+    children: [],
+  };
+}
+
+export function columnStackTree(): BlockTreeNode {
+  return {
+    blockId: 'root_1',
+    type: 'root',
+    properties: {},
+    children: [
+      {
+        blockId: 'stack1',
+        type: 'stack',
+        properties: {},
+        children: [cell('c1', '1'), cell('c2', '2'), cell('c3', '3')],
+      },
+    ],
+  };
+}
+
+export function rowStackTree(): BlockTreeNode {
+  return {
+    blockId: 'root_1',
+    type: 'root',
+    properties: {},
+    children: [
+      {
+        blockId: 'stack1',
+        type: 'stack',
+        properties: {},
+        children: [cell('c1', '1'), cell('c2', '2'), cell('c3', '3')],
+      },
+    ],
+  };
+}
+
+export function gridStackTree(): BlockTreeNode {
+  return {
+    blockId: 'root_1',
+    type: 'root',
+    properties: {},
+    children: [
+      {
+        blockId: 'stack1',
+        type: 'stack',
+        properties: {},
+        children: [cell('c1', '1'), cell('c2', '2'), cell('c3', '3')],
+      },
+    ],
+  };
+}
+
+export function emptyStackTree(): BlockTreeNode {
+  return {
+    blockId: 'root_1',
+    type: 'root',
+    properties: {},
+    children: [
+      {
+        blockId: 'stack1',
+        type: 'stack',
+        properties: {},
+        children: [],
+      },
+    ],
+  };
+}
+
+export const columnStackBlocks = {
+  stack: ColumnStack,
+  cell: InsertCell,
+  heading: InsertCell,
+} as unknown as CanvasComponents;
+
+export const rowStackBlocks = {
+  stack: RowStack,
+  cell: InsertCell,
+  heading: InsertCell,
+} as unknown as CanvasComponents;
+
+export const gridStackBlocks = {
+  stack: GridStack,
+  cell: InsertCell,
+  heading: InsertCell,
+} as unknown as CanvasComponents;
+
+export const emptyStackBlocks = {
+  stack: EmptyStack,
+  cell: InsertCell,
+  heading: InsertCell,
+} as unknown as CanvasComponents;

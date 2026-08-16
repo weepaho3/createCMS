@@ -57,6 +57,11 @@ export function handleCanvasPointerOver(
     return;
   }
 
+  // Overlay chrome keeps the last hovered block so the insert control
+  // stays mounted under the pointer.
+  const overlay = target.closest('[data-editor-overlay]');
+  if (overlay && insideHost(host, overlay)) return;
+
   const block = target.closest('[data-editor-block]');
   if (block && insideHost(host, block)) {
     store.hover(block.getAttribute('data-editor-block'));

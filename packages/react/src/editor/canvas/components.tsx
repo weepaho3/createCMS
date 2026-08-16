@@ -16,6 +16,7 @@ import { createEditCache, type EditCache } from './edit';
 import { handleCanvasClick, handleCanvasPointerOver } from './interact';
 import { resolveComponentMap } from './map';
 import { createMeasurer } from './measurer';
+import { createPointerStore, type PointerStore } from './pointer';
 import { renderStoreTree } from './renderer';
 import { createResolveCache, readResolved, type ResolveCache } from './resolve';
 
@@ -102,8 +103,14 @@ export function CanvasRoot({
 
   const hostRef = React.useRef<HTMLDivElement | null>(null);
   const measurerRef = React.useRef<Measurer | null>(null);
+  const pointerRef = React.useRef<PointerStore | null>(null);
   const [hostEl, setHostEl] = React.useState<HTMLElement | null>(null);
   const [measurer, setMeasurer] = React.useState<Measurer | null>(null);
+  const [pointer, setPointer] = React.useState<PointerStore | null>(null);
+
+  if (pointerRef.current === null) {
+    pointerRef.current = createPointerStore();
+  }
 
   React.useLayoutEffect(() => {
     const node = hostRef.current;
@@ -112,6 +119,7 @@ export function CanvasRoot({
     measurerRef.current = next;
     setHostEl(node);
     setMeasurer(next);
+    setPointer(pointerRef.current);
     return () => {
       next.destroy();
       measurerRef.current = null;
@@ -120,7 +128,8 @@ export function CanvasRoot({
 
   React.useLayoutEffect(() => {
     const host = hostRef.current;
-    if (!host) return;
+    const pointerStore = pointerRef.current;
+    if (!host || !pointerStore) return;
     const onClick = (event: Event) => {
       handleCanvasClick(event, host, storeRef.current, interactiveRef.current);
     };
@@ -132,11 +141,22 @@ export function CanvasRoot({
         interactiveRef.current,
       );
     };
+    const onPointerMove = (event: Event) => {
+      pointerStore.setFromEvent(event as PointerEvent, host);
+    };
+    const onPointerLeave = () => {
+      pointerStore.clear();
+      storeRef.current.hover(null);
+    };
     host.addEventListener('click', onClick, true);
     host.addEventListener('pointerover', onPointerOver);
+    host.addEventListener('pointermove', onPointerMove);
+    host.addEventListener('pointerleave', onPointerLeave);
     return () => {
       host.removeEventListener('click', onClick, true);
       host.removeEventListener('pointerover', onPointerOver);
+      host.removeEventListener('pointermove', onPointerMove);
+      host.removeEventListener('pointerleave', onPointerLeave);
     };
   }, [version]);
 
@@ -186,10 +206,12 @@ export function CanvasRoot({
       read,
       host: hostEl,
       measurer,
+      pointer,
+      interactive,
       dragging: false,
       editing,
     };
-  }, [read, hostEl, measurer, editing]);
+  }, [read, hostEl, measurer, pointer, interactive, editing]);
 
   const host = useRender<'div', CanvasRootState>({
     defaultTagName: 'div',
