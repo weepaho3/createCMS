@@ -1,5 +1,27 @@
 # @createcms/react
 
+## 0.3.1
+
+### Patch Changes
+
+- [#109](https://github.com/weepaho3/createCMS/pull/109) [`8b16173`](https://github.com/weepaho3/createCMS/commit/8b161730ff2a4e6cb49d87ce932187b257791512) Thanks [@weepaho3](https://github.com/weepaho3)! - `Canvas.InlineText` overlays a contentEditable glass on string and
+  richText fields. Field lookup is scoped to the canvas host and the
+  own block. Empty fields keep a zero-width display placeholder that
+  is never stored.
+
+- [#108](https://github.com/weepaho3/createCMS/pull/108) [`30c0378`](https://github.com/weepaho3/createCMS/commit/30c0378bee76547820c2dbc021b16c281cd7492f) Thanks [@weepaho3](https://github.com/weepaho3)! - `Canvas.DragHandle`, `Canvas.PaletteItem`, `Canvas.DropIndicator` and
+  `Canvas.DragPreview` add pointer-events drag and drop on measured rects.
+  `resolveInsertAt` drives the drop target; `adjustMoveIndex` corrects
+  same-parent moves on commit.
+
+- [#111](https://github.com/weepaho3/createCMS/pull/111) [`c22e64d`](https://github.com/weepaho3/createCMS/commit/c22e64de18021a7b8a6861dd718dc77aeaa67d51) Thanks [@weepaho3](https://github.com/weepaho3)! - `useCmsDocument` loads and saves a collection document through a
+  duck-typed createcms client, tracks the branch head, and exposes a
+  canvas `resolve` map from the references sidecar.
+
+- [#112](https://github.com/weepaho3/createCMS/pull/112) [`da2b7f4`](https://github.com/weepaho3/createCMS/commit/da2b7f483c2aec7f9746f9da5f024343286a5b49) Thanks [@weepaho3](https://github.com/weepaho3)! - `useCmsFieldSources` exposes cached media, collection roots, variables,
+  and template defaults for registry field controls, plus `assetUrl`,
+  label helpers, and `useVariableSuggest` for `{{variable}}` completion.
+
 ## 0.3.0
 
 ### Minor Changes
