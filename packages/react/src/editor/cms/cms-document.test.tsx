@@ -392,6 +392,35 @@ describe('useCmsDocument resolve', () => {
       body: expect.objectContaining({ includeReferencePreviews: true }),
     });
   });
+
+  it('settles a queued miss as undefined when reload runs before debounce', async () => {
+    const client = makeClient();
+    const { result } = renderDoc({ client });
+
+    await waitFor(() => {
+      expect(result.current.status).toBe('idle');
+    });
+
+    let resolved: unknown = 'pending';
+    act(() => {
+      void result.current.resolve.reference!('miss_a', {
+        type: 'reference',
+        collection: 'pages',
+        label: 'A',
+      }).then((value) => {
+        resolved = value;
+      });
+    });
+
+    await act(async () => {
+      await result.current.reload();
+    });
+
+    await waitFor(() => {
+      expect(resolved).toBeUndefined();
+    });
+    expect(client.resolveTree).not.toHaveBeenCalled();
+  });
 });
 
 describe('useCmsDocument reload and onAdd', () => {

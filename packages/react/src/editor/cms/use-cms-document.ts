@@ -166,6 +166,12 @@ function createResolveObject(
   } satisfies CmsDocumentResolve;
 }
 
+function settlePendingMisses(batch: PendingResolve[]): void {
+  for (const item of batch) {
+    item.resolve(undefined);
+  }
+}
+
 function clearResolveState(
   sidecarRef: React.MutableRefObject<Map<string, BlockTreeNode>>,
   linkCacheRef: React.MutableRefObject<Map<string, ResolvedLink>>,
@@ -174,10 +180,12 @@ function clearResolveState(
   timerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>,
   resolveEpochRef: React.MutableRefObject<number>,
 ): void {
+  const pending = pendingRef.current;
+  pendingRef.current = [];
+  settlePendingMisses(pending);
   sidecarRef.current.clear();
   linkCacheRef.current.clear();
   stringCacheRef.current.clear();
-  pendingRef.current = [];
   if (timerRef.current) {
     clearTimeout(timerRef.current);
     timerRef.current = null;
@@ -242,7 +250,7 @@ export function useCmsDocument(
     pendingRef.current = [];
 
     if (!postedTree) {
-      for (const item of batch) item.resolve(undefined);
+      settlePendingMisses(batch);
       return;
     }
 
@@ -255,7 +263,10 @@ export function useCmsDocument(
           includeReferencePreviews: true,
         },
       });
-      if (epoch !== resolveEpochRef.current) return;
+      if (epoch !== resolveEpochRef.current) {
+        settlePendingMisses(batch);
+        return;
+      }
 
       if (result.references) {
         for (const [id, node] of Object.entries(result.references)) {
@@ -285,8 +296,11 @@ export function useCmsDocument(
         }
       }
     } catch {
-      if (epoch !== resolveEpochRef.current) return;
-      for (const item of batch) item.resolve(undefined);
+      if (epoch !== resolveEpochRef.current) {
+        settlePendingMisses(batch);
+        return;
+      }
+      settlePendingMisses(batch);
     }
   };
 
