@@ -143,8 +143,8 @@
     "generate:schema": "bun run scripts/generate-schema.ts",
     "lint": "oxlint",
     "prepublishOnly": "bun run build",
-    "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
+    "test": "vitest run --maxWorkers=2",
+    "test:coverage": "vitest run --coverage --maxWorkers=2",
     "test:watch": "vitest"
   },
   "dependencies": {

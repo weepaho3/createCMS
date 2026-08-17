@@ -38,6 +38,20 @@ jobs:
       - name: Update npm
         run: npm install -g npm@11
 
+      # Same dump cache the CI `test` shards write: restoring it skips the
+      # cold PGlite initdb that otherwise lands inside the first test of a
+      # file and can exceed the 15s testTimeout on a busy runner.
+      - name: Cache bun & test dumps
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.bun/install/cache
+            packages/cms/.test-schema
+          key: ${{ runner.os }}-release-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-release-
+            ${{ runner.os }}-test-
+
       - name: Install
         run: bun install --frozen-lockfile
 
@@ -45,8 +59,12 @@ jobs:
       # schema package they inline — scoped so an unrelated docs/example break
       # cannot block a publish, while a failing package still stops the
       # release. Filters, not `bun run test`, so the cms suite runs the way this
-      # job has always run it and nothing else piggybacks.
+      # job has always run it and nothing else piggybacks. `--maxWorkers=2` is
+      # the cms test script default (PGlite WASM heaps); `--expose-gc` matches
+      # the CI test job's opportunistic reclaim of throwaway instances.
       - name: Verify & build published packages
+        env:
+          NODE_OPTIONS: --expose-gc
         run: |
           bunx oxlint packages/cms packages/schema packages/react
           bunx turbo run check-types test build \
