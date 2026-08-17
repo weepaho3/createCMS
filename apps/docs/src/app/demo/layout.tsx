@@ -7,8 +7,6 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export const dynamic = 'force-dynamic';
-
 const links = [
   { href: '/docs/guides/visual-editor', label: 'Visual editor guide' },
   { href: '/demo/editor', label: 'Demos index' },

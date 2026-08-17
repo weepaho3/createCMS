@@ -19,6 +19,7 @@ import {
   InlineText,
   InsertButton,
   Overlay,
+  PaletteItem,
   SelectionRing,
 } from '@/components/editor-canvas';
 import { CmsSourcesProvider, cmsFields } from '@/components/editor-form';
@@ -55,6 +56,7 @@ export function PagesLiveCanvas() {
                 <FieldRing />
                 <BlockToolbar side="top" align="start" />
                 <InsertButton placement="between" type="richText" />
+                <PaletteItem type="richText" />
                 <DragHandleInner />
                 <DropIndicator />
                 <DragPreview />

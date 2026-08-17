@@ -24,7 +24,6 @@ import {
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
-import { PaletteItem } from './editor-canvas';
 import { Form } from './editor-form';
 
 type Device = 'desktop' | 'tablet' | 'mobile';
@@ -220,9 +219,13 @@ function EditorShell({
                 <ul className="flex flex-col gap-1">
                   {group.items.map((item) => (
                     <li key={item.type}>
-                      <PaletteItem type={item.type}>
+                      <Editor.AddBlock
+                        type={item.type}
+                        parentId={addParent}
+                        className="hover:bg-muted w-full rounded-md px-2 py-1.5 text-left text-sm disabled:opacity-50"
+                      >
                         {item.label ?? item.type}
-                      </PaletteItem>
+                      </Editor.AddBlock>
                     </li>
                   ))}
                 </ul>
