@@ -203,18 +203,21 @@ There is no drag and drop.
 
 ## Keyboard
 
-| Where                                           | Keys                        | Action                                                                                                                           |
-| ----------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Field controls                                  | Tab / Shift+Tab             | Native tab order. Typing edits the value (one undo step via `coalesce`).                                                         |
-| `Editor.OutlineItem`                            | Click                       | Select the row.                                                                                                                  |
-| `Editor.OutlineItem`                            | ArrowUp / ArrowDown         | Select and focus the previous/next `[role="treeitem"]` in DOM order inside the closest `[role="tree"]` (fallback: the document). |
-| `Editor.OutlineItem`                            | Alt+ArrowUp / Alt+ArrowDown | Move among siblings.                                                                                                             |
-| `Editor.OutlineItem`                            | Delete / Backspace          | Remove after `onDelete` (return `false` to keep).                                                                                |
-| `Editor.OutlineItem`                            | Escape                      | Clear the selection.                                                                                                             |
-| `useEditorKeyboard(scopeRef)`                   | Ctrl/Cmd+Z                  | Undo.                                                                                                                            |
-| `useEditorKeyboard(scopeRef)`                   | Ctrl/Cmd+Shift+Z or Ctrl+Y  | Redo.                                                                                                                            |
-| `useEditorKeyboard(scopeRef, { delete: true })` | Delete / Backspace          | Remove the selected block when the target is not an editable field.                                                              |
-| `useEditorKeyboard(scopeRef, { escape: true })` | Escape                      | Clear the selection when the target is not an editable field.                                                                    |
+| Where                                           | Keys                                   | Action                                                                                                                           |
+| ----------------------------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Field controls                                  | Tab / Shift+Tab                        | Native tab order. Typing edits the value (one undo step via `coalesce`).                                                         |
+| `Editor.OutlineItem`                            | Click                                  | Select the row.                                                                                                                  |
+| `Editor.OutlineItem`                            | ArrowUp / ArrowDown                    | Select and focus the previous/next `[role="treeitem"]` in DOM order inside the closest `[role="tree"]` (fallback: the document). |
+| `Editor.OutlineItem`                            | Alt+ArrowUp / Alt+ArrowDown            | Move among siblings.                                                                                                             |
+| `Editor.OutlineItem`                            | Delete / Backspace                     | Remove after `onDelete` (return `false` to keep).                                                                                |
+| `Editor.OutlineItem`                            | Escape                                 | Clear the selection.                                                                                                             |
+| `useEditorKeyboard(scopeRef)`                   | Ctrl/Cmd+Z                             | Undo.                                                                                                                            |
+| `useEditorKeyboard(scopeRef)`                   | Ctrl/Cmd+Shift+Z or Ctrl+Y             | Redo.                                                                                                                            |
+| `useEditorKeyboard(scopeRef, { delete: true })` | Delete / Backspace                     | Remove the selected block when the target is not an editable field.                                                              |
+| `useEditorKeyboard(scopeRef, { escape: true })` | Escape                                 | Clear the selection when the target is not an editable field.                                                                    |
+| `Canvas.InlineText`                             | Enter (no Shift)                       | End the inline session (commit).                                                                                                 |
+| `Canvas.InlineText`                             | Escape                                 | End the session; with `discardOnEscape`, restore the value from session start.                                                   |
+| `Canvas.InlineText`                             | Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl+Y | Store undo/redo during the session (`preventDefault` on the glass).                                                              |
 
 The listener is a bubbling `keydown` on the document, ignored unless the
 target is inside `scopeRef.current`. A consumer `onKeyDown` that
@@ -505,6 +508,9 @@ changing a value back by hand counts as clean again. Structural changes call
 | `canvas/dnd.test.ts`                     | Pure DnD helpers: `adjustMoveIndex`, `blockIdAtPoint`, store threshold, session vs target subscriptions.                                                                                            |
 | `canvas/dnd-parts.test.tsx`              | DragHandle / PaletteItem / DropIndicator / DragPreview throw outside Root; palette click insert; drag threshold; escape cancel.                                                                     |
 | `canvas/dnd.browser.test.tsx`            | Chromium palette drop, sibling moves, escape cancel, auto-scroll, touch drag, forbidden placement, focus after drop, select mode without drag.                                                      |
+| `canvas/inline-text.test.ts`             | Pure inline helpers: `applyTextEdit`, placeholder injection, field kind.                                                                                                                            |
+| `canvas/inline-parts.test.tsx`           | InlineText throw outside Root; string vs number activation; nested key; same element; two editors; empty badge commit.                                                                              |
+| `canvas/inline-text.browser.test.tsx`    | Chromium inline glass activation, caret, typing, Enter/Escape, discardOnEscape, nested key, richText multiline, empty badge, suggest keyboard, two canvases, number field, undo during session.     |
 | `canvas/insert.test.ts`                  | Pure `resolveInsertAt` with stubbed rects (column, row, grid, empty box, walk-up, dragged id, nearest ancestor).                                                                                    |
 | `canvas/toolbar.test.tsx`                | BlockToolbar / InsertButton throws, selection gating, overlay chrome hover guard.                                                                                                                   |
 | `canvas/insert.browser.test.tsx`         | Chromium column / row / grid insert, empty box, toolbar placement, disabled gating, select mode toolbar without insert.                                                                             |

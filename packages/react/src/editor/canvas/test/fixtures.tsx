@@ -28,11 +28,11 @@ export function Heading({
   properties,
   edit,
 }: {
-  properties: { text: string; level: number };
+  properties: { text: string; level: number; badge?: string };
   edit: EditProps;
 }) {
   return (
-    <section {...edit.block}>
+    <section {...edit.block} style={{ position: 'relative' }}>
       <h1
         {...edit.field.text}
         style={{
@@ -48,6 +48,22 @@ export function Heading({
       >
         {properties.text}
       </h1>
+      <span
+        {...edit.field.level}
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          boxSizing: 'border-box',
+          width: 40,
+          height: 20,
+        }}
+      >
+        {properties.level}
+      </span>
+      {properties.badge ? (
+        <span {...edit.field.badge}>{properties.badge}</span>
+      ) : null}
     </section>
   );
 }

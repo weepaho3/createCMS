@@ -20,7 +20,7 @@ component registry, not in this package.
 `Canvas.Root` renders the store tree through a `components` map.
 `Canvas.Overlay` positions rings from measured anchors and hosts an
 unstyled block toolbar, insert button, drag handle, palette item, drop
-indicator and drag preview.
+indicator, drag preview and inline text glass for string and richText fields.
 
 See each entry's own README (`src/editor/README.md`,
 `src/editor/canvas/README.md`, `src/editor/cms/README.md`) for its parts,

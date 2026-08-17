@@ -30,6 +30,7 @@ function PageCanvas({ schema, tree, pageBlocks }) {
           <Canvas.PaletteItem type="paragraph" />
           <Canvas.DropIndicator />
           <Canvas.DragPreview />
+          <Canvas.InlineText />
         </Canvas.Overlay>
       </Canvas.Root>
     </Editor.Root>
@@ -69,6 +70,7 @@ The primitive does not set `position` on the host. Overlay is
 | `Canvas.PaletteItem`   | `button`        | `type` (required), optional `properties`, `render`, button props. Click inserts like `Editor.AddBlock`; drag adds by geometry. | `data-editor-palette-item`, `data-block-type`, `data-dragging` while this item starts a new-block session |
 | `Canvas.DropIndicator` | `div`           | `render`, div props. Line or box from the active drop target. Presentational.                                                  | `data-editor-drop-indicator`, `data-orientation`, `data-variant`, `data-kind` (`new` \| `move`)           |
 | `Canvas.DragPreview`   | `div`           | `render`, div props, optional children. Follows the pointer during a session. Presentational.                                  | `data-editor-drag-preview`, `data-kind` (`new` \| `move`)                                                 |
+| `Canvas.InlineText`    | `div`           | `suggest`, `discardOnEscape`, `render`, div props. Overlays a contentEditable glass on string and richText fields in `edit`.   | `data-editor-inline-text`, `data-editing`, `data-block-type`, `data-field`                                |
 
 ## Hooks
 
@@ -81,26 +83,30 @@ The primitive does not set `position` on the host. Overlay is
 
 ## Types
 
-| Type                       | Description                                                                                       |
-| -------------------------- | ------------------------------------------------------------------------------------------------- |
-| `CanvasRootProps`          | Props of `Canvas.Root`.                                                                           |
-| `CanvasOverlayProps`       | Props of `Canvas.Overlay`.                                                                        |
-| `CanvasSelectionRingProps` | Props of `Canvas.SelectionRing`.                                                                  |
-| `CanvasHoverRingProps`     | Props of `Canvas.HoverRing`.                                                                      |
-| `CanvasFieldRingProps`     | Props of `Canvas.FieldRing`.                                                                      |
-| `CanvasRingState`          | `blockType`, `canMove`, `canDelete`, `unresolved` on every ring.                                  |
-| `CanvasRect`               | `{ x, y, width, height }` in canvas content coordinates.                                          |
-| `CanvasComponents`         | A plain block map, or `{ _components }` as `createBlocksMap` returns.                             |
-| `CanvasResolve`            | Optional `reference` / `link` / `string` resolvers. `image` is never resolved.                    |
-| `CanvasInteractive`        | `'edit' \| 'select' \| 'none'`. Default `'edit'`.                                                 |
-| `CanvasSurface`            | `'inline' \| 'frame'`. Default `'inline'`. `'frame'` throws.                                      |
-| `InsertTarget`             | Resolved insert: `parentId`, `index`, `orientation`, `variant`, `rect`, `allowedTypes`, `nested`. |
-| `InsertOrientation`        | `'horizontal'` \| `'vertical'`.                                                                   |
-| `InsertVariant`            | `'line'` \| `'box'`.                                                                              |
-| `ResolveInsertAtOptions`   | Injected rects and row-flow stub for `resolveInsertAt`.                                           |
-| `CanvasBlockToolbarProps`  | Props of `Canvas.BlockToolbar`.                                                                   |
-| `CanvasInsertButtonProps`  | Props of `Canvas.InsertButton`.                                                                   |
-| `PointerStore`             | External pointer snapshot store on the canvas context.                                            |
+| Type                         | Description                                                                                       |
+| ---------------------------- | ------------------------------------------------------------------------------------------------- |
+| `CanvasRootProps`            | Props of `Canvas.Root`.                                                                           |
+| `CanvasOverlayProps`         | Props of `Canvas.Overlay`.                                                                        |
+| `CanvasSelectionRingProps`   | Props of `Canvas.SelectionRing`.                                                                  |
+| `CanvasHoverRingProps`       | Props of `Canvas.HoverRing`.                                                                      |
+| `CanvasFieldRingProps`       | Props of `Canvas.FieldRing`.                                                                      |
+| `CanvasRingState`            | `blockType`, `canMove`, `canDelete`, `unresolved` on every ring.                                  |
+| `CanvasRect`                 | `{ x, y, width, height }` in canvas content coordinates.                                          |
+| `CanvasComponents`           | A plain block map, or `{ _components }` as `createBlocksMap` returns.                             |
+| `CanvasResolve`              | Optional `reference` / `link` / `string` resolvers. `image` is never resolved.                    |
+| `CanvasInteractive`          | `'edit' \| 'select' \| 'none'`. Default `'edit'`.                                                 |
+| `CanvasSurface`              | `'inline' \| 'frame'`. Default `'inline'`. `'frame'` throws.                                      |
+| `InsertTarget`               | Resolved insert: `parentId`, `index`, `orientation`, `variant`, `rect`, `allowedTypes`, `nested`. |
+| `InsertOrientation`          | `'horizontal'` \| `'vertical'`.                                                                   |
+| `InsertVariant`              | `'line'` \| `'box'`.                                                                              |
+| `ResolveInsertAtOptions`     | Injected rects and row-flow stub for `resolveInsertAt`.                                           |
+| `CanvasBlockToolbarProps`    | Props of `Canvas.BlockToolbar`.                                                                   |
+| `CanvasInsertButtonProps`    | Props of `Canvas.InsertButton`.                                                                   |
+| `PointerStore`               | External pointer snapshot store on the canvas context.                                            |
+| `CanvasInlineTextProps`      | Props of `Canvas.InlineText`.                                                                     |
+| `InlineSuggest`              | Optional `$`-anchored suggest config: `pattern`, `getItems`, `render`.                            |
+| `InlineSuggestItem`          | Suggest row: `insertText` plus consumer fields for `render`.                                      |
+| `InlineSuggestRenderContext` | Suggest UI context: items, highlight, query, anchor rect, `accept`.                               |
 
 ## Data attributes
 
@@ -109,7 +115,7 @@ The primitive does not set `position` on the host. Overlay is
 | `data-editor-canvas`         | host                                 | Presence marker.                                                                                                                                        |
 | `data-interactive`           | host                                 | `'edit'`, `'select'`, or `'none'`.                                                                                                                      |
 | `data-dragging`              | host, drag handle, palette item      | Present on the host while any canvas drag session is active; on a handle or palette item while that part owns the session.                              |
-| `data-editing`               | host                                 | Present while the local selection has an inline-editing target.                                                                                         |
+| `data-editing`               | host, inline glass                   | Present while the local selection has an inline-editing target.                                                                                         |
 | `data-editor-block`          | block root via `edit.block`          | Document-tree block id.                                                                                                                                 |
 | `data-editor-field`          | field element via `edit.field.<key>` | Property key, counted only inside its own block.                                                                                                        |
 | `data-unresolved`            | block root via `edit.block`; rings   | Present when a routed `reference` / `link` / `string` value is pending or missing. On a ring: any measured block element for that id has the attribute. |
@@ -132,40 +138,54 @@ The primitive does not set `position` on the host. Overlay is
 | `data-block-type`            | rings                                | Store node type. Omitted when the id is unknown.                                                                                                        |
 | `data-can-move`              | rings                                | Present when the block is not the root.                                                                                                                 |
 | `data-can-delete`            | rings                                | Present when the block is not the root.                                                                                                                 |
+| `data-editor-inline-text`    | `Canvas.InlineText` glass            | Presence marker. `role="textbox"`.                                                                                                                      |
+| `data-field`                 | `Canvas.InlineText` glass            | Property key being edited.                                                                                                                              |
+
+During an inline session the origin field element gets
+`visibility: hidden` so `getComputedStyle(origin).color` stays real. Empty
+string and richText display properties may carry a zero-width placeholder in
+the canvas renderer; neither value is stored.
 
 ## Tests
 
 happy-dom (`editor.test.tsx`, `renderer.test.tsx`, `rect.test.ts`,
 `overlay.test.tsx`, `insert.test.ts`, `toolbar.test.tsx`, `dnd.test.ts`,
-`dnd-parts.test.tsx`) covers context sharing, the throw outside
+`dnd-parts.test.tsx`, `inline-text.test.ts`, `inline-parts.test.tsx`) covers context sharing, the throw outside
 `Editor.Root` / `Canvas.Root`, the store-tree walk, resolve cache,
 referenced readonly trees, click intercept, rect unions, readonly skip,
 nested field keys, Overlay portal, ring presence / hover suppression, pure
 insert geometry, toolbar / insert presence, overlay chrome hover, DnD
 store helpers, drag-handle threshold, palette click insert, escape cancel
-and drop-indicator gating. Chromium (`canvas.browser.test.tsx`,
-`insert.browser.test.tsx`, `dnd.browser.test.tsx`) covers layout, pointer
+and drop-indicator gating, inline-text helpers, InlineText activation gating,
+empty-field placeholder. Chromium (`canvas.browser.test.tsx`,
+`insert.browser.test.tsx`, `dnd.browser.test.tsx`, `inline-text.browser.test.tsx`) covers layout, pointer
 coordinates, click select/focus, `interactive="select"` (no drag), `interactive="none"`, ring
 vs block `getBoundingClientRect` (1 px), resize, scroll without remeasure,
 nested field key, same-id union, column / row / grid insert lines, empty
 container box, toolbar placement, insert disabled gating, select-mode
 toolbar without insert, pointer drag move and palette drop, drop
 indicator orientation, escape cancel, auto-scroll, touch input, forbidden
-placement, focus after drop and select-mode drag suppression.
+placement, focus after drop and select-mode drag suppression, inline-text
+activation, caret placement, typing, Enter and Escape, nested and same-element
+fields, empty badge, suggest keyboard, two canvases, number field gating, undo
+during session.
 Unit tests never assert rects. Browser tests never screenshot; they assert
 rects and DOM. Helpers: `test/harness.tsx`, `test/fixtures.tsx` and
 `test/hero-fixtures.tsx` (not test files).
 
-| File                      | Covers                                                                                                                                                                                                 |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `editor.test.tsx`         | Canvas.Root shares context with Editor.Root; throws outside it. Overlay throw; Canvas namespace keys.                                                                                                  |
-| `renderer.test.tsx`       | Root fragment, edit anchors, unknown type, resolve cache, unresolved omit, referenced readonly, intercept, Hero snapshot.                                                                              |
-| `rect.test.ts`            | `unionRects`, readonly skip, nested field key own-block lookup.                                                                                                                                        |
-| `overlay.test.tsx`        | Overlay portal into host, `useBlockRect` callable, SelectionRing / FieldRing presence, HoverRing suppression.                                                                                          |
-| `insert.test.ts`          | Pure `resolveInsertAt`: column, row, grid wrap, empty box, walk-up `canPlace`, `draggedId` exclusion, globally nearest ancestor.                                                                       |
-| `toolbar.test.tsx`        | BlockToolbar / InsertButton throw outside Root, selection and `interactive="none"` gating, overlay chrome keeps hover.                                                                                 |
-| `dnd.test.ts`             | Pure DnD helpers: `adjustMoveIndex`, `blockIdAtPoint`, store threshold, session vs target subscriptions.                                                                                               |
-| `dnd-parts.test.tsx`      | DragHandle / PaletteItem / DropIndicator / DragPreview throw outside Root; palette click insert; disabled palette; drag threshold; escape cancel.                                                      |
-| `canvas.browser.test.tsx` | Chromium: host box, heading anchor rect, layout wait, pointer coordinates, click select/focus, select mode, none mode, ring alignment after layout / resize / scroll, nested field key, same-id union. |
-| `insert.browser.test.tsx` | Chromium: column / row / grid insert lines, empty container box, toolbar side / align, insert disabled gating, select mode without insert.                                                             |
-| `dnd.browser.test.tsx`    | Chromium: palette drop into empty stack, column and row sibling moves, escape cancel, auto-scroll, touch drag, forbidden placement, focus after drop, select mode without drag.                        |
+| File                           | Covers                                                                                                                                                                                                 |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `editor.test.tsx`              | Canvas.Root shares context with Editor.Root; throws outside it. Overlay throw; Canvas namespace keys.                                                                                                  |
+| `renderer.test.tsx`            | Root fragment, edit anchors, unknown type, resolve cache, unresolved omit, referenced readonly, intercept, Hero snapshot.                                                                              |
+| `rect.test.ts`                 | `unionRects`, readonly skip, nested field key own-block lookup.                                                                                                                                        |
+| `overlay.test.tsx`             | Overlay portal into host, `useBlockRect` callable, SelectionRing / FieldRing presence, HoverRing suppression.                                                                                          |
+| `insert.test.ts`               | Pure `resolveInsertAt`: column, row, grid wrap, empty box, walk-up `canPlace`, `draggedId` exclusion, globally nearest ancestor.                                                                       |
+| `toolbar.test.tsx`             | BlockToolbar / InsertButton throw outside Root, selection and `interactive="none"` gating, overlay chrome keeps hover.                                                                                 |
+| `dnd.test.ts`                  | Pure DnD helpers: `adjustMoveIndex`, `blockIdAtPoint`, store threshold, session vs target subscriptions.                                                                                               |
+| `dnd-parts.test.tsx`           | DragHandle / PaletteItem / DropIndicator / DragPreview throw outside Root; palette click insert; disabled palette; drag threshold; escape cancel.                                                      |
+| `canvas.browser.test.tsx`      | Chromium: host box, heading anchor rect, layout wait, pointer coordinates, click select/focus, select mode, none mode, ring alignment after layout / resize / scroll, nested field key, same-id union. |
+| `insert.browser.test.tsx`      | Chromium: column / row / grid insert lines, empty container box, toolbar side / align, insert disabled gating, select mode without insert.                                                             |
+| `dnd.browser.test.tsx`         | Chromium: palette drop into empty stack, column and row sibling moves, escape cancel, auto-scroll, touch drag, forbidden placement, focus after drop, select mode without drag.                        |
+| `inline-text.test.ts`          | Pure inline helpers: `applyTextEdit`, placeholder injection, field kind.                                                                                                                               |
+| `inline-parts.test.tsx`        | InlineText throw outside Root; string vs number activation; nested key; same element; two editors; empty badge commit.                                                                                 |
+| `inline-text.browser.test.tsx` | Chromium: glass activation, caret, typing, Enter/Escape, discardOnEscape, nested key, richText multiline, empty badge, suggest keyboard, two canvases, number field, undo during session.              |

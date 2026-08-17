@@ -15,6 +15,8 @@ export type CanvasResolveContextValue = {
   ) => unknown;
 };
 
+export type InlineCaretPoint = { x: number; y: number };
+
 export type CanvasContextValue = CanvasResolveContextValue & {
   host: HTMLElement | null;
   measurer: Measurer | null;
@@ -23,6 +25,7 @@ export type CanvasContextValue = CanvasResolveContextValue & {
   interactive: CanvasInteractive;
   dragging: boolean;
   editing: boolean;
+  inlineCaret: React.MutableRefObject<InlineCaretPoint | null>;
 };
 
 export const CanvasContext = React.createContext<CanvasContextValue | null>(

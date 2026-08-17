@@ -10,6 +10,7 @@ import {
   CanvasDropIndicator,
   CanvasPaletteItem,
 } from './dnd-parts';
+import { CanvasInlineText } from './inline-parts';
 import {
   CanvasFieldRing,
   CanvasHoverRing,
@@ -41,6 +42,12 @@ export type {
   CanvasPaletteItemProps,
 } from './dnd-parts';
 export type {
+  CanvasInlineTextProps,
+  InlineSuggest,
+  InlineSuggestItem,
+  InlineSuggestRenderContext,
+} from './inline-parts';
+export type {
   CanvasFieldRingProps,
   CanvasHoverRingProps,
   CanvasOverlayProps,
@@ -59,6 +66,11 @@ export {
   resolveInsertAt,
 } from './insert';
 export { adjustMoveIndex, blockIdAtPoint, DND_THRESHOLD_PX } from './dnd';
+export {
+  applyTextEdit,
+  EMPTY_FIELD_PLACEHOLDER,
+  isInlineEditableKind,
+} from './inline-text';
 export { useInsertTarget } from './toolbar';
 
 export const Canvas = {
@@ -73,4 +85,5 @@ export const Canvas = {
   PaletteItem: CanvasPaletteItem,
   DropIndicator: CanvasDropIndicator,
   DragPreview: CanvasDragPreview,
+  InlineText: CanvasInlineText,
 };
