@@ -5,6 +5,13 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const publicR = path.join(root, 'public/r');
 
+const ITEM_NAMES = [
+  'editor-form',
+  'editor-canvas',
+  'editor-shell',
+  'editor-email',
+];
+
 function readJson(name) {
   const filePath = path.join(publicR, name);
   try {
@@ -17,48 +24,58 @@ function readJson(name) {
   }
 }
 
-const registry = readJson('registry.json');
-const editorForm = readJson('editor-form.json');
+readJson('registry.json');
 
-if (editorForm.name !== 'editor-form') {
-  console.error(
-    `check-registry: expected name "editor-form", got "${editorForm.name}"`,
-  );
-  process.exit(1);
-}
+const items = ITEM_NAMES.map((name) => {
+  const item = readJson(`${name}.json`);
+  if (item.name !== name) {
+    console.error(
+      `check-registry: expected name "${name}", got "${item.name}"`,
+    );
+    process.exit(1);
+  }
+  if (item.type !== 'registry:ui') {
+    console.error(
+      `check-registry: expected type "registry:ui", got "${item.type}"`,
+    );
+    process.exit(1);
+  }
+  if (!Array.isArray(item.dependencies)) {
+    console.error(`check-registry: ${name}.json missing dependencies array`);
+    process.exit(1);
+  }
+  if (!item.dependencies.includes('@createcms/react')) {
+    console.error(
+      `check-registry: ${name}.json dependencies must include @createcms/react`,
+    );
+    process.exit(1);
+  }
+  return item;
+});
 
-if (editorForm.type !== 'registry:ui') {
-  console.error(
-    `check-registry: expected type "registry:ui", got "${editorForm.type}"`,
-  );
-  process.exit(1);
-}
-
-if (!Array.isArray(editorForm.dependencies)) {
-  console.error('check-registry: editor-form.json missing dependencies array');
-  process.exit(1);
-}
-
-if (!editorForm.dependencies.includes('@createcms/react')) {
-  console.error('check-registry: dependencies must include @createcms/react');
-  process.exit(1);
-}
-
-const fileContents = [editorForm, ...(registry.items ?? [])]
+const fileContents = items
   .flatMap((item) => item.files ?? [])
   .map((file) => file.content ?? '')
   .join('\n');
 
-if (/Editor\.Root/.test(fileContents)) {
+if (/<(Editor|Canvas)\.Root/.test(fileContents)) {
   console.error(
-    'check-registry: registry output must not reference Editor.Root',
+    'check-registry: registry output must not render Editor.Root or Canvas.Root',
   );
   process.exit(1);
 }
 
-if (!/data-slot="editor-field"/.test(fileContents)) {
-  console.error(
-    'check-registry: registry output must include data-slot="editor-field"',
-  );
-  process.exit(1);
+const checks = [
+  ['data-slot="editor-field"', 'editor-field slot'],
+  ['cmsFields', 'cmsFields export'],
+  ['data-slot="editor-overlay"', 'editor-overlay slot'],
+  ['data-slot="editor-shell"', 'editor-shell slot'],
+  ['FramePreview', 'FramePreview usage'],
+];
+
+for (const [pattern, label] of checks) {
+  if (!fileContents.includes(pattern)) {
+    console.error(`check-registry: registry output must include ${label}`);
+    process.exit(1);
+  }
 }

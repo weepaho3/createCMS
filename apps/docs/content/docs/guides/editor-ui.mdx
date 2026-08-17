@@ -1,9 +1,9 @@
 ---
 title: Editor UI
-description: Install styled field wrappers from the createCMS shadcn registry.
+description: Install styled editor chrome from the createCMS shadcn registry.
 ---
 
-The createCMS docs site hosts a [shadcn registry](https://ui.shadcn.com/docs/registry/getting-started) of copy-paste editor chrome. The first item wraps `Editor.Field` parts with Tailwind styling. It does not wrap `Editor.Root`.
+The createCMS docs site hosts a [shadcn registry](https://ui.shadcn.com/docs/registry/getting-started) of copy-paste editor chrome. Items wrap `Editor.Field`, `Canvas` overlay parts, a three-column shell, and an email split layout. None of them wrap `Editor.Root` or `Canvas.Root`. Compose them **inside** `Editor.Root` in your app code.
 
 ## Prerequisites
 
@@ -13,23 +13,61 @@ Your app should already be initialized with shadcn (`npx shadcn@latest init`) an
 npm install @createcms/react
 ```
 
-## Install the field wrappers
+Wire cms-backed field controls with `CmsSourcesProvider` and pass `fields={cmsFields}` on `Editor.Root` (the consumer passes the result of `useCmsFieldSources(client)` into the provider).
+
+## Install registry items
+
+**Field wrappers and cms controls**
 
 ```bash
 npx shadcn@latest add https://createcms.dev/r/editor-form.json
 ```
 
-While developing the docs site locally, use the dev server URL instead:
+**Canvas overlay chrome**
 
 ```bash
-npx shadcn@latest add http://localhost:4000/r/editor-form.json
+npx shadcn@latest add https://createcms.dev/r/editor-canvas.json
 ```
+
+**Three-column shell**
+
+```bash
+npx shadcn@latest add https://createcms.dev/r/editor-shell.json
+```
+
+**Email split layout**
+
+```bash
+npx shadcn@latest add https://createcms.dev/r/editor-email.json
+```
+
+While developing the docs site locally, swap `https://createcms.dev` for `http://localhost:4000`.
 
 ## Usage
 
-Compose `<Editor.Root schema={…}>` in your app code, then use the copied parts as a styled container or as individually styled fields.
+Compose `<Editor.Root schema={…}>` in your app code, then install and use the copied parts.
 
-**Styled container.** Wrap the block's fields with the styled `Form` shell. Inner fields remain the headless primitives from `@createcms/react`.
+**Cms field controls**
+
+```tsx
+import { Editor } from '@createcms/react/editor';
+import { useCmsFieldSources } from '@createcms/react/editor/cms';
+import {
+  CmsSourcesProvider,
+  cmsFields,
+  Form,
+} from '@/components/editor-form';
+
+const sources = useCmsFieldSources(cmsClient);
+
+<Editor.Root schema={schema} fields={cmsFields}>
+  <CmsSourcesProvider sources={sources}>
+    <Form blockId={blockId} />
+  </CmsSourcesProvider>
+</Editor.Root>
+```
+
+**Styled container.** Wrap the block's fields with the styled `Form` shell. Inner fields remain the headless primitives from `@createcms/react` unless you pass `fields={cmsFields}`.
 
 ```tsx
 import { Editor } from '@createcms/react/editor';
@@ -54,4 +92,6 @@ import { Field, FieldLabel, FieldControl } from '@/components/editor-form';
 </Editor.Root>
 ```
 
-The item copies into your shadcn components directory. Adjust import paths to match your aliases.
+**Shell and canvas.** Place `EditorShell` and styled canvas parts inside `Editor.Root`. Pass `Canvas.Root` and overlay parts as children of the shell's canvas column.
+
+The items copy into your shadcn components directory. Adjust import paths to match your aliases.

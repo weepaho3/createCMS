@@ -1,0 +1,8 @@
+[data-editor-canvas] .sticky,
+[data-editor-canvas] .fixed {
+  position: static;
+}
+
+[data-editor-canvas] {
+  backdrop-filter: none;
+}

@@ -7,11 +7,16 @@
       "name": "editor-form",
       "type": "registry:ui",
       "title": "Editor Form",
-      "description": "Styled wrappers for Editor.Field parts. Does not wrap Editor.Root.",
+      "description": "Styled wrappers for Editor.Field parts and cms field controls. Does not wrap Editor.Root.",
       "dependencies": ["@createcms/react"],
+      "registryDependencies": ["button", "dialog", "input"],
       "files": [
         {
           "path": "registry/editor-form.tsx",
+          "type": "registry:ui"
+        },
+        {
+          "path": "registry/editor-form-cms.tsx",
           "type": "registry:ui"
         }
       ],
@@ -22,6 +27,74 @@
           "editor-muted": "var(--muted-foreground)"
         }
       }
+    },
+    {
+      "name": "editor-canvas",
+      "type": "registry:ui",
+      "title": "Editor Canvas",
+      "description": "Styled wrappers for Canvas overlay and interaction parts. Does not wrap Canvas.Root.",
+      "dependencies": ["@createcms/react"],
+      "files": [
+        {
+          "path": "registry/editor-canvas.tsx",
+          "type": "registry:ui"
+        },
+        {
+          "path": "registry/editor-canvas.css",
+          "type": "registry:style"
+        }
+      ],
+      "cssVars": {
+        "theme": {
+          "editor-selection": "var(--primary)",
+          "editor-hover": "var(--muted-foreground)",
+          "editor-focus": "var(--ring)",
+          "editor-drop": "var(--primary)"
+        }
+      },
+      "css": {
+        "@layer base": {
+          "[data-editor-canvas] .sticky, [data-editor-canvas] .fixed": {
+            "position": "static"
+          },
+          "[data-editor-canvas]": {
+            "backdrop-filter": "none"
+          }
+        }
+      }
+    },
+    {
+      "name": "editor-shell",
+      "type": "registry:ui",
+      "title": "Editor Shell",
+      "description": "Three-column editor chrome with palette, outline and inspector. Use inside Editor.Root.",
+      "dependencies": ["@createcms/react"],
+      "registryDependencies": [
+        "editor-form",
+        "editor-canvas",
+        "button",
+        "dialog"
+      ],
+      "files": [
+        {
+          "path": "registry/editor-shell.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "editor-email",
+      "type": "registry:ui",
+      "title": "Editor Email",
+      "description": "Split form and FramePreview layout for email editing. Use inside Editor.Root.",
+      "dependencies": ["@createcms/react"],
+      "registryDependencies": ["editor-form"],
+      "files": [
+        {
+          "path": "registry/editor-email.tsx",
+          "type": "registry:ui"
+        }
+      ]
     }
   ]
 }
