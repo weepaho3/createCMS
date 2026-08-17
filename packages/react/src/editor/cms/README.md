@@ -63,3 +63,74 @@ When `templates` and `collection` are set, `onAdd(blockType)` calls
 `store.add` / `AddBlock`.
 
 No `@createcms/core` import: types come from `@createcms/schema` only.
+
+## Field sources
+
+Registry controls for `image`, `reference`, `link`, and `{{variable}}`
+suggest call `useCmsFieldSources(cmsClient)` with the **top-level**
+createcms client (not a collection namespace).
+
+```tsx
+const sources = useCmsFieldSources(cmsClient);
+const suggest = useVariableSuggest(sources);
+```
+
+Pass `client` once; the hook captures it in a ref on the first render,
+same as `useCmsDocument`.
+
+### Return value
+
+| Member                                          | Role                                                       |
+| ----------------------------------------------- | ---------------------------------------------------------- |
+| `assets.list(query?)`                           | Media library listing (`listAssets({ query })`)            |
+| `assets.get(ids)`                               | Batch asset lookup by id (`getAssets({ query: { ids } })`) |
+| `assets.useUpload()`                            | React hook wrapping `media.useUploadAssets()` when present |
+| `roots.list(collection, query?)`                | Collection root listing                                    |
+| `roots.get(collection, rootId)`                 | Single root by id                                          |
+| `roots.bySlug(collection, slug, parentRootId?)` | Draft slug lookup                                          |
+| `variables.list(query?)`                        | Site variables                                             |
+| `templates.defaults(collection, blockType)`     | Block template defaults                                    |
+
+### Proxy envelope
+
+Live client calls use `{ query }` / `{ body }`, not flattened JSDoc
+examples:
+
+```ts
+sources.assets.list({ limit: 20, cursor });
+cmsClient.media.listAssets({ query: { limit: 20, cursor } });
+```
+
+### Cache
+
+Per-hook, in-memory only: successful responses and in-flight promises
+are keyed by operation and arguments (stable JSON). Failed requests are
+not cached. `assets.list` and `roots.list` also populate id caches used
+by `get`.
+
+### `assetUrl`
+
+Build the status-gated media URL for content and canvas (not the direct
+`AssetListItem.url`):
+
+```ts
+assetUrl(assetId, { format: 'webp', w: 800 });
+// /api/cms/media/asset/<id>?format=webp&w=800
+```
+
+### Labels
+
+`referenceLabel(collection, rootId, sources)` and
+`linkLabel(linkValue, sources)` resolve display names from root
+properties (`title`, `label`, `name`, then slug, path, id). Internal
+link labels ignore `fragment` and `query`. Failed root lookups fall back
+to the raw id.
+
+### `useVariableSuggest`
+
+Loads variables (paged, up to 1000 offset) and exposes a suggest object
+for `Canvas.InlineText` or form controls. Pattern: `/\{\{(\w*)$/`.
+`getItems` filters loaded keys by prefix; accept inserts `{{key}}`.
+
+`assets.useUpload()` is a nested React hook: call it at component top
+level, not inside callbacks.
