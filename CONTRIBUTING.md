@@ -190,7 +190,7 @@ merged coverage), `test-react` (the `@createcms/react` node/happy-dom suite,
 plus a type-check of `@createcms/schema` and `@createcms/react`),
 `browser-tests` (the `@createcms/react` suite in real Chromium via Playwright
 — skipped when nothing under `packages/react`, `packages/schema`, `bun.lock`
-or the CI workflow changed), and `build` (every package, plus `publint` and
+or the CI workflow changed), and `build` (every package, plus `bunchee lint`, `publint` and
 `@arethetypeswrong/cli` for `packages/cms`, `packages/schema` (private, kept
 publish-clean) and `packages/react`).
 

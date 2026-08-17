@@ -120,7 +120,7 @@
         "@upstash/realtime": "^1.1.0",
         "@upstash/redis": "^1.38.1",
         "@vitest/coverage-v8": "4.1.10",
-        "bunchee": "^7.0.0",
+        "bunchee": "^7.0.1",
         "drizzle-kit": "^0.31.9",
         "drizzle-orm": "^0.45.0",
         "happy-dom": "^20.11.1",
@@ -155,7 +155,7 @@
         "@types/react": "^19.2.18",
         "@types/react-dom": "^19.2.4",
         "@vitest/browser-playwright": "4.1.10",
-        "bunchee": "^7.0.0",
+        "bunchee": "^7.0.1",
         "happy-dom": "^20.11.1",
         "playwright": "^1.62.1",
         "react": "^19.2.4",
@@ -175,7 +175,7 @@
       "name": "@createcms/schema",
       "version": "0.1.0",
       "devDependencies": {
-        "bunchee": "^7.0.0",
+        "bunchee": "^7.0.1",
         "typescript": "^5.7.2",
       },
     },
@@ -1067,7 +1067,7 @@
 
     "buffer-image-size": ["buffer-image-size@0.6.4", "", { "dependencies": { "@types/node": "*" } }, "sha512-nEh+kZOPY1w+gcCMobZ6ETUp9WfibndnosbpwB1iJk/8Gt5ZF2bhS6+B6bPYz424KtwsR6Rflc3tCz1/ghX2dQ=="],
 
-    "bunchee": ["bunchee@7.0.0", "", { "dependencies": { "@rollup/plugin-commonjs": "^29.0.3", "@rollup/plugin-json": "^6.1.0", "@rollup/plugin-node-resolve": "^16.0.3", "@rollup/plugin-replace": "^6.0.3", "@rollup/plugin-wasm": "^6.2.2", "@rollup/pluginutils": "^5.4.0", "@swc/core": "^1.15.46", "@swc/helpers": "^0.5.23", "clean-css": "^5.3.3", "magic-string": "^0.30.17", "nanospinner": "^1.2.2", "picomatch": "^4.0.5", "piscina": "^5.3.0", "pretty-bytes": "^7.1.1", "rollup": "^4.62.2", "rollup-plugin-dts": "^6.4.1", "rollup-plugin-swc3": "^0.12.1", "rollup-preserve-directives": "^1.1.3", "tinyglobby": "^0.2.17", "tslib": "^2.8.1", "yargs": "^17.7.2" }, "peerDependencies": { "typescript": "^5.0 || ^6.0 || ^7.0" }, "optionalPeers": ["typescript"], "bin": { "bunchee": "dist/bin/cli.js" } }, "sha512-eJjYhsN72WXa4LoyxFpkbne+L+VP8//sUJcyzuVaVCOiFVmCqRwFD7USpvdLxl5cqSG0hjnkWz91wBStpgqdrg=="],
+    "bunchee": ["bunchee@7.0.1", "", { "dependencies": { "@rollup/plugin-commonjs": "^29.0.3", "@rollup/plugin-json": "^6.1.0", "@rollup/plugin-node-resolve": "^16.0.3", "@rollup/plugin-replace": "^6.0.3", "@rollup/plugin-wasm": "^6.2.2", "@rollup/pluginutils": "^5.4.0", "@swc/core": "^1.15.46", "@swc/helpers": "^0.5.23", "clean-css": "^5.3.3", "magic-string": "^0.30.17", "nanospinner": "^1.2.2", "picomatch": "^4.0.5", "piscina": "^5.3.0", "pretty-bytes": "^7.1.1", "rollup": "^4.62.2", "rollup-plugin-dts": "^6.4.1", "rollup-plugin-swc3": "^0.12.1", "rollup-preserve-directives": "^1.1.3", "tinyglobby": "^0.2.17", "tslib": "^2.8.1", "yargs": "^17.7.2" }, "peerDependencies": { "typescript": "^5.0 || ^6.0 || ^7.0" }, "optionalPeers": ["typescript"], "bin": { "bunchee": "dist/bin/cli.js" } }, "sha512-jrAFcG54vhjPDK95fG1feN10K+TpUHjUnMdN8PALAMQRLsZjHa6phuKtEp2XxHvpzFIM8sQIWAjbrNqUz/Eo6w=="],
 
     "bundle-name": ["bundle-name@4.1.0", "", { "dependencies": { "run-applescript": "^7.0.0" } }, "sha512-tjwM5exMg6BGRI+kNmTntNsvdZS1X8BFYS6tnJ2hdH0kVxM6/eVZ2xy+FqStSWvYmtfFMDLIxurorHwDKfDz5Q=="],
 
