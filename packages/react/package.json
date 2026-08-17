@@ -65,7 +65,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitest/browser-playwright": "4.1.10",
-    "bunchee": "^7.0.0",
+    "bunchee": "^7.0.1",
     "happy-dom": "^20.11.1",
     "playwright": "^1.62.1",
     "react": "^19.2.4",

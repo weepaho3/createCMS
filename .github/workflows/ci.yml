@@ -439,8 +439,11 @@ jobs:
           # node16-cjs resolution is skipped by design rather than reported as
           # CJSResolvesToESM on every subpath. Every other rule stays active.
           # Consumers require()-ing these packages rely on Node's require(esm),
-          # which is why engines.node is >=22.12.
+          # which is why engines.node is >=22.12. `bunchee lint` is the
+          # bunchee 7 package check (export-condition order, declared
+          # outputs, workspace: ranges in published dependency fields).
           for pkg in packages/cms packages/schema packages/react; do
+            bunx bunchee lint --cwd "$pkg"
             bunx --yes publint "$pkg"
             bunx --yes @arethetypeswrong/cli --pack "$pkg" --profile esm-only
           done

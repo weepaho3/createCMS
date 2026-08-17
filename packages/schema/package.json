@@ -44,7 +44,7 @@
     "lint": "oxlint"
   },
   "devDependencies": {
-    "bunchee": "^7.0.0",
+    "bunchee": "^7.0.1",
     "typescript": "^5.7.2"
   },
   "engines": {
