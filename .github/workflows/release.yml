@@ -70,6 +70,9 @@ jobs:
           bunx turbo run check-types test build \
             --filter=@createcms/core --filter=@createcms/schema --filter=@createcms/react
 
+      # github-api creates tags via the Git refs API. `git push` of a new
+      # tag is rejected when the tagged commit introduced workflow-file
+      # changes: GITHUB_TOKEN has no `workflows` permission.
       - name: Create release PR or publish
         id: changesets
         uses: changesets/action@3841a0683d3cfa6dae0f9bb335290003010fe3f0 # v1.9.0
@@ -78,6 +81,7 @@ jobs:
           publish: bun run release
           commit: 'chore: version packages'
           title: 'chore: version packages'
+          commitMode: github-api
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # No NODE_AUTH_TOKEN: publishing uses OIDC trusted publishing

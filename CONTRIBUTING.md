@@ -258,10 +258,14 @@ handle releases — contributors just add a changeset.
 (Note the order: publish first, then merge — the release workflow runs on every push to `main` and would try to publish an unregistered name otherwise.)
 
 **Recovery:** publish and tagging are not atomic. If a release run dies after
-`npm publish` but before the tags are pushed (npm has the new version, but the
-git tag / GitHub release is missing), recreate the tags:
+`npm publish` but before the tag / GitHub release exists (npm has the new
+version, git does not), recreate them from a human checkout (not Actions):
 
 ```bash
 bunx changeset tag   # tag every already-published version
 git push --tags
 ```
+
+The release job creates tags through the GitHub API (`commitMode: github-api`)
+so a `git push` of a tag is not required. A human `git push --tags` is still
+the fallback if the API step never ran.
