@@ -30,6 +30,9 @@
     "admin",
     "---Framework & tooling---",
     "react",
+    "react-editor",
+    "react-editor-canvas",
+    "react-editor-cms",
     "edge",
     "cli"
   ]

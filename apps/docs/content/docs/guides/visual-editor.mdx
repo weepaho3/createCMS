@@ -1,0 +1,314 @@
+---
+title: Visual editor
+description: Compose a live canvas, a form plus preview, or a form-only editor from @createcms/react and the docs registry.
+---
+
+This guide shows how to compose a styled editor from `@createcms/react` and
+the docs registry. Compose **inside** `Editor.Root`. Never wrap `Root` in a
+snippet that lives in the registry.
+
+## Install
+
+```bash
+npm install @createcms/react
+```
+
+Install the registry items (see [Editor UI](/docs/guides/editor-ui) for
+Field vs Form nesting):
+
+```bash
+npx shadcn@latest add https://createcms.dev/r/editor-form.json
+```
+
+```bash
+npx shadcn@latest add https://createcms.dev/r/editor-canvas.json
+```
+
+```bash
+npx shadcn@latest add https://createcms.dev/r/editor-shell.json
+```
+
+```bash
+npx shadcn@latest add https://createcms.dev/r/editor-email.json
+```
+
+## Form only
+
+`useCmsDocument` loads the tree; wire `onChange={doc.onChange}` and
+`key={doc.key}` on `Editor.Root`. Pass `fields={cmsFields}` and wrap with
+`CmsSourcesProvider`. No canvas.
+
+```tsx
+'use client';
+
+import { Editor } from '@createcms/react/editor';
+import { useCmsDocument, useCmsFieldSources } from '@createcms/react/editor/cms';
+import {
+  CmsSourcesProvider,
+  cmsFields,
+  Form,
+} from '@/components/editor-form';
+
+const pageEditor = Editor; // or createEditor({ schema: collections.pages })
+
+export function FormOnlyEditor({
+  cmsClient,
+  rootId,
+  branchId,
+}: {
+  cmsClient: Parameters<typeof useCmsFieldSources>[0];
+  rootId: string;
+  branchId: string;
+}) {
+  const sources = useCmsFieldSources(cmsClient);
+  const doc = useCmsDocument({
+    client: cmsClient.pages,
+    rootId,
+    branchId,
+    collection: 'pages',
+  });
+
+  if (!doc.tree) return null;
+
+  return (
+    <pageEditor.Root
+      key={doc.key}
+      schema={collections.pages}
+      defaultValue={doc.tree}
+      onChange={doc.onChange}
+      onSave={doc.save}
+      fields={cmsFields}
+    >
+      <CmsSourcesProvider sources={sources}>
+        <Form blockId={doc.tree.blockId} />
+      </CmsSourcesProvider>
+    </pageEditor.Root>
+  );
+}
+```
+
+## Live canvas
+
+Same `Editor.Root` and cms wiring. `EditorShell` children are
+`Canvas.Root components={pageBlocks}` with overlay rings, toolbar, insert,
+drag handle, drop indicator, drag preview, and `InlineText`. Build
+`pageBlocks` from `createBlocksMap` / `createContentRenderer` with
+`edit` spread on each block root. Pass `resolve={doc.resolve}`.
+`interactive` defaults to `edit`.
+
+```tsx
+'use client';
+
+import { createBlocksMap } from '@createcms/core/react';
+import { Editor } from '@createcms/react/editor';
+import { Canvas } from '@createcms/react/editor/canvas';
+import { useCmsDocument, useCmsFieldSources } from '@createcms/react/editor/cms';
+import {
+  CmsSourcesProvider,
+  cmsFields,
+} from '@/components/editor-form';
+import {
+  BlockToolbar,
+  DragHandle,
+  DragPreview,
+  DropIndicator,
+  FieldRing,
+  HoverRing,
+  InlineText,
+  InsertButton,
+  Overlay,
+  PaletteItem,
+  SelectionRing,
+} from '@/components/editor-canvas';
+import { EditorShell } from '@/components/editor-shell';
+
+const pageBlocks = createBlocksMap(collections.pages, {
+  hero: Hero,
+  paragraph: Paragraph,
+});
+
+export function LiveCanvasEditor({
+  cmsClient,
+  rootId,
+  branchId,
+}: {
+  cmsClient: Parameters<typeof useCmsFieldSources>[0];
+  rootId: string;
+  branchId: string;
+}) {
+  const sources = useCmsFieldSources(cmsClient);
+  const doc = useCmsDocument({
+    client: cmsClient.pages,
+    rootId,
+    branchId,
+    collection: 'pages',
+  });
+
+  if (!doc.tree) return null;
+
+  return (
+    <Editor.Root
+      key={doc.key}
+      schema={collections.pages}
+      defaultValue={doc.tree}
+      onChange={doc.onChange}
+      onSave={doc.save}
+      fields={cmsFields}
+    >
+      <CmsSourcesProvider sources={sources}>
+        <EditorShell>
+          <Canvas.Root
+            components={pageBlocks}
+            resolve={doc.resolve}
+            style={{ position: 'relative' }}
+          >
+            <Overlay>
+              <SelectionRing />
+              <HoverRing />
+              <FieldRing />
+              <BlockToolbar side="top" align="start" />
+              <InsertButton placement="between" type="paragraph" />
+              <DragHandle blockId="selected-block-id" />
+              <PaletteItem type="paragraph" />
+              <DropIndicator />
+              <DragPreview />
+              <InlineText />
+            </Overlay>
+          </Canvas.Root>
+        </EditorShell>
+      </CmsSourcesProvider>
+    </Editor.Root>
+  );
+}
+```
+
+## Form plus preview
+
+Root plus styled `Form` (or inspector) and `Editor.Preview` or
+`Editor.FramePreview`. Preview `render` receives the raw tree. For HTML or
+email, use `FramePreview` with `selectable` and
+`render={async (tree, { signal }) => html}`. For PDF, return a `Blob` from
+`FramePreview`, or render a viewer in `Preview` (for example `TakumiPdf`).
+
+```tsx
+'use client';
+
+import { Editor } from '@createcms/react/editor';
+import { useCmsDocument } from '@createcms/react/editor/cms';
+import { Form } from '@/components/editor-form';
+
+function TakumiPdf({ blob }: { blob: Blob }) {
+  return <div>PDF viewer</div>;
+}
+
+export function FormPreviewEditor({
+  cmsClient,
+  rootId,
+  branchId,
+}: {
+  cmsClient: { pages: Parameters<typeof useCmsDocument>[0]['client'] };
+  rootId: string;
+  branchId: string;
+}) {
+  const doc = useCmsDocument({
+    client: cmsClient.pages,
+    rootId,
+    branchId,
+    collection: 'pages',
+  });
+
+  if (!doc.tree) return null;
+
+  return (
+    <Editor.Root
+      key={doc.key}
+      schema={collections.pages}
+      defaultValue={doc.tree}
+      onChange={doc.onChange}
+      onSave={doc.save}
+    >
+      <div className="grid grid-cols-2 gap-4">
+        <Form blockId={doc.tree.blockId} />
+        <Editor.Preview
+          render={(tree) => <TakumiPdf blob={compilePdf(tree)} />}
+        />
+      </div>
+    </Editor.Root>
+  );
+}
+```
+
+## Email split
+
+`EditorEmail` requires a `render` prop. It owns the styled form pane and the
+`Editor.FramePreview` issues panel; the consumer only supplies `render`. Do
+not set `surface="frame"`.
+
+```tsx
+'use client';
+
+import { Editor } from '@createcms/react/editor';
+import { useCmsDocument } from '@createcms/react/editor/cms';
+import { EditorEmail } from '@/components/editor-email';
+
+export function EmailEditor({
+  cmsClient,
+  rootId,
+  branchId,
+}: {
+  cmsClient: { pages: Parameters<typeof useCmsDocument>[0]['client'] };
+  rootId: string;
+  branchId: string;
+}) {
+  const doc = useCmsDocument({
+    client: cmsClient.pages,
+    rootId,
+    branchId,
+    collection: 'pages',
+  });
+
+  if (!doc.tree) return null;
+
+  return (
+    <Editor.Root
+      key={doc.key}
+      schema={collections.pages}
+      defaultValue={doc.tree}
+      onChange={doc.onChange}
+      onSave={doc.save}
+    >
+      <EditorEmail
+        render={async (tree, { signal }) =>
+          compileEmailHtml(tree, { signal })
+        }
+      />
+    </Editor.Root>
+  );
+}
+```
+
+## Block component with edit
+
+Spread `edit.block` and `edit.field.<key>` on consumer block markup:
+
+```tsx
+import type { BlockComponentProps } from '@createcms/core/react';
+
+function Hero({ properties, edit }: BlockComponentProps) {
+  return (
+    <section {...edit.block}>
+      <h1 {...edit.field.headline}>{properties.headline}</h1>
+    </section>
+  );
+}
+```
+
+On the published renderer, pass `edit="preview"` or `NO_EDIT` instead. See
+[React](/docs/reference/react).
+
+## Unstyled
+
+The unstyled API lives at `@createcms/react/editor`. Reference pages:
+[Editor](/docs/reference/react-editor),
+[Editor canvas](/docs/reference/react-editor-canvas), and
+[Editor cms adapter](/docs/reference/react-editor-cms).
