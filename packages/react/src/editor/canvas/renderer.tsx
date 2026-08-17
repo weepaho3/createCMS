@@ -8,8 +8,10 @@ import type { EditCache } from './edit';
 import type { CanvasComponent } from './map';
 import type { CanvasResolve, ResolveCache } from './resolve';
 
+import { propertiesOf } from '../schema';
 import { serializeToTree } from '../store';
 import { NO_EDIT } from './edit';
+import { withEmptyFieldPlaceholder } from './inline-text';
 import { isResolvedReference, resolveNodeProperties } from './resolve';
 
 export type RenderStoreTreeArgs = {
@@ -94,10 +96,17 @@ function renderNode(
     ? NO_EDIT
     : args.edits.get(node.blockId, node.type, args.schema, unresolved);
 
+  const display = fromReference
+    ? properties
+    : withEmptyFieldPlaceholder(
+        properties,
+        propertiesOf(args.schema, node.type),
+      );
+
   return (
     <Component
       key={node.blockId}
-      properties={properties}
+      properties={display}
       children={allChildren}
       blockId={node.blockId}
       node={node}

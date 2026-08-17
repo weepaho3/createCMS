@@ -97,6 +97,7 @@ describe('namespace shape', () => {
       'PaletteItem',
       'DropIndicator',
       'DragPreview',
+      'InlineText',
     ]);
   });
 });

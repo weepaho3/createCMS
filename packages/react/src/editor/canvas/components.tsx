@@ -3,7 +3,7 @@ import type { BlockProperty } from '@createcms/schema';
 import * as React from 'react';
 
 import type { UseRenderComponentProps } from '../../use-render';
-import type { CanvasContextValue } from './context';
+import type { CanvasContextValue, InlineCaretPoint } from './context';
 import type { CanvasComponents } from './map';
 import type { Measurer } from './measurer';
 import type { CanvasResolve, ResolveKind } from './resolve';
@@ -106,6 +106,7 @@ export function CanvasRoot({
   }
 
   const hostRef = React.useRef<HTMLDivElement | null>(null);
+  const inlineCaretRef = React.useRef<InlineCaretPoint | null>(null);
   const measurerRef = React.useRef<Measurer | null>(null);
   const pointerRef = React.useRef<PointerStore | null>(null);
   const dndRef = React.useRef<DndStore | null>(null);
@@ -245,6 +246,7 @@ export function CanvasRoot({
       interactive,
       dragging,
       editing,
+      inlineCaret: inlineCaretRef,
     };
   }, [read, hostEl, measurer, pointer, dnd, interactive, dragging, editing]);
 

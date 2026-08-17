@@ -14,6 +14,7 @@ import type { CanvasComponent } from './map';
 import { Editor } from '../index';
 import { makeTree, storeSchema } from '../store/fixtures';
 import { Canvas } from './index';
+import { EMPTY_FIELD_PLACEHOLDER } from './inline-text';
 import { canvasBlocks, Heading } from './test/fixtures';
 import { renderCanvas } from './test/harness';
 import {
@@ -336,6 +337,44 @@ describe('Canvas.Root renderer', () => {
       'Canvas.Root: block "h1" (type "heading") rendered no [data-editor-block] attribute. Spread edit.block on the block\'s root element. A display: contents wrapper is the documented escape when the component has no single root.',
     );
     warn.mockRestore();
+  });
+
+  it('keeps an empty badge field mounted with a display placeholder', () => {
+    const badgeSchema = {
+      label: 'Pages',
+      root: { properties: {} },
+      blocks: {
+        heading: {
+          label: 'Heading',
+          properties: {
+            text: { type: 'string', label: 'Text' },
+            level: { type: 'number', label: 'Level', defaultValue: 2 },
+            badge: { type: 'string', label: 'Badge' },
+          },
+        },
+      },
+    } satisfies CollectionDefinition;
+    const tree: BlockTreeNode = {
+      blockId: 'root_1',
+      type: 'root',
+      properties: {},
+      children: [
+        {
+          blockId: 'h1',
+          type: 'heading',
+          properties: { text: 'Hello', level: 1, badge: '' },
+          children: [],
+        },
+      ],
+    };
+    const { host, store } = renderCanvas(undefined, {
+      schema: badgeSchema,
+      tree,
+    });
+    const badge = host.querySelector('[data-editor-field="badge"]');
+    expect(badge).not.toBeNull();
+    expect(badge?.textContent).toBe(EMPTY_FIELD_PLACEHOLDER);
+    expect(store.getState().nodes.h1!.properties.badge).toBe('');
   });
 
   it('stripped HTML matches a local published walk of the same components', () => {
