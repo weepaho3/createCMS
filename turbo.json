@@ -25,6 +25,13 @@
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$"]
     },
+    "registry:build": {
+      "dependsOn": ["^build"],
+      "outputs": ["public/r/**"]
+    },
+    "registry:check": {
+      "dependsOn": ["^build"]
+    },
     "clean": {
       "cache": false
     }

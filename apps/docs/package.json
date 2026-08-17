@@ -7,10 +7,13 @@
     "check-types": "fumadocs-mdx && next typegen && tsc --noEmit",
     "dev": "next dev --port=4000",
     "postinstall": "fumadocs-mdx",
+    "registry:build": "shadcn build --output public/r",
+    "registry:check": "node scripts/check-registry.mjs",
     "start": "next start"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
+    "@createcms/react": "workspace:*",
     "@radix-ui/react-collapsible": "^1.1.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -33,6 +36,7 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "postcss": "^8.5.25",
+    "shadcn": "^4.18.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3"
   }
