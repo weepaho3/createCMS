@@ -17,6 +17,7 @@ Documentation content lives in `content/docs` (MDX), and the Fumadocs source ada
 Styled editor chrome is distributed as copy-paste shadcn registry items, not as an npm package.
 
 - **Source**: `registry/` plus `registry.json` at the docs package root
+- **Items**: `editor-form`, `editor-canvas`, `editor-shell`, `editor-email`
 - **Build**: from the monorepo root, `bun run --filter=docs registry:build` writes JSON to `public/r/`
 - **After changing an item**: rebuild and commit `public/r/`
 - **Check**: `bun run --filter=docs registry:check`

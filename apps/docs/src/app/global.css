@@ -49,6 +49,10 @@ body {
   --editor-ring: var(--ring);
   --editor-invalid: var(--destructive);
   --editor-muted: var(--muted-foreground);
+  --editor-selection: var(--primary);
+  --editor-hover: var(--muted-foreground);
+  --editor-focus: var(--ring);
+  --editor-drop: var(--primary);
 }
 
 .dark {
@@ -86,6 +90,10 @@ body {
   --editor-ring: var(--ring);
   --editor-invalid: var(--destructive);
   --editor-muted: var(--muted-foreground);
+  --editor-selection: var(--primary);
+  --editor-hover: var(--muted-foreground);
+  --editor-focus: var(--ring);
+  --editor-drop: var(--primary);
 }
 
 /* Brand mark (animated createCMS logo) — accent orange is constant across
@@ -137,6 +145,10 @@ body {
   --color-editor-ring: var(--editor-ring);
   --color-editor-invalid: var(--editor-invalid);
   --color-editor-muted: var(--editor-muted);
+  --color-editor-selection: var(--editor-selection);
+  --color-editor-hover: var(--editor-hover);
+  --color-editor-focus: var(--editor-focus);
+  --color-editor-drop: var(--editor-drop);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --radius-2xl: calc(var(--radius) + 8px);

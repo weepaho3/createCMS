@@ -1,0 +1,20 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "editor-email",
+  "title": "Editor Email",
+  "description": "Split form and FramePreview layout for email editing. Use inside Editor.Root.",
+  "dependencies": [
+    "@createcms/react"
+  ],
+  "registryDependencies": [
+    "editor-form"
+  ],
+  "files": [
+    {
+      "path": "registry/editor-email.tsx",
+      "content": "'use client';\n\nimport type { FramePreviewIssue } from '@createcms/react/editor';\n\nimport { Editor } from '@createcms/react/editor';\nimport { useEditor, useSelection } from '@createcms/react/editor';\nimport * as React from 'react';\n\nimport { cn } from '@/lib/utils';\n\nimport { Form } from './editor-form';\n\ntype EditorEmailProps = {\n  className?: string;\n  blockId?: string;\n  render: React.ComponentProps<typeof Editor.FramePreview>['render'];\n};\n\nfunction EditorEmail({ className, blockId, render }: EditorEmailProps) {\n  const rootId = useEditor((state) => state.rootId);\n  const selected = useSelection().selected;\n  const formBlockId = blockId ?? selected ?? rootId;\n  const [issues, setIssues] = React.useState<readonly FramePreviewIssue[]>([]);\n\n  return (\n    <div\n      data-slot=\"editor-email\"\n      className={cn('grid min-h-0 grid-cols-2 gap-4', className)}\n    >\n      <div className=\"flex flex-col gap-2 overflow-y-auto p-3\">\n        <Form blockId={formBlockId} />\n        {!blockId ? (\n          <p className=\"text-muted-foreground text-xs\">\n            Pass blockId to edit a fixed block instead of the selection.\n          </p>\n        ) : null}\n      </div>\n      <div className=\"flex min-h-0 flex-col gap-2\">\n        <Editor.FramePreview\n          selectable\n          render={render}\n          onIssues={setIssues}\n          className=\"min-h-64 flex-1\"\n        />\n        {issues.length > 0 ? (\n          <aside className=\"border-border max-h-48 overflow-y-auto rounded-md border p-2\">\n            <h2 className=\"mb-2 text-xs font-semibold uppercase tracking-wide\">\n              Preview issues\n            </h2>\n            <ul className=\"flex flex-col gap-1 text-xs\">\n              {issues.map((issue, index) => (\n                <li key={index}>\n                  <span className=\"font-medium\">{issue.kind}</span>\n                  {'attribute' in issue ? (\n                    <span>\n                      {' '}\n                      ({issue.attribute}: {issue.value})\n                    </span>\n                  ) : null}\n                </li>\n              ))}\n            </ul>\n          </aside>\n        ) : null}\n      </div>\n    </div>\n  );\n}\n\nexport { EditorEmail };\nexport type { EditorEmailProps };\n",
+      "type": "registry:ui"
+    }
+  ],
+  "type": "registry:ui"
+}

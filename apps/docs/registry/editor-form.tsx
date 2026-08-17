@@ -1,5 +1,8 @@
 'use client';
 
+// Wraps Editor.Field parts. Does not wrap Root. Cms controls need
+// CmsSourcesProvider from editor-form-cms.
+
 import { Editor } from '@createcms/react/editor';
 import * as React from 'react';
 
@@ -91,3 +94,4 @@ function Form({
 }
 
 export { Field, FieldControl, FieldDescription, FieldError, FieldLabel, Form };
+export { CmsSourcesProvider, cmsFields } from './editor-form-cms';

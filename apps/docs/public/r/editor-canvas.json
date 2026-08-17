@@ -1,0 +1,40 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "editor-canvas",
+  "title": "Editor Canvas",
+  "description": "Styled wrappers for Canvas overlay and interaction parts. Does not wrap Canvas.Root.",
+  "dependencies": [
+    "@createcms/react"
+  ],
+  "files": [
+    {
+      "path": "registry/editor-canvas.tsx",
+      "content": "'use client';\n\nimport { Canvas } from '@createcms/react/editor/canvas';\nimport * as React from 'react';\n\nimport { cn } from '@/lib/utils';\n\nfunction Overlay({\n  className,\n  ...props\n}: React.ComponentProps<typeof Canvas.Overlay>) {\n  return (\n    <Canvas.Overlay\n      data-slot=\"editor-overlay\"\n      className={cn(className)}\n      {...props}\n    />\n  );\n}\n\nfunction SelectionRing({\n  className,\n  ...props\n}: React.ComponentProps<typeof Canvas.SelectionRing>) {\n  return (\n    <Canvas.SelectionRing\n      data-slot=\"editor-selection-ring\"\n      className={cn('border-2 border-editor-selection', className)}\n      {...props}\n    />\n  );\n}\n\nfunction HoverRing({\n  className,\n  ...props\n}: React.ComponentProps<typeof Canvas.HoverRing>) {\n  return (\n    <Canvas.HoverRing\n      data-slot=\"editor-hover-ring\"\n      className={cn('border border-editor-hover', className)}\n      {...props}\n    />\n  );\n}\n\nfunction FieldRing({\n  className,\n  ...props\n}: React.ComponentProps<typeof Canvas.FieldRing>) {\n  return (\n    <Canvas.FieldRing\n      data-slot=\"editor-field-ring\"\n      className={cn('border border-editor-focus', className)}\n      {...props}\n    />\n  );\n}\n\nfunction BlockToolbar({\n  className,\n  ...props\n}: React.ComponentProps<typeof Canvas.BlockToolbar>) {\n  return (\n    <Canvas.BlockToolbar\n      data-slot=\"editor-block-toolbar\"\n      className={cn(\n        'bg-background border-border flex items-center gap-1 rounded-md border p-1 shadow-sm',\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n\nfunction InsertButton({\n  className,\n  ...props\n}: React.ComponentProps<typeof Canvas.InsertButton>) {\n  return (\n    <Canvas.InsertButton\n      data-slot=\"editor-insert-button\"\n      className={cn(\n        'bg-background border-border rounded-md border px-2 py-1 text-xs shadow-sm',\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n\nfunction DropIndicator({\n  className,\n  ...props\n}: React.ComponentProps<typeof Canvas.DropIndicator>) {\n  return (\n    <Canvas.DropIndicator\n      data-slot=\"editor-drop-indicator\"\n      className={cn('bg-editor-drop h-0.5', className)}\n      {...props}\n    />\n  );\n}\n\nfunction InlineText({\n  className,\n  ...props\n}: React.ComponentProps<typeof Canvas.InlineText>) {\n  return (\n    <Canvas.InlineText\n      data-slot=\"editor-inline-text\"\n      className={cn(className)}\n      {...props}\n    />\n  );\n}\n\nfunction DragHandle({\n  className,\n  ...props\n}: React.ComponentProps<typeof Canvas.DragHandle>) {\n  return (\n    <Canvas.DragHandle\n      data-slot=\"editor-drag-handle\"\n      className={cn(\n        'bg-background border-border cursor-grab rounded border p-1',\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n\nfunction PaletteItem({\n  className,\n  ...props\n}: React.ComponentProps<typeof Canvas.PaletteItem>) {\n  return (\n    <Canvas.PaletteItem\n      data-slot=\"editor-palette-item\"\n      className={cn(\n        'bg-background border-border w-full rounded-md border px-2 py-1.5 text-left text-sm',\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n\nfunction DragPreview({\n  className,\n  ...props\n}: React.ComponentProps<typeof Canvas.DragPreview>) {\n  return (\n    <Canvas.DragPreview\n      data-slot=\"editor-drag-preview\"\n      className={cn(\n        'bg-background border-border rounded-md border px-2 py-1 text-sm shadow-md',\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n\nexport {\n  BlockToolbar,\n  DragHandle,\n  DragPreview,\n  DropIndicator,\n  FieldRing,\n  HoverRing,\n  InlineText,\n  InsertButton,\n  Overlay,\n  PaletteItem,\n  SelectionRing,\n};\n",
+      "type": "registry:ui"
+    },
+    {
+      "path": "registry/editor-canvas.css",
+      "content": "[data-editor-canvas] .sticky,\n[data-editor-canvas] .fixed {\n  position: static;\n}\n\n[data-editor-canvas] {\n  backdrop-filter: none;\n}\n",
+      "type": "registry:style"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "editor-selection": "var(--primary)",
+      "editor-hover": "var(--muted-foreground)",
+      "editor-focus": "var(--ring)",
+      "editor-drop": "var(--primary)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      "[data-editor-canvas] .sticky, [data-editor-canvas] .fixed": {
+        "position": "static"
+      },
+      "[data-editor-canvas]": {
+        "backdrop-filter": "none"
+      }
+    }
+  },
+  "type": "registry:ui"
+}
