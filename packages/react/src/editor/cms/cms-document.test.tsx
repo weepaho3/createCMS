@@ -403,11 +403,12 @@ describe('useCmsDocument resolve', () => {
 
     let resolved: unknown = 'pending';
     act(() => {
-      void result.current.resolve.reference!('miss_a', {
+      const out = result.current.resolve.reference!('miss_a', {
         type: 'reference',
         collection: 'pages',
         label: 'A',
-      }).then((value) => {
+      });
+      void Promise.resolve(out).then((value: unknown) => {
         resolved = value;
       });
     });
