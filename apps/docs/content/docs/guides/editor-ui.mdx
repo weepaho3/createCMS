@@ -1,0 +1,57 @@
+---
+title: Editor UI
+description: Install styled field wrappers from the createCMS shadcn registry.
+---
+
+The createCMS docs site hosts a [shadcn registry](https://ui.shadcn.com/docs/registry/getting-started) of copy-paste editor chrome. The first item wraps `Editor.Field` parts with Tailwind styling. It does not wrap `Editor.Root`.
+
+## Prerequisites
+
+Your app should already be initialized with shadcn (`npx shadcn@latest init`) and have `@createcms/react` installed:
+
+```bash
+npm install @createcms/react
+```
+
+## Install the field wrappers
+
+```bash
+npx shadcn@latest add https://createcms.dev/r/editor-form.json
+```
+
+While developing the docs site locally, use the dev server URL instead:
+
+```bash
+npx shadcn@latest add http://localhost:4000/r/editor-form.json
+```
+
+## Usage
+
+Compose `<Editor.Root schema={…}>` in your app code, then use the copied parts as a styled container or as individually styled fields.
+
+**Styled container.** Wrap the block's fields with the styled `Form` shell. Inner fields remain the headless primitives from `@createcms/react`.
+
+```tsx
+import { Editor } from '@createcms/react/editor';
+import { Form } from '@/components/editor-form';
+
+<Editor.Root schema={schema}>
+  <Form blockId={blockId} />
+</Editor.Root>
+```
+
+**Styled parts mapped by the consumer.** Render each field with the styled `Field`, `FieldLabel`, and `FieldControl` parts. Do not nest these inside `Form`.
+
+```tsx
+import { Editor } from '@createcms/react/editor';
+import { Field, FieldLabel, FieldControl } from '@/components/editor-form';
+
+<Editor.Root schema={schema}>
+  <Field blockId={blockId} name="title">
+    <FieldLabel />
+    <FieldControl />
+  </Field>
+</Editor.Root>
+```
+
+The item copies into your shadcn components directory. Adjust import paths to match your aliases.

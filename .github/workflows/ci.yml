@@ -71,6 +71,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       react: ${{ steps.filter.outputs.react }}
+      registry: ${{ steps.filter.outputs.registry }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -82,13 +83,20 @@ jobs:
         run: |
           if [ "$EVENT" != "pull_request" ]; then
             echo "react=true" >> "$GITHUB_OUTPUT"
+            echo "registry=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           merge_base="$(git merge-base "origin/$BASE" HEAD)"
-          if git diff --name-only "$merge_base" HEAD | grep -qE '^(packages/react/|packages/schema/|bun\.lock$|\.github/workflows/ci\.yml$)'; then
+          files="$(git diff --name-only "$merge_base" HEAD)"
+          if echo "$files" | grep -qE '^(packages/react/|packages/schema/|bun\.lock$|\.github/workflows/ci\.yml$)'; then
             echo "react=true" >> "$GITHUB_OUTPUT"
           else
             echo "react=false" >> "$GITHUB_OUTPUT"
+          fi
+          if echo "$files" | grep -qE '^(apps/docs/registry/|apps/docs/registry.json|apps/docs/public/r/|apps/docs/package.json|apps/docs/scripts/check-registry.mjs|apps/docs/components.json|bun\.lock$|turbo.json|\.github/workflows/ci\.yml$)'; then
+            echo "registry=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "registry=false" >> "$GITHUB_OUTPUT"
           fi
 
   # Pull requests are squash-merged, so the PR title becomes the commit subject on
@@ -333,6 +341,39 @@ jobs:
       - name: Browser tests
         run: bunx turbo run test:browser --filter=@createcms/react
 
+  registry:
+    needs: changes
+    if: needs.changes.outputs.registry == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+
+      - name: Cache bun
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-registry-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-registry-
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Build registry
+        run: bunx turbo run registry:build --filter=docs
+
+      - name: Check committed registry output
+        run: git diff --exit-code -- apps/docs/public/r
+
+      - name: Check registry assertions
+        run: bun run --filter=docs registry:check
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -421,6 +462,7 @@ jobs:
         coverage,
         test-react,
         browser-tests,
+        registry,
         build,
       ]
     if: always()
@@ -428,4 +470,4 @@ jobs:
       - uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
         with:
           jobs: ${{ toJSON(needs) }}
-          allowed-skips: commits, browser-tests
+          allowed-skips: commits, browser-tests, registry
