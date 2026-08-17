@@ -112,6 +112,11 @@ const coverageThresholds = {
 export default defineConfig({
   test: {
     testTimeout: 15_000,
+    // PGlite keeps a ~200MB WASM heap per worker that Linux never reclaims
+    // (see src/test-utils/db.ts). Unbounded workers OOM a 16GB runner.
+    // CI shards pass the same cap on the CLI; this is the default for
+    // `bun run test`, coverage, watch, and the release job.
+    maxWorkers: 2,
     // Releases every PGlite a test opened as soon as it ends — without this
     // the suite leaks WASM instances until worker exit and can exhaust
     // machine memory (see vitest.setup.ts).
