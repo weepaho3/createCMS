@@ -11,11 +11,11 @@ component registry, not in this package.
 
 ## Entry points
 
-| Entry                            | Holds                                                                          |
-| -------------------------------- | ------------------------------------------------------------------------------ |
-| `@createcms/react/editor`        | Schema, state, form and preview layer (`Editor.Root`, `useEditorContext`).     |
-| `@createcms/react/editor/canvas` | Live surface, overlay and interaction layer (`Canvas.Root`, `Canvas.Overlay`). |
-| `@createcms/react/editor/cms`    | Optional adapter to a createcms client. Reserved, empty for now.               |
+| Entry                            | Holds                                                                                           |
+| -------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `@createcms/react/editor`        | Schema, state, form and preview layer (`Editor.Root`, `useEditorContext`).                      |
+| `@createcms/react/editor/canvas` | Live surface, overlay and interaction layer (`Canvas.Root`, `Canvas.Overlay`).                  |
+| `@createcms/react/editor/cms`    | Optional createcms client adapter (`useCmsDocument`: load/save, head tracking, canvas resolve). |
 
 `Canvas.Root` renders the store tree through a `components` map.
 `Canvas.Overlay` positions rings from measured anchors and hosts an
