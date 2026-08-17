@@ -4,7 +4,8 @@
     "**/schema.generated.ts",
     "**/*.type-check.ts",
     "**/*.type-check.tsx",
-    "**/*.mdx"
+    "**/*.mdx",
+    "apps/docs/public/r/**"
   ],
   "printWidth": 80,
   "singleQuote": true,
