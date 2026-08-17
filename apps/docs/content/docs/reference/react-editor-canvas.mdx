@@ -1,0 +1,177 @@
+---
+title: Editor canvas
+description: Unstyled parts, hooks, and types for @createcms/react/editor/canvas.
+---
+
+Headless editor primitive: live surface, overlay and interaction layer.
+Unstyled; styling happens in the consumer's wrapper components (registry).
+Use **inside** `Editor.Root`.
+
+```ts
+import { Canvas } from '@createcms/react/editor/canvas';
+```
+
+## Usage
+
+`Canvas.Root` renders the store tree through a `components` map. Pass a plain
+`{ heading: Heading }` record or a `{ _components }` object (the shape
+`createBlocksMap` returns). `components` is required. Consumer `children` are
+the overlay slot, rendered after the tree inside the host.
+
+```tsx
+import { Editor } from '@createcms/react/editor';
+import { Canvas } from '@createcms/react/editor/canvas';
+
+function PageCanvas({ schema, tree, pageBlocks }) {
+  return (
+    <Editor.Root schema={schema} defaultValue={tree}>
+      <Canvas.Root components={pageBlocks} style={{ position: 'relative' }}>
+        <Canvas.Overlay>
+          <Canvas.SelectionRing />
+          <Canvas.HoverRing />
+          <Canvas.FieldRing />
+          <Canvas.BlockToolbar side="top" align="start">
+            {/* consumer buttons via useBlockActions(selectedId) */}
+          </Canvas.BlockToolbar>
+          <Canvas.InsertButton placement="between" type="paragraph" />
+          <Canvas.DragHandle blockId="selectedBlockId" />
+          <Canvas.PaletteItem type="paragraph" />
+          <Canvas.DropIndicator />
+          <Canvas.DragPreview />
+          <Canvas.InlineText />
+        </Canvas.Overlay>
+      </Canvas.Root>
+    </Editor.Root>
+  );
+}
+```
+
+Spread `edit.block` on each block's root element and `edit.field.<key>` on
+the element that shows that property (`BlockComponentProps.edit` from
+`@createcms/core/react`). Leftover missing anchors are a dev warning because
+measurement cannot see a block without `data-editor-block`.
+
+`resolve` and `components` must be referentially stable: an inline object
+literal re-runs every resolver. `surface` defaults to `'inline'`.
+`surface="frame"` throws (`Canvas.Root: surface "frame" is not implemented`).
+
+`interactive` is `'edit' | 'select' | 'none'` (default `'edit'`). Optional
+`resolve` handles `reference` / `link` / `string`; never `image`. Unresolved
+values omit or mark `data-unresolved`.
+
+The canvas host needs a positioning context (`position: relative` or
+similar) so `Canvas.Overlay`'s `absolute; inset: 0` covers the surface.
+Overlay portals into the host. Overlay is `pointer-events: none` and is not
+`aria-hidden`. Rings set `aria-hidden`. A child that must receive pointer
+input sets `pointer-events: auto` on itself.
+
+DnD is pointer-based (not HTML5 drag). `Canvas.InlineText` is the GLASS
+overlay for `string` / `richText` in `edit`.
+
+## Parts
+
+| Part                   | Default element | Props                                                                                                                          | Data attributes                                                                                           |
+| ---------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `Canvas.Root`          | `div`           | `components` (required), `surface`, `interactive`, `resolve`, `children` (overlay), `render`, div props                        | `data-editor-canvas`, `data-interactive`, `data-dragging`, `data-editing`                                 |
+| `Canvas.Overlay`       | `div`           | `render`, div props. Portals into the canvas host.                                                                             | `data-editor-overlay`                                                                                     |
+| `Canvas.SelectionRing` | `div`           | `render`, div props. Sized from the selected block rect.                                                                       | `data-editor-selection-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`    |
+| `Canvas.HoverRing`     | `div`           | `render`, div props. Hidden while dragging, editing, or when hovered equals selected.                                          | `data-editor-hover-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
+| `Canvas.FieldRing`     | `div`           | `render`, div props. Sized from the focused field rect (own-block only).                                                       | `data-editor-field-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
+| `Canvas.BlockToolbar`  | `div`           | `align`, `side`, `offset`, `render`, div props. Consumer supplies buttons. Shown in `edit` and `select`.                       | `data-editor-block-toolbar`, `data-side`, `data-block-type`                                               |
+| `Canvas.InsertButton`  | `button`        | `placement` (`between` \| `container`), optional `type`, optional `onInsert`, `render`, button props. Shown only in `edit`.    | `data-editor-insert-button`, `data-orientation`, `data-empty-container`                                   |
+| `Canvas.DragHandle`    | `button`        | `blockId` (required), `render`, button props. Move an existing block by pointer drag. Shown only in `edit`.                    | `data-editor-drag-handle`, `data-dragging` on the handle while its block is the move session              |
+| `Canvas.PaletteItem`   | `button`        | `type` (required), optional `properties`, `render`, button props. Click inserts like `Editor.AddBlock`; drag adds by geometry. | `data-editor-palette-item`, `data-block-type`, `data-dragging` while this item starts a new-block session |
+| `Canvas.DropIndicator` | `div`           | `render`, div props. Line or box from the active drop target. Presentational.                                                  | `data-editor-drop-indicator`, `data-orientation`, `data-variant`, `data-kind` (`new` \| `move`)           |
+| `Canvas.DragPreview`   | `div`           | `render`, div props, optional children. Follows the pointer during a session. Presentational.                                  | `data-editor-drag-preview`, `data-kind` (`new` \| `move`)                                                 |
+| `Canvas.InlineText`    | `div`           | `suggest`, `discardOnEscape`, `render`, div props. Overlays a contentEditable glass on string and richText fields in `edit`.   | `data-editor-inline-text`, `data-editing`, `data-block-type`, `data-field`                                |
+
+## Hooks
+
+| Hook              | Returns                | Notes                                                                                                                                                        |
+| ----------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `useResolved`     | `T \| undefined`       | Reads the canvas resolve cache. Throws outside `Canvas.Root`. `undefined` is miss or pending.                                                                |
+| `useBlockRect`    | `CanvasRect \| null`   | Content coordinates of a block id (union of same-id nodes). Throws outside `Canvas.Root`.                                                                    |
+| `useFieldRect`    | `CanvasRect \| null`   | Content coordinates of a field on its own block. Throws outside `Canvas.Root`.                                                                               |
+| `useInsertTarget` | `InsertTarget \| null` | Resolved line or box from pointer and hover. Throws outside `Canvas.Root`. Null in `select` / `none`, while dragging or editing, or without pointer / hover. |
+
+## Types
+
+| Type                         | Description                                                                                       |
+| ---------------------------- | ------------------------------------------------------------------------------------------------- |
+| `CanvasRootProps`            | Props of `Canvas.Root`.                                                                           |
+| `CanvasOverlayProps`         | Props of `Canvas.Overlay`.                                                                        |
+| `CanvasSelectionRingProps`   | Props of `Canvas.SelectionRing`.                                                                  |
+| `CanvasHoverRingProps`       | Props of `Canvas.HoverRing`.                                                                      |
+| `CanvasFieldRingProps`       | Props of `Canvas.FieldRing`.                                                                      |
+| `CanvasRingState`            | `blockType`, `canMove`, `canDelete`, `unresolved` on every ring.                                  |
+| `CanvasRect`                 | `{ x, y, width, height }` in canvas content coordinates.                                          |
+| `CanvasComponents`           | A plain block map, or `{ _components }` as `createBlocksMap` returns.                             |
+| `CanvasComponent`            | One block component in a `CanvasComponents` map.                                                  |
+| `CanvasResolve`              | Optional `reference` / `link` / `string` resolvers. `image` is never resolved.                    |
+| `ResolveKind`                | Which resolver slot a value uses (`reference`, `link`, or `string`).                              |
+| `CanvasInteractive`          | `'edit' \| 'select' \| 'none'`. Default `'edit'`.                                                 |
+| `CanvasSurface`              | `'inline' \| 'frame'`. Default `'inline'`. `'frame'` throws.                                      |
+| `InsertTarget`               | Resolved insert: `parentId`, `index`, `orientation`, `variant`, `rect`, `allowedTypes`, `nested`. |
+| `InsertOrientation`          | `'horizontal'` \| `'vertical'`.                                                                   |
+| `InsertVariant`              | `'line'` \| `'box'`.                                                                              |
+| `ResolveInsertAtOptions`     | Injected rects and row-flow stub for `resolveInsertAt`.                                           |
+| `CanvasBlockToolbarProps`    | Props of `Canvas.BlockToolbar`.                                                                   |
+| `CanvasInsertButtonProps`    | Props of `Canvas.InsertButton`.                                                                   |
+| `CanvasDragHandleProps`      | Props of `Canvas.DragHandle`.                                                                     |
+| `CanvasDragPreviewProps`     | Props of `Canvas.DragPreview`.                                                                    |
+| `CanvasDropIndicatorProps`   | Props of `Canvas.DropIndicator`.                                                                  |
+| `CanvasPaletteItemProps`     | Props of `Canvas.PaletteItem`.                                                                    |
+| `PointerStore`               | External pointer snapshot store on the canvas context.                                            |
+| `PointerSnapshot`            | One pointer sample (client coordinates and target block id).                                      |
+| `DragSession`                | Active pointer drag state (new block or move).                                                    |
+| `CanvasInlineTextProps`      | Props of `Canvas.InlineText`.                                                                     |
+| `InlineSuggest`              | Optional `$`-anchored suggest config: `pattern`, `getItems`, `render`.                            |
+| `InlineSuggestItem`          | Suggest row: `insertText` plus consumer fields for `render`.                                      |
+| `InlineSuggestRenderContext` | Suggest UI context: items, highlight, query, anchor rect, `accept`.                               |
+
+## Helpers
+
+| Export                   | Description                                                                 |
+| ------------------------ | --------------------------------------------------------------------------- |
+| `resolveInsertAt`        | Pure insert geometry from pointer position and block rects.                 |
+| `INSERT_BOX_PAD`         | Padding around an empty container insert box.                                 |
+| `INSERT_LINE_THICKNESS`  | Hit thickness for line insert targets.                                      |
+| `adjustMoveIndex`        | Index adjustment when moving a block within the same parent.                |
+| `blockIdAtPoint`         | Block id under a client point from measured rects.                          |
+| `DND_THRESHOLD_PX`       | Pointer distance before a drag session starts.                              |
+| `applyTextEdit`          | Apply a DOM text edit to a string or richText value.                          |
+| `EMPTY_FIELD_PLACEHOLDER`| Zero-width placeholder injected for empty inline fields.                    |
+| `isInlineEditableKind`   | Whether a field kind supports `Canvas.InlineText`.                          |
+
+## Data attributes
+
+| Attribute                    | Where                                | Meaning                                                                                                                                                 |
+| ---------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `data-editor-canvas`         | host                                 | Presence marker.                                                                                                                                        |
+| `data-interactive`           | host                                 | `'edit'`, `'select'`, or `'none'`.                                                                                                                      |
+| `data-dragging`              | host, drag handle, palette item      | Present on the host while any canvas drag session is active; on a handle or palette item while that part owns the session.                              |
+| `data-editing`               | host, inline glass                   | Present while the local selection has an inline-editing target.                                                                                         |
+| `data-editor-block`          | block root via `edit.block`          | Document-tree block id.                                                                                                                                 |
+| `data-editor-field`          | field element via `edit.field.<key>` | Property key, counted only inside its own block.                                                                                                        |
+| `data-unresolved`            | block root via `edit.block`; rings   | Present when a routed `reference` / `link` / `string` value is pending or missing. On a ring: any measured block element for that id has the attribute. |
+| `data-editor-readonly`       | wrapper around referenced children   | Together with `inert`, excludes the subtree from click-select and measurement.                                                                          |
+| `data-editor-overlay`        | Overlay host                         | Presence marker. `pointer-events: none`; not `aria-hidden`.                                                                                             |
+| `data-editor-block-toolbar`  | `Canvas.BlockToolbar` inner chrome   | Presence marker. `role="toolbar"`.                                                                                                                      |
+| `data-editor-insert-button`  | `Canvas.InsertButton`                | Presence marker.                                                                                                                                        |
+| `data-side`                  | `Canvas.BlockToolbar`                | `'top'` or `'bottom'`.                                                                                                                                  |
+| `data-orientation`           | `Canvas.InsertButton`                | `'horizontal'` or `'vertical'`.                                                                                                                         |
+| `data-empty-container`       | `Canvas.InsertButton`                | Present when the target variant is `box`.                                                                                                               |
+| `data-editor-drag-handle`    | `Canvas.DragHandle`                  | Presence marker.                                                                                                                                        |
+| `data-editor-palette-item`   | `Canvas.PaletteItem`                 | Presence marker.                                                                                                                                        |
+| `data-editor-drop-indicator` | `Canvas.DropIndicator`               | Presence marker. `aria-hidden`.                                                                                                                         |
+| `data-editor-drag-preview`   | `Canvas.DragPreview`                 | Presence marker. `aria-hidden`.                                                                                                                         |
+| `data-kind`                  | drop indicator, drag preview         | `'new'` or `'move'`.                                                                                                                                    |
+| `data-variant`               | `Canvas.DropIndicator`               | `'line'` or `'box'`.                                                                                                                                    |
+| `data-editor-selection-ring` | `Canvas.SelectionRing`               | Presence marker.                                                                                                                                        |
+| `data-editor-hover-ring`     | `Canvas.HoverRing`                   | Presence marker.                                                                                                                                        |
+| `data-editor-field-ring`     | `Canvas.FieldRing`                   | Presence marker.                                                                                                                                        |
+| `data-block-type`            | rings                                | Store node type. Omitted when the id is unknown.                                                                                                        |
+| `data-can-move`              | rings                                | Present when the block is not the root.                                                                                                                 |
+| `data-can-delete`            | rings                                | Present when the block is not the root.                                                                                                                 |
+| `data-editor-inline-text`    | `Canvas.InlineText` glass            | Presence marker. `role="textbox"`.                                                                                                                      |
+| `data-field`                 | `Canvas.InlineText` glass            | Property key being edited.                                                                                                                              |

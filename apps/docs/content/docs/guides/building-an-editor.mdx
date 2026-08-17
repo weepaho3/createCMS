@@ -3,9 +3,9 @@ title: Build your own editor
 description: A recommended architecture for a custom editor UI on the createCMS API.
 ---
 
-createCMS is headless: it ships the versioned content API (branches, merge requests, approvals, publishing, media, notifications) but no editor UI of its own. The headless editor primitives live in `@createcms/react`; the surrounding UI you bring yourself. For copy-paste styled field chrome, see [Editor UI](/docs/guides/editor-ui).
+createCMS is headless: it ships the versioned content API (branches, merge requests, approvals, publishing, media, notifications) but no editor UI of its own.
 
-This guide gives a recommended shape for that UI by mapping each editor surface to the API method that backs it, so you can build a dashboard, a block editor, and a review flow without inventing your own conventions.
+This guide maps each editor surface (dashboard, branch picker, merge-request flow) to the API method that backs it. For composing `Editor.Root`, canvas, and registry chrome, see the [Visual editor](/docs/guides/visual-editor) guide.
 
 The examples use the [type-safe client](/docs/guides/client-usage) (`cmsClient`), since an editor runs in the browser. Every method also exists on `cms.api.<collection>` server-side with identical types, so the same mapping holds if you drive it from a route handler or a server action. Examples assume a `pages` collection.
 
