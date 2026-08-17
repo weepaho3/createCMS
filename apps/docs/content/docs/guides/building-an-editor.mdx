@@ -3,7 +3,7 @@ title: Build your own editor
 description: A recommended architecture for a custom editor UI on the createCMS API.
 ---
 
-createCMS is headless: it ships the versioned content API (branches, merge requests, approvals, publishing, media, notifications) but no editor UI of its own.
+createCMS is headless: it ships the versioned content API (branches, merge requests, approvals, publishing, media, notifications) but no editor UI of its own. The headless editor primitives live in `@createcms/react`; the surrounding UI you bring yourself.
 
 This guide maps each editor surface (dashboard, branch picker, merge-request flow) to the API method that backs it. For composing `Editor.Root`, canvas, and registry chrome, see the [Visual editor](/docs/guides/visual-editor) guide.
 

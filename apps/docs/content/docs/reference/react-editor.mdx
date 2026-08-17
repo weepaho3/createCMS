@@ -168,7 +168,7 @@ Layer 1 of the editor primitive: pure functions over an `EditorSchema` (a
 
 | Type                   | Description                                                                      |
 | ---------------------- | -------------------------------------------------------------------------------- |
-| `EditorSchema`         | The editor's schema — a `CollectionDefinition`, generic over props/blocks.       |
+| `EditorSchema`         | The editor's schema: a `CollectionDefinition`, generic over props/blocks.       |
 | `AnyEditorSchema`      | The wide form every runtime helper accepts.                                      |
 | `FieldKind`            | Every kind a block/root property can have (`BlockPropertyType` plus `list`).     |
 | `FieldSpecOf<K>`       | The spec of one kind (e.g. `FieldSpecOf<'select'>` carries `options`).           |
@@ -220,7 +220,7 @@ one op and returns `{ nodes, rootId, inverse }`; `createBlockId` mints ids;
 | Type                       | Description                                                                                             |
 | -------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `AddOptions`               | `add`'s options: `parentId`, optional `index`, optional `properties`.                                   |
-| `ApplyRemoteResult`        | `{ applied, rejected }` — the ops `applyRemote` accepted/skipped.                                       |
+| `ApplyRemoteResult`        | `{ applied, rejected }`, the ops `applyRemote` accepted/skipped.                                       |
 | `ApplyResult`              | `applyOp`'s success shape: `{ nodes, rootId, inverse }`.                                                |
 | `CreateEditorStoreOptions` | Options for `createEditorStore`: `schema`, `initialTree`, `userId?`, `genId?`, `now?`, `getCallbacks?`. |
 | `EditorCallbacks`          | `{ onChange?, onSave? }` passed via `getCallbacks()`.                                                   |
@@ -230,7 +230,7 @@ one op and returns `{ nodes, rootId, inverse }`; `createBlockId` mints ids;
 | `EditorOp`                 | The `add`/`remove`/`move`/`update`/`load` op union.                                                     |
 | `EditorStore`              | The store's public shape (method-shorthand signatures, bivariant).                                      |
 | `EditorStoreState`         | `{ rootId, nodes, selection, history, version, savedVersion, saving }`.                                 |
-| `FieldRef`                 | `{ blockId, key }` — what `focus`/`editing` point at.                                                   |
+| `FieldRef`                 | `{ blockId, key }`, what `focus`/`editing` point at.                                                   |
 | `HistoryEntry`             | One undo step: `{ ops, inverse, key, at }`.                                                             |
 | `UpdateOptions`            | `update`'s options: `{ coalesce? }`.                                                                    |
 | `UserSelection`            | One user's `{ selected, hovered, focus, editing }`.                                                     |

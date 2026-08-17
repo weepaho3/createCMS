@@ -89,7 +89,7 @@ export function FormOnlyEditor({
 
 ## Live canvas
 
-Same `Editor.Root` and cms wiring. `EditorShell` receives
+Same `Editor.Root` and cms wiring. `EditorShell` children are
 `Canvas.Root components={pageBlocks}` with overlay rings, toolbar, insert,
 drag handle, drop indicator, drag preview, and `InlineText`. Build
 `pageBlocks` from `createBlocksMap` / `createContentRenderer` with
@@ -112,9 +112,11 @@ import {
   DragHandle,
   DragPreview,
   DropIndicator,
+  FieldRing,
   HoverRing,
   InlineText,
   InsertButton,
+  Overlay,
   PaletteItem,
   SelectionRing,
 } from '@/components/editor-canvas';
@@ -154,27 +156,26 @@ export function LiveCanvasEditor({
       fields={cmsFields}
     >
       <CmsSourcesProvider sources={sources}>
-        <EditorShell
-          canvas={
-            <Canvas.Root
-              components={pageBlocks}
-              resolve={doc.resolve}
-              style={{ position: 'relative' }}
-            >
-              <Canvas.Overlay>
-                <SelectionRing />
-                <HoverRing />
-                <BlockToolbar side="top" align="start" />
-                <InsertButton placement="between" type="paragraph" />
-                <DragHandle blockId={selectedBlockId} />
-                <PaletteItem type="paragraph" />
-                <DropIndicator />
-                <DragPreview />
-                <InlineText />
-              </Canvas.Overlay>
-            </Canvas.Root>
-          }
-        />
+        <EditorShell>
+          <Canvas.Root
+            components={pageBlocks}
+            resolve={doc.resolve}
+            style={{ position: 'relative' }}
+          >
+            <Overlay>
+              <SelectionRing />
+              <HoverRing />
+              <FieldRing />
+              <BlockToolbar side="top" align="start" />
+              <InsertButton placement="between" type="paragraph" />
+              <DragHandle blockId="selected-block-id" />
+              <PaletteItem type="paragraph" />
+              <DropIndicator />
+              <DragPreview />
+              <InlineText />
+            </Overlay>
+          </Canvas.Root>
+        </EditorShell>
       </CmsSourcesProvider>
     </Editor.Root>
   );
@@ -239,9 +240,9 @@ export function FormPreviewEditor({
 
 ## Email split
 
-`EditorEmail` requires a `render` prop for the compiled HTML pane. Use
-`Editor.FramePreview` with `selectable` and `onIssues` for send-time checks.
-Do not set `surface="frame"`.
+`EditorEmail` requires a `render` prop. It owns the styled form pane and the
+`Editor.FramePreview` issues panel; the consumer only supplies `render`. Do
+not set `surface="frame"`.
 
 ```tsx
 'use client';
@@ -249,7 +250,6 @@ Do not set `surface="frame"`.
 import { Editor } from '@createcms/react/editor';
 import { useCmsDocument } from '@createcms/react/editor/cms';
 import { EditorEmail } from '@/components/editor-email';
-import { Form } from '@/components/editor-form';
 
 export function EmailEditor({
   cmsClient,
@@ -278,15 +278,8 @@ export function EmailEditor({
       onSave={doc.save}
     >
       <EditorEmail
-        form={<Form blockId={doc.tree.blockId} />}
-        preview={
-          <Editor.FramePreview
-            selectable
-            onIssues={(issues) => console.warn(issues)}
-            render={async (tree, { signal }) =>
-              compileEmailHtml(tree, { signal })
-            }
-          />
+        render={async (tree, { signal }) =>
+          compileEmailHtml(tree, { signal })
         }
       />
     </Editor.Root>
