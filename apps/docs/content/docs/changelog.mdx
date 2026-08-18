@@ -1115,6 +1115,14 @@ createdBy }, ... }` — one uniform shape instead of three divergent keys
 
 ## @createcms/react
 
+### 0.3.2
+
+#### Patch Changes
+
+- [#123](https://github.com/weepaho3/createCMS/pull/123) [`efbc7c6`](https://github.com/weepaho3/createCMS/commit/efbc7c6eb78052273dbfe8667164d3d1623b9fc5) Thanks [@weepaho3](https://github.com/weepaho3)! - Canvas keeps stored string and link values while resolve is pending or misses, so button labels stay visible. `useCmsDocument` settles unchanged strings to the stored value instead of `undefined`.
+
+- [#123](https://github.com/weepaho3/createCMS/pull/123) [`efbc7c6`](https://github.com/weepaho3/createCMS/commit/efbc7c6eb78052273dbfe8667164d3d1623b9fc5) Thanks [@weepaho3](https://github.com/weepaho3)! - `Canvas.PaletteItem` can be dragged even when the current selection cannot host the type. A click after a palette drop does not insert a second block. Pointer drag binds move/up/cancel on the document so a reorder does not stay latched to the cursor when the handle loses the pointer.
+
 ### 0.3.1
 
 #### Patch Changes
