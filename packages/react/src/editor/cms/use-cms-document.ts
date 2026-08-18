@@ -94,11 +94,7 @@ function walkTreesInLockstep(
         linkCache.set(JSON.stringify(rawVal), resolvedVal as ResolvedLink);
       }
     }
-    if (
-      typeof rawVal === 'string' &&
-      typeof resolvedVal === 'string' &&
-      rawVal !== resolvedVal
-    ) {
+    if (typeof rawVal === 'string' && typeof resolvedVal === 'string') {
       stringCache.set(rawVal, resolvedVal);
     }
   }
@@ -292,7 +288,7 @@ export function useCmsDocument(
             linkCacheRef.current.get(JSON.stringify(item.raw)) ?? undefined,
           );
         } else {
-          item.resolve(stringCacheRef.current.get(item.raw) ?? undefined);
+          item.resolve(stringCacheRef.current.get(item.raw) ?? item.raw);
         }
       }
     } catch {

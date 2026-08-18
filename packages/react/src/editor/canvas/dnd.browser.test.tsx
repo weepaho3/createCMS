@@ -8,6 +8,7 @@ import {
   emptyStackBlocks,
   emptyStackTree,
   insertStackSchema,
+  nestedOnlyStackSchema,
   rowStackBlocks,
   rowStackTree,
 } from './test/fixtures';
@@ -81,6 +82,42 @@ describe('Canvas pointer drag in a real browser', () => {
     expect(indicator?.getAttribute('data-variant')).toBe('box');
     dispatchPointer(palette, 'pointermove', to);
     dispatchPointer(palette, 'pointerup', to);
+    expect(store.getState().nodes.stack1!.childIds.length).toBe(1);
+  });
+
+  it('drops a nested-only type onto a stack that is not selected', async () => {
+    const { host, store } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.PaletteItem type="cell">Cell</Canvas.PaletteItem>
+        <Canvas.DropIndicator />
+      </Canvas.Overlay>,
+      {
+        schema: nestedOnlyStackSchema,
+        tree: emptyStackTree(),
+        components: emptyStackBlocks,
+      },
+    );
+    const stack = host.querySelector('[data-editor-block="stack1"]');
+    expect(stack).not.toBeNull();
+    await waitForLayout(stack!);
+    const palette = host.querySelector(
+      '[data-editor-palette-item]',
+    ) as HTMLButtonElement;
+    expect(palette.disabled).toBe(false);
+    const stackRect = rectOf(stack!);
+    const paletteRect = palette.getBoundingClientRect();
+    dragPastThreshold(
+      palette,
+      {
+        x: paletteRect.x + paletteRect.width / 2,
+        y: paletteRect.y + paletteRect.height / 2,
+      },
+      {
+        x: stackRect.x + stackRect.width / 2,
+        y: stackRect.y + stackRect.height / 2,
+      },
+    );
+    palette.click();
     expect(store.getState().nodes.stack1!.childIds.length).toBe(1);
   });
 

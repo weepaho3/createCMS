@@ -363,6 +363,32 @@ describe('useCmsDocument resolve', () => {
     });
   });
 
+  it('settles an unchanged string to the stored value', async () => {
+    const client = makeClient();
+    const { result } = renderDoc({ client });
+
+    await waitFor(() => {
+      expect(result.current.status).toBe('idle');
+    });
+
+    let resolved: string | undefined;
+    act(() => {
+      const out = result.current.resolve.string!('Hello', {
+        type: 'string',
+        label: 'Text',
+      });
+      void Promise.resolve(out).then((value) => {
+        resolved = value;
+      });
+    });
+
+    flushResolve();
+    await waitFor(() => {
+      expect(resolved).toBe('Hello');
+    });
+    expect(client.resolveTree).toHaveBeenCalledTimes(1);
+  });
+
   it('batches reference misses into one resolveTree call', async () => {
     const client = makeClient();
     const { result } = renderDoc({ client });

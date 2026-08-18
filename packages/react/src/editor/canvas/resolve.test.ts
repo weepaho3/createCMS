@@ -150,3 +150,88 @@ describe('resolveNodeProperties', () => {
     expect(result.unresolved).toBe(false);
   });
 });
+
+const heroCopySchema = {
+  label: 'Pages',
+  root: { properties: {} },
+  blocks: {
+    hero: {
+      label: 'Hero',
+      properties: {
+        headline: { type: 'string', label: 'Headline' },
+        cta: { type: 'link', label: 'CTA' },
+      },
+    },
+  },
+} satisfies CollectionDefinition;
+
+const rawExternalLink = {
+  kind: 'external' as const,
+  url: 'https://example.com',
+};
+
+describe('resolveNodeProperties string and link misses', () => {
+  it('keeps a string when the resolver returns undefined', () => {
+    const cache = createResolveCache({
+      onTick: () => {},
+      isMounted: () => true,
+    });
+    const result = resolveNodeProperties(
+      'hero',
+      { headline: 'Get Started' },
+      heroCopySchema,
+      { string: () => undefined },
+      cache,
+    );
+    expect(result.properties.headline).toBe('Get Started');
+    expect(result.unresolved).toBe(true);
+  });
+
+  it('keeps a string while the resolver is pending', () => {
+    const cache = createResolveCache({
+      onTick: () => {},
+      isMounted: () => true,
+    });
+    const result = resolveNodeProperties(
+      'hero',
+      { headline: 'Get Started' },
+      heroCopySchema,
+      { string: () => new Promise(() => {}) },
+      cache,
+    );
+    expect(result.properties.headline).toBe('Get Started');
+    expect(result.unresolved).toBe(true);
+  });
+
+  it('keeps a link when the resolver returns undefined', () => {
+    const cache = createResolveCache({
+      onTick: () => {},
+      isMounted: () => true,
+    });
+    const result = resolveNodeProperties(
+      'hero',
+      { cta: rawExternalLink },
+      heroCopySchema,
+      { link: () => undefined },
+      cache,
+    );
+    expect(result.properties.cta).toEqual(rawExternalLink);
+    expect(result.unresolved).toBe(true);
+  });
+
+  it('replaces a string when the resolver returns a value', () => {
+    const cache = createResolveCache({
+      onTick: () => {},
+      isMounted: () => true,
+    });
+    const result = resolveNodeProperties(
+      'hero',
+      { headline: 'Hello {{brand}}' },
+      heroCopySchema,
+      { string: () => 'Hello Toerbo' },
+      cache,
+    );
+    expect(result.properties.headline).toBe('Hello Toerbo');
+    expect(result.unresolved).toBe(false);
+  });
+});
