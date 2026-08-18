@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { publications, roots } from '../../../schema';
 import { setupTestCMS } from '../../../test-utils/cms';
 import { publishApprovedBranch } from '../../../test-utils/helpers';
+import { isCMSError } from '../../errors';
 
 describe('publishBranch', () => {
   it('publishes the current head commit of a branch for a root', async () => {
@@ -475,17 +476,28 @@ describe('getPublishedContent', () => {
       body: { slug: '/unpublished', properties: { title: 'Page' } },
     });
 
-    await expect(
-      cms.api.pages.getPublishedContent({ query: { rootId: root.rootId } }),
-    ).rejects.toThrow(/No published content found/);
+    const err = await cms.api.pages
+      .getPublishedContent({ query: { rootId: root.rootId } })
+      .catch((e: unknown) => e);
+    expect(isCMSError(err, 'PUBLISHED_CONTENT_NOT_FOUND')).toBe(true);
   });
 
   it('rejects when no publication exists for the given slug', async () => {
     const { cms } = await setupTestCMS();
 
-    await expect(
-      cms.api.pages.getPublishedContent({ query: { slug: '/nonexistent' } }),
-    ).rejects.toThrow(/No published content found/);
+    const err = await cms.api.pages
+      .getPublishedContent({ query: { slug: '/nonexistent' } })
+      .catch((e: unknown) => e);
+    expect(isCMSError(err, 'PUBLISHED_CONTENT_NOT_FOUND')).toBe(true);
+  });
+
+  it('rejects the index slug with PUBLISHED_CONTENT_NOT_FOUND', async () => {
+    const { cms } = await setupTestCMS();
+
+    const err = await cms.api.pages
+      .getPublishedContent({ query: { slug: '/' } })
+      .catch((e: unknown) => e);
+    expect(isCMSError(err, 'PUBLISHED_CONTENT_NOT_FOUND')).toBe(true);
   });
 
   it('uses rootId when both rootId and slug are provided', async () => {

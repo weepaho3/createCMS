@@ -6,8 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { CMSClientError } from '../../client/error';
+import { CMS_ERRORS as clientCmsErrors } from '../../client/errors-data.generated';
+import { CMS_ERRORS, type CMSErrorCode } from '../../errors-data';
 import { CMSError, getCMSErrorCode, isCMSError } from '../errors';
-import { CMS_ERRORS } from '../errors-data';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -118,5 +119,19 @@ describe('error contract', () => {
 
     const coreErr = new CMSError('BLOCK_NOT_FOUND');
     expect(isCMSError(coreErr, 'WRONG_CODE' as never)).toBe(false);
+  });
+
+  it('unknown codes become a 500 CMSError instead of TypeError on def.status', () => {
+    const e = new CMSError('NOT_A_REAL_CODE' as CMSErrorCode);
+
+    expect(e.status).toBe(500);
+    expect(e.cmsCode).toBe('NOT_A_REAL_CODE');
+    expect(e.body?.code).toBe('NOT_A_REAL_CODE');
+    expect(e.body?.message).toBe('Unknown CMS error: NOT_A_REAL_CODE');
+    expect(isCMSError(e, 'NOT_A_REAL_CODE' as never)).toBe(true);
+  });
+
+  it('client errors-data clone matches the export entry', () => {
+    expect(clientCmsErrors).toEqual(CMS_ERRORS);
   });
 });

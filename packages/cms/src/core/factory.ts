@@ -28,6 +28,7 @@ import type {
   InferPluginNotificationMeta,
 } from './types/plugin';
 
+import { CMS_ERRORS } from '../errors-data';
 import { DEFAULT_BRANCH_NAME } from './branch-policy';
 import {
   createCMSContext,
@@ -36,7 +37,6 @@ import {
   runPluginInit,
 } from './context';
 import { toCMSEndpoints } from './endpoint';
-import { CMS_ERRORS } from './errors-data';
 import { createHookRunner } from './hooks';
 import { makeNotificationPublishHandler } from './notifications/realtime';
 import { createNotificationService } from './notifications/service';

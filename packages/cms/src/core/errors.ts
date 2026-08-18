@@ -1,14 +1,16 @@
 import { APIError } from 'better-call';
 
-import type { CMSErrorCode } from './errors-data';
+import type { CMSErrorCode } from '../errors-data';
 
-import { CMS_ERRORS } from './errors-data';
+import { CMS_ERRORS } from '../errors-data';
 
 // Re-export the pure error data so this module's public API is unchanged.
 // Anything that only needs the data (e.g. the browser client) should import
-// directly from './errors-data' to avoid pulling `better-call` into the bundle.
-export { CMS_ERRORS } from './errors-data';
-export type { CMSErrorCode } from './errors-data';
+// from '../errors-data' to avoid pulling `better-call` into the bundle.
+export { CMS_ERRORS } from '../errors-data';
+export type { CMSErrorCode } from '../errors-data';
+
+type CmsErrorStatus = (typeof CMS_ERRORS)[CMSErrorCode]['status'];
 
 export type CMSAPIError = APIError & {
   body?: {
@@ -61,9 +63,18 @@ export class CMSError extends APIError {
     code: CMSErrorCode,
     overrides?: { message?: string; data?: Record<string, unknown> },
   ) {
-    const def = CMS_ERRORS[code];
-    super(def.status, {
-      message: overrides?.message ?? def.message,
+    // On purpose: index so a code absent from this module's map (a plugin
+    // code, or a bundler stub of CMS_ERRORS) becomes a 500 CMSError instead
+    // of TypeError on `def.status`.
+    const def = (
+      CMS_ERRORS as Record<
+        string,
+        { readonly status: CmsErrorStatus; readonly message: string }
+      >
+    )[code];
+    super(def?.status ?? (500 as CmsErrorStatus), {
+      message:
+        overrides?.message ?? def?.message ?? `Unknown CMS error: ${code}`,
       code,
       // better-call serializes the whole body to the wire, so structured
       // `data` reaches the client (read back via `CMSClientError.data`).
