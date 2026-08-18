@@ -1,6 +1,6 @@
 {
   "name": "@createcms/react",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Headless, unstyled editor primitives for createcms (shadcn-style: namespace parts, render prop, data-* state, zero runtime dependencies).",
   "keywords": [
     "cms",

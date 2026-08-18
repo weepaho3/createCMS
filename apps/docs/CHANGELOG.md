@@ -1,5 +1,12 @@
 # docs
 
+## 0.0.3
+
+### Patch Changes
+
+- Updated dependencies [[`efbc7c6`](https://github.com/weepaho3/createCMS/commit/efbc7c6eb78052273dbfe8667164d3d1623b9fc5), [`efbc7c6`](https://github.com/weepaho3/createCMS/commit/efbc7c6eb78052273dbfe8667164d3d1623b9fc5)]:
+  - @createcms/react@0.3.2
+
 ## 0.0.2
 
 ### Patch Changes
