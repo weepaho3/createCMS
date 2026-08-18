@@ -68,6 +68,10 @@
       "types": "./dist/db.d.ts",
       "default": "./dist/db.js"
     },
+    "./errors-data": {
+      "types": "./dist/errors-data.d.ts",
+      "default": "./dist/errors-data.js"
+    },
     "./nanoid": {
       "types": "./dist/nanoid.d.ts",
       "default": "./dist/nanoid.js"
@@ -137,7 +141,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "NODE_OPTIONS=--max-old-space-size=6144 bunchee --dts-bundle && bun scripts/inject-endpoint-docs.mjs",
+    "build": "bun scripts/clone-errors-data-for-client.mjs && NODE_OPTIONS=--max-old-space-size=6144 bunchee --dts-bundle && bun scripts/inject-endpoint-docs.mjs && bun scripts/assert-errors-data-chunk.mjs",
     "check-types": "tsc --noEmit",
     "clean": "rm -rf dist .turbo",
     "generate:schema": "bun run scripts/generate-schema.ts",

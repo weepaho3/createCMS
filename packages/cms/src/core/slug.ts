@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import slugify from 'slugify';
 
-import type { CMSErrorCode } from './errors-data';
+import type { CMSErrorCode } from '../errors-data';
 import type { DbOrTx, DrizzleInstance, ResolvedSlugConfig } from './types';
 
 import { CMSError } from './errors';

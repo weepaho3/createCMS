@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
+import { CMS_ERRORS } from '../../errors-data';
 import {
   codeTokens,
   diffSets,
   mdxTables,
   readDoc,
 } from '../../test-utils/docs';
-import { CMS_ERRORS } from '../errors-data';
 
 /**
  * Pins `reference/errors.mdx` against `CMS_ERRORS`.

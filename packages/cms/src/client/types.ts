@@ -1,7 +1,7 @@
 import type { ReadableAtom, WritableAtom } from 'nanostores';
 
-import type { CMS_ERRORS } from '../core/errors-data';
 import type { ServerOnlyEndpoint } from '../core/types/definitions';
+import type { CMS_ERRORS } from '../errors-data';
 
 // ============================================================================
 // Fetch
