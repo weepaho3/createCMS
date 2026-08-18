@@ -247,6 +247,14 @@ export const insertStackSchema = {
   structure: { stack: { accepts: ['cell'] } },
 } satisfies CollectionDefinition;
 
+export const nestedOnlyStackSchema = {
+  ...insertStackSchema,
+  structure: {
+    stack: { accepts: ['cell'] },
+    root: { excludes: ['cell'] },
+  },
+} satisfies CollectionDefinition;
+
 function InsertCell({
   properties,
   edit,

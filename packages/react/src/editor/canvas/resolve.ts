@@ -136,6 +136,11 @@ function isNonEmptyRaw(kind: ResolveKind, raw: unknown): boolean {
   return true;
 }
 
+/** String and link values still render from the stored value; a reference has no tree. */
+function keepStoredOnMiss(kind: ResolveKind): boolean {
+  return kind === 'string' || kind === 'link';
+}
+
 function resolverOf(
   kind: ResolveKind,
   resolve: CanvasResolve | undefined,
@@ -199,6 +204,9 @@ export function resolveNodeProperties(
     if (!routed.resolver) {
       if (isNonEmptyRaw(routed.kind, raw)) {
         unresolved = true;
+        if (keepStoredOnMiss(routed.kind)) {
+          properties[key] = raw;
+        }
       } else {
         properties[key] = raw;
       }
@@ -209,6 +217,9 @@ export function resolveNodeProperties(
       properties[key] = entry.value;
     } else {
       unresolved = true;
+      if (keepStoredOnMiss(routed.kind)) {
+        properties[key] = raw;
+      }
     }
   }
 

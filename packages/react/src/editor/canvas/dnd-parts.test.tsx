@@ -83,7 +83,7 @@ describe('Canvas.PaletteItem', () => {
     expect(after[1]).not.toBe('sec1');
   });
 
-  it('disables image when the selected block and its parent reject it', () => {
+  it('stays enabled when click-insert cannot place the type', () => {
     const { host, store } = renderCanvas(
       <Canvas.Overlay>
         <Canvas.PaletteItem type="image">Image</Canvas.PaletteItem>
@@ -95,10 +95,31 @@ describe('Canvas.PaletteItem', () => {
     const button = host.querySelector(
       '[data-editor-palette-item]',
     ) as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
+    expect(button.disabled).toBe(false);
     const before = store.getState().nodes.root_1!.childIds.length;
     fireEvent.click(button);
     expect(store.getState().nodes.root_1!.childIds.length).toBe(before);
+  });
+
+  it('does not insert a second block when click follows a palette drag', () => {
+    const { host, store } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.PaletteItem type="paragraph">Add</Canvas.PaletteItem>
+      </Canvas.Overlay>,
+    );
+    const before = store.getState().nodes.root_1!.childIds.length;
+    const button = host.querySelector('[data-editor-palette-item]')!;
+    const rect = button.getBoundingClientRect();
+    const from = { x: rect.x + 4, y: rect.y + 4 };
+    act(() => {
+      dispatchPointer(button, 'pointerdown', from);
+      dispatchPointer(button, 'pointermove', { x: from.x + 8, y: from.y });
+      dispatchPointer(button, 'pointerup', { x: from.x + 8, y: from.y });
+      fireEvent.click(button);
+    });
+    expect(
+      store.getState().nodes.root_1!.childIds.length - before,
+    ).toBeLessThanOrEqual(1);
   });
 });
 
@@ -168,5 +189,30 @@ describe('canvas drag escape', () => {
     expect(host.hasAttribute('data-dragging')).toBe(false);
     expect(host.querySelector('[data-editor-drop-indicator]')).toBeNull();
     expect(store.getState().nodes.root_1!.childIds).toEqual(before);
+  });
+
+  it('ends a drag when pointerup happens off the handle', () => {
+    const { host } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.DragHandle blockId="h1" />
+        <Canvas.DropIndicator />
+      </Canvas.Overlay>,
+    );
+    const handle = host.querySelector('[data-editor-drag-handle]')!;
+    const rect = handle.getBoundingClientRect();
+    const from = { x: rect.x + 4, y: rect.y + 4 };
+    act(() => {
+      dispatchPointer(handle, 'pointerdown', from);
+      dispatchPointer(handle, 'pointermove', { x: from.x + 8, y: from.y });
+    });
+    expect(host.hasAttribute('data-dragging')).toBe(true);
+    act(() => {
+      dispatchPointer(host, 'pointerup', {
+        x: from.x + 80,
+        y: from.y + 80,
+      });
+    });
+    expect(host.hasAttribute('data-dragging')).toBe(false);
+    expect(host.querySelector('[data-editor-drop-indicator]')).toBeNull();
   });
 });

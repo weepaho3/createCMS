@@ -161,9 +161,10 @@ export function useDndDropResolution(): void {
 type GestureOptions = {
   session: DragSession;
   blockId?: string;
+  onGestureEnd?: (dragged: boolean) => void;
 };
 
-function usePointerGesture({ session, blockId }: GestureOptions) {
+function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
   const canvas = useCanvasContext('usePointerGesture');
   const ctx = useEditorContext('usePointerGesture');
   const rootId = useEditorSelector((s) => s.rootId);
@@ -267,23 +268,27 @@ function usePointerGesture({ session, blockId }: GestureOptions) {
       const handle = event.currentTarget;
       if (!dnd || !canStart(event, handle)) return;
       event.preventDefault();
+      // Document listeners: the handle is a small overlay control and may
+      // unmount mid-drag; the session must still end on pointerup.
+      const doc = handle.ownerDocument;
+      const view = doc.defaultView;
+      const pointerId = event.pointerId;
       capturedRef.current = false;
+      try {
+        handle.setPointerCapture(pointerId);
+        capturedRef.current = true;
+      } catch {
+        // capture is optional; document listeners still end the gesture
+      }
       dnd.beginGesture({ x: event.clientX, y: event.clientY });
 
       const onMove = (moveEvent: PointerEvent) => {
+        if (moveEvent.pointerId !== pointerId) return;
         if (!dnd.getClientPoint() && !dnd.getSession()) return;
-        const started = dnd.moveGesture(
+        dnd.moveGesture(
           { x: moveEvent.clientX, y: moveEvent.clientY },
           session,
         );
-        if (started && !capturedRef.current) {
-          capturedRef.current = true;
-          try {
-            handle.setPointerCapture(moveEvent.pointerId);
-          } catch {
-            // synthetic pointers may not register as active
-          }
-        }
         if (dnd.getSession()) {
           resolveTarget({
             x: moveEvent.clientX,
@@ -292,14 +297,14 @@ function usePointerGesture({ session, blockId }: GestureOptions) {
         }
       };
 
-      const release = (upEvent: PointerEvent) => {
-        handle.removeEventListener('pointermove', onMove);
-        handle.removeEventListener('pointerup', onUp);
-        handle.removeEventListener('pointercancel', onCancel);
-        handle.removeEventListener('lostpointercapture', onCancel);
+      const release = () => {
+        doc.removeEventListener('pointermove', onMove, true);
+        doc.removeEventListener('pointerup', onUp, true);
+        doc.removeEventListener('pointercancel', onCancel, true);
+        view?.removeEventListener('blur', onBlur);
         if (capturedRef.current) {
           try {
-            handle.releasePointerCapture(upEvent.pointerId);
+            handle.releasePointerCapture(pointerId);
           } catch {
             // already released
           }
@@ -308,25 +313,38 @@ function usePointerGesture({ session, blockId }: GestureOptions) {
       };
 
       const onUp = (upEvent: PointerEvent) => {
-        if (dnd.getSession()) {
+        if (upEvent.pointerId !== pointerId) return;
+        const dragged = dnd.getSession() !== null;
+        if (dragged) {
           commitDrop();
         } else {
           dnd.end();
         }
-        release(upEvent);
+        onGestureEnd?.(dragged);
+        release();
       };
 
       const onCancel = (cancelEvent: PointerEvent) => {
+        if (cancelEvent.pointerId !== pointerId) return;
+        const dragged = dnd.getSession() !== null;
         dnd.end();
-        release(cancelEvent);
+        onGestureEnd?.(dragged);
+        release();
       };
 
-      handle.addEventListener('pointermove', onMove);
-      handle.addEventListener('pointerup', onUp);
-      handle.addEventListener('pointercancel', onCancel);
-      handle.addEventListener('lostpointercapture', onCancel);
+      const onBlur = () => {
+        const dragged = dnd.getSession() !== null;
+        dnd.end();
+        onGestureEnd?.(dragged);
+        release();
+      };
+
+      doc.addEventListener('pointermove', onMove, true);
+      doc.addEventListener('pointerup', onUp, true);
+      doc.addEventListener('pointercancel', onCancel, true);
+      view?.addEventListener('blur', onBlur);
     },
-    [canStart, commitDrop, dnd, resolveTarget, session],
+    [canStart, commitDrop, dnd, onGestureEnd, resolveTarget, session],
   );
 
   return onPointerDown;
@@ -410,18 +428,29 @@ export function CanvasPaletteItem({
   const target = useEditorSelector((state) =>
     computePaletteInsertTarget(state, ctx.userId, type, placement),
   );
-  const disabled =
+  const clickInsertBlocked =
     target.parentType === null || !canPlace(placement, type, target.parentType);
+  const skipClickRef = React.useRef(false);
+  const onGestureEnd = React.useCallback((dragged: boolean) => {
+    skipClickRef.current = dragged;
+  }, []);
   const session = useDragSessionSnapshot();
   const gestureDown = usePointerGesture({
     session: { kind: 'new', type, properties },
+    onGestureEnd,
   });
   const isDragging =
     session?.kind === 'new' && session.type === type && canvas.dragging;
 
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     onClick?.(event);
-    if (event.defaultPrevented || disabled) return;
+    if (event.defaultPrevented || clickInsertBlocked) return;
+    // pointerup already committed or cancelled a drag; the compatibility
+    // click must not insert a second block.
+    if (skipClickRef.current) {
+      skipClickRef.current = false;
+      return;
+    }
     if (canvas.dnd?.getSession()) return;
     const id = ctx.store.add(type, {
       parentId: target.parentId,
@@ -440,13 +469,12 @@ export function CanvasPaletteItem({
     render,
     props: {
       type: 'button',
-      disabled,
       onClick: handleClick,
       ...rest,
       style: { touchAction: 'none', ...style },
       onPointerDown: (event) => {
         onPointerDown?.(event);
-        if (disabled) return;
+        skipClickRef.current = false;
         gestureDown(event);
       },
     },
