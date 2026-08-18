@@ -1,5 +1,12 @@
 # docs
 
+## 0.0.2
+
+### Patch Changes
+
+- Updated dependencies [[`950c526`](https://github.com/weepaho3/createCMS/commit/950c526d301204b9b29324b899eb1efd6ec7c6ea)]:
+  - @createcms/core@0.7.1
+
 ## 0.0.1
 
 ### Patch Changes
