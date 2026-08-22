@@ -108,10 +108,10 @@ export const pages = {
     },
   },
   structure: {
-    section: { accepts: ['heading', 'paragraph'] }, // whitelist
-    root: { excludes: ['heading'] }, // blacklist on the root
-    sealed: { accepts: [] }, // holds nothing
-    freeContainer: { accepts: '*' }, // explicit open
-    noChildrenFlag: { accepts: ['heading'] }, // rule without the container gate → still rejects
+    section: { accepts: ['heading', 'paragraph'] },
+    root: { excludes: ['heading'] },
+    sealed: { accepts: [] },
+    freeContainer: { accepts: '*' },
+    noChildrenFlag: { accepts: ['heading'] },
   },
 } satisfies CollectionDefinition;

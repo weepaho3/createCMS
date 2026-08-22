@@ -12,9 +12,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-// A property the stub proxy answers `true` to. Lets us detect, after loading a
-// config, whether any value (e.g. a `$plugins` entry) is actually the inert
-// stub rather than a real module. Kept in sync with STUB_CODE below.
+// A property the stub proxy answers `true` to, letting the loader detect that
+// a value (e.g. a `$plugins` entry) is the inert stub rather than a real
+// module. Must match STUB_CODE below.
 const STUB_MARKER = '__createcmsStub__';
 
 const STUB_CODE = `
@@ -50,11 +50,9 @@ export const createCMS = (definition) => ({
 export const defineCollection = (collection) => collection;
 export const defineCollections = (collections) => collections;
 export const defineAuthMiddleware = (middleware) => middleware;
-// Plugin-authoring helpers are pure too: definePlugin is identity and
-// definePluginSchema()(schema) returns the schema data (see core/define.ts +
-// core/db/define.ts). Without them a config authoring a LOCAL plugin (the
-// documented pattern) crashes \`createcms generate\` with "definePluginSchema is
-// not a function" before its schema could be collected.
+// Same for plugin authoring: without these, a config with a LOCAL plugin (the
+// documented pattern) crashes \`createcms generate\` before its schema could be
+// collected.
 export const definePlugin = (plugin) => plugin;
 export const definePluginSchema = () => (schema) => ({ ...schema });
 export default { createCMS, defineCollection, defineCollections, defineAuthMiddleware, definePlugin, definePluginSchema };
@@ -62,9 +60,9 @@ export default { createCMS, defineCollection, defineCollections, defineAuthMiddl
 
 /**
  * Writes a module file into the (unique, per-invocation) stub directory.
- * FAILS HARD on any write error: a swallowed failure here would leave jiti to
- * resolve a stale/attacker-supplied file, or none at all, and silently emit a
- * wrong schema. A loud throw is the only safe outcome.
+ * Fails hard on any write error: a swallowed failure would leave jiti
+ * resolving a stale or attacker-supplied file, or none at all, and silently
+ * emit a wrong schema.
  */
 function ensureFile(dir: string, name: string, code: string): string {
   const filePath = path.join(dir, name);
@@ -112,16 +110,16 @@ function readTsconfigPaths(cwd: string): Record<string, string> {
       }
     }
   } catch {
-    // No tsconfig or invalid — skip
+    // No tsconfig or invalid tsconfig.
   }
 
   return alias;
 }
 
 /**
- * Scans node_modules directories upward from cwd and collects all
- * installed package names. These will be aliased to the stub so
- * jiti never loads them (preventing side effects).
+ * Scans node_modules directories upward from cwd and collects all installed
+ * package names, which are aliased to the stub so jiti never loads them
+ * (preventing side effects).
  */
 function collectInstalledPackages(cwd: string): string[] {
   const packages = new Set<string>();
@@ -158,10 +156,10 @@ function collectInstalledPackages(cwd: string): string[] {
 }
 
 /**
- * CJS fallback patch: catches any require() that still slips through
- * jiti's alias system and redirects to the stub. Every request that falls
- * back to the stub is recorded in `stubbed` so the loader can warn about
- * (and, for plugins, hard-fail on) modules it could not really resolve.
+ * CJS fallback patch: catches any require() that slips through jiti's alias
+ * system and redirects it to the stub. Each stubbed request is recorded in
+ * `stubbed` so the loader can warn about (and, for plugins, hard-fail on)
+ * modules it could not resolve.
  */
 function patchModuleResolution(
   stubPath: string,
@@ -215,15 +213,14 @@ function resolveExportImportTarget(entry: unknown): string | null {
 
 /**
  * Derives the subpath-alias map from @createcms/core's OWN package.json
- * `exports`, so EVERY exported subpath (e.g. `./plugins/i18n`) is aliased to
- * its resolved dist entry — not just a hand-maintained few. Jiti treats the
- * base `@createcms/core` alias as a prefix, so without an explicit subpath
- * alias `@createcms/core/plugins/i18n` would resolve under the shim path
- * (which doesn't exist), fall back to the inert stub, and silently drop that
- * plugin's schema tables. Deriving from `exports` closes that gap for good.
+ * `exports`, so every exported subpath (e.g. `./plugins/i18n`) is aliased to
+ * its resolved dist entry. Jiti treats the base `@createcms/core` alias as a
+ * prefix, so without an explicit subpath alias `@createcms/core/plugins/i18n`
+ * would resolve under the shim path (which doesn't exist), fall back to the
+ * inert stub, and silently drop that plugin's schema tables.
  *
- * Returns specifier → absolute dist file (e.g.
- * `@createcms/core/plugins/i18n` → `<pkg>/dist/plugins/i18n/index.js`).
+ * Returns specifier -> absolute dist file (e.g.
+ * `@createcms/core/plugins/i18n` -> `<pkg>/dist/plugins/i18n/index.js`).
  */
 function deriveCmsSubpathAliases(cwd: string): Record<string, string> {
   const alias: Record<string, string> = {};
@@ -238,8 +235,8 @@ function deriveCmsSubpathAliases(cwd: string): Record<string, string> {
     if (!exportsMap || typeof exportsMap !== 'object') return alias;
 
     for (const [subpath, entry] of Object.entries(exportsMap)) {
-      // '.' is the package root (deliberately served by the lightweight shim);
-      // './package.json' is data, not an importable plugin module.
+      // '.' is the package root, deliberately served by the lightweight
+      // shim; './package.json' is data, not an importable plugin module.
       if (subpath === '.' || subpath === './package.json') continue;
       if (!subpath.startsWith('./')) continue;
       const target = resolveExportImportTarget(entry);
@@ -248,7 +245,7 @@ function deriveCmsSubpathAliases(cwd: string): Record<string, string> {
       alias[specifier] = path.resolve(pkgRoot, target);
     }
   } catch {
-    // @createcms/core not resolvable (e.g. not installed) — nothing to derive.
+    // @createcms/core not resolvable (e.g. not installed): nothing to derive.
   }
   return alias;
 }
@@ -261,15 +258,15 @@ export async function loadCMSConfig(configPath: string) {
   // (<tmpdir>/createcms-stubs) is guessable and pre-plantable: on a multi-user
   // host an attacker could drop executable stub modules there that jiti then
   // runs in the victim's process on every `createcms generate`. mkdtempSync
-  // yields an unpredictable directory we own, and we remove it in `finally`.
+  // yields an unpredictable directory we own, removed in `finally`.
   const tmpDir = mkdtempSync(path.join(tmpdir(), 'createcms-'));
 
   try {
     const stubPath = ensureFile(tmpDir, 'module-stub.mjs', STUB_CODE);
     const shimPath = ensureFile(tmpDir, 'cms-shim.mjs', SHIM_CODE);
 
-    // Build alias map: stub every installed package, then override
-    // @createcms/core with the lightweight shim
+    // Stub every installed package, then override @createcms/core with the
+    // lightweight shim.
     const allPackages = collectInstalledPackages(cwd);
     const alias: Record<string, string> = {};
     for (const pkg of allPackages) {
@@ -278,16 +275,14 @@ export async function loadCMSConfig(configPath: string) {
     alias['@createcms/core'] = shimPath;
 
     // Explicit aliases for every exported @createcms/core subpath so the
-    // generator loads real plugin schemas instead of the inert stub. Drop any
-    // subpath entries the package scan may have produced first, then apply the
-    // exports-derived map.
+    // generator loads real plugin schemas instead of the inert stub.
     const cmsSubpathAliases = deriveCmsSubpathAliases(cwd);
     for (const key of Object.keys(alias)) {
       if (key.startsWith('@createcms/core/')) delete alias[key];
     }
     Object.assign(alias, cmsSubpathAliases);
 
-    // tsconfig paths override everything (e.g. @/* → ./src/*)
+    // tsconfig paths override everything (e.g. @/* -> ./src/*).
     Object.assign(alias, tsconfigAlias);
 
     const stubbedSpecifiers = new Set<string>();
@@ -301,7 +296,7 @@ export async function loadCMSConfig(configPath: string) {
       });
 
       const mod = (await jiti.import(configPath)) as Record<string, unknown>;
-      // jiti with interopDefault may nest the exports — try multiple paths
+      // jiti with interopDefault may nest the exports.
       const instance = mod.cms ?? mod.default ?? mod;
 
       if (!instance || typeof instance !== 'object') {
@@ -318,9 +313,9 @@ export async function loadCMSConfig(configPath: string) {
         $notifications?: boolean;
       };
 
-      // jiti applies the base `@createcms/core` → shim alias as a prefix, so an
-      // unresolvable subpath surfaces here as `<shimPath>/plugins/…`. Rewrite it
-      // back to the specifier the user actually wrote for readable diagnostics.
+      // jiti applies the base `@createcms/core` -> shim alias as a prefix, so
+      // an unresolvable subpath surfaces here as `<shimPath>/plugins/...`.
+      // Rewrite it back to the specifier the user actually wrote.
       const friendly = (s: string): string =>
         s.startsWith(`${shimPath}/`)
           ? `@createcms/core/${s.slice(shimPath.length + 1)}`
@@ -335,9 +330,9 @@ export async function loadCMSConfig(configPath: string) {
         );
       }
 
-      // HARD-FAIL: a plugin that resolved to the stub would contribute no real
-      // schema, so its tables would be SILENTLY MISSING from the generated
-      // schema. A dropped plugin schema must error loudly, not slip through.
+      // Hard-fail: a plugin that resolved to the stub contributes no real
+      // schema, so its tables would be silently missing from the generated
+      // schema.
       const stubbedPlugins = (config.$plugins ?? []).filter(isStubValue);
       if (stubbedPlugins.length > 0) {
         throw new Error(

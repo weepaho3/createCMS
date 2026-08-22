@@ -46,28 +46,29 @@ export type RunScheduledResult = {
 const DEFAULT_LIMIT = 100;
 
 /**
- * One pass of the scheduled-publishing queue. Processes every DUE row
+ * One pass of the scheduled-publishing queue. Processes every due row
  * (`scheduledAt <= now` AND `processedAt IS NULL`), oldest-due first, by running
- * the SAME publish/unpublish machinery the single endpoints use.
+ * the same publish/unpublish machinery the single endpoints use.
  *
- * Each row is handled in its own transaction that FIRST claims the row with a
+ * Each row is handled in its own transaction that first claims the row with a
  * conditional `SET processedAt = now WHERE processedAt IS NULL` (0 rows claimed
- * means a concurrent/overlapping pass already took it, so it is skipped) and then
- * publishes. Claim + publish commit atomically, so a due row publishes AT MOST
- * ONCE even if two cron invocations overlap. If the publish throws, the whole tx
- * rolls back (the claim reverts) and the row stays due: a TRANSIENT failure (e.g.
- * a branch momentarily pending approval) is retried next pass, while a PERMANENT
- * failure (deleted root/branch) is stamped afterwards so it never loops, and
- * surfaced in `failed`. Asset sync runs best-effort after commit.
+ * means a concurrent pass already took it, so it is skipped) and then publishes.
+ * Claim + publish commit atomically, so a due row publishes at most once even if
+ * two cron invocations overlap. If the publish throws, the whole tx rolls back
+ * (the claim reverts) and the row stays due: a transient failure (e.g. a branch
+ * momentarily pending approval) is retried next pass, while a permanent failure
+ * (deleted root/branch) is stamped afterwards so it never loops, and surfaced in
+ * `failed`. Asset sync runs best-effort after commit.
  *
  * Designed for periodic cron invocation via `admin.runScheduled`, mirroring how
  * `admin.runPruning` drives {@link runPruningPass}.
  *
  * `scope` is the caller's request scope (multi-tenant / i18n). When it carries a
  * roots predicate, the due query is joined to `roots` and filtered by it so a
- * SCOPED cron (e.g. a per-tenant invocation) only processes ITS scope's rows, and
- * each publish materializes the slug within that scope (uniqueness + redirects).
- * When absent (unscoped/single-tenant cron), the query and behavior are unchanged.
+ * scoped cron (e.g. a per-tenant invocation) only processes its scope's rows,
+ * and each publish materializes the slug within that scope (uniqueness +
+ * redirects). When absent (unscoped/single-tenant cron), the query and behavior
+ * are unchanged.
  */
 export async function runScheduledPass(
   db: DrizzleInstance,
@@ -159,11 +160,11 @@ export async function runScheduledPass(
             branchId: row.branchId,
             actor: row.createdBy ?? 'system',
             branchPolicy,
-            // cms-05: materialize the versioned draft slug on scheduled publish,
+            // Materialize the versioned draft slug on scheduled publish,
             // within the caller's scope. Forwarding the scope keeps slug
-            // uniqueness per-tenant and stamps the tenant_slug on any redirect
-            // (a NOT-NULL column under multi-tenant); undefined for an unscoped
-            // cron leaves the single-tenant behavior unchanged.
+            // uniqueness per-tenant and stamps the tenant_slug on any
+            // redirect (a NOT NULL column under multi-tenant); undefined for
+            // an unscoped cron leaves the single-tenant behavior unchanged.
             slugConfig: def?.slug as ResolvedSlugConfig | undefined,
             scopeWhere: scope?.roots?.where,
             rootScope: scope?.roots,

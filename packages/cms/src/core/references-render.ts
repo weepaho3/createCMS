@@ -22,9 +22,7 @@ import { getReferencePropertyNames } from './references';
 import { rootScopeConditions } from './scope';
 import { substituteVariables } from './variables';
 
-// ============================================================================
 // Reference resolution
-// ============================================================================
 
 function collectReferenceRootIds(
   tree: BlockTreeNode,
@@ -153,9 +151,9 @@ async function loadPublishedRoots(
     else pubsByRoot.set(row.rootId, [entry]);
   }
 
-  // Which referenced roots have a running A/B test. No resolver
-  // (no ab-test plugin) → empty → every root takes the deterministic single
-  // pick below, byte-identical to the pre-fan-out behavior.
+  // Which referenced roots have a running A/B test. No resolver (no ab-test
+  // plugin) means an empty map, and every root takes the deterministic single
+  // pick below.
   const running = abTestResolver
     ? await abTestResolver.runningTests(db, scopeColumns, rootIds)
     : new Map<string, RunningAbTest>();
@@ -166,8 +164,8 @@ async function loadPublishedRoots(
     commitId: string,
   ): Promise<BlockTreeNode | null> => {
     const { blocks } = await loadBlocksAtCommit(db, commitId, rootId);
-    // cms-05: this feeds public/rendered output (embedded references + A/B
-    // variants), so strip the reserved `__slug` draft key.
+    // This feeds public rendered output (embedded references + A/B variants),
+    // so strip the reserved `__slug` draft key.
     return assembleBlockTree(blocks, rootId, { stripReservedProps: true });
   };
 
@@ -192,11 +190,11 @@ async function loadPublishedRoots(
 
       if (!test) return single();
 
-      // Running test → fan out: load the published tree of every variant branch.
-      // The control fills top-level tree/properties; the NON-CONTROL branches go
-      // into `variants` (the control is deliberately NOT re-embedded there — see
-      // LoadedRoot.abTest / PublishedBranchSnapshot — to avoid serializing the
-      // control subtree twice per reference).
+      // Running test: fan out and load the published tree of every variant
+      // branch. The control fills top-level tree/properties; the NON-CONTROL
+      // branches go into `variants` (the control is deliberately NOT
+      // re-embedded there, see LoadedRoot.abTest / PublishedBranchSnapshot, to
+      // avoid serializing the control subtree twice per reference).
       const commitByBranch = new Map(pubs.map((p) => [p.branchId, p.commitId]));
       const variants: PublishedBranchSnapshot[] = [];
       let control:
@@ -222,9 +220,9 @@ async function loadPublishedRoots(
 
       // The control branch fills top-level tree/properties (the no-JS / AB-off
       // fallback, and what `isResolvedReference` narrows on). Fanning out needs
-      // the control PLUS at least one published non-control variant (≥2 branches
-      // total); otherwise degrade to the deterministic single pick (no fan-out)
-      // so top-level stays populated.
+      // the control PLUS at least one published non-control variant (two or
+      // more branches total); otherwise degrade to the deterministic single
+      // pick (no fan-out) so top-level stays populated.
       if (!control || !controlCommitId || variants.length < 1) {
         return single();
       }
@@ -273,26 +271,26 @@ export async function resolveTreeReferences(
   // so replaceReferencesInTree can look it up by what's actually in the block.
   const resolvedMap = new Map<string, ResolvedReference>();
 
-  // INTENTIONALLY SERIAL — do NOT turn this (or the inner `valueToRootId` loop)
+  // INTENTIONALLY SERIAL, do NOT turn this (or the inner `valueToRootId` loop)
   // into a Promise.all. Both awaits mutate the SHARED `visited` cycle-guard Set
   // (added to here, and extended by the recursive descent below), which both
   // de-dupes references that appear more than once across sibling subtrees AND
   // prevents infinite recursion on reference cycles. Running the iterations
   // concurrently would race that Set: two branches could each load the same
-  // sub-reference before either records it in `visited`, re-doing work and, on a
-  // cycle, recursing until MAX_REFERENCE_DEPTH throws. The serial loop lets each
-  // iteration observe the prior iterations' `visited` writes.
+  // sub-reference before either records it in `visited`, re-doing work and, on
+  // a cycle, recursing until MAX_REFERENCE_DEPTH throws. The serial loop lets
+  // each iteration observe the prior iterations' `visited` writes.
   for (const [targetCollectionName, valueSet] of refValues) {
     const targetDef = allCollections[targetCollectionName];
     if (!targetDef) continue;
 
     // Resolve each stored reference value to the single rootId it RENDERS as,
-    // via the scope's reference resolver: identity (value -> value) without a
-    // plugin; i18n translation-group resolution (tgr_ -> best sibling along the
-    // fallback chain; rot_ -> active-language sibling of its group, else the
-    // stored anchor) when the i18n plugin provides one. The resolution policy +
-    // any tenant scoping live in the resolver; core only threads it through the
-    // recursion so nested references resolve in the same scope.
+    // via the scope's reference resolver: identity (value to value) without a
+    // plugin; i18n translation-group resolution (tgr_ to best sibling along
+    // the fallback chain; rot_ to active-language sibling of its group, else
+    // the stored anchor) when the i18n plugin provides one. The resolution
+    // policy + any tenant scoping live in the resolver; core only threads it
+    // through the recursion so nested references resolve in the same scope.
     const valueToRootId = await resolver.resolveRenderTargets(
       db,
       scopeColumns,
@@ -317,13 +315,14 @@ export async function resolveTreeReferences(
       if (!data) continue; // unresolved / already-visited (cycle guard)
 
       // Snapshot the cycle-guard state BEFORE resolving this block's branches:
-      // each A/B variant is an alternate rendering of the SAME block and almost
-      // always re-embeds the same sub-references as the control. The shared
-      // `visited` set (which the control recursion below extends) would treat
-      // those as already-loaded and leave them UNRESOLVED in the variant copies,
-      // so each variant resolves against its own clone of this pre-control state.
-      // XOR guarantees at most one varying root per render, so this clones for at
-      // most one block per page. Non-A/B refs keep the shared-`visited` path.
+      // each A/B variant is an alternate rendering of the SAME block and
+      // almost always re-embeds the same sub-references as the control. The
+      // shared `visited` set (which the control recursion below extends) would
+      // treat those as already-loaded and leave them UNRESOLVED in the variant
+      // copies, so each variant resolves against its own clone of this
+      // pre-control state. XOR guarantees at most one varying root per render,
+      // so this clones for at most one block per page. Non-A/B refs keep the
+      // shared-`visited` path.
       const branchVisited = data.abTest ? new Set(visited) : null;
 
       await resolveTreeReferences(
@@ -340,8 +339,8 @@ export async function resolveTreeReferences(
 
       if (data.abTest && branchVisited) {
         // `variants` holds only the NON-CONTROL branches (the control IS
-        // data.tree, already resolved above), so every entry here is a distinct
-        // variant subtree that needs its own reference resolution.
+        // data.tree, already resolved above), so every entry here is a
+        // distinct variant subtree that needs its own reference resolution.
         for (const variant of data.abTest.variants) {
           await resolveTreeReferences(
             db,

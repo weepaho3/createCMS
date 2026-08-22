@@ -11,7 +11,7 @@ export function createBlockId(): string {
   while (out.length < LENGTH) {
     crypto.getRandomValues(bytes);
     for (const byte of bytes) {
-      // 252 = largest multiple of 36 below 256 — reject the rest.
+      // 252 = largest multiple of 36 below 256, so byte % 36 stays uniform.
       if (byte < 252) out += ALPHABET[byte % 36];
       if (out.length === LENGTH) break;
     }

@@ -3,10 +3,6 @@ import type { ReadableAtom, WritableAtom } from 'nanostores';
 import type { ServerOnlyEndpoint } from '../core/types/definitions';
 import type { CMS_ERRORS } from '../errors-data';
 
-// ============================================================================
-// Fetch
-// ============================================================================
-
 export type CMSFetch = (
   path: string,
   options?: {
@@ -14,17 +10,13 @@ export type CMSFetch = (
     body?: unknown;
     query?: unknown;
     /**
-     * Forwarded to the underlying `fetch` (better-call → @better-fetch → native
-     * `fetch`). Set for fire-and-forget analytics beacons (the A/B event ingest)
-     * so the POST is NOT cancelled when the page unloads/navigates mid-request.
+     * Forwarded to the underlying `fetch` (better-call -> @better-fetch ->
+     * native `fetch`). Set for fire-and-forget analytics beacons (the A/B
+     * event ingest) so the POST survives page unload/navigation.
      */
     keepalive?: boolean;
   },
 ) => Promise<unknown>;
-
-// ============================================================================
-// Atom Listener (signal-based cache invalidation)
-// ============================================================================
 
 export type CMSAtomListener = {
   matcher: (path: string) => boolean;
@@ -32,20 +24,12 @@ export type CMSAtomListener = {
   callback?: (path: string) => void;
 };
 
-// ============================================================================
-// Client Store
-// ============================================================================
-
 export interface CMSClientStore {
   invalidate: (signal: string) => void;
-  /** Subscribe to a signal; returns an unsubscribe (react-10). */
+  /** Subscribe to a signal; returns an unsubscribe function. */
   listen: (signal: string, listener: () => void) => () => void;
   atoms: Record<string, WritableAtom<unknown>>;
 }
-
-// ============================================================================
-// Client Plugin
-// ============================================================================
 
 export interface CMSClientPlugin {
   id: string;
@@ -62,10 +46,6 @@ export interface CMSClientPlugin {
   atomListeners?: CMSAtomListener[];
   $ERROR_CODES?: Record<string, { status: number; message: string }>;
 }
-
-// ============================================================================
-// Media Upload State
-// ============================================================================
 
 export type CMSMediaUploadFileState = {
   name: string;
@@ -92,10 +72,6 @@ export type CMSMediaUploadState = {
   reset: () => void;
 };
 
-// ============================================================================
-// Query Atom State
-// ============================================================================
-
 export type CMSQueryState<T = unknown> = {
   data: T | null;
   error: unknown;
@@ -104,32 +80,23 @@ export type CMSQueryState<T = unknown> = {
   refetch: () => Promise<void>;
 };
 
-// ============================================================================
-// Client Options
-// ============================================================================
-
 export interface CMSClientOptions {
   baseURL: string;
   plugins?: CMSClientPlugin[];
   /**
-   * Runtime map of `path → HTTP method` used by the proxy to dispatch RPC
-   * calls (e.g. `/notifications/markNotificationsRead → 'POST'`). Seed this
+   * Runtime map of `path -> HTTP method` used by the proxy to dispatch RPC
+   * calls (e.g. `/notifications/markNotificationsRead -> 'POST'`). Seed this
    * with the server's `cms.$pathMethods` so optional-body POST endpoints are
    * not mis-inferred as GET. Plugin `pathMethods` are merged on top.
    */
   pathMethods?: Record<string, 'GET' | 'POST'>;
 }
 
-// ============================================================================
-// Type Inference Utilities
-// ============================================================================
-
 /**
- * Maps a SERVER return type to its over-the-wire (JSON) shape as seen by the
+ * Maps a server return type to its over-the-wire (JSON) shape as seen by the
  * HTTP client: a `Date` becomes the ISO `string` that `JSON.parse` actually
- * yields. (Server-side `cms.api.*` calls return real `Date`s and are unaffected;
- * this only rewrites the client's typed surface, so `client.pages.getRoot()`'s
- * `createdAt` is typed `string` — call `new Date(...)` to revive it.)
+ * yields. Server-side `cms.api.*` calls return real `Date`s and are
+ * unaffected; on the client, revive with `new Date(...)`.
  */
 export type Serialize<T> = T extends Date
   ? string
@@ -144,13 +111,12 @@ export type Serialize<T> = T extends Date
           ? { [K in keyof T]: Serialize<T[K]> }
           : T;
 
-// Apply `Serialize` to every endpoint method's RESOLVED return, leaving the
+// Applies `Serialize` to every endpoint method's resolved return, leaving the
 // input `opts` exactly as the server declares them. The `as ... ? never : M`
-// remap ALSO drops any key whose caller carries the `ServerOnlyEndpoint` brand
-// (see core/types/definitions.ts) — an endpoint marked `scope: 'server'`
-// (e.g. media.uploadAssets / media.replaceAsset) never appears on the client's
-// type surface, even though `cms.api.*` (server.ts's own caller type,
-// untouched by this file) keeps it. Plan 008.
+// remap also drops any key whose caller carries the `ServerOnlyEndpoint`
+// brand (see core/types/definitions.ts): an endpoint marked
+// `scope: 'server'` (e.g. media.uploadAssets / media.replaceAsset) never
+// appears on the client's type surface, while `cms.api.*` keeps it.
 type SerializeApi<A> = {
   [NS in keyof A]: {
     [M in keyof A[NS] as A[NS][M] extends ServerOnlyEndpoint
@@ -213,7 +179,6 @@ type CMSClientBase<TPlugins extends CMSClientPlugin[]> =
   InferPluginActions<TPlugins> & {
     $fetch: CMSFetch;
     $store: CMSClientStore;
-    // api-16: recognized core codes plus any plugin-contributed codes.
     $ERROR_CODES: typeof CMS_ERRORS & InferClientPluginErrorCodes<TPlugins>;
   };
 

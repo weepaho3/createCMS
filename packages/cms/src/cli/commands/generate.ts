@@ -13,12 +13,13 @@ import { fileExists } from '../utils/fs';
 import { loadCMSConfig } from '../utils/load-config';
 import { confirmOverwrite, createSpinner, printMeta } from '../utils/ui';
 
-/** The core schema, minus the notifications table + its enum when notifications
- *  are disabled (`notifications: false`). `notificationType` is referenced only
- *  by the `notifications` table, so both drop together. When enabled,
- *  `extraNotificationTypes` (plugin-contributed `notificationTypes` keys) are
- *  folded into the `notification_type` enum so plugins can persist their own
- *  `type`. */
+/**
+ * The core schema, minus the notifications table and its enum when
+ * notifications are disabled (`notifications: false`): `notificationType` is
+ * referenced only by the `notifications` table, so both drop together. When
+ * enabled, `extraNotificationTypes` (plugin-contributed `notificationTypes`
+ * keys) are folded into the `notification_type` enum.
+ */
 export function coreSchemaFor(
   notificationsEnabled: boolean,
   extraNotificationTypes: string[] = [],
@@ -52,7 +53,7 @@ function collectSchemaSources(
   config: Awaited<ReturnType<typeof loadCMSConfig>>,
 ): SchemaSource[] {
   // Plugin-contributed notification types fold into the core notification_type
-  // enum (so a plugin can persist its own `type`).
+  // enum so a plugin can persist its own `type`.
   const extraNotificationTypes = (config.$plugins ?? []).flatMap((plugin) =>
     Object.keys(
       (plugin as { notificationTypes?: Record<string, unknown> })
@@ -119,9 +120,10 @@ function shortDiff(expected: string, actual: string): string {
   ].join('\n');
 }
 
-/** Re-render the schema from `sources` and compare it against what's on disk
- *  at `outputPath`, without writing anything. Pure — safe to call from tests
- *  or from the CLI action. */
+/**
+ * Re-render the schema from `sources` and compare it against what is on disk
+ * at `outputPath`, without writing anything.
+ */
 export async function runGenerateCheck(args: {
   sources: SchemaSource[];
   outputPath: string;
@@ -255,9 +257,8 @@ export function registerGenerateCommand(cli: CAC) {
             process.stdin.isTTY === true && process.stdout.isTTY === true;
 
           if (!interactive) {
-            // Non-interactive (CI): never silently cancel. Regenerating would
-            // require confirmation we can't collect, so fail loudly instead of
-            // leaving a stale schema in place with a success exit code.
+            // Non-interactive (CI): fail loudly instead of leaving a stale
+            // schema in place with a success exit code.
             console.error(
               `\n  ${kleur.red('Error:')} Output file already exists and no interactive terminal is available.`,
             );

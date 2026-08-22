@@ -7,7 +7,7 @@ import type {
 } from '@createcms/schema';
 
 /**
- * The editor's schema IS a createcms collection definition — same vocabulary
+ * The editor's schema IS a createcms collection definition: same vocabulary
  * (`root`, `blocks`, `properties`, `structure`, `allowChildren`, `group`,
  * `defaultValue`), no adapter. Generic so the typed factory can carry the
  * concrete property/block maps; `AnyEditorSchema` is the wide form every
@@ -24,7 +24,7 @@ export type EditorSchema<
 export type AnyEditorSchema = AnyCollectionDefinition;
 
 /**
- * Wide runtime value per field kind — the closed union the headless controls
+ * Wide runtime value per field kind: the closed union the headless controls
  * are typed against. `select` narrows to its option union and `list` to its
  * element type only through the typed factory hooks (same derivation as
  * `InferBlockProperties`; `schema.type-check.ts` pins both to each other).
@@ -44,7 +44,7 @@ export type FieldValueMap = {
   list: Array<string | number | boolean>;
 };
 
-/** Every kind a block or root property can have — `BlockPropertyType` plus `list`. */
+/** Every kind a block or root property can have: `BlockPropertyType` plus `list`. */
 export type FieldKind = keyof FieldValueMap;
 
 /** The spec of one kind (`FieldSpecOf<'select'>` carries `options`, …). */

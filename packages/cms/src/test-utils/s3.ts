@@ -14,17 +14,16 @@ export type TestS3 = {
 /**
  * Starts a minimal in-memory S3-compatible HTTP server on a random port.
  * Implements exactly what the media tests exercise: PUT (store), GET (serve),
- * DELETE (remove), keyed by the request path. It does NOT verify SigV4
- * signatures, and does not implement LIST/multipart/ACL — none of which the
- * tests use. Returns an S3-flavored <Error> XML body on a missing GET.
+ * DELETE (remove), keyed by the request path. No SigV4 verification, no
+ * LIST/multipart/ACL. Returns an S3-flavored <Error> XML body on a missing
+ * GET.
  */
 export async function setupTestS3(): Promise<TestS3> {
   const store = new Map<string, { body: Buffer; contentType?: string }>();
 
   const server: Server = createServer((req, res) => {
-    // Signed URLs carry ?X-Amz-... query params on PUT; plain reads don't.
-    // Strip the query string so a signed PUT and a later unsigned GET/DELETE
-    // address the same object.
+    // Signed URLs carry ?X-Amz-... query params on PUT; strip the query so a
+    // signed PUT and a later unsigned GET/DELETE address the same object.
     const key = (req.url ?? '/').split('?')[0];
     const method = req.method ?? 'GET';
 

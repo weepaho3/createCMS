@@ -27,8 +27,8 @@ export type ScaffoldResult = { files: FileResult[]; pkg: PkgResult };
  */
 export async function resolvePreset(flag: string | undefined): Promise<Preset> {
   if (flag) {
-    // Object.hasOwn (not `in`) so prototype keys (constructor, __proto__, …) are
-    // rejected as unknown instead of resolving to a bogus non-preset value.
+    // Object.hasOwn (not `in`) so prototype keys (constructor, __proto__, ...)
+    // are rejected as unknown instead of resolving to a non-preset value.
     if (!Object.hasOwn(PRESETS, flag)) {
       throw new Error(
         `Unknown preset "${flag}". Available: ${Object.keys(PRESETS).join(', ')}.`,
@@ -62,10 +62,9 @@ export async function resolvePreset(flag: string | undefined): Promise<Preset> {
 }
 
 /**
- * Write the scaffold for `preset` into `cwd`. NON-DESTRUCTIVE: an existing file
- * is left untouched and reported as `skipped` (init never clobbers your code).
- * Returns the per-target outcome so the command can report it and tests can
- * assert it. Pure of any console/spinner UI — that lives in the command wrapper.
+ * Write the scaffold for `preset` into `cwd`, non-destructively: an existing
+ * file is left untouched and reported as `skipped`. Pure of any console or
+ * spinner UI; that lives in the command wrapper.
  */
 export async function scaffoldInit(opts: {
   cwd: string;

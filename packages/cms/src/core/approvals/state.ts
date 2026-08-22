@@ -56,7 +56,6 @@ export async function getApprovalStateForMergeRequest(
     .where(eq(approvals.mergeRequestId, mergeRequestId));
 
   if (commitId === undefined) {
-    // Today's behavior, unchanged: all rows count regardless of commit.
     return { ...buildApprovalState(rows), staleRequests: false };
   }
 
@@ -66,11 +65,11 @@ export async function getApprovalStateForMergeRequest(
   return {
     ...state,
     // `hasRequests` must stay true when a request exists but only against a
-    // superseded commit: the flag-independent "an open request blocks the
-    // merge" rule (and `requireApprovalToMerge`'s "an approval is mandatory")
-    // both key off `hasRequests`, and a stale request is still an open
-    // request — it just fails the (now separate) staleness check instead of
-    // silently falling through as "never reviewed".
+    // superseded commit: the "an open request blocks the merge" rule (and
+    // `requireApprovalToMerge`'s "an approval is mandatory") both key off
+    // `hasRequests`, and a stale request is still an open request. It just
+    // fails the separate staleness check instead of falling through as
+    // "never reviewed".
     hasRequests: state.hasRequests || rows.length > 0,
     staleRequests,
   };

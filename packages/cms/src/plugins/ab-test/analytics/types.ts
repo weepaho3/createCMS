@@ -2,7 +2,6 @@ import type { TableDefinition } from '../../../core/db/types';
 import type { DrizzleInstance } from '../../../core/types';
 import type { ConsentState } from '../../consent';
 
-// ============================================================================
 // Context
 // ============================================================================
 
@@ -11,8 +10,7 @@ export type AbTestContext = {
   anonymous?: boolean;
 };
 
-// ============================================================================
-// Consent (Google Consent Mode v2) — owned by the consent plugin
+// Consent (Google Consent Mode v2), owned by the consent plugin
 // ============================================================================
 
 export type {
@@ -21,11 +19,10 @@ export type {
   ConsentPurpose,
 } from '../../consent';
 
-// ============================================================================
 // Events
 // ============================================================================
 
-/** Where an event originated — a functional block instance. */
+/** Where an event originated: a functional block instance. */
 export type CMSEventSource = {
   /** Stable, author-assigned instance handle (the block's `trackingId`). */
   handle?: string;
@@ -34,7 +31,7 @@ export type CMSEventSource = {
 };
 
 /**
- * The decoupled, analytics-agnostic event core. A/B attribution is **optional**
+ * The decoupled, analytics-agnostic event core. A/B attribution is optional
  * (`ab`), so non-A/B events (page views, form submits) are first-class and can
  * flow to non-A/B sinks (GA4, GTM) without inventing a fake test/variant.
  *
@@ -43,18 +40,17 @@ export type CMSEventSource = {
 export type AnalyticsEvent = {
   /**
    * Optional id used as the storage row key. When absent, the sink mints one.
-   * Dedup behaviour is **sink-specific**: the postgres sink dedups on it via
-   * `ON CONFLICT (id) DO NOTHING`; the upstash sink does not. (A tenant-scoped,
-   * client-supplied idempotency key — distinct from this row key — arrives with
-   * the M3 client legs.)
+   * Dedup behaviour is sink-specific: the postgres sink dedups on it via
+   * `ON CONFLICT (id) DO NOTHING`, the upstash sink does not.
    */
   id?: string;
   /** Canonical event name, e.g. `'impression' | 'conversion' | 'form_submit'`. */
   name: string;
   /**
-   * Optional: the anonymous Pattern A path stores NO identifier (variant comes
-   * from the URL/variant-cookie). Only set for the consent-gated unique-visitor /
-   * GA4 path. Stored as NULL when absent → excluded from unique-visitor counts.
+   * The anonymous path stores no identifier (the variant comes from the URL or
+   * the variant cookie). Only set for the consent-gated unique-visitor and GA4
+   * paths. Stored as NULL when absent, which excludes the row from
+   * unique-visitor counts.
    */
   visitorId?: string;
   anonymous: boolean;
@@ -63,23 +59,24 @@ export type AnalyticsEvent = {
   /** Originating functional block instance, if any. */
   source?: CMSEventSource;
   /**
-   * Consent state under which the event was emitted (Consent Mode v2).
-   * Forwarded to consent-aware sinks (e.g. the M5 server-MP consent block). NOTE:
-   * M1 forwards but does NOT persist this — there is no consent column yet.
+   * Consent state under which the event was emitted (Consent Mode v2),
+   * forwarded to consent-aware sinks. The postgres adapter forwards but does
+   * not persist it; there is no consent column.
    */
   consent?: ConsentState;
   /**
-   * Funnel grouping id (M4): a client-minted id shared by the attempt + success
-   * legs of ONE interaction (e.g. a <TrackedForm> submit). Lets completion_rate
-   * pair them. Distinct from any storage/dedup key — it groups, it doesn't dedup.
+   * Funnel grouping id: a client-minted id shared by the attempt and success
+   * legs of one interaction (e.g. a `<TrackedForm>` submit), letting
+   * completion_rate pair them. Distinct from any storage or dedup key; it
+   * groups, it does not dedup.
    */
   interactionId?: string;
   /**
-   * GA4 stitching identifiers (M5 server-MP): the client reads them from the
-   * `_ga` / `_ga_<id>` cookies and sends them ONLY when analytics_storage is
-   * granted, so the server-side ga4ServerSink can attribute the Measurement
-   * Protocol hit to the same user/session (else GA4 shows `(not set)`). Absent on
-   * the anonymous consent-free path — its presence is what gates the GA4 forward.
+   * GA4 stitching identifiers: the client reads them from the `_ga` /
+   * `_ga_<id>` cookies and sends them ONLY when analytics_storage is granted,
+   * so the server-side GA4 sink can attribute the Measurement Protocol hit to
+   * the same user/session (otherwise GA4 shows `(not set)`). Absent on the
+   * anonymous consent-free path; their presence is what gates the GA4 forward.
    */
   transport?: {
     clientId?: string;
@@ -95,8 +92,7 @@ export type AbTestEvent = AnalyticsEvent & {
   ab: { testId: string; variantId: string };
 };
 
-// ============================================================================
-// Aggregated Results
+// Aggregated results
 // ============================================================================
 
 export type AggregatedVariantResult = {
@@ -107,8 +103,8 @@ export type AggregatedVariantResult = {
   uniqueVisitors: number;
   conversionRate: number;
   /**
-   * Funnel (M4): total distinct interaction ids (each <TrackedForm> submit mints
-   * one) = the attempts. completionRate = distinct interactions that reached the
+   * Funnel: total distinct interaction ids (each form submit mints one) is the
+   * attempt count. completionRate = distinct interactions that reached the
    * goal event / attempts (computed by getResults when a goal is set).
    */
   attempts: number;
@@ -127,13 +123,12 @@ export type AggregatedResults = {
   /**
    * The test's resolved goal event (wire name), or null for the goal-less
    * default where `conversion` events are the goal. Set by `getResults` so the
-   * live dashboard can apply deltas to conversions with the same rule.
+   * live dashboard applies deltas to conversions with the same rule.
    */
   goalEvent?: string | null;
 };
 
-// ============================================================================
-// Adapter Interface
+// Adapter interface
 // ============================================================================
 
 export type AbTestAnalyticsAdapter = {
@@ -160,8 +155,7 @@ export type AbTestAnalyticsAdapter = {
   flush?(testId?: string): Promise<{ flushed: number }>;
 };
 
-// ============================================================================
-// Live Delta (published by Upstash adapter on each track call)
+// Live delta (published by the Upstash adapter on each track call)
 // ============================================================================
 
 export type LiveDelta = {
@@ -171,8 +165,7 @@ export type LiveDelta = {
   timestamp: number;
 };
 
-// ============================================================================
-// Upstash Analytics Options
+// Upstash analytics options
 // ============================================================================
 
 export type UpstashAnalyticsOptions = {

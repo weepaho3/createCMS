@@ -3,11 +3,11 @@ import type * as z from 'zod';
 /**
  * A realtime event schema: a Zod map keyed by event name, flat
  * (`{ notification: z.object(...) }`) or namespaced by feature
- * (`{ ab: { delta: z.object(...) } }` → event path `ab.delta`).
+ * (`{ ab: { delta: z.object(...) } }` gives event path `ab.delta`).
  *
- * This types events; the runtime is event-AGNOSTIC. Event ownership lives where
- * each event is declared (core notifications, a plugin), and the merged registry
- * is INFERRED from `typeof cms`.
+ * This types events; the runtime is event-agnostic. Event ownership lives where
+ * each event is declared (core notifications, a plugin), and the merged
+ * registry is inferred from `typeof cms`.
  */
 export type RealtimeEventSchema = Record<
   string,
@@ -15,10 +15,10 @@ export type RealtimeEventSchema = Record<
 >;
 
 /**
- * Per-connection channel-authorization gate handed to the runtime's SSE handler.
- * Receives the raw request and the channels it wants; return a `Response` to
- * REJECT (e.g. 403), or void to allow. Runs once per connection, before any
- * subscription.
+ * Per-connection channel-authorization gate handed to the runtime's SSE
+ * handler. Receives the raw request and the channels it wants; return a
+ * `Response` to reject (e.g. 403), or void to allow. Runs once per
+ * connection, before any subscription.
  */
 export type AuthorizeChannels = (
   request: Request,
@@ -26,8 +26,8 @@ export type AuthorizeChannels = (
 ) => Response | void | Promise<Response | void>;
 
 /**
- * The realtime delivery runtime — a concrete Upstash-backed publish/subscribe
- * pipe (NOT a pluggable interface; createCMS realtime is Upstash-only). Held on
+ * The realtime delivery runtime: a concrete Upstash-backed publish/subscribe
+ * pipe (not a pluggable interface; createCMS realtime is Upstash-only). Held on
  * the procedure ctx and consumed by the SSE route, the notification publish
  * handler, and the A/B live-delta publish.
  */

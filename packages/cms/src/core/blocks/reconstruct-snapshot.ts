@@ -25,12 +25,13 @@ export type ReconstructionResult = {
 };
 
 /**
- * cms-05: reserved property key that stores a root's per-branch DRAFT slug on the
- * ROOT block version's `properties`. Namespaced with a `__` prefix so it can never
+ * Reserved property key that stores a root's per-branch DRAFT slug on the ROOT
+ * block version's `properties`. Namespaced with a `__` prefix so it can never
  * collide with a user-defined root property. Because it rides `properties`, the
- * draft slug survives revertBranch / merge / history for free, and it is promoted
- * to the global `roots.slug` only at publish time. It MUST be stripped from any
- * public/rendered output (see `assembleBlockTree`'s `stripReservedProps`).
+ * draft slug survives revertBranch / merge / history for free, and it is
+ * promoted to the global `roots.slug` only at publish time. It MUST be
+ * stripped from any public/rendered output (see `assembleBlockTree`'s
+ * `stripReservedProps`.
  */
 export const ROOT_SLUG_PROP = '__slug';
 
@@ -101,18 +102,18 @@ export function assembleBlockTree(
 
   const rootNode = nodeMap.get(rootId);
   if (rootNode) {
-    // The root block is STORED with type = collection name (see the inverse
-    // `type === 'root' ? collectionName : type` in routes/merges.ts), but the
-    // consumable tree contract uses the logical `'root'` marker — the renderer
-    // skips it to render the page as a fragment, and `getReferencePropertyNames`
-    // keys off it. Translate stored → logical HERE, at the single tree-builder,
-    // so every consumer (editor read, published render, reference resolution)
+    // The root block is STORED with type = collection name, but the consumable
+    // tree contract uses the logical `'root'` marker: the renderer skips it to
+    // render the page as a fragment, and `getReferencePropertyNames` keys off
+    // it. Translate stored to logical here at the single tree-builder, so
+    // every consumer (editor read, published render, reference resolution)
     // sees a consistent `type: 'root'` top node.
     rootNode.type = 'root';
-    // cms-05 public boundary: the reserved `__slug` draft-slug key must never
-    // leak into rendered/published output. Callers on the PUBLIC path
-    // (getPublishedContent + embedded-reference loads) pass `stripReservedProps`;
-    // the editor read (getBlockTree) omits it so the slug field round-trips.
+    // Public boundary: the reserved `__slug` draft-slug key must never leak
+    // into rendered/published output. Callers on the PUBLIC path
+    // (getPublishedContent + embedded-reference loads) pass
+    // `stripReservedProps`; the editor read (getBlockTree) omits it so the
+    // slug field round-trips.
     if (options?.stripReservedProps && ROOT_SLUG_PROP in rootNode.properties) {
       const { [ROOT_SLUG_PROP]: _omit, ...rest } = rootNode.properties;
       rootNode.properties = rest;

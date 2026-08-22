@@ -393,7 +393,7 @@ export function createEditorStore(
     },
   };
 
-  /** Local user's selection with `patch` applied — for `commit`'s `extra`. */
+  /** Local user's selection with `patch` applied, for `commit`'s `extra`. */
   function withLocal(
     patch: Partial<UserSelection>,
   ): Record<string, UserSelection> {

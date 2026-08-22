@@ -37,17 +37,9 @@ import { i18nError } from './errors';
 
 /**
  * The i18n plugin's per-collection endpoints: createTranslation +
- * listTranslations. Contributed to EVERY collection via plugin.collectionEndpoints,
- * so they surface at cms.api.<collection>.x ONLY when the i18n plugin is
- * installed (closing the leak where they appeared on every collection regardless).
- *
- * These were lifted from core/routes/blocks.ts verbatim, with two changes:
- *   - i18n error codes (TRANSLATION_*) are thrown via i18nError (APIError + the
- *     plugin's own $ERROR_CODES) instead of CMSError; core slug codes
- *     (SLUG_EMPTY_NOT_ALLOWED) stay as CMSError (still a core code).
- *   - the old I18N_NOT_ENABLED gate is gone: the endpoint only exists when this
- *     plugin is installed, and the i18n scope factory rejects a request with no
- *     active language (LANGUAGE_REQUIRED) before the handler runs.
+ * listTranslations. Contributed to every collection via
+ * plugin.collectionEndpoints, so they surface at cms.api.<collection>.x only
+ * when the i18n plugin is installed.
  */
 export function createI18nCollectionEndpoints(
   def: CollectionWithName,
@@ -58,13 +50,9 @@ export function createI18nCollectionEndpoints(
   const db = pluginCtx.db;
 
   return {
-    // i18n: create the sibling-language version of an existing entry. The new
-    // root INHERITS the source's translationKey (so it joins the group), takes
-    // the TARGET language, and hangs under the target-language sibling of the
-    // source's parent. Seeds from the source's `main` tree by default ('copy'),
-    // or starts blank.
     /**
-     * Creates a sibling-language version of an existing entry, inheriting its translation key and seeding from the source's main tree (or blank).
+     * Creates a sibling-language version of an existing entry, inheriting its
+     * translation key and seeding from the source's main tree (or blank).
      * @param sourceRootId The root to translate from (must exist in the active language).
      * @param targetLanguage The language for the new root (must be configured in the plugin).
      * @param targetSlug Optional slug for the target root; defaults to the source slug if not provided.
@@ -115,8 +103,8 @@ export function createI18nCollectionEndpoints(
 
         const { sourceRootId, targetLanguage, message } = ctx.body;
         // The target language must be in the configured universe (the plugin's
-        // own `languages`, closed in at assembly) — otherwise we'd stamp a root
-        // with a language no routing could ever serve.
+        // own `languages`, closed in at assembly); otherwise we would stamp a
+        // root with a language no routing could ever serve.
         if (!languages.includes(targetLanguage)) {
           i18nError('TRANSLATION_LANGUAGE_NOT_ENABLED');
         }
@@ -124,7 +112,7 @@ export function createI18nCollectionEndpoints(
         const slugCfg = def.slug as ResolvedSlugConfig | undefined;
 
         return db.transaction(async (tx) => {
-          // Source must exist in the ACTIVE language — you translate FROM your
+          // Source must exist in the active language: you translate from your
           // current language context.
           await requireRootInScope(
             tx,
@@ -151,8 +139,8 @@ export function createI18nCollectionEndpoints(
 
           // No existing sibling in the target language (also rejects translating
           // to the source's own language, since that sibling is the source). The
-          // (translationKey, language) partial unique is the DB backstop for the
-          // race this app check can't cover.
+          // (translationKey, language) partial unique is the DB backstop for
+          // the race this app check cannot cover.
           const dup = await tx.execute(sql`
             SELECT 1 FROM cms.roots
             WHERE translation_key = ${src.translation_key}
@@ -164,8 +152,9 @@ export function createI18nCollectionEndpoints(
           if (dup.rows.length > 0) i18nError('TRANSLATION_EXISTS');
 
           // Target parent = the target-language sibling of the source's parent.
-          // The collection filters are defense-in-depth (a root's parent chain is
-          // always same-collection by write-time validation), mirroring createRoot.
+          // The collection filters are defense-in-depth (a root's parent chain
+          // is always same-collection by write-time validation), mirroring
+          // createRoot.
           let targetParentRootId: string | null = null;
           if (src.parent_root_id !== null) {
             const parentRows = await tx.execute(sql`
@@ -191,13 +180,12 @@ export function createI18nCollectionEndpoints(
             targetParentRootId = sibRow.id;
           }
 
-          // Target slug (localized; defaults to the source slug). cms-05: the
-          // slug is VERSIONED — it is seeded into the new root's initial commit
-          // (as `__slug`, below) and NOT written to roots.slug, which stays null
+          // Target slug (localized; defaults to the source slug). The slug is
+          // versioned: it is seeded into the new root's initial commit (as
+          // `__slug`, below) and not written to roots.slug, which stays null
           // until the translation is first published. Drafts may collide (two
           // unpublished siblings can share a slug), so there is no blocking
-          // up-front uniqueness check; publish enforces it per language. The cheap
-          // empty check stays.
+          // up-front uniqueness check; publish enforces it per language.
           let targetSlug: string | null = null;
           if (slugCfg?.enabled) {
             const rawSlug = ctx.body.targetSlug ?? src.slug ?? '';
@@ -207,9 +195,10 @@ export function createI18nCollectionEndpoints(
             }
           }
 
-          // Create the sibling root: TARGET language (override the active-language
-          // insert-scope), INHERITED translationKey, keep any other scope columns
-          // (e.g. tenant_slug). roots.slug stays null until publish.
+          // Create the sibling root: target language (override the
+          // active-language insert-scope), inherited translationKey, keep any
+          // other scope columns (e.g. tenant_slug). roots.slug stays null until
+          // publish.
           const targetScope = {
             ...scope.roots,
             insertColumns: {
@@ -277,8 +266,8 @@ export function createI18nCollectionEndpoints(
                   return {
                     blockId: isTop ? newRoot.id : copy.newBlockId,
                     type: isTop ? collectionName : copy.type,
-                    // cms-05: the copied top node carries the SOURCE's draft
-                    // `__slug`; overwrite it with this translation's own slug.
+                    // The copied top node carries the source's draft `__slug`;
+                    // overwrite it with this translation's own slug.
                     properties: isTop
                       ? withRootSlug(copy.properties, targetSlug)
                       : copy.properties,
@@ -293,7 +282,7 @@ export function createI18nCollectionEndpoints(
               {
                 blockId: newRoot.id,
                 type: collectionName,
-                // cms-05: seed the versioned draft slug on the blank root version.
+                // Seed the versioned draft slug on the blank root version.
                 properties: withRootSlug({}, targetSlug),
                 children: [],
               },
@@ -319,13 +308,12 @@ export function createI18nCollectionEndpoints(
       },
     ),
 
-    // i18n: the language switcher / "which translations exist" for an entry.
-    // Cross-language by design (queries the translation group), so it deliberately
-    // bypasses the blanket per-language read scope — but the INPUT root is gated to
-    // the active language + tenant, and a translationKey is a globally-unique
-    // group id, so only this tenant's siblings are returned.
     /**
-     * Retrieves all language variants (siblings) of a given entry, bypassing per-language read scope.
+     * Retrieves all language variants (siblings) of a given entry, bypassing
+     * per-language read scope. Cross-language by design (it queries the
+     * translation group); the input root is gated to the active language and
+     * tenant, and a translationKey is a globally-unique group id, so only this
+     * tenant's siblings are returned.
      * @param rootId The root id (must exist in the active language and tenant).
      * @returns The translation key (group id) and an array of all siblings with their language, root id, slug, and resolved path.
      * @throws TRANSLATION_SOURCE_NOT_FOUND if rootId does not exist or has no translation key.
@@ -387,11 +375,11 @@ export function createI18nCollectionEndpoints(
           ).map(async (r) => ({
             language: r.language,
             rootId: r.id,
-            // cms-05: roots.slug is only materialized at publish, so an UNPUBLISHED
-            // sibling now lists as null. Fall back to the versioned DRAFT slug on
-            // the default-branch head root version (the reserved `__slug`) so the
-            // language switcher still shows the intended slug; keep the published
-            // slug whenever it is present.
+            // roots.slug is only materialized at publish, so an unpublished
+            // sibling lists as null. Fall back to the versioned draft slug on
+            // the default-branch head root version (the reserved `__slug`) so
+            // the language switcher still shows the intended slug; keep the
+            // published slug whenever it is present.
             slug:
               r.slug ?? (await readDraftRootSlug(db, r.id, defaultBranchName)),
             path:
@@ -408,10 +396,11 @@ export function createI18nCollectionEndpoints(
 }
 
 /**
- * cms-05: reads a root's versioned DRAFT slug — the reserved `__slug` on its
- * default-branch head ROOT block version — for listTranslations' fallback when
- * `roots.slug` is still null (an unpublished translation). Returns `null` when the
- * root has no default branch or carries no draft slug (e.g. an allowIndex page).
+ * Reads a root's versioned draft slug (the reserved `__slug` on its
+ * default-branch head root block version) for listTranslations' fallback when
+ * `roots.slug` is still null (an unpublished translation). Returns `null` when
+ * the root has no default branch or carries no draft slug (e.g. an allowIndex
+ * page).
  */
 async function readDraftRootSlug(
   db: DbOrTx,

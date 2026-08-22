@@ -9,10 +9,10 @@ import {
 import { setupMultiTenantTestCMS } from './utils/cms';
 
 // ============================================================================
-// cms-08 SECURITY — search must not leak across scope boundaries.
+// Security: search must not leak across scope boundaries.
 //
 // The shared `search_index` is queried by `search.query`, which previously
-// filtered ONLY by q/entityTypes/collection/rootId and never consulted the
+// filtered only by q/entityTypes/collection/rootId and never consulted the
 // request scope. That let (1) one tenant find another tenant's content and
 // (2) one user read another user's notification titles/bodies via search.
 //
@@ -21,7 +21,7 @@ import { setupMultiTenantTestCMS } from './utils/cms';
 // table; notifications via the per-recipient guard).
 // ============================================================================
 
-describe('cms-08 — search respects multi-tenant scope', () => {
+describe('search respects multi-tenant scope', () => {
   it("a tenant cannot find another tenant's ROOT via search", async () => {
     const { cms, setTenant } = await setupMultiTenantTestCMS();
 
@@ -38,7 +38,7 @@ describe('cms-08 — search respects multi-tenant scope', () => {
       },
     });
 
-    // Admin rebuild indexes BOTH tenants' roots into the shared index.
+    // Admin rebuild indexes both tenants' roots into the shared index.
     await cms.api.admin.reindexSearch({ body: {} });
 
     // Acme searches the shared keyword: it must see ONLY its own root.
@@ -75,7 +75,7 @@ describe('cms-08 — search respects multi-tenant scope', () => {
 
     await cms.api.admin.reindexSearch({ body: {} });
 
-    // Acme must find its own variable but NOT globex's, even though variables
+    // Acme must find its own variable but not globex's, even though variables
     // carry no rootId (they scope via the `variables.tenant_slug` predicate).
     setTenant('acme');
     const acmeHits = await cms.api.search.query({
@@ -103,10 +103,10 @@ describe('cms-08 — search respects multi-tenant scope', () => {
 });
 
 // ============================================================================
-// cms-08 SECURITY — notifications are per-recipient in search.
+// Security: notifications are per-recipient in search.
 // ============================================================================
 
-describe('cms-08 — search respects notification recipient', () => {
+describe('search respects notification recipient', () => {
   const USER_X = 'user-x';
   const USER_Y = 'user-y';
 
@@ -140,7 +140,7 @@ describe('cms-08 — search respects notification recipient', () => {
     // Rebuild the shared index (this is where notifications get indexed).
     await cmsX.api.admin.reindexSearch({ body: {} });
 
-    // User X must NOT see Y's notification.
+    // User X must not see Y's notification.
     const xHits = await cmsX.api.search.query({
       query: { search: 'Xylophonique' },
     });
@@ -150,7 +150,7 @@ describe('cms-08 — search respects notification recipient', () => {
       ),
     ).toBe(false);
 
-    // User Y (the recipient) still finds it — per-user search keeps working.
+    // User Y (the recipient) still finds it; per-user search keeps working.
     const yHits = await cmsY.api.search.query({
       query: { search: 'Xylophonique' },
     });

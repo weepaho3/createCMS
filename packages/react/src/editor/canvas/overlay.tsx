@@ -83,11 +83,10 @@ function ringFlags(
 }
 
 /**
- * Overlay is `pointer-events: none`. A child that must receive pointer
- * input sets `pointer-events: auto` on itself. The canvas host needs a
- * positioning context (`position: relative` or similar) so `absolute;
- * inset: 0` covers the surface. The primitive does not set `position`
- * on the host.
+ * Overlay is `pointer-events: none`; children that must receive pointer input
+ * set `pointer-events: auto` on themselves. The primitive does not set
+ * `position` on the host; the portal needs `position: relative` or similar
+ * there so `absolute; inset: 0` covers the surface.
  */
 export function CanvasOverlay({
   children,

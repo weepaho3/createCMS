@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { defaultValuesFor } from './defaults';
 import { pages } from './fixtures';
 
-describe('defaultValuesFor — core semantics (no fillDefaults)', () => {
+describe('defaultValuesFor: core semantics (no fillDefaults)', () => {
   it('emits only declared defaultValue keys: heading → { level: 2 }', () => {
     expect(defaultValuesFor(pages.blocks.heading)).toEqual({ level: 2 });
   });
@@ -45,7 +45,7 @@ describe('defaultValuesFor — core semantics (no fillDefaults)', () => {
   });
 });
 
-describe('defaultValuesFor — fillDefaults: true', () => {
+describe('defaultValuesFor: fillDefaults: true', () => {
   it('cta → { variant: "solid", enabled: false, tags: [], sizes: [] }, target/link absent', () => {
     const result = defaultValuesFor(pages.blocks.cta, { fillDefaults: true });
     expect(result).toEqual({
@@ -83,7 +83,7 @@ describe('defaultValuesFor — fillDefaults: true', () => {
   });
 });
 
-describe('defaultValuesFor — returns a fresh object each call', () => {
+describe('defaultValuesFor: returns a fresh object each call', () => {
   it('mutating the result does not affect the next call', () => {
     const first = defaultValuesFor(pages.blocks.heading);
     first.level = 999;

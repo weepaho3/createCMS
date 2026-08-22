@@ -51,7 +51,7 @@ export type ChangedVersion = {
  */
 export async function writeCommit(
   tx: DrizzleInstance,
-  // The collection definition — a constant per-factory dependency the content
+  // The collection definition: a constant per-factory dependency the content
   // indexer needs to detect `reference` properties. Positional + required so a
   // caller can never silently skip reference indexing.
   collectionDef: CollectionWithName,
@@ -62,9 +62,9 @@ export async function writeCommit(
     message: string;
     createdBy: string | null | undefined;
     changed: ChangedVersion[];
-    // Optimistic-concurrency precondition (cms-18). When set, the caller asserts
-    // it is writing on top of exactly this head commit; the write is rejected if
-    // the branch has advanced. Omitted → unchecked (unchanged behavior).
+    // Optimistic-concurrency precondition. When set, the caller asserts it is
+    // writing on top of exactly this head commit; the write is rejected if the
+    // branch has advanced. Omitted means unchecked.
     expectedHeadCommitId?: string;
   },
 ): Promise<{

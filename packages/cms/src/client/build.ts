@@ -3,20 +3,14 @@ import type { ClientConfig } from './config';
 import { createDynamicPathProxy } from './proxy';
 
 /**
- * Shared client assembly for both the vanilla and React entrypoints. The only
- * thing that differs between them is the shape of the injected `media`
- * namespace:
- *  - vanilla passes `{ uploadState: <raw nanostores atom> }` (consumers call
- *    `.get()` / `.subscribe()` themselves);
- *  - React passes `{ useUploadAssets: () => useStore(uploadAssets) }` (a hook
- *    thunk).
+ * Shared client assembly for the vanilla and React entrypoints. The caller
+ * supplies the `media` namespace (vanilla: `{ uploadState: <raw atom> }`,
+ * React: `{ useUploadAssets: () => useStore(...) }`), so this module never
+ * imports React and stays out of the vanilla bundle.
  *
- * The `media` object is constructed by the caller so this module never imports
- * React — keeping it out of the vanilla bundle. The caller also supplies the
- * concrete instance type via `TInstance` (`CMSClientInstance` for React,
- * `CMSVanillaClientInstance` for vanilla); the `as TInstance` cast is the
- * single intentional escape hatch that normalizes the loosely-typed routes
- * object to the inferred public client type.
+ * The `as TInstance` cast normalizes the loosely-typed routes object to the
+ * concrete instance type supplied by the caller (`CMSClientInstance` for
+ * React, `CMSVanillaClientInstance` for vanilla).
  */
 export function buildClient<TInstance>(
   config: ClientConfig,

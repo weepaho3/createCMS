@@ -21,12 +21,12 @@ export type BlockTreeNode = {
  * A block tree node as returned by read endpoints (`getBlockTree`,
  * `getPublishedContent`), typed by the collection's block definitions.
  *
- * It is a discriminated union over `type` — narrow on `node.type` to get the
+ * It is a discriminated union over `type`: narrow on `node.type` to get the
  * matching `properties`. A `root` member carries the collection's root
  * properties (the top-level node of a tree is always `type: 'root'`).
  *
  * The types reflect the *current* collection definition. Content stored
- * against an older definition (before a schema change) may differ at runtime —
+ * against an older definition (before a schema change) may differ at runtime;
  * that is a data-migration concern, not a type error.
  */
 export type InferBlockTreeNode<

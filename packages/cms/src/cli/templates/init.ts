@@ -1,17 +1,13 @@
-// ============================================================================
-// `createcms init` scaffold templates + collection presets
-// ============================================================================
-//
-// Plain string templates (bundled into dist by bunchee — NOT read from disk at
+// Plain string templates (bundled into dist by bunchee, not read from disk at
 // runtime). They target a Next.js App Router project using the create-next-app
-// `--src-dir` layout (files under `src/`, the `@/*` → `./src/*` path alias).
-// db wiring is intentionally left to the consumer (`@/lib/db`) — `init` only
-// scaffolds the CMS side.
+// --src-dir layout (files under `src/`, the `@/*` -> `./src/*` path alias).
+// db wiring is intentionally left to the consumer (`@/lib/db`) because init
+// only scaffolds the CMS side.
 
 /**
  * A ready-made collection the consumer can scaffold via `createcms init
- * --preset <name>`. The scaffolded collection file is editable code the
- * consumer OWNS (presets are a starting point, not a maintained import).
+ * --preset <name>`. The scaffolded file is editable code the consumer owns,
+ * not a maintained import.
  */
 export type Preset = {
   /** `--preset <name>` + the interactive-picker key. */
@@ -213,8 +209,8 @@ export const cms = createCMS({
     publicUrl: process.env.S3_PUBLIC_URL!,
   },
   // Published content is public; everything else requires auth. Replace the
-  // TODO with your real session/permission check (return {} to allow, throw to
-  // deny).
+  // TODO with your real session/permission check (return {} to allow, throw
+  // to deny).
   authMiddleware: async (ctx) => {
     if (ctx.permissionResource === 'publishedContent') return {};
     // TODO: resolve the signed-in user / permissions here.
@@ -252,8 +248,9 @@ export const GENERATE_SCRIPT = {
 };
 
 /**
- * The files `init` scaffolds for a chosen preset, relative to the project root.
- * Order is display order. Paths assume the `src/` layout (module header).
+ * The files `init` scaffolds for a chosen preset, relative to the project
+ * root. Order is display order; paths assume the `src/` layout (module
+ * header).
  */
 export function buildInitFiles(
   preset: Preset,

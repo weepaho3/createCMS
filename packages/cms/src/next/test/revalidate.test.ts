@@ -3,9 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createRevalidateHandler } from '../index';
 
-// The handler fans out via a runtime `await import('next/cache')`; mock it so we
-// can assert the fan-out without a live Next runtime (revalidate* throw off a
-// request). Hoisted by vitest above the imports.
+// Mock next/cache so the fan-out can be asserted without a live Next runtime
+// (the real revalidate* throw off a request). Hoisted by vitest above the
+// imports.
 vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
   revalidateTag: vi.fn(),
@@ -93,7 +93,6 @@ describe('createRevalidateHandler', () => {
     expect(revalidatePath).toHaveBeenCalledWith('/b');
 
     expect(revalidateTag).toHaveBeenCalledTimes(3);
-    // next 16 requires the second `profile` arg; 'max' = legacy immediate purge.
     expect(revalidateTag).toHaveBeenCalledWith('t1', 'max');
     expect(revalidateTag).toHaveBeenCalledWith('t2', 'max');
     expect(revalidateTag).toHaveBeenCalledWith('t3', 'max');

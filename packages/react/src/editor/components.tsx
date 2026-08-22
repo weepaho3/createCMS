@@ -15,7 +15,7 @@ import { createEditorStore } from './store';
 const EMPTY_FIELDS: FieldControls = {};
 
 export type EditorRootProps = {
-  /** The collection definition — required, a tree alone cannot name its collection. */
+  /** The collection definition: required, a tree alone cannot name its collection. */
   schema: AnyEditorSchema;
   /** The initial tree (top node `type: 'root'`). Read once at mount; use `key` to load a different document. */
   defaultValue: BlockTreeNode;
@@ -34,7 +34,7 @@ export type EditorRootProps = {
 
 /**
  * Provider-only root: renders no DOM element, creates the editor store once
- * from `schema` + `defaultValue` (uncontrolled — remount with `key` to reset)
+ * from `schema` + `defaultValue` (uncontrolled: remount with `key` to reset)
  * and exposes `{ schema, store, userId, fields, registerScrollTarget,
  * scrollTo }` to every part below it. Callback props are read fresh on every
  * call, so inline handlers are fine.

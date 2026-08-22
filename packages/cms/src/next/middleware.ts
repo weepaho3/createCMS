@@ -11,24 +11,22 @@ import {
   variantRewritePath,
 } from '../ab-edge';
 
-// ============================================================================
-// Next.js edge middleware (Pattern A: cache-per-variant)
-// ============================================================================
-//
-// A THIN adapter over the framework-agnostic core in `@createcms/core/ab-edge`:
-// supplies the Next primitives (NextRequest cookies, NextResponse.rewrite, the
-// resolve fetch). The bucketing + rewrite decision lives in `decideEdgeVariant`.
-// EDGE-SAFE (only `next/server` + the core; no Node built-ins).
+// Thin Next.js adapter over the framework-agnostic core in
+// `@createcms/core/ab-edge`: supplies NextRequest cookies,
+// NextResponse.rewrite, and the resolve fetch. The bucketing and rewrite
+// decision live in `decideEdgeVariant`. Edge-safe: only `next/server` plus
+// the core, no Node built-ins.
 //
 // ALWAYS-REWRITE + CONSENT-FREE: every request is rewritten to
-// `<prefix>/<code><pathname>` (the assigned branch, or the control sentinel) so
-// it lands on the single `[abVariant]` route. The variant is kept consistent via
-// a VARIANT-ONLY cookie `ab_<testId>=<code>` — no visitor id, no behavioural
-// data, no third-party transmission → ePrivacy "strictly necessary" exemption,
-// so fresh ad traffic gets real variants (not always control). The consent-gated
-// pieces (persistent visitor id, GA4/dataLayer forwarding) live in the client
-// pipeline, NOT here. There is NO passthrough, so scope this to PUBLIC CMS paths
-// only (compose it in your proxy after the auth gate).
+// `<prefix>/<code><pathname>` (the assigned branch, or the control sentinel)
+// so it lands on the single `[abVariant]` route. The variant is kept
+// consistent via a VARIANT-ONLY cookie `ab_<testId>=<code>`: no visitor id,
+// no behavioural data, no third-party transmission, which is what puts it
+// under the ePrivacy "strictly necessary" exemption so fresh ad traffic gets
+// real variants instead of always control. The consent-gated pieces
+// (persistent visitor id, GA4/dataLayer forwarding) live in the client
+// pipeline. There is NO passthrough, so scope this middleware to PUBLIC CMS
+// paths only (compose it in your proxy after the auth gate).
 
 const DEFAULT_CMS_BASE = '/api/cms';
 const DEFAULT_VARIANT_COOKIE_PREFIX = 'ab_';
@@ -49,7 +47,7 @@ export type AbTestMiddlewareOptions = {
    * The static path prefix the variant render route lives under
    * (`app/<prefix>/[abVariant]/[[...rest]]`). Default '/ab'. Keeps the
    * variant-coded route off the URL root so it does not shadow sibling app
-   * routes (e.g. a `/app/*` dashboard). Must match your route folder.
+   * routes. Must match your route folder.
    */
   variantPrefix?: string;
   /**
@@ -65,19 +63,19 @@ export type AbTestMiddlewareOptions = {
   variantCookieMaxAge?: number;
   /**
    * How to fetch the resolve seam for a path. Default: GET
-   * `<cmsBaseUrl>/<collection>/resolveAbVariant?path=`, forwarding the request
-   * cookies so the CMS resolves the same tenant/language scope. This default
-   * does the (cheap) resolve lookup PER REQUEST — a middleware fetch is not
-   * served by the Next.js Data Cache. For high traffic, override this with a
-   * reader backed by Vercel Edge Config / KV precomputed on test start/stop.
+   * `<cmsBaseUrl>/<collection>/resolveAbVariant?path=`, forwarding the
+   * request cookies so the CMS resolves the same tenant/language scope. This
+   * default resolves PER REQUEST: a middleware fetch is not served by the
+   * Next.js Data Cache. For high traffic, override with a reader backed by
+   * Vercel Edge Config / KV precomputed on test start/stop.
    */
   resolve?: (request: NextRequest, path: string) => Promise<AbResolveResult>;
 };
 
 // The A/B resolve seam failing means every request silently falls back to the
 // control code. That fail-open is intentional (render/paint must never block),
-// but a misconfigured resolve route would otherwise be invisible — so surface
-// it ONCE per process, DEV-only, without changing the fail-open behaviour.
+// but a misconfigured resolve route would otherwise be invisible, so surface
+// it once per process, dev-only.
 let warnedResolveFailure = false;
 function warnResolveFailureOnce(err: unknown): void {
   if (process.env.NODE_ENV !== 'production' && !warnedResolveFailure) {
@@ -108,20 +106,21 @@ async function defaultResolve(
     return (await res.json()) as AbResolveResult;
   } catch (err) {
     warnResolveFailureOnce(err);
-    return { test: null }; // fail open to control — render/paint never blocks
+    return { test: null }; // fail open to control; render/paint never blocks
   }
 }
 
 /**
- * Next.js Pattern A A/B fan-out — ALWAYS rewrites the request to the variant-
- * coded `[abVariant]` route. Compose it inside your `proxy.ts` (Next 16) AFTER
- * the auth gate, and only for PUBLIC CMS paths (it has no passthrough):
+ * Next.js Pattern A A/B fan-out: always rewrites the request to the
+ * variant-coded `[abVariant]` route. Compose it inside your `proxy.ts`
+ * (Next 16) AFTER the auth gate, and only for PUBLIC CMS paths (it has no
+ * passthrough):
  * ```ts
  * // proxy.ts
  * const abTest = abTestMiddleware({ collection: 'pages' });
  * export default async function proxy(request) {
  *   if (isProtected(request)) return authGate(request); // not rewritten
- *   return abTest(request); // public CMS content → /ab/<code>/<path>
+ *   return abTest(request); // public CMS content -> /ab/<code>/<path>
  * }
  * ```
  */
@@ -137,9 +136,9 @@ export function abTestMiddleware(options: AbTestMiddlewareOptions) {
   return async (request: NextRequest): Promise<NextResponse> => {
     const { pathname } = request.nextUrl;
 
-    // Resolve, reuse-or-assign the variant, then ALWAYS rewrite to
-    // `<prefix>/<code><pathname>`. Any failure fails closed to the control code,
-    // so the request still lands on the `[abVariant]` route (never a 404).
+    // Resolve, reuse-or-assign the variant, then always rewrite to
+    // `<prefix>/<code><pathname>`: any failure falls back to the control
+    // code so the request still lands on the `[abVariant]` route (never 404).
     let rewritePath: string;
     let setCookie: { name: string; value: string } | null = null;
     try {
@@ -157,7 +156,7 @@ export function abTestMiddleware(options: AbTestMiddlewareOptions) {
         variantPrefix,
       });
       rewritePath = decision.rewritePath;
-      // A first assignment → persist the chosen variant code (variant-only).
+      // A first assignment: persist the chosen variant code (variant-only).
       if (decision.assignCode && decision.testId) {
         setCookie = {
           name: `${cookiePrefix}${decision.testId}`,
@@ -170,7 +169,8 @@ export function abTestMiddleware(options: AbTestMiddlewareOptions) {
     }
 
     const rewriteUrl = request.nextUrl.clone();
-    rewriteUrl.pathname = rewritePath; // transparent — browser URL unchanged
+    // Transparent rewrite: the browser URL is unchanged.
+    rewriteUrl.pathname = rewritePath;
     const response = NextResponse.rewrite(rewriteUrl);
 
     if (setCookie) {
@@ -179,9 +179,9 @@ export function abTestMiddleware(options: AbTestMiddlewareOptions) {
         maxAge: cookieMaxAge,
         sameSite: 'lax',
         secure: true,
-        // httpOnly: the cookie is sent with every request, so cross-page
-        // conversion attribution reads it SERVER-side (no client read needed) —
-        // keep it httpOnly to harden against XSS. It holds only the variant code.
+        // httpOnly: cross-page conversion attribution reads the cookie
+        // server-side, and it holds only the variant code, so keep it away
+        // from client-side scripts.
         httpOnly: true,
       });
     }

@@ -12,11 +12,10 @@ import type {
 
 import { newId } from '../../../utils/nanoid';
 
-// Prevent Turbopack/webpack from statically analyzing this import.
-// The bundler rewrites bare `import('...')` calls into require/resolve
-// that fail when the package lives in a different workspace. By
-// constructing the specifier at runtime the import stays a true
-// dynamic import that Node resolves at execution time.
+// Prevent Turbopack/webpack from statically analyzing this import. Bundlers
+// rewrite bare `import('...')` calls into a require/resolve that fails when
+// the package lives in a different workspace. Constructing the specifier at
+// runtime keeps the import dynamic so Node resolves it at execution time.
 const _upstashRedisId = ['@upstash', 'redis'].join('/');
 const _importUpstashRedis = () =>
   new Function('id', 'return import(id)')(_upstashRedisId) as Promise<any>;
@@ -73,8 +72,8 @@ const aggregationsTable: TableDefinition = {
  * Upstash Redis Stream adapter for durable A/B event storage with batch flush.
  *
  * Requires `@upstash/redis` as a peer dependency. Events are stored in Redis
- * Streams and flushed to Postgres on demand. Live result deltas are NOT this
- * adapter's concern — the `trackEvent` endpoint publishes them over the shared
+ * Streams and flushed to Postgres on demand. Live result deltas are not this
+ * adapter's concern: the `trackEvent` endpoint publishes them over the shared
  * core realtime transport (see `publishLiveDelta`), so they work with any
  * analytics adapter.
  */
@@ -102,15 +101,13 @@ export function upstashAnalytics(
 
     async track(event: AnalyticsEvent) {
       // The Upstash adapter is the A/B-dashboard sink: it streams per-test
-      // events (keyed by testId) for live deltas + flush-to-aggregations, and
-      // it does NOT provision an ab_test_events table. A non-A/B analytics
-      // event (no `ab`) therefore has no durable home in this adapter and is
-      // DROPPED — there is no other sink to catch it until the M3 event-bus
-      // ships (see AB_MEASUREMENT_DESIGN §9 carry-forward). Make the drop loud
-      // rather than silent so a single-sink upstash deployment can see it.
+      // events (keyed by testId) for live deltas and flush-to-aggregations,
+      // and it does not provision an ab_test_events table. A non-A/B event
+      // (no `ab`) therefore has no durable home here. Make the drop loud so a
+      // single-sink upstash deployment can see it.
       if (!event.ab) {
         console.warn(
-          `[cms] upstashAnalytics dropped a non-A/B event ("${event.name}"): this A/B-realtime adapter has no durable store for non-A/B events. Use the postgres adapter (or wait for the M3 event-bus) to persist page_view / form_submit events.`,
+          `[cms] upstashAnalytics dropped a non-A/B event ("${event.name}"): this A/B-realtime adapter has no durable store for non-A/B events. Use the postgres adapter to persist page_view / form_submit events.`,
         );
         return;
       }
@@ -130,9 +127,6 @@ export function upstashAnalytics(
       }
 
       await redis.xadd(streamKey, '*', entry);
-      // Live result deltas are published by the trackEvent endpoint via the
-      // shared core realtime transport (see publishLiveDelta) — not here. This
-      // adapter only owns durable event storage.
     },
 
     async query(testId, options) {
@@ -179,8 +173,9 @@ export function upstashAnalytics(
             conversions: 0,
             uniqueVisitors: 0,
             conversionRate: 0,
-            // The upstash pre-aggregate flush does not track interaction ids, so
-            // the funnel (attempts/completionRate) is the postgres path only.
+            // The upstash pre-aggregate flush does not track interaction ids,
+            // so the funnel (attempts/completionRate) is the postgres path
+            // only.
             attempts: 0,
             completionRate: 0,
             eventBreakdown: {},

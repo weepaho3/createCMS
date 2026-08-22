@@ -6,15 +6,16 @@ import { variableScopeConditions } from '../../core/scope';
 import { i18nVariables } from './tables';
 
 /**
- * The i18n plugin's variable resolver. Loads the variable
- * map for the active language WITH fallback: it queries every variable whose
- * language is in `[language, ...fallback]` (within the active tenant), then for
- * each `key` keeps the value from the highest-ranked language in the chain — so
- * the active language wins, and a value missing there falls back down the chain.
+ * The i18n plugin's variable resolver. Loads the variable map for the active
+ * language with fallback: it queries every variable whose language is in
+ * `[language, ...fallback]` (within the active tenant), then for each `key`
+ * keeps the value from the highest-ranked language in the chain, so the active
+ * language wins and a value missing there falls back down the chain.
  *
- * Like the reference resolver, it is built ONLY when a language is active, so it
- * assumes i18n is on. Tenant scoping reuses the generic `variableScopeConditions`
- * (language excluded — the chain resolves language, not a hard equality).
+ * Like the reference resolver, it is built only when a language is active, so
+ * it assumes i18n is on. Tenant scoping reuses the generic
+ * `variableScopeConditions` (language excluded; the chain resolves language,
+ * not a hard equality).
  */
 export function buildI18nVariableResolver(
   language: string,

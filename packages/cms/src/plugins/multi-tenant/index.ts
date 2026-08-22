@@ -20,7 +20,7 @@ import { multiTenantSchema } from './schema';
  *
  * authMiddleware: async (ctx): Promise<MultiTenantMiddlewareResult> => {
  *   const session = await getSession(ctx);
- *   // Secure default: the tenant comes from the trusted session, NOT the
+ *   // Secure default: the tenant comes from the trusted session, not the
  *   // request. Only pass { allowRequestOverride: true } after an admin check.
  *   const tenantSlug = resolveTenantSlug(ctx, session.organizationSlug);
  *   return {
@@ -37,22 +37,22 @@ export type MultiTenantMiddlewareResult = MiddlewareResult & {
 /**
  * Resolves the tenant slug for the current request.
  *
- * Secure by default: reads the tenant from the session `fallback` and
- * IGNORES any request-supplied `tenantSlug` (`body`/`query`). This prevents
- * a caller from crossing tenant boundaries by putting a `tenantSlug` in the
- * request. Request-supplied values are only consulted when you explicitly
- * pass `{ allowRequestOverride: true }`.
+ * Secure by default: reads the tenant from the session `fallback` and ignores
+ * any request-supplied `tenantSlug` (`body`/`query`). This prevents a caller
+ * from crossing tenant boundaries by putting a `tenantSlug` in the request.
+ * Request-supplied values are only consulted when you explicitly pass
+ * `{ allowRequestOverride: true }`.
  *
  * When overrides are enabled the priority is:
- * `body.tenantSlug -> query.tenantSlug -> fallback`.
+ * `body.tenantSlug`, then `query.tenantSlug`, then `fallback`.
  *
  * @param ctx      - The middleware context (must have `request`)
  * @param fallback - Trusted tenant slug from the session (e.g.
  *                   `session.organizationSlug`)
- * @param opts     - Pass `{ allowRequestOverride: true }` ONLY after an admin
+ * @param opts     - Pass `{ allowRequestOverride: true }` only after an admin
  *                   check to honor a request-supplied `tenantSlug`
  *                   (e.g. admin cross-tenant access). Gate this behind an
- *                   authorization check — never enable it unconditionally.
+ *                   authorization check; never enable it unconditionally.
  */
 export function resolveTenantSlug(
   ctx: { request?: CMSMiddlewareRequest },

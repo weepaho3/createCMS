@@ -125,7 +125,7 @@ export function mergeSchemaSources(sources: SchemaSource[]): MergedSchema {
     }
   }
 
-  // Phase 2: Apply extensions
+  // Apply extensions
   for (const source of sources) {
     const sourceExtensions = source.schema.extend ?? {};
     for (const [targetTableKey, extension] of Object.entries(
@@ -165,7 +165,7 @@ export function mergeSchemaSources(sources: SchemaSource[]): MergedSchema {
     }
   }
 
-  // Phase 3: Validation
+  // Validate
   const enumDbNames = new Set<string>();
   for (const enumDef of Object.values(enums)) {
     if (enumDbNames.has(enumDef.dbName)) {

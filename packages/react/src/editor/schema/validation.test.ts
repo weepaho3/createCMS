@@ -54,7 +54,7 @@ describe('isEmptyValue', () => {
   });
 });
 
-describe('validateField — required gate', () => {
+describe('validateField: required gate', () => {
   const requiredStringWithMinLength: BlockProperty = {
     type: 'string',
     label: 'X',
@@ -115,8 +115,8 @@ describe('validateField — required gate', () => {
   });
 });
 
-describe('validateField — string / richText', () => {
-  const paragraphText = pages.blocks.paragraph.properties.text; // pattern '^[A-Z]'
+describe('validateField: string / richText', () => {
+  const paragraphText = pages.blocks.paragraph.properties.text;
 
   it('"a" with minLength: 2 → minLength', () => {
     expect(
@@ -162,7 +162,7 @@ describe('validateField — string / richText', () => {
   });
 });
 
-describe('validateField — number', () => {
+describe('validateField: number', () => {
   const plainNumber: BlockProperty = { type: 'number', label: 'N' };
 
   it('"3" → type', () => {
@@ -190,7 +190,7 @@ describe('validateField — number', () => {
   });
 });
 
-describe('validateField — boolean', () => {
+describe('validateField: boolean', () => {
   const boolSpec: BlockProperty = { type: 'boolean', label: 'B' };
 
   it('"true" → type', () => {
@@ -202,7 +202,7 @@ describe('validateField — boolean', () => {
   });
 });
 
-describe('validateField — date', () => {
+describe('validateField: date', () => {
   const dateSpec: BlockProperty = { type: 'date', label: 'D' };
 
   it('"2024-01-01T00:00:00Z" → []', () => {
@@ -234,7 +234,7 @@ describe('validateField — date', () => {
   });
 });
 
-describe('validateField — select', () => {
+describe('validateField: select', () => {
   const variant = pages.blocks.cta.properties.variant;
 
   it('"solid" → []', () => {
@@ -250,8 +250,8 @@ describe('validateField — select', () => {
   });
 });
 
-describe('validateField — link', () => {
-  const link = pages.blocks.cta.properties.link; // required, allowedKinds internal/external, allowedCollections pages
+describe('validateField: link', () => {
+  const link = pages.blocks.cta.properties.link;
   const adHocOptionalLink: BlockProperty = { type: 'link', label: 'L' };
 
   it('{kind: external, url: /docs} → []', () => {
@@ -322,11 +322,11 @@ describe('validateField — link', () => {
   });
 });
 
-describe('validateField — list', () => {
-  const tags = pages.blocks.cta.properties.tags; // of string minLength 1, min 1, max 3, NOT required
+describe('validateField: list', () => {
+  const tags = pages.blocks.cta.properties.tags;
   const sizes = pages.blocks.cta.properties.sizes;
 
-  it('[] → [minItems] (present, optional, below min — like the server)', () => {
+  it('[] → [minItems] (present, optional, below min, like the server)', () => {
     expect(codes(validateField(tags, []))).toEqual(['minItems']);
   });
 

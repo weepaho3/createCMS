@@ -30,16 +30,13 @@ const NANOID_SOURCE_PATH = path.resolve(__dirname, '../../src/utils/nanoid.ts');
 const TMP_DIR = path.resolve(__dirname, '../../.test-schema');
 
 /**
- * Merges core + plugin schemas via the codegen pipeline, writes a temp
- * file, dynamically imports it, and returns the Drizzle schema module.
+ * Merges core + plugin schemas via the codegen pipeline, writes a temp file,
+ * dynamically imports it, and returns the Drizzle schema module.
  *
- * The temp file is created within the project directory (packages/cms/.test-schema/)
- * so that module resolution works correctly for imports like 'drizzle-orm'.
- *
- * The ESM module is evaluated in memory once imported, so the temp file is
- * unlinked immediately after import — nothing else references it on disk.
- * This runs inside the memoized data-dir builder, so it executes at most
- * once per schema-set.
+ * The temp file lives inside the project directory (packages/cms/
+ * .test-schema/) so module resolution works for imports like 'drizzle-orm'.
+ * The ESM module is resident in memory once imported, so nothing else
+ * references the file on disk.
  */
 async function generateMergedSchema(
   plugins: Array<{ name: string; schema: SchemaModule }>,
@@ -68,7 +65,6 @@ async function generateMergedSchema(
     const mod = await import(tmpFile);
     return mod;
   } finally {
-    // The module is resident in memory after import; remove the temp file.
     await unlink(tmpFile).catch(() => {});
   }
 }
@@ -94,7 +90,7 @@ function pgliteVersion(): string {
       if (pkg.name === '@electric-sql/pglite' && pkg.version)
         return pkg.version;
     } catch {
-      // No package.json at this level — keep walking up.
+      // No package.json at this level; keep walking up.
     }
     const parent = path.dirname(dir);
     if (parent === dir) return 'unknown';
@@ -107,8 +103,8 @@ const DUMP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Best-effort removal of stale dump files so schema churn during development
- * does not grow the cache dir unboundedly (each dump is ~40MB). Runs only on
- * the cache-miss path, so the hot path never pays for it.
+ * does not grow the cache dir unboundedly. Runs only on the cache-miss path,
+ * so the hot path never pays for it.
  */
 async function pruneStaleDumps(exclude: string): Promise<void> {
   try {
@@ -126,28 +122,22 @@ async function pruneStaleDumps(exclude: string): Promise<void> {
 }
 
 /**
- * Memoizes a *migrated data directory* per schema-set — in memory for this
+ * Memoizes a *migrated data directory* per schema-set: in memory for this
  * module registry, and on disk (content-addressed) across processes and runs.
  *
- * A bare `new PGlite()` pays for `initdb` — bootstrapping the Postgres system
- * catalogs — which dominates setup (~660ms of a ~730ms boot on an M-series
- * Mac; the ~170 DDL statements are only ~70ms of it). Restoring a dump skips
- * initdb entirely (~150ms). With 500+ `setupTestCMS` calls in the suite that
- * is the difference between a CI test step measured in minutes and one
- * measured in seconds.
+ * A bare `new PGlite()` pays for `initdb` (bootstrapping the Postgres system
+ * catalogs), which dominates boot; restoring a dump skips initdb entirely.
+ * The in-memory map alone is not enough because vitest isolates the module
+ * registry per test file, so a module-level cache is rebuilt by every file;
+ * the disk layer makes the template build a once-per-schema-change cost.
  *
- * The in-memory map alone is not enough: vitest isolates the module registry
- * per test *file*, so a module-level cache is rebuilt by every file. The disk
- * layer (packages/cms/.test-schema/pgdata-<hash>.tar) makes the template
- * build a once-per-schema-change cost instead of once-per-file. The file is
- * keyed by a hash of the PGlite version plus the exact DDL, so it can never
- * go stale: any schema or PGlite change produces a new file. Concurrent
- * workers may race to build the same dump on a cold cache; each writes to a
- * pid-suffixed temp file and renames it into place, which is atomic, so
- * readers only ever see complete dumps.
- *
- * The cached value is a Promise, so concurrent boots of the same schema-set
- * within one file dedupe onto a single build (or disk read).
+ * The dump file is keyed by a hash of the PGlite version plus the exact DDL,
+ * so it can never go stale: any schema or PGlite change produces a new file.
+ * Concurrent workers may race to build the same dump on a cold cache; each
+ * writes to a pid-suffixed temp file and renames it into place, which is
+ * atomic, so readers only ever see complete dumps. The cached value is a
+ * Promise, so concurrent boots of the same schema-set within one file dedupe
+ * onto a single build.
  */
 const dataDirCache = new Map<string, Promise<Blob>>();
 
@@ -190,9 +180,9 @@ async function getMigratedDataDir(
         await db.execute(stmt);
       }
       // 'none': the dump is handed straight back to `loadDataDir`, so gzip
-      // would only cost CPU on both ends. The template is NOT closed — see
-      // releaseClientsFrom for why close() is never safe here; dropping the
-      // reference lets the GC reclaim it.
+      // would only cost CPU on both ends. The template is never close()d
+      // (see releaseClientsFrom); dropping the reference lets the GC reclaim
+      // it.
       const dump = await template.dumpDataDir('none');
 
       await mkdir(TMP_DIR, { recursive: true });
@@ -215,22 +205,20 @@ async function getMigratedDataDir(
 
 /**
  * Worker-process-global state, stashed on globalThis because vitest resets
- * the module registry per test *file* — module-level state would be rebuilt
- * by every file, while the process (and therefore this object) lives on.
+ * the module registry per test file: module-level state would be rebuilt by
+ * every file, while the process (and therefore this object) lives on.
  *
  * `shared` holds ONE long-lived PGlite per schema-set, reused by every test
  * in the worker with a TRUNCATE-based reset between hand-outs. This is not
  * an optimization but a correctness requirement on Linux: dropped PGlite
- * instances are never reclaimed there — not even by an explicit gc() — so
- * every instance costs its ~200MB+ WASM heap permanently. A suite that boots
- * one instance per test (500+ boots) inevitably OOMs a 16GB CI runner; a
- * handful of persistent instances per worker stays bounded everywhere.
- * (On macOS the GC does reclaim dropped instances, which is why the leak
- * never showed locally.)
+ * instances are never reclaimed there, not even by an explicit gc(), so every
+ * instance costs its multi-hundred-MB WASM heap permanently and a suite that
+ * boots one instance per test inevitably OOMs a CI runner. (On macOS the GC
+ * does reclaim dropped instances.)
  *
  * `testSeq` counts tests (bumped by vitest.setup.ts) so `setupTestDB` can
  * detect a second call within the same test and hand out a fresh throwaway
- * instance instead of the shared one — two callers inside one test must not
+ * instance instead of the shared one: two callers inside one test must not
  * see each other's data.
  */
 type SharedDB = { client: PGlite; handedOutInSeq: number };
@@ -252,7 +240,7 @@ export function beginTest(): number {
  * Every *throwaway* PGlite client opened by `setupTestDB` (second and later
  * DBs within a single test), in creation order. The global hooks in
  * vitest.setup.ts drain this registry after each test; the shared singletons
- * above are deliberately NOT in here — they live until the worker exits.
+ * above are deliberately not in here, they live until the worker exits.
  */
 const openClients: PGlite[] = [];
 
@@ -267,27 +255,17 @@ export function markClientBoundary(): number {
  *
  * Deliberately does NOT call `client.close()`: PGlite 0.5.x's WASM shutdown
  * busy-loops forever on some close calls (reproduced deterministically in
- * this suite — the 4th close in a file pegs the CPU and never returns; the
- * spin is synchronous, so it cannot even be raced against a timeout). An
- * unreferenced instance is plain JS objects plus a WASM ArrayBuffer, and V8
- * tracks that external memory, so ordinary GC pressure reclaims it promptly
- * — verified: the full suite stays bounded (a few GB per worker) on release
- * alone. The gc() call is opportunistic: Vitest 4 offers no way to pass
- * --expose-gc to workers, so it is normally undefined; it only kicks in if
- * the runtime exposes it (e.g. NODE_OPTIONS=--expose-gc).
+ * this suite; the spin is synchronous, so it cannot even be raced against a
+ * timeout). An unreferenced instance is plain JS objects plus a WASM
+ * ArrayBuffer, and V8 tracks that external memory, so ordinary GC pressure
+ * reclaims it promptly. The gc() call is opportunistic: vitest workers offer
+ * no --expose-gc, so it only kicks in if the runtime exposes it.
  */
 export async function releaseClientsFrom(index: number): Promise<void> {
   openClients.splice(index);
   (globalThis as { gc?: () => void }).gc?.();
 }
 
-/**
- * Spins up an in-memory PGlite instance and applies the Drizzle schema.
- *
- * When `plugins` is provided, runs the full codegen pipeline (merge core +
- * plugin schemas -> emit -> temp file -> migrate). Otherwise uses the
- * pre-built `src/schema` directly for faster startup.
- */
 /**
  * Empties every user table on the shared instance so the next test starts
  * from a blank database. TRUNCATE (instead of DROP SCHEMA + DDL replay)
@@ -296,7 +274,7 @@ export async function releaseClientsFrom(index: number): Promise<void> {
  */
 async function resetSharedDB(client: PGlite): Promise<void> {
   // The generated schema lives in its own "cms" pg schema (not public), and
-  // plugins may add more — collect every non-system table.
+  // plugins may add more; collect every non-system table.
   const tables = await client.query<{ schemaname: string; tablename: string }>(
     `SELECT schemaname, tablename FROM pg_tables
      WHERE schemaname NOT IN ('pg_catalog', 'information_schema')`,
@@ -308,24 +286,27 @@ async function resetSharedDB(client: PGlite): Promise<void> {
   await client.exec(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`);
 }
 
+/**
+ * Spins up an in-memory PGlite instance and applies the Drizzle schema.
+ * When `plugins` is provided, runs the full codegen pipeline (merge core +
+ * plugin schemas -> emit -> temp file -> migrate); otherwise uses the
+ * pre-built `src/schema` directly.
+ */
 export const setupTestDB = async (options?: {
   plugins?: Array<{ name: string; schema: SchemaModule }>;
   /**
    * Forces a private throwaway instance instead of the shared per-worker
    * singleton. Required for tests that mutate the SCHEMA (ALTER/CREATE
    * TABLE): the truncate reset only clears rows, so DDL would leak into
-   * every later test on the shared instance. Costs a full instance — use
-   * only where needed.
+   * every later test on the shared instance.
    */
   isolated?: boolean;
 }) => {
   const plugins = options?.plugins;
   // The cache/singleton key is the ordered plugin-name list. This is sound
   // only because every call site maps a given name to ONE fixed schema module
-  // (a static const or a no-arg builder). If a test ever passed the same
-  // `name` with a different `schema`, it would reuse the first schema's
-  // instance — the disk layer is immune (content-addressed), but the
-  // singleton would still be stale. Keep names stable.
+  // (a static const or a no-arg builder); a repeated `name` with a different
+  // `schema` would reuse the first schema's instance. Keep names stable.
   const key =
     plugins && plugins.length > 0
       ? `plugins:${plugins.map((p) => p.name).join('|')}`
@@ -363,8 +344,7 @@ export const setupTestDB = async (options?: {
   let client: PGlite;
   if (shared.handedOutInSeq === testDBGlobals.testSeq) {
     // Second DB within the same test: a fresh throwaway instance, released
-    // by the vitest.setup.ts hooks right after the test. Rare enough that
-    // the Linux no-reclaim behaviour stays harmless.
+    // by the vitest.setup.ts hooks right after the test.
     client = new PGlite({ loadDataDir: await build() });
     openClients.push(client);
   } else {
@@ -375,10 +355,6 @@ export const setupTestDB = async (options?: {
 
   const db = drizzle(client, { schema: baseSchema });
 
-  // The data dir is memoized, the schema temp file is removed inside the
-  // generator, and instance lifetimes are owned by the vitest.setup.ts hooks
-  // (throwaways) or the worker process (shared) — nothing to clean up per
-  // call.
   const cleanup: () => Promise<void> = async () => {};
 
   return { db, client, cleanup };

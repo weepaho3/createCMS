@@ -49,8 +49,9 @@ export function useOptimize(
   const runIdRef = useRef(0);
 
   const inputArray = Array.isArray(input) ? input : [input];
-  // Content key: a different array of the SAME length (but different files) must
-  // still re-run the optimize effect, so key on file identity, not array length.
+  // Content key: a different array of the same length (but different files)
+  // must still re-run the optimize effect, so key on file identity, not array
+  // length.
   const filesKey = inputArray
     .map((f) => `${f.name}:${f.size}:${f.lastModified}`)
     .join('|');

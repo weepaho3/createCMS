@@ -18,8 +18,8 @@ export type NotificationPayload = {
    * The actor's exposed user columns, resolved at dispatch time from the CMS
    * `user` config (the same `exposeColumns` allowlist `withUser` uses, sent in
    * full). Present on the realtime push and `onNotification` payloads so a
-   * consumer can show the responsible user immediately; `null` when there is no
-   * actor or no `user` config. NOT a persisted column — durable reads enrich
+   * consumer can show the responsible user immediately; `null` when there is
+   * no actor or no `user` config. Not a persisted column: durable reads enrich
    * separately via `list`'s `withUser` flag.
    */
   actorUser?: Record<string, unknown> | null;

@@ -1,5 +1,5 @@
 /**
- * Stable structural hash of a JSON-ish value — object keys sorted (properties
+ * Stable structural hash of a JSON-ish value: object keys sorted (properties
  * are an unordered bag), arrays ordered (`childIds` order matters),
  * `undefined` dropped. Used only for dirty detection, never for security.
  * FNV-1a over the canonical JSON string.

@@ -26,8 +26,8 @@ const pluginPruningRecords = pgTable('plugin_pruning_records', {
 });
 
 /**
- * Helper: creates a root and adds N child blocks to it, producing N+1 commits
- * (1 initial + N createBlock commits). Returns all IDs needed for assertions.
+ * Creates a root and adds N child blocks to it, producing N+1 commits (1
+ * initial + N createBlock commits). Returns all IDs needed for assertions.
  */
 async function createRootWithCommits(
   cms: Awaited<ReturnType<typeof setupTestCMS>>['cms'],
@@ -66,8 +66,8 @@ async function createRootWithCommits(
 }
 
 /**
- * Helper: backdate commits to simulate aging. Sets createdAt to `daysAgo` days
- * in the past for the specified commit IDs.
+ * Backdates commits to simulate aging: sets createdAt to `daysAgo` days in the
+ * past for the specified commit IDs.
  */
 async function backdateCommits(
   db: Awaited<ReturnType<typeof setupTestCMS>>['db'],
@@ -992,7 +992,7 @@ describe('runPruning', () => {
   });
 });
 
-describe('runPruning — archived-root hard-delete + resumability (5c)', () => {
+describe('runPruning: archived-root hard delete and resumability', () => {
   it('hard-deletes a soft-archived root and its full history past the trash window', async () => {
     const { cms, db } = await setupTestCMS({
       dataRetention: { keepDays: 7, keepMinCommits: 1, archiveKeepDays: 7 },

@@ -1,7 +1,7 @@
 import type { AnyEditorSchema } from './types';
 
 /**
- * A resolved per-parent acceptance rule — `only` = whitelist (`accepts: [...]`),
+ * A resolved per-parent acceptance rule: `only` = whitelist (`accepts: [...]`),
  * `except` = blacklist (`excludes: [...]` on an open base). An open parent has
  * no rule at all.
  */
@@ -13,12 +13,12 @@ export type PlacementRule =
  * Precomputed placement lookup for one schema. Same shape and semantics as
  * `buildPlacementIndex` in core
  * (`packages/cms/src/core/blocks/placement.ts`), which the server guard
- * uses — the editor must never allow a drop the server rejects, or reject
+ * uses: the editor must never allow a drop the server rejects, or reject
  * one it accepts, so keep the two in lockstep.
  *
  * - `rules`: parent block type (or `'root'`) → rule; a parent absent here is open.
  * - `containers`: block types with `allowChildren: true`. The root is never
- *   listed — it always holds children — and is keyed as the literal `'root'`.
+ *   listed: it always holds children, and is keyed as the literal `'root'`.
  * - `blockTypes`: every block type of the schema, in definition order (the
  *   universe `allowedChildTypes` filters).
  */
@@ -43,7 +43,7 @@ export function getPlacement(schema: AnyEditorSchema): PlacementIndex {
         // Open base ('*' or omitted) minus an explicit blacklist.
         rules.set(parent, { mode: 'except', set: new Set(entry.excludes) });
       }
-      // else: open ('*' / nothing, no excludes) — no rule.
+      // else: open ('*' / nothing, no excludes): no rule.
     }
   }
   const containers = new Set<string>();
@@ -79,7 +79,7 @@ export function canPlace(
 
 /**
  * The block types `parentType` (or `'root'`) accepts as children, in schema
- * definition order — the palette filter. `[]` for a non-container.
+ * definition order (the palette filter). `[]` for a non-container.
  */
 export function allowedChildTypes(
   index: PlacementIndex,

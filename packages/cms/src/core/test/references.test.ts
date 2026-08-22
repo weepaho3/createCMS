@@ -136,9 +136,9 @@ async function setupReferenceCMS() {
               },
             },
           },
-          // cms-03: a `list` of `reference` — a MULTI-reference. Its elements are
-          // walked by the same usage-indexing/delete-guard machinery as a scalar
-          // reference.
+          // A `list` of `reference`: a multi-reference. Its elements are
+          // walked by the same usage-indexing/delete-guard machinery as a
+          // scalar reference.
           reusableList: {
             label: 'Reusable List',
             properties: {
@@ -375,10 +375,6 @@ describe('reference field', () => {
   });
 });
 
-// ============================================================================
-// RB1 — reference usage index (ships dark: rows populate, nothing reads them yet)
-// ============================================================================
-
 describe('reference usage index (RB1)', () => {
   it('indexes a reference property value into content_usages as targetKind=reference', async () => {
     const { cms, db } = await setupReferenceCMS();
@@ -518,7 +514,7 @@ describe('reference usage index (RB1)', () => {
   it('does not index non-reference properties', async () => {
     const { cms, db } = await setupReferenceCMS();
 
-    // A page with only a string title + a paragraph (richText) — no references.
+    // A page with only a string title + a paragraph (richText), no references.
     const page = await cms.api.pages.createRoot({
       body: { slug: '/plain', properties: { title: 'Plain' } },
     });
@@ -540,10 +536,6 @@ describe('reference usage index (RB1)', () => {
     expect(rows).toHaveLength(0);
   });
 });
-
-// ============================================================================
-// RB2 — reference usage queries + endpoint
-// ============================================================================
 
 describe('reference usage queries (RB2)', () => {
   it('getReferenceUsages reports every page that embeds a reusable block', async () => {
@@ -655,10 +647,6 @@ describe('reference usage queries (RB2)', () => {
     expect(await isReferencedByLiveContent(db, reusable.rootId)).toBe(false);
   });
 });
-
-// ============================================================================
-// RB4 — delete guard (ROOT_IN_USE): an embedded reusable block can't be deleted
-// ============================================================================
 
 describe('reference delete guard (RB4)', () => {
   it('blocks deleting a reusable block embedded on a live page', async () => {
@@ -1462,10 +1450,6 @@ describe('cascade revalidation', () => {
     expect(cascadeRootIds).toEqual(expectedRootIds);
   });
 });
-
-// ============================================================================
-// F0 — embedded reference resolves to a deterministic branch (multi-branch block)
-// ============================================================================
 
 describe('reference resolution determinism (F0)', () => {
   it('resolves a multi-branch embedded block to a stable, oldest-published branch', async () => {

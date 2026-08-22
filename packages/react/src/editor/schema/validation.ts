@@ -67,7 +67,7 @@ function linkTarget(link: Record<string, unknown>): unknown {
  * Whether a value counts as "empty" for a `required` check: `null`/`undefined`,
  * a blank string, an empty list, or a link without a real target. `0` and
  * `false` are values, not gaps. Stricter than the server on blank strings and
- * empty lists — on purpose: this gates Save/Publish in the editor.
+ * empty lists, on purpose: this gates Save/Publish in the editor.
  */
 export function isEmptyValue(spec: BlockProperty, value: unknown): boolean {
   if (value === null || value === undefined) return true;
@@ -82,11 +82,11 @@ export function isEmptyValue(spec: BlockProperty, value: unknown): boolean {
 }
 
 /**
- * Validates one value against its property spec — required, type, and the
+ * Validates one value against its property spec: required, type, and the
  * declarative constraints (`minLength`/`maxLength`/`pattern`, `min`/`max`,
  * list `min`/`max` length, `select` options, link kinds/collections/target).
  * Mirrors the rules core enforces with zod on the write path, minus zod; the
- * server stays authoritative — this is the client-side pre-check.
+ * server stays authoritative, this is the client-side pre-check.
  */
 export function validateField(
   spec: BlockProperty,
@@ -252,8 +252,8 @@ export type MissingRequiredNode = {
 };
 
 /**
- * Every `required` property left empty across the given nodes — blocks and the
- * root (`type === 'root'` reads the root's fields) — for gating Save/Publish.
+ * Every `required` property left empty across the given nodes (blocks and the
+ * root; `type === 'root'` reads the root's fields) for gating Save/Publish.
  * Node order, then definition order. Uses {@link isEmptyValue}, so a blank
  * string, an empty list and a link without a target all count as missing.
  */

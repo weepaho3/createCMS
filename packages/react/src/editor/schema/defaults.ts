@@ -5,7 +5,7 @@ export type DefaultValuesOptions = {
    * Also fill kinds WITHOUT a declared `defaultValue` with a neutral value:
    * `boolean` → `false`, `number` → `0`, `select` → its first option's value
    * (only when it has options), `string`/`richText` → `''`, `list` → `[]`.
-   * `date`, `image`, `reference` and `link` stay ABSENT — an empty string is
+   * `date`, `image`, `reference` and `link` stay ABSENT: an empty string is
    * not a valid value for them (an ISO datetime, an asset/root id, a
    * `LinkValue`), so "no key" is the only honest default and the controls
    * treat `undefined` as empty. Off by default: core's `createBlock` seeds
@@ -18,7 +18,7 @@ export type DefaultValuesOptions = {
 /**
  * Initial `properties` for a new block (or root) of the given definition.
  * Same rule as core's `defaultPropertiesFor`: every property with a declared
- * `defaultValue` (other than `undefined`) contributes `key → defaultValue` —
+ * `defaultValue` (other than `undefined`) contributes `key → defaultValue`;
  * `null`, `false`, `0` and `''` count as declared. Nothing else, unless
  * `fillDefaults` is on.
  */
@@ -53,7 +53,7 @@ export function defaultValuesFor(
         out[key] = [];
         break;
       default:
-        // date, image, reference, link: no valid neutral value — stay absent.
+        // date, image, reference, link: no valid neutral value, stay absent.
         break;
     }
   }

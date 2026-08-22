@@ -285,7 +285,7 @@ describe('useCmsDocument save', () => {
       try {
         await result.current.save(result.current.tree!);
       } catch {
-        // expected
+        // the mock rejects by design; the assertion below checks the surfaced error
       }
     });
 
@@ -318,7 +318,7 @@ describe('useCmsDocument save', () => {
       try {
         await result.current.save(result.current.tree!);
       } catch {
-        // expected
+        // the mock rejects by design; the assertion below checks the surfaced error
       }
     });
 

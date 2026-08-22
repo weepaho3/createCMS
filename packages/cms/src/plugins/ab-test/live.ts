@@ -6,7 +6,7 @@ import * as z from 'zod';
 
 import type { AggregatedResults, LiveDelta } from './analytics/types';
 
-// Local wire schema for the `delta` event — types the live subscription.
+// Local wire schema for the `delta` event; types the live subscription.
 const liveDeltaSchema = z.object({
   variantId: z.string(),
   eventType: z.string(),
@@ -21,7 +21,7 @@ export type UseLiveResultsOptions = {
   /** The SSR/initial absolute aggregate (from `getResults`). */
   initial: AggregatedResults;
   /**
-   * Re-fetch the absolute aggregate to reconcile on (re)connect — e.g.
+   * Re-fetch the absolute aggregate to reconcile on (re)connect, e.g.
    * `() => client.abTest.getResults({ query: { testId } })`. Without it the hook
    * relies on `initial` + live deltas (increments published before the stream
    * connects are then not back-filled).
@@ -50,7 +50,7 @@ export function useLiveResults({
 
   const applyDelta = useCallback((delta: LiveDelta) => {
     setResults((prev) => {
-      // Conversions count the test's GOAL event — the same rule getResults uses;
+      // Conversions count the test's GOAL event (the same rule getResults uses);
       // 'conversion' is the goal-less default.
       const goalEvent = prev.goalEvent ?? 'conversion';
       const variants = prev.variants.map((v) => {
@@ -103,8 +103,9 @@ export function useLiveResults({
     events: ['delta'],
     onData({ data }) {
       // The lib delivers `data` unvalidated (its wire schema is z.unknown());
-      // validate against our schema before applying (defense-in-depth — ab:live
-      // is a public channel — and guards the aggregate against malformed input).
+      // validate against our schema before applying (defense-in-depth: ab:live
+      // is a public channel, and this guards the aggregate against malformed
+      // input).
       const parsed = liveDeltaSchema.safeParse(data);
       if (parsed.success) applyDelta(parsed.data);
     },

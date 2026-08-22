@@ -11,21 +11,15 @@ import { readRootSlug, ROOT_SLUG_PROP } from '../blocks/reconstruct-snapshot';
 import { diffProperties } from './property-diff';
 import { diffRichText } from './text-diff';
 
-// ============================================================================
 // Identity-based change classification
 //
-// Classifies the base → source delta of one root into the flat `BlockChange`
+// Classifies the base to source delta of one root into the flat `BlockChange`
 // list. Unlike a positional comparison, movement is identity-based: a block is
 // `moved` only when it was reparented or is a true reorder outlier among the
 // surviving common siblings (LIS-based), and a parent is `childrenReordered`
 // only when the RELATIVE order of its surviving common children changed.
 // Insertions and deletions around untouched siblings therefore produce no
-// cascade — only the added/deleted block itself gets an entry.
-// ============================================================================
-
-// ============================================================================
-// Types
-// ============================================================================
+// cascade; only the added/deleted block itself gets an entry.
 
 /**
  * The property-spec shape the classifier needs from a collection definition:
@@ -36,10 +30,6 @@ import { diffRichText } from './text-diff';
 export type DiffPropertySpec = { type: string; of?: { type: string } };
 
 type ParentInfo = { parentId: string; index: number };
-
-// ============================================================================
-// Snapshot helpers
-// ============================================================================
 
 /** True when the block exists in the snapshot and is not a tombstone. */
 function isAlive(
@@ -94,9 +84,7 @@ function withoutSlug(
   return rest;
 }
 
-// ============================================================================
 // Rich-text spec lookup
-// ============================================================================
 
 /**
  * Builds the `isRichText` predicate for one block from its property specs:
@@ -123,9 +111,7 @@ function makeIsRichText(
   };
 }
 
-// ============================================================================
 // Reorder detection (LIS)
-// ============================================================================
 
 /**
  * Positions (into `seq`) of the longest strictly increasing subsequence of a
@@ -214,9 +200,7 @@ function detectReorders(opts: {
   return { reorderedParents, movedByBlockId };
 }
 
-// ============================================================================
 // classifyChanges
-// ============================================================================
 
 /**
  * Classifies the base → source delta of one root into the flat change list

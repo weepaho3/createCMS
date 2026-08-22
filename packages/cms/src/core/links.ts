@@ -67,7 +67,7 @@ export async function resolveLinkPaths(
   resolver: ReferenceResolver,
   scopeColumns: Record<string, unknown> | undefined,
 ): Promise<void> {
-  // 1. Collect every link occurrence; group internal targets by collection.
+  // Collect every link occurrence; group internal targets by collection.
   const hits: {
     props: Record<string, unknown>;
     key: string;
@@ -105,8 +105,9 @@ export async function resolveLinkPaths(
   if (hits.length === 0) return;
 
   // Defensive scope gate at the path layer too (symmetric with redirects): even
-  // though the resolver returns only in-scope targets, a misconfigured / identity
-  // resolver must not leak an out-of-scope (e.g. cross-tenant) target's path.
+  // though the resolver returns only in-scope targets, a misconfigured or
+  // identity resolver must not leak an out-of-scope (e.g. cross-tenant)
+  // target's path.
   const tenantConds = rootScopeConditions(scopeColumns);
   const rootScope: TableScope | undefined = scopeColumns
     ? {
@@ -115,7 +116,7 @@ export async function resolveLinkPaths(
       }
     : undefined;
 
-  // 2. Resolve internal targets: stored rootId -> active-language sibling -> path.
+  // Resolve internal targets: stored rootId to active-language sibling to path.
   const resolved = new Map<
     string,
     { targetRootId: string; path: string | null }
@@ -152,7 +153,7 @@ export async function resolveLinkPaths(
     });
   }
 
-  // 3. Replace each link value in place.
+  // Replace each link value in place.
   for (const { props, key, value } of hits) {
     props[key] = resolveOne(value, resolved);
   }

@@ -49,8 +49,8 @@ export function splitPath(
 /**
  * Validate that a slug segment is unique among siblings in the same collection.
  * Throws `SLUG_ALREADY_EXISTS` (default) if a conflict is found; pass
- * `conflictError: 'PUBLISH_SLUG_CONFLICT'` (cms-05 publish-time uniqueness) to
- * throw that typed error instead, carrying `{ slug, conflictingRootId }` data.
+ * `conflictError: 'PUBLISH_SLUG_CONFLICT'` to throw that typed error instead,
+ * carrying `{ slug, conflictingRootId }` data.
  */
 const SAFE_SCOPE_COLUMN = /^[a-z_][a-z0-9_]*$/i;
 
@@ -72,14 +72,14 @@ export async function validateSlugUniqueness(
     ? sql`AND r.id != ${excludeRootId}`
     : sql``;
 
-  // Authoritative app-level uniqueness over ALL active scope dimensions. The core
-  // slug index is non-unique, so THIS is the authority on every slug write. A
-  // scoping plugin passes its per-row scope columns (e.g. `language`,
-  // `tenant_slug` — the same values it stamps on insert), each ANDed in so the
-  // effective key is (…scope, collection, parentRootId, slug). Single-tenant
-  // installs pass nothing → global, identical to before. Plugin-owned columns are
-  // referenced via raw SQL (they don't exist in the core Drizzle type); the column
-  // name is validated as a safe identifier.
+  // Authoritative app-level uniqueness over ALL active scope dimensions. The
+  // core slug index is non-unique, so THIS is the authority on every slug
+  // write. A scoping plugin passes its per-row scope columns (e.g. `language`,
+  // `tenant_slug`, the same values it stamps on insert), each ANDed in so the
+  // effective key is (scope, collection, parentRootId, slug). Single-tenant
+  // installs pass nothing, which yields a global check. Plugin-owned columns
+  // are referenced via raw SQL (they don't exist in the core Drizzle type); the
+  // column name is validated as a safe identifier.
   const scopeConds = scopeColumns
     ? Object.entries(scopeColumns).flatMap(([col, val]) => {
         if (val === undefined || val === null) return [];
@@ -163,9 +163,9 @@ export async function resolveAncestors(
       SELECT p.id, p.slug, p.parent_root_id, p.collection${recSel}, a.depth + 1
       FROM cms.roots p
       JOIN ancestors a ON a.parent_root_id = p.id
-      -- A root's parent is always same-collection (+ same tenant/language when
-      -- those plugins are active); enforcing it stops the walk from ever crossing
-      -- a scope boundary on corrupted data.
+      -- A root's parent is always same-collection (and same tenant/language
+      -- when those plugins are active); enforcing it stops the walk from ever
+      -- crossing a scope boundary on corrupted data.
       WHERE p.collection = a.collection ${recMatch}
     )
     SELECT id, slug, parent_root_id
@@ -199,8 +199,8 @@ export async function resolvePathToRootId(
 ): Promise<string | null> {
   // Resolve the path WITHIN the active root scope: a scoping plugin's per-row
   // scope columns (the same it stamps on insert) are ANDed in at EVERY level of
-  // the slug chain, so a shared slug in another scope neither matches nor causes
-  // ambiguity. Built as `r`-aliased predicates here because the CTE aliases
+  // the slug chain, so a shared slug in another scope neither matches nor
+  // causes ambiguity. Built as `r`-aliased predicates because the CTE aliases
   // cms.roots as `r` (a table-qualified scope `where` would not bind to `r`).
   // Inert in single-scope installs (no columns). Mirrors validateSlugUniqueness.
   const scopeConds = scopeColumns

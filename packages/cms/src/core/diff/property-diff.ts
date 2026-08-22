@@ -1,17 +1,9 @@
 import type { PropertyChange, TextDiffSegment } from './types';
 
-// ============================================================================
-// Types
-// ============================================================================
-
 type DiffOptions = {
   isRichText?: (path: (string | number)[]) => boolean;
   diffText?: (from: string, to: string) => TextDiffSegment[];
 };
-
-// ============================================================================
-// Helpers
-// ============================================================================
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -127,9 +119,7 @@ function lcsPairs(from: unknown[], to: unknown[]): [number, number][] {
   return pairs;
 }
 
-// ============================================================================
 // Walkers
-// ============================================================================
 
 function diffValue(
   from: unknown,
@@ -230,9 +220,7 @@ function diffArray(
   }
 }
 
-// ============================================================================
 // diffProperties
-// ============================================================================
 
 /**
  * Deterministic deep diff of two block-property records.

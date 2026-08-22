@@ -8,11 +8,11 @@ import { abTest } from '../index';
 import { buildSchema } from '../schema';
 
 /**
- * AB_FANOUT F2 — server fan-out. When an embedded reusable block has a RUNNING
- * A/B test, getPublishedContent must stop collapsing it to one branch and
- * instead expose ALL its published variant branches on the ResolvedReference's
- * optional `abTest` field, with the CONTROL branch filling top-level
- * tree/properties (the no-JS / AB-off fallback the client pre-render pass swaps).
+ * Server fan-out: when an embedded reusable block has a running A/B test,
+ * getPublishedContent must stop collapsing it to one branch and instead expose
+ * all its published variant branches on the ResolvedReference's optional
+ * `abTest` field, with the control branch filling top-level tree/properties
+ * (the no-JS fallback the client pre-render pass swaps).
  */
 
 const FANOUT_COLLECTIONS = {
@@ -163,7 +163,7 @@ function isResolvedRef(value: unknown): boolean {
   );
 }
 
-describe('A/B server fan-out (F2)', () => {
+describe('A/B server fan-out', () => {
   it('exposes all variants on the embedded reference (control fills top-level)', async () => {
     const { cms } = await setupFanoutCMS();
 
@@ -223,21 +223,20 @@ describe('A/B server fan-out (F2)', () => {
     // Control fills top-level (no-JS fallback).
     expect(ref.properties.label).toBe('Control');
 
-    // The full A/B descriptor for the client pre-render pass. `variants` carries
-    // ONLY the non-control branch(es) — the control is the top-level tree, not
-    // re-embedded here (no duplicate control subtree per reference).
+    // The full A/B descriptor for the client pre-render pass. `variants`
+    // carries only the non-control branch(es); the control is the top-level
+    // tree and is not re-embedded per reference.
     expect(ref.abTest).toBeDefined();
     expect(ref.abTest.testId).toBe(testId);
     expect(ref.abTest.trafficPercentage).toBe(100);
     expect(ref.abTest.variants).toHaveLength(1);
-    // The control is NOT in `variants` — it fills the top-level tree/properties.
+    // The control is not in `variants`; it fills the top-level tree/properties.
     expect(
       ref.abTest.variants.some((v: any) => v.branchId === block.branchId),
     ).toBe(false);
     const other = ref.abTest.variants[0];
     expect(other.branchId).toBe(variant.branch.id);
     expect(other.properties.label).toBe('Variant');
-    // The control still fills top-level (asserted above via ref.properties).
     expect(ref.tree.properties.label).toBe('Control');
   });
 
@@ -345,13 +344,13 @@ describe('A/B server fan-out (F2)', () => {
     const ref = host.properties.block;
     expect(ref.abTest).toBeDefined();
 
-    // The control's nested leaf reference is resolved (existing behaviour).
+    // The control's nested leaf reference is resolved (existing behavior).
     const controlNested = findByType(ref.tree, 'nested');
     expect(isResolvedRef(controlNested.properties.inner)).toBe(true);
     expect(controlNested.properties.inner.rootId).toBe(leaf.rootId);
 
-    // The VARIANT's nested leaf reference must ALSO be resolved — not left as a
-    // raw rootId string by the shared cycle guard (the F2 cloned-visited fix).
+    // The variant's nested leaf reference must also be resolved, not left as a
+    // raw rootId string by the shared cycle guard.
     const other = ref.abTest.variants.find((v: any) => !v.isControl);
     const variantNested = findByType(other.tree, 'nested');
     expect(isResolvedRef(variantNested.properties.inner)).toBe(true);
@@ -411,7 +410,7 @@ describe('A/B server fan-out (F2)', () => {
     const host = findByType(res.variants[0].tree, 'reusableContent');
     const ref = host.properties.block;
 
-    // Control (top-level): both the typed copy and the tree props substituted + consistent.
+    // Control (top-level): typed copy and tree props substituted consistently.
     expect(ref.properties.label).toBe('BlackFriday control');
     expect(ref.tree.properties.label).toBe('BlackFriday control');
 

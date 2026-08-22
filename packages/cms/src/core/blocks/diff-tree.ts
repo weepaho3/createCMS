@@ -1,9 +1,5 @@
 import type { BlockTreeNode, ReconstructedBlock } from './reconstruct-snapshot';
 
-// ============================================================================
-// Types
-// ============================================================================
-
 export type CreatedBlock = {
   blockId: string;
   type: string;
@@ -33,10 +29,6 @@ type FlatNode = {
   parentBlockId: string | null;
   position: number;
 };
-
-// ============================================================================
-// Helpers
-// ============================================================================
 
 function flattenTree(
   node: BlockTreeNode,
@@ -84,10 +76,6 @@ function arraysEqual(a: string[], b: string[]): boolean {
   }
   return true;
 }
-
-// ============================================================================
-// diffTree
-// ============================================================================
 
 /**
  * Compares an incoming BlockTreeNode (desired state) against the current

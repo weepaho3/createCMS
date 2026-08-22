@@ -9,10 +9,6 @@ import type {
   CMSMediaUploadState,
 } from './types';
 
-// ============================================================================
-// Constants
-// ============================================================================
-
 const FORBIDDEN_XHR_HEADERS = new Set([
   'content-length',
   'host',
@@ -21,10 +17,6 @@ const FORBIDDEN_XHR_HEADERS = new Set([
   'referer',
   'origin',
 ]);
-
-// ============================================================================
-// Types
-// ============================================================================
 
 type SignedAsset = {
   id: string;
@@ -43,19 +35,11 @@ type SignedReplace = {
   headers: Record<string, string>;
 };
 
-// The `commitReplace` response shape (routes/media.ts) — trimmed to what the
-// replace atom's `result` surfaces; call `cmsClient.media.commitReplace`
-// directly (fully typed) for the complete listAssets-shaped asset.
-type CommitReplaceResult = {
-  asset: { id: string; slug: string; objectKey: string };
-};
-
 /**
  * State for the browser-callable "replace an asset's bytes" flow
- * (`createSignedReplace` -> PUT to S3 -> `commitReplace`) — the client half of
- * `replaceAsset` (server-only, since a `File`/`Blob` cannot survive the JSON
- * request body; see replaceAsset's docstring in routes/media.ts, Plan 007
- * part A).
+ * (`createSignedReplace` -> PUT to S3 -> `commitReplace`): the client half of
+ * `replaceAsset`, which is server-only because a `File`/`Blob` cannot survive
+ * the JSON request body (see `replaceAsset` in routes/media.ts).
  */
 export type CMSMediaReplaceState = {
   isReplacing: boolean;
@@ -67,10 +51,6 @@ export type CMSMediaReplaceState = {
   abort: () => void;
   reset: () => void;
 };
-
-// ============================================================================
-// XHR Upload
-// ============================================================================
 
 function uploadWithXHR(
   url: string,
@@ -130,19 +110,11 @@ function uploadWithXHR(
   });
 }
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
 function computeTotalProgress(files: CMSMediaUploadFileState[]): number {
   if (files.length === 0) return 0;
   const sum = files.reduce((acc, f) => acc + f.progress, 0);
   return Math.round(sum / files.length);
 }
-
-// ============================================================================
-// Atom Factory
-// ============================================================================
 
 const INITIAL_STATE: CMSMediaUploadState = {
   isUploading: false,
@@ -156,12 +128,9 @@ const INITIAL_STATE: CMSMediaUploadState = {
 };
 
 /**
- * Creates a nanostores atom that manages media upload state.
- *
- * Pipeline: sign -> upload primary files.
- *
- * Server-side validation (file size, count, MIME types) is handled by the
- * `createSignedUpload` endpoint.
+ * Nanostores atom managing media upload state. Validation of file size,
+ * count, and MIME types lives server-side in the `createSignedUpload`
+ * endpoint.
  */
 export function createMediaUploadAtom(
   $fetch: CMSFetch,
@@ -222,7 +191,7 @@ export function createMediaUploadAtom(
     try {
       if (signal.aborted) return;
 
-      // 1. Sign files
+      // Sign, then upload, then finalize; check `signal.aborted` between steps.
       const signResponse = (await $fetch('/media/createSignedUpload', {
         method: 'POST',
         body: {
@@ -237,7 +206,7 @@ export function createMediaUploadAtom(
 
       if (signal.aborted) return;
 
-      // 2. Upload files to S3
+      // Upload the signed assets to S3 in parallel.
       const uploadPromises = signResponse.assets.map(async (asset, index) => {
         updateFileState(index, { status: 'uploading' });
 
@@ -279,7 +248,6 @@ export function createMediaUploadAtom(
 
       await Promise.allSettled(uploadPromises);
 
-      // 3. Finalize
       const finalState = store.get();
       const hasErrors = finalState.files.some((f) => f.status === 'error');
 
@@ -303,10 +271,6 @@ export function createMediaUploadAtom(
   return store;
 }
 
-// ============================================================================
-// Replace Atom Factory
-// ============================================================================
-
 const REPLACE_INITIAL_STATE: CMSMediaReplaceState = {
   isReplacing: false,
   isAborted: false,
@@ -319,13 +283,9 @@ const REPLACE_INITIAL_STATE: CMSMediaReplaceState = {
 };
 
 /**
- * Creates a nanostores atom that manages the browser-callable asset-replace
- * flow: sign -> PUT to S3 -> commit. This is the client half `replaceAsset`
- * itself cannot have (see its docstring, Plan 007 part A) — `uploadWithXHR` is
- * reused unchanged from the upload atom above.
- *
- * Server-side validation (file size, MIME type, variant guard) is handled by
- * the `createSignedReplace` endpoint.
+ * Nanostores atom managing the browser-callable asset-replace flow: sign,
+ * PUT to S3, commit. Validation of file size, MIME type, and the variant
+ * guard lives server-side in the `createSignedReplace` endpoint.
  */
 export function createMediaReplaceAtom(
   $fetch: CMSFetch,
@@ -363,7 +323,7 @@ export function createMediaReplaceAtom(
     try {
       if (signal.aborted) return;
 
-      // 1. Sign the replacement.
+      // Sign the replacement.
       const signed = (await $fetch('/media/createSignedReplace', {
         method: 'POST',
         body: {
@@ -374,7 +334,7 @@ export function createMediaReplaceAtom(
 
       if (signal.aborted) return;
 
-      // 2. PUT the new bytes to S3.
+      // PUT the new bytes to S3.
       await uploadWithXHR(
         signed.signedUrl,
         file,
@@ -390,7 +350,7 @@ export function createMediaReplaceAtom(
 
       if (signal.aborted) return;
 
-      // 3. Commit: repoint the asset's row at the new object.
+      // Commit: repoint the asset's row at the new object.
       const commit = (await $fetch('/media/commitReplace', {
         method: 'POST',
         body: {

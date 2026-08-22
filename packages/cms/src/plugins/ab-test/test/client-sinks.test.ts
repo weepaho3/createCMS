@@ -32,7 +32,7 @@ const IMPRESSION: ClientCMSEvent = {
   anonymous: true,
 };
 
-describe('M3a — client-side sink dispatch', () => {
+describe('client-side sink dispatch', () => {
   it('fires a consent-free sink immediately, regardless of consent state', () => {
     const store = recordingSink('abTestStore'); // no `requires`
     const gate = createConsentGate(); // default-deny, unresolved
@@ -105,7 +105,7 @@ describe('M3a — client-side sink dispatch', () => {
   });
 });
 
-describe('M3a — gtmClientSink', () => {
+describe('gtmClientSink', () => {
   it('pushes a GA4-shaped entry onto window.dataLayer with the A/B dimensions', () => {
     const dataLayer: Record<string, unknown>[] = [];
     vi.stubGlobal('window', { dataLayer });
@@ -145,7 +145,7 @@ describe('M3a — gtmClientSink', () => {
   });
 });
 
-describe('M5 — abTestStoreSink relays the server-MP context', () => {
+describe('abTestStoreSink relays the server-MP context', () => {
   function fetchSpy() {
     const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
     const fetch = ((path: string, init: { body: Record<string, unknown> }) => {
@@ -163,10 +163,9 @@ describe('M5 — abTestStoreSink relays the server-MP context', () => {
   } as const;
 
   it('relays consent + transport into the POST body when present on the event', () => {
-    // This guards the dumb RELAY only (the sink copies whatever it is handed).
-    // The decision of WHEN to stamp consent/transport lives in client.ts and is
-    // covered in client.test.ts — see "client stamps consent only alongside
-    // transport" / "recordImpression NEVER stamps ...".
+    // This guards the relay only (the sink copies whatever it is handed); the
+    // decision of when to stamp consent/transport lives in client.ts and is
+    // covered in client.test.ts.
     const { fetch, calls } = fetchSpy();
     createAbTestStoreSink(fetch).send({
       name: 'impression',
@@ -185,7 +184,7 @@ describe('M5 — abTestStoreSink relays the server-MP context', () => {
   });
 
   it('omits consent on the consent-free anonymous path', () => {
-    // No consent stamped ⇒ the server's denied-consent guard cannot drop the
+    // No consent stamped: the server's denied-consent guard cannot drop the
     // anonymous aggregate count.
     const { fetch, calls } = fetchSpy();
     createAbTestStoreSink(fetch).send({

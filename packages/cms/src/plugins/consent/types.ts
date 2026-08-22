@@ -5,10 +5,9 @@
 export type ConsentSignal = 'granted' | 'denied';
 
 /**
- * The four Google Consent Mode v2 signals. Every major CMP (Cookiebot,
- * Usercentrics, OneTrust) emits these, so a single inbound contract covers all.
- * `analytics_storage` gates the A/B + analytics path; the `ad_*` signals gate
- * any ad-related fan-out.
+ * The four Google Consent Mode v2 signals, as emitted by major CMPs
+ * (Cookiebot, Usercentrics, OneTrust). `analytics_storage` gates the A/B and
+ * analytics path; the `ad_*` signals gate any ad-related fan-out.
  */
 export type ConsentState = {
   analytics_storage: ConsentSignal;

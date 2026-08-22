@@ -30,7 +30,6 @@ export type RootEnrichment = {
  *   roots -> branches (main) -> commit_snapshots -> block_versions
  *
  * Returns a Map keyed by rootId for O(1) lookup when enriching result sets.
- * Any endpoint can use this to add root context to its response.
  */
 export async function batchFetchRoots(
   db: DrizzleInstance,
@@ -70,8 +69,8 @@ export async function batchFetchRoots(
       slug: (row.slug as string) ?? null,
       parentRootId: (row.parent_root_id as string) ?? null,
       sortOrder: row.sort_order as number,
-      // cms-05: strip the reserved `__slug` draft key — root `properties` here is
-      // the user-facing property bag (listRoots / withRoot enrichment); the draft
+      // Strip the reserved `__slug` draft key: root `properties` here is the
+      // user-facing property bag (listRoots / withRoot enrichment); the draft
       // slug is surfaced only via getBlockTree's root node.
       properties: withRootSlug(
         (row.properties ?? {}) as Record<string, unknown>,
@@ -160,7 +159,7 @@ export async function batchFetchRootListItems(
       parentRootId: (row.parent_root_id as string | null) ?? undefined,
       slug: (row.slug as string | null) ?? undefined,
       sortOrder: row.sort_order as number,
-      // cms-05: strip the reserved `__slug` draft key from the user-facing
+      // Strip the reserved `__slug` draft key from the user-facing
       // property bag (see batchFetchRoots).
       properties: withRootSlug(
         (row.properties ?? {}) as Record<string, unknown>,

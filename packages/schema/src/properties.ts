@@ -16,14 +16,14 @@ type BlockTypes = {
   boolean: boolean;
   date: string;
   richText: string;
-  // An image is the asset's id STRING, on both the write and read paths. The
-  // renderer serves it via the id-addressed gate `/media/asset/{id}`; nothing is
+  // An image is the asset's id STRING on both write and read paths; it is
+  // served via the id-addressed gate `/media/asset/{id}` and nothing is
   // resolved at read time (a slug swap behind the id propagates automatically).
   image: string;
   select: string;
-  // The AUTHORED value of a reference is the target's rootId STRING. It is
-  // inlined to a `ResolvedReference` only on the published read path (the
-  // `resolved` inference mode); write input + the editor read keep the string.
+  // The AUTHORED value of a reference is the target's rootId STRING, inlined
+  // to a `ResolvedReference` only on the published read path (the `resolved`
+  // inference mode); write input + the editor read keep the string.
   reference: string;
   // The AUTHORED value of a link is a `LinkValue` union; it resolves to a
   // `ResolvedLink` (an href) only on the read path (the `resolved` mode).
@@ -46,8 +46,8 @@ export type SelectOption = { readonly label: string; readonly value: string };
 /**
  * Declarative length/format constraints for text-like properties (`string`,
  * `richText`) and list elements of those types. Honoured by the zod builder
- * (`buildPropertiesSchema`): `minLength`/`maxLength` bound the string length and
- * `pattern` is a JS regex SOURCE string the value must match.
+ * (`buildPropertiesSchema`): `minLength`/`maxLength` bound the string length
+ * and `pattern` is a JS regex SOURCE string the value must match.
  */
 export type StringConstraints = {
   minLength?: number;
@@ -71,30 +71,29 @@ type BlockPropertySpec<T extends BlockPropertyType> = {
   description?: string;
   placeholder?: string;
   /**
-   * Editor hint: the field-group (fieldset/section) this property is shown under
-   * in the property panel (e.g. `'SEO'`, `'Layout'`). Purely presentational —
-   * the editor groups fields by this label; the package never acts on it.
-   * Free-form by design; for consistent, autocompleted group names across
-   * fields, reference a shared `as const` object (e.g. `group: FIELD_GROUPS.seo`).
+   * Editor hint: the field-group (fieldset/section) this property is shown
+   * under in the property panel (e.g. `'SEO'`, `'Layout'`). Purely
+   * presentational, the editor groups fields by this label and the package
+   * never acts on it. Free-form by design; for consistent, autocompleted group
+   * names across fields, reference a shared `as const` object (e.g.
+   * `group: FIELD_GROUPS.seo`).
    */
   group?: string;
 } & (T extends 'select' ? { options: readonly SelectOption[] } : {}) &
   (T extends 'reference' ? { collection: string } : {}) &
-  // Declarative zod-level constraints (cms-04): text length/format on
-  // string/richText, numeric range on number. Honoured by buildPropertiesSchema.
+  // Declarative zod-level constraints: text length/format on string/richText,
+  // numeric range on number. Honoured by buildPropertiesSchema.
   (T extends 'string' | 'richText' ? StringConstraints : {}) &
   (T extends 'number' ? NumberConstraints : {}) &
   (T extends 'link'
     ? {
-        /** Which kinds may be picked. Default: all. */
         allowedKinds?: readonly LinkKind[];
-        /** Restrict `internal` targets to these collections (default: any). */
         allowedCollections?: readonly string[];
       }
     : {});
 
 /**
- * Element kinds a {@link ListBlockPropertySpec} may hold — every single-value
+ * Element kinds a {@link ListBlockPropertySpec} may hold: every single-value
  * property type EXCEPT `link` (links are not list-able). A `reference` element
  * makes the list a MULTI-REFERENCE.
  */
@@ -118,25 +117,23 @@ export type ListElementSpec = {
 
 /**
  * A `list` property: an ordered JSON array whose every element matches `of`
- * (a scalar OR a `reference`). A list OF `reference` is a MULTI-REFERENCE — its
- * elements are walked by the reference/usage extraction machinery exactly like a
- * single `reference`. `min`/`max` bound the array LENGTH (honoured by the zod
- * builder). Nested-object elements and structure cardinality are intentionally
- * out of scope.
+ * (a scalar OR a `reference`). A list OF `reference` is a MULTI-REFERENCE:
+ * its elements are walked by the reference/usage extraction machinery exactly
+ * like a single `reference`. `min`/`max` bound the array LENGTH (honoured by
+ * the zod builder). Nested-object elements and structure cardinality are
+ * intentionally out of scope.
  */
 export type ListBlockPropertySpec = {
   type: 'list';
   of: ListElementSpec;
   required?: boolean;
-  /** Minimum number of elements (inclusive). */
   min?: number;
-  /** Maximum number of elements (inclusive). */
   max?: number;
 
   label: string;
   description?: string;
   placeholder?: string;
-  /** Editor field-group hint — see {@link BlockPropertySpec}. */
+  /** Editor field-group hint, see {@link BlockPropertySpec}. */
   group?: string;
 };
 
@@ -149,7 +146,7 @@ export type BlockProperty =
 
 type Simplify<T> = { [K in keyof T]: T[K] };
 
-/** Extracts the runtime value type of ONE {@link ListElementSpec} — the same
+/** Extracts the runtime value type of ONE {@link ListElementSpec}: the same
  *  select/reference/scalar logic as {@link InferPropertyValue}, but for a list's
  *  element. A `reference` element is a rootId string in `raw` mode and a
  *  `ResolvedReference` in `resolved` mode (bounded to depth 1, like single refs). */
@@ -181,7 +178,7 @@ type InferElementValue<
  *  A `reference` is a rootId string in `raw` mode (write input + editor read) and
  *  a `ResolvedReference` in `resolved` mode (published read).
  *  A `list` becomes an ARRAY of its element's inferred value (a list of
- *  `reference` → `string[]` raw / `ResolvedReference[]` resolved).
+ *  `reference` gives `string[]` raw / `ResolvedReference[]` resolved).
  *  For all other types, returns the corresponding primitive type. */
 type InferPropertyValue<
   T extends BlockProperty,
@@ -197,10 +194,11 @@ type InferPropertyValue<
     : T extends { type: 'reference'; collection: infer C extends string }
       ? M extends 'resolved'
         ? // Resolved read: a reference is the inlined target. When the target
-          // collection is in the threaded map, its `properties` are typed from the
-          // target's root definition. Nested references inside the target stay
-          // UNTYPED (the inner InferBlockProperties defaults TCol to `{}`), which
-          // bounds resolution to depth 1 and avoids cyclic-reference type blowup.
+          // collection is in the threaded map, its `properties` are typed from
+          // the target's root definition. Nested references inside the target
+          // stay UNTYPED (the inner InferBlockProperties defaults TCol to
+          // `{}`), which bounds resolution to depth 1 and avoids cyclic-
+          // reference type blowup.
           C extends keyof TCol
           ? ResolvedReference<
               NonNullable<
@@ -210,16 +208,17 @@ type InferPropertyValue<
           : ResolvedReference
         : string
       : T extends { type: 'link' }
-        ? // A link is the stored `LinkValue` in `raw` mode (write input + editor
-          // read) and a `ResolvedLink` (an href) on the `resolved` read path.
+        ? // A link is the stored `LinkValue` in `raw` mode (write input +
+          // editor read) and a `ResolvedLink` (an href) on the `resolved`
+          // read path.
           M extends 'resolved'
           ? ResolvedLink
           : LinkValue
         : // `image` is the asset-id string in BOTH modes (served via the
           // id-addressed gate; nothing is resolved at read time). Intersecting
-          // with `keyof BlockTypes` keeps this a direct indexed access (no extra
-          // deferred conditional) while excluding the non-scalar `'list'` tag,
-          // which the branches above have already handled.
+          // with `keyof BlockTypes` keeps this a direct indexed access (no
+          // extra deferred conditional) while excluding the non-scalar 'list'
+          // tag, which the branches above have already handled.
           BlockTypes[T['type'] & keyof BlockTypes];
 
 type RequiredPart<

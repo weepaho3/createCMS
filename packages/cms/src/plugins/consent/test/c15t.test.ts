@@ -25,7 +25,7 @@ describe('consentModeFromC15t', () => {
     ).toEqual({});
   });
 
-  it('leaves an absent category unset — a partial decision stays partial', () => {
+  it('leaves an absent category unset: a partial decision stays partial', () => {
     expect(consentModeFromC15t({ measurement: true })).toEqual({
       analytics_storage: 'granted',
     });

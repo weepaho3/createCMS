@@ -1,14 +1,13 @@
 import type { CMSFetch } from '../../client/types';
 import type { ConsentPurpose, ConsentState } from '../consent';
 
-// ============================================================================
 // Dev-only drop observability
 // ============================================================================
 //
 // Analytics events are fire-and-forget: a failed send is swallowed so it never
-// breaks the page (fail-silent / fail-open). That silence hides a misconfigured
-// ingest in development, so warn ONCE per process on the FIRST drop in dev —
-// production stays fully silent and the fail-silent guarantee is unchanged.
+// breaks the page (fail-silent). That silence hides a misconfigured ingest in
+// development, so warn once per process on the first drop in dev. Production
+// stays fully silent and the fail-silent guarantee is unchanged.
 let abWarned = false;
 export function warnAbDrop(err: unknown): void {
   if (process.env.NODE_ENV !== 'production' && !abWarned) {
@@ -17,21 +16,20 @@ export function warnAbDrop(err: unknown): void {
   }
 }
 
-// ============================================================================
-// M3a — client-side event-bus: sinks + dispatch (consent-aware fan-out)
+// Client-side event bus: sinks and dispatch (consent-aware fan-out)
 // ============================================================================
 //
-// One fired CMS event fans out to several CLIENT destinations, each with its own
-// consent requirement. This is the consent-free model in action: a sink with no
-// `requires` (the A/B store leg = an anonymous aggregate count) fires
-// unconditionally — the count carries no identifier, ePrivacy "strictly
-// necessary". A sink that forwards to GA4/GTM (`gtmClientSink`) DOES require
-// `analytics_storage`, so the dispatcher buffers-then-flushes it behind the
-// consent gate and drops it on denial. Nothing here blocks render/paint and a
-// sink that throws never breaks the page or its sibling sinks.
+// One fired CMS event fans out to several client destinations, each with its
+// own consent requirement. A sink with no `requires` (the A/B store leg, an
+// anonymous aggregate count) fires unconditionally: the count carries no
+// identifier, ePrivacy "strictly necessary". A sink that forwards to GA4/GTM
+// (`gtmClientSink`) requires `analytics_storage`, so the dispatcher
+// buffers-then-flushes it behind the consent gate and drops it on denial.
+// Nothing here blocks render or paint, and a sink that throws never breaks the
+// page or its sibling sinks.
 
 /**
- * The minimal structural view of the consent gate the dispatcher needs — keeps
+ * The minimal structural view of the consent gate the dispatcher needs; keeps
  * this module decoupled from the full `ConsentGate` surface (and trivially
  * testable with a tiny fake).
  */
@@ -46,40 +44,42 @@ export type SinkConsentGate = {
 };
 
 /**
- * The client-side event a sink receives. Decoupled from the server `AnalyticsEvent`
- * (no `timestamp`/storage `id` — those are minted server-side): this is what the
- * browser knows at fire time.
+ * The client-side event a sink receives. Decoupled from the server
+ * `AnalyticsEvent` (no `timestamp`/storage `id`; those are minted server-side):
+ * this is what the browser knows at fire time.
  */
 export type ClientCMSEvent = {
   /** Canonical event name, e.g. `'impression' | 'conversion' | 'form_submit'`. */
   name: string;
   /**
-   * A/B attribution by the SERVER-served branch (Pattern A: the variant came
+   * A/B attribution by the server-served branch (Pattern A: the variant came
    * from the URL). `branchId` is what the client has; the store leg resolves it
    * to a `variantId` server-side. Absent for non-A/B analytics events.
    */
   ab?: { testId: string; branchId?: string; variantId?: string };
-  /** Identity — only on the consent-gated unique-visitor path; never anonymous. */
+  /** Identity, only on the consent-gated unique-visitor path; never anonymous. */
   visitorId?: string;
   /** True when no identifier is attached (the consent-free aggregate path). */
   anonymous: boolean;
   /** Originating functional block instance (the `trackingId` + block type). */
   source?: { handle?: string; type?: string };
-  /** Funnel grouping id (M4): shared by the attempt + success legs of one interaction. */
+  /** Funnel grouping id: shared by the attempt and success legs of one interaction. */
   interactionId?: string;
-  /** GA4 stitching ids (M5): set only when consent is granted; the store leg
-   *  forwards them so the server-MP can attribute the hit. */
+  /**
+   * GA4 stitching ids: set only when consent is granted; the store leg forwards
+   * them so the server-side forward can attribute the hit.
+   */
   transport?: {
     clientId?: string;
     sessionId?: string;
     engagementTimeMsec?: number;
   };
   /**
-   * Consent Mode v2 state at fire time (M5). Stamped ALONGSIDE `transport` (only
-   * when analytics_storage is granted), so the store leg can relay it to the
-   * server, where `buildGa4Payload` needs it to authorize the server-MP forward.
-   * Absent on the consent-free anonymous path — its absence is exactly what keeps
-   * the server's denied-consent guard from dropping the anonymous aggregate count.
+   * Consent Mode v2 state at fire time, stamped alongside `transport` (only
+   * when analytics_storage is granted) so the store leg can relay it to the
+   * server, where `buildGa4Payload` needs it to authorize the forward. Absent
+   * on the consent-free anonymous path; its absence keeps the server's
+   * denied-consent guard from dropping the anonymous aggregate count.
    */
   consent?: ConsentState;
   /** Scalar event params (GA4 wire params). */
@@ -91,12 +91,11 @@ export type ClientCMSEvent = {
 export type ClientEventSink = {
   id: string;
   /**
-   * Consent purpose this sink requires. OMIT for consent-free sinks (anonymous
+   * Consent purpose this sink requires. Omit for consent-free sinks (anonymous
    * aggregate counts). When set, the dispatcher routes the send through the
-   * gate's buffer-then-flush and drops it if consent is denied. NOTE: the gate's
-   * buffering keys on `analytics_storage` resolution, so M3 only supports
-   * `analytics_storage`-gated sinks cleanly; other purposes are re-checked at
-   * drain time but still wait on the analytics decision.
+   * gate's buffer-then-flush and drops it if consent is denied. The gate's
+   * buffering keys on `analytics_storage` resolution, so other purposes are
+   * re-checked at drain time but still wait on the analytics decision.
    */
   requires?: ConsentPurpose;
   /** Best-effort send. MUST NOT throw (never blocks paint, never bubbles). */
@@ -134,14 +133,14 @@ export function dispatchEvent(
   }
 }
 
-// ============================================================================
 // Built-in sinks
 // ============================================================================
 
 /**
- * The A/B store leg — the keepalive POST to the CMS event ingest. CONSENT-FREE
- * (no `requires`): it records the anonymous aggregate count that drives the A/B
- * winner. The identity-bearing unique-visitor leg is a separate, gated concern.
+ * The A/B store leg: the keepalive POST to the CMS event ingest. Consent-free
+ * (no `requires`); it records the anonymous aggregate count that drives the
+ * A/B winner. The identity-bearing unique-visitor leg is a separate, gated
+ * concern.
  */
 export function createAbTestStoreSink($fetch: CMSFetch): ClientEventSink {
   return {
@@ -150,8 +149,8 @@ export function createAbTestStoreSink($fetch: CMSFetch): ClientEventSink {
       $fetch('/abTest/trackEvent', {
         method: 'POST',
         // keepalive: a goal beacon often fires on a CTA click that navigates
-        // away — without this the browser cancels the in-flight POST and the
-        // count is lost (and the per-session dedup already marked it sent).
+        // away. Without it the browser cancels the in-flight POST and the count
+        // is lost (and the per-session dedup already marked it sent).
         keepalive: true,
         body: {
           eventType: event.name,
@@ -176,10 +175,10 @@ export function createAbTestStoreSink($fetch: CMSFetch): ClientEventSink {
 type DataLayerWindow = { dataLayer?: Record<string, unknown>[] };
 
 /**
- * The GA4/GTM client sink — a single `window.dataLayer.push`. CONSENT-GATED on
- * `analytics_storage`: this is the GA4-forwarding path (the only M3 sink that
- * needs consent). GTM's own Consent Mode is a second line of defence; gating
- * here keeps the one auditable consent decision on our side too.
+ * The GA4/GTM client sink: a single `window.dataLayer.push`, consent-gated on
+ * `analytics_storage`. This is the GA4-forwarding path. GTM's own Consent Mode
+ * is a second line of defence; gating here keeps one auditable consent
+ * decision on our side too.
  */
 export function createGtmClientSink(): ClientEventSink {
   return {

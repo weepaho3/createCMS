@@ -14,8 +14,8 @@ export const DENIED_ALL: ConsentState = {
 
 /**
  * How long (ms) to buffer events before resolving the gate when no consent
- * DECISION has arrived yet — the Consent Mode `wait_for_update` window. Render
- * is NEVER blocked on this; only event emission waits.
+ * decision has arrived yet: the Consent Mode `wait_for_update` window. Render
+ * is never blocked on this; only event emission waits.
  */
 export const CONSENT_WAIT_MS = 2000;
 
@@ -44,10 +44,10 @@ export type ParsedConsentEntry = {
 
 /**
  * Extracts the mode + partial {@link ConsentState} from a single dataLayer entry
- * IF it is a Consent Mode command (`gtag('consent','default'|'update',{...})`,
+ * if it is a Consent Mode command (`gtag('consent','default'|'update',{...})`,
  * which lands on the dataLayer as an arguments-like `['consent', mode, params]`).
- * Returns `null` for any non-consent entry. The `mode` matters: a `default` only
- * seeds state, while an `update` is the user's decision (see {@link ConsentGate}).
+ * Returns `null` for any non-consent entry. A `default` only seeds state, while
+ * an `update` is the user's decision (see {@link ConsentGate}).
  */
 export function parseConsentEntry(entry: unknown): ParsedConsentEntry | null {
   if (entry == null || typeof entry !== 'object') return null;
@@ -91,19 +91,19 @@ export type ConsentGate = {
   /** True once a real decision arrived or the wait-window elapsed. */
   isResolved(): boolean;
   /**
-   * Seed state from a Consent Mode `default` command. Updates state but does NOT
-   * resolve the gate — a denied default must not collapse the wait-window before
+   * Seed state from a Consent Mode `default` command. Updates state but does not
+   * resolve the gate: a denied default must not collapse the wait-window before
    * the async CMP `update` arrives.
    */
   applyDefault(update: Partial<ConsentState>): void;
   /**
-   * Apply a real consent decision — a Consent Mode `update` or an explicit host
-   * `setConsent`. Resolves + drains the buffer once the decision carries an
-   * `analytics_storage` value (a partial update touching only `ad_*` keeps the
-   * gate pending so a later analytics grant still flushes).
+   * Apply a real consent decision (a Consent Mode `update` or an explicit host
+   * `setConsent`). Resolves and drains the buffer once the decision carries an
+   * `analytics_storage` value; a partial update touching only `ad_*` keeps the
+   * gate pending so a later analytics grant still flushes.
    */
   applyUpdate(update: Partial<ConsentState>): void;
-  /** Resolve the wait-window with whatever we have (stays default-deny). */
+  /** Resolve the wait-window with whatever state we have (stays default-deny). */
   resolve(): void;
   /**
    * Queue an `analytics_storage`-gated side effect. Runs immediately if already
@@ -112,7 +112,7 @@ export type ConsentGate = {
    * re-fire.
    */
   run(effect: () => void, onDrop?: () => void): void;
-  /** Subscribe to state changes (apply / resolve / reset). Returns unsubscribe. */
+  /** Subscribe to state changes (apply, resolve, reset). Returns unsubscribe. */
   onChange(
     listener: (state: ConsentState, resolved: boolean) => void,
   ): () => void;
@@ -159,7 +159,7 @@ export function createConsentGate(
     },
     applyUpdate(update) {
       state = { ...state, ...update };
-      // Only a decision about analytics (or one arriving after we've already
+      // Only a decision about analytics (or one arriving after we have already
       // resolved) drains. A partial update touching only ad_* keeps buffering.
       if ('analytics_storage' in update || resolved) {
         resolved = true;

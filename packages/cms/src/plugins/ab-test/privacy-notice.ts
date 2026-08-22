@@ -1,7 +1,7 @@
 import type { ConsentPurpose } from '../consent';
 
 // ============================================================================
-// M5 — privacy-notice export
+// Privacy-notice export
 // ============================================================================
 //
 // A static, build-time list of every id/cookie/storage the A/B measurement
@@ -26,7 +26,7 @@ export type PrivacyNoticeItem = {
  * The A/B measurement privacy-notice items. The `_ga` read is ALWAYS listed: the
  * client reads `_ga` whenever `analytics_storage` is granted (to obtain the GA4
  * client_id), independent of server-MP. Pass `ga4: true` when the server-MP
- * forward (M5) is configured — it only changes the `_ga` recipient/purpose to
+ * forward is configured; it only changes the `_ga` recipient/purpose to
  * name Google Analytics 4 as the destination of the forwarded hit.
  * `variantCookiePrefix` must match the middleware's `variantCookiePrefix`.
  */
@@ -45,7 +45,7 @@ export function getPrivacyNoticeItems(options?: {
       lifetime: '30 days',
       isIdentifier: false,
       // ePrivacy "strictly necessary": first-party, no behavioural data, never
-      // sent to a third party → no consent required.
+      // sent to a third party, so no consent required.
       consentRequired: null,
       recipient: 'First-party (this site)',
     },
@@ -84,7 +84,7 @@ export function getPrivacyNoticeItems(options?: {
       type: 'external-cookie-read',
       // Always disclosed: the client reads `_ga` whenever analytics_storage is
       // granted to obtain the GA4 client_id/session_id. Whether that id is then
-      // forwarded to GA4 depends on the server-MP (`ga4`) config — reflected in
+      // forwarded to GA4 depends on the server-MP (`ga4`) config, reflected in
       // the recipient below.
       purpose: options?.ga4
         ? 'READ (never set by the CMS) to obtain the GA4 client_id / session_id, forwarded server-side via the Measurement Protocol.'

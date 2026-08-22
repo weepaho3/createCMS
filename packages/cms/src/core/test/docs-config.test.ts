@@ -20,11 +20,11 @@ import {
  * `createCMS(definition)` is the one call every consumer makes, and its option
  * table is the page they read to make it. An option added to the type and not
  * to the table is invisible; an option removed from the type but left in the
- * table is worse — it reads as supported and does nothing. Both directions are
+ * table is worse: it reads as supported and does nothing. Both directions are
  * asserted, per table.
  *
  * Source of truth: the type aliases in `core/types/definitions.ts`, read via
- * the TS AST — except `BranchProtectionConfig`, which lives in the shared
+ * the TS AST, except `BranchProtectionConfig`, which lives in the shared
  * `@createcms/schema` package's `collection.ts` and is read from there.
  * `CMSDefinition` is a plain object type with no runtime value to inspect, so
  * the AST is the only place its keys exist.
@@ -38,7 +38,7 @@ const config = readDoc(CONFIG_MDX);
 
 /**
  * One documented options table and the type it must mirror. `requiredColumn`
- * is the index of a `yes`/`no` column when the table has one — where it does,
+ * is the index of a `yes`/`no` column when the table has one; where it does,
  * the flag is checked against the type's `?`, so "Required: yes" and an
  * optional property cannot disagree. `source` defaults to `sourceFile`
  * (`core/types/definitions.ts`); set it when the type moved elsewhere (e.g.
@@ -85,7 +85,7 @@ const TABLES: {
   },
 ];
 
-/** Option name per row — the first inline-code span of the first cell. */
+/** Option name per row: the first inline-code span of the first cell. */
 function documentedNames(table: MdxTable): string[] {
   return table.rows.flatMap((row) => {
     const name = codeTokens(row[0] as string)[0];

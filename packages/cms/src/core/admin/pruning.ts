@@ -218,10 +218,10 @@ async function planRootPruning(
   for (const approval of allApprovalsForRoot) {
     if (approval.mergeRequestId === null) {
       const isResolved = approval.status !== 'pending';
-      // approval.branchId can't actually be null here — the query above
-      // inner-joins on branches.id = approvals.branch_id, which excludes any
-      // row whose branchId is null — but the column type stays nullable
-      // (ON DELETE SET NULL), so narrow rather than assert.
+      // approval.branchId cannot actually be null here: the query above
+      // inner-joins on branches, which excludes rows with a null branchId.
+      // The column type stays nullable (ON DELETE SET NULL), so narrow
+      // instead of asserting.
       const ownBranchHead = approval.branchId
         ? branchHeadMap.get(approval.branchId)
         : undefined;
@@ -476,7 +476,8 @@ export async function executeRootPruning(
       }
     }
 
-    // Clean up search index entries for the merge requests themselves
+    // Clean up search index entries for the merge requests themselves (the
+    // search index has no FKs, so nothing cascades into it).
     await tx
       .delete(searchIndex)
       .where(
@@ -505,22 +506,13 @@ export async function executeRootPruning(
 
   if (deletableCommitIds.length > 0) {
     // The commits self-FKs (parent_commit_id / merge_source_commit_id) are
-    // NO ACTION, checked at statement END, so the whole deletable set MUST be
-    // removed in a SINGLE statement: by construction no surviving commit
-    // references a deletable one, and every intra-set parent/merge-source edge
-    // is resolved together when the one statement commits. Chunking into several
-    // statements would be unsafe — a not-yet-deleted commit in a later chunk
-    // still referencing an already-deleted commit from an earlier chunk would
-    // fail the FK check at that earlier statement's end. This mirrors the
-    // sibling deletes above (commitSnapshots / blockVersions by
-    // deletableCommitIds) and hardDeleteRoot, which also delete in one statement.
+    // NO ACTION, checked at statement end, so the whole deletable set MUST be
+    // removed in a single statement. Chunking would be unsafe: a not-yet-deleted
+    // commit in a later chunk can still reference an already-deleted commit from
+    // an earlier chunk, failing that earlier statement's FK check.
     await tx.delete(commits).where(inArray(commits.id, deletableCommitIds));
   }
 }
-
-// ===========================================================================
-// Archived-root hard delete (the "git gc" of a soft-archived page)
-// ===========================================================================
 
 /**
  * Physically removes ONE soft-archived root and its entire history, in
@@ -568,7 +560,8 @@ export async function hardDeleteRoot(
         ).map((m) => m.id)
       : [];
 
-  // Search index is plain text (no FK) — scrub the root, its MRs and comments.
+  // Search index is plain text (no FK), so it must be scrubbed manually for
+  // the root, its MRs and its comments.
   await tx
     .delete(searchIndex)
     .where(
@@ -595,13 +588,12 @@ export async function hardDeleteRoot(
       );
   }
 
-  // Non-cascading children first, in dependency order. content_usages (the
-  // generalist asset/variable/reference index) cascades on both block_version_id
-  // and root_id; we clear it explicitly by rootId up front for deterministic
-  // ordering (covers every kind in one delete).
+  // Non-cascading children first, in dependency order. content_usages cascades
+  // on both block_version_id and root_id; clearing it explicitly by rootId up
+  // front keeps the ordering deterministic (covers every kind in one delete).
   await tx.delete(contentUsages).where(eq(contentUsages.rootId, rootId));
   await tx.delete(publications).where(eq(publications.rootId, rootId));
-  // approvals.branchId / .commitId have no cascade — clear by branch (covers
+  // approvals.branchId / .commitId have no cascade: clear by branch (covers
   // branch-scoped approvals; MR-linked ones also cascade with the MR below).
   if (branchIds.length > 0) {
     await tx.delete(approvals).where(inArray(approvals.branchId, branchIds));
@@ -613,7 +605,7 @@ export async function hardDeleteRoot(
   // commit_snapshots.blockVersionId cascades here; conflict refs are gone.
   await tx.delete(blockVersions).where(eq(blockVersions.rootId, rootId));
   // Branches reference commits via headCommitId (no cascade), so they must go
-  // BEFORE commits.
+  // before commits.
   await tx.delete(branches).where(eq(branches.rootId, rootId));
   // commit_snapshots.commitId cascades; the commits self-FKs are NO ACTION,
   // checked at statement end, so deleting the whole root's commits at once is ok.
@@ -624,10 +616,6 @@ export async function hardDeleteRoot(
   // roots via parentRootId.
   await tx.delete(roots).where(eq(roots.id, rootId));
 }
-
-// ===========================================================================
-// Bounded, resumable pruning pass (serverless-safe)
-// ===========================================================================
 
 export type PruningPassOptions = {
   /** Max roots touched this invocation (archived + live combined). */
@@ -741,10 +729,10 @@ export async function runPruningPass(
     if (budget <= 0) return finish('maxRoots');
   }
 
-  // 2) History-prune live roots that are DUE (never scanned, or last scanned
+  // 2) History-prune live roots that are due (never scanned, or last scanned
   //    before the rescan window), least-recently-pruned first. Stamping
   //    lastPrunedAt drops a root out of the due set, so the set drains and the
-  //    pass can report done — while a cron still re-scans each root every
+  //    pass can report done, while a cron still re-scans each root every
   //    rescan window.
   const rescanCutoff = new Date(startedAt - liveRescanMs);
   const liveRoots = await db
@@ -812,7 +800,7 @@ export async function runPruningPass(
           }
         }
 
-        // Always stamp — even with no work — so the round-robin advances past
+        // Always stamp, even with no work, so the round-robin advances past
         // roots that have nothing to prune.
         await tx
           .update(roots)
@@ -826,15 +814,15 @@ export async function runPruningPass(
     if (budget <= 0) return finish('maxRoots');
   }
 
-  // 3) Reclaim archived assets that NO live content references and that are past
-  //    the trash window. Liveness comes from the content_usages index (asset
-  //    rows), which is AUTHORITATIVE: keyed by the immutable blockVersionId and
-  //    populated at every version-creation site, so it cannot drift across
-  //    branches/merges. An asset is reclaimable only if no referencing,
-  //    non-deleted block version sits in the HEAD snapshot of any branch of any
-  //    non-archived root — this liveness JOIN (not the absent per-asset FK) is
-  //    what makes reclaim correct. DB row first (its content_usages rows cascade
-  //    by block_version_id), then S3 best-effort.
+  // 3) Reclaim archived assets that no live content references and that are
+  //    past the trash window. Liveness comes from the content_usages index
+  //    (asset rows), which is authoritative: keyed by the immutable
+  //    blockVersionId and populated at every version-creation site, so it
+  //    cannot drift across branches/merges. An asset is reclaimable only if no
+  //    referencing, non-deleted block version sits in the HEAD snapshot of any
+  //    branch of any non-archived root; this liveness join (not the absent
+  //    per-asset FK) is what makes reclaim correct. DB row first (its
+  //    content_usages rows cascade by block_version_id), then S3 best-effort.
   const reclaimable = await db
     .select({ id: assets.id, objectKey: assets.objectKey })
     .from(assets)
@@ -876,6 +864,5 @@ export async function runPruningPass(
   }
   if (reclaimable.length === maxAssets) return finish('maxRoots');
 
-  // Ran out of work within the budget.
   return finish('idle');
 }

@@ -4,7 +4,7 @@ import type { EditorNode, EditorNodes } from './types';
 
 /**
  * Nested tree (as `getBlockTree` delivers it) → flat node table + root id.
- * Every node's `type` is kept verbatim — the root stays `'root'`.
+ * Every node's `type` is kept verbatim: the root stays `'root'`.
  */
 export function flattenTree(tree: BlockTreeNode): {
   nodes: EditorNodes;
@@ -27,7 +27,7 @@ export function flattenTree(tree: BlockTreeNode): {
 
 /**
  * Flat node table → nested tree, starting at `rootId` (or any subtree root).
- * Throws on a dangling child id — the table is corrupt, not the caller.
+ * Throws on a dangling child id: the table is corrupt, not the caller.
  */
 export function serializeToTree(
   nodes: EditorNodes,

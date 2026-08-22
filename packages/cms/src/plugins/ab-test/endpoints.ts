@@ -37,17 +37,15 @@ const AB_TEST_META = {
   permissionResource: 'abTest' as const,
 };
 
-// The PUBLIC event ingest (trackEvent) uses a DISTINCT resource from the admin
-// 'abTest' resource (createTest/updateTest/getResults/…), so an app can allow
-// anonymous access to ONLY the ingest — public visitors record impressions/
-// conversions without a session — while keeping the admin mutations gated.
+// The PUBLIC event ingest (trackEvent) uses a distinct permission resource from
+// the admin 'abTest' resource, so an app can allow anonymous access to only the
+// ingest while keeping the admin mutations gated.
 const AB_EVENT_META = {
   scope: 'system' as const,
   permissionResource: 'abTestEvent' as const,
 };
 
-// ============================================================================
-// Zod Schemas
+// Zod schemas
 // ============================================================================
 
 const variantInput = z.object({
@@ -72,7 +70,6 @@ const contextSchema = z.object({
   anonymous: z.boolean().optional(),
 });
 
-// ============================================================================
 // Helpers
 // ============================================================================
 
@@ -223,8 +220,7 @@ async function deleteVariantsForTest(db: DB, testId: string) {
   `);
 }
 
-// ============================================================================
-// Goal discovery (M4 — listGoalEvents)
+// Goal discovery (listGoalEvents)
 // ============================================================================
 
 /** One pickable A/B goal: a declared event on a functional block INSTANCE. */
@@ -241,10 +237,10 @@ export type GoalCandidate = {
   /** Declared scalar param keys. */
   params: string[];
   /**
-   * True when this candidate sits in the tested root's OWN tree (the varying
-   * render). False for a candidate in an EMBEDDED reusable block — shared,
-   * co-rendered content whose conversions won't reflect THIS page's variants
-   * cleanly (§6g attribution caution).
+   * True when this candidate sits in the tested root's own tree (the varying
+   * render). False for a candidate in an embedded reusable block: shared,
+   * co-rendered content whose conversions will not reflect this page's
+   * variants cleanly.
    */
   inVaryingRoot: boolean;
   /** The root whose tree this candidate lives in. */
@@ -286,15 +282,14 @@ function collectGoalsFromTree(
 }
 
 /**
- * Loads a root's published tree (the FIRST published branch, deterministically)
- * + the root's collection, and enumerates goal candidates from that one branch.
- * Goal anchors are branch-stable ONLY once a test RUNS (the trackingId drift
- * guard enforces matching sets across running variants) — at pick time the test
- * is still draft, so a functional block present only on a non-first / not-yet-
- * published variant branch is NOT offered until that branch is the enumerated
- * one. Acceptable for the common case (pick a goal present on control); the
- * running-time drift guard rejects divergent sets later. Returns null when the
- * root has no published content / is out of scope.
+ * Loads a root's published tree (the first published branch, deterministically)
+ * and the root's collection, then enumerates goal candidates from that branch.
+ * Goal anchors are branch-stable only once a test runs (the trackingId drift
+ * guard enforces matching sets across running variants); at pick time the test
+ * is still draft, so a functional block present only on a non-enumerated branch
+ * is not offered until that branch is the enumerated one. The running-time
+ * drift guard rejects divergent sets later. Returns null when the root has no
+ * published content or is out of scope.
  */
 async function loadRootPublishedTree(
   db: DB,
@@ -320,16 +315,15 @@ async function loadRootPublishedTree(
   return { tree, collection };
 }
 
-// ============================================================================
 // Endpoints
 // ============================================================================
 
 /**
  * Creates all A/B test endpoints.
  *
- * Every handler reads `db` from `reqCtx.context.db`, which is injected
- * by the CMS endpoint wrapper at runtime -- just like better-auth does
- * with `ctx.context.db`. No closure or holder needed.
+ * Every handler reads `db` from `reqCtx.context.db`, which is injected by the
+ * CMS endpoint wrapper at runtime, just like better-auth does with
+ * `ctx.context.db`.
  */
 export function createAbTestEndpoints(
   adapter: AbTestAnalyticsAdapter,
@@ -431,8 +425,8 @@ export function createAbTestEndpoints(
             .enum(['draft', 'running', 'paused', 'completed'])
             .optional(),
           trafficPercentage: z.number().int().min(0).max(100).optional(),
-          // nullable → an explicit null clears the goal; omitted → unchanged.
-          // min(1) rejects '' so a stored goal is always a usable goal.
+          // nullable: an explicit null clears the goal; omitted leaves it
+          // unchanged. min(1) rejects '' so a stored goal is always usable.
           goalHandle: z.string().min(1).nullable().optional(),
           goalEvent: z.string().min(1).nullable().optional(),
           variants: variantsSchema.optional(),
@@ -488,10 +482,11 @@ export function createAbTestEndpoints(
           }
         }
 
-        // For a →running transition, compute the XOR conflict set up-front so we
-        // know which root rows to lock. Locking them FOR UPDATE (id-ordered →
-        // deadlock-free) inside the transaction serialises concurrent →running
-        // calls on overlapping conflict sets, closing the check-then-update race.
+        // For a running transition, compute the XOR conflict set up-front so we
+        // know which root rows to lock. Locking them FOR UPDATE in id order
+        // (deadlock-free) inside the transaction serialises concurrent running
+        // transitions on overlapping conflict sets, closing the
+        // check-then-update race.
         let coRender = new Set<string>();
         let lockRootIds: string[] = [];
         if (status === 'running') {
@@ -518,7 +513,7 @@ export function createAbTestEndpoints(
           }
 
           if (status === 'running') {
-            // Same-root: only one running test per root.
+            // Same-root rule: only one running test per root.
             const running = (await tx.execute(sql`
               SELECT id FROM cms.ab_tests
               WHERE root_id = ${test.root_id} AND status = 'running' AND id != ${testId}
@@ -528,11 +523,10 @@ export function createAbTestEndpoints(
               abTestError('AB_TEST_DUPLICATE_RUNNING');
             }
 
-            // XOR (cross-embed): a co-rendering root — the host page that embeds
-            // this block, a block it embeds, or a co-embedded sibling,
-            // transitively — must not ALSO have a running test, else a single
-            // render would vary on two axes (unattributable). Conservative +
-            // group-aware. Re-checked here under the lock.
+            // XOR rule: a co-rendering root (the host page that embeds this
+            // block, a block it embeds, or a co-embedded sibling, transitively)
+            // must not also have a running test, else one render would vary on
+            // two axes and be unattributable. Re-checked under the lock.
             if (coRender.size > 0) {
               const conflict = (await tx.execute(sql`
                 SELECT id FROM cms.ab_tests
@@ -589,13 +583,11 @@ export function createAbTestEndpoints(
           );
         });
 
-        // Toggling the test into/out of `running` changes what
-        // getPublishedContent returns for the root (the page-level `abTest`
-        // descriptor + variant fan-out appear/disappear). That is NOT a content
-        // write, so the normal write-action revalidation never sees it — fire a
-        // manual revalidation for the root so the app busts that page's render
-        // caches (unstable_cache + the variant-coded ISR entries). Without this,
-        // a freshly started/stopped test serves stale (pre-toggle) renders.
+        // Toggling into/out of `running` changes what getPublishedContent
+        // returns for the root, but is not a content write, so write-action
+        // revalidation never fires. Fire a manual revalidation for the root so
+        // the app busts the page's render caches; without this a freshly
+        // started or stopped test serves stale pre-toggle renders.
         const togglesRunning =
           status !== undefined &&
           (test.status === 'running') !== (status === 'running');
@@ -670,14 +662,13 @@ export function createAbTestEndpoints(
     ),
 
     /**
-     * M4 goal-picker: the pickable A/B goals for a root. Reads each block type's
+     * Goal-picker: the pickable A/B goals for a root. Reads each block type's
      * declared `events` (off the collection definitions) for the blocks present
-     * in the root's published tree, returning one candidate per (functional block
-     * instance × event). Candidates in the tested root's own tree are
-     * `inVaryingRoot: true`; candidates in embedded reusable blocks are
-     * `inVaryingRoot: false` (§6g attribution caution). The `name` is the
-     * resolved wire name (the same string fire() stores as event_type), so the
-     * UI-pickable goals are exactly the code-fireable events.
+     * in the root's published tree, returning one candidate per (functional
+     * block instance x event). Candidates in embedded reusable blocks are
+     * flagged `inVaryingRoot: false`. The `name` is the resolved wire name (the
+     * same string fire() stores as event_type), so the UI-pickable goals are
+     * exactly the code-fireable events.
      */
     listGoalEvents: createCMSEndpoint(
       '/abTest/listGoalEvents',
@@ -697,15 +688,15 @@ export function createAbTestEndpoints(
 
         const goals: GoalCandidate[] = [];
 
-        // The tested root's OWN tree → candidates in the varying render.
+        // The tested root's own tree: candidates in the varying render.
         const own = await loadRootPublishedTree(db, rootId, tenantSlug);
         if (own) {
           const blocks = collections[own.collection]?.blocks ?? {};
           collectGoalsFromTree(own.tree, blocks, rootId, true, goals);
         }
 
-        // Embedded reusable blocks (down-only) → shared, co-rendered content;
-        // their goals are offered but flagged inVaryingRoot:false (§6g caution).
+        // Embedded reusable blocks (down-only): shared, co-rendered content;
+        // their goals are offered but flagged inVaryingRoot: false.
         const resolver = scope.referenceResolver ?? coreReferenceResolver;
         const scopeColumns = crossScopeColumns(scope.roots);
         const embedded = await collectEmbeddedRoots(
@@ -851,17 +842,16 @@ export function createAbTestEndpoints(
           // (form_submit, page_view) omit testId/variantId.
           testId: z.string().optional(),
           variantId: z.string().optional(),
-          // Pattern A: the edge/render route knows the served BRANCH, not the
-          // variant id. Sending branchId (with testId) resolves the variant id
-          // server-side — the impression beacon uses this.
+          // The edge or render route knows the served branch, not the variant
+          // id. Sending branchId (with testId) resolves the variant id
+          // server-side; the impression beacon uses this.
           branchId: z.string().optional(),
-          // Optional: the anonymous Pattern A path stores NO identifier (the
-          // variant comes from the URL/variant-cookie, not a visitor id). A
-          // visitor id is only sent for the consent-gated unique-visitor / GA4
-          // path.
+          // Optional: anonymous events store no visitor identifier (the variant
+          // comes from the URL or the variant cookie). A visitor id is only
+          // sent for the consent-gated unique-visitor and GA4 paths.
           visitorId: z.string().min(1).optional(),
           anonymous: z.boolean().optional().default(false),
-          // Open vocabulary (blocks declare their own event names) but bounded,
+          // Open vocabulary (blocks declare their own event names), but bounded
           // so this ingest path never accepts arbitrary unbounded input.
           eventType: z.string().min(1).max(80),
           metadata: z
@@ -876,11 +866,11 @@ export function createAbTestEndpoints(
               type: z.string().max(128).optional(),
             })
             .optional(),
-          // Funnel grouping (M4): shared by the attempt + success legs of one
-          // interaction. Bounded; groups, does NOT dedup.
+          // Funnel grouping: shared by the attempt and success legs of one
+          // interaction. Bounded; groups, does not dedup.
           interactionId: z.string().min(1).max(128).optional(),
-          // GA4 stitching ids (M5): the client sends these ONLY when consent is
-          // granted, so the server-MP forward can attribute the hit. Bounded.
+          // GA4 stitching ids: the client sends these only when consent is
+          // granted, so the server-side forward can attribute the hit.
           transport: z
             .object({
               clientId: z.string().min(1).max(128).optional(),
@@ -893,8 +883,8 @@ export function createAbTestEndpoints(
                 .optional(),
             })
             .optional(),
-          // Consent Mode v2 state the client emitted under (optional). Used for
-          // a server-side denial guard + forwarded to consent-aware sinks.
+          // Consent Mode v2 state the client emitted under. Used for a
+          // server-side denial guard and forwarded to consent-aware sinks.
           consent: z
             .object({
               analytics_storage: z.enum(['granted', 'denied']),
@@ -946,11 +936,10 @@ export function createAbTestEndpoints(
           consent,
         } = reqCtx.body;
 
-        // Courtesy no-op for a self-reported denial: if a caller explicitly
-        // sends analytics_storage='denied', don't record. This is NOT a server
-        // enforcement boundary — `consent` is optional, so a caller can simply
-        // omit it. True server-read consent gating is deferred to M5; the client
-        // gate remains the consent authority.
+        // Courtesy no-op for a self-reported denial: a caller that explicitly
+        // sends analytics_storage='denied' gets nothing recorded. This is NOT a
+        // server enforcement boundary, because `consent` is optional and can be
+        // omitted entirely; the client gate remains the consent authority.
         if (consent && consent.analytics_storage === 'denied') {
           return {};
         }
@@ -961,8 +950,8 @@ export function createAbTestEndpoints(
           variantId !== undefined ||
           branchId !== undefined
         ) {
-          // A/B-attributed event: it must resolve to a variant that belongs to
-          // the test — otherwise a caller could record events against an
+          // An A/B-attributed event must resolve to a variant that belongs to
+          // the test; otherwise a caller could record events against an
           // arbitrary (or another test's) variant and poison the analytics.
           if (!testId) {
             abTestError(
@@ -972,7 +961,7 @@ export function createAbTestEndpoints(
           }
           await findTestOrThrow(db, testId, tenantSlug);
           const variants = await getVariantsForTest(db, testId);
-          // Accept either an explicit variantId or a branchId (Pattern A).
+          // Accept an explicit variantId or a branchId.
           const resolvedVariantId =
             variantId ??
             (branchId
@@ -990,9 +979,8 @@ export function createAbTestEndpoints(
           ab = { testId, variantId: resolvedVariantId };
         }
 
-        // The storage PK is always server-minted in M0 (id omitted here). A
-        // client-supplied, tenant-namespaced idempotency key — distinct from
-        // the PK — is an M3 concern (see AB_MEASUREMENT_DESIGN §9 carry-forward).
+        // The storage PK is always server-minted (id omitted here); no
+        // client-supplied idempotency key.
         const event: AnalyticsEvent = {
           name: eventType,
           visitorId,
@@ -1008,7 +996,7 @@ export function createAbTestEndpoints(
         await adapter.track(event);
 
         // Push a live result delta to the test's dashboard channel over the
-        // shared realtime transport (best-effort; getResults stays canonical).
+        // shared realtime transport. Best-effort; getResults stays canonical.
         if (ab) {
           publishLiveDelta(
             reqCtx.context.realtime,
@@ -1018,9 +1006,8 @@ export function createAbTestEndpoints(
           );
         }
 
-        // M5: opt-in server-side GA4 forward. No-op without a configured
-        // endpoint, or when the event is not a consenting, client_id-bearing hit
-        // (buildGa4Payload returns null). Best-effort — never breaks the ingest.
+        // Opt-in server-side GA4 forward. No-op without a configured endpoint
+        // or when the event is not a consenting, client_id-bearing hit.
         if (ga4Config) await forwardToGa4(event, ga4Config);
 
         return {};
@@ -1052,14 +1039,13 @@ export function createAbTestEndpoints(
         const test = await findTestOrThrow(db, testId, tenantSlug);
         const results = await adapter.query(testId, { from, to });
 
-        // M4: when the test has a chosen goal, count ITS event (the resolved
-        // wire name, already present in each variant's eventBreakdown) as the
-        // conversion + recompute the rate. The adapter's default 'conversion'
-        // eventType is the goal-less fallback (unchanged when no goal is set).
-        // `|| null` coerces a legacy/degenerate '' to the goal-less path.
+        // When the test has a chosen goal, count that event (the resolved wire
+        // name, already in each variant's eventBreakdown) as the conversion and
+        // recompute the rate. The adapter's default 'conversion' eventType is
+        // the goal-less fallback. `|| null` coerces a legacy '' to goal-less.
         const goal = test.goal_event || null;
         // Surface the goal so the live dashboard applies deltas to conversions
-        // with the same rule (null = goal-less default → 'conversion').
+        // with the same rule (null means the goal-less 'conversion' default).
         results.goalEvent = goal;
         if (goal) {
           for (const v of results.variants) {
@@ -1068,9 +1054,9 @@ export function createAbTestEndpoints(
               v.impressions > 0
                 ? Math.round((v.conversions / v.impressions) * 10000) / 100
                 : 0;
-            // Funnel (M4): of the interactions started (attempts = distinct
-            // interaction ids), how many reached the goal event. 0 when the goal
-            // is a non-funnel event (no interaction ids) → attempts is 0.
+            // Funnel: of the interactions started (attempts = distinct
+            // interaction ids), how many reached the goal event. 0 when the
+            // goal is a non-funnel event (no interaction ids).
             const goalInteractions =
               v.eventBreakdown[goal]?.distinctInteractions ?? 0;
             v.completionRate =

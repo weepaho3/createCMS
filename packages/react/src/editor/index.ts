@@ -1,6 +1,6 @@
 'use client';
 
-// @createcms/react/editor — schema, state, form and preview layer of the
+// @createcms/react/editor: schema, state, form and preview layer of the
 // editor primitive. Parts live on the `Editor` namespace (`Editor.Root`, …);
 // helpers and hooks are flat named exports next to it.
 import { EditorRoot } from './components';
@@ -128,7 +128,7 @@ export type {
 } from './factory';
 export { createEditor } from './factory';
 
-// Layer 1 — schema types and pure helpers (no React, no DOM).
+// Layer 1: schema types and pure helpers (no React, no DOM).
 export type {
   AnyEditorSchema,
   DefaultValuesOptions,
@@ -162,7 +162,7 @@ export {
   validateField,
 } from './schema';
 
-// Layer 2 — framework-free store (ops, inverse ops, history, applyRemote).
+// Layer 2: framework-free store (ops, inverse ops, history, applyRemote).
 export type {
   AddOptions,
   ApplyRemoteResult,

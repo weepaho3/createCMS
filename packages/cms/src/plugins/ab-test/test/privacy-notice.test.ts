@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { getPrivacyNoticeItems } from '../privacy-notice';
 
-describe('M5 — getPrivacyNoticeItems', () => {
+describe('getPrivacyNoticeItems', () => {
   it('lists the consent-free items as strictly-necessary (no consent)', () => {
     const items = getPrivacyNoticeItems();
     const variant = items.find((i) => i.name.startsWith('ab_'))!;
@@ -23,16 +23,16 @@ describe('M5 — getPrivacyNoticeItems', () => {
   });
 
   it('always discloses the _ga read (it happens whenever analytics is granted)', () => {
-    // The client reads `_ga` whenever analytics_storage is granted, independent
-    // of server-MP — so it must always be disclosed, not gated on ga4.
+    // The client reads `_ga` whenever analytics_storage is granted,
+    // independent of GA4 forwarding, so it must always be disclosed.
     const ga = getPrivacyNoticeItems().find((i) => i.name.startsWith('_ga'))!;
     expect(ga.type).toBe('external-cookie-read');
     expect(ga.consentRequired).toBe('analytics_storage');
-    // Without server-MP, the id is not forwarded to GA4.
+    // Without GA4 forwarding the id is not sent to Google.
     expect(ga.recipient).not.toContain('Google Analytics 4');
   });
 
-  it('names GA4 as the _ga recipient once server-MP is enabled', () => {
+  it('names GA4 as the _ga recipient once forwarding is enabled', () => {
     const ga = getPrivacyNoticeItems({ ga4: true }).find((i) =>
       i.name.startsWith('_ga'),
     )!;

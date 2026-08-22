@@ -6,8 +6,8 @@ import { APIError } from 'better-call';
  * raised by the scope factory; the TRANSLATION_* codes by the per-collection
  * createTranslation/listTranslations endpoints.
  *
- * There is intentionally NO I18N_NOT_ENABLED code: createTranslation /
- * listTranslations only EXIST when this plugin is installed (they are
+ * There is intentionally no I18N_NOT_ENABLED code: createTranslation and
+ * listTranslations only exist when this plugin is installed (they are
  * contributed via plugin.collectionEndpoints), so "i18n not enabled" is the
  * structural absence of the endpoint, not a runtime error.
  */

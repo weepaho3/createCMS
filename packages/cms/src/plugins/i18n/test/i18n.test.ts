@@ -51,10 +51,10 @@ const NESTED_I18N = {
 // so a root with slug 'foo' lives at path '/pages/foo'.
 
 // ============================================================================
-// Language stamping + same-slug-per-language (the headline of I2)
+// Language stamping + same-slug-per-language
 // ============================================================================
 
-describe('i18n — language stamping', () => {
+describe('i18n language stamping', () => {
   it('stamps the active language on createRoot', async () => {
     const { cms, db, setLanguage } = await setupI18nTestCMS();
     setLanguage('de');
@@ -70,7 +70,7 @@ describe('i18n — language stamping', () => {
   });
 });
 
-describe('i18n — same slug across languages', () => {
+describe('i18n same slug across languages', () => {
   it('allows the identical slug in two languages (en/blog + de/blog)', async () => {
     const { cms, setLanguage } = await setupI18nTestCMS();
 
@@ -87,12 +87,12 @@ describe('i18n — same slug across languages', () => {
     expect(en.rootId).not.toBe(de.rootId);
   });
 
-  it('rejects the same slug within the SAME language at PUBLISH (drafts may collide)', async () => {
+  it('rejects the same slug within the same language at publish (drafts may collide)', async () => {
     const { cms, setLanguage } = await setupI18nTestCMS();
     setLanguage('en');
 
-    // cms-05: two unpublished en drafts can share a slug — uniqueness is a
-    // publish-time (per-language) concern.
+    // Two unpublished en drafts can share a slug; uniqueness is a publish-time
+    // per-language concern.
     const first = await cms.api.pages.createRoot({
       body: { slug: 'about', properties: { title: 'A' } },
     });
@@ -100,11 +100,11 @@ describe('i18n — same slug across languages', () => {
       body: { slug: 'about', properties: { title: 'A2' } },
     });
 
-    // Publishing the first materializes its en slug…
+    // Publishing the first materializes its en slug...
     await cms.api.pages.publishBranch({
       body: { rootId: first.rootId, branchId: first.branchId },
     });
-    // …so publishing the second (same en slug) now collides.
+    // ...so publishing the second (same en slug) now collides.
     await expect(
       cms.api.pages.publishBranch({
         body: { rootId: second.rootId, branchId: second.branchId },
@@ -121,7 +121,7 @@ describe('i18n — same slug across languages', () => {
       body: { slug: 'about', properties: { title: 'Über uns' } },
     });
 
-    // en has /news; renaming it to /about must NOT collide with de's /about.
+    // en has /news; renaming it to /about must not collide with de's /about.
     setLanguage('en');
     const enNews = await cms.api.pages.createRoot({
       body: { slug: 'news', properties: { title: 'News' } },
@@ -138,11 +138,11 @@ describe('i18n — same slug across languages', () => {
     ).resolves.toBeDefined();
   });
 
-  it('enforces per-language uniqueness at the DB level for NESTED roots (plugin unique)', async () => {
+  it('enforces per-language uniqueness at the DB level for nested roots (plugin unique)', async () => {
     const { db } = await setupI18nTestCMS();
-    // The DB unique only backstops NESTED roots: a NULL parent_root_id is treated
-    // as DISTINCT by Postgres, so top-level uniqueness is app-level only (exactly
-    // as the demoted core index behaved). Use a real parent here.
+    // The DB unique only backstops nested roots: a NULL parent_root_id is
+    // distinct in Postgres, so top-level uniqueness is app-level only (as the
+    // demoted core index behaved). Use a real parent here.
     await db.execute(
       sql`INSERT INTO cms.roots (id, collection, slug, language, translation_key) VALUES ('rot_par', 'pages', 'p', 'en', 'tgr_par')`,
     );
@@ -168,7 +168,7 @@ describe('i18n — same slug across languages', () => {
 // translationKey (group id)
 // ============================================================================
 
-describe('i18n — translationKey group id', () => {
+describe('i18n translationKey group id', () => {
   it('stamps a fresh tgr_ key on each createRoot (distinct logical entries)', async () => {
     const { cms, db, setLanguage } = await setupI18nTestCMS();
     setLanguage('en');
@@ -217,7 +217,7 @@ describe('i18n — translationKey group id', () => {
     const srcKey = (
       rows.rows.find((r) => r.id === src.rootId) as { translation_key: string }
     ).translation_key;
-    // cms-05: the duplicate's slug is a draft (`__slug`), so roots.slug is null;
+    // The duplicate's slug is a draft (`__slug`), so roots.slug is null;
     // identify the copy by id instead.
     const copy = rows.rows.find((r) => r.id !== src.rootId) as {
       translation_key: string;
@@ -231,7 +231,7 @@ describe('i18n — translationKey group id', () => {
 // createTranslation
 // ============================================================================
 
-describe('i18n — createTranslation', () => {
+describe('i18n createTranslation', () => {
   it('creates a sibling: inherited translationKey, target language, localized slug', async () => {
     const { cms, db, setLanguage } = await setupI18nTestCMS();
     setLanguage('en');
@@ -261,8 +261,8 @@ describe('i18n — createTranslation', () => {
     };
     expect(deRow.translation_key).toBe(enRow.translation_key);
     expect(deRow.language).toBe('de');
-    // cms-05: the localized slug is seeded as a DRAFT (`__slug`) — roots.slug
-    // stays null until the translation is published.
+    // The localized slug is seeded as a draft (`__slug`); roots.slug stays null
+    // until the translation is published.
     expect(deRow.slug).toBeNull();
     setLanguage('de');
     const deTree = await cms.api.pages.getBlockTree({
@@ -335,9 +335,9 @@ describe('i18n — createTranslation', () => {
         targetSlug: 'anleitung',
       },
     });
-    // The source's default branch is named 'production', not 'main'. Before the
-    // fix the copy-seed looked up a branch literally named 'main', found none,
-    // and silently produced a blank translation.
+    // The source's default branch is named 'production', not 'main'; a
+    // hard-coded 'main' lookup would find none and silently produce a blank
+    // translation.
     setLanguage('de');
     const tree = await cms.api.pages.getBlockTree({
       query: { rootId: de.rootId, branchId: de.branchId },
@@ -488,11 +488,10 @@ describe('i18n — createTranslation', () => {
     ).resolves.toBeDefined();
   });
 
-  it('does NOT expose createTranslation without the i18n plugin', async () => {
+  it('does not expose createTranslation without the i18n plugin', async () => {
     const { cms } = await setupTestCMS();
     // createTranslation is contributed by the i18n plugin's collectionEndpoints;
-    // without the plugin it must not exist on the collection API — neither at the
-    // type level (cms.api.pages has no such key) nor at runtime.
+    // without the plugin it must not exist on the collection API.
     expect(
       (cms.api.pages as Record<string, unknown>).createTranslation,
     ).toBeUndefined();
@@ -520,7 +519,7 @@ describe('i18n — createTranslation', () => {
 // Read path: resolution + listing are language-scoped
 // ============================================================================
 
-describe('i18n — language-scoped reads', () => {
+describe('i18n language-scoped reads', () => {
   it('getPublishedContent resolves a shared path within the active language', async () => {
     const { cms, setLanguage } = await setupI18nTestCMS();
 
@@ -554,7 +553,7 @@ describe('i18n — language-scoped reads', () => {
     expect(asDe.rootId).toBe(de.rootId);
   });
 
-  it('listRoots returns only the active language (Strapi-style per-locale list)', async () => {
+  it('listRoots returns only the active language (per-locale list)', async () => {
     const { cms, setLanguage } = await setupI18nTestCMS();
 
     setLanguage('en');
@@ -619,7 +618,7 @@ describe('i18n — language-scoped reads', () => {
 // listTranslations (language switcher)
 // ============================================================================
 
-describe('i18n — listTranslations', () => {
+describe('i18n listTranslations', () => {
   it('lists all sibling translations with their per-language paths', async () => {
     const { cms, setLanguage } = await setupI18nTestCMS();
     setLanguage('en');
@@ -633,8 +632,8 @@ describe('i18n — listTranslations', () => {
         targetSlug: 'ueber-uns',
       },
     });
-    // cms-05: listTranslations shows the PUBLISHED slug/path, so publish each
-    // sibling in its own language scope to materialize them.
+    // listTranslations shows the published slug/path, so publish each sibling
+    // in its own language scope to materialize them.
     await cms.api.pages.publishBranch({
       body: { rootId: en.rootId, branchId: en.branchId },
     });
@@ -657,7 +656,7 @@ describe('i18n — listTranslations', () => {
     expect(byLang.de.path).toBe('/pages/ueber-uns');
   });
 
-  it('shows the DRAFT slug for an UNPUBLISHED translation (cms-05 fallback)', async () => {
+  it('shows the draft slug for an unpublished translation', async () => {
     const { cms, setLanguage } = await setupI18nTestCMS();
     setLanguage('en');
     const en = await cms.api.pages.createRoot({
@@ -671,7 +670,7 @@ describe('i18n — listTranslations', () => {
       },
     });
     // Publish only the EN sibling. The DE translation stays a draft, so its
-    // roots.slug is still null — cms-05 no longer writes it on createTranslation.
+    // roots.slug is still null (createTranslation no longer writes it).
     await cms.api.pages.publishBranch({
       body: { rootId: en.rootId, branchId: en.branchId },
     });
@@ -701,7 +700,7 @@ describe('i18n — listTranslations', () => {
     ).rejects.toThrow();
   });
 
-  it('does NOT expose listTranslations without the i18n plugin', async () => {
+  it('does not expose listTranslations without the i18n plugin', async () => {
     const { cms } = await setupTestCMS();
     expect(
       (cms.api.pages as Record<string, unknown>).listTranslations,
@@ -713,7 +712,7 @@ describe('i18n — listTranslations', () => {
 // Redirects are language-aware
 // ============================================================================
 
-describe('i18n — redirects', () => {
+describe('i18n redirects', () => {
   it('are per-language: same path, different target per language, no language jump', async () => {
     const { cms, setLanguage } = await setupI18nTestCMS();
 
@@ -727,8 +726,8 @@ describe('i18n — redirects', () => {
       },
     });
 
-    // The SAME source path in another language → a DIFFERENT redirect (allowed;
-    // before i18n redirect scoping the app-level check rejected this).
+    // The same source path in another language gets a different redirect
+    // (allowed; before i18n redirect scoping the app-level check rejected this).
     setLanguage('de');
     await expect(
       cms.api.pages.createRedirect({
@@ -741,7 +740,7 @@ describe('i18n — redirects', () => {
       }),
     ).resolves.toBeDefined();
 
-    // Each language resolves /pages/old to ITS OWN target (no language jump).
+    // Each language resolves /pages/old to its own target (no language jump).
     setLanguage('en');
     expect(
       (await cms.api.pages.resolveRedirect({ query: { path: '/pages/old' } }))
@@ -762,7 +761,7 @@ describe('i18n — redirects', () => {
     const en = await cms.api.pages.createRoot({
       body: { slug: 'movers', properties: { title: 'M' } },
     });
-    // cms-05: publish the live slug, then publish the rename — the auto-redirect
+    // Publish the live slug, then publish the rename; the auto-redirect
     // (language=en) is created at publish.
     await cms.api.pages.publishBranch({
       body: { rootId: en.rootId, branchId: en.branchId },
@@ -779,7 +778,7 @@ describe('i18n — redirects', () => {
       body: { rootId: en.rootId, branchId: en.branchId },
     });
 
-    // en resolves the old path → the new one (auto-created, language=en).
+    // en resolves the old path to the new one (auto-created, language=en).
     expect(
       (
         await cms.api.pages.resolveRedirect({
@@ -788,7 +787,7 @@ describe('i18n — redirects', () => {
       ).redirect,
     ).toEqual({ status: 301, location: '/pages/shakers' });
 
-    // de has no such redirect — the auto-redirect is language-scoped to en.
+    // de has no such redirect; the auto-redirect is language-scoped to en.
     setLanguage('de');
     expect(
       (
@@ -804,7 +803,7 @@ describe('i18n — redirects', () => {
 // Composition: i18n + multi-tenant
 // ============================================================================
 
-describe('i18n + multiTenant — composition', () => {
+describe('i18n + multiTenant composition', () => {
   it('stamps both tenant_slug and language on a root', async () => {
     const { cms, db, set } = await setupI18nMultiTenantTestCMS();
     set('acme', 'de');
@@ -818,7 +817,7 @@ describe('i18n + multiTenant — composition', () => {
     expect(rows.rows[0].language).toBe('de');
   });
 
-  it('enforces slug uniqueness per (tenant, language) at PUBLISH — the compound authority', async () => {
+  it('enforces slug uniqueness per (tenant, language) at publish (the compound authority)', async () => {
     const { cms, set } = await setupI18nMultiTenantTestCMS();
 
     const publish = (r: { rootId: string; branchId: string }) =>
@@ -846,8 +845,8 @@ describe('i18n + multiTenant — composition', () => {
     });
     await expect(publish(globexEn)).resolves.toBeDefined();
 
-    // cms-05: same (tenant, language) drafts may coexist, but the SECOND publish
-    // into (acme, en) collides.
+    // Same (tenant, language) drafts may coexist, but the second publish into
+    // (acme, en) collides.
     set('acme', 'en');
     const acmeEnDup = await cms.api.pages.createRoot({
       body: { slug: 'blog', properties: { title: 'dup' } },
@@ -857,7 +856,7 @@ describe('i18n + multiTenant — composition', () => {
     );
   });
 
-  it('does not resolve a reference to another tenant’s content (resolution is tenant-scoped)', async () => {
+  it("does not resolve a reference to another tenant's content (resolution is tenant-scoped)", async () => {
     const { cms, db, set } = await setupI18nMultiTenantTestCMS({
       collections: REF_I18N,
     });
@@ -904,8 +903,8 @@ describe('i18n + multiTenant — composition', () => {
       body: { rootId: aSource.rootId, branchId: aSource.branchId },
     });
 
-    // acme reads its own page → NEITHER reference resolves to globex's content;
-    // each stays the raw string (the remap + loadPublishedRoots are tenant-scoped).
+    // acme reads its own page: neither reference resolves to globex's content;
+    // each stays the raw string (remap and loadPublishedRoots are tenant-scoped).
     const pub = await cms.api.pages.getPublishedContent({
       query: { rootId: aSource.rootId },
     });
@@ -914,9 +913,8 @@ describe('i18n + multiTenant — composition', () => {
     );
     expect(links).toHaveLength(2);
     for (const link of links) {
-      // Cross-tenant: the reference is NOT resolved, so target stays the raw
-      // rootId string at runtime — the resolved-mode type says object, hence
-      // the unknown bridge. (This test asserts exactly that it stayed a string.)
+      // Cross-tenant: the reference is not resolved, so target stays a raw
+      // string at runtime; hence the unknown bridge.
       expect(
         typeof (link.properties as unknown as { target: string }).target,
       ).toBe('string');
@@ -949,7 +947,7 @@ describe('i18n + multiTenant — composition', () => {
       },
     });
 
-    // acme inspects + deletes its OWN block: the globex host is out of acme's
+    // acme inspects + deletes its own block: the globex host is out of acme's
     // scope, so it neither shows up in usage nor blocks the delete.
     set('acme', 'en');
     const usage = await cms.api.pages.getReferenceUsages({
@@ -989,13 +987,13 @@ describe('i18n + multiTenant — composition', () => {
     ).rejects.toThrow(/embedded/i);
   });
 
-  it('counts a same-tenant host in a SIBLING language (cross-scope reads span language under i18n+multiTenant)', async () => {
-    // Regression (P5c/D6): the i18n plugin's crossScopeExclude:['language'] must
-    // survive the two-factory scope merge in computeScope. With the registered
-    // order [multiTenant(), i18n()], multi-tenant (no crossScopeExclude) is the
-    // first roots factory and i18n the second — if the merge drops it, every
+  it('counts a same-tenant host in a sibling language (cross-scope reads span language under i18n+multiTenant)', async () => {
+    // The i18n plugin's crossScopeExclude:['language'] must survive the
+    // two-factory scope merge in computeScope. With the registered order
+    // [multiTenant(), i18n()], multi-tenant (no crossScopeExclude) is the first
+    // roots factory and i18n the second; if the merge drops it, every
     // cross-scope read wrongly filters by the active language and misses a
-    // same-tenant host living in a SIBLING language. getReferenceUsages must
+    // same-tenant host living in a sibling language. getReferenceUsages must
     // report the DE host even when inspected from EN.
     const { cms, set } = await setupI18nMultiTenantTestCMS({
       collections: REF_I18N,
@@ -1006,7 +1004,7 @@ describe('i18n + multiTenant — composition', () => {
       body: { slug: 'a-blk', properties: { title: 'Acme Block (EN)' } },
     });
 
-    // Same tenant, DIFFERENT language: a DE host embeds the EN block.
+    // Same tenant, different language: a DE host embeds the EN block.
     set('acme', 'de');
     const deHost = await cms.api.pages.createRoot({
       body: { slug: 'de-host', properties: { title: 'Acme Host (DE)' } },
@@ -1021,7 +1019,7 @@ describe('i18n + multiTenant — composition', () => {
       },
     });
 
-    // Inspect from EN — the same-tenant DE host must still count.
+    // Inspect from EN: the same-tenant DE host must still count.
     set('acme', 'en');
     const usage = await cms.api.pages.getReferenceUsages({
       query: { rootId: aBlock.rootId },
@@ -1039,9 +1037,9 @@ describe('i18n + multiTenant — composition', () => {
       VALUES (${assetId}, 'acme-img', 'image/png', 100, 'acme-img', 'private', 'acme')
     `);
 
-    // globex embeds acme's asset id — asset ids are author-controlled raw strings
-    // in block properties, and the asset row exists, so it IS indexed into
-    // content_usages against the globex host root.
+    // globex embeds acme's asset id: asset ids are author-controlled raw
+    // strings in block properties, and the asset row exists, so it is indexed
+    // into content_usages against the globex host root.
     set('globex', 'en');
     const gHost = await cms.api.pages.createRoot({
       body: { slug: 'g-host', properties: { title: 'Globex Host' } },
@@ -1056,7 +1054,7 @@ describe('i18n + multiTenant — composition', () => {
       },
     });
 
-    // acme inspects + archives its OWN asset: the globex host is out of acme's
+    // acme inspects + archives its own asset: the globex host is out of acme's
     // scope, so it neither shows up in usage nor blocks the archive.
     set('acme', 'en');
     const usage = await cms.api.media.getAssetUsages({ query: { assetId } });
@@ -1092,7 +1090,7 @@ describe('i18n + multiTenant — composition', () => {
       },
     });
 
-    // Same tenant → the host is in acme's scope, so it both reports usage and
+    // Same tenant: the host is in acme's scope, so it both reports usage and
     // skips (protects) the asset on archive.
     const usage = await cms.api.media.getAssetUsages({ query: { assetId } });
     expect(usage.pageCount).toBe(1);
@@ -1116,7 +1114,7 @@ describe('i18n + multiTenant — composition', () => {
         targetPath: '/pages/acme-en',
       },
     });
-    // The SAME source path is fine in another language AND another tenant.
+    // The same source path is fine in another language and another tenant.
     set('acme', 'de');
     await cms.api.pages.createRedirect({
       body: {
@@ -1136,7 +1134,7 @@ describe('i18n + multiTenant — composition', () => {
       },
     });
 
-    // Each (tenant, language) resolves /pages/p to ITS OWN target.
+    // Each (tenant, language) resolves /pages/p to its own target.
     const expectLoc = async (loc: string) =>
       expect(
         (await cms.api.pages.resolveRedirect({ query: { path: '/pages/p' } }))
@@ -1175,9 +1173,9 @@ describe('i18n + multiTenant — composition', () => {
     });
     expect(before.ancestors).toHaveLength(1);
 
-    // Corrupt the data: move the parent to another tenant. The acme ancestor walk
-    // matches on tenant_slug + language, so it stops at the boundary — the
-    // cross-tenant parent's slug never leaks into the path/breadcrumb.
+    // Corrupt the data: move the parent to another tenant. The acme ancestor
+    // walk matches on tenant_slug + language, so it stops at the boundary and
+    // the cross-tenant parent's slug never leaks into the path/breadcrumb.
     await db.execute(
       sql`UPDATE cms.roots SET tenant_slug = 'globex' WHERE id = ${parent.rootId}`,
     );
@@ -1212,9 +1210,9 @@ describe('i18n + multiTenant — composition', () => {
         .redirect,
     ).toEqual({ status: 301, location: '/pages/tgt' });
 
-    // Corrupt the data: move the target root to another tenant. The acme redirect
-    // row still points at it, but resolveTarget gates the lookup by scope, so the
-    // path no longer leaks — the redirect resolves to nothing.
+    // Corrupt the data: move the target root to another tenant. The acme
+    // redirect row still points at it, but resolveTarget gates the lookup by
+    // scope, so the path no longer leaks and the redirect resolves to nothing.
     await db.execute(
       sql`UPDATE cms.roots SET tenant_slug = 'globex' WHERE id = ${target.rootId}`,
     );
@@ -1240,8 +1238,9 @@ describe('i18n + multiTenant — composition', () => {
       },
     });
 
-    // globex cannot list acme's translations — requireRootInScope rejects the
-    // input rootId (not in globex's tenant), so the sibling query is never reached.
+    // globex cannot list acme's translations: requireRootInScope rejects the
+    // input rootId (not in globex's tenant), so the sibling query is never
+    // reached.
     set('globex', 'en');
     await expect(
       cms.api.pages.listTranslations({ query: { rootId: acme.rootId } }),
@@ -1260,10 +1259,10 @@ describe('i18n + multiTenant — composition', () => {
 });
 
 // ============================================================================
-// Language-aware references (I5)
+// Language-aware references
 // ============================================================================
 
-describe('i18n — language-aware references', () => {
+describe('i18n language-aware references', () => {
   it('resolves a translationKey reference to the active-language sibling (and copied refs follow)', async () => {
     const { cms, db, setLanguage } = await setupI18nTestCMS({
       collections: REF_I18N,
@@ -1287,7 +1286,8 @@ describe('i18n — language-aware references', () => {
       },
     });
 
-    // Source page (en) with a link block referencing the target BY translationKey.
+    // Source page (en) with a link block referencing the target by
+    // translationKey.
     const enSource = await cms.api.pages.createRoot({
       body: { slug: 'source-en', properties: { title: 'Source EN' } },
     });
@@ -1300,7 +1300,7 @@ describe('i18n — language-aware references', () => {
         properties: { target: targetKey },
       },
     });
-    // de source via createTranslation — copies the link block (and its
+    // de source via createTranslation, which copies the link block (and its
     // translationKey reference) verbatim.
     const deSource = await cms.api.pages.createTranslation({
       body: {
@@ -1326,7 +1326,7 @@ describe('i18n — language-aware references', () => {
       body: { rootId: deSource.rootId, branchId: deSource.branchId },
     });
 
-    // en source read in en → the reference resolves to the EN target.
+    // en source read in en: the reference resolves to the EN target.
     setLanguage('en');
     const enPub = await cms.api.pages.getPublishedContent({
       query: { rootId: enSource.rootId },
@@ -1338,7 +1338,7 @@ describe('i18n — language-aware references', () => {
       (enLink!.properties as { target: { rootId: string } }).target.rootId,
     ).toBe(enTarget.rootId);
 
-    // de source read in de → the SAME stored translationKey resolves to the DE
+    // de source read in de: the same stored translationKey resolves to the DE
     // target (a link never jumps languages).
     setLanguage('de');
     const dePub = await cms.api.pages.getPublishedContent({
@@ -1397,7 +1397,7 @@ describe('i18n — language-aware references', () => {
     await cms.api.pages.publishBranch({
       body: { rootId: enTarget.rootId, branchId: enTarget.branchId },
     });
-    // also publish the de target so it's resolvable when the chain prefers de
+    // Also publish the de target so it is resolvable when the chain prefers de.
     const de = await db.execute(
       sql`SELECT id FROM cms.roots WHERE translation_key = ${targetKey} AND language = 'de'`,
     );
@@ -1428,7 +1428,7 @@ describe('i18n — language-aware references', () => {
   it('falls back to defaultLanguage when the active-language sibling is missing', async () => {
     const setup = await setupI18nTestCMS({ collections: REF_I18N });
     const resolved = await resolveFrRef(setup as never);
-    // fr has no target sibling → default chain [fr, en] → en target.
+    // fr has no target sibling; default chain [fr, en] resolves to the en target.
     const enRow = await setup.db.execute(
       sql`SELECT id FROM cms.roots WHERE language = 'en' AND slug = 'tgt-en'`,
     );
@@ -1441,7 +1441,7 @@ describe('i18n — language-aware references', () => {
       fallback: { fr: ['de', 'en'] },
     });
     const resolved = await resolveFrRef(setup as never);
-    // chain [fr, de, en]; fr missing → de preferred over en.
+    // Chain [fr, de, en]: fr missing, so de is preferred over en.
     const deRow = await setup.db.execute(
       sql`SELECT id FROM cms.roots WHERE language = 'de' AND slug = 'tgt-de'`,
     );
@@ -1454,8 +1454,8 @@ describe('i18n — language-aware references', () => {
       fallback: { fr: [] },
     });
     const resolved = await resolveFrRef(setup as never);
-    // fr:[] disables fallback; fr has no target sibling → the ref is left as the
-    // raw translationKey string, so the resolved object's rootId is undefined.
+    // fr:[] disables fallback; fr has no target sibling, so the ref is left as
+    // the raw translationKey string and the resolved rootId is undefined.
     expect(resolved).toBeUndefined();
   });
 
@@ -1467,10 +1467,10 @@ describe('i18n — language-aware references', () => {
 });
 
 // ============================================================================
-// Reference usage is group-level across language siblings (RB2)
+// Reference usage is group-level across language siblings
 // ============================================================================
 
-describe('i18n — reference usage is group-level (RB2)', () => {
+describe('i18n reference usage is group-level', () => {
   it('getReferenceUsages aggregates across language siblings (any sibling sees the whole group)', async () => {
     const { cms, db, setLanguage } = await setupI18nTestCMS({
       collections: REF_I18N,
@@ -1533,8 +1533,8 @@ describe('i18n — reference usage is group-level (RB2)', () => {
     });
     expect(enUsage.pageCount).toBe(2);
 
-    // Inspecting the DE sibling reports the SAME group-level count (not just its
-    // own host) — the property RB2's query-time group expansion exists to deliver.
+    // Inspecting the DE sibling reports the same group-level count, not just
+    // its own host; that is the property query-time group expansion delivers.
     setLanguage('de');
     const deUsage = await cms.api.pages.getReferenceUsages({
       query: { rootId: deTargetId },
@@ -1544,10 +1544,10 @@ describe('i18n — reference usage is group-level (RB2)', () => {
 });
 
 // ============================================================================
-// RB3 — a rot_ embed auto-upgrades to the active-language sibling (else anchor)
+// A rot_ embed auto-upgrades to the active-language sibling (else anchor)
 // ============================================================================
 
-describe('i18n — reference auto-upgrade (RB3)', () => {
+describe('i18n reference auto-upgrade', () => {
   // Builds an en target with an optional de translation, an en host embedding the
   // en anchor (rot_), translates the host to de (the ref is copied verbatim), and
   // publishes everything needed. Returns the resolved target rootId when the de
@@ -1675,8 +1675,8 @@ describe('i18n — reference auto-upgrade (RB3)', () => {
       ids.push(p.rootId);
       branchOf[p.rootId] = p.branchId;
     }
-    // page[i] embeds page[i+1] → a long ACYCLIC chain (the visited-set cycle guard
-    // does not catch this; only the depth cap does).
+    // page[i] embeds page[i+1]: a long acyclic chain (the visited-set cycle
+    // guard does not catch this; only the depth cap does).
     for (let i = 0; i < DEPTH - 1; i++) {
       await cms.api.pages.createBlock({
         body: {
@@ -1701,10 +1701,10 @@ describe('i18n — reference auto-upgrade (RB3)', () => {
 });
 
 // ============================================================================
-// RB4 — the delete guard is ANCHOR-only across language siblings
+// The delete guard is anchor-only across language siblings
 // ============================================================================
 
-describe('i18n — delete guard is anchor-only (RB4)', () => {
+describe('i18n delete guard is anchor-only', () => {
   it('allows deleting a translation sibling but blocks deleting the referenced anchor', async () => {
     const { cms, db, setLanguage } = await setupI18nTestCMS({
       collections: REF_I18N,
@@ -1744,14 +1744,15 @@ describe('i18n — delete guard is anchor-only (RB4)', () => {
       },
     });
 
-    // The DE sibling is not a stored anchor → deletable (hosts fall back to en).
+    // The DE sibling is not a stored anchor, so it is deletable (hosts fall
+    // back to en).
     setLanguage('de');
     const delDe = await cms.api.pages.archiveRoot({
       body: { rootId: deBlockId },
     });
     expect(delDe.rootId).toBe(deBlockId);
 
-    // The EN anchor IS the directly-referenced value → blocked.
+    // The EN anchor is the directly-referenced value, so it is blocked.
     setLanguage('en');
     await expect(
       cms.api.pages.archiveRoot({ body: { rootId: enBlock.rootId } }),
@@ -1763,7 +1764,7 @@ describe('i18n — delete guard is anchor-only (RB4)', () => {
 // Config / middleware guards
 // ============================================================================
 
-describe('i18n — config & middleware guards', () => {
+describe('i18n config and middleware guards', () => {
   it('throws LANGUAGE_REQUIRED when the middleware provides no language', async () => {
     const { cms } = await setupI18nTestCMS({
       authMiddleware: async () => ({}),
@@ -1795,7 +1796,7 @@ describe('i18n — config & middleware guards', () => {
   });
 });
 
-describe('i18n — templates are per-language', () => {
+describe('i18n templates are per-language', () => {
   it('isolates template CRUD per language (same key allowed in each)', async () => {
     const { cms, setLanguage } = await setupI18nTestCMS();
 
@@ -1809,8 +1810,8 @@ describe('i18n — templates are per-language', () => {
       },
     });
 
-    // Same (collection, blockType, propertyKey) in another language is NOT a
-    // duplicate — uniqueness is per-language.
+    // The same (collection, blockType, propertyKey) in another language is not
+    // a duplicate; uniqueness is per-language.
     setLanguage('de');
     await cms.api.templates.createTemplate({
       body: {
@@ -1832,7 +1833,7 @@ describe('i18n — templates are per-language', () => {
     expect(de.templates).toHaveLength(1);
     expect(de.templates[0].template).toBe('DE-DEFAULT');
 
-    // But a real duplicate within the SAME language is still rejected.
+    // But a real duplicate within the same language is still rejected.
     await expect(
       cms.api.templates.createTemplate({
         body: {
@@ -1892,7 +1893,7 @@ describe('i18n — templates are per-language', () => {
     expect(await trackingIdOf('de')).toBe('DE-DEFAULT');
   });
 
-  it('scopes templates by tenant AND language together (both plugins)', async () => {
+  it('scopes templates by tenant and language together (both plugins)', async () => {
     const { cms, set } = await setupI18nMultiTenantTestCMS();
 
     const make = (template: string) =>
@@ -1930,7 +1931,7 @@ describe('i18n — templates are per-language', () => {
   });
 });
 
-describe('i18n — variables resolve with language fallback', () => {
+describe('i18n variables resolve with language fallback', () => {
   it('uses the active-language value, falling back through the chain', async () => {
     const { cms, setLanguage } = await setupI18nTestCMS();
 
@@ -1943,7 +1944,7 @@ describe('i18n — variables resolve with language fallback', () => {
       body: { key: 'cta', value: 'Buy now' },
     });
     setLanguage('de');
-    // Same key, different language cell → not a duplicate.
+    // Same key in a different language cell is not a duplicate.
     await cms.api.variables.createVariable({
       body: { key: 'cta', value: 'Jetzt kaufen' },
     });
@@ -1977,8 +1978,8 @@ describe('i18n — variables resolve with language fallback', () => {
       body: { key: 'companyName', value: 'Acme' },
     });
 
-    // In 'de', the management view shows only the 'de' cell — companyName (en
-    // only) is NOT listed even though content would fall back to it.
+    // In 'de', the management view shows only the 'de' cell: companyName (en
+    // only) is not listed even though content would fall back to it.
     setLanguage('de');
     const { variables: deVars } = await cms.api.variables.list({});
     expect(deVars).toHaveLength(0);
