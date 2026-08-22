@@ -35,6 +35,12 @@ type SignedReplace = {
   headers: Record<string, string>;
 };
 
+// The `commitReplace` response shape (routes/media.ts), trimmed to what the
+// replace atom's `result` surfaces.
+type CommitReplaceResult = {
+  asset: { id: string; slug: string; objectKey: string };
+};
+
 /**
  * State for the browser-callable "replace an asset's bytes" flow
  * (`createSignedReplace` -> PUT to S3 -> `commitReplace`): the client half of

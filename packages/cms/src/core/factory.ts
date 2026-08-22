@@ -899,7 +899,8 @@ export const createCMS = <
   // Rebuild the namespaced api structure using the wrapped endpoints so that
   // direct server-side calls (cms.api.pages.listRoots()) also go through
   // middleware, scope resolution, and hooks.
-  type BaseApi = ServerApiCallers<RawApi>;  type FinalApi = TDef extends {
+  type BaseApi = ServerApiCallers<RawApi>;
+  type FinalApi = TDef extends {
     user: CMSUserConfig<infer U extends AnyPgTable>;
   }
     ? WithActorUserApi<WithUserApi<BaseApi, U>, U>

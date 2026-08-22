@@ -185,6 +185,7 @@ export async function isAssetReferencedByLiveContent(
   return hit.length > 0;
 }
 
+/**
  * Batch counterpart of {@link isAssetReferencedByLiveContent}: given a set of
  * asset ids, returns the subset that is still referenced by live content, in a
  * single query (rather than one liveness EXISTS per id). Same liveness
