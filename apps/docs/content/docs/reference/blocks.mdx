@@ -65,6 +65,10 @@ Load an entry's block tree for editing, at a branch head or a specific commit. Y
 
 The `tree` is a discriminated union over `type`, and the top node is `type: 'root'`. `reconstructed` is `true` when the commit was rebuilt from a partial snapshot. With `includeReferencePreviews: true`, `references` is a `Record<storedReferenceValue, tree>` holding the published render tree of every reference embedded in the entry, resolved through the active scope.
 
+<Callout type="info">
+  A default read resolves the tree for RENDERING: variables are substituted and link values are rewritten to their resolved shape (`href` instead of the stored fields). That tree is not writable. For read-modify-write workflows (scripts, migrations, editors) request `raw: true` and edit the stored values; `updateBlocks` validates the stored shape only.
+</Callout>
+
 ### Resolve an Unsaved Tree [#resolvetree]
 
 Run the same resolution `getBlockTree` applies to a stored tree — variables substituted, links resolved to their current href, references as a published-preview sidecar or inlined — on a tree you post. Nothing is written: this is how an editor previews its unsaved working copy (live canvas, HTML/PDF preview, e-mail send-preview). The tree is not validated against the schema; unknown block types and undeclared properties pass through untouched.
@@ -126,7 +130,7 @@ Run the same resolution `getBlockTree` applies to a stored tree — variables su
   }}
 />
 
-`resolveTree` never persists anything and creates no commit; save with `updateBlocks` when you are done. Roots outside your scope (or of another collection) are rejected with `ROOT_NOT_FOUND`, exactly like `getBlockTree`.
+`resolveTree` never persists anything and creates no commit. Its response is the RENDERED view (variables substituted, links resolved) and is not writable; keep editing the raw working tree and save that with `updateBlocks` when you are done. Roots outside your scope (or of another collection) are rejected with `ROOT_NOT_FOUND`, exactly like `getBlockTree`.
 
 ### Add a Block [#createblock]
 
@@ -254,7 +258,7 @@ Edit one block with patch semantics: the fields you send overwrite, omitted fiel
 
 ### Save a Block Tree [#updateblocks]
 
-Save a whole tree in one commit: createCMS diffs the tree you send against the branch head and creates, updates, and deletes blocks to match. This is the batch save path your editor calls after local edits, instead of one call per change.
+Save a whole tree in one commit: createCMS diffs the tree you send against the branch head and creates, updates, and deletes blocks to match. This is the batch save path your editor calls after local edits, instead of one call per change. Property values must be in their STORED shape; a tree read without `raw: true` carries resolved link values and is rejected with a `TYPE_MISMATCH` that names the affected properties.
 
 <APIMethod
   method="POST"
