@@ -12,13 +12,18 @@ import { composeRefs, useRender } from '../../use-render';
 import { useEditorSelector } from '../binding';
 import { useEditorContext } from '../context';
 import { CanvasContext } from './context';
-import { createDndStore, type DndStore } from './dnd';
+import { type DndStore } from './dnd';
 import { CanvasDndEffects } from './dnd-parts';
 import { createEditCache, type EditCache } from './edit';
 import { handleCanvasClick, handleCanvasPointerOver } from './interact';
 import { resolveComponentMap } from './map';
 import { createMeasurer } from './measurer';
-import { createPointerStore, type PointerStore } from './pointer';
+import { type PointerStore } from './pointer';
+import {
+  CanvasSessionContext,
+  createCanvasSession,
+  type CanvasSessionContextValue,
+} from './provider';
 import { renderStoreTree } from './renderer';
 import { createResolveCache, readResolved, type ResolveCache } from './resolve';
 
@@ -108,19 +113,24 @@ export function CanvasRoot({
   const hostRef = React.useRef<HTMLDivElement | null>(null);
   const inlineCaretRef = React.useRef<InlineCaretPoint | null>(null);
   const measurerRef = React.useRef<Measurer | null>(null);
-  const pointerRef = React.useRef<PointerStore | null>(null);
-  const dndRef = React.useRef<DndStore | null>(null);
   const [hostEl, setHostEl] = React.useState<HTMLElement | null>(null);
   const [measurer, setMeasurer] = React.useState<Measurer | null>(null);
   const [pointer, setPointer] = React.useState<PointerStore | null>(null);
   const [dnd, setDnd] = React.useState<DndStore | null>(null);
 
-  if (pointerRef.current === null) {
-    pointerRef.current = createPointerStore();
+  // An outer Canvas.Provider owns the drag session; without one the Root
+  // creates it and provides the session context itself, so parts below a
+  // bare Root keep finding it.
+  const outerSession = React.useContext(CanvasSessionContext);
+  const ownSessionRef = React.useRef<CanvasSessionContextValue | null>(null);
+  if (outerSession === null && ownSessionRef.current === null) {
+    ownSessionRef.current = createCanvasSession();
   }
-  if (dndRef.current === null) {
-    dndRef.current = createDndStore();
-  }
+  const session = outerSession ?? ownSessionRef.current!;
+  const sessionRef = React.useRef(session);
+  React.useLayoutEffect(() => {
+    sessionRef.current = session;
+  });
 
   React.useLayoutEffect(() => {
     const node = hostRef.current;
@@ -129,19 +139,21 @@ export function CanvasRoot({
     measurerRef.current = next;
     setHostEl(node);
     setMeasurer(next);
-    setPointer(pointerRef.current);
-    setDnd(dndRef.current);
+    setPointer(sessionRef.current.pointer);
+    setDnd(sessionRef.current.dnd);
     return () => {
       next.destroy();
-      dndRef.current?.destroy();
+      // Destroy only what this Root created; a Provider-owned session
+      // outlives the Root.
+      ownSessionRef.current?.dnd.destroy();
       measurerRef.current = null;
     };
   }, []);
 
   React.useLayoutEffect(() => {
     const host = hostRef.current;
-    const pointerStore = pointerRef.current;
-    if (!host || !pointerStore) return;
+    const pointerStore = sessionRef.current.pointer;
+    if (!host) return;
     const onClick = (event: Event) => {
       handleCanvasClick(event, host, storeRef.current, interactiveRef.current);
     };
@@ -180,8 +192,8 @@ export function CanvasRoot({
 
   React.useLayoutEffect(() => {
     const host = hostRef.current;
-    const dndStore = dndRef.current;
-    if (!host || !dndStore) return;
+    const dndStore = sessionRef.current.dnd;
+    if (!host) return;
     const doc = host.ownerDocument;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || dndStore.getSession() === null) return;
@@ -194,6 +206,40 @@ export function CanvasRoot({
       doc.removeEventListener('keydown', onKeyDown, true);
     };
   }, [version]);
+
+  const surfaceHandleRef = React.useRef<{
+    host: HTMLElement;
+    measurer: Measurer;
+    interactive: CanvasInteractive;
+    editing: boolean;
+  } | null>(null);
+
+  React.useLayoutEffect(() => {
+    if (!hostEl || !measurer) return;
+    // The handle object stays identical while registered; `interactive` and
+    // `editing` are mutated in place by the sync effect below so gesture
+    // handlers read current values without a re-registration (registration
+    // order is the paint-order tiebreak and must not change).
+    const handle = {
+      host: hostEl,
+      measurer,
+      interactive: interactiveRef.current,
+      editing: false,
+    };
+    surfaceHandleRef.current = handle;
+    const unregister = sessionRef.current.registerSurface(handle);
+    return () => {
+      unregister();
+      surfaceHandleRef.current = null;
+    };
+  }, [hostEl, measurer]);
+
+  React.useLayoutEffect(() => {
+    const handle = surfaceHandleRef.current;
+    if (!handle) return;
+    handle.interactive = interactive;
+    handle.editing = editing;
+  });
 
   React.useLayoutEffect(() => {
     const host = hostRef.current;
@@ -272,9 +318,17 @@ export function CanvasRoot({
     },
   });
 
-  return (
+  const content = (
     <CanvasContext.Provider value={canvasContext}>
       {host}
     </CanvasContext.Provider>
+  );
+
+  if (outerSession !== null) return content;
+
+  return (
+    <CanvasSessionContext.Provider value={session}>
+      {content}
+    </CanvasSessionContext.Provider>
   );
 }
