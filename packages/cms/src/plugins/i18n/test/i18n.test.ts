@@ -611,7 +611,28 @@ describe('i18n — language-scoped reads', () => {
       cms.api.pages.publishBranch({
         body: { rootId: en.rootId, branchId: en.branchId },
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/active scope/);
+  });
+
+  it('the scope miss message differs from the snapshot message', async () => {
+    const { cms, setLanguage } = await setupI18nTestCMS();
+
+    setLanguage('en');
+    const en = await cms.api.pages.createRoot({
+      body: { slug: 'split', properties: { title: 'Split' } },
+    });
+
+    setLanguage('de');
+    let message = '';
+    try {
+      await cms.api.pages.getBlockTree({
+        query: { rootId: en.rootId, branchId: en.branchId },
+      });
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toMatch(/active scope/);
+    expect(message).not.toMatch(/snapshot/);
   });
 });
 

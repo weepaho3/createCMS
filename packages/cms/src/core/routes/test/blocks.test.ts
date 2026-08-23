@@ -3476,7 +3476,7 @@ describe('updateBlocks', () => {
           },
         },
       }),
-    ).rejects.toThrow(/Root block not found/);
+    ).rejects.toThrow(/Root not found/);
   });
 
   it('rejects when branch does not exist', async () => {
