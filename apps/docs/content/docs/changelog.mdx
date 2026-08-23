@@ -5,6 +5,22 @@ description: Release notes for @createcms/core and @createcms/react, generated f
 
 ## @createcms/core
 
+### 0.7.2
+
+#### Patch Changes
+
+- [#126](https://github.com/weepaho3/createCMS/pull/126) [`bdfca9b`](https://github.com/weepaho3/createCMS/commit/bdfca9b556cc2ffbd5bfdab0c0a704a4b9ddf677) Thanks [@weepaho3](https://github.com/weepaho3)! - When `updateBlocks` rejects a link property whose value carries the
+  resolved read shape (`href` / `targetRootId`), the `TYPE_MISMATCH` error
+  now names the affected properties and points at reading the tree with
+  `raw: true`; the structured `data` carries `resolvedLinkKeys`.
+
+- [#125](https://github.com/weepaho3/createCMS/pull/125) [`ed1eabc`](https://github.com/weepaho3/createCMS/commit/ed1eabc7ac844cad7865a71b8c5a65c0127777e3) Thanks [@weepaho3](https://github.com/weepaho3)! - `ROOT_NOT_FOUND` now says what actually happened: a root that is missing,
+  archived, or outside the active scope reports "Root not found: the id
+  does not exist, is archived, or lies outside the active scope (check the
+  language or tenant context of the request)", while a genuine snapshot
+  failure keeps "Root block not found in snapshot". The code and status
+  are unchanged.
+
 ### 0.7.1
 
 #### Patch Changes

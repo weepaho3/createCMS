@@ -3,7 +3,6 @@
  * src/errors-data.ts. The client bundle needs its own module so bunchee
  * cannot put CMS_ERRORS in a shared use-client chunk.
  */
-
 export const CMS_ERRORS = {
   BRANCH_NOT_FOUND: { status: 404 as const, message: 'Branch not found' },
   BLOCK_NOT_FOUND: {
