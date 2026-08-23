@@ -55,10 +55,36 @@ The primitive does not set `position` on the host. Overlay is
 `aria-hidden`. A child that must receive pointer input sets
 `pointer-events: auto` on itself.
 
+`Canvas.Provider` (optional) owns the drag session; each `Canvas.Root`
+below it registers itself as a surface. `Canvas.PaletteItem` and
+`Canvas.DragHandle` then work anywhere under the provider, for example a
+shell sidebar outside the canvas host; the surface under the pointer
+resolves the drop against its own host, and only the hovered canvas
+auto-scrolls. `Canvas.DragPreview` positions itself in host coordinates
+and renders only inside a `Canvas.Root`. Without a provider, `Canvas.Root`
+creates the session itself and provides it to its children.
+
+```tsx
+<Editor.Root schema={schema} defaultValue={tree}>
+  <Canvas.Provider>
+    <aside>
+      <Canvas.PaletteItem type="paragraph" />
+    </aside>
+    <Canvas.Root components={pageBlocks} style={{ position: 'relative' }}>
+      <Canvas.Overlay>
+        <Canvas.DropIndicator />
+        <Canvas.DragPreview />
+      </Canvas.Overlay>
+    </Canvas.Root>
+  </Canvas.Provider>
+</Editor.Root>
+```
+
 ## Parts
 
 | Part                   | Default element | Props                                                                                                                                                                          | Data attributes                                                                                           |
 | ---------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `Canvas.Provider`      | none            | `children`. Renders no element; owns the drag session shared by every part and `Canvas.Root` below it. Optional.                                                               | none                                                                                                      |
 | `Canvas.Root`          | `div`           | `components` (required), `surface`, `interactive`, `resolve`, `children` (overlay), `render`, div props                                                                        | `data-editor-canvas`, `data-interactive`, `data-dragging`, `data-editing`                                 |
 | `Canvas.Overlay`       | `div`           | `render`, div props. Portals into the canvas host.                                                                                                                             | `data-editor-overlay`                                                                                     |
 | `Canvas.SelectionRing` | `div`           | `render`, div props. Sized from the selected block rect.                                                                                                                       | `data-editor-selection-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`    |
@@ -85,6 +111,7 @@ The primitive does not set `position` on the host. Overlay is
 
 | Type                         | Description                                                                                       |
 | ---------------------------- | ------------------------------------------------------------------------------------------------- |
+| `CanvasProviderProps`        | Props of `Canvas.Provider`.                                                                       |
 | `CanvasRootProps`            | Props of `Canvas.Root`.                                                                           |
 | `CanvasOverlayProps`         | Props of `Canvas.Overlay`.                                                                        |
 | `CanvasSelectionRingProps`   | Props of `Canvas.SelectionRing`.                                                                  |
@@ -150,22 +177,25 @@ the canvas renderer; neither value is stored.
 
 happy-dom (`editor.test.tsx`, `renderer.test.tsx`, `rect.test.ts`,
 `overlay.test.tsx`, `insert.test.ts`, `toolbar.test.tsx`, `dnd.test.ts`,
-`dnd-parts.test.tsx`, `inline-text.test.ts`, `inline-parts.test.tsx`) covers context sharing, the throw outside
+`dnd-parts.test.tsx`, `provider.test.tsx`, `inline-text.test.ts`, `inline-parts.test.tsx`) covers context sharing, the throw outside
 `Editor.Root` / `Canvas.Root`, the store-tree walk, resolve cache,
 referenced readonly trees, click intercept, rect unions, readonly skip,
 nested field keys, Overlay portal, ring presence / hover suppression, pure
 insert geometry, toolbar / insert presence, overlay chrome hover, DnD
 store helpers, drag-handle threshold, palette click insert, escape cancel
-and drop-indicator gating, inline-text helpers, InlineText activation gating,
+and drop-indicator gating, provider session sharing and the palette outside
+the canvas, inline-text helpers, InlineText activation gating,
 empty-field placeholder. Chromium (`canvas.browser.test.tsx`,
-`insert.browser.test.tsx`, `dnd.browser.test.tsx`, `inline-text.browser.test.tsx`) covers layout, pointer
+`insert.browser.test.tsx`, `dnd.browser.test.tsx`, `provider.browser.test.tsx`, `inline-text.browser.test.tsx`) covers layout, pointer
 coordinates, click select/focus, `interactive="select"` (no drag), `interactive="none"`, ring
 vs block `getBoundingClientRect` (1 px), resize, scroll without remeasure,
 nested field key, same-id union, column / row / grid insert lines, empty
 container box, toolbar placement, insert disabled gating, select-mode
 toolbar without insert, pointer drag move and palette drop, drop
 indicator orientation, escape cancel, auto-scroll, touch input, forbidden
-placement, focus after drop and select-mode drag suppression, inline-text
+placement, focus after drop and select-mode drag suppression, sidebar
+palette drag under a provider, per-surface drop resolution across two
+canvases, inline-text
 activation, caret placement, typing, Enter and Escape, nested and same-element
 fields, empty badge, suggest keyboard, two canvases, number field gating, undo
 during session.
@@ -183,9 +213,11 @@ rects and DOM. Helpers: `test/harness.tsx`, `test/fixtures.tsx` and
 | `toolbar.test.tsx`             | BlockToolbar / InsertButton throw outside Root, selection and `interactive="none"` gating, overlay chrome keeps hover.                                                                                    |
 | `dnd.test.ts`                  | Pure DnD helpers: `adjustMoveIndex`, `blockIdAtPoint`, store threshold, session vs target subscriptions.                                                                                                  |
 | `dnd-parts.test.tsx`           | DragHandle / PaletteItem / DropIndicator / DragPreview throw outside Root; palette click insert; click no-op when placement fails; click after drag; drag threshold; escape cancel; pointerup off handle. |
+| `provider.test.tsx`            | Palette outside Root under a Provider renders enabled and click-inserts; palette without Provider and Root throws; plain Root still provides the session.                                                 |
 | `canvas.browser.test.tsx`      | Chromium: host box, heading anchor rect, layout wait, pointer coordinates, click select/focus, select mode, none mode, ring alignment after layout / resize / scroll, nested field key, same-id union.    |
 | `insert.browser.test.tsx`      | Chromium: column / row / grid insert lines, empty container box, toolbar side / align, insert disabled gating, select mode without insert.                                                                |
 | `dnd.browser.test.tsx`         | Chromium: palette drop into empty stack, column and row sibling moves, escape cancel, auto-scroll, touch drag, forbidden placement, focus after drop, select mode without drag.                           |
+| `provider.browser.test.tsx`    | Chromium: sidebar palette drag into the canvas under a Provider; two canvases under one provider resolve drops on the hovered editable surface.                                                           |
 | `inline-text.test.ts`          | Pure inline helpers: `applyTextEdit`, placeholder injection, field kind.                                                                                                                                  |
 | `inline-parts.test.tsx`        | InlineText throw outside Root; string vs number activation; nested key; same element; two editors; empty badge commit.                                                                                    |
 | `inline-text.browser.test.tsx` | Chromium: glass activation, caret, typing, Enter/Escape, discardOnEscape, nested key, richText multiline, empty badge, suggest keyboard, two canvases, number field, undo during session.                 |

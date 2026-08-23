@@ -300,9 +300,7 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
           return false;
         }
         if (isInsideReadonly(handle, containing.host)) return false;
-      } else if (
-        !surfaces.some((surface) => surface.interactive === 'edit')
-      ) {
+      } else if (!surfaces.some((surface) => surface.interactive === 'edit')) {
         // A handle in outside chrome needs at least one editable surface to
         // drop into.
         return false;

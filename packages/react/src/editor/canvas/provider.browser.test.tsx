@@ -141,9 +141,7 @@ describe('Canvas.Provider pointer drag in a real browser', () => {
     dispatchPointer(palette, 'pointermove', { x: from.x + 6, y: from.y });
     dispatchPointer(palette, 'pointermove', overB);
     await waitForLayout(hostB);
-    expect(
-      hostB.querySelector('[data-editor-drop-indicator]'),
-    ).not.toBeNull();
+    expect(hostB.querySelector('[data-editor-drop-indicator]')).not.toBeNull();
     dispatchPointer(palette, 'pointerup', overB);
     expect(store.getState().nodes.stack1!.childIds.length).toBe(1);
   });
