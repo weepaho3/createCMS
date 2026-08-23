@@ -340,7 +340,13 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
         );
 
         const tree = assembleBlockTree(blocks, rootId);
-        if (!tree) throw new CMSError('ROOT_NOT_FOUND');
+        // The scoped root lookup already passed: a null tree is a snapshot
+        // state (e.g. soft-deleted root block version), not a scope miss.
+        if (!tree) {
+          throw new CMSError('ROOT_NOT_FOUND', {
+            message: errorMessages.rootMissingFromSnapshot,
+          });
+        }
 
         const scope = ctx.context.scope;
         // Load variables once: needed to substitute the main tree (unless raw)

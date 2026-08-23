@@ -85,6 +85,7 @@ export class CMSError extends APIError {
 }
 
 export const errorMessages = {
+  rootMissingFromSnapshot: 'Root block not found in snapshot',
   blockNotFound: (blockId: string) => `Block not found in snapshot: ${blockId}`,
   parentNotFound: (parentBlockId: string) =>
     `Parent block not found: ${parentBlockId}`,

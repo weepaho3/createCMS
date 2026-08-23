@@ -407,7 +407,7 @@ describe('resolveTree', () => {
             tree: raw.tree,
           },
         }),
-      ).rejects.toThrow(/root block not found/i);
+      ).rejects.toThrow(/root not found/i);
     });
 
     it('rejects a root of another collection with ROOT_NOT_FOUND', async () => {
@@ -423,7 +423,7 @@ describe('resolveTree', () => {
             tree: raw.tree,
           },
         }),
-      ).rejects.toThrow(/root block not found/i);
+      ).rejects.toThrow(/root not found/i);
     });
 
     it('rejects a branchId that does not belong to the root with BRANCH_NOT_FOUND', async () => {

@@ -44,7 +44,7 @@ try {
 
 | Code | Status | Message |
 | --- | --- | --- |
-| `ROOT_NOT_FOUND` | 404 | Root block not found in snapshot |
+| `ROOT_NOT_FOUND` | 404 | Root not found: the id does not exist, is archived, or lies outside the active scope (check the language or tenant context of the request) |
 | `BLOCK_NOT_FOUND` | 404 | Block not found in snapshot |
 | `PARENT_NOT_FOUND` | 404 | Parent block not found |
 | `BLOCK_NOT_ALLOWED_IN_PARENT` | 400 | Block type is not allowed inside the target parent (violates the collection's `structure` rules or the parent's `allowChildren`) |
