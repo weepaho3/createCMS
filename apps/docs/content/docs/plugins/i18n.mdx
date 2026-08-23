@@ -45,6 +45,15 @@ The `drizzle-kit` commands need a `drizzle.config.ts` at your project root — s
 
 The active language is resolved per request from your middleware and applied to every query. These two methods are contributed to every collection, so they live at `cms.api.<collection>.<method>` (and on the client as `client.<collection>.<method>` with identical types). They only exist when the i18n plugin is installed.
 
+<Callout type="warn">
+  Every root-specific call, including writes, `publishBranch` and branch
+  operations, runs in the language context your `authMiddleware` resolves.
+  A call that targets a root of another language is rejected with a 404
+  `ROOT_NOT_FOUND` ("... lies outside the active scope ..."), because
+  the scope filter excludes it. Scripts that maintain
+  several languages must switch the language context per target root.
+</Callout>
+
 ### Create a Translation [#createtranslation]
 
 Create a sibling-language version of an existing entry, so a page can live in every language you support. The new entry joins the source's translation group (`translationKey`), takes the target language, and (by default) seeds its draft from a copy of the source's `main` tree. The source must exist in the active language.
@@ -113,6 +122,33 @@ List every language variant (sibling) of an entry, tied together by their transl
 ```
 
 Managing variables and templates always targets the exact active language, not a fallback cell — so in German you manage German values. Uniqueness for both is scoped per language, so a variable's `key` (or a template's `(collection, blockType, propertyKey)`) is free to differ per language.
+
+## Missing translations, routing and SEO
+
+The plugin resolves PAGES strictly per language on purpose: a root without
+a sibling in the active language does not exist in that scope, and reads
+return a 404 instead of silently serving another language. The
+fallback chain applies one level below, inside a page: references resolve
+to the best sibling along `[language, ...fallback]`, internal links point
+at the active-language sibling when one exists, and variables inherit
+along the chain. An explicit empty chain (`fallback: { en: [] }`) opts a
+language out of fragment fallback too.
+
+For your routing this means the 404 is a decision the app makes, and two
+patterns are sound:
+
+- Do not link what does not exist: build the language switcher and the
+  sitemap from `listTranslations`, emit `hreflang` pairs only for existing
+  siblings plus an `x-default` pointing at the default language, and let a
+  direct request for a missing translation return 404.
+- Or redirect: answer a missing translation with a temporary redirect
+  (302 or 307) to the default-language URL, so the content has exactly one
+  URL per language it exists in.
+
+Avoid serving default-language content under another language's URL: the
+same content becomes indexable under several URLs, the page language
+contradicts the URL and any `hreflang` annotation, and when the
+translation later arrives its URL has to displace the indexed fallback.
 
 ## Schema
 
