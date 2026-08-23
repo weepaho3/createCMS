@@ -17,6 +17,7 @@ import {
   CanvasOverlay,
   CanvasSelectionRing,
 } from './overlay';
+import { CanvasProvider } from './provider';
 import { CanvasBlockToolbar, CanvasInsertButton } from './toolbar';
 
 export type {
@@ -24,6 +25,7 @@ export type {
   CanvasRootProps,
   CanvasSurface,
 } from './components';
+export type { CanvasProviderProps } from './provider';
 export type { CanvasComponent, CanvasComponents } from './map';
 export type {
   InsertOrientation,
@@ -74,6 +76,7 @@ export {
 export { useInsertTarget } from './toolbar';
 
 export const Canvas = {
+  Provider: CanvasProvider,
   Root: CanvasRoot,
   Overlay: CanvasOverlay,
   SelectionRing: CanvasSelectionRing,

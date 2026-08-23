@@ -17,7 +17,9 @@ describe('Canvas.DragHandle', () => {
           <Canvas.DragHandle blockId="h1" />
         </Editor.Root>,
       ),
-    ).toThrow('Canvas.DragHandle must be used within a Canvas.Root component.');
+    ).toThrow(
+      'Canvas.DragHandle must be used within a Canvas.Provider or Canvas.Root component.',
+    );
   });
 
   it('does not set host data-dragging before the threshold', () => {
@@ -60,7 +62,7 @@ describe('Canvas.PaletteItem', () => {
         </Editor.Root>,
       ),
     ).toThrow(
-      'Canvas.PaletteItem must be used within a Canvas.Root component.',
+      'Canvas.PaletteItem must be used within a Canvas.Provider or Canvas.Root component.',
     );
   });
 
@@ -155,7 +157,7 @@ describe('Canvas.DragPreview', () => {
         </Editor.Root>,
       ),
     ).toThrow(
-      'Canvas.DragPreview must be used within a Canvas.Root component.',
+      'Canvas.DragPreview must be used within a Canvas.Provider or Canvas.Root component.',
     );
   });
 });

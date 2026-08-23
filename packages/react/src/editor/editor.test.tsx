@@ -84,8 +84,9 @@ describe('namespace shape', () => {
     ]);
   });
 
-  it('Canvas exposes exactly Root, Overlay, the rings, BlockToolbar and InsertButton', () => {
+  it('Canvas exposes exactly Provider, Root, Overlay, the rings, BlockToolbar and InsertButton', () => {
     expect(Object.keys(Canvas)).toEqual([
+      'Provider',
       'Root',
       'Overlay',
       'SelectionRing',
