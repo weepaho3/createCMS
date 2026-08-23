@@ -25,7 +25,7 @@ import {
   scheduledPublications,
 } from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
-import { CMSError } from '../errors';
+import { CMSError, errorMessages } from '../errors';
 import { resolveLinkPaths } from '../links';
 import { syncAssetsOnPublish, syncAssetsOnUnpublish } from '../media/discovery';
 import {
@@ -614,7 +614,13 @@ export function createPublicationEndpoints<
             const tree = assembleBlockTree(blocks, resolvedRootId, {
               stripReservedProps: true,
             });
-            if (!tree) throw new CMSError('ROOT_NOT_FOUND');
+            // The scoped root lookup already passed: a null tree is a snapshot
+            // state (e.g. soft-deleted root block version), not a scope miss.
+            if (!tree) {
+              throw new CMSError('ROOT_NOT_FOUND', {
+                message: errorMessages.rootMissingFromSnapshot,
+              });
+            }
 
             await resolveTreeReferences(
               db,

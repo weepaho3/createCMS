@@ -26,7 +26,8 @@ export const CMS_ERRORS = {
   },
   ROOT_NOT_FOUND: {
     status: 404 as const,
-    message: 'Root block not found in snapshot',
+    message:
+      'Root not found: the id does not exist, is archived, or lies outside the active scope (check the language or tenant context of the request)',
   },
   ROOT_HAS_CHILDREN: {
     status: 409 as const,
