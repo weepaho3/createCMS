@@ -14,6 +14,7 @@ import { setupTestCMS } from '../../../test-utils/cms';
 import { setupTestDB } from '../../../test-utils/db';
 import { DUMMY_MEDIA_CONFIG } from '../../../test-utils/fixtures';
 import { publishApprovedBranch } from '../../../test-utils/helpers';
+import { resolvedLinkKeys } from '../blocks-context';
 
 describe('createRoot', () => {
   it('creates root, commit, branch, block version, and snapshot via the handler', async () => {
@@ -4136,6 +4137,160 @@ describe('updateBlocks', () => {
         }),
       ).rejects.toThrow(new RegExp(`image asset does not exist: ${missingId}`));
     });
+  });
+});
+
+// ============================================================================
+// updateBlocks resolved-link hint
+// ============================================================================
+
+// A tree read without `raw: true` (or a resolveTree response) carries link
+// values in the READ shape (`href` / `targetRootId`); posting it back must be
+// rejected with a hint naming the affected properties and `raw: true`.
+describe('updateBlocks resolved-link hint', () => {
+  async function setupLinkHintCMS() {
+    const { db } = await setupTestDB();
+    const cms = createCMS({
+      db,
+      media: DUMMY_MEDIA_CONFIG,
+      authMiddleware: allowAnonymous(),
+      collections: {
+        pages: {
+          label: 'Pages',
+          root: {
+            properties: {
+              title: { type: 'string', label: 'Title', required: true },
+            },
+          },
+          blocks: {
+            cta: {
+              label: 'CTA',
+              properties: {
+                link: { type: 'link', label: 'Link' },
+                caption: { type: 'string', label: 'Caption' },
+              },
+            },
+          },
+        },
+      } as const,
+    });
+    return { cms: cms as { api: Record<string, any> }, db };
+  }
+
+  async function updateWithCtaProperties(properties: Record<string, unknown>) {
+    const { newId } = await import('../../../utils/nanoid');
+    const { cms } = await setupLinkHintCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { properties: { title: 'Page' } },
+    });
+
+    await cms.api.pages.updateBlocks({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        tree: {
+          blockId: root.rootId,
+          type: 'pages',
+          properties: { title: 'Page' },
+          children: [
+            {
+              blockId: newId('block'),
+              type: 'cta',
+              properties,
+              children: [],
+            },
+          ],
+        },
+      },
+    });
+  }
+
+  it('names the resolved link value and points at raw mode', async () => {
+    let caught: any;
+    try {
+      await updateWithCtaProperties({
+        link: { kind: 'external', href: '/somewhere' },
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeDefined();
+    expect(String(caught.message)).toMatch(/looks resolved/);
+    expect(String(caught.message)).toMatch(/raw: true/);
+    expect(caught.body?.data.resolvedLinkKeys).toEqual(['link']);
+  });
+
+  it('a plain type error gets no resolved-link hint', async () => {
+    let caught: any;
+    try {
+      await updateWithCtaProperties({ caption: 123 });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeDefined();
+    expect(String(caught.message)).toMatch(/Invalid properties/i);
+    expect(String(caught.message)).not.toMatch(/looks resolved/);
+    expect(caught.body?.data.resolvedLinkKeys).toBeUndefined();
+  });
+
+  it('an internal link in read shape is detected by targetRootId', async () => {
+    let caught: any;
+    try {
+      await updateWithCtaProperties({
+        link: {
+          kind: 'internal',
+          targetRootId: 'rot_x',
+          collection: 'pages',
+          href: '/x',
+        },
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeDefined();
+    expect(String(caught.message)).toMatch(/looks resolved/);
+    expect(caught.body?.data.resolvedLinkKeys).toEqual(['link']);
+  });
+});
+
+describe('resolvedLinkKeys', () => {
+  const specs = {
+    cta: { type: 'link', label: 'Link' },
+    caption: { type: 'string', label: 'Caption' },
+  } as const;
+
+  it('a non-object value gets no hint', () => {
+    expect(
+      resolvedLinkKeys(specs, { cta: 'not-an-object' }, [{ path: ['cta'] }]),
+    ).toEqual([]);
+  });
+
+  it('a store-shape link failing for another reason gets no hint', () => {
+    expect(
+      resolvedLinkKeys(specs, { cta: { kind: 'external', url: '' } }, [
+        { path: ['cta', 'url'] },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('an issue path deeper than the key still maps to the key', () => {
+    expect(
+      resolvedLinkKeys(specs, { cta: { kind: 'external', href: '/x' } }, [
+        { path: ['cta', 'url'] },
+      ]),
+    ).toEqual(['cta']);
+  });
+
+  it('a non-link property is never named', () => {
+    expect(
+      resolvedLinkKeys(specs, { caption: { href: '/x' } }, [
+        { path: ['caption'] },
+      ]),
+    ).toEqual([]);
   });
 });
 

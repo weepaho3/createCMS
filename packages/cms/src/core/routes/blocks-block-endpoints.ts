@@ -48,7 +48,11 @@ import { crossScopeColumns } from '../scope';
 import { loadTemplateStrings } from '../templates';
 import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
 import { loadVariables, substituteVariables } from '../variables';
-import { blockTreeNodeSchema, type BlocksContext } from './blocks-context';
+import {
+  blockTreeNodeSchema,
+  resolvedLinkKeys,
+  type BlocksContext,
+} from './blocks-context';
 
 // ============================================================================
 // Block endpoints (9): createBlock, getBlockTree, resolveTree, moveBlock, deleteBlock,
@@ -1200,11 +1204,26 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
               /* allOptional */ !strict,
             );
             const parsed = schema.safeParse(node.properties);
-            if (!parsed.success)
+            if (!parsed.success) {
+              // A failing link property whose value carries the READ shape
+              // (`href` / `targetRootId`) means the caller wrote back a
+              // resolved tree; the hint names the fix (raw: true).
+              const resolved = resolvedLinkKeys(
+                isRoot
+                  ? def.root.properties
+                  : (def.blocks?.[node.type]?.properties ?? {}),
+                node.properties,
+                parsed.error.issues,
+              );
+              const hint =
+                resolved.length > 0
+                  ? ` The value of '${resolved.join("', '")}' looks resolved (href instead of the stored fields); read the tree with raw: true to get writable link values.`
+                  : '';
+              const message = isRoot
+                ? `Invalid root properties (block ${node.blockId}): ${parsed.error.message}`
+                : `Invalid properties for block type '${node.type}' (block ${node.blockId}): ${parsed.error.message}`;
               throw new CMSError('TYPE_MISMATCH', {
-                message: isRoot
-                  ? `Invalid root properties (block ${node.blockId}): ${parsed.error.message}`
-                  : `Invalid properties for block type '${node.type}' (block ${node.blockId}): ${parsed.error.message}`,
+                message: `${message}${hint}`,
                 data: {
                   reason: isRoot
                     ? 'invalid-root-properties'
@@ -1212,8 +1231,12 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
                   type: node.type,
                   blockId: node.blockId,
                   issues: parsed.error.issues,
+                  ...(resolved.length > 0
+                    ? { resolvedLinkKeys: resolved }
+                    : {}),
                 },
               });
+            }
           };
 
           for (const b of diff.created)

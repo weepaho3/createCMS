@@ -1,7 +1,11 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import * as z from 'zod';
 
-import type { CMSProcedureContext, CollectionWithName } from '../types';
+import type {
+  BlockProperty,
+  CMSProcedureContext,
+  CollectionWithName,
+} from '../types';
 import type { ResolvedScope, ResolvedSlugConfig } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
 
@@ -71,6 +75,31 @@ export function applyPropertyPatch(
     }
   }
   return result;
+}
+
+/**
+ * Names the link-typed properties among `issues` whose posted value carries
+ * the READ shape (`href` / `targetRootId`) instead of the store shape. The
+ * write path validates the store shape only; a hit here means the caller
+ * round-tripped a resolved tree (getBlockTree without raw, or resolveTree).
+ */
+export function resolvedLinkKeys(
+  specs: Record<string, BlockProperty>,
+  properties: Record<string, unknown>,
+  issues: readonly { path: PropertyKey[] }[],
+): string[] {
+  const keys: string[] = [];
+  for (const issue of issues) {
+    if (issue.path.length === 0) continue;
+    const key = String(issue.path[0]);
+    if (keys.includes(key)) continue;
+    if (specs[key]?.type !== 'link') continue;
+    const value = properties[key];
+    if (typeof value !== 'object' || value === null) continue;
+    if (Object.hasOwn(value, 'href') || Object.hasOwn(value, 'targetRootId'))
+      keys.push(key);
+  }
+  return keys;
 }
 
 // ============================================================================
