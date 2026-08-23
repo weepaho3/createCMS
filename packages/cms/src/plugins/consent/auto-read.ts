@@ -20,12 +20,10 @@ function routeConsentEntry(gate: ConsentGate, entry: unknown): void {
 /**
  * Zero-config consent: reads Consent Mode v2 commands off `window.dataLayer`
  * (already-present `default`/`update` entries and future pushes) and feeds the
- * gate. Resilient to GTM/gtag.js loading LATER — which reassigns `dataLayer` /
- * its `push` and would discard an in-place patch — via a short re-scan poll over
+ * gate. Resilient to GTM/gtag.js loading later, which reassigns `dataLayer` or
+ * its `push` and would discard an in-place patch, via a short re-scan poll over
  * the wait window that re-reads `window.dataLayer` fresh each tick (and re-scans
- * from 0 if the array was replaced). The `push` patch is only a fast path. When
- * running GTM, driving consent explicitly via `setConsent` from the CMP's
- * Consent Mode update callback is the most reliable path.
+ * from 0 if the array was replaced). The `push` patch is only a fast path.
  */
 export function startConsentAutoRead(gate: ConsentGate): void {
   if (typeof window === 'undefined') return;
@@ -37,7 +35,7 @@ export function startConsentAutoRead(gate: ConsentGate): void {
   const scan = () => {
     const dl: DataLayer = (w.dataLayer = w.dataLayer || []);
     if (dl !== scannedArray) {
-      // First scan, or the host (GTM) replaced the array — re-read from 0.
+      // First scan, or the host (GTM) replaced the array; re-read from 0.
       scannedArray = dl;
       idx = 0;
     }
@@ -52,7 +50,7 @@ export function startConsentAutoRead(gate: ConsentGate): void {
         try {
           for (const arg of args) routeConsentEntry(gate, arg);
         } catch {
-          // never let consent observation break a host dataLayer push
+          // Never let consent observation break a host dataLayer push.
         }
         return ret;
       }) as typeof dl.push;

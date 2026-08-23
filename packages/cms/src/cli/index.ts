@@ -12,8 +12,8 @@ registerInitCommand(cli);
 registerGenerateCommand(cli);
 
 cli.help();
-// Inlined at build time from package.json (bunchee → @rollup/plugin-json), so
-// `createcms --version` always matches the published version. (struct-13)
+// Inlined at build time from package.json (bunchee -> @rollup/plugin-json), so
+// `createcms --version` always matches the published version.
 cli.version(version);
 cli.parse(process.argv, { run: false });
 

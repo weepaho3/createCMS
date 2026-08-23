@@ -35,8 +35,6 @@ export function resolveBranchPolicy(
   override?: Partial<BranchProtectionConfig>,
 ): ResolvedBranchPolicy {
   const global = ctx.branchProtection ?? {};
-  // Field-by-field: collection override (incl. an explicit `false`) wins, else
-  // the global value, else undefined → the default applied below.
   const pick = <K extends keyof BranchProtectionConfig>(
     key: K,
   ): BranchProtectionConfig[K] | undefined => override?.[key] ?? global[key];
@@ -44,7 +42,6 @@ export function resolveBranchPolicy(
     defaultBranchName: ctx.defaultBranchName ?? DEFAULT_BRANCH_NAME,
     // Default false: a published branch stays editable in place unless opted in.
     protectPublishedBranches: pick('protectPublishedBranches') === true,
-    // Default false: a merge needs no approval unless explicitly opted in.
     requireApprovalToMerge: pick('requireApprovalToMerge') === true,
     // Default false: keep the existing conditional publish behavior.
     requireApprovalBeforePublish: pick('requireApprovalBeforePublish') === true,
@@ -52,7 +49,6 @@ export function resolveBranchPolicy(
     // default. Opt in to require re-approval after every push.
     dismissStaleApprovals: pick('dismissStaleApprovals') === true,
     requiredReviewers: Math.max(1, pick('requiredReviewers') ?? 1),
-    // Default 'fast-forward': keep the leanest history unless opted into merge commits.
     mergeStrategy: ctx.mergeStrategy ?? DEFAULT_MERGE_STRATEGY,
   };
 }

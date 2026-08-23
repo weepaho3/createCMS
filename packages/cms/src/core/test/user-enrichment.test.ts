@@ -12,10 +12,6 @@ import {
 } from '../user/join-helpers';
 import { resolveUserConfig } from '../user/resolve';
 
-// ---------------------------------------------------------------------------
-// Test user table (Drizzle definition — used for metadata resolution)
-// ---------------------------------------------------------------------------
-
 const testUserTable = pgTable('user', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
@@ -24,10 +20,6 @@ const testUserTable = pgTable('user', {
   role: text('role'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
-
-// ============================================================================
-// resolveUserConfig
-// ============================================================================
 
 describe('resolveUserConfig', () => {
   it('resolves table metadata correctly', () => {

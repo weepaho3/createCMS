@@ -236,9 +236,7 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
         target.parentId,
         target.index,
       );
-      if (fromParent === target.parentId && fromIndex === adjusted) {
-        // same slot
-      } else {
+      if (!(fromParent === target.parentId && fromIndex === adjusted)) {
         ctx.store.move(active.id, target.parentId, adjusted);
         ctx.store.select(active.id);
         focusBlock(host, active.id);

@@ -60,7 +60,7 @@ import { createSearchHooks } from './search/hooks';
 import { resolveUserConfig } from './user/resolve';
 
 // ---------------------------------------------------------------------------
-// Derived union of all endpoint keys — provides autocomplete for hook authors.
+// Derived union of all endpoint keys: autocomplete for hook authors.
 // ---------------------------------------------------------------------------
 
 type EndpointKeysOf<T> = T extends (...args: any[]) => infer R
@@ -79,15 +79,15 @@ type PluginEndpointKey<TPlugins extends CMSPlugin[]> =
     : never;
 
 /**
- * Union of every endpoint key — core endpoints plus the endpoints contributed by
+ * Union of every endpoint key: core endpoints plus the endpoints contributed by
  * the configured plugins (`TPlugins`). Drives `action` autocomplete for hook
  * authors. Use without a type arg for just the core keys.
  */
 // createCollectionEndpoints is generic over the collection definition, so
 // `EndpointKeysOf<typeof createCollectionEndpoints>` can't resolve its keys
-// (they collapse to never). Instantiate it with a concrete collection — the
-// top-level operation keys (createRoot, createBlock, …) don't depend on the
-// specific collection — and read keyof the return.
+// (they collapse to never). Instantiate it with a concrete collection, whose
+// top-level operation keys don't depend on the specific collection, and read
+// keyof the return.
 type CollectionEndpointKey = keyof ReturnType<
   typeof createCollectionEndpoints<
     CollectionWithName & { blocks: Record<string, AnyBlockDefinition> }
@@ -107,11 +107,6 @@ export type CMSEndpointKey<TPlugins extends CMSPlugin[] = []> =
   | EndpointKeysOf<typeof createUserEndpoints>
   | PluginEndpointKey<TPlugins>;
 
-// Config-hook types whose `action` is the closed union of core + plugin endpoint
-// keys (plus `'*'`). Pre-1.0 (ts-09) we dropped the `(string & {})` escape hatch:
-// a misspelled action is now a compile error at `createCMS({ hooks })` instead of
-// silently never firing. These narrow the loose CMSBeforeHook/CMSAfterHook used
-// for standalone plugin authoring.
 type CMSConfigBeforeHook<TPlugins extends CMSPlugin[]> = Omit<
   CMSBeforeHook,
   'action'
@@ -129,7 +124,7 @@ type CMSConfigAfterHook<TPlugins extends CMSPlugin[]> = Omit<
  * is a compile error at the `createCMS` call site instead of a hook that never
  * fires. Prefer {@link CMSHooks} instead when authoring a standalone plugin,
  * where the full plugin set is unknown and `action` must stay open. Kept
- * separate on purpose — do not merge.
+ * separate on purpose: do not merge.
  */
 export type CMSConfigHooks<TPlugins extends CMSPlugin[] = []> = {
   before?: CMSConfigBeforeHook<TPlugins>[];
@@ -174,21 +169,19 @@ type AreEndpointOptionsOptional<Body, Query> = undefined extends Body
         : true;
 
 // Transport-level options every caller accepts in addition to body/query. The
-// wrapper (endpoint.ts) already forwards `headers` (into middleware's reqCtx)
-// and `context` (merged into the endpoint ctx). NB: middleware-resolved userId
-// wins over `context.userId`; headers is the reliable identity channel.
+// wrapper (endpoint.ts) forwards `headers` into middleware's reqCtx and merges
+// `context` into the endpoint ctx. Middleware-resolved userId wins over
+// `context.userId`, so headers is the reliable identity channel.
 type EndpointCallerExtras = {
   headers?: HeadersInit;
   context?: { userId?: string } & Record<string, unknown>;
 };
 
 // Position 7 (`infer Meta`) preserves the endpoint's better-call metadata so a
-// `scope: 'server'`-marked endpoint (see `core/routes/media.ts`) can carry a
-// type-only phantom brand on its caller. The brand is an OPTIONAL property, so
-// it changes nothing about how the caller is invoked here — `cms.api.*` (the
-// SERVER-side surface this type produces) stays exactly as callable as before;
-// only the client's `SerializeApi` (client/types.ts) reads the brand and omits
-// the key. Do not filter here — see plan 008.
+// `scope: 'server'`-marked endpoint (see `routes/media.ts`) can carry a
+// type-only phantom brand on its caller. The brand is optional, so this type
+// stays exactly as callable as before; only the client's `SerializeApi`
+// (client/types.ts) reads it and omits the key. Do not filter here.
 type EndpointCaller<E> =
   E extends Endpoint<
     any,
@@ -237,7 +230,7 @@ type UserEnrichableEndpoints =
   | 'listApprovals'
   | 'getApproval'
   | 'listPublications';
-// NB: `notifications.list` is intentionally NOT here — its `withUser` input flag
+// NB: `notifications.list` is intentionally NOT here: its `withUser` input flag
 // is added namespace-scoped in `WithActorUserApi` below, because `list` is a
 // non-unique key (templates.list / variables.list) and this union matches keys
 // across ALL namespaces.
@@ -254,10 +247,10 @@ type AddWithUser<TFn, TTable extends AnyPgTable> = TFn extends (
 
 type WithUserApi<T, TTable extends AnyPgTable> = {
   [NS in keyof T]: {
-    // For every enrichable endpoint (unique keys), add the `withUser` INPUT flag;
-    // the OUTPUT rewrite (InjectUserField) additionally types `createdByUser`/
-    // `actorUser` off the user table on the results that DECLARE those fields
-    // (the typed list-item shapes) — see InjectUserField.
+    // For every enrichable endpoint (unique keys), add the `withUser` INPUT
+    // flag; the OUTPUT rewrite (InjectUserField) additionally types
+    // `createdByUser`/`actorUser` off the user table on the results that
+    // DECLARE those fields (the typed list-item shapes).
     [K in keyof T[NS]]: K extends UserEnrichableEndpoints
       ? AddWithUser<T[NS][K], TTable> extends (...args: infer A) => infer R
         ? (
@@ -270,28 +263,28 @@ type WithUserApi<T, TTable extends AnyPgTable> = {
   };
 };
 
-// The actor-user object on an enriched row: a PARTIAL of the user table's row.
-// This is a deliberate SAFE UPPER BOUND (ts-11): `exposeColumns` is a runtime
-// allowlist typed only as `string[]`, and narrowing `actorUser` to exactly the
-// exposed columns would require capturing `exposeColumns` as a `const` literal
-// tuple threaded through `CMSUserConfig` — which is invariant in its table param,
-// so the tuple can't flow to this call site without a bespoke helper generic.
-// Every non-exposed column is therefore typed as optionally-present (never
-// wrongly required); the runtime filter in user/resolve.ts is the source of truth.
+// The actor-user object on an enriched row: a PARTIAL of the user table's row,
+// a deliberate safe upper bound. `exposeColumns` is a runtime allowlist typed
+// only as `string[]`, and narrowing `actorUser` to exactly the exposed columns
+// would require capturing `exposeColumns` as a `const` literal tuple threaded
+// through `CMSUserConfig`, which is invariant in its table param, so the tuple
+// cannot flow to this call site. Every non-exposed column is therefore typed as
+// optionally-present (never wrongly required); the runtime filter in
+// user/resolve.ts is the source of truth.
 type ActorUserShape<TTable extends AnyPgTable> = Partial<
   TTable['$inferSelect']
 >;
 
 // Rewrite a `withUser`-enriched RESULT: wherever a `createdByUser` / `actorUser`
 // field is DECLARED on a result type, type it off the user table instead of
-// leaving it `unknown` (ts-06). Recurses through arrays/objects; a result whose
-// type doesn't declare those fields is returned unchanged. NB: this keys on the
-// literal field names, so it only fires on endpoints with a STRUCTURED result
-// that names them (listRoots/listBranches/listMergeRequests items, and
-// notifications.list) — the single-item GETs (getBranch/getApproval) currently
-// return a loose `Record<string, unknown>`, so their `createdByUser` stays
-// `unknown` until they gain a structured return type. (Enrichable endpoints never
-// return a block tree, so this doesn't recurse into recursive content types.)
+// leaving it `unknown`. Recurses through arrays/objects; a result whose type
+// doesn't declare those fields is returned unchanged. Keys on the literal field
+// names, so it only fires on endpoints with a STRUCTURED result that names them
+// (listRoots/listBranches/listMergeRequests items, and notifications.list); the
+// single-item GETs (getBranch/getApproval) return a loose
+// `Record<string, unknown>`, so their `createdByUser` stays `unknown` until
+// they gain a structured return type. Enrichable endpoints never return a block
+// tree, so this doesn't recurse into recursive content types.
 type InjectUserField<T, TTable extends AnyPgTable> = T extends Date
   ? T
   : // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -309,7 +302,7 @@ type InjectUserField<T, TTable extends AnyPgTable> = T extends Date
             }
           : T;
 
-// Type the OUTPUT of `notifications.list` (WithUserApi only types
+// Types the OUTPUT of `notifications.list` (WithUserApi only types
 // the input flag). Leaves every other endpoint untouched.
 type WithActorUserApi<T, TTable extends AnyPgTable> = T extends {
   notifications: infer NS;
@@ -317,8 +310,8 @@ type WithActorUserApi<T, TTable extends AnyPgTable> = T extends {
   ? Omit<T, 'notifications'> & {
       notifications: {
         // `list` gets BOTH the `withUser` INPUT flag (via AddWithUser) and the
-        // `actorUser` OUTPUT rewrite, scoped to the notifications namespace so a
-        // same-named `templates.list`/`variables.list` is never touched.
+        // `actorUser` OUTPUT rewrite, scoped to the notifications namespace so
+        // a same-named `templates.list`/`variables.list` is never touched.
         [K in keyof NS]: K extends 'list'
           ? AddWithUser<NS[K], TTable> extends (...args: infer A) => infer R
             ? (
@@ -352,17 +345,15 @@ type CMSDefinitionDataKeys =
   // (a widened `boolean` would not gate the type) and `realtime` is captured.
   | 'notifications'
   | 'realtime';
-
 type HasRevalidate<T> = T extends { onRevalidate: infer R }
   ? R extends undefined
     ? false
     : true
   : false;
 
-// Default-enabled: only a literal `notifications: false` in TDef disables the
-// feature. Drives whether `cms.api.notifications` / `cms.notify` exist in the
-// inferred type (mirrors HasRevalidate's value-or-undefined gating, applied to
-// member presence instead).
+// Only a literal `notifications: false` in TDef disables the feature. Drives
+// whether `cms.api.notifications` / `cms.notify` exist in the inferred type
+// (value-or-undefined gating applied to member presence).
 type NotificationsEnabled<T> = T extends { notifications: false }
   ? false
   : true;
@@ -392,9 +383,9 @@ type InferCollectionApis<
 };
 
 function checkEndpointConflicts(endpoints: Record<string, Endpoint>) {
-  // registry: path → list of { source, methods } across the ENTIRE surface
-  // (core + collection + plugin), so a plugin path shadowing a core/collection
-  // path is caught, not just plugin↔plugin.
+  // Registry of path to sources across the ENTIRE surface (core + collection +
+  // plugin), so a plugin path shadowing a core/collection path is caught, not
+  // just plugin vs plugin.
   const registry = new Map<string, { source: string; methods: string[] }[]>();
 
   for (const [source, endpoint] of Object.entries(endpoints)) {
@@ -425,8 +416,9 @@ function checkEndpointConflicts(endpoints: Record<string, Endpoint>) {
       }
     }
     for (const [method, sources] of methodMap) {
-      // A real conflict is two+ sources on the same method, OR a wildcard
-      // sharing the path with ANY other entry (it matches every method).
+      // A real conflict is two or more sources on the same method, OR a
+      // wildcard sharing the path with ANY other entry (it matches every
+      // method).
       const wildcardClash = method === '*' && entries.length > 1;
       if (sources.length > 1 || wildcardClash) {
         conflicts.push(
@@ -529,9 +521,9 @@ function validateCollectionNames(
 function mergeErrorCodes<TPlugins extends CMSPlugin[]>(
   plugins: TPlugins,
 ): typeof CMS_ERRORS & InferPluginErrorCodes<TPlugins> {
-  // Seed with the core codes so `cms.$ERROR_CODES` is the COMPLETE registry (not
-  // plugin-only) — mirrors the client's `$ERROR_CODES` (err-02). Warn on
-  // collisions instead of silently letting the last writer win (err-16).
+  // Seed with the core codes so `cms.$ERROR_CODES` is the COMPLETE registry
+  // (not plugin-only), mirroring the client's `$ERROR_CODES`. Warn on
+  // collisions instead of silently letting the last writer win.
   const acc: Record<string, { status: number; message: string }> = {
     ...CMS_ERRORS,
   };
@@ -701,7 +693,6 @@ export const createCMS = <
   // Whole-surface conflict detection runs later, once flatEndpoints exists.
   validatePluginPaths(plugins);
 
-  // Merge config hooks + plugin hooks + search hooks (config hooks run first)
   const searchHooks = createSearchHooks(
     definition.defaultBranchName ?? DEFAULT_BRANCH_NAME,
   );
@@ -716,7 +707,6 @@ export const createCMS = <
   ];
   const hookRunner = createHookRunner(beforeHooks, afterHooks);
 
-  // Build raw endpoints (no middleware/hooks — toCMSEndpoints handles that)
   type DefCollections = TDef['collections'];
   type DefPlugins = NonNullable<TDef['plugins']>;
 
@@ -726,10 +716,9 @@ export const createCMS = <
         def as CollectionWithName,
         cmsContext,
       );
-      // Merge each plugin's per-collection endpoints into THIS
-      // collection's record, so they surface at cms.api.<collection>.x only
-      // when the plugin is installed (the i18n plugin's createTranslation /
-      // listTranslations). Generic — core names no plugin concept.
+      // Merge each plugin's per-collection endpoints into this collection's
+      // record, so they surface at cms.api.<collection>.x only when the plugin
+      // is installed.
       for (const plugin of plugins) {
         if (!plugin.collectionEndpoints) continue;
         Object.assign(
@@ -767,12 +756,12 @@ export const createCMS = <
   const releaseEndpoints = createReleaseEndpoints(cmsContext);
   const userEndpoints = createUserEndpoints(cmsContext);
 
-  // `notifications: false` fully disables the feature (no service, no routes, no
-  // types). Default enabled. Independent of `realtime`.
+  // `notifications: false` fully disables the feature (no service, no routes,
+  // no types). Default enabled. Independent of `realtime`.
   const notificationsEnabled = definition.notifications !== false;
 
-  // Resolve the Upstash realtime runtime (undefined when not configured). ONE
-  // shared runtime backs the /realtime route, notification push, and A/B live.
+  // ONE shared runtime backs the /realtime route, notification push, and A/B
+  // live; undefined when not configured.
   const realtime = definition.realtime
     ? createRealtimeRuntime(definition.realtime)
     : undefined;
@@ -780,9 +769,8 @@ export const createCMS = <
 
   const notificationHandlers: OnNotificationHandler[] = notificationsEnabled
     ? [
-        // Push every notification to its recipient's private realtime channel
-        // when realtime is configured. First because it is the latency-sensitive,
-        // best-effort handler — user/plugin handlers must not delay the live push.
+        // Realtime push runs first because it is the latency-sensitive,
+        // best-effort handler: user/plugin handlers must not delay it.
         ...(realtime ? [makeNotificationPublishHandler(realtime)] : []),
         ...(definition.onNotification ? [definition.onNotification] : []),
         ...plugins
@@ -799,7 +787,7 @@ export const createCMS = <
     : undefined;
   cmsContext.notificationService = notificationService;
 
-  // The shared `/realtime` SSE handler — authenticates each connection and
+  // The shared /realtime SSE handler authenticates each connection and
   // authorizes its channels before any subscription. Gated on `realtime` ALONE
   // (A/B live needs it even when notifications are disabled).
   const realtimeRoute = realtime
@@ -849,12 +837,14 @@ export const createCMS = <
     releases: releaseEndpoints,
     users: userEndpoints,
     // Omitted entirely (not just undefined) when notifications are disabled, so
-    // the route never registers and `client.notifications` is absent from types.
+    // the route never registers and `client.notifications` is absent from
+    // types.
     ...(notificationsEnabled ? { notifications: notificationEndpoints } : {}),
     ...pluginApis,
   } as RawApi;
 
-  // Auto-set `permissionResource` from plugin ID for plugin endpoints that don't set one
+  // Auto-set `permissionResource` from plugin id for plugin endpoints that
+  // don't set one.
   for (const plugin of plugins) {
     if (!plugin.endpoints) continue;
     for (const ep of Object.values(plugin.endpoints)) {
@@ -868,16 +858,16 @@ export const createCMS = <
     }
   }
 
-  // Wrap all endpoints: middleware + hooks run automatically.
-  // Pass pluginContext (not cmsContext) so plugin-injected fields (e.g.
+  // Wrap all endpoints: middleware + hooks run automatically. Pass
+  // pluginContext (not cmsContext) so plugin-injected fields (e.g.
   // scopeConditions from multiTenant) are visible to the wrapper.
   const flatEndpoints = flattenEndpoints(rawApi as any);
-  // Throws on duplicate path+method across the ENTIRE surface (core + collection
-  // + plugin), keyed by the `ns:key` composite so the message points at the
-  // exact offending endpoints.
+  // Throws on duplicate path+method across the ENTIRE surface (core +
+  // collection + plugin), keyed by the `ns:key` composite so the message points
+  // at the exact offending endpoints.
   checkEndpointConflicts(flatEndpoints);
 
-  // Static path→method map for the client proxy: lets optional-body POST
+  // Static path to method map for the client proxy: lets optional-body POST
   // endpoints (e.g. notifications.markNotificationsRead, admin.reindexSearch)
   // dispatch as POST even when called with no body, instead of falling back to
   // body-presence inference. Built from flatEndpoints so it covers collection
@@ -927,7 +917,7 @@ export const createCMS = <
     ]),
   ) as unknown as FinalApi;
 
-  // Collect path-bound middlewares from all plugins
+  // Collect path-bound middlewares from all plugins.
   const routerMiddleware = plugins.flatMap((plugin) =>
     (plugin.middlewares ?? []).map((m) => ({
       path: m.path,
@@ -941,7 +931,7 @@ export const createCMS = <
     onError: (error, request) => {
       // Fires for errors that reach the router: unexpected (non-APIError)
       // throws, validation failures, and middleware/auth failures. A user
-      // `onAPIError` hook takes over (for Sentry/Datadog/etc.); otherwise we log.
+      // `onAPIError` hook takes over (for Sentry/Datadog/etc.); otherwise log.
       if (definition.onAPIError) {
         definition.onAPIError(error, request);
       } else {
@@ -950,8 +940,9 @@ export const createCMS = <
     },
     async onRequest(request) {
       await ensureInit();
-      // The shared realtime SSE stream short-circuits the pipeline: a long-lived
-      // streaming Response must not enter per-request endpoint routing.
+      // The shared realtime SSE stream short-circuits the pipeline: a
+      // long-lived streaming Response must not enter per-request endpoint
+      // routing.
       if (realtimeRoute) {
         const realtimeResponse = await realtimeRoute(request);
         if (realtimeResponse) return realtimeResponse;
@@ -988,7 +979,7 @@ export const createCMS = <
 
   // Deterministic flush seam: awaits every floated notification promise
   // (post-transaction batches + async handler side effects) so tests can assert
-  // without racing a real timer. No-op sugar over `notificationService.flush()`.
+  // without racing a real timer.
   const $flushNotifications = notificationService
     ? () => notificationService.flush()
     : undefined;
@@ -997,8 +988,6 @@ export const createCMS = <
     router,
     api,
     collections,
-    // notify / notificationService are present only when notifications are
-    // enabled — gated from the TYPE too (parallels `client.notifications`).
     notify: notify as NotificationsEnabled<TDef> extends true
       ? NonNullable<typeof notify>
       : undefined,
@@ -1006,9 +995,8 @@ export const createCMS = <
       notificationService as NotificationsEnabled<TDef> extends true
         ? NonNullable<typeof notificationService>
         : undefined,
-    // Present only when notifications are enabled (gated from the TYPE too, like
-    // `notify`). Awaits all in-flight notification side effects — the assertion
-    // seam that replaces real `setTimeout` waits in tests.
+    // Awaits all in-flight notification side effects; the test assertion seam
+    // that replaces real `setTimeout` waits.
     $flushNotifications:
       $flushNotifications as NotificationsEnabled<TDef> extends true
         ? NonNullable<typeof $flushNotifications>
@@ -1017,16 +1005,14 @@ export const createCMS = <
       ? RevalidateFn<keyof DefCollections & string>
       : RevalidateFn<keyof DefCollections & string> | undefined,
     $ERROR_CODES,
-    // Serializable path→method map (pure JSON) handed to the client factory so
-    // the proxy dispatches the correct HTTP method without body-presence
+    // Serializable path to method map (pure JSON) handed to the client factory
+    // so the proxy dispatches the correct HTTP method without body-presence
     // inference. See `createCMSClient({ pathMethods: cms.$pathMethods })`.
     $pathMethods: pathMethods,
-    // ⚠️ TYPE-LEVEL ONLY — the runtime value is `undefined`. Unlike its sibling
-    // `$ERROR_CODES` / `$pathMethods` (real objects), this is a PHANTOM field: it
-    // exists purely so `createNotificationRouter<typeof cms>` can read the
-    // plugin-contributed notification `meta` shapes + the `user`-config actor-user
-    // shape off `typeof cms`. NEVER access `cms.$InferNotifications` as a value —
-    // it will throw `TypeError: Cannot read properties of undefined`.
+    // TYPE-LEVEL ONLY, the runtime value is `undefined`: a phantom field read by
+    // `createNotificationRouter<typeof cms>` for plugin-contributed notification
+    // `meta` shapes and the `user`-config actor-user shape. NEVER access it as a
+    // value; it will throw `TypeError: Cannot read properties of undefined`.
     $InferNotifications: undefined as unknown as {
       meta: InferPluginNotificationMeta<TPlugins>;
       actorUser: TDef extends {

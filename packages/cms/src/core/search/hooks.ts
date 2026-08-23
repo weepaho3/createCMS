@@ -70,11 +70,8 @@ const inputRootId = (input: Record<string, unknown>) =>
  * to avoid adding latency to the mutation response.
  */
 export function createSearchHooks(defaultBranchName: string): CMSAfterHook[] {
-  // `indexRoot` resolves the default-branch head, so it needs the configured
-  // branch name; the other index fns don't.
   const indexRootFn: IndexFn = (db, id) => indexRoot(db, id, defaultBranchName);
   return [
-    // ---- Root / Block content changes => re-index root block tree ----
     createSearchAfterHook('createRoot', resultRootId, indexRootFn),
     createSearchAfterHook('updateRoot', inputRootId, indexRootFn),
     createSearchAfterHook('updateBlock', inputRootId, indexRootFn),
@@ -85,10 +82,9 @@ export function createSearchHooks(defaultBranchName: string): CMSAfterHook[] {
     createSearchAfterHook('duplicateBlock', inputRootId, indexRootFn),
     createSearchAfterHook('moveRoot', inputRootId, indexRootFn),
     createSearchAfterHook('executeMerge', inputRootId, indexRootFn),
-    // Archiving a root removes it from the working set -> drop its search entry.
+    // Archiving a root removes it from the working set, so drop its entry.
     createDeleteAfterHook('archiveRoot', 'root', inputRootId),
 
-    // ---- Merge requests ----
     createSearchAfterHook(
       'createMergeRequest',
       (_input, result) =>
@@ -111,7 +107,6 @@ export function createSearchHooks(defaultBranchName: string): CMSAfterHook[] {
       indexMergeRequest,
     ),
 
-    // ---- Comments ----
     createSearchAfterHook(
       'createCommentMessage',
       (_input, result) =>
@@ -132,7 +127,6 @@ export function createSearchHooks(defaultBranchName: string): CMSAfterHook[] {
       },
     },
 
-    // ---- Variables ----
     createSearchAfterHook(
       'createVariable',
       (_input, result) => {
@@ -152,9 +146,9 @@ export function createSearchHooks(defaultBranchName: string): CMSAfterHook[] {
     {
       action: 'deleteVariable',
       handler: async (ctx) => {
-        // deleteVariable input has `key`, not `id` — we need to look up by key
-        // But since the variable is already deleted when the after-hook runs,
-        // we delete by scanning for the entity type + matching key in the index
+        // deleteVariable input carries `key`, not `id`, and the row is already
+        // deleted when the after-hook runs, so delete by scanning the index
+        // for the entity type + matching key.
         const key = ctx.input.key as string | undefined;
         if (!key) return;
         fireAndForget(async () => {
@@ -190,7 +184,6 @@ export function createSearchHooks(defaultBranchName: string): CMSAfterHook[] {
       (input) => input.templateId as string | undefined,
     ),
 
-    // ---- Assets ----
     {
       action: 'uploadAssets',
       handler: async (ctx) => {

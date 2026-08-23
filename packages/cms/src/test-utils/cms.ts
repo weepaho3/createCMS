@@ -15,10 +15,9 @@ import { type TestS3, setupTestS3 } from './s3';
 
 /**
  * Creates a fully wired CMS instance backed by an in-memory PGlite database.
- *
- * When `withS3: true`, a local S3rver instance is started and the returned
- * `s3.cleanup()` must be called after the test (e.g. in afterEach).
- * When omitted or false, a dummy media config is used (no real S3 server).
+ * With `withS3: true`, a local S3rver instance is started and the returned
+ * `s3.cleanup()` must be called after the test; otherwise a dummy media
+ * config is used.
  */
 export const setupTestCMS = async (options?: {
   dataRetention?: DataRetentionConfig;

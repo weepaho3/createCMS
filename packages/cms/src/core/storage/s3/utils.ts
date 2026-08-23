@@ -139,9 +139,10 @@ export function isFileTypeAllowed(
 ): boolean {
   return allowedFileTypes.some((type) => {
     if (type.endsWith('/*')) {
-      // Match on the FULL `type/` prefix, not the bare group: comparing against
-      // `'image'` would let `'imagexml/evil'` slip through `startsWith`. The
-      // trailing slash pins the match to the real MIME group boundary.
+      // Match on the full `type/` prefix, not the bare group: comparing
+      // against `'image'` would let `'imagexml/evil'` slip through a
+      // startsWith check. The trailing slash pins the match to the real MIME
+      // group boundary.
       const prefix = type.slice(0, type.indexOf('/*'));
       return prefix.length > 0 && fileType.startsWith(`${prefix}/`);
     }
@@ -161,11 +162,10 @@ export function createSlug(text: string): string {
 }
 
 /**
- * The S3 object key for an asset. Currently the asset slug verbatim — core does
- * not partition object keys by any scope. Scope isolation (e.g. multi-tenant) is
- * enforced by the plugin-owned scope COLUMN + scope.assets.where, never by the
- * key string. This is the single place to evolve key derivation if per-scope
- * partitioning is ever genuinely needed (with tests).
+ * The S3 object key for an asset: the asset slug verbatim. Core does not
+ * partition object keys by any scope; scope isolation (e.g. multi-tenant) is
+ * enforced by the plugin-owned scope column + scope.assets.where, never by the
+ * key string.
  */
 export function buildObjectKey(assetSlug: string): string {
   return assetSlug;

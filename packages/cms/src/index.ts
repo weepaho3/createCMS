@@ -1,8 +1,8 @@
 export { createCMS } from './core/factory';
 export type { CMSEndpointKey, CMSConfigHooks } from './core/factory';
-// Pruning GC primitive — import directly to drive it from a cron route
-// (`waitUntil(runPruningPass(...))`) or a queue worker (re-enqueue while !done),
-// instead of the HTTP `admin.runPruning` endpoint.
+// Pruning GC primitive, importable directly to drive from a cron route
+// (`waitUntil(runPruningPass(...))`) or a queue worker (re-enqueue while
+// !done) instead of the HTTP `admin.runPruning` endpoint.
 export { runPruningPass } from './core/admin/pruning';
 export type {
   PruningPassOptions,
@@ -152,7 +152,7 @@ export {
 } from './core/variables-template';
 export { rootRevalidateTag } from './core/revalidation';
 
-// Block placement — build a per-collection index once, then query it with the
+// Block placement: build a per-collection index once, then query it with the
 // non-throwing predicate/enumeration helpers (editor affordances) or the
 // throwing `assertPlacementAllowed` gate (write path, not re-exported here).
 export {
@@ -162,8 +162,8 @@ export {
 } from './core/blocks/placement';
 export type { PlacementIndex } from './core/blocks/placement';
 
-// Pure resolved-reference guard + stored-form normalizer (shared by the server
-// read path and the React client entry, which re-exports from here).
+// Pure resolved-reference guard + stored-form normalizer, shared by the
+// server read path and the React client entry (which re-exports from here).
 export {
   isResolvedReference,
   toStoredReference,
@@ -208,8 +208,9 @@ export type { NotificationService } from './core/notifications/service';
 export { notificationEventSchema } from './core/notifications/events';
 export type { NotificationEvent } from './core/notifications/events';
 
-// Media config — `media` is a required `createCMS` field, so consumers need these
-// to type it (rather than reaching for `Parameters<typeof createCMS>[0]['media']`).
+// Media config: `media` is a required `createCMS` field, so consumers need
+// these types instead of reaching for
+// `Parameters<typeof createCMS>[0]['media']`.
 export type {
   MediaConfig,
   OptimizationConfig,
@@ -220,15 +221,16 @@ export type {
 } from './core/types/s3';
 
 // Realtime (optional, Upstash-only). Configure with `realtime: { url, token }`
-// on createCMS to enable the shared `/realtime` SSE route + per-user push; both
-// @upstash/* packages are optional peers. There is no pluggable transport.
+// on createCMS to enable the shared `/realtime` SSE route and per-user push;
+// both @upstash/* packages are optional peers. There is no pluggable
+// transport.
 export { defaultAuthorizeChannels } from './core/realtime/channels';
 export type { RealtimeEventSchema } from './core/realtime/types';
 
-// Inferred row types for the schema tables — the better-auth-style model-type
-// surface. The table OBJECTS are intentionally NOT exported: consumers generate
-// and import their own schema (`createcms generate`), which always matches their
-// actual DB. Only the inferred select/insert types are re-exported here.
+// Inferred row types for the schema tables, the model-type surface. The table
+// objects are intentionally not exported: consumers generate and import their
+// own schema (`createcms generate`), which always matches their actual DB.
+// Only the inferred select/insert types are re-exported here.
 export type {
   Approval,
   NewApproval,

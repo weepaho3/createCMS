@@ -62,7 +62,7 @@ const cmsEndpointFactory: ReturnType<
 > = createEndpoint.create({ use: [cmsContext] });
 
 // better-call's default VALIDATION_ERROR response drops the zod `issues`; re-throw
-// with them so clients get actionable per-field errors (err-06).
+// with them so clients get actionable per-field errors.
 function cmsOnValidationError({
   issues,
   message,
@@ -73,10 +73,10 @@ function cmsOnValidationError({
   throw new APIError(400, { code: 'VALIDATION_ERROR', message, issues });
 }
 
-// `createEndpoint.create({...})` only forwards `use` — per-endpoint hooks like
-// `onValidationError` are dropped there. So wrap the factory to inject the hook
-// into EVERY endpoint's own options (where better-call actually invokes it),
-// keeping the public factory type identical so callers' inference is unchanged.
+// `createEndpoint.create({...})` only forwards `use`; per-endpoint hooks like
+// `onValidationError` are dropped there. Wrap the factory to inject the hook
+// into every endpoint's own options (where better-call invokes it), keeping the
+// public factory type identical so callers' inference is unchanged.
 export const createCMSEndpoint: typeof cmsEndpointFactory = ((
   path: any,
   options: any,
@@ -134,14 +134,14 @@ function computeScope(
             ...tableScope.insertColumns,
           };
         }
-        // `roots` may carry a per-new-entry column contributor; carry
-        // it through the merge too (last-writer-wins) — otherwise a second
-        // factory contributing `roots` would silently drop it. The first-writer
-        // branch already preserves it via the spread above.
+        // `roots` may carry a per-new-entry column contributor; carry it
+        // through the merge too (last-writer-wins), otherwise a second factory
+        // contributing `roots` would silently drop it. The first-writer branch
+        // already preserves it via the spread above.
         const newEntry = (tableScope as RootTableScope).newEntryColumns;
         if (newEntry) (existing as RootTableScope).newEntryColumns = newEntry;
-        // `roots.crossScopeExclude` must be UNIONed across factories,
-        // NOT last-writer-wins: a factory that declares none (e.g. multi-tenant)
+        // `roots.crossScopeExclude` must be UNIONed across factories, NOT
+        // last-writer-wins: a factory that declares none (e.g. multi-tenant)
         // must not erase one declared by another (e.g. i18n's ['language']).
         // Order-independent, so cross-scope reads exclude the right columns
         // regardless of plugin registration order.
@@ -301,10 +301,11 @@ export function toCMSEndpoints(
       }
 
       // Decode + strip the user-enrichment flags so they never leak into the
-      // endpoint's own validated query. The wire contract lives in with-flags.ts
-      // (shared with the client encode side). Strip semantics are deliberately
-      // asymmetric: withUser is stripped whenever present (even when malformed
-      // JSON decoded to undefined); withRoot is stripped only when enabled.
+      // endpoint's own validated query. The wire contract lives in
+      // with-flags.ts (shared with the client encode side). Strip semantics are
+      // deliberately asymmetric: withUser is stripped whenever present (even
+      // when malformed JSON decoded to undefined); withRoot is stripped only
+      // when enabled.
       let withUser: WithUserValue | undefined;
       const rawWithUser = requestContext.query?.[WITH_USER_KEY];
       if (rawWithUser !== undefined) {
@@ -327,10 +328,10 @@ export function toCMSEndpoints(
         context: {
           ...requestContext.context,
           db: cmsCtx.db,
-          // Middleware-resolved identity (from the request/headers) wins. An
-          // in-process `cms.api.*({ context: { userId } })` caller's value is the
-          // fallback — safe because HTTP requests never populate `context` from
-          // client input, so only trusted server-side callers can set it.
+          // Middleware-resolved identity (from the request/headers) wins; an
+          // in-process `cms.api.*({ context: { userId } })` caller's value is
+          // only the fallback, and safe because HTTP requests never populate
+          // `context` from client input.
           userId:
             mwResult.userId ??
             (requestContext.context as { userId?: string } | undefined)?.userId,

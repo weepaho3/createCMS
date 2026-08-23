@@ -12,14 +12,9 @@ import {
 import { setupTestCMS } from '../../test-utils/cms';
 import { createCMSClient } from '../vanilla';
 
-// Integration coverage: drive the real vanilla browser client against an
-// in-memory CMS by routing `globalThis.fetch` into the better-call router. This
-// exercises the full round-trip — proxy dispatch -> better-call client -> HTTP
-// router -> endpoint handler -> DB -> serialized response -> proxy result — for
-// a GET read, a POST write, and a follow-up read.
-
-// Factory keeps the client's inferred type in lock-step with the harness `cms`
-// so the outer `let client` annotation stays exact (and tsc-clean).
+// Drives the real vanilla browser client against an in-memory CMS by routing
+// `globalThis.fetch` into the better-call router, exercising the full round
+// trip: proxy dispatch -> better-call -> router -> handler -> DB -> response.
 function buildTestClient(cms: Awaited<ReturnType<typeof setupTestCMS>>['cms']) {
   return createCMSClient<typeof cms>({ baseURL: 'http://localhost/api/cms' });
 }
@@ -40,7 +35,6 @@ describe('vanilla client — HTTP round-trip against the in-memory router', () =
   });
 
   beforeEach(() => {
-    // Route every client fetch into the CMS router instead of the network.
     vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) =>
       harness.cms.router.handler(new Request(input, init)),
     );
@@ -65,8 +59,6 @@ describe('vanilla client — HTTP round-trip against the in-memory router', () =
 
     expect(clientRead.id).toBe(created.rootId);
     expect(serverRead.id).toBe(created.rootId);
-    // The wire (client) result and the direct server call agree on identity and
-    // the plain-JSON properties (no Date fields on `title`).
     expect(clientRead.properties).toEqual(serverRead.properties);
     expect(clientRead.properties.title).toBe('Home');
   });
@@ -81,7 +73,6 @@ describe('vanilla client — HTTP round-trip against the in-memory router', () =
     expect(Array.isArray(clientRoots.roots)).toBe(true);
     expect(typeof clientRoots.total).toBe('number');
     expect(typeof clientRoots.hasMore).toBe('boolean');
-    // Same underlying store -> same count (the create above committed a root).
     expect(clientRoots.total).toBe(serverRoots.total);
     expect(clientRoots.total).toBeGreaterThan(0);
   });

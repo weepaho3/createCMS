@@ -3,7 +3,7 @@ import type { BlockProperty } from '@createcms/schema';
 import type { AnyEditorSchema, SchemaField } from './types';
 
 /**
- * The property specs of a block type — or of the root when `blockType` is the
+ * The property specs of a block type, or of the root when `blockType` is the
  * literal `'root'` (the marker `getBlockTree` puts on the top node). An unknown
  * block type yields `{}` so callers can iterate without guarding.
  */
@@ -23,7 +23,7 @@ export type FieldGroup = {
 
 /**
  * Fields in definition order, clustered by their `group` label: named groups
- * in first-appearance order, then — always last — one `null` bucket holding
+ * in first-appearance order, then always last one `null` bucket holding
  * every field without a group (omitted when there is none). Definition order
  * is kept inside each group.
  */
@@ -47,8 +47,8 @@ export type PaletteItem = {
   /** The block-picker category (the definition's `group`); undefined = ungrouped. */
   group?: string;
   /**
-   * Whether the block can hold children AT ALL (the coarse gate). WHICH
-   * children it may hold is the schema's `structure` — ask `canPlace` /
+   * Whether the block can hold children at all (the coarse gate). Which
+   * children it may hold is the schema's `structure`: ask `canPlace` /
    * `allowedChildTypes`, which need the parent context.
    */
   allowChildren: boolean;
@@ -72,7 +72,7 @@ export type PaletteGroup = {
   readonly items: PaletteItem[];
 };
 
-/** Palette items clustered by `group` — same ordering rule as `groupFields`. */
+/** Palette items clustered by `group`: same ordering rule as `groupFields`. */
 export function groupPaletteItems(
   items: readonly PaletteItem[],
 ): PaletteGroup[] {

@@ -1,14 +1,14 @@
 /**
  * Built-in channel-authorization policy for the shared realtime route.
  *
- * The security invariant: PRIVATE per-user channels (`notif:<recipientId>`) are
- * readable ONLY by their owner and FAIL CLOSED when the caller is
+ * The security invariant: private per-user channels (`notif:<recipientId>`) are
+ * readable only by their owner and fail closed when the caller is
  * unauthenticated. A/B live channels (`ab:live:<testId>`) are world-readable
  * (aggregate dashboards carry no per-user private data). Every other channel is
  * rejected. Re-evaluated on every (re)connection, so there is no stale
  * authorization across a socket's lifetime.
  *
- * Pure function of (userId, channels) — the route handler resolves `userId` from
+ * Pure function of (userId, channels): the route handler resolves `userId` from
  * the request via the configured auth middleware before calling this.
  */
 export function defaultAuthorizeChannels(

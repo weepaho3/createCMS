@@ -13,7 +13,7 @@ import { counterGenId, makeTree, storeSchema } from './store/fixtures';
 
 afterEach(cleanup);
 
-/** `makeTree()` typed as `storeSchema` demands it — the union members are structurally comparable to `BlockTreeNode`. */
+/** `makeTree()` typed as `storeSchema` demands it: the union members are structurally comparable to `BlockTreeNode`. */
 const typedTree = (): TreeOf<typeof storeSchema> =>
   makeTree() as TreeOf<typeof storeSchema>;
 

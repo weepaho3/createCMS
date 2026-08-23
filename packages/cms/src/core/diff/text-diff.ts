@@ -1,17 +1,15 @@
 import type { TextDiffSegment } from './types';
 
-// ============================================================================
 // Rich-text word diff (htmldiff-style)
 //
-// Tokenizes two HTML fragments into atomic tokens — each tag is one token,
-// each word keeps its trailing whitespace — then diffs the token streams:
+// Tokenizes two HTML fragments into atomic tokens: each tag is one token,
+// each word keeps its trailing whitespace. Then diffs the token streams:
 // common prefix/suffix trim followed by an LCS over the remainder. Equal tags
-// act as `same` anchors, so a word change inside <p>…</p> keeps the tags
+// act as `same` anchors, so a word change inside <p>...</p> keeps the tags
 // untouched.
 //
 // Invariants: concatenating the `same` + `del` segments reproduces `from`
 // byte-for-byte; concatenating `same` + `ins` reproduces `to`.
-// ============================================================================
 
 /**
  * Per-side token cap for the LCS mid-section. Above this the O(n*m) DP is
@@ -21,10 +19,6 @@ const MAX_LCS_TOKENS = 3000;
 
 /** A full HTML tag captured as a single token. */
 const TAG_TOKEN = /^<[^>]*>$/;
-
-// ============================================================================
-// Tokenization
-// ============================================================================
 
 /**
  * Splits an HTML string into tag tokens and whitespace-preserving word
@@ -108,9 +102,7 @@ function mergeSegments(segments: TextDiffSegment[]): TextDiffSegment[] {
   return merged;
 }
 
-// ============================================================================
 // diffRichText
-// ============================================================================
 
 /**
  * Word-level diff of two rich-text (HTML) strings.

@@ -69,12 +69,13 @@ export function extractAssetIdsFromProperties(
 }
 
 /**
- * Inserts content_usages asset rows for newly-created block versions, within the same
- * transaction that created them. Insert-only: there is no delete-then-reinsert
- * (the branch-blind anti-pattern). MUST be called at EVERY block-version insert
- * site (commit-writer's writeCommit + createInitialCommit, and merges'
- * createMergeBlockVersion) — a version that references an asset but skips this
- * call would be invisible to the GC, which could then delete a live asset.
+ * Inserts content_usages asset rows for newly-created block versions, within
+ * the same transaction that created them. Insert-only: there is no
+ * delete-then-reinsert (the branch-blind anti-pattern). MUST be called at every
+ * block-version insert site (commit-writer's writeCommit + createInitialCommit,
+ * and merges' createMergeBlockVersion): a version that references an asset but
+ * skips this call would be invisible to the GC, which could then delete a live
+ * asset.
  *
  * Candidates are validated against the assets table because assetId is an FK.
  */
@@ -135,24 +136,23 @@ export async function insertAssetReferencesForVersions(
 }
 
 /**
- * Authoritative liveness check for DESTRUCTIVE paths (pruning GC reclaim,
- * archiveAssets guard) AND the media-library UI — a single source of truth.
- * True if a non-deleted block version that references the asset sits in the
- * HEAD snapshot of any branch of any non-archived root.
+ * Authoritative liveness check for destructive paths (pruning GC reclaim,
+ * archiveAssets guard) and the media-library UI: true if a non-deleted block
+ * version that references the asset sits in the HEAD snapshot of any branch of
+ * any non-archived root.
  *
  * Because references are keyed by the immutable blockVersionId and inserted at
  * every version-creation site, the index cannot drift or under-report across
- * branches/merges (the reason the old blockId-keyed index could not be trusted
- * for a destructive op). The commit_snapshots ⋈ branches(headCommitId) join
+ * branches/merges. The commit_snapshots join to branches(headCommitId)
  * restricts to live content; deleted=false drops tombstones.
  *
- * `scopeColumns` are the active CROSS-SCOPE columns (the caller already removed a
- * scoping plugin's cross-scope columns via `crossScopeColumns`), so a host in any
- * such sibling scope still counts while a host OUTSIDE the scope (e.g. another
- * tenant) can NEVER block the owner's archiveAssets — asset ids are
- * author-controlled raw strings in block properties. Symmetric with
+ * `scopeColumns` are the active cross-scope columns (the caller already removed
+ * a scoping plugin's cross-scope columns via `crossScopeColumns`), so a host in
+ * any such sibling scope still counts while a host outside the scope (e.g.
+ * another tenant) can never block the owner's archiveAssets, since asset ids
+ * are author-controlled raw strings in block properties. Symmetric with
  * loadPublishedRoots and isReferencedByLiveContent (core/references.ts);
- * undefined / single-scope → unscoped, unchanged.
+ * undefined / single scope means unscoped.
  */
 export async function isAssetReferencedByLiveContent(
   db: DrizzleInstance,
@@ -187,9 +187,9 @@ export async function isAssetReferencedByLiveContent(
 
 /**
  * Batch counterpart of {@link isAssetReferencedByLiveContent}: given a set of
- * asset ids, returns the SUBSET that is still referenced by live content, in a
- * SINGLE query (rather than one liveness EXISTS per id). Same liveness
- * semantics and scoping as the single-id check — a version keyed by an
+ * asset ids, returns the subset that is still referenced by live content, in a
+ * single query (rather than one liveness EXISTS per id). Same liveness
+ * semantics and scoping as the single-id check: a version keyed by an
  * immutable blockVersionId that sits in the HEAD snapshot of any branch of any
  * non-archived, in-scope root, with a non-deleted block version.
  *

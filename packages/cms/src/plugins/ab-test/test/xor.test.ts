@@ -11,11 +11,11 @@ import { abTest } from '../index';
 import { buildSchema } from '../schema';
 
 /**
- * A/B XOR rule (AB_FANOUT_DESIGN §2): at most one root may vary per rendered
- * page. A page embeds a reusable block via a `reference` property, so a running
- * test on the block and a running test on its host page would vary two axes in
- * one render — `collectCoRenderRoots` + the updateTest→running guard reject the
- * second one with AB_TEST_CROSS_EMBED_CONFLICT.
+ * A/B XOR rule: at most one root may vary per rendered page. A page embeds a
+ * reusable block via a `reference` property, so a running test on the block
+ * and a running test on its host page would vary two axes in one render.
+ * `collectCoRenderRoots` plus the updateTest-to-running guard reject the
+ * second test with AB_TEST_CROSS_EMBED_CONFLICT.
  */
 
 const XOR_COLLECTIONS = {
@@ -191,7 +191,7 @@ describe('A/B XOR cross-embed guard', () => {
     });
     const page = await pageEmbedding(cms, block.rootId, '/host');
 
-    await runningTest(cms, 'reusableblocks', block); // block test runs first → ok
+    await runningTest(cms, 'reusableblocks', block); // block test runs first: ok
 
     const { testId: pageTestId } = await cms.api.abTest.createTest({
       body: {
@@ -215,7 +215,7 @@ describe('A/B XOR cross-embed guard', () => {
     });
     const page = await pageEmbedding(cms, block.rootId, '/host2');
 
-    await runningTest(cms, 'pages', page); // page test runs first → ok
+    await runningTest(cms, 'pages', page); // page test runs first: ok
 
     const { testId: blockTestId } = await cms.api.abTest.createTest({
       body: {
@@ -287,7 +287,7 @@ describe('A/B XOR cross-embed guard', () => {
     };
 
     language = 'en';
-    // target page B (gets a tgr_ translation-group key)
+    // Target page B, which gets a tgr_ translation-group key.
     const b = await publishedRootWithVariant(
       cms,
       'pages',
@@ -301,7 +301,7 @@ describe('A/B XOR cross-embed guard', () => {
     ).rows;
     expect(bTgr).toMatch(/^tgr_/);
 
-    // host page A embeds B via its tgr_ GROUP key (not its rootId)
+    // Host page A embeds B via its tgr_ group key (not its rootId).
     const a = await cms.api.pages.createRoot({
       body: { slug: '/a', properties: { title: 'Host' } },
     });
@@ -320,10 +320,10 @@ describe('A/B XOR cross-embed guard', () => {
     });
     await publish(cms, 'pages', a.rootId, aVariant.branch.id);
 
-    // B's test runs first → ok
+    // B's test runs first: ok.
     await runningTest(cms, 'pages', b);
 
-    // A's test → must reject: A's embed resolves the tgr_ to B's group, which runs.
+    // A's test must reject: A's embed resolves the tgr_ to B's group, which runs.
     const { testId: aTestId } = await cms.api.abTest.createTest({
       body: {
         rootId: a.rootId,
@@ -353,7 +353,7 @@ describe('A/B XOR cross-embed guard', () => {
 
   it('publishBranch backstop rejects a publish that makes two running tests co-render (TOCTOU)', async () => {
     const { cms } = await setupXorCMS();
-    // two independent blocks, each with a running test — they do NOT co-render
+    // Two independent blocks, each with a running test; they do not co-render
     // yet, so both tests start cleanly (the updateTest guard sees no edge).
     const b = await publishedRootWithVariant(cms, 'reusableblocks', {
       label: 'B',
@@ -364,8 +364,8 @@ describe('A/B XOR cross-embed guard', () => {
     await runningTest(cms, 'reusableblocks', b);
     await runningTest(cms, 'reusableblocks', c);
 
-    // a page embedding BOTH running blocks, created AFTER both tests started —
-    // the start-time guard never saw this co-render edge.
+    // A page embedding both running blocks, created after both tests started,
+    // so the start-time guard never saw this co-render edge.
     const page = await cms.api.pages.createRoot({
       body: { slug: '/toctou', properties: { title: 'TOCTOU' } },
     });
@@ -380,7 +380,7 @@ describe('A/B XOR cross-embed guard', () => {
         },
       });
     }
-    // publishing the page would render both running blocks in one tree → reject
+    // Publishing the page would render both running blocks in one tree: reject.
     await expect(
       publish(cms, 'pages', page.rootId, page.branchId),
     ).rejects.toThrow(/co-rendering|axis/i);
@@ -388,17 +388,17 @@ describe('A/B XOR cross-embed guard', () => {
 
   it('allows publishing a shared block while two independent host pages have running tests', async () => {
     const { cms } = await setupXorCMS();
-    // an UNTESTED shared block embedded by two independent pages
+    // An untested shared block embedded by two independent pages.
     const shared = await publishedRootWithVariant(cms, 'reusableblocks', {
       label: 'Shared',
     });
     const p1 = await pageEmbedding(cms, shared.rootId, '/shared-host-1');
     const p2 = await pageEmbedding(cms, shared.rootId, '/shared-host-2');
-    // p1 and p2 never co-render with each other (the shared block is static), so
-    // both page tests start cleanly.
+    // p1 and p2 never co-render with each other (the shared block is static),
+    // so both page tests start cleanly.
     await runningTest(cms, 'pages', p1);
     await runningTest(cms, 'pages', p2);
-    // a routine re-publish of the shared block must NOT be rejected — its own
+    // A routine re-publish of the shared block must not be rejected; its own
     // render subtree has no varying root (the flat-closure bug rejected this).
     await expect(
       cms.api.reusableblocks.publishBranch({

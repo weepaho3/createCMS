@@ -14,8 +14,7 @@ export interface CMSQueryOptions {
 /**
  * Creates a reactive query atom that fetches data from a CMS endpoint.
  * Subscribes to one or more signal atoms and refetches when they toggle.
- *
- * Returns a nanostores `WritableAtom` — framework-agnostic, not a React hook.
+ * Returns a nanostores `WritableAtom`, framework-agnostic, not a React hook.
  */
 export function createCMSQuery<T = unknown>(
   signals: WritableAtom<boolean> | WritableAtom<boolean>[],
@@ -66,12 +65,10 @@ export function createCMSQuery<T = unknown>(
 
   const signalList = Array.isArray(signals) ? signals : [signals];
 
-  // Activate only while the query atom has subscribers. On mount, do an initial
-  // fetch and listen to each signal for changes; on unmount, call the
-  // per-listener unsubscribers. We deliberately use the unsubscribe functions
-  // returned by `listen` rather than `atom.off()` — `off()` removes EVERY
-  // listener on the (often shared) signal atom, which would break other queries
-  // subscribed to the same signal.
+  // Runs only while the query atom has subscribers. Use the unsubscribe
+  // returned by each `listen`, never `atom.off()`: off() removes every
+  // listener on the (often shared) signal atom and would break other
+  // queries subscribed to it.
   onMount(value, () => {
     if (!isServer()) void fetchData();
 

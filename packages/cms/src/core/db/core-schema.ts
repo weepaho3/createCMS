@@ -75,9 +75,7 @@ export const coreSchema = defineCoreSchema({
   },
 
   tables: {
-    // ========================================================================
     // ROOTS
-    // ========================================================================
     roots: {
       columns: {
         id: {
@@ -112,19 +110,19 @@ export const coreSchema = defineCoreSchema({
         collectionIdx: { columns: ['collection'] },
         parentRootIdx: { columns: ['parentRootId'] },
         // Lookup index for resolvePathToRootId's slug-chain CTE. NON-unique on
-        // purpose: a core GLOBAL unique on (collection, parentRootId, slug) cannot
-        // be loosened by a plugin (merge.ts only ADDS), so it would forbid the
-        // i18n plugin from allowing the SAME slug across languages (en/blog +
-        // de/blog). Uniqueness is the app-level authority (validateSlugUniqueness,
-        // called on every slug write) plus, under a scoping plugin, a per-scope
-        // partial unique. See I18N_DESIGN.md §3 (the redirects "Option B" move).
+        // purpose: a core GLOBAL unique on (collection, parentRootId, slug)
+        // cannot be loosened by a plugin (merge.ts only ADDS), so it would
+        // forbid the i18n plugin from allowing the SAME slug across languages
+        // (en/blog + de/blog). Uniqueness is the app-level authority
+        // (validateSlugUniqueness, called on every slug write) plus, under a
+        // scoping plugin, a per-scope partial unique.
         slugIdx: {
           columns: ['collection', 'parentRootId', 'slug'],
         },
         // Public slug lookup (collection + slug, no parent) for the
         // getPublishedContent slug branch (publications.ts). Additive and
-        // non-unique — uniqueness stays app-enforced (see slugIdx above); this
-        // only exists to serve the WHERE collection=? AND slug=? predicate.
+        // non-unique; uniqueness stays app-enforced (see slugIdx above), this
+        // only serves the WHERE collection=? AND slug=? predicate.
         collectionSlugIdx: {
           columns: ['collection', 'slug'],
         },
@@ -155,11 +153,12 @@ export const coreSchema = defineCoreSchema({
         message: { type: 'text' },
         createdBy: { type: 'text' },
         createdAt: { type: 'timestamp', notNull: true, defaultNow: true },
-        // Branch this commit was CREATED on — the source of truth for history
-        // attribution. `branchId` links to the live branch (follows renames); no
-        // FK, to avoid the circular dependency with branches.headCommitId — a
-        // dangling id after a hard branch-delete simply falls back to the name
-        // snapshot. `originBranchName` is the deletion-proof name snapshot.
+        // Branch this commit was CREATED on, the source of truth for history
+        // attribution. `branchId` links to the live branch (follows renames);
+        // no FK, to avoid the circular dependency with branches.headCommitId.
+        // A dangling id after a hard branch-delete simply falls back to the
+        // name snapshot; `originBranchName` is the deletion-proof name
+        // snapshot.
         branchId: { type: 'text' },
         originBranchName: { type: 'text', notNull: true },
       },
@@ -185,9 +184,7 @@ export const coreSchema = defineCoreSchema({
       },
     },
 
-    // ========================================================================
     // BRANCHES
-    // ========================================================================
     branches: {
       columns: {
         id: {
@@ -217,9 +214,7 @@ export const coreSchema = defineCoreSchema({
       },
     },
 
-    // ========================================================================
     // BLOCK_VERSIONS
-    // ========================================================================
     blockVersions: {
       tableName: 'block_versions',
       indexPrefix: 'bv',
@@ -271,9 +266,7 @@ export const coreSchema = defineCoreSchema({
       },
     },
 
-    // ========================================================================
     // COMMIT_SNAPSHOTS
-    // ========================================================================
     commitSnapshots: {
       tableName: 'commit_snapshots',
       indexPrefix: 'cs',
@@ -304,9 +297,7 @@ export const coreSchema = defineCoreSchema({
       },
     },
 
-    // ========================================================================
     // PUBLICATIONS
-    // ========================================================================
     publications: {
       columns: {
         rootId: {
@@ -333,9 +324,7 @@ export const coreSchema = defineCoreSchema({
       },
     },
 
-    // ========================================================================
-    // SCHEDULED_PUBLICATIONS — Queue of future publish/unpublish intents.
-    // ========================================================================
+    // SCHEDULED_PUBLICATIONS: queue of future publish/unpublish intents.
     // A row is a single future intent for one (rootId, branchId): 'publish' at
     // `scheduledAt`, or 'unpublish' at `scheduledAt` (which is how content expiry
     // is expressed). `admin.runScheduled` (cron-driven) processes every due row
@@ -343,8 +332,9 @@ export const coreSchema = defineCoreSchema({
     // unpublish machinery the single endpoints use, then stamps `processedAt`.
     // Keeping intents in their own queue table (rather than columns on the live
     // publications row) means a page can have both a future publish and a later
-    // expiry queued at once, and the live publications row stays a pure "currently
-    // live" record. FK cascades on root/branch delete clean the queue up.
+    // expiry queued at once, and the live publications row stays a pure
+    // "currently live" record. FK cascades on root/branch delete clean the queue
+    // up.
     scheduledPublications: {
       tableName: 'scheduled_publications',
       indexPrefix: 'sp',
@@ -372,8 +362,8 @@ export const coreSchema = defineCoreSchema({
         scheduledAt: { type: 'timestamp', notNull: true },
         createdBy: { type: 'text' },
         createdAt: { type: 'timestamp', notNull: true, defaultNow: true },
-        // NULL until runScheduled has attempted it; stamped once processed so the
-        // due-queue scan (processedAt IS NULL) never re-picks a done row.
+        // NULL until runScheduled has attempted it; stamped once processed so
+        // the due-queue scan (processedAt IS NULL) never re-picks a done row.
         processedAt: { type: 'timestamp' },
       },
       indexes: {
@@ -384,9 +374,7 @@ export const coreSchema = defineCoreSchema({
       },
     },
 
-    // ========================================================================
     // MERGE_REQUESTS
-    // ========================================================================
     mergeRequests: {
       tableName: 'merge_requests',
       indexPrefix: 'mr',
@@ -447,9 +435,7 @@ export const coreSchema = defineCoreSchema({
       },
     },
 
-    // ========================================================================
     // MERGE_CONFLICTS
-    // ========================================================================
     mergeConflicts: {
       tableName: 'merge_conflicts',
       indexPrefix: 'mc',
@@ -500,9 +486,7 @@ export const coreSchema = defineCoreSchema({
       },
     },
 
-    // ========================================================================
     // APPROVALS
-    // ========================================================================
     approvals: {
       columns: {
         id: {
@@ -560,9 +544,7 @@ export const coreSchema = defineCoreSchema({
       },
     },
 
-    // ========================================================================
     // ASSET_FOLDERS
-    // ========================================================================
     assetFolders: {
       tableName: 'asset_folders',
       columns: {
@@ -595,9 +577,7 @@ export const coreSchema = defineCoreSchema({
       },
     },
 
-    // ========================================================================
     // ASSETS
-    // ========================================================================
     assets: {
       columns: {
         id: {
@@ -645,9 +625,7 @@ export const coreSchema = defineCoreSchema({
       },
     },
 
-    // ========================================================================
     // COMMENT_THREADS
-    // ========================================================================
     commentThreads: {
       tableName: 'comment_threads',
       indexPrefix: 'ct',
@@ -706,9 +684,7 @@ export const coreSchema = defineCoreSchema({
       },
     },
 
-    // ========================================================================
     // COMMENT_MESSAGES
-    // ========================================================================
     commentMessages: {
       tableName: 'comment_messages',
       indexPrefix: 'cm',
@@ -760,9 +736,7 @@ export const coreSchema = defineCoreSchema({
       },
     },
 
-    // ========================================================================
     // COMMENT_MENTIONS
-    // ========================================================================
     commentMentions: {
       tableName: 'comment_mentions',
       indexPrefix: 'cmn',
@@ -806,24 +780,19 @@ export const coreSchema = defineCoreSchema({
       },
     },
 
-    // ========================================================================
-    // ASSET_REFERENCES
-    // ========================================================================
-    // ========================================================================
-    // CONTENT_USAGES — One generalist materialized index for ALL content-derived
-    // usage: assets, variables, and reusable-block references. Replaces the old
-    // per-domain asset_references + variable_usages tables (structurally one
-    // pattern). Keyed by the IMMUTABLE blockVersionId: a block diverges per
-    // branch into distinct, append-only versions, so a version-keyed row never
-    // drifts. Rows are inserted ONCE when a version is created (never re-synced)
-    // and removed only by FK cascade when the version (or its root) is pruned.
-    // LIVENESS is decided by joining to branch-HEAD snapshots, never a stored
-    // flag — a superseded version simply stops counting. `targetKey` is
-    // POLYMORPHIC (assetId | variableKey | referencedRootId) and intentionally
-    // carries NO FK: correctness comes from the liveness join, not a per-target
-    // cascade (verified — asset GC reclaim + hardDeleteRoot depend on the
-    // blockVersionId/rootId keys + the join). This is the single source of truth
-    // for the destructive GC/guards AND the usage UIs.
+    // CONTENT_USAGES: one generalist materialized index for ALL content-derived
+    // usage: assets, variables, and reusable-block references. Keyed by the
+    // IMMUTABLE blockVersionId: a block diverges per branch into distinct,
+    // append-only versions, so a version-keyed row never drifts. Rows are
+    // inserted ONCE when a version is created (never re-synced) and removed only
+    // by FK cascade when the version (or its root) is pruned. LIVENESS is
+    // decided by joining to branch-HEAD snapshots, never a stored flag; a
+    // superseded version simply stops counting. `targetKey` is POLYMORPHIC
+    // (assetId | variableKey | referencedRootId) and intentionally carries NO
+    // FK: correctness comes from the liveness join, not a per-target cascade
+    // (asset GC reclaim + hardDeleteRoot depend on the blockVersionId/rootId
+    // keys + the join). This is the single source of truth for the destructive
+    // GC/guards AND the usage UIs.
     contentUsages: {
       tableName: 'content_usages',
       indexPrefix: 'cu',
@@ -867,9 +836,7 @@ export const coreSchema = defineCoreSchema({
       },
     },
 
-    // ========================================================================
-    // VARIABLES — User-editable key-value pairs for content substitution
-    // ========================================================================
+    // VARIABLES: user-editable key-value pairs for content substitution
     variables: {
       columns: {
         id: {
@@ -887,18 +854,16 @@ export const coreSchema = defineCoreSchema({
         updatedAt: { type: 'timestamp', notNull: true, defaultNow: true },
       },
       indexes: {
-        // Non-unique lookup. A core GLOBAL unique on `key` cannot be loosened by
-        // a plugin and would forbid the same variable per tenant/language, so
-        // uniqueness is the app-level authority (createVariable's scope-aware
+        // Non-unique lookup. A core GLOBAL unique on `key` cannot be loosened
+        // by a plugin and would forbid the same variable per tenant/language,
+        // so uniqueness is the app-level authority (createVariable's scope-aware
         // existence check). The compound key (tenant_slug, language, key) can't
-        // be expressed by either scoping plugin alone — same as templates.
+        // be expressed by either scoping plugin alone, same as templates.
         keyIdx: { columns: ['key'] },
       },
     },
 
-    // ========================================================================
-    // TEMPLATES — Default-value formulas per collection/block/property
-    // ========================================================================
+    // TEMPLATES: default-value formulas per collection/block/property
     templates: {
       columns: {
         id: {
@@ -922,9 +887,9 @@ export const coreSchema = defineCoreSchema({
         // propertyKey) cannot be loosened by a plugin and would forbid the same
         // template across tenants/languages, so uniqueness is the app-level
         // authority (createTemplate's scope-aware existence check). The correct
-        // compound key (tenant_slug, language, collection, blockType, propertyKey)
-        // can't be expressed by either scoping plugin alone — same situation as
-        // redirects' path-source.
+        // compound key (tenant_slug, language, collection, blockType,
+        // propertyKey) can't be expressed by either scoping plugin alone, same
+        // situation as redirects' path-source.
         collectionBlockPropIdx: {
           columns: ['collection', 'blockType', 'propertyKey'],
         },
@@ -933,9 +898,7 @@ export const coreSchema = defineCoreSchema({
       },
     },
 
-    // ========================================================================
-    // TEMPLATE_VARIABLE_USAGES — Tracks which variables are used in templates
-    // ========================================================================
+    // TEMPLATE_VARIABLE_USAGES: which variables are used in templates
     templateVariableUsages: {
       tableName: 'template_variable_usages',
       indexPrefix: 'tvu',
@@ -967,9 +930,7 @@ export const coreSchema = defineCoreSchema({
       },
     },
 
-    // ========================================================================
-    // SEARCH_INDEX — Materialized full-text search index across all entities
-    // ========================================================================
+    // SEARCH_INDEX: materialized full-text search index across all entities
     searchIndex: {
       tableName: 'search_index',
       indexPrefix: 'si',
@@ -1002,9 +963,7 @@ export const coreSchema = defineCoreSchema({
       },
     },
 
-    // ========================================================================
-    // NOTIFICATIONS — In-app notification inbox per user
-    // ========================================================================
+    // NOTIFICATIONS: in-app notification inbox per user
     notifications: {
       tableName: 'notifications',
       indexPrefix: 'ntf',
@@ -1039,12 +998,11 @@ export const coreSchema = defineCoreSchema({
       },
     },
 
-    // ========================================================================
-    // REDIRECTS — SEO 301/302 mapping (see REDIRECTS_DESIGN.md)
-    // ========================================================================
-    // Source and target are each a page REFERENCE (rootId → current path,
-    // follows moves) or a literal PATH. Auto-created on rename/move/archive,
-    // or managed manually. Resolved by the consumer before serving content.
+    // REDIRECTS: SEO 301/302 mapping.
+    // Source and target are each a page REFERENCE (rootId, resolves to current
+    // path and follows moves) or a literal PATH. Auto-created on
+    // rename/move/archive, or managed manually. Resolved by the consumer before
+    // serving content.
     redirects: {
       tableName: 'redirects',
       indexPrefix: 'rdr',
@@ -1085,12 +1043,13 @@ export const coreSchema = defineCoreSchema({
       indexes: {
         // Exact path-source lookup (collection + path). NON-unique on purpose:
         // uniqueness of a source is enforced at the APPLICATION level
-        // (assertSourceUnique + the auto-create pre-check), scope-filtered where a
-        // scoping plugin is active. A core DB-unique on (collection, sourcePath)
-        // would be GLOBAL — it cannot be loosened by a plugin (merge.ts only ADDS
-        // indexes), so two scopes could never share a path. A scoping
-        // plugin instead adds its own PARTIAL UNIQUE on its scope column(s) + (collection,
-        // sourcePath), which is the real DB guarantee when scoping is on.
+        // (assertSourceUnique + the auto-create pre-check), scope-filtered
+        // where a scoping plugin is active. A core DB-unique on (collection,
+        // sourcePath) would be GLOBAL; it cannot be loosened by a plugin
+        // (merge.ts only ADDS indexes), so two scopes could never share a path.
+        // A scoping plugin instead adds its own PARTIAL UNIQUE on its scope
+        // column(s) + (collection, sourcePath), which is the real DB guarantee
+        // when scoping is on.
         collectionSourcePathIdx: {
           columns: ['collection', 'sourcePath'],
         },
@@ -1104,15 +1063,14 @@ export const coreSchema = defineCoreSchema({
       },
     },
 
-    // ========================================================================
-    // RELEASES — Atomic multi-page (multi-root) publish bundle.
-    // ========================================================================
+    // RELEASES: atomic multi-page (multi-root) publish bundle.
     // Branches + publishing are per (rootId, branchId), so a coordinated launch
-    // spanning several pages is otherwise a manual, non-atomic sequence. A release
-    // is a draft list of (rootId, branchId) items (`release_items`); `publishRelease`
-    // runs the SAME per-root publish machinery for every item inside ONE database
-    // transaction — so either every page goes live or none does (any failure rolls
-    // the whole set back). Flips to 'published' when done.
+    // spanning several pages is otherwise a manual, non-atomic sequence. A
+    // release is a draft list of (rootId, branchId) items (`release_items`);
+    // `publishRelease` runs the SAME per-root publish machinery for every item
+    // inside ONE database transaction, so either every page goes live or none
+    // does (any failure rolls the whole set back). Flips to 'published' when
+    // done.
     releases: {
       tableName: 'releases',
       indexPrefix: 'rls',
@@ -1139,9 +1097,7 @@ export const coreSchema = defineCoreSchema({
       },
     },
 
-    // ========================================================================
-    // RELEASE_ITEMS — The (rootId, branchId) members of a release.
-    // ========================================================================
+    // RELEASE_ITEMS: the (rootId, branchId) members of a release.
     releaseItems: {
       tableName: 'release_items',
       indexPrefix: 'rli',
@@ -1172,8 +1128,9 @@ export const coreSchema = defineCoreSchema({
         releaseIdx: { columns: ['releaseId'] },
         rootIdx: { columns: ['rootId'] },
         branchIdx: { columns: ['branchId'] },
-        // At most one branch per root within a release — addToRelease/setReleaseItems
-        // upsert on this so re-adding a root swaps which branch it publishes.
+        // At most one branch per root within a release: addToRelease /
+        // setReleaseItems upsert on this so re-adding a root swaps which
+        // branch it publishes.
         releaseRootUnique: {
           columns: ['releaseId', 'rootId'],
           unique: true,

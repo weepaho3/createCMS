@@ -9,8 +9,8 @@ import { createCMS } from '../factory';
 import { rootRevalidateTag } from '../revalidation';
 
 /**
- * AB_FANOUT FA3b — revalidate-by-tag. Every revalidation event a root fires
- * (publish/unpublish, + cascade to hosts) now carries the root's cache tag, so
+ * Revalidate-by-tag contract: every revalidation event a root fires
+ * (publish/unpublish, plus cascade to hosts) carries the root's cache tag, so
  * the A/B variant-coded render routes (which tag their fetch by it) invalidate
  * their control + all variant cache entries on a content change.
  */
@@ -128,8 +128,8 @@ describe('revalidation tags (FA3b)', () => {
       body: { rootId: root.rootId, branchId: root.branchId, publishedBy: 'a' },
     });
 
-    // cms-05: the draft rename is not live yet — it materializes on publish, which
-    // is where the OLD-path → page redirect is auto-created.
+    // The draft rename is not live yet; it materializes on publish, which is
+    // where the old-path-to-page redirect is auto-created.
     await cms.api.pages.updateRoot({
       body: {
         rootId: root.rootId,

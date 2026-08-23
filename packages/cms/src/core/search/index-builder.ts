@@ -19,18 +19,10 @@ import {
   variables,
 } from '../db/schema.generated';
 
-// ============================================================================
-// Text extraction helpers
-// ============================================================================
-
 function truncate(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
   return `${text.slice(0, maxLen)}...`;
 }
-
-// ============================================================================
-// UPSERT helper — inserts or updates a search_index row
-// ============================================================================
 
 async function upsertSearchIndex(
   db: DrizzleInstance,
@@ -102,10 +94,6 @@ async function upsertSearchIndex(
     });
 }
 
-// ============================================================================
-// Delete helper
-// ============================================================================
-
 async function deleteSearchIndex(
   db: DrizzleInstance,
   entityType: string,
@@ -117,10 +105,6 @@ async function deleteSearchIndex(
       AND ${searchIndex.entityId} = ${entityId}
   `);
 }
-
-// ============================================================================
-// Entity-specific indexers
-// ============================================================================
 
 /**
  * Index a root and all its blocks at the HEAD of the main branch.
@@ -188,8 +172,8 @@ export async function indexRoot(
     const isRootBlock = row.block_id === rootId;
 
     for (const [key, value] of Object.entries(props)) {
-      // cms-05: the reserved `__slug` draft key is not user content — never index
-      // it. (The published `roots.slug` is indexed separately below.)
+      // The reserved `__slug` draft key is not user content, so never index
+      // it. The published `roots.slug` is indexed separately below.
       if (key === ROOT_SLUG_PROP) continue;
       if (typeof value !== 'string' || value.trim().length === 0) continue;
 
@@ -500,8 +484,8 @@ export async function indexNotification(
     title: row.title,
     snippet: row.body ? truncate(row.body, 200) : null,
     // `recipientId` is the per-user visibility key: the search endpoint only
-    // returns a 'notification' row to `meta.recipientId === ctx userId`
-    // (cms-08). Without it a reindex would make every notification's title/body
+    // returns a 'notification' row when `meta.recipientId === ctx userId`.
+    // Without it a reindex would make every notification's title/body
     // searchable across users.
     meta: { collection: row.collection, recipientId: row.recipient_id },
   });
@@ -511,10 +495,6 @@ export async function indexNotification(
  * Delete all search index entries for a given entity.
  */
 export { deleteSearchIndex };
-
-// ============================================================================
-// Reindex all — for backfill / admin rebuild
-// ============================================================================
 
 export async function reindexAll(
   db: DrizzleInstance,

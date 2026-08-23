@@ -52,7 +52,7 @@ describe('publishLiveDelta', () => {
     expect(() =>
       publishLiveDelta(transport, 'test-1', 'var-a', 'impression'),
     ).not.toThrow();
-    // let the rejected publish promise settle — must not surface as unhandled
+    // Let the rejected publish promise settle; it must not surface unhandled.
     await new Promise((r) => setTimeout(r, 0));
   });
 });

@@ -48,8 +48,7 @@ type CachedAssignment = {
   assignedAt: number;
 };
 
-// ============================================================================
-// Storage / cookie helpers (browser; all no-op under SSR)
+// Storage and cookie helpers (browser; all no-op under SSR)
 // ============================================================================
 
 function safeLocalStorageGet(key: string): string | null {
@@ -121,7 +120,7 @@ function parseGaClientId(): string | undefined {
  * Single-stream assumption: this matches the FIRST `_ga_<stream>` cookie it
  * finds. With one GA4 data stream on the page (the common case) that is the
  * right one. If a page runs MULTIPLE GA4 streams, the picked session_id may
- * belong to a different stream than the server-MP `measurementId` — session
+ * belong to a different stream than the server-MP `measurementId`, so session
  * stitching could then be off. We don't thread a stream hint because the
  * measurementId is server-only config the client can't see; session_id is
  * optional for the MP hit, so a mismatch degrades stitching, never the forward.
@@ -177,17 +176,16 @@ function readStoredImpressions(): string[] {
   }
 }
 
-// ============================================================================
-// Client Plugin
+// Client plugin
 // ============================================================================
 
 export type AbTestClientOptions = {
   /**
-   * Drop the client-side dataLayer/GTM sink (M5). Enable this when the SAME
-   * goals are forwarded server-side via the plugin's `ga4` (server-MP) config —
-   * otherwise GA4 double-counts (one hit from the browser push + one from the
-   * server). With it set, the consent-free anonymous A/B store leg still fires;
-   * only the `window.dataLayer.push` leg is removed.
+   * Drop the client-side dataLayer/GTM sink. Enable this when the same goals
+   * are forwarded server-side via the plugin's `ga4` config, otherwise GA4
+   * double-counts (one hit from the browser push plus one from the server).
+   * With it set, the consent-free anonymous A/B store leg still fires; only the
+   * `window.dataLayer.push` leg is removed.
    */
   disableDataLayerSink?: boolean;
 };
@@ -199,8 +197,9 @@ export function abTestClient(options?: AbTestClientOptions) {
     $ERROR_CODES,
 
     async init(_$fetch: CMSFetch, _$store: CMSClientStore) {
-      // Identity/context is hydrated lazily AFTER consent is granted — never
-      // read device storage before then (ePrivacy Art. 5(3) covers reads too).
+      // Identity and context hydrate lazily after consent is granted; device
+      // storage must never be read before then (ePrivacy Art. 5(3) covers
+      // reads too).
       return {
         context: {
           [`${PLUGIN_ID}:context`]: null,
@@ -211,14 +210,14 @@ export function abTestClient(options?: AbTestClientOptions) {
     getActions($fetch: CMSFetch, _$store: CMSClientStore, _baseURL: string) {
       const gate = createConsentGate();
 
-      // M3a — client-side event-bus. A fired event fans to these sinks; each
-      // gates on its own consent requirement (see client-sinks.ts). The store
-      // leg is consent-free (anonymous aggregate count); the GA4/GTM leg is
-      // gated on analytics_storage.
+      // A fired event fans out to these sinks; each gates on its own consent
+      // requirement (see client-sinks.ts). The store leg is consent-free (an
+      // anonymous aggregate count); the GA4/GTM leg is gated on
+      // analytics_storage.
       const sinks: ClientEventSink[] = [
         createAbTestStoreSink($fetch),
-        // The dataLayer leg is dropped when goals are forwarded server-side
-        // (server-MP) to avoid GA4 double-counting — see disableDataLayerSink.
+        // The dataLayer leg is dropped when goals are forwarded server-side, to
+        // avoid GA4 double-counting (see disableDataLayerSink).
         ...(options?.disableDataLayerSink ? [] : [createGtmClientSink()]),
       ];
 
@@ -231,19 +230,20 @@ export function abTestClient(options?: AbTestClientOptions) {
       let hydrated = false;
 
       // Seed the per-session impression dedup from sessionStorage at init
-      // (consent-free — see persistImpressions). Without this, the anonymous
-      // beacon re-fires on every hard reload / fresh document load (the
-      // in-memory Set only survives soft SPA navigations), over-counting exactly
-      // the no-consent ad traffic this path measures.
+      // (consent-free, see persistImpressions). Without this, the anonymous
+      // beacon re-fires on every hard reload (the in-memory Set only survives
+      // soft SPA navigations), over-counting exactly the no-consent ad traffic
+      // this path measures.
       for (const id of readStoredImpressions()) impressionsSent.add(id);
 
       const analyticsGranted = () => gate.isGranted('analytics_storage');
 
       /**
-       * GA4 stitching ids for the server-MP forward (M5). Read the `_ga` cookie
-       * ONLY when analytics_storage is granted (it's an identifier) + a `_ga`
-       * exists (gtag loaded). Returns undefined otherwise → the server never
-       * forwards (the consent-free aggregate path stays identifier-less).
+       * GA4 stitching ids for the server-side forward. Read the `_ga` cookie
+       * only when analytics_storage is granted (it is an identifier) and a
+       * `_ga` cookie exists (gtag loaded). Returns undefined otherwise, so the
+       * server never forwards and the consent-free aggregate path stays
+       * identifier-less.
        */
       function gaTransport():
         | { clientId: string; sessionId?: string; engagementTimeMsec: number }
@@ -267,11 +267,11 @@ export function abTestClient(options?: AbTestClientOptions) {
         );
       }
       function persistImpressions() {
-        // CONSENT-FREE: the per-session impression markers are test ids (which
+        // Consent-free: the per-session impression markers are test ids (which
         // tests this tab already counted), session-only, client-only, never
-        // transmitted — not an identifier. Persisting them is what makes the
-        // anonymous beacon dedup survive a hard reload, so it must NOT be gated
-        // on consent (unlike the identity-bearing assignment/context persists).
+        // transmitted, so not an identifier. Persisting them is what makes the
+        // anonymous beacon dedup survive a hard reload; it must not be gated
+        // on consent, unlike the identity-bearing assignment/context persists.
         safeSessionStorageSet(
           SS_IMPRESSIONS_KEY,
           JSON.stringify([...impressionsSent]),
@@ -364,9 +364,9 @@ export function abTestClient(options?: AbTestClientOptions) {
       }
 
       function fireImpression(testId: string, variantId: string) {
-        // Dedup on "queued or sent" to avoid double-buffering; the dedup mark is
-        // committed only when the effect actually runs, and released on drop so
-        // a later grant can still fire (no permanent suppression).
+        // Dedup on "queued or sent" to avoid double-buffering. The dedup mark
+        // is committed only when the effect actually runs, and released on drop
+        // so a later grant can still fire (no permanent suppression).
         if (impressionsSent.has(testId) || impressionsQueued.has(testId))
           return;
         impressionsQueued.add(testId);
@@ -393,30 +393,29 @@ export function abTestClient(options?: AbTestClientOptions) {
       }
 
       /**
-       * Pattern A impression: report the SERVER-rendered variant by branch (the
-       * edge already chose it — no client re-bucketing). ANONYMOUS + CONSENT-FREE
-       * by design: it sends NO visitor id and is NOT consent-gated, because an
-       * aggregate variant impression count carries no identifier and no PII (the
-       * variant came from the URL). It is deduped per SESSION via sessionStorage
-       * (client-only, never sent), so the count is ~per-session without storing
-       * anything linkable. The consent-gated legs (GA4/dataLayer forwarding,
-       * unique-visitor identity) are separate. trackEvent resolves the variant id
-       * from the branch.
+       * Pattern A impression: report the server-rendered variant by branch (the
+       * edge already chose it, so no client re-bucketing). Anonymous and
+       * consent-free by design: it sends no visitor id and is not
+       * consent-gated, because an aggregate variant impression count carries no
+       * identifier (the variant came from the URL). Deduped per session via
+       * sessionStorage (client-only, never sent). The consent-gated legs
+       * (GA4/dataLayer forwarding, unique-visitor identity) are separate;
+       * trackEvent resolves the variant id from the branch.
        */
       function recordImpression(testId: string, branchId: string) {
         if (typeof document === 'undefined') return; // SSR no-op
         if (impressionsSent.has(testId)) return; // per-session dedup
         impressionsSent.add(testId);
         persistImpressions();
-        // Fan out through the M3a event-bus. The on-mount impression is OWNED by
-        // the consent-free A/B store (the experiment's source of truth) and is
-        // deliberately NOT server-MP-forwarded: it fires before consent resolves,
-        // so no `transport`/`consent` is stamped — which also keeps the anonymous
-        // aggregate count clear of the server's denied-consent guard. GA4 still
-        // receives the impression via the dataLayer leg (buffered, fires on
-        // grant) when that sink is enabled; server-MP forwards the post-consent
-        // goal/conversion events (see dispatchEvent). Read impression rates from
-        // the dashboard (getResults / useLiveResults), not GA4.
+        // The on-mount impression is owned by the consent-free A/B store (the
+        // experiment's source of truth) and is deliberately not forwarded
+        // server-side: it fires before consent resolves, so no `transport` or
+        // `consent` is stamped, which also keeps the anonymous aggregate count
+        // clear of the server's denied-consent guard. GA4 still receives the
+        // impression via the dataLayer leg (buffered, fires on grant) when that
+        // sink is enabled; the server-side forward carries the post-consent
+        // goal/conversion events. Read impression rates from the dashboard,
+        // not GA4.
         dispatchToSinks(
           {
             name: 'impression',
@@ -431,7 +430,7 @@ export function abTestClient(options?: AbTestClientOptions) {
       return {
         abTest: {
           /**
-           * Tell the CMS about the visitor's consent (Consent Mode v2) — a real
+           * Tell the CMS about the visitor's consent (Consent Mode v2): a real
            * decision (treated like a Consent Mode `update`). Optional: the gate
            * also auto-reads Consent Mode commands off the dataLayer. That
            * auto-read is best-effort (a `push`-hook fast path plus a re-scan
@@ -448,18 +447,19 @@ export function abTestClient(options?: AbTestClientOptions) {
           },
 
           /**
-           * Report the impression for a SERVER-rendered variant (Pattern
-           * A). Call with the served branch (the `/<branchId>/` URL
-           * segment). ANONYMOUS + consent-free: sends no visitor id, not
-           * consent-gated, deduped per session via sessionStorage. Reach it from
-           * the variant route via {@link useImpression}.
+           * Report the impression for a server-rendered variant (Pattern A).
+           * Call with the served branch (the `/<branchId>/` URL segment).
+           * Anonymous and consent-free: sends no visitor id, not consent-gated,
+           * deduped per session via sessionStorage. Reach it from the variant
+           * route via {@link useImpression}.
            */
           recordImpression,
 
           /**
-           * React hook: fire the Pattern A impression once per (testId, branchId)
-           * on mount. Render a tiny `'use client'` beacon from the variant-coded
-           * route: `cmsClient.abTest.useImpression(testId, branchId)`.
+           * React hook: fire the Pattern A impression once per (testId,
+           * branchId) on mount. Render a tiny `'use client'` beacon from the
+           * variant-coded route:
+           * `cmsClient.abTest.useImpression(testId, branchId)`.
            */
           useImpression(testId: string, branchId: string) {
             useEffect(() => {
@@ -468,19 +468,19 @@ export function abTestClient(options?: AbTestClientOptions) {
           },
 
           /**
-           * Fire a raw client event through the M3a sink pipeline (the SAME
-           * sinks + consent gate as recordImpression — so consent state never
-           * diverges). The M3c `<TrackingRuntimeProvider>` wires this as its
-           * `dispatch`; functional blocks reach it via `useTrackedBlock().fire`.
-           * Anonymous aggregate legs are consent-free; the GA4/gtm leg is gated.
+           * Fire a raw client event through the sink pipeline (the same sinks
+           * and consent gate as recordImpression, so consent state never
+           * diverges). Anonymous aggregate legs are consent-free; the GA4/GTM
+           * leg is gated.
            */
           dispatchEvent(event: ClientCMSEvent) {
-            // Attach GA4 stitching ids (consent-gated) so a block/funnel event
-            // can also forward to the server-MP — unless the caller already set
-            // transport. The anonymous store leg ignores it; the forward needs it.
-            // Stamp consent ALONGSIDE transport (both imply analytics granted) so
-            // the server can authorize the forward; leave both absent otherwise so
-            // the consent-free leg never trips the server's denied-consent guard.
+            // Attach GA4 stitching ids (consent-gated) so a block or funnel
+            // event can also forward server-side, unless the caller already set
+            // transport. The anonymous store leg ignores them; the forward
+            // needs them. Stamp consent alongside transport (both imply
+            // analytics granted) so the server can authorize the forward; leave
+            // both absent otherwise so the consent-free leg never trips the
+            // server's denied-consent guard.
             const transport = event.transport ?? gaTransport();
             dispatchToSinks(
               {
@@ -511,7 +511,7 @@ export function abTestClient(options?: AbTestClientOptions) {
               return cached;
             }
 
-            // Functional, visitor-independent assignment — allowed pre-consent
+            // Functional, visitor-independent assignment, allowed pre-consent
             // (renders the right variant; persists no identifier server-side).
             const result = (await $fetch('/abTest/assignVariant', {
               method: 'POST',
@@ -549,7 +549,7 @@ export function abTestClient(options?: AbTestClientOptions) {
             safeSessionStorageRemove(SS_IMPRESSIONS_KEY);
             removeCookie(COOKIE_VID);
 
-            // Revoke consent in-session — stops any further fan-out.
+            // Revoke consent in-session; stops any further fan-out.
             gate.reset();
           },
         },

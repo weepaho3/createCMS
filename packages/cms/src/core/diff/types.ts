@@ -1,13 +1,11 @@
 import type { ReconstructedBlock } from '../blocks/reconstruct-snapshot';
 
-// ============================================================================
 // Visual diff contract
 //
 // Shared shapes for the branch diff (`getDiff`): the flat change list, the
-// per-property detail, and the annotated render tree. Pure types — the
+// per-property detail, and the annotated render tree. Pure types; the
 // algorithms live in sibling modules (classify.ts, property-diff.ts,
 // text-diff.ts, annotated-tree.ts).
-// ============================================================================
 
 /**
  * Classification labels attached to a block in a diff.

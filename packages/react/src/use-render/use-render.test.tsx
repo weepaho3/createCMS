@@ -40,7 +40,7 @@ function Probe(props: {
   });
 }
 
-describe('useRender — default tag', () => {
+describe('useRender: default tag', () => {
   it('renders defaultTagName with props', () => {
     const { getByTestId } = render(
       <Probe className="foo" data-testid="probe" />,
@@ -87,7 +87,7 @@ describe('useRender — default tag', () => {
   });
 });
 
-describe('useRender — render as element', () => {
+describe('useRender: render as element', () => {
   it('clones the element and merges className', () => {
     const { getByTestId } = render(
       <Probe
@@ -161,7 +161,7 @@ describe('useRender — render as element', () => {
   });
 });
 
-describe('useRender — render as function', () => {
+describe('useRender: render as function', () => {
   it('receives (props, state) with element-typed props (no cast needed)', () => {
     function FunctionProbe() {
       return useRender({

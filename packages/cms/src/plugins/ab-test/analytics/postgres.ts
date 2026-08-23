@@ -22,9 +22,9 @@ export function postgresAnalytics(): AbTestAnalyticsAdapter {
     },
 
     async track(event: AnalyticsEvent) {
-      // Mint when no usable id is supplied. Guard against a blank id too: `??`
-      // would let "" through and a second "" would be swallowed by ON CONFLICT,
-      // silently dropping a distinct event.
+      // Mint when no usable id is supplied. A blank id must also be rejected:
+      // `??` would let "" through and a second "" would be swallowed by ON
+      // CONFLICT, silently dropping a distinct event.
       const id =
         event.id && event.id.length > 0 ? event.id : newId('abTestEvent');
       await db.execute(sql`
@@ -81,8 +81,8 @@ export function postgresAnalytics(): AbTestAnalyticsAdapter {
       };
 
       // Funnel attempts per variant: total distinct interaction ids (one per
-      // <TrackedForm> submit). NOT a sum of per-event distincts — an interaction
-      // appears in both its attempt + success legs, so it must be counted once.
+      // form submit). Not a sum of per-event distincts, since an interaction
+      // appears in both its attempt and success legs and must be counted once.
       const attemptRows = (await db.execute(sql`
         SELECT e.variant_id, COUNT(DISTINCT e.interaction_id)::int AS attempts
         FROM cms.ab_test_events e

@@ -4,12 +4,11 @@ import type { CMSClientStore, CMSFetch } from '../../../client/types';
 
 import { abTestClient } from '../client';
 
-// ============================================================================
-// M5 — client-side stamping logic (consent/transport) + sink composition.
-// These exercise abTestClient().getActions(...) directly — the layer the M5
-// fix lives in — instead of the dumb store-sink relay, so a regression in the
-// "stamp consent ALONGSIDE transport, never on the on-mount impression" rule
-// is actually caught (the earlier store-sink tests would pass either way).
+// Client-side stamping logic (consent/transport) and sink composition. These
+// exercise abTestClient().getActions(...) directly instead of the store-sink
+// relay, so a regression in the "stamp consent alongside transport, never on
+// the on-mount impression" rule is actually caught (store-sink tests would
+// pass either way).
 // ============================================================================
 
 const GRANTED = {
@@ -44,10 +43,10 @@ function setup(options?: { disableDataLayerSink?: boolean }) {
   return { abTest: actions.abTest, calls };
 }
 
-describe('M5 — client stamps consent only alongside transport', () => {
+describe('client stamps consent only alongside transport', () => {
   beforeEach(() => {
-    // No window ⇒ the dataLayer sink no-ops and no consent-wait timer/interval
-    // is scheduled; we only inspect the store-leg POST body here.
+    // No window: the dataLayer sink no-ops and no consent-wait timer or
+    // auto-read poll is scheduled; only the store-leg POST body is inspected.
     vi.stubGlobal('document', { cookie: '_ga=GA1.1.CID.1' });
     vi.stubGlobal('sessionStorage', {
       getItem: () => null,
@@ -89,12 +88,12 @@ describe('M5 — client stamps consent only alongside transport', () => {
 
     const post = calls.find((c) => c.path === '/abTest/trackEvent')!;
     expect(post.body).not.toHaveProperty('transport');
-    // critical: no denied/pending consent stamp ⇒ the server's denied-consent
-    // guard can never drop this consent-free aggregate count.
+    // No denied or pending consent stamp: the server's denied-consent guard
+    // can never drop this consent-free aggregate count.
     expect(post.body).not.toHaveProperty('consent');
   });
 
-  it('recordImpression NEVER stamps transport/consent, even when granted (Design B)', () => {
+  it('recordImpression never stamps transport/consent, even when granted', () => {
     const { abTest, calls } = setup();
     abTest.setConsent({ ...GRANTED }); // granted AND _ga present…
 
@@ -102,14 +101,14 @@ describe('M5 — client stamps consent only alongside transport', () => {
 
     const post = calls.find((c) => c.path === '/abTest/trackEvent')!;
     expect(post.body.eventType).toBe('impression');
-    // …yet the on-mount impression is owned by the consent-free A/B store and is
-    // never server-MP-forwarded, so it must carry neither field.
+    // The on-mount impression is owned by the consent-free A/B store and is
+    // never forwarded server-side, so it must carry neither field.
     expect(post.body).not.toHaveProperty('transport');
     expect(post.body).not.toHaveProperty('consent');
   });
 });
 
-describe('M5 — disableDataLayerSink drops only the dataLayer leg', () => {
+describe('disableDataLayerSink drops only the dataLayer leg', () => {
   beforeEach(() => {
     vi.useFakeTimers(); // neutralize the consent-wait timer + auto-read poll
     vi.stubGlobal('window', { dataLayer: [] as Record<string, unknown>[] });

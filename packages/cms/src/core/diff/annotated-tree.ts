@@ -7,24 +7,18 @@ import type {
 
 import { ROOT_SLUG_PROP } from '../blocks/reconstruct-snapshot';
 
-// ============================================================================
 // Annotated diff tree
 //
 // Assembles the render-facing tree for a visual diff: the SOURCE (draft) tree
-// — built with the exact alive-block semantics of `assembleBlockTree` — where
+// built with the exact alive-block semantics of `assembleBlockTree`, where
 // every changed node carries a `diff` annotation projected from the flat
 // change list, and deleted blocks are re-inserted as ghost nodes at their old
 // base position (carrying their last-known base properties).
-// ============================================================================
-
-// ============================================================================
-// Annotation projection
-// ============================================================================
 
 /**
  * Projects the render-relevant fields of a {@link BlockChange} onto a
  * {@link BlockDiffAnnotation}. The heavy `sourceVersion` / `targetVersion` /
- * `baseVersion` payloads intentionally never reach the tree — the tree is the
+ * `baseVersion` payloads intentionally never reach the tree; the tree is the
  * render surface, the flat list is the inspection surface.
  */
 function toAnnotation(change: BlockChange): BlockDiffAnnotation {
@@ -39,9 +33,7 @@ function toAnnotation(change: BlockChange): BlockDiffAnnotation {
   return annotation;
 }
 
-// ============================================================================
 // Ghost placement
-// ============================================================================
 
 /**
  * Depth of a block in the BASE tree (root = 0), walking the alive-parent map
@@ -132,9 +124,7 @@ function placeGhosts(opts: {
   }
 }
 
-// ============================================================================
 // buildAnnotatedTree
-// ============================================================================
 
 /**
  * Builds the annotated diff tree for one root: the source (draft) tree with

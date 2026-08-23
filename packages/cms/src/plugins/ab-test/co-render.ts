@@ -3,23 +3,18 @@ import type { DrizzleInstance } from '../../core/types/drizzle';
 
 import { referenceEdges } from '../../core/references';
 
-// ============================================================================
-// Co-render set — the conflict set for the A/B XOR guard
-// ============================================================================
-//
 // The render-tree traversal that powers the A/B cross-embed XOR rule. Built on
 // core's generic `referenceEdges` (the live-head graph primitive) composed with
 // `scope.referenceResolver` (group resolution): without the i18n plugin the
 // resolver is identity and this degrades to a plain rootId graph; with it, the
-// walk is translation-group aware. Owned by ab-test because the XOR rule is its
-// concern; core stays free of the A/B closure algorithm.
+// walk is translation-group aware.
 
-const MAX_CORENDER_DEPTH = 20; // mirrors MAX_REFERENCE_DEPTH (publications.ts)
+const MAX_CORENDER_DEPTH = 20; // mirrors MAX_REFERENCE_DEPTH in publications.ts
 
 /**
- * Down-only transitive EMBED closure reachable from `startRoots` — the render
- * subtree(s) below them. tgr_-aware (resolves group references) + group-aware +
- * tenant-scoped + bounded. Mutates + reads `seen` for dedup; returns the newly
+ * Down-only transitive embed closure reachable from `startRoots`: the render
+ * subtrees below them. Translation-group aware and tenant-scoped, bounded by
+ * MAX_CORENDER_DEPTH. Mutates and reads `seen` for dedup; returns the newly
  * reached roots (not in `seen` initially).
  */
 async function embedClosure(
@@ -58,9 +53,10 @@ async function embedClosure(
 }
 
 /**
- * The roots in `rootId`'s OWN rendered subtree (its transitive embeds), group-
- * aware, excluding rootId's own group. Used by the publishBranch backstop, which
- * cares only about the render tree the published root produces.
+ * The roots in `rootId`'s own rendered subtree (its transitive embeds),
+ * group-aware, excluding rootId's own group. Used by the publishBranch
+ * backstop, which cares only about the render tree the published root
+ * produces.
  */
 export async function collectEmbeddedRoots(
   db: DrizzleInstance,
@@ -81,15 +77,13 @@ export async function collectEmbeddedRoots(
 }
 
 /**
- * All roots that can appear in the SAME rendered page tree as `rootId` — the
- * conflict set for the A/B XOR rule. = the transitive HOSTS
- * of rootId (every root that embeds it, going up), then the transitive EMBEDS of
- * rootId AND each host (going down) — covering the page above, the blocks below,
- * and co-embedded siblings. Group-aware AND tgr_-aware (a reference may store a
- * translation-group key, resolved like the read path), bounded by
- * MAX_CORENDER_DEPTH; a conservative SUPERSET (over-includes → fails safe).
- * rootId's OWN translation group is excluded. The caller rejects if any returned
- * root has a running test.
+ * All roots that can appear in the same rendered page tree as `rootId`: the
+ * conflict set for the A/B XOR rule. This is the transitive hosts of rootId
+ * (every root that embeds it, going up), then the transitive embeds of rootId
+ * AND each host (going down), covering co-embedded siblings. Translation-group
+ * aware (a reference may store a tgr_ group key, resolved like the read path)
+ * and bounded by MAX_CORENDER_DEPTH; a conservative superset, so over-inclusion
+ * fails safe. rootId's own translation group is excluded.
  */
 export async function collectCoRenderRoots(
   db: DrizzleInstance,
@@ -101,7 +95,7 @@ export async function collectCoRenderRoots(
     await resolver.expandGroup(db, scopeColumns, [rootId]),
   );
 
-  // Up: transitive hosts. A host may embed via the rootId OR the group's tgr_
+  // Up: transitive hosts. A host may embed via the rootId or the group's tgr_
   // key, so match both forms.
   const up = new Set<string>();
   let frontier = [...ownGroup];
@@ -124,8 +118,8 @@ export async function collectCoRenderRoots(
     frontier = next;
   }
 
-  // Down: transitive embeds of rootId AND every host (so co-embedded siblings
-  // are included), tgr_-aware + group-aware.
+  // Down: transitive embeds of rootId and every host, so co-embedded siblings
+  // are included.
   const seen = new Set<string>([...ownGroup, ...up]);
   const down = await embedClosure(db, [...seen], seen, resolver, scopeColumns);
 

@@ -4,8 +4,8 @@ import { CMS_ERRORS } from './errors-data.generated';
 
 /**
  * Client-side CMS error thrown by `$fetch` when the server returns an error
- * response. Unlike the server-side `CMSError` (which extends better-call's
- * `APIError`), this is a plain `Error` subclass that works in the browser.
+ * response. A plain `Error` subclass (the server-side `CMSError` extends
+ * better-call's `APIError`, which does not work in the browser).
  */
 export class CMSClientError extends Error {
   public readonly status: number;
@@ -30,11 +30,10 @@ export class CMSClientError extends Error {
 
   get cmsCode(): CMSErrorCode | (string & {}) | undefined {
     if (this.code && this.code in CMS_ERRORS) {
-      // Recognized core code (literal-typed for autocomplete).
       return this.code as CMSErrorCode;
     }
-    // Plugin / unrecognized code — surface the raw string so callers can
-    // still match on it (e.g. `err.cmsCode === 'AB_TEST_NOT_FOUND'`).
+    // Plugin / unrecognized code: surface the raw string so callers can
+    // still match on it.
     return this.code || undefined;
   }
 }

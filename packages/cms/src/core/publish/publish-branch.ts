@@ -27,13 +27,11 @@ import {
 } from '../redirects/auto-create';
 import { normalizeSlug, validateSlugUniqueness } from '../slug';
 
-// ============================================================================
-// Shared publish/unpublish core — the SINGLE source of the publish rules,
-// reused by the per-page endpoints (below), by releases (publishRelease), and by
-// scheduled publishing (admin.runScheduled). Each runs entirely inside the
+// Shared publish/unpublish core: the single source of the publish rules,
+// reused by the per-page endpoints (below), by releases (publishRelease), and
+// by scheduled publishing (admin.runScheduled). Each runs entirely inside the
 // caller's transaction; the caller owns post-commit side effects (asset sync,
 // notifications).
-// ============================================================================
 
 /**
  * Publishes (or re-publishes) a branch's head commit for a root, inside `tx`.
@@ -41,13 +39,13 @@ import { normalizeSlug, validateSlugUniqueness } from '../slug';
  * publications row. Returns the publication (with `branchName`) and the published
  * `commitId` so the caller can run asset sync / notifications after commit.
  *
- * cms-05: this is ALSO where the versioned slug is materialized. The draft slug
- * rides the head root version's reserved `__slug` property; on publish it is
- * promoted to the global `roots.slug` (the live URL) — but ONLY for the default/
- * identity branch, or the first publish of ANY branch while `roots.slug` is still
- * null. Uniqueness is enforced here (drafts may collide) and a live collision
- * throws PUBLISH_SLUG_CONFLICT, rolling back an atomic release. A materialized
- * slug change also records the old→new subtree redirects. Pass `slugConfig` (and,
+ * This is also where the versioned slug is materialized. The draft slug rides
+ * the head root version's reserved `__slug` property; on publish it is promoted
+ * to the global `roots.slug` (the live URL), but only for the default/identity
+ * branch, or the first publish of any branch while `roots.slug` is still null.
+ * Uniqueness is enforced here (drafts may collide) and a live collision throws
+ * PUBLISH_SLUG_CONFLICT, rolling back an atomic release. A materialized slug
+ * change also records the old-to-new subtree redirects. Pass `slugConfig` (and,
  * for scoping plugins, `rootScope`/`redirectScope`) to enable this; without them
  * (system callers with no collection def) the slug step is skipped.
  *
@@ -68,7 +66,7 @@ export async function publishBranchInTx(
     slugConfig?: ResolvedSlugConfig;
     /** Roots scope for slug-uniqueness / path resolution (per-tenant columns). */
     rootScope?: RootTableScope;
-    /** Redirects scope for the old→new redirects written on a slug change. */
+    /** Redirects scope for the old-to-new redirects written on a slug change. */
     redirectScope?: TableScope;
   },
 ) {
@@ -130,7 +128,7 @@ export async function publishBranchInTx(
     throw new CMSError('PUBLICATION_APPROVAL_REQUIRED');
   }
 
-  // cms-05: materialize the versioned draft slug (see the function doc).
+  // Materialize the versioned draft slug (see the function doc).
   if (slugConfig?.enabled) {
     const isDefaultBranch = branch.name === branchPolicy.defaultBranchName;
     const seedNullSlug = root.slug === null;
@@ -157,28 +155,29 @@ export async function publishBranchInTx(
           ? normalizeSlug(draftSlug)
           : draftSlug;
 
-      // Only act on an ACTUAL published-slug change. A null draft slug (an
+      // Only act on an actual published-slug change. A null draft slug (an
       // allowIndex home page, or never-set) leaves roots.slug untouched.
       //
-      // KNOWN LIMITATION (cms-05 #3): clearing a draft slug back to null — e.g.
-      // an allowIndex page being demoted to the home page — is NOT materialized on
+      // Known limitation: clearing a draft slug back to null (e.g. an
+      // allowIndex page being demoted to the home page) is NOT materialized on
       // republish; roots.slug keeps its last published value. Distinguishing an
-      // "explicitly cleared" draft from a "never set" one is a future enhancement.
+      // "explicitly cleared" draft from a "never set" one is a future
+      // enhancement.
       //
-      // KNOWN LIMITATION (cms-05 #4): the uniqueness check below is scoped to the
-      // ACTIVE request scope (rootScope). Under i18n, publish a translation within
-      // its own language context — a cross-language publish would check uniqueness
+      // Known limitation: the uniqueness check below is scoped to the ACTIVE
+      // request scope (rootScope). Under i18n, publish a translation within its
+      // own language context; a cross-language publish would check uniqueness
       // against the active language, not the branch's own.
       if (publishedSlug !== null && publishedSlug !== root.slug) {
-        // Capture the subtree's OLD paths BEFORE the change — but only when the
+        // Capture the subtree's OLD paths BEFORE the change, but only when the
         // page already had a live slug (a seed had no prior URL to redirect).
         const captured =
           root.slug !== null
             ? await captureSubtreePaths(tx, slugConfig, rootId)
             : [];
 
-        // Uniqueness against the LIVE scoped set: drafts may collide, so this is
-        // the authority. Throws PUBLISH_SLUG_CONFLICT on a live collision.
+        // Uniqueness against the LIVE scoped set: drafts may collide, so this
+        // is the authority. Throws PUBLISH_SLUG_CONFLICT on a live collision.
         await validateSlugUniqueness(
           tx,
           collectionName,

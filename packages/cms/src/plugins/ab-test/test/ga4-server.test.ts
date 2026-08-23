@@ -28,8 +28,8 @@ function evt(over: Partial<AnalyticsEvent> = {}): AnalyticsEvent {
   };
 }
 
-describe('M5 — buildGa4Payload', () => {
-  it('builds a consenting MP payload with experiment dims + consent block', () => {
+describe('buildGa4Payload', () => {
+  it('builds a consenting MP payload with experiment dims and consent block', () => {
     const p = buildGa4Payload(evt())!;
     expect(p.client_id).toBe('GA-CID');
     expect(p.events[0]!.name).toBe('cms_cta_click');
@@ -74,8 +74,8 @@ describe('M5 — buildGa4Payload', () => {
     interaction_id: 'HIJACK',
   } as const;
 
-  it('does NOT let metadata overwrite reserved params when the server value IS present', () => {
-    // metadata is untrusted trackEvent input — a caller must not be able to
+  it('does not let metadata overwrite reserved params when the server value is present', () => {
+    // Metadata is untrusted trackEvent input; a caller must not be able to
     // poison GA4 attribution by sending reserved keys as metadata.
     const p = buildGa4Payload(
       evt({
@@ -94,16 +94,16 @@ describe('M5 — buildGa4Payload', () => {
     });
   });
 
-  it('STRIPS reserved metadata keys even when the server value is ABSENT (non-A/B event)', () => {
-    // The dangerous case: a non-A/B event (no ab, no sessionId, no source,
-    // no interactionId) — a conditional spread would leave the attacker's
-    // metadata value standing. Reserved keys must be stripped outright.
+  it('strips reserved metadata keys even when the server value is absent', () => {
+    // A non-A/B event (no ab, no sessionId, no source, no interactionId) is
+    // the dangerous case: a conditional spread would leave the attacker's
+    // metadata value standing, so reserved keys are stripped outright.
     const p = buildGa4Payload(
       evt({
         ab: undefined,
         source: undefined,
         interactionId: undefined,
-        transport: { clientId: 'C' }, // clientId only → no sessionId
+        transport: { clientId: 'C' }, // clientId only, so no sessionId
         metadata: { ...HIJACK, placement: 'hero' },
       }),
     )!;
@@ -113,14 +113,14 @@ describe('M5 — buildGa4Payload', () => {
     expect(params).not.toHaveProperty('session_id');
     expect(params).not.toHaveProperty('tracking_id');
     expect(params).not.toHaveProperty('interaction_id');
-    // engagement_time_msec is server-owned → defaulted, never the metadata value
+    // engagement_time_msec is server-owned: defaulted, never the metadata value
     expect(params.engagement_time_msec).toBe(1);
-    // a genuine custom param still passes through
+    // A genuine custom param still passes through.
     expect(params.placement).toBe('hero');
   });
 });
 
-describe('M5 — forwardToGa4', () => {
+describe('forwardToGa4', () => {
   it('POSTs to the MP endpoint with measurement_id + api_secret', async () => {
     const fetchMock = vi.fn().mockResolvedValue(undefined);
     await forwardToGa4(
@@ -154,7 +154,7 @@ describe('M5 — forwardToGa4', () => {
     expect(fetchMock.mock.calls[0]![0]).toBe('https://sgtm.example/collect');
   });
 
-  it('does NOT POST without consent / client_id', async () => {
+  it('does not POST without consent or client_id', async () => {
     const fetchMock = vi.fn();
     await forwardToGa4(
       evt({ consent: { ...GRANTED, analytics_storage: 'denied' } }),
@@ -180,9 +180,9 @@ describe('M5 — forwardToGa4', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('swallows the timeout abort so a hung endpoint cannot stall the ingest', async () => {
-    // The forward is AWAITED in the trackEvent handler, so the AbortSignal.timeout
-    // is what bounds it. Simulate the abort firing → it must resolve, not throw.
+  it('swallows the timeout abort so a hung endpoint cannot stall ingest', async () => {
+    // The forward is awaited in the trackEvent handler, so the
+    // AbortSignal.timeout is what bounds it; an abort must resolve, not throw.
     const abortErr = new DOMException(
       'The operation timed out.',
       'TimeoutError',
@@ -195,7 +195,7 @@ describe('M5 — forwardToGa4', () => {
         fetchMock as unknown as typeof fetch,
       ),
     ).resolves.toBeUndefined();
-    // and the timeout signal really was attached
+    // The timeout signal really was attached.
     expect(fetchMock.mock.calls[0]![1].signal).toBeInstanceOf(AbortSignal);
   });
 });

@@ -25,7 +25,6 @@ async function createTestCMS() {
   return { cms, db };
 }
 
-// ============================================================================
 // Helpers
 // ============================================================================
 
@@ -91,8 +90,7 @@ function makeVariants(
   ];
 }
 
-// ============================================================================
-// Assignment Algorithm (pure function)
+// Assignment algorithm (pure function)
 // ============================================================================
 
 describe('resolveVariant', () => {
@@ -146,8 +144,7 @@ describe('resolveVariant', () => {
   });
 });
 
-// ============================================================================
-// CRUD Endpoints
+// CRUD endpoints
 // ============================================================================
 
 describe('A/B Test CRUD', () => {
@@ -265,8 +262,7 @@ describe('A/B Test CRUD', () => {
   });
 });
 
-// ============================================================================
-// Status Transitions (via updateTest)
+// Status transitions (via updateTest)
 // ============================================================================
 
 describe('A/B Test Status Transitions', () => {
@@ -417,8 +413,7 @@ describe('A/B Test Status Transitions', () => {
   });
 });
 
-// ============================================================================
-// Variant Assignment (via endpoint)
+// Variant assignment (via endpoint)
 // ============================================================================
 
 describe('A/B Test Variant Assignment', () => {
@@ -497,8 +492,7 @@ describe('A/B Test Variant Assignment', () => {
   });
 });
 
-// ============================================================================
-// Analytics (Postgres adapter)
+// Analytics (postgres adapter)
 // ============================================================================
 
 describe('A/B Test Analytics', () => {
@@ -587,7 +581,7 @@ describe('A/B Test Analytics', () => {
     const test = await cms.api.abTest.getTest({ query: { testId } });
     const treatment = test.variants.find((v: any) => !v.isControl)!;
 
-    // Pattern A: the beacon knows the served BRANCH, not the variant id.
+    // Pattern A: the beacon knows the served branch, not the variant id.
     await cms.api.abTest.trackEvent({
       body: {
         testId,
@@ -616,7 +610,7 @@ describe('A/B Test Analytics', () => {
     ).rejects.toThrow();
   });
 
-  it('resolves → buckets → picks → records across the full Pattern A chain (FA1–FA5)', async () => {
+  it('resolves, buckets, picks and records across the full Pattern A chain', async () => {
     const { cms } = await createTestCMS();
     const page = await createPageWithBranches(cms); // slug '/landing', 2 published branches
 
@@ -625,15 +619,16 @@ describe('A/B Test Analytics', () => {
         rootId: page.rootId,
         collection: 'pages',
         name: 'Pattern A end-to-end',
-        // 100% traffic → every visitor buckets into a variant, so the edge always
-        // rewrites (deterministic assertion, no flaky out-of-traffic control path).
+        // 100% traffic: every visitor buckets into a variant, so the edge
+        // always rewrites (deterministic assertion, no flaky out-of-traffic
+        // control path).
         trafficPercentage: 100,
         variants: makeVariants(page.mainBranchId, page.variantBranchId),
       },
     });
     await cms.api.abTest.updateTest({ body: { testId, status: 'running' } });
 
-    // FA1 — the edge resolve seam maps the public path to the running test.
+    // FA1: the edge resolve seam maps the public path to the running test.
     const resolved = await cms.api.pages.resolveAbVariant({
       query: { path: '/landing' },
     });
@@ -642,8 +637,8 @@ describe('A/B Test Analytics', () => {
     const branchIds = resolved.test!.variants.map((v) => v.branchId).sort();
     expect(branchIds).toEqual([page.mainBranchId, page.variantBranchId].sort());
 
-    // FA2/FA2.5 — CONSENT-FREE first assignment: no variant cookie yet → bucket
-    // (100% traffic → a real branch) and return the code to persist. Rewrites to
+    // Consent-free first assignment: no variant cookie yet, so bucket (100%
+    // traffic yields a real branch) and return the code to persist. Rewrites to
     // `/ab/<branchId>/landing` (the code is the segment after the `/ab` prefix).
     const decided = decideEdgeVariant({
       pathname: '/landing',
@@ -657,8 +652,8 @@ describe('A/B Test Analytics', () => {
     expect(branchIds).toContain(servedBranchId); // a real branch, not the sentinel
     expect(decided.assignCode).toBe(servedBranchId); // persisted in the variant cookie
 
-    // Consistency: a returning visitor whose variant cookie holds the assignment
-    // gets the SAME branch, with no re-roll + no new cookie.
+    // Consistency: a returning visitor whose variant cookie holds the
+    // assignment gets the same branch, with no re-roll and no new cookie.
     const again = decideEdgeVariant({
       pathname: '/landing',
       resolve: resolved,
@@ -667,8 +662,8 @@ describe('A/B Test Analytics', () => {
     expect(again.rewritePath).toBe(decided.rewritePath);
     expect(again.assignCode).toBeNull();
 
-    // Always-rewrite invariant: a path with no running test → control sentinel,
-    // nothing to persist (no passthrough).
+    // Always-rewrite invariant: a path with no running test yields the control
+    // sentinel, nothing to persist (no passthrough).
     const noTest = decideEdgeVariant({
       pathname: '/landing',
       resolve: { test: null },
@@ -677,7 +672,7 @@ describe('A/B Test Analytics', () => {
     expect(noTest.rewritePath).toBe(`/ab/${CONTROL_CODE}/landing`);
     expect(noTest.assignCode).toBeNull();
 
-    // FA3b — the render route loads every published variant + the page-level
+    // FA3b: the render route loads every published variant plus the page-level
     // A/B descriptor (control branch + test id).
     const content = await cms.api.pages.getPublishedContent({
       query: { slug: '/landing' },
@@ -686,7 +681,7 @@ describe('A/B Test Analytics', () => {
     expect(content.abTest?.controlBranchId).toBe(page.mainBranchId);
     expect(content.variants).toHaveLength(2);
 
-    // FA3a — pickVariant resolves a concrete tree for the served branch AND for
+    // FA3a: pickVariant resolves a concrete tree for the served branch and for
     // the control (branchId = null); both fail closed to a real tree.
     const variantTree = pickVariant(
       content.variants,
@@ -724,15 +719,15 @@ describe('A/B Test Analytics', () => {
     expect(arm.impressions).toBe(1);
   });
 
-  it('fires a root revalidation when a test toggles in/out of running (FA5 render-cache bust)', async () => {
+  it('fires a root revalidation when a test toggles in/out of running (render-cache bust)', async () => {
     const events: Array<{ rootId: string; storedSlug: string | null }> = [];
     const { cms, cleanupSchema } = await setupAbTestCMS({
       onRevalidate: { handler: (event) => void events.push(event) },
     });
     schemaCleanups.push(cleanupSchema);
     const page = await createPageWithBranches(cms);
-    // The slug a CONTENT publish revalidates with — test start/stop must use the
-    // SAME slug so the app busts the same render-cache tag.
+    // The slug a content publish revalidates with: test start/stop must use the
+    // same slug so the app busts the same render-cache tag.
     const publishSlug = events.find(
       (e) => e.rootId === page.rootId,
     )?.storedSlug;
@@ -747,22 +742,22 @@ describe('A/B Test Analytics', () => {
         variants: makeVariants(page.mainBranchId, page.variantBranchId),
       },
     });
-    // Creating a draft test changes no render → no revalidation.
+    // Creating a draft test changes no render, so no revalidation.
     expect(events).toHaveLength(0);
 
     // Starting it makes getPublishedContent expose the abTest descriptor for
-    // this root → the page's render caches must be busted, with the same slug.
+    // this root, so the page's render caches must be busted with the same slug.
     await cms.api.abTest.updateTest({ body: { testId, status: 'running' } });
     const startEvent = events.find((e) => e.rootId === page.rootId);
     expect(startEvent).toBeTruthy();
     expect(startEvent?.storedSlug).toBe(publishSlug);
 
-    // Pausing reverts the render to control → bust again.
+    // Pausing reverts the render to control, so bust again.
     events.length = 0;
     await cms.api.abTest.updateTest({ body: { testId, status: 'paused' } });
     expect(events.some((e) => e.rootId === page.rootId)).toBe(true);
 
-    // paused → completed does not change the render (already control) → no fire.
+    // paused to completed does not change the render (already control): no fire.
     events.length = 0;
     await cms.api.abTest.updateTest({ body: { testId, status: 'completed' } });
     expect(events).toHaveLength(0);
@@ -856,7 +851,7 @@ describe('A/B Test Analytics', () => {
     const adapter = postgresAnalytics();
     adapter.init?.(db);
 
-    // Two DISTINCT events that both arrive with id "" must both persist — a
+    // Two distinct events that both arrive with id "" must both persist; a
     // naive `event.id ?? mint` would write one row then swallow the rest.
     const base = {
       id: '',
@@ -875,8 +870,7 @@ describe('A/B Test Analytics', () => {
   });
 });
 
-// ============================================================================
-// Update Test (variant replacement)
+// Update test (variant replacement)
 // ============================================================================
 
 describe('A/B Test Update', () => {
@@ -941,8 +935,7 @@ describe('A/B Test Update', () => {
   });
 });
 
-// ============================================================================
-// Multi-Tenant Isolation
+// Multi-tenant isolation
 // ============================================================================
 
 describe('multi-tenant isolation', () => {
@@ -1084,7 +1077,7 @@ describe('multi-tenant isolation', () => {
     });
     expect(own.goals.length).toBeGreaterThan(0);
 
-    // tenant-b must NOT see tenant-a's goals (the root is out of its scope) —
+    // tenant-b must NOT see tenant-a's goals (the root is out of its scope);
     // exercises the tenantSlug branch of loadRootPublishedTree.
     setTenant('tenant-b');
     const cross = await cms.api.abTest.listGoalEvents({
@@ -1170,8 +1163,7 @@ describe('multi-tenant isolation', () => {
   });
 });
 
-// ============================================================================
-// trackingId publish-guard (M2b)
+// trackingId publish guard
 // ============================================================================
 
 describe('A/B Test trackingId guard', () => {
@@ -1252,7 +1244,7 @@ describe('A/B Test trackingId guard', () => {
     const root = await cms.api.pages.createRoot({
       body: { slug: '/guard-drift', properties: { title: 'Drift' } },
     });
-    // main: one functional block with trackingId 'a'
+    // main: one functional block with trackingId 'a'.
     await addSignupForm(cms, root.rootId, root.branchId, {
       cta: 'A',
       trackingId: 'a',
@@ -1262,7 +1254,7 @@ describe('A/B Test trackingId guard', () => {
       branchId: root.branchId,
       publishedBy: 'admin',
     });
-    // variant branches off main (inherits 'a') and is published (set {a})
+    // Variant branches off main (inherits 'a') and is published (set {a}).
     const variant = await cms.api.pages.createBranch({
       body: {
         rootId: root.rootId,
@@ -1275,8 +1267,8 @@ describe('A/B Test trackingId guard', () => {
       branchId: variant.branch.id,
       publishedBy: 'admin',
     });
-    // link both (now-published, consistent {a}) branches as test variants and
-    // run it — drift is only enforced for RUNNING tests.
+    // Link both (now published, consistent {a}) branches as test variants and
+    // run it; drift is only enforced for running tests.
     const { testId } = await cms.api.abTest.createTest({
       body: {
         rootId: root.rootId,
@@ -1286,12 +1278,12 @@ describe('A/B Test trackingId guard', () => {
       },
     });
     await cms.api.abTest.updateTest({ body: { testId, status: 'running' } });
-    // introduce drift: the variant now also has trackingId 'b' → set {a,b}
+    // Introduce drift: the variant now also has trackingId 'b' (set {a,b}).
     await addSignupForm(cms, root.rootId, variant.branch.id, {
       cta: 'B',
       trackingId: 'b',
     });
-    // re-publishing the variant (the guard runs as a before-hook): {a,b} != {a}
+    // Re-publishing the variant (the guard runs as a before-hook): {a,b} != {a}.
     await expect(
       cms.api.pages.publishBranch({
         body: {
@@ -1329,7 +1321,7 @@ describe('A/B Test trackingId guard', () => {
       branchId: variant.branch.id,
       publishedBy: 'admin',
     });
-    // a DRAFT test (never started) — drift must not be enforced
+    // A draft test (never started): drift must not be enforced.
     await cms.api.abTest.createTest({
       body: {
         rootId: root.rootId,
@@ -1342,7 +1334,7 @@ describe('A/B Test trackingId guard', () => {
       cta: 'B',
       trackingId: 'b',
     });
-    // {a,b} vs {a} but the test is draft → no drift enforcement
+    // {a,b} vs {a}, but the test is draft, so no drift enforcement.
     await expect(
       cms.api.pages.publishBranch({
         body: {
@@ -1375,7 +1367,7 @@ describe('A/B Test trackingId guard', () => {
         sourceBranchId: root.branchId,
       },
     });
-    // variant inherits the 'a' form unchanged → set {a}; publish it
+    // Variant inherits the 'a' form unchanged (set {a}); publish it.
     await publishApprovedBranch(cms, {
       rootId: root.rootId,
       branchId: variant.branch.id,
@@ -1390,7 +1382,7 @@ describe('A/B Test trackingId guard', () => {
       },
     });
     await cms.api.abTest.updateTest({ body: { testId, status: 'running' } });
-    // re-publish the (unchanged) variant of the RUNNING test → {a} == {a}
+    // Re-publish the (unchanged) variant of the running test: {a} == {a}.
     await expect(
       cms.api.pages.publishBranch({
         body: {
@@ -1406,7 +1398,8 @@ describe('A/B Test trackingId guard', () => {
     const { cms, setTenant, cleanupSchema } = await setupMultiTenantAbTestCMS();
     schemaCleanups.push(cleanupSchema);
 
-    // tenant-a: a root whose branch has a functional block MISSING its trackingId
+    // tenant-a: a root whose branch has a functional block missing its
+    // trackingId.
     setTenant('tenant-a');
     const root = await cms.api.pages.createRoot({
       body: { slug: '/guard-tenant', properties: { title: 'T' } },
@@ -1417,13 +1410,13 @@ describe('A/B Test trackingId guard', () => {
         branchId: root.branchId,
         parentBlockId: root.rootId,
         type: 'signupForm',
-        properties: { cta: 'Go' }, // no trackingId — would trip the guard
+        properties: { cta: 'Go' }, // no trackingId, would trip the guard
       },
     });
 
     // tenant-b tries to publish tenant-a's branch: the guard's ownership check
     // returns early (foreign root), so it never reads tenant-a's blocks and the
-    // failure is a generic not-found, NOT a trackingId leak.
+    // failure is a generic not-found, not a trackingId leak.
     setTenant('tenant-b');
     let message = '';
     try {
@@ -1442,16 +1435,17 @@ describe('A/B Test trackingId guard', () => {
   });
 
   it('scope.where gate skips the guard for an out-of-scope root (any dimension)', async () => {
-    // Directly exercises the ownership gate with an arbitrary scope.where — a
-    // stand-in for a foreign tenant OR i18n-language predicate. An out-of-scope
-    // root must NOT be read by the guard (no trackingId leak); an in-scope one is.
+    // Directly exercises the ownership gate with an arbitrary scope.where, a
+    // stand-in for a foreign tenant or i18n-language predicate. An out-of-scope
+    // root must not be read by the guard (no trackingId leak); an in-scope one
+    // is.
     const { cms, db } = await createTestCMS();
     const root = await cms.api.pages.createRoot({
       body: { slug: '/guard-scope', properties: { title: 'Scope' } },
     });
     await addSignupForm(cms, root.rootId, root.branchId, { cta: 'Go' }); // no trackingId
 
-    // out-of-scope predicate → requireRootInScope finds nothing → guard no-ops
+    // Out-of-scope predicate: requireRootInScope finds nothing, guard no-ops.
     await expect(
       assertTrackingIntegrity({
         db,
@@ -1463,7 +1457,7 @@ describe('A/B Test trackingId guard', () => {
       }),
     ).resolves.toBeUndefined();
 
-    // in-scope (no predicate) → the missing trackingId IS caught
+    // In-scope (no predicate): the missing trackingId is caught.
     await expect(
       assertTrackingIntegrity({
         db,
@@ -1477,11 +1471,10 @@ describe('A/B Test trackingId guard', () => {
   });
 });
 
-// ============================================================================
-// listGoalEvents — the M4 goal-picker
+// listGoalEvents: the goal picker
 // ============================================================================
 
-describe('A/B Test listGoalEvents (M4 goal-picker)', () => {
+describe('A/B Test listGoalEvents', () => {
   it('returns one candidate per declared event on functional block instances', async () => {
     const { cms } = await createTestCMS();
     const root = await cms.api.pages.createRoot({
@@ -1567,7 +1560,7 @@ describe('A/B Test listGoalEvents (M4 goal-picker)', () => {
         properties: { cta: 'Join', trackingId: 'nl' },
       },
     });
-    // intentionally NOT published
+    // Not published on purpose: the goal list must come from published content.
     const { goals } = await cms.api.abTest.listGoalEvents({
       query: { rootId: root.rootId },
     });
@@ -1575,11 +1568,10 @@ describe('A/B Test listGoalEvents (M4 goal-picker)', () => {
   });
 });
 
-// ============================================================================
-// goal storage + goal-aware getResults (M4b)
+// Goal storage + goal-aware getResults
 // ============================================================================
 
-describe('A/B Test goal storage + getResults (M4b)', () => {
+describe('A/B Test goal storage + getResults', () => {
   it('stores the goal on createTest and returns it via getTest', async () => {
     const { cms } = await createTestCMS();
     const page = await createPageWithBranches(cms);
@@ -1617,7 +1609,7 @@ describe('A/B Test goal storage + getResults (M4b)', () => {
     for (const eventType of [
       'impression',
       'cms_cta_click', // the goal
-      'some_other_event', // an unrelated event — must NOT count
+      'some_other_event', // an unrelated event, must not count
     ]) {
       await cms.api.abTest.trackEvent({
         body: { testId, branchId, anonymous: true, eventType },
@@ -1658,11 +1650,10 @@ describe('A/B Test goal storage + getResults (M4b)', () => {
   });
 });
 
-// ============================================================================
-// funnel: completion_rate from interaction ids (M4d)
+// Funnel: completion_rate from interaction ids
 // ============================================================================
 
-describe('A/B Test funnel completion_rate (M4d)', () => {
+describe('A/B Test funnel completion_rate', () => {
   it('computes attempts + completion_rate from interaction ids', async () => {
     const { cms } = await createTestCMS();
     const page = await createPageWithBranches(cms);
@@ -1679,7 +1670,7 @@ describe('A/B Test funnel completion_rate (M4d)', () => {
     await cms.api.abTest.updateTest({ body: { testId, status: 'running' } });
 
     const branchId = page.mainBranchId;
-    // 3 interactions start (attempt); 2 reach the goal (success) → 2/3.
+    // 3 interactions start (attempt); 2 reach the goal (success) = 2/3.
     for (const interactionId of ['ix1', 'ix2', 'ix3']) {
       await cms.api.abTest.trackEvent({
         body: {
@@ -1732,7 +1723,7 @@ describe('A/B Test funnel completion_rate (M4d)', () => {
         testId,
         branchId: page.mainBranchId,
         anonymous: true,
-        eventType: 'cms_cta_click', // no interactionId → not a funnel
+        eventType: 'cms_cta_click', // no interactionId, so not a funnel
       },
     });
 
@@ -1745,11 +1736,10 @@ describe('A/B Test funnel completion_rate (M4d)', () => {
   });
 });
 
-// ============================================================================
-// server-MP forward (M5)
+// Server-side GA4 forward
 // ============================================================================
 
-describe('A/B Test server-MP forward (M5)', () => {
+describe('A/B Test server-MP forward', () => {
   async function runningTest(ga4: { type: 'sgtm'; endpointUrl: string }) {
     const { cms, cleanupSchema } = await setupAbTestCMS({ ga4 });
     schemaCleanups.push(cleanupSchema);
@@ -1814,7 +1804,7 @@ describe('A/B Test server-MP forward (M5)', () => {
         endpointUrl: 'https://sgtm.example/collect',
       });
 
-      // consent granted but NO transport.clientId → stored, not forwarded.
+      // Consent granted but no transport.clientId: stored, not forwarded.
       await cms.api.abTest.trackEvent({
         body: {
           testId,
@@ -1826,7 +1816,7 @@ describe('A/B Test server-MP forward (M5)', () => {
       });
 
       expect(fetchMock).not.toHaveBeenCalled();
-      // the anonymous aggregate count was still recorded
+      // The anonymous aggregate count was still recorded.
       const results = await cms.api.abTest.getResults({ query: { testId } });
       expect(
         results.variants.some((v) => v.eventBreakdown['cms_cta_click']),
@@ -1856,9 +1846,10 @@ describe('A/B Test server-MP forward (M5)', () => {
         },
       });
 
-      // No GA4 forward …
+      // No GA4 forward ...
       expect(fetchMock).not.toHaveBeenCalled();
-      // … and nothing stored either (the courtesy no-op short-circuits first).
+      // ... and nothing stored either (the courtesy no-op short-circuits
+      // first).
       const results = await cms.api.abTest.getResults({ query: { testId } });
       expect(
         results.variants.some((v) => v.eventBreakdown['cms_cta_click']),

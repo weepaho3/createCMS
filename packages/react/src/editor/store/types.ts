@@ -8,16 +8,16 @@ export type EditorNode = {
   readonly type: string;
   readonly properties: Readonly<Record<string, unknown>>;
   readonly parentId: string | null;
-  /** Sibling order — the single source of truth for child ordering. */
+  /** Sibling order: the single source of truth for child ordering. */
   readonly childIds: readonly string[];
 };
 
 export type EditorNodes = Readonly<Record<string, EditorNode>>;
 
-/** A field on a block — what focus and inline editing point at. */
+/** A field on a block: what focus and inline editing point at. */
 export type FieldRef = { readonly blockId: string; readonly key: string };
 
-/** Selection state of ONE user (the store models it per user; today there is one, `'local'`). */
+/** Selection state of one user (`'local'` in this editor). */
 export type UserSelection = {
   readonly selected: string | null;
   readonly hovered: string | null;

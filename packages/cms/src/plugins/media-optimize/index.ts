@@ -33,8 +33,8 @@ export type MediaOptimizeClientConfig = OptimizationConfig & {
 /**
  * Shared-store key under which the plugin publishes its auto-optimizer so the
  * React `useUploadAssets` upload path can pick it up and optimize by default.
- * The React client (`client/react.ts`) reads this exact key — keep the two in
- * sync. Absent key ⇒ plugin not installed ⇒ uploads are untouched.
+ * The React client (`client/react.ts`) reads this exact key; keep the two in
+ * sync. Absent key means plugin not installed, so uploads are untouched.
  */
 export const UPLOAD_OPTIMIZER_KEY = `${PLUGIN_ID}:uploadOptimizer` as const;
 
@@ -79,11 +79,11 @@ export function mediaOptimizeClient(config: MediaOptimizeClientConfig) {
   return {
     id: PLUGIN_ID,
 
-    // `getActions` runs synchronously while the client config is built, and
-    // receives the SAME store object that `client/react.ts` reads as
-    // `config.pluginsAtoms`. Publishing the auto-optimizer here (rather than in
-    // the async `init`, whose returned `context` is discarded — see
-    // client/config.ts) makes it available before the first `upload(...)`.
+    // `getActions` runs synchronously while the client config is built and
+    // receives the same store object that `client/react.ts` reads as
+    // `config.pluginsAtoms`. Publishing the auto-optimizer here (rather than
+    // in the async `init`, whose returned `context` is discarded) makes it
+    // available before the first `upload(...)`.
     getActions: (_$fetch: CMSFetch, $store: CMSClientStore) => {
       $store.atoms[UPLOAD_OPTIMIZER_KEY] = atom<UploadOptimizer>({
         enabled,

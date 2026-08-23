@@ -129,11 +129,9 @@ type SuggestState = {
 };
 
 /**
- * Overlays a contentEditable glass on string and richText fields.
- * Lookup is scoped to the canvas host and the own block element.
- * Host interventions: origin visibility hidden during the session;
- * empty string/richText display properties carry a zero-width placeholder
- * in the canvas renderer (never stored).
+ * Overlays a contentEditable glass on string and richText fields. During a
+ * session the origin element is hidden, and an empty string/richText property
+ * carries a zero-width placeholder in the canvas render (never stored).
  */
 export function CanvasInlineText({
   suggest,

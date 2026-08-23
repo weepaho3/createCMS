@@ -5,13 +5,12 @@ import type { BlockTreeNode } from './tree';
 // ============================================================================
 
 /**
- * One published NON-CONTROL branch of a referenced root, as a snapshot. Used by
- * the block-level A/B `variants` (below). The CONTROL branch is NOT in this list
- * — it fills the top-level `tree`/`properties` of the `ResolvedReference` (the
- * no-JS / AB-off fallback), so re-embedding it here would serialize its subtree
- * twice. `variants` therefore carries only the ALTERNATIVE branches the client
- * pre-render pass can swap in. `properties` mirrors the (depth-1 typed)
- * reference `properties`.
+ * One published NON-CONTROL branch of a referenced root, as a snapshot. Used
+ * by the block-level A/B `variants` on {@link ResolvedReference}. The CONTROL
+ * branch is NOT in this list: it fills the top-level `tree`/`properties` of
+ * the `ResolvedReference` (the no-JS / AB-off fallback), so re-embedding it
+ * here would serialize its subtree twice. `properties` mirrors the (depth-1
+ * typed) reference `properties`.
  */
 export type PublishedBranchSnapshot<TProps = Record<string, unknown>> = {
   branchId: string;
@@ -26,15 +25,13 @@ export type ResolvedReference<TProps = Record<string, unknown>> = {
   tree: BlockTreeNode;
   /**
    * Present only when this referenced root has a RUNNING A/B test (server
-   * fan-out). The server stays a pure, cacheable function: top-level
-   * `tree`/`properties` are the CONTROL branch (a no-JS / AB-disabled client
-   * renders it as-is), and the client pre-render pass picks the visitor's
-   * variant from `variants` and swaps it in. `variants` lists ONLY the
-   * non-control ALTERNATIVE branches — the control is the top-level
-   * `tree`/`properties`, so it is NOT duplicated here. A pick that matches no
-   * `variants` entry (or the control branch) leaves the control tree in place.
-   * An OPTIONAL field (not a discriminated union) so `isResolvedReference` —
-   * which narrows on `tree`/`properties` — keeps matching.
+   * fan-out). Top-level `tree`/`properties` are the CONTROL branch (a no-JS /
+   * AB-disabled client renders it as-is); the client pre-render pass picks the
+   * visitor's variant from `variants` and swaps it in. `variants` lists ONLY
+   * the non-control ALTERNATIVE branches, so the control is never duplicated.
+   * A pick that matches no `variants` entry leaves the control tree in place.
+   * An OPTIONAL field (not a discriminated union) so `isResolvedReference`,
+   * which narrows on `tree`/`properties`, keeps matching.
    */
   abTest?: {
     testId: string;
@@ -47,7 +44,7 @@ export type ResolvedReference<TProps = Record<string, unknown>> = {
 export type LinkKind = 'internal' | 'external' | 'email' | 'phone';
 
 /**
- * The AUTHORED value of a `link` property — a discriminated union over `kind`.
+ * The AUTHORED value of a `link` property, a discriminated union over `kind`.
  * An `internal` link stores the target's `rootId` (a language-aware reference,
  * resolved to the current path at read time, NOT an embedded tree); the other
  * kinds store their literal target. Kept as the stored value in `raw` mode
@@ -57,7 +54,7 @@ export type LinkValue =
   | {
       kind: 'internal';
       rootId: string;
-      /** The target's collection — needed to resolve its (language-aware) path. */
+      /** The target's collection, needed to resolve its language-aware path. */
       collection: string;
       fragment?: string;
       query?: string;
@@ -69,9 +66,9 @@ export type LinkValue =
 /**
  * The RESOLVED value of a `link` on the published read path (`resolved` mode):
  * every kind is normalised to an `href` for the renderer. An `internal` link's
- * `href` is the target's CURRENT, language-aware path (or `null` when the target
- * is gone / out of scope — the renderer disables the link). External / email /
- * phone are static pass-throughs (`href` = url / `mailto:` / `tel:`).
+ * `href` is the target's CURRENT, language-aware path (or `null` when the
+ * target is gone / out of scope: the renderer disables the link). External /
+ * email / phone are static pass-throughs (`href` = url / `mailto:` / `tel:`).
  */
 export type ResolvedLink =
   | {

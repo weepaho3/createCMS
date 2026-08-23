@@ -50,15 +50,15 @@ export function createRevalidateHandler(
     if (paths.length > 0 || tags.length > 0) {
       // Runtime dynamic import: next/cache is only resolvable when next is
       // installed as a peer dependency, so it must not be resolved at build
-      // time. bunchee externalizes next (a peer dep) and preserves this import.
+      // time. bunchee externalizes next and preserves this import.
       const { revalidatePath, revalidateTag } = await import('next/cache');
       for (const path of paths) {
         revalidatePath(path);
       }
-      // Tags invalidate a root's control + all its variant-coded cache entries;
-      // the A/B render routes tag their fetch by rootRevalidateTag.
-      // 'max' is next 16's required second arg (equivalent to the legacy single-
-      // arg immediate invalidation; the tag is marked stale regardless of profile).
+      // Tags invalidate a root's control + all variant-coded cache entries
+      // (the A/B render routes tag their fetch by rootRevalidateTag). 'max'
+      // is next 16's required second arg, equivalent to the legacy
+      // single-arg immediate invalidation.
       for (const tag of tags) {
         revalidateTag(tag, 'max');
       }

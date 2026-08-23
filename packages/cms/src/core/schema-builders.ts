@@ -75,14 +75,14 @@ function buildLinkSchema(
 
 /**
  * Zod for a scalar / reference property (or list element) of the given `spec`,
- * honouring the declarative constraints on it (cms-04):
- * - `string` / `richText` → `z.string()` with `minLength`/`maxLength`/`pattern`
- * - `number` → `z.number()` with `min`/`max`
- * - `date` → ISO-8601 datetime string (`z.iso.datetime()`)
- * - `boolean` → `z.boolean()`; `image` / `reference` → `z.string()`
+ * honouring the declarative constraints on it:
+ * - `string` / `richText` -> `z.string()` with `minLength`/`maxLength`/`pattern`
+ * - `number` -> `z.number()` with `min`/`max`
+ * - `date` -> ISO-8601 datetime string (`z.iso.datetime()`)
+ * - `boolean` -> `z.boolean()`; `image` / `reference` -> `z.string()`
  *
- * Typed loosely because it serves BOTH top-level property specs and list element
- * specs (both carry `type` plus the optional constraint fields).
+ * Typed loosely because it serves BOTH top-level property specs and list
+ * element specs (both carry `type` plus the optional constraint fields).
  */
 function scalarSchema(spec: {
   type: string;
@@ -187,9 +187,7 @@ export function buildRootInputSchema<T extends Record<string, BlockProperty>>(
   }) as any;
 }
 
-// ============================================================================
 // Block Input Schemas (create / update)
-// ============================================================================
 
 export function buildBlockInputSchema<
   TBlocks extends Record<string, AnyBlockDefinition>,
@@ -201,7 +199,7 @@ export function buildBlockInputSchema<
       parentBlockId: z.string(),
       position: z.number().int().min(0).optional(),
       message: z.string().optional(),
-      // Optimistic-concurrency guard (cms-18); enforced in the blocks route.
+      // Optimistic-concurrency guard, enforced in the blocks route.
       expectedHeadCommitId: z.string().optional(),
       type: z.literal(name),
       properties: buildPropertiesSchema(blockDef.properties) as z.ZodType,
@@ -223,7 +221,7 @@ export function buildUpdateBlockInputSchema<
       branchId: z.string(),
       blockId: z.string(),
       message: z.string().optional(),
-      // Optimistic-concurrency guard (cms-18); enforced in the blocks route.
+      // Optimistic-concurrency guard, enforced in the blocks route.
       expectedHeadCommitId: z.string().optional(),
       type: z.literal(name),
       properties: buildPropertiesSchema(blockDef.properties, true) as z.ZodType,
@@ -275,7 +273,7 @@ export type UpdateRootInput<T extends Record<string, BlockProperty>> = {
   branchId: string;
   slug?: string;
   message?: string;
-  /** Optimistic-concurrency guard (cms-18); enforced in the blocks route. */
+  /** Optimistic-concurrency guard, enforced in the blocks route. */
   expectedHeadCommitId?: string;
   properties: InferPartialBlockProperties<T>;
 };
@@ -288,15 +286,13 @@ export function buildUpdateRootInputSchema<
     branchId: z.string(),
     slug: z.string().optional(),
     message: z.string().optional(),
-    // Optimistic-concurrency guard (cms-18); enforced in the blocks route.
+    // Optimistic-concurrency guard, enforced in the blocks route.
     expectedHeadCommitId: z.string().optional(),
     properties: buildPropertiesSchema(properties, true) as z.ZodType,
   }) as any;
 }
 
-// ============================================================================
 // List Roots Query Schema
-// ============================================================================
 
 export const ROOT_COLUMN_FIELDS = [
   'rootId',

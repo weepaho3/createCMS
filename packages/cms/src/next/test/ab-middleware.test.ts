@@ -5,9 +5,9 @@ import type { AbResolveResult } from '../../plugins/ab-test/resolve';
 
 import { abTestMiddleware } from '../middleware';
 
-// A running test with two published variant branches. The variant "code" segment
-// of the rewrite path is the branchId (see ab-edge/decideEdgeVariant), so a reuse
-// cookie must carry a real branchId ('aa' | 'bb').
+// A running test with two published variant branches. The variant "code"
+// segment of the rewrite path is the branchId, so a reuse cookie must carry a
+// real branchId.
 const RUNNING_TEST: AbResolveResult = {
   test: {
     testId: 't1',
@@ -53,8 +53,8 @@ describe('abTestMiddleware', () => {
 
     const setCookie = res.headers.get('set-cookie');
     expect(setCookie).toBeTruthy();
-    // The assigned variant code is non-deterministic (weighted hash of an
-    // ephemeral key), so assert the cookie NAME + attributes, not the value.
+    // The assigned variant code is a weighted hash of an ephemeral key, so
+    // assert the cookie name + attributes, not the value.
     expect(setCookie!.startsWith('ab_t1=')).toBe(true);
     expect(setCookie!).toContain('Path=/');
     expect(setCookie!).toContain('Max-Age=2592000');
@@ -62,7 +62,6 @@ describe('abTestMiddleware', () => {
     expect(setCookie!).toContain('HttpOnly');
     expect(setCookie!).toContain('SameSite=lax');
 
-    // Rewrite lands under the /ab prefix on some variant/control code.
     expect(res.headers.get('x-middleware-rewrite')).toMatch(
       /\/ab\/[^/]+\/blog\/hello$/,
     );

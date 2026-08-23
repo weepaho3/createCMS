@@ -7,27 +7,28 @@ import { rootScopeConditions } from '../../core/scope';
 import { i18nRoots } from './tables';
 
 /**
- * The i18n plugin's reference resolver. Owns ALL translation-group
+ * The i18n plugin's reference resolver. Owns all translation-group
  * resolution: a stored reference value (`rot_` rootId or `tgr_` group key) is
- * resolved to the rootId(s) it relates to, honouring the active language + its
- * fallback chain. Core carries this on the resolved scope and rides it from the
- * read path and the A/B co-render walk; without the i18n plugin core uses its
- * own identity default and none of this code runs.
+ * resolved to the rootId(s) it relates to, honoring the active language and
+ * its fallback chain. Core carries this on the resolved scope and rides it
+ * from the read path and the A/B co-render walk; without the i18n plugin core
+ * uses its own identity default and none of this code runs.
  *
- * Because the i18n factory builds this ONLY when a language is active, the impl
- * assumes i18n is on (no `'language' in scopeColumns` self-gate) and queries the
- * plugin-owned `language` / `translation_key` columns through a TYPED roots view
- * (D5) instead of raw SQL — tenant scoping reuses the generic
- * `rootScopeConditions` (language excluded), so there is no raw tenant predicate.
+ * Because the i18n factory builds this only when a language is active, the
+ * impl assumes i18n is on (no `'language' in scopeColumns` self-gate) and
+ * queries the plugin-owned `language` / `translation_key` columns through a
+ * typed roots view instead of raw SQL. Tenant scoping reuses the generic
+ * `rootScopeConditions` (language excluded), so there is no raw tenant
+ * predicate.
  *
- * Closes over the active `language` + `fallback` chain (the resolution policy);
- * `db` + `scopeColumns` (the merged tenant predicate) arrive per call.
- *   - resolveRenderTargets: tgr_ → best sibling along [language, ...fallback];
- *     rot_ → active-language sibling of its group, else the stored anchor;
- *     other values → themselves.
- *   - resolveConflictTargets: the whole-group SUPERSET a key could render as
+ * Closes over the active `language` + `fallback` chain (the resolution
+ * policy); `db` + `scopeColumns` (the merged tenant predicate) arrive per call.
+ *   - resolveRenderTargets: tgr_ to the best sibling along [language,
+ *     ...fallback]; rot_ to the active-language sibling of its group, else the
+ *     stored anchor; other values to themselves.
+ *   - resolveConflictTargets: the whole-group superset a key could render as
  *     (the A/B co-render conflict set).
- *   - expandGroup / groupKeysFor: translation-group expansion / its `tgr_` keys.
+ *   - expandGroup / groupKeysFor: translation-group expansion / its tgr_ keys.
  */
 export function buildI18nReferenceResolver(
   language: string,
@@ -44,7 +45,7 @@ export function buildI18nReferenceResolver(
       for (const value of storedValues) {
         if (value.startsWith('tgr_')) tgrValues.push(value);
         else if (value.startsWith('rot_')) rotValues.push(value);
-        else valueToRootId.set(value, value); // unknown prefix — used as-is
+        else valueToRootId.set(value, value); // unknown prefix: used as-is
       }
 
       if (tgrValues.length > 0) {
@@ -81,8 +82,8 @@ export function buildI18nReferenceResolver(
       }
 
       if (rotValues.length > 0) {
-        // 1) stored anchor → its translation group key (tenant-scoped; NOT
-        //    archived-filtered — the anchor itself may be archived).
+        // 1) Stored anchor to its translation group key (tenant-scoped, not
+        //    archived-filtered: the anchor itself may be archived).
         const groupRows = await db
           .select({
             id: i18nRoots.id,
@@ -99,7 +100,7 @@ export function buildI18nReferenceResolver(
         const groupByRot = new Map<string, string>();
         for (const r of groupRows) groupByRot.set(r.id, r.translationKey);
 
-        // 2) each group → its ACTIVE-language sibling (only).
+        // 2) Each group to its active-language sibling (only).
         const groupKeys = [...new Set(groupByRot.values())];
         const siblingByGroup = new Map<string, string>();
         if (groupKeys.length > 0) {
@@ -121,7 +122,7 @@ export function buildI18nReferenceResolver(
           for (const r of sibRows) siblingByGroup.set(r.translationKey, r.id);
         }
 
-        // 3) anchor → active-language sibling, else the stored anchor itself.
+        // 3) Anchor to the active-language sibling, else the stored anchor.
         for (const value of rotValues) {
           const group = groupByRot.get(value);
           const sibling = group ? siblingByGroup.get(group) : undefined;
@@ -144,11 +145,11 @@ export function buildI18nReferenceResolver(
 }
 
 /**
- * Expand a set of rootIds to ALL their translation-group siblings. A reference
- * stores a `rot_` anchor but the read-time auto-upgrade renders the active-
- * language sibling, so the co-render check must treat the whole group as one
- * logical block. `translation_key` is a globally-unique, tenant-bound group id
- * → no tenant predicate needed.
+ * Expand a set of rootIds to all their translation-group siblings. A reference
+ * stores a `rot_` anchor but the read-time auto-upgrade renders the
+ * active-language sibling, so the co-render check must treat the whole group
+ * as one logical block. `translation_key` is a globally-unique, tenant-bound
+ * group id, so no tenant predicate is needed.
  */
 async function expandTranslationGroups(
   db: DrizzleInstance,
@@ -188,10 +189,10 @@ async function groupTranslationKeys(
 }
 
 /**
- * Resolve reference targetKeys (`rot_` rootIds OR `tgr_` group keys) to the
- * rootIds they actually RENDER — expanding a `tgr_` to its whole group (a
- * conservative superset; the read path picks one sibling, we keep all).
- * Tenant-scoped: an author-typed foreign rootId resolves to nothing → the
+ * Resolve reference targetKeys (`rot_` rootIds or `tgr_` group keys) to the
+ * rootIds they actually render, expanding a `tgr_` to its whole group (a
+ * conservative superset; the read path picks one sibling, this keeps all).
+ * Tenant-scoped: an author-typed foreign rootId resolves to nothing, so the
  * co-render set never crosses tenants.
  */
 async function resolveReferenceTargets(

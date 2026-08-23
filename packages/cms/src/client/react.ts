@@ -25,9 +25,7 @@ import {
 import { useStore } from './react-store';
 
 // Adds the browser-callable replace-asset hook to the client's `media`
-// namespace, mirroring `WithMedia<T>` in types.ts. Declared locally (rather
-// than in the shared type-mapping utility) to keep Plan 007's client changes
-// confined to media-upload.ts/react.ts/vanilla.ts.
+// namespace, mirroring `WithMedia<T>` in types.ts.
 type WithReplaceAsset<T> = T extends { media: infer M }
   ? Omit<T, 'media'> & {
       media: M & { useReplaceAsset: () => CMSMediaReplaceState };
@@ -36,8 +34,8 @@ type WithReplaceAsset<T> = T extends { media: infer M }
 
 // Shared-store key the media-optimize plugin publishes its auto-optimizer
 // under. Kept as a literal (not imported) so the React entry never statically
-// pulls in the plugin's canvas/WebP code. Must match
-// `UPLOAD_OPTIMIZER_KEY` in `plugins/media-optimize/index.ts`.
+// pulls in the plugin's canvas/WebP code. Must match `UPLOAD_OPTIMIZER_KEY`
+// in plugins/media-optimize/index.ts.
 const UPLOAD_OPTIMIZER_KEY = 'media-optimize:uploadOptimizer';
 
 type UploadOptimizer = {
@@ -52,9 +50,9 @@ type UploadOptions = CMSMediaUploadOptions & { optimize?: boolean };
 /**
  * React `useUploadAssets` hook. Wraps the raw media-upload atom so that, when
  * the `media-optimize` plugin is installed and enabled, files are optimized on
- * the client BEFORE signing/upload — by default, no manual `optimizeImage`
- * call required. Opt out per call with `upload(files, { optimize: false })`.
- * When the plugin is absent, behavior is unchanged (original bytes uploaded).
+ * the client before signing/upload. Opt out per call with
+ * `upload(files, { optimize: false })`; without the plugin the original bytes
+ * are uploaded unchanged.
  */
 function makeUseUploadAssets(config: ClientConfig): () => CMSMediaUploadState {
   return () => {
@@ -80,8 +78,8 @@ function makeUseUploadAssets(config: ClientConfig): () => CMSMediaUploadState {
 
         return baseUpload(finalFiles, options);
       };
-      // `state.upload` is a stable reference (set once by the atom factory), so
-      // this memoizes to a single wrapped function across renders.
+      // `state.upload` is set once by the atom factory, so this memo holds
+      // for the component's lifetime.
     }, [state.upload]);
 
     return { ...state, upload: wrappedUpload as CMSMediaUploadState['upload'] };
@@ -89,11 +87,8 @@ function makeUseUploadAssets(config: ClientConfig): () => CMSMediaUploadState {
 }
 
 /**
- * React `useReplaceAsset` hook — the browser-callable half of `replaceAsset`
- * (Plan 007 part A). Wraps a `CMSMediaReplaceState` atom created once per
- * client instance (mirrors `makeUseUploadAssets`, which reads the upload
- * atom off `config.pluginsAtoms` instead — the replace atom is created
- * directly here rather than threaded through `ClientConfig`).
+ * React `useReplaceAsset` hook, backed by a `CMSMediaReplaceState` atom
+ * created once per client instance.
  */
 function makeUseReplaceAsset(
   replaceAtom: ReadableAtom<CMSMediaReplaceState>,
@@ -106,7 +101,7 @@ function makeUseReplaceAsset(
  *
  * Plugin `init` functions run asynchronously in the background on creation
  * for side effects only. The client is built synchronously and is usable
- * immediately — the config is ready before init completes, so calls do not
+ * immediately: the config is ready before init completes, so calls do not
  * block on it.
  *
  * Atom hooks are wrapped in `useStore()` so they work as React hooks:
@@ -131,9 +126,10 @@ function makeUseReplaceAsset(
  * }
  * ```
  */
-// TPlugins is INFERRED from `options.plugins`, default `[]` (not `CMSClientPlugin[]`)
-// so a no-plugins client never gets a `Record<string,unknown>` action index
-// signature (which would make `client.anyTypo` type-check). See vanilla.ts.
+// TPlugins is inferred from `options.plugins` with default `[]` (not
+// `CMSClientPlugin[]`): a no-plugins client then has an empty action set
+// instead of a `Record<string,unknown>` index signature, which would let
+// `client.anyTypo` type-check. See vanilla.ts.
 export function createCMSClient<
   TCMS = unknown,
   const TPlugins extends CMSClientPlugin[] = [],

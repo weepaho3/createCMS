@@ -3,20 +3,21 @@ import { useEffect } from 'react';
 import type { ConsentPurpose, ConsentState } from './types';
 
 // ============================================================================
-// c15t adapter — drive the createCMS consent gate from c15t's consent state
+// c15t adapter: drive the createCMS consent gate from c15t's consent state
 // ============================================================================
 
 /**
  * Bridges [c15t](https://c15t.com) (the CMP) and the createCMS consent gate.
  *
- * c15t renders the banner, stores the decision, and exposes the visitor's choice
- * per consent category via `useConsentManager()`. The createCMS gate is the
- * consumer-side layer that buffers the CMS's own A/B + analytics side-effects
- * until consent is decided. This adapter maps c15t's categories to Google
- * Consent Mode v2 signals and pushes them into the gate as a real decision.
+ * c15t renders the banner, stores the decision, and exposes the visitor's
+ * choice per consent category via `useConsentManager()`. The createCMS gate is
+ * the consumer-side layer that buffers the CMS's own A/B and analytics side
+ * effects until consent is decided. This adapter maps c15t's categories to
+ * Google Consent Mode v2 signals and pushes them into the gate as a real
+ * decision.
  *
- * It takes c15t's consent record as INPUT — no `@c15t/*` dependency, so it works
- * with any c15t version — and the consumer wires c15t's hook in:
+ * It takes c15t's consent record as input (no `@c15t/*` dependency), and the
+ * consumer wires c15t's hook in:
  *
  * ```tsx
  * import { useConsentManager } from '@c15t/react';
@@ -30,10 +31,10 @@ import type { ConsentPurpose, ConsentState } from './types';
  * // render <ConsentBridge /> inside c15t's <ConsentManagerProvider>
  * ```
  *
- * (If c15t already pushes Consent Mode commands onto `window.dataLayer` — e.g.
- * via GTM — the gate's auto-read picks them up with no bridge at all. This
- * adapter is for the offline / no-dataLayer setups, or when you prefer driving
- * the gate explicitly.)
+ * If c15t already pushes Consent Mode commands onto `window.dataLayer` (e.g.
+ * via GTM), the gate's auto-read picks them up with no bridge at all. This
+ * adapter is for offline or no-dataLayer setups, or for driving the gate
+ * explicitly.
  */
 
 /** Maps a c15t consent category to the Consent Mode v2 signals it grants. */
@@ -42,9 +43,9 @@ export type C15tCategoryMapping = Partial<
 >;
 
 /**
- * Default c15t category → Consent Mode v2 mapping. Only `measurement` and
- * `marketing` map to signals the gate acts on; `necessary` / `functionality` /
- * `experience` are not analytics/ad storage and are ignored. Override for
+ * Default c15t category to Consent Mode v2 mapping. Only `measurement` and
+ * `marketing` map to signals the gate acts on; `necessary`, `functionality`
+ * and `experience` are not analytics/ad storage and are ignored. Override for
  * non-standard category setups.
  */
 export const DEFAULT_C15T_MAPPING: C15tCategoryMapping = {
@@ -83,10 +84,10 @@ export type C15tConsentInput = {
   /** c15t's per-category consent record, e.g. `{ measurement: true }`. */
   consents: Record<string, boolean | undefined> | null | undefined;
   /**
-   * Whether the visitor has actually MADE a decision (vs. pre-banner defaults).
-   * Derive it from c15t's store (e.g. `!!consentInfo` / `hasConsented`). The gate
-   * is pushed only once this is true, so a pending banner never resolves it as a
-   * premature deny — the gate's own wait-window covers the meantime.
+   * Whether the visitor has actually made a decision (vs. pre-banner defaults).
+   * Derive it from c15t's store (e.g. `!!consentInfo` / `hasConsented`). The
+   * gate is pushed only once this is true, so a pending banner never resolves
+   * it as a premature deny; the gate's own wait-window covers the meantime.
    */
   hasConsented: boolean | undefined;
 };
@@ -101,9 +102,9 @@ export function useC15tConsentBridge(
   mapping: C15tCategoryMapping = DEFAULT_C15T_MAPPING,
 ): void {
   const { consents, hasConsented } = c15t;
-  // `key` is the stringified mapped decision — the effect re-pushes ONLY when
-  // that actually changes, not on every render (c15t's `consents` is a fresh ref
-  // each render). It captures the current consents/client/mapping via closure.
+  // `key` is the stringified mapped decision: the effect re-pushes only when
+  // that changes, not on every render (c15t's `consents` is a fresh ref each
+  // render). It captures the current consents/client/mapping via closure.
   const key = hasConsented
     ? JSON.stringify(consentModeFromC15t(consents, mapping))
     : '';

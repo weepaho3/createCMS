@@ -5,10 +5,6 @@ import type { CMSAtomListener, CMSFetch } from '../types';
 
 import { createDynamicPathProxy } from '../proxy';
 
-// Unit coverage for the browser client's Proxy dispatch layer: property access
-// -> `$fetch('/ns/method', { method, ...opts })`, HTTP-method inference from
-// body presence, `pathMethods` overrides, and post-mutation atom invalidation.
-
 const flush = () => new Promise<void>((resolve) => queueMicrotask(resolve));
 
 describe('createDynamicPathProxy — dispatch', () => {

@@ -11,14 +11,14 @@ import {
 /**
  * Pins `reference/errors.mdx` against `CMS_ERRORS`.
  *
- * Error codes are the part of the API consumers branch on (`isCMSError(err,
- * 'PUBLICATION_APPROVAL_REQUIRED')`), so an undocumented code is a branch
- * nobody knows to write, and a code the docs still list after a rename is a
- * branch that silently never fires. `CMS_ERRORS` is dependency-free, so this
- * test reads it at RUNTIME — no AST guessing, no drift between what is parsed
- * and what ships.
+ * Error codes are the part of the API consumers branch on
+ * (`isCMSError(err, 'PUBLICATION_APPROVAL_REQUIRED')`), so an undocumented code
+ * is a branch nobody knows to write, and a code the docs still list after a
+ * rename is a branch that silently never fires. `CMS_ERRORS` is
+ * dependency-free, so this test reads it at runtime: no AST guessing, no drift
+ * between what is parsed and what ships.
  *
- * The `Message` column is deliberately NOT compared to `message`: the docs
+ * The `Message` column is deliberately not compared to `message`: the docs
  * expand several messages with the condition that produces them (see
  * `PROTECTED_BRANCH`), which is better documentation than the wire string.
  * Code and `status` are the contract; those are pinned.

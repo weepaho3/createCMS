@@ -154,7 +154,7 @@ async function seed(cms: { api: any }) {
   return { about, reusable, home };
 }
 
-/** The stored, unresolved raw tree — what an editor would post back edited. */
+/** The stored, unresolved raw tree: what an editor would post back edited. */
 async function treeOf(
   cms: { api: any },
   rootId: string,
@@ -179,7 +179,7 @@ describe('resolveTree', () => {
     const hero = resolved.tree.children.find((c: any) => c.type === 'hero');
     expect(hero.properties.headline).toBe('Hello Toerbo');
 
-    // The stored head is untouched — resolveTree persists nothing.
+    // The stored head is untouched: resolveTree persists nothing.
     const stillRaw = await treeOf(cms, home.rootId, home.branchId);
     expect(stillRaw.tree.properties.title).toBe('{{brand}} Home');
   });
@@ -361,7 +361,7 @@ describe('resolveTree', () => {
       (c: any) => c.type === 'mystery',
     );
     expect(mystery).toBeDefined();
-    // substituteVariables has no per-type property spec to consult — it
+    // substituteVariables has no per-type property spec to consult: it
     // substitutes every string property regardless of the block type's
     // declared schema, so an unknown type's properties are substituted too.
     expect(mystery.properties.x).toBe('Toerbo');

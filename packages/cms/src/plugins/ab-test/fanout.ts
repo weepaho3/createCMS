@@ -10,15 +10,14 @@ import { rootScopeConditions } from '../../core/scope';
 
 /**
  * The ab-test plugin's implementation of the core {@link AbTestResolver} seam:
- * given a set of already render-resolved root ids, report which have a
- * RUNNING test, with that test's variant branches. The read path uses this to
- * fan a varying block's published branches out to the client.
+ * given a set of already render-resolved root ids, report which have a running
+ * test, with that test's variant branches. The read path uses this to fan a
+ * varying block's published branches out to the client.
  *
- * Stateless — one instance is registered once via a scope factory in the
- * plugin's `init`. Raw SQL (like {@link assertNoCoRenderConflictOnPublish}'s
- * helper) because `cms.ab_tests` is plugin-owned and not in core's Drizzle
- * schema. The `AB_TEST_DUPLICATE_RUNNING` guard ensures at most one running test
- * per root, so grouping by root id is unambiguous.
+ * Stateless: one instance is registered via a scope factory in the plugin's
+ * `init`. Raw SQL because `cms.ab_tests` is plugin-owned and not in core's
+ * Drizzle schema. The `AB_TEST_DUPLICATE_RUNNING` guard ensures at most one
+ * running test per root, so grouping by root id is unambiguous.
  */
 export function buildAbTestResolver(): AbTestResolver {
   return {
@@ -26,10 +25,11 @@ export function buildAbTestResolver(): AbTestResolver {
       const out = new Map<string, RunningAbTest>();
       if (rootIds.length === 0) return out;
 
-      // Scope the lookup to the active tenant (same predicate every other read
-      // applies): JOIN roots so rootScopeConditions can filter by the scope
-      // columns. The passed rootIds are already render-resolved, so this is
-      // defense-in-depth — it must never report a test on an out-of-scope root.
+      // Scope the lookup to the active tenant (the same predicate every other
+      // read applies): JOIN roots so rootScopeConditions can filter by the
+      // scope columns. The passed rootIds are already render-resolved, so this
+      // is defense-in-depth: it must never report a test on an out-of-scope
+      // root.
       const scopeConds = rootScopeConditions(scopeColumns);
       const result = (await db.execute(sql`
         SELECT t.id AS test_id, t.root_id, t.traffic_percentage,
@@ -67,8 +67,8 @@ export function buildAbTestResolver(): AbTestResolver {
           };
           out.set(row.root_id, test);
         }
-        // Defensive: a root has at most one running test (guarded), so ignore
-        // rows from any other test id rather than mixing variants.
+        // A root has at most one running test (guarded), so ignore rows from
+        // any other test id rather than mixing variants.
         if (test.testId !== row.test_id) continue;
         test.variants.push({
           branchId: row.branch_id,

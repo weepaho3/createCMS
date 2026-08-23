@@ -13,17 +13,16 @@ import { CMSError, getCMSErrorCode, isCMSError } from '../errors';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * Error-contract meta-test (test-17 / err-17).
+ * Error-contract meta-test.
  *
- * Now that the error-handling pass has landed, this locks the invariant that
- * ties the three layers together:
+ * Locks the invariant that ties the three layers together:
  *   - every core code in `CMS_ERRORS` has a real throw site,
  *   - the wire body serializes and round-trips through the client mirror, and
  *   - the `getCMSErrorCode` / `isCMSError` helpers agree for core codes,
  *     raw plugin codes (better-call `APIError`), and the client error.
  *
- * If someone adds a `CMS_ERRORS` entry but never throws it — or renames a code
- * on one side of the contract — one of these assertions breaks.
+ * If someone adds a `CMS_ERRORS` entry but never throws it, or renames a code
+ * on one side of the contract, one of these assertions breaks.
  */
 
 /**
@@ -54,7 +53,7 @@ describe('error contract', () => {
     const srcRoot = path.resolve(__dirname, '../..');
     const sourceText = collectSourceText(srcRoot);
 
-    // `new CMSError('SOME_CODE'` — a literal first argument. One dynamic throw
+    // `new CMSError('SOME_CODE'`: a literal first argument. One dynamic throw
     // (`new CMSError(notFound)` in core/blocks/guards.ts) uses a variable and
     // is intentionally not matched, but every code it can carry
     // ('ROOT_NOT_FOUND') also has literal throws elsewhere, so all core codes

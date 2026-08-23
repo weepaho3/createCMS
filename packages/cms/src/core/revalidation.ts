@@ -121,9 +121,7 @@ async function findPublishedRoot(
   return { branchId: row.branch_id, slug: row.slug ?? null };
 }
 
-// ============================================================================
 // Reverse-reference index (built once at startup)
-// ============================================================================
 
 type ReferenceEntry = {
   sourceCollection: string;
@@ -488,20 +486,17 @@ export function createRevalidationRunner<
       input: Record<string, unknown>,
       result: unknown,
     ) {
-      // ── publish ──────────────────────────────────────────────────
-      // Always fires. The publication row was just created/updated,
-      // so checkPublication will find it and resolve the slug.
       if (action === 'publishBranch') {
         const rootId = input.rootId as string;
         const branchId = input.branchId as string;
         if (rootId && branchId) {
           const pub = await checkPublication(db, rootId, branchId);
-          // cms-05: the slug materializes into roots.slug AND the OLD→page
-          // redirects are created at PUBLISH (not at the draft updateRoot). So a
-          // publish that renames the live slug must revalidate the OLD inbound-
-          // redirect paths here too — else their cached ISR entry keeps shadowing
-          // the freshly-created redirect until the route's TTL. On a fresh publish
-          // (no prior redirects) this is an empty set, so nothing changes.
+          // The slug materializes into roots.slug AND the OLD to page
+          // redirects are created at PUBLISH (not at the draft updateRoot). So
+          // a publish that renames the live slug must revalidate the OLD
+          // inbound-redirect paths here too, else their cached ISR entry keeps
+          // shadowing the freshly-created redirect until the route's TTL. On a
+          // fresh publish (no prior redirects) this is an empty set.
           const oldPaths = await subtreeInboundRedirectPaths(
             db,
             collection,
@@ -524,8 +519,8 @@ export function createRevalidationRunner<
       }
 
       // ── unpublish ────────────────────────────────────────────────
-      // Always fires. Slug was pre-resolved in preProcess (before
-      // the publication row was deleted). No extra query needed.
+      // Slug was pre-resolved in preProcess, before the publication row was
+      // deleted; no extra query needed.
       if (action === 'unpublishBranch') {
         const rootId = input.rootId as string;
         const branchId = input.branchId as string;
@@ -540,9 +535,8 @@ export function createRevalidationRunner<
       }
 
       // ── merge ────────────────────────────────────────────────────
-      // executeMerge exposes rootId and targetBranchId in its result,
-      // so we read them directly — zero extra queries for routing.
-      // Only the publication check query is needed.
+      // executeMerge exposes rootId and targetBranchId in its result, so read
+      // them directly; only the publication check query is needed.
       if (action === 'executeMerge') {
         const mergeResult = result as {
           rootId?: string;
@@ -566,12 +560,12 @@ export function createRevalidationRunner<
 
       // ── branch-agnostic root mutations: moveRoot / archiveRoot ────────
       // These mutate cms.roots directly and carry NO branchId in the body, so
-      // the generic tail below (which requires branchId) would skip them — yet
-      // both auto-create OLD→page redirects (reparent shifts the subtree's
+      // the generic tail below (which requires branchId) would skip them; yet
+      // both auto-create OLD to page redirects (reparent shifts the subtree's
       // paths; archive points the old path at the parent). Resolve the root's
-      // published branch and revalidate the OLD paths + the root's own/new path,
-      // else the freshly-created redirect stays shadowed by the cached ISR entry
-      // until the route's TTL.
+      // published branch and revalidate the OLD paths + the root's own/new
+      // path, else the freshly-created redirect stays shadowed by the cached
+      // ISR entry until the route's TTL.
       if (action === 'moveRoot' || action === 'archiveRoot') {
         const movedRootId = input.rootId as string | undefined;
         if (!movedRootId) return;
@@ -596,7 +590,7 @@ export function createRevalidationRunner<
           oldPaths,
         );
         // A reparent shifts every published descendant's full path too (nested).
-        // (archiveRoot blocks roots-with-children, so archive has no descendants.)
+        // archiveRoot blocks roots-with-children, so archive has no descendants.
         if (action === 'moveRoot') {
           await cascadeDescendantRevalidation(action, collection, movedRootId);
         }
@@ -604,9 +598,9 @@ export function createRevalidationRunner<
       }
 
       // ── block mutations ──────────────────────────────────────────
-      // rootId and branchId come directly from the request body.
-      // Single publication check query — returns nothing for
-      // non-published branches (indexed lookup, near-zero cost).
+      // rootId and branchId come directly from the request body; the single
+      // publication check returns nothing for non-published branches (indexed
+      // lookup, near-zero cost).
       const rootId = input.rootId as string | undefined;
       const branchId = input.branchId as string | undefined;
       if (!rootId || !branchId) return;
@@ -619,13 +613,13 @@ export function createRevalidationRunner<
         return;
       }
 
-      // A slug-change via updateRoot shifts this root's — and, in a nested
-      // collection, its whole subtree's — published path and auto-creates
-      // OLD→page redirects (core/redirects/auto-create.ts). Revalidate those OLD
+      // A slug-change via updateRoot shifts this root's (and, in a nested
+      // collection, its whole subtree's) published path and auto-creates OLD to
+      // page redirects (core/redirects/auto-create.ts). Revalidate those OLD
       // paths alongside the new one, so the freshly-created redirect surfaces
       // immediately instead of after the route's ISR TTL. The `slug` gate skips
-      // property-only updateRoots (no path change → no redirect). (moveRoot /
-      // archiveRoot are branch-agnostic and handled in their own branch above.)
+      // property-only updateRoots (no path change means no redirect).
+      // moveRoot/archiveRoot are branch-agnostic and handled above.
       const pathMayHaveChanged =
         action === 'updateRoot' && input.slug !== undefined;
       const oldPaths = pathMayHaveChanged

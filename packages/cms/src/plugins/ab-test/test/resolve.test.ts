@@ -8,10 +8,10 @@ import { abTest } from '../index';
 import { buildSchema } from '../schema';
 
 /**
- * AB_FANOUT FA1 — the edge-readable resolve seam. `cms.api.<collection>.
- * resolveAbVariant({ query: { path } })` returns the single running test that
- * varies the page's render (page root OR a transitively-embedded block, XOR
- * <=1), with its variants — the data the edge middleware needs to bucket.
+ * The edge-readable resolve seam: `cms.api.<collection>.resolveAbVariant({
+ * query: { path } })` returns the single running test that varies the page's
+ * render (page root or a transitively-embedded block, XOR at most one), with
+ * its variants, so the edge middleware can bucket without a page render.
  */
 
 const RESOLVE_COLLECTIONS = {
@@ -150,7 +150,7 @@ async function startTest(
   return testId as string;
 }
 
-describe('A/B resolve seam (FA1)', () => {
+describe('A/B resolve seam', () => {
   it('resolves a PAGE-level running test by path', async () => {
     const { cms } = await setupResolveCMS();
     const page = await rootWithVariant(
@@ -226,7 +226,7 @@ describe('A/B resolve seam (FA1)', () => {
     });
     expect(res.test).not.toBeNull();
     expect(res.test.testId).toBe(blockTestId);
-    expect(res.test.rootId).toBe(block.rootId); // the embedded block, not the page
+    expect(res.test.rootId).toBe(block.rootId); // the block, not the page
     expect(res.test.variants).toHaveLength(2);
   });
 
@@ -240,9 +240,9 @@ describe('A/B resolve seam (FA1)', () => {
     );
     await startTest(cms, 'pages', page);
 
-    // The test is created with both branches published, but a later unpublish
-    // (no guard against it today) leaves < 2 published variants → fan-out must
-    // degrade to control rather than hand the edge an unrenderable branch.
+    // The test is created with both branches published; a later unpublish
+    // leaves fewer than 2 published variants, so fan-out must degrade to
+    // control rather than hand the edge an unrenderable branch.
     await cms.api.pages.unpublishBranch({
       body: { rootId: page.rootId, branchId: page.variantBranchId },
     });

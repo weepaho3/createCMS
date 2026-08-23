@@ -12,7 +12,7 @@ export type ThreeWayVerdict =
       children: string[];
     };
 
-/** Order-sensitive equality of two child-id arrays — children are one atomic
+/** Order-sensitive equality of two child-id arrays: children are one atomic
  * axis (see {@link analyzeThreeWay}), so a plain index-wise compare is enough;
  * no deep-equal needed for an array of ids. */
 function sameChildren(a: string[], b: string[]): boolean {
@@ -87,8 +87,8 @@ export function analyzeThreeWay(
   source: ReconstructedBlock | undefined,
   target: ReconstructedBlock | undefined,
 ): ThreeWayVerdict {
-  // Preconditions (design decisions 4 & 5): any failure stays a conflict,
-  // exactly as today's version-id-only detector would already report.
+  // Any failure stays a conflict, exactly as the version-id-only detector
+  // would already report.
   if (!base || base.deleted) return { verdict: 'conflict' };
   if (!source || source.deleted) return { verdict: 'conflict' };
   if (!target || target.deleted) return { verdict: 'conflict' };
@@ -115,11 +115,11 @@ export function analyzeThreeWay(
     }
   }
 
-  // Children are one atomic axis (decision 5): both sides changing children
-  // to DIFFERENT arrays is a conflict, same as a property-key overlap. Only
-  // one side changing children — or both landing on the same array — merges
-  // cleanly, preserving buildMergedSnapshot's documented orphan-block
-  // semantics (this never invents a merged array from partial edits).
+  // Children are one atomic axis: both sides changing children to DIFFERENT
+  // arrays is a conflict, same as a property-key overlap. Only one side
+  // changing children (or both landing on the same array) merges cleanly,
+  // preserving buildMergedSnapshot's documented orphan-block semantics (this
+  // never invents a merged array from partial edits).
   const sourceChildrenChanged = !sameChildren(base.children, source.children);
   const targetChildrenChanged = !sameChildren(base.children, target.children);
 
@@ -146,9 +146,8 @@ export function analyzeThreeWay(
   );
 
   // Generalized reuse: when the merged outcome IS one side's record, point at
-  // that side's existing version instead of minting a new row. This subsumes
-  // the old "fully identical outcomes" shortcut: when both sides are
-  // identical, the merged record equals source and source is preferred.
+  // that side's existing version instead of minting a new row. This also
+  // covers the case where both sides ended up fully identical.
   if (
     diffProperties(properties, source.properties).length === 0 &&
     sameChildren(children, source.children)

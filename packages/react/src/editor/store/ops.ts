@@ -51,7 +51,7 @@ function isSelfOrDescendant(
 
 /**
  * Applies one op to a node table. Pure: returns a new table (untouched nodes
- * are shared) plus the inverse op, or `null` when the op is rejected —
+ * are shared) plus the inverse op, or `null` when the op is rejected:
  * unknown ids, id collisions, moving/removing the root, a `move` into the
  * node's own subtree, a missing target parent. Indexes are clamped.
  */

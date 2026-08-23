@@ -4,22 +4,17 @@
  *
  * Those tests pin the documentation against the code the same way
  * `core/routes/test/endpoint-authz-contract.test.ts` pins the authorization
- * contract: the SOURCE is the truth, the MDX is checked against it, and both
- * directions fail — an undocumented option is a gap, and a documented option
- * that no longer exists is worse, because it sends a reader down a path that
- * does not exist.
+ * contract: the SOURCE is the truth and the MDX is checked against it, in
+ * both directions. An undocumented option is a gap; a documented option that
+ * no longer exists sends a reader down a path that does not exist.
  *
- * Three pieces live here:
- *  - path resolution from this package into `apps/docs` (cwd-independent, so
- *    the tests pass under vitest, turbo, and a bare `vitest run <file>`),
- *  - MDX readers: a table parser and an `<APIMethod />` attribute parser,
- *  - TS-AST readers for the type aliases that ARE the source of truth for the
- *    define/configuration pages. `typescript` is already a dev dependency and
- *    is already used exactly like this in `scripts/inject-endpoint-docs.mjs`.
+ * Three pieces live here: path resolution from this package into `apps/docs`
+ * (cwd-independent), MDX readers (a table parser and an `<APIMethod />`
+ * attribute parser), and TS-AST readers for the type aliases that are the
+ * source of truth for the define/configuration pages.
  *
- * Everything that extracts a set throws when it extracts NOTHING. A docs test
- * that silently compares two empty sets passes forever while the docs rot;
- * these guards make a broken extractor a loud failure instead.
+ * Everything that extracts a set throws when it extracts NOTHING: a docs test
+ * that silently compares two empty sets passes forever while the docs rot.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -31,12 +26,10 @@ import ts from 'typescript';
 // ---------------------------------------------------------------------------
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-/** `packages/cms` */
 const PACKAGE_ROOT = path.resolve(HERE, '../..');
-/** Monorepo root. */
 const REPO_ROOT = path.resolve(PACKAGE_ROOT, '../..');
 
-/** `apps/docs/content/docs` — the Fumadocs content root. */
+/** `apps/docs/content/docs`, the Fumadocs content root. */
 export const DOCS_ROOT = path.join(
   REPO_ROOT,
   'apps',
@@ -63,7 +56,7 @@ export function docPath(relative: string): string {
 }
 
 /**
- * Reads one docs page. Throws with the resolved path when it is missing — a
+ * Reads one docs page. Throws with the resolved path when it is missing: a
  * renamed page must fail the test loudly, not read as "nothing documented".
  */
 export function readDoc(relative: string): string {
@@ -114,14 +107,12 @@ function escapeRegExp(value: string): string {
 }
 
 /**
- * Whether `text` mentions `token` as a WHOLE identifier.
+ * Whether `text` mentions `token` as a whole identifier.
  *
  * Substring matching is the trap this exists to avoid: `getRoot` occurs inside
  * `getRootHistory`, `min` inside `minLength`, `list` inside `listRoots`. A
  * substring check would count each of those as documented and the test would
- * pass while the real thing is missing. Identifier characters bound the match
- * on both sides, so `getRoot` matches `` `getRoot` `` and `getRoot(` but not
- * `getRootHistory`.
+ * pass while the real thing is missing.
  */
 export function mentionsToken(text: string, token: string): boolean {
   return new RegExp(
@@ -209,7 +200,7 @@ export function mdxTables(markdown: string): MdxTable[] {
 
 /**
  * The single table on a page whose heading and header row match. Throws when
- * zero or more than one match — either way the test's assumption about the
+ * zero or more than one match: either way the test's assumption about the
  * page's shape is stale and must be fixed, not silently skipped.
  */
 export function findTable(
@@ -254,12 +245,11 @@ export type APIMethodBlock = {
  *
  * The component (`apps/docs/src/components/api-method.tsx`) is the structured
  * record of which endpoints are documented and under which permission labels,
- * so the endpoint test reads it rather than grepping prose. A block ends at the
- * first line ending in `/>` (usually its own line, occasionally trailing a
- * closing `}}`), and attributes are read only from lines of the form
- * `name="value"` / bare `name` at exactly one indent level, which is what keeps
- * the nested `params={{ ... }}` / `returns={{ ... }}` object literals from being
- * mistaken for attributes.
+ * so the endpoint test reads it rather than grepping prose. A block ends at
+ * the first line ending in `/>`, and attributes are read only from lines of
+ * the form `name="value"` / bare `name` at exactly one indent level, which is
+ * what keeps the nested `params={{ ... }}` / `returns={{ ... }}` object
+ * literals from being mistaken for attributes.
  */
 export function parseAPIMethods(
   pages: { relative: string; content: string }[],
@@ -384,10 +374,10 @@ function membersOfTypeNode(
 }
 
 /**
- * The property members of a type alias — the object-literal ones. For an
- * intersection (`Base & (T extends 'x' ? … : {})`) this returns the members of
- * every plain object constituent; the conditional arms are read separately by
- * {@link conditionalExtras}.
+ * The property members of a type alias, the object-literal ones. For an
+ * intersection (`Base & (T extends 'x' ? ... : {})`) this returns the members
+ * of every plain object constituent; the conditional arms are read separately
+ * by {@link conditionalExtras}.
  */
 export function typeMembers(
   sourceFile: ts.SourceFile,
@@ -427,10 +417,10 @@ function literalStrings(node: ts.TypeNode): string[] {
 }
 
 /**
- * The per-type EXTRA config a property spec adds conditionally: walks the
+ * The per-type extra config a property spec adds conditionally: walks the
  * `T extends 'select' ? { options } : {}` arms of `BlockPropertySpec` (and the
  * equivalent arms inside the `ListElementSpec` mapped type) and returns
- * `'select' -> ['options']`, `'string' -> ['minLength', …]`, and so on.
+ * `'select' -> ['options']`, `'string' -> ['minLength', ...]`, and so on.
  *
  * This is what makes "a new field type gained a required extra option" a test
  * failure instead of a silent docs gap.
@@ -447,7 +437,7 @@ export function conditionalExtras(
       node.types.forEach(walk);
       return;
     }
-    // `{ [K in ListElementType]: … }[ListElementType]` — descend to the value.
+    // `{ [K in ListElementType]: ... }[ListElementType]`: descend to the value.
     if (ts.isIndexedAccessTypeNode(node)) return walk(node.objectType);
     if (ts.isMappedTypeNode(node) && node.type) return walk(node.type);
     if (!ts.isConditionalTypeNode(node)) return;

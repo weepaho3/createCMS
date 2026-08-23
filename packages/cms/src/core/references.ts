@@ -35,11 +35,10 @@ export function getReferencePropertyNames(
   if (!props) return refProps;
 
   for (const [key, spec] of Object.entries(props)) {
-    // A scalar `reference` and a `list` of `reference` both target a collection;
-    // the map records the target collection either way, and every consumer reads
-    // the stored VALUE (a single string vs. an array of strings) to decide how to
-    // walk it. Keeping both here is what makes list-of-reference ride the same
-    // usage-indexing + read-resolution machinery as a single reference.
+    // A scalar `reference` and a `list` of `reference` both target a
+    // collection; the map records the target collection either way, and every
+    // consumer reads the stored VALUE (a single string vs. an array of
+    // strings) to decide how to walk it.
     if (spec.type === 'reference') {
       refProps.set(key, (spec as { collection: string }).collection);
     } else if (
@@ -76,19 +75,17 @@ export function getLinkPropertyNames(
 }
 
 /**
- * Inserts content_usages `reference` rows for newly-created block versions, within
- * the same transaction that created them — the third sibling of the asset and
- * variable indexers (see core/content-index.ts). A reference is a top-level
+ * Inserts content_usages `reference` rows for newly-created block versions,
+ * within the same transaction that created them. A reference is a top-level
  * block property of type `reference` (per the collection def); its stored VALUE
  * is the raw reference string (a `rot_` rootId, or under i18n a `tgr_`
  * translationKey), recorded verbatim as `targetKey` so the reverse "who embeds
  * me" query can match the anchor rootId directly.
  *
- * INSERT-only and keyed by the immutable blockVersionId, like its siblings. The
- * `collectionDef` is REQUIRED (no default) so every version-insert site must
- * thread it — a missed site would silently under-index, which is load-bearing for
- * the reusable-block delete guard. Ships dark: rows populate, nothing
- * reads them yet.
+ * INSERT-only and keyed by the immutable blockVersionId, like its asset and
+ * variable siblings. The `collectionDef` is REQUIRED (no default) so every
+ * version-insert site must thread it; a missed site would silently
+ * under-index, which is load-bearing for the reusable-block delete guard.
  */
 export async function insertReferenceUsagesForVersions(
   tx: DrizzleInstance,
@@ -158,17 +155,17 @@ export async function insertReferenceUsagesForVersions(
  * ANCHOR-only liveness check for the delete guard: true if `rootId` is the
  * DIRECTLY-stored `referencedRootId` of any LIVE reference (a non-deleted
  * referencing version in some branch HEAD snapshot of a non-archived root).
- * Matches exactly the stored value — it does NOT expand to the translation group,
- * so deleting a translation SIBLING (reached only via read-time auto-upgrade) is
- * allowed and degrades gracefully to the anchor. Mirrors
+ * Matches exactly the stored value; it does NOT expand to the translation
+ * group, so deleting a translation SIBLING (reached only via read-time
+ * auto-upgrade) is allowed and degrades gracefully to the anchor. Mirrors
  * isAssetReferencedByLiveContent (core/media/usage.ts).
  *
- * `scopeColumns` are the active CROSS-SCOPE columns (the caller already removed a
- * scoping plugin's cross-scope columns via `crossScopeColumns`), so a host in any
- * such sibling scope still counts while a host OUTSIDE the scope (e.g. another
- * tenant) can NEVER block the owner's delete — reference values are
- * author-controlled raw strings. Symmetric with loadPublishedRoots; undefined /
- * single-scope → unscoped, unchanged.
+ * `scopeColumns` are the active CROSS-SCOPE columns (the caller already removed
+ * a scoping plugin's cross-scope columns via `crossScopeColumns`), so a host in
+ * any such sibling scope still counts while a host OUTSIDE the scope (e.g.
+ * another tenant) can NEVER block the owner's delete, because reference values
+ * are author-controlled raw strings. Symmetric with loadPublishedRoots;
+ * undefined / single-scope means unscoped.
  */
 export async function isReferencedByLiveContent(
   db: DrizzleInstance,
@@ -202,18 +199,19 @@ export async function isReferencedByLiveContent(
 }
 
 /**
- * Page-centric usage for the reusable-block library — "this block is embedded on
+ * Page-centric usage for the reusable-block library: "this block is embedded on
  * these N pages". Takes the SET of rootIds that represent one logical block: a
  * single rootId without i18n, or ALL translation-group siblings under i18n (the
- * caller expands the group at query time — see the getReferenceUsages endpoint),
+ * caller expands the group at query time, see the getReferenceUsages endpoint),
  * so a translated sibling reports the true GROUP-LEVEL usage instead of a
- * misleading 0. Each distinct live (non-archived) HOST root counts once even when
- * it embeds the block in several blocks or branches. Mirrors getAssetUsageDetails.
+ * misleading 0. Each distinct live (non-archived) HOST root counts once even
+ * when it embeds the block in several blocks or branches. Mirrors
+ * getAssetUsageDetails.
  *
  * `scopeColumns` are the active CROSS-SCOPE columns (a scoping plugin's
- * cross-scope columns already removed by the caller), so a host outside the scope
- * (e.g. another tenant) never appears in the usage list — symmetric with the
- * delete guard and the read path. Undefined → unscoped.
+ * cross-scope columns already removed by the caller), so a host outside the
+ * scope (e.g. another tenant) never appears in the usage list; symmetric with
+ * the delete guard and the read path. Undefined means unscoped.
  */
 export async function getReferenceUsageDetails(
   db: DrizzleInstance,
@@ -290,13 +288,11 @@ export async function getReferenceUsageDetails(
   return { pageCount: pages.length, pages };
 }
 
-// ============================================================================
-// Reference-resolution seam — core's identity default
-// ============================================================================
+// Reference-resolution seam: core's identity default
 
 /**
- * Core's identity `ReferenceResolver` — the no-resolver-plugin behaviour (a
- * stored value renders as itself; no grouping), byte-for-byte. Used wherever
+ * Core's identity `ReferenceResolver`, the no-resolver-plugin behaviour (a
+ * stored value renders as itself; no grouping). Used wherever
  * `scope.referenceResolver` is absent.
  *   - resolveRenderTargets: every stored value renders as itself
  *     (loadPublishedRoots then drops unpublished / out-of-scope ones).
@@ -335,16 +331,14 @@ export const coreReferenceResolver: ReferenceResolver = {
   },
 };
 
-// ============================================================================
-// Reference edges — the generic live-head graph primitive (exposed for plugins)
-// ============================================================================
+// Reference edges: the generic live-head graph primitive (exposed for plugins)
 
 /**
  * Live-head reference edges in one direction. `embeds` filters on the host
  * `rootId` and returns what those hosts embed (the `targetKey`s); `embeddedBy`
  * filters on `targetKey` and returns the hosts (`rootId`s). Restricted to
  * non-archived roots' non-deleted branch-HEAD content, scope-filtered (the
- * caller passes cross-scope columns — like the read path / delete guard).
+ * caller passes cross-scope columns, like the read path / delete guard).
  */
 export async function referenceEdges(
   db: DrizzleInstance,

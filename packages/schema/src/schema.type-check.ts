@@ -4,12 +4,11 @@
  * This file ships NOTHING (no `exports` entry references it, so bunchee never
  * builds it) but IS covered by `tsc --noEmit` (the type-check gate includes
  * `src` and excludes only `dist`). A `@ts-expect-error` that stops being an
- * error fails the gate ("unused '@ts-expect-error' directive"), so these
- * double as regression tests for the moved types.
+ * error fails the gate, so these double as regression tests.
  *
  * Deliberately imports NOTHING from `@createcms/core`: `defineBlock` /
  * `defineRoot` / `defineCollection` live there and wrap these same types with
- * a nicer runtime API, but `@createcms/schema` must type-check standalone.
+ * a nicer runtime API, but this package must type-check standalone.
  * `asBlock` / `asRoot` / `asCollection` below are local, type-only stand-ins
  * with the identical generic-inference signature, so a literal object here
  * gets its keys narrowed the same way core's `defineBlock`/`defineCollection`
@@ -31,8 +30,8 @@ import type {
 } from './index';
 
 // ---------------------------------------------------------------------------
-// Local stand-ins for defineBlock/defineRoot/defineCollection (type-only —
-// see the header comment: this package cannot import @createcms/core).
+// Local stand-ins for defineBlock/defineRoot/defineCollection (type-only,
+// this package cannot import @createcms/core, see the header comment)
 // ---------------------------------------------------------------------------
 
 function asBlock<
@@ -181,11 +180,11 @@ type Expect<T extends true> = T;
 // `asBlock`'s `const TProps` capture makes the inferred `properties` record
 // (and its members) `readonly`, the same way `as const` would. That is exactly
 // what preserves the LITERAL `required: true` / `type: 'string'` the property
-// inference switches on — but a readonly-sourced mapped type is represented
-// differently enough internally that the `Equal` trick below reports a false
-// mismatch against a plain (non-readonly) expected object, even though both
-// directions of assignability hold. `Writable` strips that one layer of
-// readonly before the shape gets compared, without touching the moved types.
+// inference switches on, but a readonly-sourced mapped type is represented
+// differently enough internally that `Equal` below reports a false mismatch
+// against a plain (non-readonly) expected object, even though both directions
+// of assignability hold. `Writable` strips that one layer of readonly before
+// the shape gets compared.
 type Writable<T> = { -readonly [K in keyof T]: T[K] };
 
 type HeroProps = InferBlockProperties<Writable<(typeof hero)['properties']>>;

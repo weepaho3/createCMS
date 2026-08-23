@@ -154,11 +154,10 @@ export function substituteVariables(
 }
 
 /**
- * Inserts content_usages variable rows for newly-created block versions, within the same
- * transaction that created them. Insert-only and keyed by the immutable
- * blockVersionId — the version-keyed counterpart of
- * insertAssetReferencesForVersions; see its doc for why this replaces the old
- * branch-blind delete-then-reinsert. MUST be called at every block-version
+ * Inserts content_usages variable rows for newly-created block versions, within
+ * the same transaction that created them. Insert-only and keyed by the
+ * immutable blockVersionId; the version-keyed counterpart of
+ * insertAssetReferencesForVersions. MUST be called at every block-version
  * insert site (variable keys are free text, so there is no FK to validate).
  */
 export async function insertVariableUsagesForVersions(

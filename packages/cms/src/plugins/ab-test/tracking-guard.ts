@@ -31,13 +31,11 @@ type FunctionalInstance = {
 
 /**
  * Confirms the root is within the caller's scope BEFORE any block read, using
- * the SAME authoritative predicate the core publishBranch handler trusts
- * (`scope.roots.where` — tenant AND i18n language AND not-archived, via
- * {@link requireRootInScope}). Returns false when the root is out of scope — the
- * guard then no-ops and the core handler rejects with ROOT_NOT_FOUND. This keeps
- * the unscoped before-hook from reading another scope's (tenant OR language)
- * blocks. With no scope predicate (single-tenant, no i18n) every root is in
- * scope, so the existence check just confirms the root exists.
+ * the same authoritative predicate the core publishBranch handler trusts
+ * (`scope.roots.where`, via {@link requireRootInScope}). Returns false when the
+ * root is out of scope; the guard then no-ops and the core handler rejects with
+ * ROOT_NOT_FOUND. This keeps the unscoped before-hook from reading another
+ * scope's (tenant or language) blocks.
  */
 async function rootIsInScope(
   db: DrizzleInstance,
@@ -49,7 +47,7 @@ async function rootIsInScope(
     await requireRootInScope(db, rootId, collectionName, scope?.roots);
     return true;
   } catch (err) {
-    if (err instanceof CMSError) return false; // out of scope → guard no-ops
+    if (err instanceof CMSError) return false; // out of scope, guard no-ops
     throw err;
   }
 }
@@ -89,7 +87,7 @@ async function readFunctionalInstances(
 /**
  * Sibling variant branches that share a RUNNING test with `branchId` on this
  * root. Scoped to the SAME test(s) the branch participates in (not every test
- * on the root) and to `running` status only — so drift is enforced exactly
+ * on the root) and to `running` status only, so drift is enforced exactly
  * where it renders, and editing variant branches of draft/paused/completed
  * tests is never blocked.
  */
@@ -112,13 +110,14 @@ async function getRunningSiblingBranchIds(
 }
 
 /**
- * Publish-time tracking-id guard for functional blocks. Runs as a `publishBranch`
- * before-hook (so it aborts before any write), after confirming tenant ownership:
+ * Publish-time tracking-id guard for functional blocks. Runs as a
+ * `publishBranch` before-hook (so it aborts before any write), after confirming
+ * tenant ownership:
  *  - MISSING:   every functional-block instance must have a non-empty trackingId.
  *  - DUPLICATE: trackingIds must be unique within the branch.
- *  - DRIFT:     when the branch shares a RUNNING test with sibling variant
- *               branches, the SET of functional trackingIds must equal each
- *               sibling's set — so a goal chosen in the UI exists in every arm
+ *  - DRIFT:     when the branch shares a running test with sibling variant
+ *               branches, the set of functional trackingIds must equal each
+ *               sibling's set, so a goal chosen in the UI exists in every arm
  *               (set-equality policy; positional matching intentionally not
  *               required).
  */
@@ -140,7 +139,7 @@ export async function assertTrackingIntegrity(opts: {
     .map(([type]) => type);
   if (functionalTypes.length === 0) return;
 
-  // Scope ownership FIRST — never read another scope's blocks (tenant OR i18n
+  // Scope ownership first: never read another scope's blocks (tenant or i18n
   // language) from this unscoped before-hook.
   if (!(await rootIsInScope(db, rootId, collectionName, scope))) return;
 
@@ -175,7 +174,7 @@ export async function assertTrackingIntegrity(opts: {
     seen.set(tid, inst.blockId);
   }
 
-  // 3. drift across the SAME running test's sibling variant branches.
+  // 3. drift across the same running test's sibling variant branches.
   const siblingBranchIds = await getRunningSiblingBranchIds(
     db,
     rootId,
@@ -194,10 +193,10 @@ export async function assertTrackingIntegrity(opts: {
     const siblingTracking = sibling.map((i) => i.trackingId);
     const siblingClean = siblingTracking.filter((t): t is string => !!t);
     const siblingSet = new Set(siblingClean);
-    // A sibling arm must itself be cleanly anchored — no missing/empty and no
-    // intra-arm duplicate trackingId — else the count won't match its clean
-    // set. (A null/dup is only reachable from a sibling's live head ahead of its
-    // publish snapshot; treating it as drift fails closed.)
+    // A sibling arm must itself be cleanly anchored (no missing or empty and
+    // no intra-arm duplicate trackingId), else the count will not match its
+    // clean set. A null or duplicate is only reachable from a sibling's live
+    // head ahead of its publish snapshot; treating it as drift fails closed.
     const siblingMisanchored =
       siblingClean.length !== siblingTracking.length ||
       siblingSet.size !== siblingClean.length;

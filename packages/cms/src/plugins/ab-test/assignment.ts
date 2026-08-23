@@ -60,10 +60,8 @@ export type AssignmentResult = {
 };
 
 /**
- * Deterministic variant assignment.
- *
- * The same `contextKey + testId` always produces the same variant.
- * No DB writes needed -- pure function.
+ * Deterministic variant assignment: the same `contextKey + testId` always
+ * produces the same variant. Pure function, no DB writes.
  *
  * @param contextKey  - Visitor identifier (user ID or anonymous key)
  * @param testId      - The A/B test ID

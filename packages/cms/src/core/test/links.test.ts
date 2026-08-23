@@ -89,7 +89,7 @@ describe('link property type', () => {
     });
   });
 
-  it('follows the target slug when it changes — but only once published', async () => {
+  it('follows the target slug when it changes, but only once published', async () => {
     const { cms } = await setupLinkCMS();
     const about = await cms.api.pages.createRoot({
       body: { slug: 'about', properties: { title: 'About' } },

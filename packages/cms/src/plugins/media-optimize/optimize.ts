@@ -65,8 +65,8 @@ function canvasToBlobAsync(
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => {
-        // if/else (not a ternary) so the linter can see the two resolution
-        // calls are mutually exclusive (promise/no-multiple-resolved).
+        // if/else (not a ternary) so the linter sees the two resolution calls
+        // as mutually exclusive (promise/no-multiple-resolved).
         if (blob) {
           resolve(blob);
         } else {
@@ -140,11 +140,11 @@ function replaceExtension(filename: string, newExt: string): string {
 /**
  * Optimize an image file on the client before uploading.
  *
- * - **Resize**: Downscale if either dimension exceeds `config.resize.maxSize`
- * - **Compress**: Reduce quality via `config.compress.quality` (1-100)
- * - **Convert**: Convert to WebP when `config.convert.format` is set
- * - **storeOriginal**: When `convert.storeOriginal` is true, also returns an
- *   `originalVariant` -- same resize + compress but kept in the original format
+ * - Resize: downscale if either dimension exceeds `config.resize.maxSize`
+ * - Compress: reduce quality via `config.compress.quality` (1-100)
+ * - Convert: convert to WebP when `config.convert.format` is set
+ * - storeOriginal: when `convert.storeOriginal` is true, also return an
+ *   `originalVariant`: same resize + compress but kept in the original format
  *
  * Non-image files are returned unchanged with `optimized: false`.
  */

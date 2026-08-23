@@ -11,7 +11,7 @@ import { resolveRootCurrentPath } from './resolve';
 type EnabledSlugConfig = Extract<ResolvedSlugConfig, { enabled: true }>;
 
 /**
- * The path-source redirects that ALREADY exist (active) for the given paths, in
+ * The path-source redirects that already exist (active) for the given paths, in
  * the current active scope. We never clobber an existing (manual or older auto)
  * redirect, so these paths are skipped on insert.
  */
@@ -58,9 +58,9 @@ async function subtreeIds(
 }
 
 /**
- * Snapshot the CURRENT full path of a root and all descendants. Call this BEFORE
- * a slug/parent change so the captured paths are the OLD ones — the move/rename
- * shifts every node in the subtree, not just the renamed node.
+ * Snapshot the CURRENT full path of a root and all descendants. Call this
+ * before a slug/parent change so the captured paths are the OLD ones; the
+ * move/rename shifts every node in the subtree, not just the renamed node.
  */
 export async function captureSubtreePaths(
   tx: DbOrTx,
@@ -77,17 +77,18 @@ export async function captureSubtreePaths(
 }
 
 /**
- * After a slug/parent change, write a path→page redirect for every captured node:
- * OLD path → the node itself (a page target, which now resolves to the node's NEW
- * path and keeps following future moves). The callers only invoke this on an
- * ACTUAL change (updateRoot guards on slug change, moveRoot on parent change), so
- * every captured node's path really shifted — no self-redirects to filter.
+ * After a slug/parent change, write a path-to-page redirect for every captured
+ * node: OLD path points at the node itself (a page target, which now resolves
+ * to the node's NEW path and keeps following future moves). The callers only
+ * invoke this on an actual change (updateRoot guards on slug change, moveRoot
+ * on parent change), so every captured node's path really shifted; no
+ * self-redirects to filter.
  *
- * A pre-check (scope-filtered) skips paths that already have an active redirect —
- * we never clobber an existing (manual or older auto) redirect; a reused path
- * keeps its first redirect (a documented edge). scopedInsert carries the
- * plugin-owned scope column; there is no DB-unique to lean on (it would be
- * global), so dedup is the app's responsibility.
+ * A pre-check (scope-filtered) skips paths that already have an active
+ * redirect: we never clobber an existing (manual or older auto) redirect; a
+ * reused path keeps its first redirect. scopedInsert carries the plugin-owned
+ * scope column; there is no DB-unique to lean on (it would be global), so
+ * dedup is the app's responsibility.
  */
 export async function recordSubtreeRedirects(
   tx: DbOrTx,

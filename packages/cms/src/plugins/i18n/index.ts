@@ -44,9 +44,9 @@ export type I18nMiddlewareResult<L extends string = string> =
 
 /**
  * Resolves the active language from the incoming request context.
- * Priority: body.language -> query.language -> fallback.
+ * Priority: body.language, then query.language, then fallback.
  *
- * The CMS is routing-agnostic: HOW you derive the language (URL prefix `/de`,
+ * The CMS is routing-agnostic: how you derive the language (URL prefix `/de`,
  * domain, Accept-Language header, cookie) is the consumer's middleware concern.
  * This helper only reads an explicit per-request override; pass the negotiated
  * default as `fallback`.
@@ -69,10 +69,10 @@ export type I18nContext = {
 };
 
 /**
- * Read the resolved i18n context (active language + fallback chain + configured
- * universe) from a ResolvedScope. The plugin's own accessor for the OPAQUE
- * `pluginContext.i18n` slot it stashes per request; core never names
- * i18n. Undefined when the i18n plugin did not scope the request.
+ * Read the resolved i18n context (active language, fallback chain, configured
+ * universe) from a ResolvedScope. The plugin's own accessor for the opaque
+ * `pluginContext.i18n` slot it stashes per request; core never names i18n.
+ * Undefined when the i18n plugin did not scope the request.
  */
 export function getI18nContext(
   scope: ResolvedScope | undefined,
@@ -83,30 +83,30 @@ export function getI18nContext(
 const PLUGIN_ID = 'i18n' as const;
 
 /**
- * i18n plugin config. `languages` is the static UNIVERSE of supported languages
- * (a const tuple → a typed language union); `defaultLanguage` is the seed +
- * fallback head and must be a member of the universe. Per-tenant activation of a
- * SUBSET is a runtime concern handled by the consumer's middleware (it returns
- * the active `language`); this plugin validates that the active language is in
- * the universe. See I18N_DESIGN.md §7.
+ * i18n plugin config. `languages` is the static universe of supported
+ * languages (a const tuple giving a typed language union); `defaultLanguage`
+ * is the seed and fallback head and must be a member of the universe.
+ * Per-tenant activation of a subset is a runtime concern handled by the
+ * consumer's middleware (it returns the active `language`); this plugin
+ * validates that the active language is in the universe.
  */
 export type I18nConfig<L extends readonly string[]> = {
   languages: L;
   defaultLanguage: L[number];
   /**
-   * Per-language fallback chains (ordered languages to try AFTER the active one
-   * when a translation is missing). `default` is the catch-all for languages not
-   * listed; absent → every language falls back to `defaultLanguage`. An explicit
-   * empty array opts a language OUT of any fallback (`{ de: [] }` → a missing `de`
-   * translation stays unresolved rather than falling back). Example:
-   * `{ default: ['en'], 'fr-CA': ['fr', 'en'] }`.
+   * Per-language fallback chains (ordered languages to try after the active
+   * one when a translation is missing). `default` is the catch-all for
+   * languages not listed; absent means every language falls back to
+   * `defaultLanguage`. An explicit empty array opts a language out of any
+   * fallback (`{ de: [] }` leaves a missing `de` translation unresolved).
+   * Example: `{ default: ['en'], 'fr-CA': ['fr', 'en'] }`.
    */
   fallback?: Partial<Record<L[number] | 'default', readonly L[number][]>>;
 };
 
 /**
- * The ordered fallback chain for `activeLang` — languages to try AFTER it, with
- * the active language removed and duplicates dropped.
+ * The ordered fallback chain for `activeLang`: languages to try after it,
+ * with the active language removed and duplicates dropped.
  */
 function resolveFallbackChain<L extends readonly string[]>(
   config: I18nConfig<L>,
@@ -133,8 +133,9 @@ export function i18n<const L extends readonly string[]>(config: I18nConfig<L>) {
       `i18n: defaultLanguage "${String(config.defaultLanguage)}" must be one of languages [${config.languages.join(', ')}]`,
     );
   }
-  // Catch fallback-config typos at construction (like defaultLanguage): keys must
-  // be a configured language or 'default'; every chain entry must be a language.
+  // Catch fallback-config typos at construction (like defaultLanguage): keys
+  // must be a configured language or 'default'; every chain entry must be a
+  // language.
   if (config.fallback) {
     for (const [key, chain] of Object.entries(
       config.fallback as Record<string, readonly string[]>,
@@ -161,10 +162,10 @@ export function i18n<const L extends readonly string[]>(config: I18nConfig<L>) {
 
     $ERROR_CODES,
 
-    // Per-collection endpoints: createTranslation / listTranslations
-    // surface at cms.api.<collection>.x only because this plugin is installed.
-    // The configured language universe is closed in here so the endpoints
-    // validate a target language without reading per-request scope.
+    // Per-collection endpoints: createTranslation / listTranslations surface
+    // at cms.api.<collection>.x only because this plugin is installed. The
+    // configured language universe is closed in here so the endpoints validate
+    // a target language without reading per-request scope.
     collectionEndpoints: (def, ctx) =>
       createI18nCollectionEndpoints(
         def,
@@ -192,58 +193,58 @@ export function i18n<const L extends readonly string[]>(config: I18nConfig<L>) {
         const fallback = resolveFallbackChain(config, language);
 
         // Blanket per-language scoping on `roots`, exactly like multi-tenant's
-        // tenant_slug (Strapi-style per-locale context): `where` scopes every
-        // roots read/guard to the active language, `insertColumns` stamps it on
-        // every create. Cross-language operations (the language switcher /
-        // translation status) are served by dedicated translationKey endpoints
-        // later — they query by group id, not the blanket scope.
+        // tenant_slug (per-locale context): `where` scopes every roots
+        // read/guard to the active language, `insertColumns` stamps it on every
+        // create. Cross-language operations (language switcher / translation
+        // status) are served by dedicated translationKey endpoints; they query
+        // by group id, not the blanket scope.
         return {
           roots: {
             where: sql`"cms"."roots"."language" = ${language}`,
             insertColumns: { language },
-            // A new logical entry mints a FRESH translation group id;
+            // A new logical entry mints a fresh translation group id;
             // sibling-language roots inherit it later via createTranslation.
             newEntryColumns: () => ({
               translation_key: newId('translationGroup'),
             }),
-            // `language` is stamped on insert but is a CROSS-SCOPE column for
-            // reads: a reference/host/usage in any sibling language still counts,
-            // so cross-scope read queries must NOT filter by it.
+            // `language` is stamped on insert but is a cross-scope column for
+            // reads: a reference/host/usage in any sibling language still
+            // counts, so cross-scope read queries must not filter by it.
             crossScopeExclude: ['language'],
           },
-          // Redirects are per-language too: a redirect created for `en` must not
-          // fire for a `de` visitor (and the two languages can have different
-          // redirects for the same path). The resolver / CRUD / auto-create all
+          // Redirects are per-language: a redirect created for `en` must not
+          // fire for a `de` visitor, and the two languages can have different
+          // redirects for the same path. The resolver, CRUD and auto-create all
           // consume scope.redirects, so this is the whole wiring.
           redirects: {
             where: sql`"cms"."redirects"."language" = ${language}`,
             insertColumns: { language },
           },
           // Templates are per-language: a default for the same field can differ
-          // per language (e.g. German vs English boilerplate). createBlock applies
-          // the active language's defaults; CRUD is language-scoped.
+          // per language (e.g. German vs English boilerplate). createBlock
+          // applies the active language's defaults; CRUD is language-scoped.
           templates: {
             where: sql`"cms"."templates"."language" = ${language}`,
             insertColumns: { language },
           },
-          // Variables are per-language but resolved with FALLBACK on READ — so
-          // there is intentionally NO `where` here (the chain, not a hard
-          // equality, picks the language). `language` is stamped on insert; CRUD
-          // targets the exact active-language cell via the variableScopeConditions
-          // helper, and content rendering rides the variableResolver below.
+          // Variables are per-language but resolved with fallback on read, so
+          // there is intentionally no `where` here (the chain, not a hard
+          // equality, picks the language). `language` is stamped on insert;
+          // CRUD targets the exact active-language cell via the
+          // variableScopeConditions helper, and content rendering rides the
+          // variableResolver below.
           variables: {
             insertColumns: { language },
           },
           // Active-language-with-fallback variable resolution for content reads.
           variableResolver: buildI18nVariableResolver(language, fallback),
-          // The reference resolver core's read path + co-render walk ride through
-          // the handle (translation-group aware: tgr_ -> best fallback
-          // sibling; rot_ -> active-language sibling, else anchor). P1 still
-          // imports the impl from core; it MOVES into this plugin in P2.
+          // The reference resolver core's read path and the co-render walk ride
+          // through the handle: translation-group aware (tgr_ to the best
+          // fallback sibling; rot_ to the active-language sibling, else anchor).
           referenceResolver: buildI18nReferenceResolver(language, fallback),
           // Per-request i18n context (active language + fallback chain + the
-          // configured universe), stashed in the OPAQUE pluginContext slot (Seam
-          // C) keyed by this plugin's id. Core never reads it; consumers read it
+          // configured universe), stashed in the opaque pluginContext slot
+          // keyed by this plugin's id. Core never reads it; consumers read it
           // via the exported getI18nContext(scope) accessor.
           pluginContext: {
             i18n: {

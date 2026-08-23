@@ -28,10 +28,10 @@ export type RedirectResolution = { status: number; location: string };
 const MAX_HOPS = 10;
 
 /**
- * Resolve a path to a rootId, then GATE it through the root scope: a global
- * path→root match that belongs outside the active scope is treated as "no live page
- * here" (null) so resolution falls through to this scope's path-source
- * redirects. Mirrors getPublishedContent's scope gate.
+ * Resolve a path to a rootId, then gate it through the root scope: a global
+ * path-to-root match that belongs outside the active scope is treated as "no
+ * live page here" (null) so resolution falls through to this scope's
+ * path-source redirects. Mirrors getPublishedContent's scope gate.
  */
 async function resolveScopedRootId(
   db: DrizzleInstance,
@@ -39,9 +39,9 @@ async function resolveScopedRootId(
   segments: string[],
   rootScope: TableScope | undefined,
 ): Promise<string | null> {
-  // Resolve WITHIN the active root scope so a shared path doesn't match an
-  // out-of-scope sibling that the scope gate below would then reject — mirrors
-  // getPublishedContent. The per-row scope columns ride the roots insert-scope.
+  // Resolve within the active root scope so a shared path doesn't match an
+  // out-of-scope sibling that the scope gate below would then reject. The
+  // per-row scope columns ride the roots insert-scope.
   const rootId = await resolvePathToRootId(
     db,
     collection,
@@ -93,7 +93,7 @@ async function resolveRootPath(
     })
     .from(roots)
     // Gate the target by the active scope (tenant + language) so a page-target
-    // pointing out of scope resolves to nothing rather than leaking its path —
+    // pointing out of scope resolves to nothing rather than leaking its path,
     // symmetric with the scoped source resolution (resolveScopedRootId).
     .where(and(eq(roots.id, rootId), rootScope?.where))
     .limit(1);
@@ -137,7 +137,7 @@ async function resolveTarget(
   if (redirect.targetType === 'path') {
     return redirect.targetPath ?? null;
   }
-  // 'page' target → the root's CURRENT path (so it follows future moves), gated
+  // 'page' target: the root's current path (so it follows future moves), gated
   // to the active scope.
   if (!redirect.targetRootId) return null;
   const target = await resolveRootPath(
@@ -162,11 +162,12 @@ async function resolveTarget(
 }
 
 /**
- * One hop: find the redirect (if any) that applies to `path`, plus its canonical
- * form (used for cycle detection). A LIVE PUBLISHED page with no page-source
- * redirect terminates resolution (the consumer serves it). A page that exists
- * but is not published is a 404 to the consumer, so a path-source redirect still
- * applies — hence the published check before consulting path-source.
+ * One hop: find the redirect (if any) that applies to `path`, plus its
+ * canonical form (used for cycle detection). A live published page with no
+ * page-source redirect terminates resolution (the consumer serves it). A page
+ * that exists but is not published is a 404 to the consumer, so a path-source
+ * redirect still applies; hence the published check before consulting
+ * path-source.
  */
 async function lookupRedirect(
   db: DrizzleInstance,
@@ -225,11 +226,11 @@ async function lookupRedirect(
 
 /**
  * The redirect resolver (read path). Given an incoming `path` in a collection,
- * returns a redirect decision or `null` (the consumer then serves content / 404s).
- * Follows redirect chains — a page-target resolves to the target's current path,
- * which may itself redirect — collapsing them into ONE 3xx and using the first
- * hop's status. A repeated path (cycle) or an over-long chain yields `null` so a
- * misconfigured loop never reaches the client. See REDIRECTS_DESIGN.md.
+ * returns a redirect decision or `null` (the consumer then serves content or
+ * 404s). Follows redirect chains: a page-target resolves to the target's
+ * current path, which may itself redirect; chains are collapsed into one 3xx
+ * using the first hop's status. A repeated path (cycle) or an over-long chain
+ * yields `null` so a misconfigured loop never reaches the client.
  */
 export async function resolveRedirect(
   db: DrizzleInstance,

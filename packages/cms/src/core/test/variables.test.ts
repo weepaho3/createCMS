@@ -217,7 +217,7 @@ describe('Variable delete protection', () => {
       body: { slug: '/', properties: { title: '{{brandName}} Home' } },
     });
 
-    // Archive the root — its variable usages must no longer count as "in use".
+    // Archive the root: its variable usages must no longer count as "in use".
     await cms.api.pages.archiveRoot({ body: { rootId: root.rootId } });
 
     const usages = await cms.api.variables.getVariableUsages({

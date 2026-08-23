@@ -43,7 +43,7 @@ export type ConsentGateProps = {
   children: ReactNode;
   /**
    * Rendered while `purpose` is denied or still pending (default-deny). A
-   * privacy-friendly placeholder lives here — never the third-party embed.
+   * privacy-friendly placeholder lives here, never the third-party embed.
    */
   fallback?: ReactNode;
 };
@@ -52,11 +52,11 @@ export type ConsentGateProps = {
  * Client plugin that exposes the generic consent gate under its own namespace,
  * decoupled from A/B. Lets any consumer gate side effects or rendering of
  * embedded third-party content (YouTube, Maps, Vimeo) behind Google Consent
- * Mode v2 — render only after the visitor consents.
+ * Mode v2: render only after the visitor consents.
  *
- * The gate is created once per client (closed over in `getActions`, like
- * `abTest.useLiveResults`), auto-reads Consent Mode commands off the dataLayer,
- * and resolves after a short wait-window. Reached via the client proxy:
+ * The gate is created once per client (closed over in `getActions`),
+ * auto-reads Consent Mode commands off the dataLayer, and resolves after a
+ * short wait-window. Reached via the client proxy:
  *
  * ```tsx
  * import { consentClient } from '@createcms/core/plugins/consent/client';
@@ -83,8 +83,8 @@ export function consentClient() {
     getActions(_$fetch: CMSFetch, _$store: CMSClientStore, _baseURL: string) {
       const gate = createConsentGate();
 
-      // Zero-config Consent Mode read + a wait-window fallback so a denied
-      // default doesn't strand the gate. Render never waits on this; only the
+      // Zero-config Consent Mode read plus a wait-window fallback so a denied
+      // default does not strand the gate. Render never waits on this; only the
       // gate's buffered side effects do.
       startConsentAutoRead(gate);
       if (typeof window !== 'undefined') {
@@ -99,9 +99,9 @@ export function consentClient() {
         }));
 
         useEffect(() => {
-          // Re-sync in case a decision landed in the render->effect gap. The
-          // functional updater returns `prev` when nothing actually changed so
-          // React bails out via Object.is — no wasted render on the common path.
+          // Re-sync in case a decision landed in the render-to-effect gap. The
+          // functional updater returns `prev` when nothing changed so React
+          // bails out via Object.is.
           setSnap((prev) => {
             const state = gate.getState();
             const resolved = gate.isResolved();
@@ -132,11 +132,9 @@ export function consentClient() {
       return {
         consent: {
           /**
-           * Tell the CMS about the visitor's consent (Consent Mode v2) — a real
-           * decision (treated like a Consent Mode `update`). Optional: the gate
-           * also auto-reads Consent Mode commands off the dataLayer; when running
-           * GTM, calling this from the CMP's update callback is the most reliable
-           * path.
+           * Tell the CMS the visitor's consent (Consent Mode v2): a real
+           * decision, treated like a Consent Mode `update`. Optional; the gate
+           * also auto-reads Consent Mode commands off the dataLayer.
            */
           setConsent(consent: Partial<ConsentState>) {
             gate.applyUpdate(consent);

@@ -42,7 +42,7 @@ import { EditorFramePreview, EditorPreview } from './preview';
 // Type derivations from a schema
 // ---------------------------------------------------------------------------
 
-/** The statically known blocks of `S` — `{}` when `S` declares none or only an index signature. */
+/** The statically known blocks of `S`: `{}` when `S` declares none or only an index signature. */
 export type BlocksOf<S extends AnyEditorSchema> = S extends { blocks?: infer B }
   ? NonNullable<B> extends Record<string, AnyBlockDefinition>
     ? string extends keyof NonNullable<B>
@@ -259,7 +259,7 @@ export type EditorFactory<S extends AnyEditorSchema> = {
  * Binds the untyped hooks to one schema: `Root` has `schema` pre-set, every
  * hook is typed from `S`, and every hook throws when rendered under an
  * `Editor.Root` whose `schema` is a different object (nested editors, generic
- * routes) — the types would lie otherwise.
+ * routes): the types would lie otherwise.
  */
 export function createEditor<const S extends AnyEditorSchema>(
   options: CreateEditorOptions<S>,
@@ -271,7 +271,7 @@ export function createEditor<const S extends AnyEditorSchema>(
     if (ctx.schema !== schema) {
       throw new Error(
         `${hookName}: the enclosing Editor.Root uses a different schema than ` +
-          "this createEditor() instance — render it under the factory's Root " +
+          "this createEditor() instance: render it under the factory's Root " +
           'or pass the same schema object.',
       );
     }

@@ -16,13 +16,13 @@ function req(headers: Record<string, string> = {}): Request {
   });
 }
 
-describe('M-followup — createInMemoryRateLimitStore (fixed window)', () => {
+describe('createInMemoryRateLimitStore (fixed window)', () => {
   it('counts hits within a window and resets after it elapses', () => {
     const store = createInMemoryRateLimitStore();
     expect(store.hit('k', 1000, 0)).toBe(1);
     expect(store.hit('k', 1000, 200)).toBe(2);
     expect(store.hit('k', 1000, 999)).toBe(3);
-    // at/after windowMs from the window start → new window
+    // At or after windowMs from the window start: new window.
     expect(store.hit('k', 1000, 1000)).toBe(1);
     expect(store.hit('k', 1000, 1200)).toBe(2);
   });
@@ -39,17 +39,17 @@ describe('M-followup — createInMemoryRateLimitStore (fixed window)', () => {
     // attacker): the cap holds without waiting for windows to expire.
     const store = createInMemoryRateLimitStore(2);
     expect(store.hit('a', 1000, 0)).toBe(1); // {a}
-    expect(store.hit('b', 1000, 0)).toBe(1); // {a,b} — at cap
-    expect(store.hit('c', 1000, 0)).toBe(1); // evicts oldest 'a' → {b,c}
-    // 'b' is still resident (its window/count survive)…
+    expect(store.hit('b', 1000, 0)).toBe(1); // {a,b} at cap
+    expect(store.hit('c', 1000, 0)).toBe(1); // evicts oldest 'a' -> {b,c}
+    // 'b' is still resident, so its window/count survive.
     expect(store.hit('b', 1000, 0)).toBe(2);
-    // …while 'a' was dropped, so it starts a fresh window.
+    // 'a' was dropped, so it starts a fresh window.
     expect(store.hit('a', 1000, 0)).toBe(1);
   });
 });
 
-describe('M-followup — defaultRateLimitKey', () => {
-  it('uses the RIGHTMOST x-forwarded-for hop (the trusted appended IP), not the spoofable first', () => {
+describe('defaultRateLimitKey', () => {
+  it('uses the rightmost x-forwarded-for hop (the proxy-appended IP)', () => {
     // '1.2.3.4' is whatever the client sent; '5.6.7.8' is what the proxy appended.
     expect(
       defaultRateLimitKey(req({ 'x-forwarded-for': '1.2.3.4, 5.6.7.8' })),
@@ -72,7 +72,7 @@ describe('M-followup — defaultRateLimitKey', () => {
   });
 });
 
-describe('M-followup — enforceTrackEventRateLimit', () => {
+describe('enforceTrackEventRateLimit', () => {
   const opts: AbTestRateLimitOptions = { limit: 2, windowMs: 1000 };
 
   it('allows up to the limit, then returns a 429 with Retry-After', async () => {
@@ -89,7 +89,7 @@ describe('M-followup — enforceTrackEventRateLimit', () => {
 
   it('does not limit when the key cannot be resolved (no IP)', async () => {
     const store = createInMemoryRateLimitStore();
-    // many hits, but no IP header → key null → never limited
+    // Many hits but no IP header: key null, never limited.
     for (let i = 0; i < 10; i++) {
       expect(
         await enforceTrackEventRateLimit(req(), opts, store, 0),
@@ -122,12 +122,12 @@ describe('M-followup — enforceTrackEventRateLimit', () => {
     const b = req({ 'x-forwarded-for': '2.2.2.2' });
     await enforceTrackEventRateLimit(a, opts, store, 0);
     await enforceTrackEventRateLimit(a, opts, store, 0);
-    // a is now at the limit; b is fresh → still allowed
+    // a is now at the limit; b is fresh, so still allowed.
     expect(await enforceTrackEventRateLimit(b, opts, store, 0)).toBeNull();
   });
 });
 
-describe('M-followup — plugin onRequest wiring', () => {
+describe('plugin onRequest wiring', () => {
   // onRequest ignores its ctx arg; a bare object is enough to drive it.
   const run = (plugin: ReturnType<typeof abTest>, request: Request) =>
     (plugin.onRequest as (r: Request, c: unknown) => Promise<unknown>)(

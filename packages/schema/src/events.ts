@@ -16,18 +16,17 @@ export type ScalarBlockProperty = Extract<
 
 /**
  * Declares a meaningful event a functional block can emit (e.g. a form's
- * `submitSuccess`). Living on the block DEFINITION makes it the single source of
- * truth for the typed `fire(...)` union, the test-creation goal picker, and the
- * analytics wire name. `name` overrides the GA4/dataLayer wire name (defaults to
- * `cms_<blockType>_<eventKey>`, computed by the measurement layer). Whether an
- * event counts as a conversion is decided per test in the UI, not here.
+ * `submitSuccess`). Living on the block DEFINITION makes it the single source
+ * of truth for the typed `fire(...)` union, the test-creation goal picker, and
+ * the analytics wire name. `name` overrides the GA4/dataLayer wire name
+ * (defaults to `cms_<blockType>_<eventKey>`, computed by the measurement
+ * layer). Whether an event counts as a conversion is decided per test in the
+ * UI, not here.
  */
 export type EventDeclaration = {
   /** Analytics wire-name override (snake_case). Defaults to cms_<type>_<key>. */
   name?: string;
-  /** Typed parameters carried with the event (scalar only). */
   params?: Record<string, ScalarBlockProperty>;
-  /** Human label for the goal picker. */
   label?: string;
 };
 
@@ -52,8 +51,8 @@ export type BlockEventNames<TEvents extends Record<string, EventDeclaration>> =
   keyof TEvents & string;
 
 /**
- * The typed `fire` signature derived from a block's event declarations — the
- * runtime tracker (M3) implements this. `fire('unknown')`, a missing required
+ * The typed `fire` signature derived from a block's event declarations; the
+ * runtime tracker implements this. `fire('unknown')`, a missing required
  * param, and a wrong-typed param are all compile errors.
  */
 export type BlockEventFire<TEvents extends Record<string, EventDeclaration>> = <
@@ -65,11 +64,11 @@ export type BlockEventFire<TEvents extends Record<string, EventDeclaration>> = <
 
 /**
  * Compile-time requirement: a block that declares `events` (a functional block)
- * MUST carry a `trackingId` string property — the stable, per-instance,
+ * MUST carry a `trackingId` string property, the stable, per-instance,
  * cross-branch goal anchor. Intersected into `defineBlock`'s parameter so a
  * functional block missing it fails to compile. Spread `...trackingId()` into
- * `properties` to satisfy it. (The property is optional at create; the VALUE is
- * enforced at publish by the tracking-id guard.)
+ * `properties` to satisfy it. (The property is optional at create; the VALUE
+ * is enforced at publish by the tracking-id guard.)
  */
 export type RequireTrackingId<
   TProps extends Record<string, BlockProperty>,

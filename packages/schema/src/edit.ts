@@ -11,8 +11,8 @@ export type EditAttrs = {
 };
 
 /**
- * Editor anchors handed to a block component as PLAIN DATA — no functions, so
- * the object crosses the server → client component boundary. `TProps` is the
+ * Editor anchors handed to a block component as PLAIN DATA: no functions, so
+ * the object crosses the server -> client component boundary. `TProps` is the
  * `properties` object of the block DEFINITION, so `field` has one entry per
  * declared property whatever the value type. Spread `block` on the block's
  * root element and `field.<key>` on the element that shows that property.

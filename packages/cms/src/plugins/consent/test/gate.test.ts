@@ -15,7 +15,7 @@ import {
 describe('parseConsentEntry', () => {
   it('parses an arguments-object `update` and exposes the mode', () => {
     // gtag('consent','update',{...}) lands on the dataLayer as an arguments
-    // object — array-like (indexed keys + length), not a real array.
+    // object: array-like (indexed keys + length), not a real array.
     const argsLike = {
       0: 'consent',
       1: 'update',
@@ -84,7 +84,7 @@ describe('parseConsentEntries', () => {
 });
 
 // ============================================================================
-// createConsentGate — default-deny + buffer-then-flush
+// createConsentGate: default-deny + buffer-then-flush
 // ============================================================================
 
 describe('createConsentGate', () => {
@@ -95,21 +95,21 @@ describe('createConsentGate', () => {
     expect(gate.isGranted('analytics_storage')).toBe(false);
   });
 
-  it('a `default` (denied) does NOT resolve the gate — keeps the wait window open', () => {
+  it('a denied `default` does not resolve the gate (keeps the wait window open)', () => {
     const gate = createConsentGate();
     const effect = vi.fn();
     gate.run(effect);
 
     gate.applyDefault({ analytics_storage: 'denied' });
-    expect(gate.isResolved()).toBe(false); // still pending → window not collapsed
+    expect(gate.isResolved()).toBe(false); // still pending, window not collapsed
     expect(effect).not.toHaveBeenCalled();
   });
 
-  it('the canonical flow: default(denied) → buffered impression → update(granted) flushes', () => {
+  it('default(denied) then buffered impression, then update(granted) flushes', () => {
     const gate = createConsentGate();
     const effect = vi.fn();
 
-    gate.applyDefault({ analytics_storage: 'denied' }); // in-<head> Consent Mode
+    gate.applyDefault({ analytics_storage: 'denied' }); // in-head Consent Mode
     gate.run(effect); // impression buffered (banner not answered yet)
     expect(effect).not.toHaveBeenCalled();
 
@@ -118,7 +118,7 @@ describe('createConsentGate', () => {
     expect(effect).toHaveBeenCalledTimes(1); // flushed, not dropped
   });
 
-  it('a partial update without analytics_storage does NOT resolve (stays buffered)', () => {
+  it('a partial update without analytics_storage does not resolve (stays buffered)', () => {
     const gate = createConsentGate();
     const effect = vi.fn();
     gate.run(effect);
@@ -204,7 +204,7 @@ describe('createConsentGate', () => {
 });
 
 // ============================================================================
-// resolveVisitorKey — consent-gated persistence
+// resolveVisitorKey: consent-gated persistence
 // ============================================================================
 
 describe('resolveVisitorKey', () => {

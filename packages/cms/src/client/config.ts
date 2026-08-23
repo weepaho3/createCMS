@@ -26,10 +26,9 @@ export interface ClientConfig {
 }
 
 /**
- * Builds the client config synchronously. Atoms, actions, listeners and
- * error codes are available immediately so React hooks work from the
- * first render. Plugin `init` (async) is NOT called here — use
- * `runPluginInit` afterwards.
+ * Builds the client config synchronously: atoms, actions, listeners and
+ * error codes are available immediately, so React hooks work from the first
+ * render. Plugin `init` (async) is not called here; use `runPluginInit`.
  */
 export function getClientConfigSync(options: CMSClientOptions): ClientConfig {
   const plugins = options.plugins ?? [];
@@ -43,10 +42,10 @@ export function getClientConfigSync(options: CMSClientOptions): ClientConfig {
     try {
       res = await betterCallClient(path as any, opts as any);
     } catch (err) {
-      // Transport failure (offline / DNS / CORS): the underlying fetch rejects
-      // with a raw TypeError, bypassing the `res.error` envelope. Wrap it so the
-      // documented `err instanceof CMSClientError` idiom holds; `status: 0` marks
-      // "the request never reached the server" (err-14).
+      // Transport failure (offline / DNS / CORS) rejects with a raw TypeError,
+      // bypassing the `res.error` envelope. Wrap it so the documented
+      // `err instanceof CMSClientError` idiom holds; `status: 0` marks a
+      // request that never reached the server (err-14).
       if (err instanceof CMSClientError) throw err;
       throw new CMSClientError({
         status: 0,
@@ -63,12 +62,11 @@ export function getClientConfigSync(options: CMSClientOptions): ClientConfig {
     $mediaSignal: atom(false),
     uploadAssets: createMediaUploadAtom($fetch) as WritableAtom<unknown>,
   };
-  // Core system endpoints that are POST but callable with NO/optional body: the
-  // proxy's body-presence heuristic would otherwise dispatch GET and 404. (Any
-  // endpoint with a required body is inferred correctly, so collection routes
-  // need nothing here.) Seeded by default so the documented no-arg calls work
-  // out of the box; `options.pathMethods` (a server `cms.$pathMethods`) extends
-  // this for collection + plugin endpoints. Drift-guarded by the search suite.
+  // POST endpoints callable with no/optional body: the proxy's body-presence
+  // heuristic would otherwise dispatch GET and 404. Endpoints with a required
+  // body are inferred correctly, so collection routes need nothing here.
+  // `options.pathMethods` (a server `cms.$pathMethods`) extends this for
+  // collection + plugin endpoints; drift-guarded by the search suite.
   const pathMethods: Record<string, string> = {
     '/admin/reindexSearch': 'POST',
     '/admin/runPruning': 'POST',
@@ -108,8 +106,7 @@ export function getClientConfigSync(options: CMSClientOptions): ClientConfig {
     if (!plugin.$ERROR_CODES) continue;
     for (const key of Object.keys(plugin.$ERROR_CODES)) {
       if (key in $ERROR_CODES) {
-        // Warn on a shadowed core/plugin code instead of letting the last writer
-        // win silently (err-16).
+        // Warn instead of letting the last writer win silently (err-16).
         console.warn(
           `[cms] client plugin "${plugin.id}" error code "${key}" shadows an existing code`,
         );
@@ -130,9 +127,8 @@ export function getClientConfigSync(options: CMSClientOptions): ClientConfig {
 }
 
 /**
- * Runs async plugin `init` functions sequentially. Call this after
- * `getClientConfigSync` — the config is already usable before init
- * completes, so React hooks work immediately.
+ * Runs async plugin `init` functions sequentially, after
+ * `getClientConfigSync`: the config is usable before init completes.
  */
 export async function runPluginInit(
   options: CMSClientOptions,
@@ -140,17 +136,16 @@ export async function runPluginInit(
 ): Promise<void> {
   const plugins = options.plugins ?? [];
   for (const plugin of plugins) {
-    // init runs for its side effects. (Client plugins surface state via
-    // getActions/atoms, which already close over their own config — there is
-    // no shared client context to populate, so any returned `context` is
-    // intentionally not collected.)
+    // init runs for its side effects only: client plugins surface state via
+    // getActions/atoms, which already close over their own config, so a
+    // returned `context` is intentionally not collected.
     await plugin.init?.(config.$fetch, config.$store);
   }
 }
 
 /**
- * Async convenience wrapper — builds config and runs plugin init.
- * Used by the vanilla (non-React) client where hooks aren't a concern.
+ * Async convenience wrapper building the config and running plugin init.
+ * Used by the vanilla (non-React) client, where hooks aren't a concern.
  */
 export async function getClientConfig(
   options: CMSClientOptions,

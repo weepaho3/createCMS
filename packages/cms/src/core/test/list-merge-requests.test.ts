@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { setupTestCMS } from '../../test-utils/cms';
 
-// Pins the perf-11 follow-up (commit 8d6f64e): listMergeRequests.commentCount
-// must count only LIVE comment threads — a soft-deleted thread (deletedAt set)
-// must not inflate the count, matching the soft-delete model used everywhere else.
-describe('listMergeRequests — commentCount excludes soft-deleted threads', () => {
+// listMergeRequests.commentCount must count only live comment threads: a
+// soft-deleted thread (deletedAt set) must not inflate the count, matching the
+// soft-delete model used everywhere else.
+describe('listMergeRequests: commentCount excludes soft-deleted threads', () => {
   it('drops a soft-deleted comment thread from the count', async () => {
     const { cms } = await setupTestCMS({
       authMiddleware: async () => ({ userId: 'tester' }),

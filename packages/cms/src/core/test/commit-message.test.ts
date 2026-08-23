@@ -60,7 +60,7 @@ describe('forceCommitMessage', () => {
     expect(block.blockId).toBeTruthy();
   });
 
-  it('is off by default — a missing message falls back to an auto-generated one', async () => {
+  it('is off by default: a missing message falls back to an auto-generated one', async () => {
     const { cms } = await setupTestCMS();
     const root = await cms.api.pages.createRoot({
       body: { slug: '/', properties: { title: 'Home' } },

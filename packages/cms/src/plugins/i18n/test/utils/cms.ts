@@ -74,7 +74,7 @@ export const setupI18nTestCMS = async <
 };
 
 /**
- * Both the multiTenant AND i18n plugins active — for testing the composition
+ * Both the multiTenant and i18n plugins active, for testing the composition
  * (each roots row carries `tenant_slug` + `language`; the scope ANDs both
  * predicates). `set(tenant, language)` switches the active pair.
  */

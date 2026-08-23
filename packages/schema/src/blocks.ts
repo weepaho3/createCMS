@@ -15,13 +15,13 @@ export type BlockDefinition<
   previewImageUrl?: string;
   /**
    * Editor hint: the block-picker category this block is shown under (e.g.
-   * `'Forms'`, `'Layout'`). Purely presentational — the editor groups blocks by
-   * this label; the package never acts on it. Free-form by design; for
+   * `'Forms'`, `'Layout'`). Purely presentational, the editor groups blocks by
+   * this label and the package never acts on it. Free-form by design; for
    * consistent, autocompleted group names across blocks, reference a shared
    * `as const` object (e.g. `group: BLOCK_GROUPS.forms`).
    */
   group?: string;
-  /** Events this (functional) block can emit — see {@link EventDeclaration}. */
+  /** Events this (functional) block can emit, see {@link EventDeclaration}. */
   events?: TEvents;
 } & ({ allowChildren?: false } | { allowChildren: true });
 
@@ -40,8 +40,9 @@ export type InferBlockInput<
   };
 }[keyof TBlocks & string];
 
-/** createBlock input — routing fields at top level, discriminated block union nested.
- *  Nesting avoids oRPC's Schema brand breaking discriminated-union autocomplete. */
+/** createBlock input: routing fields at top level, discriminated block union
+ *  nested. Nesting avoids oRPC's Schema brand breaking discriminated-union
+ *  autocomplete. */
 export type InferCreateBlockInput<
   TBlocks extends Record<string, AnyBlockDefinition>,
 > = {
@@ -51,14 +52,14 @@ export type InferCreateBlockInput<
   position?: number;
   message?: string;
   /**
-   * Optimistic-concurrency guard (cms-18): when provided, the mutation is
-   * rejected with a typed conflict if the branch head has advanced past this
-   * commit id since the caller last read. Enforcement lives in the blocks route.
+   * Optimistic-concurrency guard: when provided, the mutation is rejected with
+   * a typed conflict if the branch head has advanced past this commit id since
+   * the caller last read. Enforced in the blocks route.
    */
   expectedHeadCommitId?: string;
 } & InferBlockInput<TBlocks>;
 
-/** createMergeBlockVersion input — discriminated union of all block types
+/** createMergeBlockVersion input: discriminated union of all block types
  *  (child blocks + root block) with merge-specific routing fields. */
 export type InferMergeBlockVersionInput<
   TBlocks extends Record<string, AnyBlockDefinition>,
@@ -79,10 +80,10 @@ export type InferMergeBlockVersionInput<
       : { type: 'root'; properties: InferBlockProperties<TRootProps> })
 );
 
-/** updateBlock input — identifies the block and provides a partial properties object.
- *  Only supplied fields are merged; omitted fields keep their current values.
- *  When TRootProps is provided, a `type: 'root'` variant is included for
- *  updating the root block's properties. */
+/** updateBlock input: identifies the block and provides a partial properties
+ *  object. Only supplied fields are merged; omitted fields keep their current
+ *  values. When TRootProps is provided, a `type: 'root'` variant is included
+ *  for updating the root block's properties. */
 export type InferUpdateBlockInput<
   TBlocks extends Record<string, AnyBlockDefinition>,
   TRootProps extends Record<string, BlockProperty> = never,
@@ -92,8 +93,8 @@ export type InferUpdateBlockInput<
   blockId: string;
   message?: string;
   /**
-   * Optimistic-concurrency guard (cms-18): reject with a typed conflict if the
-   * branch head advanced past this commit id. Enforced in the blocks route.
+   * Optimistic-concurrency guard: rejected with a typed conflict if the branch
+   * head advanced past this commit id. Enforced in the blocks route.
    */
   expectedHeadCommitId?: string;
 } & (

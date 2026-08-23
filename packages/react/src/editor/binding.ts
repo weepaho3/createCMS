@@ -49,8 +49,8 @@ type Memo<T> = {
 
 /**
  * Subscribes a component to `selector(state, store)`. The snapshot is cached
- * per (state object, selector) and — when a recomputed value is `isEqual` to
- * the previous one — the previous reference is returned, so object/array
+ * per (state object, selector) and, when a recomputed value is `isEqual` to
+ * the previous one, the previous reference is returned, so object/array
  * selectors never loop and the component re-renders only when its slice
  * changed. `store.getState()` returns a new object per change, so the cache
  * key is exact.

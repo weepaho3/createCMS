@@ -12,7 +12,7 @@ export type { EditorScrollToOptions } from './scroll';
 export type EditorContextValue = {
   readonly schema: AnyEditorSchema;
   readonly store: EditorStore;
-  /** The user this editor edits as — the store's local user. */
+  /** The user this editor edits as: the store's local user. */
   readonly userId: string;
   /** Per-kind control components from `Editor.Root`'s `fields` prop (`{}` when none). */
   readonly fields: FieldControls;

@@ -1,20 +1,17 @@
 import type { AnalyticsEvent } from './types';
 
-// ============================================================================
-// M5 — ga4ServerSink: opt-in server-side GA4 forwarding (Measurement Protocol /
-// sGTM)
-// ============================================================================
+// Opt-in server-side GA4 forwarding (Measurement Protocol / sGTM).
 //
-// An ad-blocker-resistant SECOND path to GA4: the server POSTs a consenting
-// event straight to a USER-CONFIGURED endpoint (GA4 Measurement Protocol, or an
-// sGTM container), bypassing the browser. The client-side gtmClientSink
-// (dataLayer) stays the default; enable this ONLY for goals you do NOT also
-// forward client-side, or GA4 may double-count (single authoritative leg per
-// goal). The CMS never hardcodes google-analytics.com — the endpoint is yours.
+// An ad-blocker-resistant second path to GA4: the server POSTs a consenting
+// event straight to a user-configured endpoint, bypassing the browser. The
+// client-side dataLayer sink stays the default; enable this only for goals
+// not also forwarded client-side, or GA4 may double-count (one authoritative
+// leg per goal). The endpoint is user config; the CMS never hardcodes
+// google-analytics.com.
 
 /**
  * Where the server forwards events. Both variants are server-only (an api_secret
- * must never reach the browser). `endpointUrl` is required — supply the GA4 MP
+ * must never reach the browser). `endpointUrl` is required; supply the GA4 MP
  * URL (https://www.google-analytics.com/mp/collect) or your sGTM container URL,
  * so a regional/proxy endpoint is a config change, not a code change.
  */
@@ -30,7 +27,7 @@ export type Ga4ServerConfig =
 /**
  * GA4 params the SERVER derives + owns. They are stripped from the untrusted
  * `metadata` (public trackEvent input) before it is merged, so a caller can
- * never fabricate/overwrite them — not even on a non-A/B event where the
+ * never fabricate/overwrite them, not even on a non-A/B event where the
  * server-derived value happens to be absent (a conditional spread would
  * otherwise leave the attacker's value in place).
  */
@@ -63,10 +60,10 @@ export type Ga4Payload = {
 };
 
 /**
- * Builds the MP payload from a {@link AnalyticsEvent}. Pure (no I/O) + exported so the
- * mapping is unit-testable. Returns null when the event cannot be a valid MP hit
- * — no consent (analytics_storage not granted) or no client_id — so the caller
- * simply does not forward. The A/B attribution rides as GA4's
+ * Builds the MP payload from a {@link AnalyticsEvent}. Pure (no I/O) and
+ * exported so the mapping is unit-testable. Returns null when the event cannot
+ * be a valid MP hit (analytics_storage not granted, or no client_id) so the
+ * caller does not forward. A/B attribution rides as GA4's
  * `experiment_id`/`experiment_variant` convention (event-scoped custom dims).
  */
 export function buildGa4Payload(event: AnalyticsEvent): Ga4Payload | null {
@@ -75,12 +72,11 @@ export function buildGa4Payload(event: AnalyticsEvent): Ga4Payload | null {
   if (!clientId) return null;
 
   const params: Record<string, unknown> = {
-    // metadata FIRST, but with every server-owned param stripped: it is
-    // public-ingest input (trackEvent body), so a caller can never fabricate or
-    // overwrite experiment_id / experiment_variant / session_id /
-    // engagement_time_msec / tracking_id / interaction_id — not even on a
-    // non-A/B event where the server-derived value is absent (a plain
-    // conditional spread would leave the attacker's value standing).
+    // metadata first, but with every server-owned param stripped (see
+    // RESERVED_GA4_PARAMS): it is public-ingest input, so a caller can never
+    // fabricate or overwrite these params, and a conditional spread would
+    // otherwise leave an attacker's value standing when the server-derived
+    // value is absent.
     ...sanitizeMetadata(event.metadata),
     // GA4 needs a non-zero engagement time, else the hit is realtime-invisible.
     engagement_time_msec: event.transport?.engagementTimeMsec ?? 1,
@@ -100,8 +96,8 @@ export function buildGa4Payload(event: AnalyticsEvent): Ga4Payload | null {
   return {
     client_id: clientId,
     events: [{ name: event.name, params }],
-    // GA4 Consent Mode block (ad signals). analytics_storage is already gated
-    // above; the ad_* signals tell GA4 how it may use the data.
+    // GA4 Consent Mode block (ad signals). analytics_storage is gated above;
+    // the ad_* signals tell GA4 how it may use the data.
     ...(event.consent
       ? {
           consent: {
@@ -126,13 +122,12 @@ function resolveUrl(config: Ga4ServerConfig): string {
 const FORWARD_TIMEOUT_MS = 2000;
 
 /**
- * Forwards one event to GA4 server-side, IF it is a valid consenting MP hit.
- * Best-effort + non-fatal: a network/endpoint error never breaks the ingest
- * (the A/B store write already happened). No-ops on missing consent/client_id.
- *
- * The trackEvent handler awaits this, so it is hard-bounded by an
- * {@link AbortSignal.timeout}: a slow/hung GA4/sGTM endpoint can never stall the
- * public response — the abort surfaces as a caught error and the ingest returns.
+ * Forwards one event to GA4 server-side if it is a valid consenting MP hit.
+ * Best-effort and non-fatal: a network or endpoint error never breaks the
+ * ingest (the A/B store write already happened). No-ops on missing consent or
+ * client_id. The caller awaits this, so the forward is hard-bounded by an
+ * {@link AbortSignal.timeout}: a slow or hung endpoint can never stall the
+ * public response.
  */
 export async function forwardToGa4(
   event: AnalyticsEvent,
@@ -140,7 +135,7 @@ export async function forwardToGa4(
   fetchImpl: typeof fetch = fetch,
 ): Promise<void> {
   const payload = buildGa4Payload(event);
-  if (!payload) return; // not a consenting, identified hit → do not forward
+  if (!payload) return; // not a consenting, identified hit, so no forward
 
   try {
     await fetchImpl(resolveUrl(config), {
@@ -150,7 +145,7 @@ export async function forwardToGa4(
       signal: AbortSignal.timeout(FORWARD_TIMEOUT_MS),
     });
   } catch {
-    // Non-fatal: the authoritative A/B store write already succeeded (a
-    // network error, a non-2xx, or the timeout abort all land here).
+    // Non-fatal: the authoritative A/B store write already succeeded. A
+    // network error, a non-2xx, or the timeout abort all land here.
   }
 }

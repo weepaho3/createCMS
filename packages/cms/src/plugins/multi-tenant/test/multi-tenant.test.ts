@@ -12,10 +12,10 @@ import { resolveTenantSlug } from '../index';
 import { setupMultiTenantTestCMS } from './utils/cms';
 
 // ============================================================================
-// Tenant isolation — Roots / Blocks
+// Tenant isolation: roots / blocks
 // ============================================================================
 
-describe('multiTenant — root isolation', () => {
+describe('multiTenant root isolation', () => {
   it('lists only roots belonging to the active tenant', async () => {
     const { cms, setTenant } = await setupMultiTenantTestCMS();
 
@@ -75,10 +75,10 @@ describe('multiTenant — root isolation', () => {
 });
 
 // ============================================================================
-// Tenant isolation — Published content (getPublishedContent scope gate)
+// Tenant isolation: published content (getPublishedContent scope gate)
 // ============================================================================
 
-describe('multiTenant — getPublishedContent isolation', () => {
+describe('multiTenant getPublishedContent isolation', () => {
   it("does not expose another tenant's published content by rootId", async () => {
     const { cms, setTenant } = await setupMultiTenantTestCMS();
 
@@ -125,10 +125,10 @@ describe('multiTenant — getPublishedContent isolation', () => {
 });
 
 // ============================================================================
-// Tenant isolation — by-id endpoints (IDOR via requireRootInScope)
+// Tenant isolation: by-id endpoints (IDOR via requireRootInScope)
 // ============================================================================
 
-describe('multiTenant — by-id endpoint IDOR protection', () => {
+describe('multiTenant by-id endpoint IDOR protection', () => {
   it("rejects cross-tenant read of another tenant's root by id", async () => {
     const { cms, setTenant } = await setupMultiTenantTestCMS();
 
@@ -167,8 +167,7 @@ describe('multiTenant — by-id endpoint IDOR protection', () => {
       body: { rootId: acme.rootId, branchId: acme.branchId },
     });
 
-    // globex can use /blog too — cms-05 publish-time uniqueness is per-tenant (the
-    // old global "two tenants can't share a slug" quirk is fixed).
+    // globex can use /blog too: publish-time uniqueness is per-tenant.
     setTenant('globex');
     const globex = await cms.api.pages.createRoot({
       body: { slug: '/blog', properties: { title: 'Globex Blog' } },
@@ -179,8 +178,8 @@ describe('multiTenant — by-id endpoint IDOR protection', () => {
       }),
     ).resolves.toBeDefined();
 
-    // But WITHIN a tenant the same slug is still rejected — at publish (drafts may
-    // collide).
+    // But within a tenant the same slug is still rejected, at publish (drafts
+    // may collide).
     const globexDup = await cms.api.pages.createRoot({
       body: { slug: '/blog', properties: { title: 'Dup' } },
     });
@@ -244,10 +243,10 @@ describe('multiTenant — by-id endpoint IDOR protection', () => {
 });
 
 // ============================================================================
-// Tenant isolation — list endpoints (raw-SQL scope, no id needed to leak)
+// Tenant isolation: list endpoints (raw-SQL scope, no id needed to leak)
 // ============================================================================
 
-describe('multiTenant — list endpoints do not leak across tenants', () => {
+describe('multiTenant list endpoints do not leak across tenants', () => {
   it('listMergeRequests / listPublications / listBranches are tenant-scoped', async () => {
     const { cms, setTenant } = await setupMultiTenantTestCMS();
 
@@ -283,7 +282,7 @@ describe('multiTenant — list endpoints do not leak across tenants', () => {
       (await cms.api.pages.listPublications()).publications.length,
     ).toBeGreaterThan(0);
 
-    // Another tenant sees NONE of them — not even with no id passed (the leak
+    // Another tenant sees none of them, not even with no id passed (the leak
     // that would otherwise list across all tenants).
     setTenant('globex');
     expect(
@@ -301,10 +300,10 @@ describe('multiTenant — list endpoints do not leak across tenants', () => {
 });
 
 // ============================================================================
-// Tenant isolation — Media folders
+// Tenant isolation: media folders
 // ============================================================================
 
-describe('multiTenant — folder isolation', () => {
+describe('multiTenant folder isolation', () => {
   it('isolates folders per tenant at the DB level', async () => {
     const { cms, db, setTenant } = await setupMultiTenantTestCMS();
 
@@ -393,10 +392,10 @@ describe('multiTenant — folder isolation', () => {
 });
 
 // ============================================================================
-// Tenant isolation — Assets
+// Tenant isolation: assets
 // ============================================================================
 
-describe('multiTenantPlugin — asset isolation', () => {
+describe('multiTenantPlugin asset isolation', () => {
   it('lists only assets belonging to the active tenant', async () => {
     const { cms, db, setTenant } = await setupMultiTenantTestCMS();
 
@@ -500,10 +499,10 @@ describe('multiTenantPlugin — asset isolation', () => {
 });
 
 // ============================================================================
-// Tenant isolation — Redirects
+// Tenant isolation: redirects
 // ============================================================================
 
-describe('multiTenant — redirect isolation', () => {
+describe('multiTenant redirect isolation', () => {
   it('tags createRedirect with the active tenant and scopes listRedirects', async () => {
     const { cms, db, setTenant } = await setupMultiTenantTestCMS();
 
@@ -558,7 +557,7 @@ describe('multiTenant — redirect isolation', () => {
       },
     });
 
-    // Globex creates a redirect for the IDENTICAL path — must NOT collide.
+    // Globex creates a redirect for the identical path; must not collide.
     setTenant('globex');
     await expect(
       cms.api.pages.createRedirect({
@@ -571,7 +570,7 @@ describe('multiTenant — redirect isolation', () => {
       }),
     ).resolves.toBeDefined();
 
-    // Each tenant resolves /pages/promo to ITS OWN target.
+    // Each tenant resolves /pages/promo to its own target.
     setTenant('acme');
     expect(
       (await cms.api.pages.resolveRedirect({ query: { path: '/pages/promo' } }))
@@ -649,7 +648,7 @@ describe('multiTenant — redirect isolation', () => {
     const page = await cms.api.pages.createRoot({
       body: { slug: 'movers', properties: { title: 'Movers' } },
     });
-    // cms-05: publish the live slug, then publish the rename — the tenant-scoped
+    // Publish the live slug, then publish the rename; the tenant-scoped
     // redirect is auto-created at publish.
     await cms.api.pages.publishBranch({
       body: { rootId: page.rootId, branchId: page.branchId },
@@ -696,7 +695,7 @@ describe('multiTenant — redirect isolation', () => {
     ).toBeNull();
   });
 
-  it('enforces per-tenant path-source uniqueness at the APP level (no DB unique — i18n compose)', async () => {
+  it('enforces per-tenant path-source uniqueness at the app level (no DB unique, i18n compose)', async () => {
     const { cms, setTenant } = await setupMultiTenantTestCMS();
 
     setTenant('acme');
@@ -736,9 +735,9 @@ describe('multiTenant — redirect isolation', () => {
 
   it('no longer DB-enforces path-source uniqueness (the path unique was dropped for i18n compose)', async () => {
     const { db } = await setupMultiTenantTestCMS();
-    // Two identical (tenant, collection, sourcePath) raw inserts now BOTH succeed
-    // — path-source uniqueness moved to the app level. Guards against re-adding
-    // the per-tenant path unique (which would break per-language redirects).
+    // Two identical (tenant, collection, sourcePath) raw inserts both succeed:
+    // path-source uniqueness moved to the app level. Guards against re-adding
+    // the per-tenant path unique, which would break per-language redirects.
     await db.execute(sql`
       INSERT INTO cms.redirects (id, collection, source_type, source_path, target_type, target_path, tenant_slug)
       VALUES ('rdr_mt_1', 'pages', 'path', '/pages/x', 'path', '/a', 'acme')
@@ -758,7 +757,7 @@ describe('multiTenant — redirect isolation', () => {
 // Error handling
 // ============================================================================
 
-describe('multiTenant — error handling', () => {
+describe('multiTenant error handling', () => {
   it('throws TENANT_SLUG_REQUIRED when middleware does not provide tenantSlug', async () => {
     const { cms } = await setupMultiTenantTestCMS({
       authMiddleware: async () => ({}),
@@ -785,10 +784,10 @@ describe('multiTenant — error handling', () => {
 });
 
 // ============================================================================
-// Scope conditions — DB-level verification
+// Scope conditions: DB-level verification
 // ============================================================================
 
-describe('multiTenant — scope conditions DB verification', () => {
+describe('multiTenant scope conditions DB verification', () => {
   it('inserts tenant_slug into roots and asset_folders tables', async () => {
     const { cms, db, setTenant } = await setupMultiTenantTestCMS();
     setTenant('tenant-a');
@@ -875,15 +874,14 @@ describe('multiTenant — scope conditions DB verification', () => {
 });
 
 // ============================================================================
-// resolveTenantSlug helper — unit tests
+// resolveTenantSlug helper: unit tests
 // ============================================================================
 
 describe('resolveTenantSlug', () => {
-  // SECURE DEFAULT: request-supplied tenantSlug (body/query) is IGNORED unless
+  // Secure default: request-supplied tenantSlug (body/query) is ignored unless
   // the caller explicitly opts in with { allowRequestOverride: true } after an
-  // admin check. These tests were updated from the old request-wins default,
-  // which was a cross-tenant access hole (sec-03).
-  it('IGNORES body/query tenantSlug by default, returning the session fallback', () => {
+  // admin check.
+  it('ignores body/query tenantSlug by default, returning the session fallback', () => {
     const result = resolveTenantSlug(
       {
         request: {
@@ -953,7 +951,7 @@ describe('resolveTenantSlug', () => {
 // Cross-tenant access-by-ID
 // ============================================================================
 
-describe('multiTenant — cross-tenant access-by-ID', () => {
+describe('multiTenant cross-tenant access-by-ID', () => {
   it('listRoots hides other tenant roots even when IDs are known', async () => {
     const { cms, setTenant } = await setupMultiTenantTestCMS();
 
@@ -1034,7 +1032,7 @@ describe('multiTenant — cross-tenant access-by-ID', () => {
 // Block CRUD within tenant-scoped roots
 // ============================================================================
 
-describe('multiTenant — block CRUD within tenant roots', () => {
+describe('multiTenant block CRUD within tenant roots', () => {
   it('creates and reads blocks within a tenant-scoped root', async () => {
     const { cms, setTenant } = await setupMultiTenantTestCMS();
     setTenant('acme');
@@ -1147,7 +1145,7 @@ describe('multiTenant — block CRUD within tenant roots', () => {
 // SQL injection / special characters in tenant slugs
 // ============================================================================
 
-describe('multiTenant — special characters in tenant slugs', () => {
+describe('multiTenant special characters in tenant slugs', () => {
   it('handles tenant slugs with special SQL characters safely', async () => {
     const { cms, db, setTenant } = await setupMultiTenantTestCMS();
 
@@ -1201,17 +1199,17 @@ describe('multiTenant — special characters in tenant slugs', () => {
 // ============================================================================
 // Tenant override via request context
 //
-// NOTE: request-supplied tenantSlug is IGNORED by default (secure default,
-// sec-03). These tests pass { allowRequestOverride: true } to opt in, which in
-// production MUST be gated behind an admin authorization check.
+// Request-supplied tenantSlug is ignored by default (secure default). These
+// tests pass { allowRequestOverride: true } to opt in, which in production
+// must be gated behind an admin authorization check.
 // ============================================================================
 
-describe('multiTenant — tenant override via request', () => {
+describe('multiTenant tenant override via request', () => {
   it('overrides tenant via body.tenantSlug when middleware uses resolveTenantSlug', async () => {
     const { cms, db } = await setupMultiTenantTestCMS({
       authMiddleware: async (ctx) => {
-        // Opt in to request overrides — in real code this MUST be gated behind
-        // an admin check; these tests simulate an admin-authorized override.
+        // Opt in to request overrides; in real code this must be gated behind
+        // an admin check. These tests simulate an admin-authorized override.
         const tenantSlug = resolveTenantSlug(ctx, 'default-tenant', {
           allowRequestOverride: true,
         });
@@ -1245,8 +1243,8 @@ describe('multiTenant — tenant override via request', () => {
   it('overrides tenant via query.tenantSlug on GET endpoints', async () => {
     const { cms } = await setupMultiTenantTestCMS({
       authMiddleware: async (ctx) => {
-        // Opt in to request overrides — in real code this MUST be gated behind
-        // an admin check; these tests simulate an admin-authorized override.
+        // Opt in to request overrides; in real code this must be gated behind
+        // an admin check. These tests simulate an admin-authorized override.
         const tenantSlug = resolveTenantSlug(ctx, 'default-tenant', {
           allowRequestOverride: true,
         });
@@ -1304,8 +1302,8 @@ describe('multiTenant — tenant override via request', () => {
   it('middleware can deny access to an overridden tenant', async () => {
     const { cms } = await setupMultiTenantTestCMS({
       authMiddleware: async (ctx) => {
-        // Honor the request override, then enforce the tenant check — this is
-        // the intended admin-gated override pattern.
+        // Honor the request override, then enforce the tenant check: the
+        // intended admin-gated override pattern.
         const tenantSlug = resolveTenantSlug(ctx, 'allowed-tenant', {
           allowRequestOverride: true,
         });
@@ -1328,7 +1326,7 @@ describe('multiTenant — tenant override via request', () => {
   });
 });
 
-describe('multiTenant — templates are per-tenant', () => {
+describe('multiTenant templates are per-tenant', () => {
   it('isolates template CRUD per tenant (same key allowed in each)', async () => {
     const { cms, setTenant } = await setupMultiTenantTestCMS();
 
@@ -1411,7 +1409,7 @@ describe('multiTenant — templates are per-tenant', () => {
   });
 });
 
-describe('multiTenant — variables are per-tenant', () => {
+describe('multiTenant variables are per-tenant', () => {
   it('partitions variables per tenant (same key, isolated values)', async () => {
     const { cms, setTenant } = await setupMultiTenantTestCMS();
 
@@ -1452,7 +1450,7 @@ describe('multiTenant — variables are per-tenant', () => {
   });
 });
 
-describe('multiTenant — publishRelease materializes slugs in the tenant scope', () => {
+describe('multiTenant publishRelease materializes slugs in the tenant scope', () => {
   it('a release slug change: no cross-tenant conflict, redirect tagged with the tenant', async () => {
     const { cms, db, setTenant } = await setupMultiTenantTestCMS();
 
@@ -1501,7 +1499,8 @@ describe('multiTenant — publishRelease materializes slugs in the tenant scope'
       cms.api.releases.publishRelease({ body: { releaseId: release.id } }),
     ).resolves.toBeDefined();
 
-    // acme's live slug is now "shared" — the SAME as globex's (per-tenant unique).
+    // acme's live slug is now "shared", the same as globex's (per-tenant
+    // unique).
     const [acmeRow] = await db
       .select()
       .from(roots)
@@ -1528,7 +1527,7 @@ describe('multiTenant — publishRelease materializes slugs in the tenant scope'
   });
 });
 
-describe('multiTenant — scheduled publishing is scoped per tenant', () => {
+describe('multiTenant scheduled publishing is scoped per tenant', () => {
   it("a scoped runScheduled processes only its own tenant's due rows", async () => {
     const { cms, db, setTenant } = await setupMultiTenantTestCMS();
 
@@ -1599,11 +1598,11 @@ describe('multiTenant — scheduled publishing is scoped per tenant', () => {
 });
 
 // ============================================================================
-// Tenant isolation — Comment threads (IDOR via the comments scope-enforcing
-// loader — advisor plan 003)
+// Tenant isolation: comment threads (IDOR via the comments scope-enforcing
+// loader)
 // ============================================================================
 
-describe('multiTenant — comment thread scope isolation', () => {
+describe('multiTenant comment thread scope isolation', () => {
   // The default multi-tenant middleware only carries tenantSlug; comment
   // endpoints also require a userId, so this test group supplies its own
   // authMiddleware (with a mutable tenant, mirroring setTenant) instead of

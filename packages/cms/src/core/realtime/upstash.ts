@@ -20,12 +20,12 @@ function isModuleNotFound(err: unknown): boolean {
  * (`{ url, token }`). Publishes via `@upstash/realtime` (`channel.emit`) over
  * `@upstash/redis`, and serves the SSE bridge via the library's `handle()`.
  *
- * The underlying `Realtime` is constructed SCHEMA-LESS on purpose — the runtime
+ * The underlying `Realtime` is constructed schema-less on purpose: the runtime
  * is a generic pipe; event typing lives where each event is owned and is
  * inferred via `typeof cms`. This is the single place that touches the untyped
  * library surface (one encapsulated cast).
  *
- * Both `@upstash/redis` and `@upstash/realtime` are OPTIONAL peers, imported
+ * Both `@upstash/redis` and `@upstash/realtime` are optional peers, imported
  * lazily. If either is absent the runtime is inert: `publish` no-ops and
  * `getSseHandler` returns `null` so the route falls through.
  */

@@ -9,7 +9,6 @@
  * `APIError`) lives in `./core/errors`, which re-exports everything here to
  * keep the main entry's public API stable.
  */
-
 export const CMS_ERRORS = {
   BRANCH_NOT_FOUND: { status: 404 as const, message: 'Branch not found' },
   BLOCK_NOT_FOUND: {
