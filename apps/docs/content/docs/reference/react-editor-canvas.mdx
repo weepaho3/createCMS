@@ -68,10 +68,40 @@ input sets `pointer-events: auto` on itself.
 DnD is pointer-based (not HTML5 drag). `Canvas.InlineText` is the GLASS
 overlay for `string` / `richText` in `edit`.
 
+## Sessions and surfaces
+
+`Canvas.Provider` (optional) owns the drag session, the shared dnd and
+pointer state. Each `Canvas.Root` below it registers itself as a surface, so
+`Canvas.PaletteItem` and `Canvas.DragHandle` work anywhere under the
+provider, for example in a shell sidebar outside the canvas host. During a
+drag, the surface under the pointer resolves the drop target against its own
+host; several canvases under one provider share the single session, and only
+the hovered canvas resolves targets and auto-scrolls. `Canvas.DragPreview`
+positions itself in host coordinates and therefore renders only inside a
+`Canvas.Root`. Without a provider nothing changes: `Canvas.Root` creates the
+session itself and provides it to its children.
+
+```tsx
+<Editor.Root schema={schema} defaultValue={tree}>
+  <Canvas.Provider>
+    <aside>
+      <Canvas.PaletteItem type="paragraph" />
+    </aside>
+    <Canvas.Root components={pageBlocks} style={{ position: 'relative' }}>
+      <Canvas.Overlay>
+        <Canvas.DropIndicator />
+        <Canvas.DragPreview />
+      </Canvas.Overlay>
+    </Canvas.Root>
+  </Canvas.Provider>
+</Editor.Root>
+```
+
 ## Parts
 
 | Part                   | Default element | Props                                                                                                                          | Data attributes                                                                                           |
 | ---------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `Canvas.Provider`      | none            | `children`. Renders no element; owns the drag session shared by every part and `Canvas.Root` below it. Optional.               | none                                                                                                      |
 | `Canvas.Root`          | `div`           | `components` (required), `surface`, `interactive`, `resolve`, `children` (overlay), `render`, div props                        | `data-editor-canvas`, `data-interactive`, `data-dragging`, `data-editing`                                 |
 | `Canvas.Overlay`       | `div`           | `render`, div props. Portals into the canvas host.                                                                             | `data-editor-overlay`                                                                                     |
 | `Canvas.SelectionRing` | `div`           | `render`, div props. Sized from the selected block rect.                                                                       | `data-editor-selection-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`    |
@@ -98,6 +128,7 @@ overlay for `string` / `richText` in `edit`.
 
 | Type                         | Description                                                                                       |
 | ---------------------------- | ------------------------------------------------------------------------------------------------- |
+| `CanvasProviderProps`        | Props of `Canvas.Provider`.                                                                       |
 | `CanvasRootProps`            | Props of `Canvas.Root`.                                                                           |
 | `CanvasOverlayProps`         | Props of `Canvas.Overlay`.                                                                        |
 | `CanvasSelectionRingProps`   | Props of `Canvas.SelectionRing`.                                                                  |

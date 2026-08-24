@@ -11,7 +11,7 @@ import { useEditorContext } from '../context';
 import { placementOf } from '../hooks';
 import { canPlace } from '../schema';
 import { blockElements, isInsideReadonly } from './anchors';
-import { useCanvasContext } from './context';
+import { CanvasContext, useCanvasContext } from './context';
 import {
   adjustMoveIndex,
   autoScrollAtClient,
@@ -23,7 +23,7 @@ import {
   createInsertAdapters,
   resolveDropTarget,
 } from './insert-dom';
-import { useBlockRect } from './rects';
+import { useCanvasSession, type CanvasSurfaceHandle } from './provider';
 
 const subscribeNoop = () => () => {};
 
@@ -32,6 +32,44 @@ function focusBlock(host: HTMLElement, id: string): void {
   if (el instanceof HTMLElement) {
     el.focus({ preventScroll: true });
   }
+}
+
+function focusBlockInSurfaces(
+  surfaces: ReadonlyArray<CanvasSurfaceHandle>,
+  id: string,
+): void {
+  for (const surface of surfaces) {
+    if (blockElements(surface.host, id).length > 0) {
+      focusBlock(surface.host, id);
+      return;
+    }
+  }
+}
+
+function containsClientPoint(
+  el: HTMLElement,
+  client: { x: number; y: number },
+): boolean {
+  const rect = el.getBoundingClientRect();
+  return (
+    client.x >= rect.left &&
+    client.x <= rect.right &&
+    client.y >= rect.top &&
+    client.y <= rect.bottom
+  );
+}
+
+/** Editable surface under the pointer; the last registered match wins. */
+function surfaceAtClient(
+  surfaces: ReadonlyArray<CanvasSurfaceHandle>,
+  client: { x: number; y: number },
+): CanvasSurfaceHandle | null {
+  for (let i = surfaces.length - 1; i >= 0; i--) {
+    const surface = surfaces[i]!;
+    if (surface.interactive !== 'edit') continue;
+    if (containsClientPoint(surface.host, client)) return surface;
+  }
+  return null;
 }
 
 function isPrimaryPointer(event: React.PointerEvent | PointerEvent): boolean {
@@ -71,21 +109,19 @@ function computePaletteInsertTarget(
 }
 
 function useDropTargetSnapshot(): InsertTarget | null {
-  const canvas = useCanvasContext('useDropTargetSnapshot');
-  const dnd = canvas.dnd;
+  const { dnd } = useCanvasSession('useDropTargetSnapshot');
   return React.useSyncExternalStore(
-    dnd ? dnd.subscribeTarget : subscribeNoop,
-    () => (dnd ? dnd.getDropTarget() : null),
+    dnd.subscribeTarget,
+    () => dnd.getDropTarget(),
     () => null,
   );
 }
 
 function useDragSessionSnapshot(): DragSession | null {
-  const canvas = useCanvasContext('useDragSessionSnapshot');
-  const dnd = canvas.dnd;
+  const { dnd } = useCanvasSession('useDragSessionSnapshot');
   return React.useSyncExternalStore(
-    dnd ? dnd.subscribeSession : subscribeNoop,
-    () => (dnd ? dnd.getSession() : null),
+    dnd.subscribeSession,
+    () => dnd.getSession(),
     () => null,
   );
 }
@@ -109,7 +145,9 @@ export function useDndDropResolution(): void {
     const tick = () => {
       const session = dnd.getSession();
       const client = dnd.getClientPoint();
-      if (session && client) {
+      // Several Roots can share one session; only the hovered canvas may
+      // auto-scroll.
+      if (session && client && containsClientPoint(host, client)) {
         const scroller = findScrollParent(host) ?? host;
         const scrolled = autoScrollAtClient(scroller, client);
         if (scrolled) {
@@ -165,22 +203,27 @@ type GestureOptions = {
 };
 
 function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
-  const canvas = useCanvasContext('usePointerGesture');
+  const canvasSession = useCanvasSession('usePointerGesture');
   const ctx = useEditorContext('usePointerGesture');
   const rootId = useEditorSelector((s) => s.rootId);
   const nodes = useEditorSelector((s) => s.nodes);
-  const { dnd, host, measurer, pointer, interactive, editing } = canvas;
+  const { dnd, pointer } = canvasSession;
   const placement = placementOf(ctx.schema);
   const capturedRef = React.useRef(false);
   const nodesRef = React.useRef(nodes);
   nodesRef.current = nodes;
+  // Surface that produced the current drop target; the drop commits and
+  // focuses against that surface's host.
+  const lastSurfaceRef = React.useRef<CanvasSurfaceHandle | null>(null);
 
   const resolveTarget = React.useCallback(
     (client: { x: number; y: number }) => {
-      if (!dnd || !host || !measurer || interactive !== 'edit') {
-        dnd?.setDropTarget(null);
+      const surface = surfaceAtClient(canvasSession.getSurfaces(), client);
+      if (surface === null) {
+        dnd.setDropTarget(null);
         return;
       }
+      const { host, measurer } = surface;
       const adapters = createInsertAdapters(
         host,
         measurer,
@@ -188,7 +231,7 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
         rootId,
       );
       const point = contentPointFromClient(host, client);
-      pointer?.setFromEvent(
+      pointer.setFromEvent(
         { clientX: client.x, clientY: client.y } as PointerEvent,
         host,
       );
@@ -203,18 +246,19 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
           adapters,
         ),
       );
+      lastSurfaceRef.current = surface;
     },
-    [dnd, host, measurer, interactive, rootId, placement, pointer, session],
+    [canvasSession, dnd, rootId, placement, pointer, session],
   );
 
   const commitDrop = React.useCallback(() => {
-    if (!dnd || !host) return;
     const target = dnd.getDropTarget();
     const active = dnd.getSession();
     if (!active || !target) {
       dnd.end();
       return;
     }
+    const dropHost = lastSurfaceRef.current?.host ?? null;
     if (active.kind === 'new') {
       const id = ctx.store.add(active.type, {
         parentId: target.parentId,
@@ -223,7 +267,7 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
       });
       if (id) {
         ctx.store.select(id);
-        focusBlock(host, id);
+        if (dropHost) focusBlock(dropHost, id);
       }
     } else {
       const fromParent = nodesRef.current[active.id]?.parentId;
@@ -239,18 +283,28 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
       if (!(fromParent === target.parentId && fromIndex === adjusted)) {
         ctx.store.move(active.id, target.parentId, adjusted);
         ctx.store.select(active.id);
-        focusBlock(host, active.id);
+        if (dropHost) focusBlock(dropHost, active.id);
       }
     }
     dnd.end();
-  }, [ctx.store, dnd, host]);
+  }, [ctx.store, dnd]);
 
   const canStart = React.useCallback(
     (event: React.PointerEvent, handle: HTMLElement) => {
-      if (interactive !== 'edit' || editing) return false;
       if (!isPrimaryPointer(event)) return false;
-      if (!host) return false;
-      if (isInsideReadonly(handle, host)) return false;
+      const surfaces = canvasSession.getSurfaces();
+      const containing =
+        surfaces.find((surface) => surface.host.contains(handle)) ?? null;
+      if (containing !== null) {
+        if (containing.interactive !== 'edit' || containing.editing) {
+          return false;
+        }
+        if (isInsideReadonly(handle, containing.host)) return false;
+      } else if (!surfaces.some((surface) => surface.interactive === 'edit')) {
+        // A handle in outside chrome needs at least one editable surface to
+        // drop into.
+        return false;
+      }
       if (session.kind === 'move') {
         if (!blockId || blockId === rootId || !nodesRef.current[blockId]) {
           return false;
@@ -258,13 +312,13 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
       }
       return true;
     },
-    [interactive, editing, host, session.kind, blockId, rootId],
+    [canvasSession, session.kind, blockId, rootId],
   );
 
   const onPointerDown = React.useCallback(
     (event: React.PointerEvent<HTMLElement>) => {
       const handle = event.currentTarget;
-      if (!dnd || !canStart(event, handle)) return;
+      if (!canStart(event, handle)) return;
       event.preventDefault();
       // Document listeners: the handle is a small overlay control and may
       // unmount mid-drag; the session must still end on pointerup.
@@ -279,6 +333,7 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
         // capture is optional; document listeners still end the gesture
       }
       dnd.beginGesture({ x: event.clientX, y: event.clientY });
+      lastSurfaceRef.current = null;
 
       const onMove = (moveEvent: PointerEvent) => {
         if (moveEvent.pointerId !== pointerId) return;
@@ -365,16 +420,13 @@ export function CanvasDragHandle({
   onPointerDown,
   ...rest
 }: CanvasDragHandleProps) {
-  const canvas = useCanvasContext('Canvas.DragHandle');
+  useCanvasSession('Canvas.DragHandle');
   const session = useDragSessionSnapshot();
   const gestureDown = usePointerGesture({
     session: { kind: 'move', id: blockId },
     blockId,
   });
-  const isDragging =
-    session?.kind === 'move' && session.id === blockId && canvas.dragging;
-
-  if (!canvas.host) return null;
+  const isDragging = session?.kind === 'move' && session.id === blockId;
 
   return useRender<'button', DragHandleState>({
     defaultTagName: 'button',
@@ -420,7 +472,7 @@ export function CanvasPaletteItem({
   onPointerDown,
   ...rest
 }: CanvasPaletteItemProps) {
-  const canvas = useCanvasContext('Canvas.PaletteItem');
+  const canvasSession = useCanvasSession('Canvas.PaletteItem');
   const ctx = useEditorContext('Canvas.PaletteItem');
   const placement = placementOf(ctx.schema);
   const target = useEditorSelector((state) =>
@@ -437,8 +489,7 @@ export function CanvasPaletteItem({
     session: { kind: 'new', type, properties },
     onGestureEnd,
   });
-  const isDragging =
-    session?.kind === 'new' && session.type === type && canvas.dragging;
+  const isDragging = session?.kind === 'new' && session.type === type;
 
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     onClick?.(event);
@@ -449,18 +500,16 @@ export function CanvasPaletteItem({
       skipClickRef.current = false;
       return;
     }
-    if (canvas.dnd?.getSession()) return;
+    if (canvasSession.dnd.getSession()) return;
     const id = ctx.store.add(type, {
       parentId: target.parentId,
       index: target.index,
       properties,
     });
-    if (id && canvas.host) {
-      focusBlock(canvas.host, id);
+    if (id) {
+      focusBlockInSurfaces(canvasSession.getSurfaces(), id);
     }
   };
-
-  if (!canvas.host) return null;
 
   return useRender<'button', PaletteItemState>({
     defaultTagName: 'button',
@@ -547,15 +596,25 @@ export function CanvasDragPreview({
   children,
   ...rest
 }: CanvasDragPreviewProps) {
-  const canvas = useCanvasContext('Canvas.DragPreview');
+  const { pointer } = useCanvasSession('Canvas.DragPreview');
+  const canvas = React.useContext(CanvasContext);
   const session = useDragSessionSnapshot();
-  const moveRect = useBlockRect(session?.kind === 'move' ? session.id : '');
+  const measurer = canvas?.measurer ?? null;
+  const moveId = session?.kind === 'move' ? session.id : '';
+  const moveRect = React.useSyncExternalStore(
+    measurer ? measurer.subscribe : subscribeNoop,
+    () => (measurer ? measurer.getBlockRect(moveId) : null),
+    () => null,
+  );
   const pointerSnap = React.useSyncExternalStore(
-    canvas.pointer ? canvas.pointer.subscribe : subscribeNoop,
-    () => (canvas.pointer ? canvas.pointer.getSnapshot() : null),
+    pointer.subscribe,
+    () => pointer.getSnapshot(),
     () => null,
   );
 
+  // Pointer snapshots are host-relative absolute coordinates, so the
+  // preview positions itself only inside a Canvas.Root surface.
+  if (canvas === null) return null;
   if (session === null || pointerSnap === null) return null;
 
   const width = session.kind === 'move' && moveRect ? moveRect.width : 80;
