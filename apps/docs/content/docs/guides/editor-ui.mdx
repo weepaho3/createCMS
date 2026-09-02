@@ -3,7 +3,7 @@ title: Editor UI
 description: Install styled editor chrome from the createCMS shadcn registry.
 ---
 
-The createCMS docs site hosts a [shadcn registry](https://ui.shadcn.com/docs/registry/getting-started) of copy-paste editor chrome. Items wrap `Editor.Field`, `Canvas` overlay parts, a three-column shell, and an email split layout. None of them wrap `Editor.Root` or `Canvas.Root`. Compose them **inside** `Editor.Root` in your app code. For form-only, live canvas, and form-plus-preview layouts, see the [Visual editor](/docs/guides/visual-editor) guide.
+The createCMS docs site hosts a [shadcn registry](https://ui.shadcn.com/docs/registry/getting-started) of copy-paste editor chrome. Items wrap `Editor.Field`, `Canvas` overlay parts, sidebar-grade shell chrome, and an email split layout. None of them wrap `Editor.Root` or `Canvas.Root`. Compose them **inside** `Editor.Root` in your app code. For form-only, live canvas, and form-plus-preview layouts, see the [Visual editor](/docs/guides/visual-editor) guide.
 
 ## Prerequisites
 
@@ -29,7 +29,7 @@ npx shadcn@latest add https://createcms.dev/r/editor-form.json
 npx shadcn@latest add https://createcms.dev/r/editor-canvas.json
 ```
 
-**Three-column shell**
+**Sidebar-grade shell**
 
 ```bash
 npx shadcn@latest add https://createcms.dev/r/editor-shell.json
@@ -92,6 +92,78 @@ import { Field, FieldLabel, FieldControl } from '@/components/editor-form';
 </Editor.Root>
 ```
 
-**Shell and canvas.** Place `EditorShell` and styled canvas parts inside `Editor.Root`. Pass `Canvas.Root` and overlay parts as children of the shell's canvas column.
+**Shell and canvas.** Place `EditorShell` (or its exported parts) and styled canvas parts inside `Editor.Root`. Pass `Canvas.Root` and overlay parts as children of `EditorSurface`. `EditorShell` wraps `Canvas.Provider` so palette items in the left sidebar can start drag sessions.
 
 The items copy into your shadcn components directory. Adjust import paths to match your aliases.
+
+## `editor-shell` parts
+
+The assembled `EditorShell` is a default composition of shadcn `Sidebar` (left palette + outline, right inspector), not a custom three-column grid. Cmd+B, icon-rail collapse, mobile sheet, and cookie persistence come from `SidebarProvider`.
+
+| Export            | Role                                                                                          | Composed from                                      |
+| ----------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `EditorProvider`  | `TooltipProvider` + `SidebarProvider` + `Canvas.Provider` + keyboard (⌘S, ⌘K, undo/redo)     | shadcn `sidebar`, `tooltip`                        |
+| `EditorToolbar`   | Icon buttons with `Tooltip` + `Kbd`, device `ToggleGroup`, save dirty-dot + spinner           | `button`, `tooltip`, `kbd`, `toggle-group`, `separator` |
+| `EditorPalette`   | `SidebarGroup` of `Canvas.PaletteItem` rows with grip affordance                              | `sidebar`, `editor-canvas`                         |
+| `EditorOutline`   | Tree rows on `SidebarMenuButton` + `Editor.OutlineItem`, chevron collapse, type icon          | `sidebar`, `collapsible`                           |
+| `EditorInspector` | `Tabs` (Block / Page), empty state, sticky header with Duplicate / Delete                     | `tabs`, `editor-form`                              |
+| `EditorSurface`   | Device-width canvas column                                                                    | —                                                  |
+| `EditorShell`     | Default assembly of the parts above                                                           | all of the above                                   |
+
+`useEditorChrome()` reads device preview, add-block dialog, and save-dialog state from `EditorProvider`.
+
+Compose a custom layout from the same parts:
+
+```tsx
+import {
+  EditorInspector,
+  EditorOutline,
+  EditorPalette,
+  EditorProvider,
+  EditorSurface,
+  EditorToolbar,
+} from '@/components/editor-shell';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarInset,
+  SidebarRail,
+} from '@/components/ui/sidebar';
+
+<EditorProvider>
+  <Sidebar side="left" collapsible="icon">
+    <SidebarContent>
+      <EditorPalette />
+      <EditorOutline />
+    </SidebarContent>
+    <SidebarRail />
+  </Sidebar>
+  <SidebarInset>
+    <EditorToolbar />
+    <EditorSurface>{/* Canvas.Root */}</EditorSurface>
+  </SidebarInset>
+  <Sidebar side="right" collapsible="icon">
+    <SidebarContent>
+      <EditorInspector />
+    </SidebarContent>
+    <SidebarRail />
+  </Sidebar>
+</EditorProvider>
+```
+
+## `editor-canvas` parts
+
+| Export          | Role                                                                 |
+| --------------- | -------------------------------------------------------------------- |
+| `Overlay`       | Portals overlay chrome into the canvas host                          |
+| `SelectionRing` | Selection outline with a block-type chip; motion respects reduced-motion |
+| `HoverRing`     | Hover outline                                                        |
+| `FieldRing`     | Focused field outline                                                |
+| `BlockToolbar`  | Icon buttons + tooltips (move, duplicate, delete) when no children   |
+| `InsertButton`  | Between-block insert control                                         |
+| `DropIndicator` | Drop line with endpoint caps; box variant for empty containers       |
+| `DragHandle`    | Grip handle for moving a block                                       |
+| `PaletteItem`   | Draggable palette row (used by `EditorPalette`)                      |
+| `DragPreview`   | Pointer-following preview during a drag                              |
+| `InlineText`    | Inline text editing glass                                            |
+

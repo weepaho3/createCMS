@@ -33,7 +33,8 @@
       "type": "registry:ui",
       "title": "Editor Canvas",
       "description": "Styled wrappers for Canvas overlay and interaction parts. Does not wrap Canvas.Root.",
-      "dependencies": ["@createcms/react"],
+      "dependencies": ["@createcms/react", "lucide-react"],
+      "registryDependencies": ["button", "separator", "tooltip"],
       "files": [
         {
           "path": "registry/editor-canvas.tsx",
@@ -67,9 +68,24 @@
       "name": "editor-shell",
       "type": "registry:ui",
       "title": "Editor Shell",
-      "description": "Three-column editor chrome with palette, outline and inspector. Use inside Editor.Root.",
-      "dependencies": ["@createcms/react"],
-      "registryDependencies": ["editor-form", "button", "dialog"],
+      "description": "Sidebar-grade editor chrome with palette, outline, inspector, and toolbar. Use inside Editor.Root.",
+      "dependencies": ["@createcms/react", "lucide-react"],
+      "registryDependencies": [
+        "editor-form",
+        "editor-canvas",
+        "button",
+        "dialog",
+        "input",
+        "sidebar",
+        "tooltip",
+        "command",
+        "toggle-group",
+        "tabs",
+        "separator",
+        "kbd",
+        "sheet",
+        "collapsible"
+      ],
       "files": [
         {
           "path": "registry/editor-shell.tsx",

@@ -6,3 +6,47 @@
 [data-editor-canvas] {
   backdrop-filter: none;
 }
+
+[data-slot='editor-drop-indicator'][data-variant='line']::before,
+[data-slot='editor-drop-indicator'][data-variant='line']::after {
+  content: '';
+  position: absolute;
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 999px;
+  background: var(--editor-drop);
+}
+
+[data-slot='editor-drop-indicator'][data-variant='line'][data-orientation='vertical']::before {
+  top: 50%;
+  left: 0;
+  transform: translate(-50%, -50%);
+}
+
+[data-slot='editor-drop-indicator'][data-variant='line'][data-orientation='vertical']::after {
+  top: 50%;
+  right: 0;
+  transform: translate(50%, -50%);
+}
+
+[data-slot='editor-drop-indicator'][data-variant='line'][data-orientation='horizontal']::before {
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+[data-slot='editor-drop-indicator'][data-variant='line'][data-orientation='horizontal']::after {
+  bottom: 0;
+  left: 50%;
+  transform: translate(-50%, 50%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-slot='editor-selection-ring'],
+  [data-slot='editor-hover-ring'],
+  [data-slot='editor-drop-indicator'],
+  [data-slot='editor-block-toolbar'] {
+    animation: none !important;
+    transition: none !important;
+  }
+}
