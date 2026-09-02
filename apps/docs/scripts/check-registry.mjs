@@ -5,12 +5,14 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const publicR = path.join(root, 'public/r');
 
-const ITEM_NAMES = [
+const UI_ITEM_NAMES = [
   'editor-form',
   'editor-canvas',
   'editor-shell',
   'editor-email',
 ];
+
+const BLOCK_ITEM_NAMES = ['editor-app'];
 
 function readJson(name) {
   const filePath = path.join(publicR, name);
@@ -24,19 +26,20 @@ function readJson(name) {
   }
 }
 
-readJson('registry.json');
+function itemContents(item) {
+  return (item.files ?? []).map((file) => file.content ?? '').join('\n');
+}
 
-const items = ITEM_NAMES.map((name) => {
-  const item = readJson(`${name}.json`);
+function assertNamedItem(item, name, expectedType) {
   if (item.name !== name) {
     console.error(
       `check-registry: expected name "${name}", got "${item.name}"`,
     );
     process.exit(1);
   }
-  if (item.type !== 'registry:ui') {
+  if (item.type !== expectedType) {
     console.error(
-      `check-registry: expected type "registry:ui", got "${item.type}"`,
+      `check-registry: expected type "${expectedType}" for ${name}, got "${item.type}"`,
     );
     process.exit(1);
   }
@@ -51,21 +54,45 @@ const items = ITEM_NAMES.map((name) => {
     process.exit(1);
   }
   return item;
-});
+}
 
-const fileContents = items
-  .flatMap((item) => item.files ?? [])
-  .map((file) => file.content ?? '')
-  .join('\n');
+const catalog = readJson('registry.json');
+const catalogNames = new Set((catalog.items ?? []).map((item) => item.name));
+for (const name of [...UI_ITEM_NAMES, ...BLOCK_ITEM_NAMES]) {
+  if (!catalogNames.has(name)) {
+    console.error(`check-registry: public/r/registry.json missing "${name}"`);
+    process.exit(1);
+  }
+}
 
-if (/<(Editor|Canvas)\.Root/.test(fileContents)) {
+const uiItems = UI_ITEM_NAMES.map((name) =>
+  assertNamedItem(readJson(`${name}.json`), name, 'registry:ui'),
+);
+const blockItems = BLOCK_ITEM_NAMES.map((name) =>
+  assertNamedItem(readJson(`${name}.json`), name, 'registry:block'),
+);
+
+const uiContents = uiItems.map(itemContents).join('\n');
+const blockContents = blockItems.map(itemContents).join('\n');
+
+if (/<(Editor|Canvas)\.Root/.test(uiContents)) {
   console.error(
-    'check-registry: registry output must not render Editor.Root or Canvas.Root',
+    'check-registry: ui registry output must not render Editor.Root or Canvas.Root',
   );
   process.exit(1);
 }
 
-const checks = [
+if (
+  !blockContents.includes('<Editor.Root') ||
+  !blockContents.includes('<Canvas.Root')
+) {
+  console.error(
+    'check-registry: editor-app must render Editor.Root and Canvas.Root',
+  );
+  process.exit(1);
+}
+
+const uiChecks = [
   ['data-slot="editor-field"', 'editor-field slot'],
   ['cmsFields', 'cmsFields export'],
   ['data-slot="editor-overlay"', 'editor-overlay slot'],
@@ -81,9 +108,46 @@ const checks = [
   ['FramePreview', 'FramePreview usage'],
 ];
 
-for (const [pattern, label] of checks) {
-  if (!fileContents.includes(pattern)) {
+const blockChecks = [
+  ['function CmsEditor', 'CmsEditor export'],
+  ['useCmsDocument', 'useCmsDocument wiring'],
+  ['useCmsFieldSources', 'useCmsFieldSources wiring'],
+  ['CmsSourcesProvider', 'CmsSourcesProvider'],
+  ['fields={cmsFields}', 'cmsFields on Editor.Root'],
+  ['key={doc.key}', 'doc.key remount'],
+  ['defaultValue={doc.tree}', 'doc.tree defaultValue'],
+  ['onSave={doc.save}', 'doc.save'],
+  ['onChange={doc.onChange}', 'doc.onChange'],
+  ['resolve={doc.resolve}', 'doc.resolve on Canvas.Root'],
+  ['EditorShell', 'EditorShell composition'],
+  ['data-slot="editor-app"', 'editor-app slot'],
+  ['data-slot="editor-app-loading"', 'loading skeleton slot'],
+  ['data-slot="editor-app-error"', 'error state slot'],
+  ['data-slot="editor-app-conflict"', 'conflict dialog slot'],
+  ['save({ force: true })', 'force save on conflict'],
+  ['doc.reload', 'reload retry'],
+  ["mode === 'form'", 'form mode'],
+  ['SelectionRing', 'SelectionRing overlay'],
+  ['HoverRing', 'HoverRing overlay'],
+  ['FieldRing', 'FieldRing overlay'],
+  ['BlockToolbar', 'BlockToolbar overlay'],
+  ['InsertButton', 'InsertButton overlay'],
+  ['DragHandle', 'DragHandle overlay'],
+  ['DragPreview', 'DragPreview overlay'],
+  ['DropIndicator', 'DropIndicator overlay'],
+  ['InlineText', 'InlineText overlay'],
+];
+
+for (const [pattern, label] of uiChecks) {
+  if (!uiContents.includes(pattern)) {
     console.error(`check-registry: registry output must include ${label}`);
+    process.exit(1);
+  }
+}
+
+for (const [pattern, label] of blockChecks) {
+  if (!blockContents.includes(pattern)) {
+    console.error(`check-registry: editor-app must include ${label}`);
     process.exit(1);
   }
 }

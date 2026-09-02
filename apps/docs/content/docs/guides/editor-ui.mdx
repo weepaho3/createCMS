@@ -3,7 +3,7 @@ title: Editor UI
 description: Install styled editor chrome from the createCMS shadcn registry.
 ---
 
-The createCMS docs site hosts a [shadcn registry](https://ui.shadcn.com/docs/registry/getting-started) of copy-paste editor chrome. Items wrap `Editor.Field`, `Canvas` overlay parts, sidebar-grade shell chrome, and an email split layout. None of them wrap `Editor.Root` or `Canvas.Root`. Compose them **inside** `Editor.Root` in your app code. For form-only, live canvas, and form-plus-preview layouts, see the [Visual editor](/docs/guides/visual-editor) guide.
+The createCMS docs site hosts a [shadcn registry](https://ui.shadcn.com/docs/registry/getting-started) of copy-paste editor chrome. Start with `editor-app` for a complete CMS-wired page, or install the individual items (`editor-form`, `editor-canvas`, `editor-shell`, `editor-email`) as building blocks. Those chrome items wrap `Editor.Field`, `Canvas` overlay parts, sidebar-grade shell chrome, and an email split layout. They do not wrap `Editor.Root` or `Canvas.Root` — compose them **inside** `Editor.Root` in your app code. For form-only, live canvas, and form-plus-preview layouts, see the [Visual editor](/docs/guides/visual-editor) guide.
 
 ## Prerequisites
 
@@ -13,9 +13,36 @@ Your app should already be initialized with shadcn (`npx shadcn@latest init`) an
 npm install @createcms/react
 ```
 
-Wire cms-backed field controls with `CmsSourcesProvider` and pass `fields={cmsFields}` on `Editor.Root` (the consumer passes the result of `useCmsFieldSources(client)` into the provider).
+`editor-app` wires `useCmsDocument` and `useCmsFieldSources` for you. If you compose the chrome items yourself, pass `fields={cmsFields}` on `Editor.Root` and wrap with `CmsSourcesProvider` (the consumer passes the result of `useCmsFieldSources(client)` into the provider).
 
-## Install registry items
+## Start with one install
+
+`editor-app` is a `registry:block` that copies `CmsEditor`. Pass a createCMS client, collection name, schema, and block components map. It loads and saves the document, feeds field sources into `cmsFields`, and assembles `EditorShell` plus the `editor-canvas` overlay set (rings, `BlockToolbar`, `InsertButton`, `PaletteItem` in the shell palette, `DragHandle` / `DragPreview` / `DropIndicator`, `InlineText`). Status UI covers the loading skeleton, load/save errors with Retry (`reload`), and a conflict dialog on `HEAD_MISMATCH` (reload vs overwrite with `save({ force: true })`).
+
+```bash
+npx shadcn@latest add https://createcms.dev/r/editor-app.json
+```
+
+```tsx
+import { CmsEditor } from '@/components/editor-app';
+
+<CmsEditor
+  client={cmsClient}
+  collection="pages"
+  rootId={rootId}
+  branchId={branchId}
+  schema={pages}
+  components={pageBlocks}
+/>
+```
+
+`mode="form"` keeps the same document and field-source wiring and renders a form view without `Canvas.Root`. Optional `templates` overrides `client.templates` for `useCmsDocument` defaults. Optional `requireCommitMessage` opens the shell's commit-message dialog on save.
+
+While developing the docs site locally, swap `https://createcms.dev` for `http://localhost:4000`.
+
+## Building blocks
+
+Install individual items when you want to compose chrome yourself. `editor-app` already depends on `editor-form`, `editor-canvas`, and `editor-shell`.
 
 **Field wrappers and cms controls**
 
@@ -40,8 +67,6 @@ npx shadcn@latest add https://createcms.dev/r/editor-shell.json
 ```bash
 npx shadcn@latest add https://createcms.dev/r/editor-email.json
 ```
-
-While developing the docs site locally, swap `https://createcms.dev` for `http://localhost:4000`.
 
 ## Usage
 
