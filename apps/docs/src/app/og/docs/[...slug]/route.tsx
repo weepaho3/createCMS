@@ -19,6 +19,8 @@ export async function GET(
       title={page.data.title}
       description={page.data.description}
       site="createCMS"
+      primaryColor="#ea580c"
+      primaryTextColor="#ea580c"
     />,
     {
       width: 1200,

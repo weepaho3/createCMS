@@ -1,110 +1,48 @@
 @import 'tailwindcss';
 @import 'fumadocs-ui/css/shadcn.css';
 @import 'fumadocs-ui/css/preset.css';
+@import '../styles/tokens.css';
 @import '../../registry/editor-canvas.css';
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+:root {
+  --sidebar: #fafaf9;
+  --sidebar-foreground: var(--foreground);
+  --sidebar-accent: var(--muted);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --editor-ring: var(--ring);
+  --editor-invalid: var(--destructive);
+  --editor-muted: var(--muted-foreground);
+  --editor-selection: var(--primary);
+  --editor-hover: var(--muted-foreground);
+  --editor-focus: var(--ring);
+  --editor-drop: var(--primary);
+}
+
+.dark {
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-accent: var(--muted);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --editor-ring: var(--ring);
+  --editor-invalid: var(--destructive);
+  --editor-muted: var(--muted-foreground);
+  --editor-selection: var(--primary);
+  --editor-hover: var(--muted-foreground);
+  --editor-focus: var(--ring);
+  --editor-drop: var(--primary);
+}
+
 html,
 body {
-  @apply bg-white dark:bg-gray-950;
+  @apply bg-background text-foreground;
 
   @media (prefers-color-scheme: dark) {
     color-scheme: dark;
   }
-}
-
-:root {
-  --radius: 0.45rem;
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.646 0.222 41.116);
-  --primary-foreground: oklch(0.98 0.016 73.684);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.705 0.015 286.067);
-  --chart-1: oklch(0.837 0.128 66.29);
-  --chart-2: oklch(0.705 0.213 47.604);
-  --chart-3: oklch(0.646 0.222 41.116);
-  --chart-4: oklch(0.553 0.195 38.402);
-  --chart-5: oklch(0.47 0.157 37.304);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.141 0.005 285.823);
-  --sidebar-primary: oklch(0.646 0.222 41.116);
-  --sidebar-primary-foreground: oklch(0.98 0.016 73.684);
-  --sidebar-accent: oklch(0.967 0.001 286.375);
-  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
-  --sidebar-border: oklch(0.92 0.004 286.32);
-  --sidebar-ring: oklch(0.705 0.015 286.067);
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
-  --editor-ring: var(--ring);
-  --editor-invalid: var(--destructive);
-  --editor-muted: var(--muted-foreground);
-  --editor-selection: var(--primary);
-  --editor-hover: var(--muted-foreground);
-  --editor-focus: var(--ring);
-  --editor-drop: var(--primary);
-}
-
-.dark {
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.21 0.006 285.885);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.705 0.213 47.604);
-  --primary-foreground: oklch(0.98 0.016 73.684);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.552 0.016 285.938);
-  --chart-1: oklch(0.837 0.128 66.29);
-  --chart-2: oklch(0.705 0.213 47.604);
-  --chart-3: oklch(0.646 0.222 41.116);
-  --chart-4: oklch(0.553 0.195 38.402);
-  --chart-5: oklch(0.47 0.157 37.304);
-  --sidebar: oklch(0.21 0.006 285.885);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.705 0.213 47.604);
-  --sidebar-primary-foreground: oklch(0.98 0.016 73.684);
-  --sidebar-accent: oklch(0.274 0.006 286.033);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.552 0.016 285.938);
-  --editor-ring: var(--ring);
-  --editor-invalid: var(--destructive);
-  --editor-muted: var(--muted-foreground);
-  --editor-selection: var(--primary);
-  --editor-hover: var(--muted-foreground);
-  --editor-focus: var(--ring);
-  --editor-drop: var(--primary);
-}
-
-/* Brand mark (animated createCMS logo) — accent orange is constant across
-   themes; only the ink flips with the .dark class for a flash-free swap. */
-:root {
-  --cc-ink: #1c1917;
-  --cc-accent: #ea580c;
-}
-.dark {
-  --cc-ink: #fafaf9;
 }
 
 @theme inline {
@@ -112,6 +50,7 @@ body {
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --color-brand: var(--brand);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -127,6 +66,7 @@ body {
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -150,20 +90,36 @@ body {
   --color-editor-hover: var(--editor-hover);
   --color-editor-focus: var(--editor-focus);
   --color-editor-drop: var(--editor-drop);
+  --color-fd-background: var(--background);
+  --color-fd-foreground: var(--foreground);
+  --color-fd-muted: var(--muted);
+  --color-fd-muted-foreground: var(--muted-foreground);
+  --color-fd-popover: var(--popover);
+  --color-fd-popover-foreground: var(--popover-foreground);
+  --color-fd-card: var(--card);
+  --color-fd-card-foreground: var(--card-foreground);
+  --color-fd-border: var(--border);
+  --color-fd-primary: var(--primary);
+  --color-fd-primary-foreground: var(--primary-foreground);
+  --color-fd-secondary: var(--secondary);
+  --color-fd-secondary-foreground: var(--secondary-foreground);
+  --color-fd-accent: var(--accent);
+  --color-fd-accent-foreground: var(--accent-foreground);
+  --color-fd-ring: var(--ring);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
     @apply bg-background text-foreground;
   }
 }

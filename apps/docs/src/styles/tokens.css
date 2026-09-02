@@ -1,0 +1,95 @@
+/* CMS-75 shared brand/semantic tokens — Shad SoT
+ * Imported by apps/docs/src/app/global.css
+ */
+
+:root {
+  --cc-ink: #1c1917;
+  --cc-accent: #ea580c;
+  --brand: #ea580c;
+
+  --primary: #ea580c;
+  --primary-foreground: #fff7ed;
+
+  --background: #ffffff;
+  --foreground: #1c1917;
+
+  --muted: #f5f5f4;
+  --muted-foreground: #78716c;
+
+  --card: #ffffff;
+  --card-foreground: #1c1917;
+  --popover: #ffffff;
+  --popover-foreground: #1c1917;
+
+  --secondary: #f5f5f4;
+  --secondary-foreground: #1c1917;
+  --accent: #f5f5f4;
+  --accent-foreground: #1c1917;
+
+  --border: #e7e5e4;
+  --input: #e7e5e4;
+  --ring: #ea580c;
+
+  --destructive: #dc2626;
+  --destructive-foreground: #fef2f2;
+
+  --radius: 0.45rem;
+
+  --shadow-sm: 0 1px 2px rgb(28 25 23 / 0.06);
+  --shadow-md: 0 4px 16px rgb(28 25 23 / 0.08), 0 1px 2px rgb(28 25 23 / 0.04);
+
+  --chart-1: #ea580c;
+  --chart-2: #f97316;
+  --chart-3: #fdba74;
+  --chart-4: #c2410c;
+  --chart-5: #9f2d00;
+
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-ring: var(--ring);
+}
+
+.dark {
+  --cc-ink: #fafaf9;
+  --cc-accent: #ea580c;
+  --brand: #ea580c;
+
+  --primary: #f97316;
+  --primary-foreground: #1c1917;
+
+  --background: #0c0a09;
+  --foreground: #fafaf9;
+
+  --muted: #1c1917;
+  --muted-foreground: #a8a29e;
+
+  --card: #0c0a09;
+  --card-foreground: #fafaf9;
+  --popover: #0c0a09;
+  --popover-foreground: #fafaf9;
+
+  --secondary: #1c1917;
+  --secondary-foreground: #fafaf9;
+  --accent: #1c1917;
+  --accent-foreground: #fafaf9;
+
+  --border: #292524;
+  --input: #292524;
+  --ring: #f97316;
+
+  --destructive: #ef4444;
+  --destructive-foreground: #1c1917;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 16px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(250 250 249 / 0.04);
+
+  --chart-1: #f97316;
+  --chart-2: #ea580c;
+  --chart-3: #fdba74;
+  --chart-4: #c2410c;
+  --chart-5: #9f2d00;
+
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-ring: var(--ring);
+}
