@@ -1,9 +1,11 @@
 ---
 title: Editor UI
-description: Install styled editor chrome from the createCMS shadcn registry.
+description: Install a CMS-wired editor page in one command, or copy styled chrome from the createCMS shadcn registry.
 ---
 
-The createCMS docs site hosts a [shadcn registry](https://ui.shadcn.com/docs/registry/getting-started) of copy-paste editor chrome. Start with `editor-app` for a complete CMS-wired page, or install the individual items (`editor-form`, `editor-canvas`, `editor-shell`, `editor-email`) as building blocks. Those chrome items wrap `Editor.Field`, `Canvas` overlay parts, sidebar-grade shell chrome, and an email split layout. They do not wrap `Editor.Root` or `Canvas.Root` — compose them **inside** `Editor.Root` in your app code. For form-only, live canvas, and form-plus-preview layouts, see the [Visual editor](/docs/guides/visual-editor) guide.
+The createCMS docs site hosts a [shadcn registry](https://ui.shadcn.com/docs/registry/getting-started) of copy-paste editor chrome. Start with `editor-app` for a complete CMS-wired page.
+
+The chrome items (`editor-form`, `editor-canvas`, `editor-shell`, `editor-email`) do not wrap `Editor.Root` or `Canvas.Root` — compose them **inside** `Editor.Root`. For form-only, live canvas, and form-plus-preview layouts, see the [Visual editor](/docs/guides/visual-editor) guide.
 
 ## Prerequisites
 
@@ -13,36 +15,72 @@ Your app should already be initialized with shadcn (`npx shadcn@latest init`) an
 npm install @createcms/react
 ```
 
-`editor-app` wires `useCmsDocument` and `useCmsFieldSources` for you. If you compose the chrome items yourself, pass `fields={cmsFields}` on `Editor.Root` and wrap with `CmsSourcesProvider` (the consumer passes the result of `useCmsFieldSources(client)` into the provider).
+`editor-app` handles the CMS wiring (`useCmsDocument` and `useCmsFieldSources`). Pass `fields={cmsFields}` on `Editor.Root` and wrap with `CmsSourcesProvider` only when you compose chrome yourself — pass the result of `useCmsFieldSources(client)` into the provider.
 
 ## Start with one install
 
-`editor-app` is a `registry:block` that copies `CmsEditor`. Pass a createCMS client, collection name, schema, and block components map. It loads and saves the document, feeds field sources into `cmsFields`, and assembles `EditorShell` plus the `editor-canvas` overlay set (rings, `BlockToolbar`, `InsertButton`, `PaletteItem` in the shell palette, `DragHandle` / `DragPreview` / `DropIndicator`, `InlineText`). Status UI covers the loading skeleton, load/save errors with Retry (`reload`), and a conflict dialog on `HEAD_MISMATCH` (reload vs overwrite with `save({ force: true })`).
+`editor-app` copies a complete CMS-wired editor page in one `shadcn add`.
 
 ```bash
 npx shadcn@latest add https://createcms.dev/r/editor-app.json
 ```
 
 ```tsx
+'use client';
+
 import { CmsEditor } from '@/components/editor-app';
 
-<CmsEditor
-  client={cmsClient}
-  collection="pages"
-  rootId={rootId}
-  branchId={branchId}
-  schema={pages}
-  components={pageBlocks}
-/>
+export function PageEditor({
+  rootId,
+  branchId,
+}: {
+  rootId: string;
+  branchId: string;
+}) {
+  return (
+    <CmsEditor
+      client={cmsClient}
+      collection="pages"
+      rootId={rootId}
+      branchId={branchId}
+      schema={pages}
+      components={pageBlocks}
+    />
+  );
+}
 ```
 
-`mode="form"` keeps the same document and field-source wiring and renders a form view without `Canvas.Root`. Optional `templates` overrides `client.templates` for `useCmsDocument` defaults. Optional `requireCommitMessage` opens the shell's commit-message dialog on save.
+Copied files land in your shadcn components directory. Adjust the import if your aliases differ.
+
+What `CmsEditor` includes:
+
+- Document load and save (`useCmsDocument`)
+- Field sources (`useCmsFieldSources`, `CmsSourcesProvider`, `fields={cmsFields}`)
+- `EditorShell` and canvas overlays
+- Loading skeleton, error + Retry (`doc.reload`), and a conflict dialog on `HEAD_MISMATCH` (reload vs `save({ force: true })`)
+
+`mode="form"` skips `Canvas.Root` and keeps the same document wiring.
+
+### Props
+
+| Prop | Required | Default | Description |
+| --- | --- | --- | --- |
+| `client` | yes | — | Top-level createCMS client (collection namespaces plus field sources). |
+| `collection` | yes | — | Collection name on `client`. |
+| `rootId` | yes | — | Document root. |
+| `branchId` | yes | — | Branch to load and save. |
+| `schema` | yes | — | Editor schema. |
+| `components` | yes | — | Canvas block map. |
+| `templates` | no | `client.templates` | Override for `useCmsDocument` template defaults. |
+| `mode` | no | `'canvas'` | `'canvas'` or `'form'`. Form skips `Canvas.Root`. |
+| `className` | no | — | Applied to the page root, loading skeleton, and error state. |
+| `requireCommitMessage` | no | `false` | Opens the shell commit-message dialog on save. |
 
 While developing the docs site locally, swap `https://createcms.dev` for `http://localhost:4000`.
 
-## Building blocks
+## When composing yourself
 
-Install individual items when you want to compose chrome yourself. `editor-app` already depends on `editor-form`, `editor-canvas`, and `editor-shell`.
+If you installed `editor-app`, you can stop here. `CmsEditor` already depends on `editor-form`, `editor-canvas`, and `editor-shell`. Install the items below only when you want to compose chrome yourself.
 
 **Field wrappers and cms controls**
 
@@ -68,9 +106,9 @@ npx shadcn@latest add https://createcms.dev/r/editor-shell.json
 npx shadcn@latest add https://createcms.dev/r/editor-email.json
 ```
 
-## Usage
+### Usage
 
-Compose `<Editor.Root schema={…}>` in your app code, then install and use the copied parts.
+Compose these parts **inside** `<Editor.Root schema={…}>`. Do not nest styled `Field` inside styled `Form`.
 
 **Cms field controls**
 
@@ -191,4 +229,3 @@ import {
 | `PaletteItem`   | Draggable palette row (used by `EditorPalette`)                      |
 | `DragPreview`   | Pointer-following preview during a drag                              |
 | `InlineText`    | Inline text editing glass                                            |
-

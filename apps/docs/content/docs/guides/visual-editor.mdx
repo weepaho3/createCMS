@@ -17,29 +17,24 @@ the docs registry. For a real createCMS backend, start with the one-install
 npm install @createcms/react
 ```
 
-Start with one install when you have a collection client (see
-[Editor UI](/docs/guides/editor-ui)):
+### One install (`editor-app`)
+
+When you have a collection client, start with the CMS-wired page in
+[Editor UI](/docs/guides/editor-ui):
 
 ```bash
 npx shadcn@latest add https://createcms.dev/r/editor-app.json
 ```
 
-Or install the chrome items as building blocks (Field vs Form nesting is
-documented on [Editor UI](/docs/guides/editor-ui)):
+### Building-block chrome
+
+Or install the chrome items individually. Field vs Form nesting is
+documented on [Editor UI](/docs/guides/editor-ui):
 
 ```bash
 npx shadcn@latest add https://createcms.dev/r/editor-form.json
-```
-
-```bash
 npx shadcn@latest add https://createcms.dev/r/editor-canvas.json
-```
-
-```bash
 npx shadcn@latest add https://createcms.dev/r/editor-shell.json
-```
-
-```bash
 npx shadcn@latest add https://createcms.dev/r/editor-email.json
 ```
 
