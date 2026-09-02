@@ -1,6 +1,6 @@
 ---
 title: Introduction
-description: A composable, block-based headless CMS with Git-like versioning and an end-to-end type-safe API.
+description: Your Postgres. Your branches. Your CMS. A composable, Git-like headless CMS you compose into your TypeScript app.
 icon: BookOpen
 ---
 
@@ -14,13 +14,11 @@ icon: BookOpen
 
 ## Why it exists
 
-Building apps and sites with Next.js, every CMS got in the way: some missing features, some bloated, most painful to customize, and there was the constant split between an app and its marketing site (pay a headless CMS for traffic, or run a separate one somewhere). But your app already owns its data and has a database, so why not put the CMS inside it? `@createcms/core` is a CMS you install from npm and integrate natively, shaped to exactly what a project needs, instead of squeezing your app into someone else's CMS.
-
-The requirements were specific, and most came from real agency work: instant rollbacks, full history, approval flows, and several versions of a page live at once (A/B testing had long been an unsatisfying patchwork of separate systems, privacy headaches, and performance hits). Those needs look a lot like version control, so the model is Git, implemented in PostgreSQL.
+Your app already owns its database. createCMS installs from npm and keeps content, history, and API in *your* Postgres: branches, drafts, diffs, and publish as first-class APIs. Compose it into your TypeScript app. Build your CMS into your app, not your app into a CMS.
 
 ## What makes it different
 
-Your collection definitions are the single source of truth. They drive the database schema, the write API, the shape of read responses, and the client, so there are no hand-written types to keep in sync. Content is stored with Git-like versioning: every entry is a root with branches and commits, so editors can draft on a branch, open a merge request, diff, and publish. The core is framework-agnostic, with first-class helpers for Next.js and React.
+Your collection definitions are the single source of truth. They drive the database schema, the write API, the shape of read responses, and the client, so there are no hand-written types to keep in sync. Content lives in your Postgres with Git-like versioning: every entry is a root with branches and commits, so editors can draft on a branch, open a merge request, diff, and publish. The core is framework-agnostic, with first-class helpers for Next.js and React.
 
 ## Features
 
@@ -35,7 +33,7 @@ Your collection definitions are the single source of truth. They drive the datab
     Branches, commits, merge requests, and publishing for every content entry.
   </Card>
   <Card title="Plugins" href="/docs/plugins">
-    Multi-tenant, i18n, A/B testing, consent, and media optimization ship in the box.
+    Optional plugins for multi-tenant, i18n, A/B testing, consent, and media optimization.
   </Card>
 </Cards>
 
