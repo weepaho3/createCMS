@@ -56,18 +56,19 @@ export async function generateMetadata(
   if (!page) notFound();
 
   const image = getPageImage(page).url;
+  const ogTitle = `${page.data.title} | createCMS`;
 
   return {
     title: page.data.title,
     description: page.data.description,
     openGraph: {
-      title: page.data.title,
+      title: ogTitle,
       description: COPY.primary,
       images: image,
     },
     twitter: {
       card: 'summary_large_image',
-      title: page.data.title,
+      title: ogTitle,
       description: COPY.primary,
       images: image,
     },
