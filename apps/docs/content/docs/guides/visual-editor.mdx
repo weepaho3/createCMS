@@ -4,8 +4,12 @@ description: Compose a live canvas, a form plus preview, or a form-only editor f
 ---
 
 This guide shows how to compose a styled editor from `@createcms/react` and
-the docs registry. Compose **inside** `Editor.Root`. Never wrap `Root` in a
-snippet that lives in the registry.
+the docs registry. For a real createCMS backend, start with the one-install
+`editor-app` block in [Editor UI](/docs/guides/editor-ui): it wraps
+`Editor.Root` and `Canvas.Root` and wires `useCmsDocument` /
+`useCmsFieldSources`. The chrome items below (`editor-form`, `editor-canvas`,
+`editor-shell`, `editor-email`) do not wrap `Root` — compose those **inside**
+`Editor.Root`.
 
 ## Install
 
@@ -13,22 +17,24 @@ snippet that lives in the registry.
 npm install @createcms/react
 ```
 
-Install the registry items (see [Editor UI](/docs/guides/editor-ui) for
-Field vs Form nesting):
+### One install (`editor-app`)
+
+When you have a collection client, start with the CMS-wired page in
+[Editor UI](/docs/guides/editor-ui):
+
+```bash
+npx shadcn@latest add https://createcms.dev/r/editor-app.json
+```
+
+### Building-block chrome
+
+Or install the chrome items individually. Field vs Form nesting is
+documented on [Editor UI](/docs/guides/editor-ui):
 
 ```bash
 npx shadcn@latest add https://createcms.dev/r/editor-form.json
-```
-
-```bash
 npx shadcn@latest add https://createcms.dev/r/editor-canvas.json
-```
-
-```bash
 npx shadcn@latest add https://createcms.dev/r/editor-shell.json
-```
-
-```bash
 npx shadcn@latest add https://createcms.dev/r/editor-email.json
 ```
 
@@ -170,10 +176,12 @@ export function PagesLiveCanvas() {
 ```
 
 <Callout type="info">
-  A createCMS collection client uses `useCmsDocument` as on the
-  [Editor cms adapter](/docs/reference/react-editor-cms) reference page:
-  pass `key={doc.key}`, `onChange={doc.onChange}`, `onSave={doc.save}`, and
-  `resolve={doc.resolve}` on `Canvas.Root` when wiring a real backend.
+  A createCMS collection client can skip this local stand-in: install
+  `editor-app` from [Editor UI](/docs/guides/editor-ui) and pass the client
+  plus your components map. `CmsEditor` already wires `useCmsDocument` as on
+  the [Editor cms adapter](/docs/reference/react-editor-cms) reference page
+  (`key={doc.key}`, `onChange={doc.onChange}`, `onSave={doc.save}`, and
+  `resolve={doc.resolve}` on `Canvas.Root`).
 </Callout>
 
 ## Form plus preview

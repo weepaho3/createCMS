@@ -106,6 +106,27 @@
           "type": "registry:ui"
         }
       ]
+    },
+    {
+      "name": "editor-app",
+      "type": "registry:block",
+      "title": "Editor App",
+      "description": "CMS-wired editor page: document load/save, field sources, shell, and canvas overlays in one install.",
+      "dependencies": ["@createcms/react"],
+      "registryDependencies": [
+        "editor-form",
+        "editor-canvas",
+        "editor-shell",
+        "button",
+        "dialog",
+        "skeleton"
+      ],
+      "files": [
+        {
+          "path": "registry/editor-app.tsx",
+          "type": "registry:block"
+        }
+      ]
     }
   ]
 }
