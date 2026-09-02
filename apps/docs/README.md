@@ -12,6 +12,10 @@ Open http://localhost:4000 to see the result.
 
 Documentation content lives in `content/docs` (MDX), and the Fumadocs source adapter is configured in `src/lib/source.ts`.
 
+## Design tokens
+
+Shared brand / semantic tokens (CMS-75) live in [`src/styles/tokens.css`](./src/styles/tokens.css). `src/app/global.css` imports that file so marketing, Fumadocs (`fd-*` remapped onto the same semantics), and the registry / demo UI share one palette. Do not add a second `--primary` / `--brand` definition in `global.css`.
+
 ## Registry
 
 Styled editor chrome is distributed as copy-paste shadcn registry items, not as an npm package.
