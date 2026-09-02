@@ -14,7 +14,7 @@ Documentation content lives in `content/docs` (MDX), and the Fumadocs source ada
 
 ## Design tokens
 
-Shared brand / semantic tokens (CMS-75) live in [`src/styles/tokens.css`](./src/styles/tokens.css). `src/app/global.css` imports that file so marketing, Fumadocs (`fd-*` remapped onto the same semantics), and the registry / demo UI share one palette. Do not add a second `--primary` / `--brand` definition in `global.css`.
+Shared brand / semantic tokens (CMS-75) live in [`src/styles/tokens.css`](./src/styles/tokens.css). `src/app/global.css` imports that file (`@import '../styles/tokens.css';`) so marketing, Fumadocs (`fd-*` remapped onto the same `--primary`), and the registry / demo UI share one palette. Do not reintroduce `--primary` / `--brand` hex in `global.css`.
 
 ## Registry
 
