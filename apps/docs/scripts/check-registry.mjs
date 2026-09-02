@@ -70,6 +70,14 @@ const checks = [
   ['cmsFields', 'cmsFields export'],
   ['data-slot="editor-overlay"', 'editor-overlay slot'],
   ['data-slot="editor-shell"', 'editor-shell slot'],
+  ['data-slot="editor-toolbar"', 'editor-toolbar slot'],
+  ['data-slot="editor-palette"', 'editor-palette slot'],
+  ['data-slot="editor-outline"', 'editor-outline slot'],
+  ['data-slot="editor-inspector"', 'editor-inspector slot'],
+  ['data-slot="editor-surface"', 'editor-surface slot'],
+  ['data-slot="editor-selection-chip"', 'editor-selection-chip slot'],
+  ['SidebarProvider', 'SidebarProvider usage'],
+  ['CommandDialog', 'CommandDialog usage'],
   ['FramePreview', 'FramePreview usage'],
 ];
 

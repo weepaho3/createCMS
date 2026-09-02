@@ -5,7 +5,7 @@ const demos = [
     href: '/demo/editor/pages',
     title: 'Live canvas',
     description:
-      'Three-column shell with a live canvas, palette, outline, and inspector.',
+      'Live canvas with sidebar chrome, palette, outline, and inspector.',
   },
   {
     href: '/demo/editor/form',

@@ -86,8 +86,10 @@ export function FormOnlyEditor() {
 
 Same `Editor.Root` wiring. `EditorShell` children are
 `Canvas.Root components={pageBlocks}` with overlay rings, toolbar, insert,
-drag handle, drop indicator, drag preview, and `InlineText`. Build
-`pageBlocks` from `createBlocksMap` with `edit` spread on each block root.
+drag handle, drop indicator, drag preview, and `InlineText`. Palette and
+outline live in the shell's left `Sidebar`; the inspector is the right
+`Sidebar`. Build `pageBlocks` from `createBlocksMap` with `edit` spread on
+each block root.
 
 ```tsx
 'use client';
