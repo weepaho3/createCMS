@@ -1,7 +1,7 @@
-import { generate as DefaultImage } from 'fumadocs-ui/og';
 import { notFound } from 'next/navigation';
-import { ImageResponse } from 'next/og';
 
+import { COPY } from '@/lib/launch-copy';
+import { generateBrandOgImage } from '@/lib/og-image';
 import { getPageImage, source } from '@/lib/source';
 
 export const revalidate = false;
@@ -14,19 +14,10 @@ export async function GET(
   const page = source.getPage(slug.slice(0, -1));
   if (!page) notFound();
 
-  return new ImageResponse(
-    <DefaultImage
-      title={page.data.title}
-      description={page.data.description}
-      site="createCMS"
-      primaryColor="#ea580c"
-      primaryTextColor="#ea580c"
-    />,
-    {
-      width: 1200,
-      height: 630,
-    },
-  );
+  return generateBrandOgImage({
+    title: page.data.title,
+    description: COPY.primary,
+  });
 }
 
 export function generateStaticParams() {

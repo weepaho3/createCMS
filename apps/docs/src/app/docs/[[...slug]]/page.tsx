@@ -12,6 +12,7 @@ import { createRelativeLink } from 'fumadocs-ui/mdx';
 import { notFound } from 'next/navigation';
 
 import { TypeTable } from '@/components/type-table';
+import { COPY } from '@/lib/launch-copy';
 import { getPageImage, source } from '@/lib/source';
 import { getMDXComponents } from '@/mdx-components';
 
@@ -54,11 +55,22 @@ export async function generateMetadata(
   const page = source.getPage(params.slug);
   if (!page) notFound();
 
+  const image = getPageImage(page).url;
+  const ogTitle = `${page.data.title} | createCMS`;
+
   return {
     title: page.data.title,
     description: page.data.description,
     openGraph: {
-      images: getPageImage(page).url,
+      title: ogTitle,
+      description: COPY.primary,
+      images: image,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: ogTitle,
+      description: COPY.primary,
+      images: image,
     },
   };
 }
