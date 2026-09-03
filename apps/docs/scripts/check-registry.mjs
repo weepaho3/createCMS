@@ -133,9 +133,23 @@ const blockChecks = [
   ['BlockToolbar', 'BlockToolbar overlay'],
   ['InsertButton', 'InsertButton overlay'],
   ['DragHandle', 'DragHandle overlay'],
-  ['DragPreview', 'DragPreview overlay'],
   ['DropIndicator', 'DropIndicator overlay'],
+  ['DragPreview', 'DragPreview overlay'],
   ['InlineText', 'InlineText overlay'],
+  ['AlertDialog', 'AlertDialog conflict UI'],
+  ['variant="destructive"', 'destructive overwrite action'],
+  ['AlertTitle', 'Alert title'],
+  ['role="status"', 'loading status role'],
+  ['aria-busy', 'loading aria-busy'],
+  ['className="relative"', 'canvas relative class'],
+  ['hidden w-64 shrink-0 rounded-none md:block', 'sheet-aware loading columns'],
+];
+
+const blockForbidden = [
+  ['grid-cols-[16rem_1fr_20rem]', 'desktop-only loading grid'],
+  ['onOpenChange={() => {}}', 'empty onOpenChange trap'],
+  ['.catch(() => undefined)', 'silent force-save swallow'],
+  ["style={{ position: 'relative' }}", 'inline relative position'],
 ];
 
 for (const [pattern, label] of uiChecks) {
@@ -150,4 +164,28 @@ for (const [pattern, label] of blockChecks) {
     console.error(`check-registry: editor-app must include ${label}`);
     process.exit(1);
   }
+}
+
+for (const [pattern, label] of blockForbidden) {
+  if (blockContents.includes(pattern)) {
+    console.error(`check-registry: editor-app must not include ${label}`);
+    process.exit(1);
+  }
+}
+
+const editorAppItem = catalog.items.find((item) => item.name === 'editor-app');
+const editorAppDeps = editorAppItem?.registryDependencies ?? [];
+for (const dep of ['alert', 'alert-dialog', 'button', 'skeleton']) {
+  if (!editorAppDeps.includes(dep)) {
+    console.error(
+      `check-registry: editor-app registryDependencies must include "${dep}"`,
+    );
+    process.exit(1);
+  }
+}
+if (editorAppDeps.includes('dialog')) {
+  console.error(
+    'check-registry: editor-app should depend on alert-dialog, not dialog',
+  );
+  process.exit(1);
 }
