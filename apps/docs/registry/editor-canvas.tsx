@@ -84,7 +84,7 @@ function FieldRing({
   return (
     <Canvas.FieldRing
       data-slot="editor-field-ring"
-      className={cn('border-editor-focus border', className)}
+      className={cn('border-editor-focus border', ringMotion, className)}
       {...props}
     />
   );
