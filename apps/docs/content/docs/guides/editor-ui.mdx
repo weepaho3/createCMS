@@ -168,8 +168,8 @@ The assembled `EditorShell` is a default composition of shadcn `Sidebar` (left p
 | ----------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------- |
 | `EditorProvider`  | `TooltipProvider` + `SidebarProvider` + `Canvas.Provider` + keyboard (⌘S, ⌘K, undo/redo)     | shadcn `sidebar`, `tooltip`                        |
 | `EditorToolbar`   | Icon buttons with `Tooltip` + `Kbd`, device `ToggleGroup` (canvas mode), save dirty-dot + spinner | `button`, `tooltip`, `kbd`, `toggle-group`, `separator` |
-| `EditorPalette`   | `SidebarGroup` of `Canvas.PaletteItem` rows with grip affordance                              | `sidebar`, `editor-canvas`                         |
-| `EditorOutline`   | Tree rows on `SidebarMenuButton` + `Editor.OutlineItem`, chevron collapse, type icon          | `sidebar`, `collapsible`                           |
+| `EditorPalette`   | `SidebarGroup` of `Canvas.PaletteItem` rows with grip affordance (insert)                     | `sidebar`, `editor-canvas`                         |
+| `EditorOutline`   | Tree rows on `SidebarMenuButton` + `Editor.OutlineItem`, move `DragHandle`, chevron collapse, type icon | `sidebar`, `collapsible`, `editor-canvas`          |
 | `EditorInspector` | `Tabs` (Block / Page), empty state, sticky header with Duplicate / Delete                     | `tabs`, `editor-form`                              |
 | `EditorSurface`   | Device-width canvas column, or a scrolling form column in `mode="form"`                       | —                                                  |
 | `EditorShell`     | Default assembly. `mode="form"` hides palette, outline, inspector, and device toggles.        | all of the above                                   |
@@ -222,7 +222,7 @@ import {
 | `Overlay`       | Portals overlay chrome into the canvas host                          |
 | `SelectionRing` | Selection outline with a block-type chip; motion respects reduced-motion |
 | `HoverRing`     | Hover outline                                                        |
-| `FieldRing`     | Focused field outline                                                |
+| `FieldRing`     | Focused field outline when the field's block is not selected         |
 | `BlockToolbar`  | Icon buttons + tooltips (drag, move, duplicate, delete) when no children |
 | `InsertButton`  | Between-block insert control                                         |
 | `DropIndicator` | Drop line with endpoint caps; box variant for empty containers       |

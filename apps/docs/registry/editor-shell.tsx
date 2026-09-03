@@ -100,7 +100,7 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
-import { PaletteItem } from './editor-canvas';
+import { PaletteItem, DragHandle } from './editor-canvas';
 import { Form } from './editor-form';
 
 type Device = 'desktop' | 'tablet' | 'mobile';
@@ -609,6 +609,11 @@ function OutlineNode({ blockId }: { blockId: string }) {
           }
         >
           <span className="flex h-8 w-full min-w-0 items-center gap-2">
+            <DragHandle
+              blockId={blockId}
+              className="text-muted-foreground hover:text-foreground size-4 shrink-0 border-0 bg-transparent p-0 shadow-none"
+              onClick={(event) => event.stopPropagation()}
+            />
             {hasChildren ? (
               <CollapsibleTrigger
                 className="pointer-events-auto size-4 shrink-0"
