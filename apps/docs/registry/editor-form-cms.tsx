@@ -7,7 +7,11 @@ import type {
   CmsRootListItem,
 } from '@createcms/react/editor/cms';
 
-import { emptyListElement } from '@createcms/react/editor';
+import {
+  emptyListElement,
+  fromDatetimeLocal,
+  toDatetimeLocal,
+} from '@createcms/react/editor';
 import {
   assetUrl,
   referenceLabel,
@@ -26,6 +30,8 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
 
 const CmsSourcesContext = React.createContext<CmsFieldSources | null>(null);
 
@@ -61,6 +67,119 @@ function fieldAria(props: {
     'aria-invalid': props.invalid || undefined,
     'aria-required': props.required || undefined,
   } as const;
+}
+
+function NativeSelect({ className, ...props }: React.ComponentProps<'select'>) {
+  return (
+    <select
+      data-slot="native-select"
+      className={cn(
+        'border-input bg-background ring-offset-background',
+        'flex h-8 w-full rounded-md border px-3 py-2 text-sm outline-none',
+        'focus-visible:ring-ring focus-visible:ring-2',
+        'disabled:cursor-not-allowed disabled:opacity-50',
+        'aria-invalid:border-destructive aria-invalid:ring-destructive/20',
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function StringField(props: FieldControlProps<'string'>) {
+  return (
+    <Input
+      type="text"
+      id={props.id}
+      name={props.name}
+      value={props.value ?? ''}
+      placeholder={props.spec.placeholder}
+      required={props.required}
+      disabled={props.disabled}
+      minLength={props.spec.minLength}
+      maxLength={props.spec.maxLength}
+      {...fieldAria(props)}
+      onChange={(event) => props.onChange(event.currentTarget.value)}
+    />
+  );
+}
+
+function NumberField(props: FieldControlProps<'number'>) {
+  return (
+    <Input
+      type="number"
+      id={props.id}
+      name={props.name}
+      value={props.value ?? ''}
+      placeholder={props.spec.placeholder}
+      required={props.required}
+      disabled={props.disabled}
+      min={props.spec.min}
+      max={props.spec.max}
+      {...fieldAria(props)}
+      onChange={(event) => {
+        const raw = event.currentTarget.value;
+        props.onChange(raw === '' ? undefined : Number(raw));
+      }}
+    />
+  );
+}
+
+function BooleanField(props: FieldControlProps<'boolean'>) {
+  return (
+    <input
+      type="checkbox"
+      id={props.id}
+      name={props.name}
+      checked={props.value ?? false}
+      required={props.required}
+      disabled={props.disabled}
+      className="border-input size-4 rounded-[4px] border accent-primary"
+      {...fieldAria(props)}
+      onChange={(event) => props.onChange(event.currentTarget.checked)}
+    />
+  );
+}
+
+function DateField(props: FieldControlProps<'date'>) {
+  return (
+    <Input
+      type="datetime-local"
+      id={props.id}
+      name={props.name}
+      value={toDatetimeLocal(props.value)}
+      required={props.required}
+      disabled={props.disabled}
+      {...fieldAria(props)}
+      onChange={(event) =>
+        props.onChange(fromDatetimeLocal(event.currentTarget.value))
+      }
+    />
+  );
+}
+
+function SelectField(props: FieldControlProps<'select'>) {
+  return (
+    <NativeSelect
+      id={props.id}
+      name={props.name}
+      value={props.value ?? ''}
+      required={props.required}
+      disabled={props.disabled}
+      {...fieldAria(props)}
+      onChange={(event) => {
+        const raw = event.currentTarget.value;
+        props.onChange(raw === '' ? undefined : raw);
+      }}
+    >
+      <option value="">{props.spec.placeholder ?? ''}</option>
+      {props.spec.options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </NativeSelect>
+  );
 }
 
 const PAGE_SIZE = 20;
@@ -400,8 +519,7 @@ function LinkField(props: FieldControlProps<'link'>) {
 
   return (
     <div id={props.id} className="flex flex-col gap-2" {...fieldAria(props)}>
-      <select
-        className="border-input bg-background rounded-md border px-3 py-2 text-sm"
+      <NativeSelect
         value={kind}
         disabled={props.disabled}
         onChange={(event) =>
@@ -413,12 +531,11 @@ function LinkField(props: FieldControlProps<'link'>) {
             {item}
           </option>
         ))}
-      </select>
+      </NativeSelect>
       {kind === 'internal' ? (
         <div className="flex flex-col gap-2">
           {collections.length > 1 ? (
-            <select
-              className="border-input bg-background rounded-md border px-3 py-2 text-sm"
+            <NativeSelect
               value={
                 props.value?.kind === 'internal'
                   ? props.value.collection
@@ -440,7 +557,7 @@ function LinkField(props: FieldControlProps<'link'>) {
                   {name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           ) : collections.length === 0 ? (
             <Input
               placeholder="Collection"
@@ -565,14 +682,13 @@ function RichTextField(props: FieldControlProps<'richText'>) {
 
   return (
     <div className="relative">
-      <textarea
+      <Textarea
         ref={textareaRef}
         id={props.id}
         name={props.name}
         disabled={props.disabled}
         value={props.value ?? ''}
         rows={4}
-        className="border-input bg-background focus-visible:ring-ring w-full rounded-md border px-3 py-2 text-sm outline-none focus-visible:ring-2"
         {...fieldAria(props)}
         onChange={(event) => {
           props.onChange(event.target.value);
@@ -718,6 +834,11 @@ function ListField(props: FieldControlProps<'list'>) {
 }
 
 export const cmsFields = {
+  string: StringField,
+  number: NumberField,
+  boolean: BooleanField,
+  date: DateField,
+  select: SelectField,
   image: MediaField,
   reference: ReferencePicker,
   link: LinkField,

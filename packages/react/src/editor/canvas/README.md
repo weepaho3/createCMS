@@ -60,8 +60,9 @@ below it registers itself as a surface. `Canvas.PaletteItem` and
 `Canvas.DragHandle` then work anywhere under the provider, for example a
 shell sidebar outside the canvas host; the surface under the pointer
 resolves the drop against its own host, and only the hovered canvas
-auto-scrolls. `Canvas.DragPreview` positions itself in host coordinates
-and renders only inside a `Canvas.Root`. Without a provider, `Canvas.Root`
+auto-scrolls. `Canvas.DragPreview` follows the pointer with `translate3d` on
+the DOM node (no React re-render per move) and renders only inside a
+`Canvas.Root`. Without a provider, `Canvas.Root`
 creates the session itself and provides it to its children.
 
 ```tsx
@@ -203,21 +204,21 @@ Unit tests never assert rects. Browser tests never screenshot; they assert
 rects and DOM. Helpers: `test/harness.tsx`, `test/fixtures.tsx` and
 `test/hero-fixtures.tsx` (not test files).
 
-| File                           | Covers                                                                                                                                                                                                    |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `editor.test.tsx`              | Canvas.Root shares context with Editor.Root; throws outside it. Overlay throw; Canvas namespace keys.                                                                                                     |
-| `renderer.test.tsx`            | Root fragment, edit anchors, unknown type, resolve cache, unresolved omit, referenced readonly, intercept, Hero snapshot.                                                                                 |
-| `rect.test.ts`                 | `unionRects`, readonly skip, nested field key own-block lookup.                                                                                                                                           |
-| `overlay.test.tsx`             | Overlay portal into host, `useBlockRect` callable, SelectionRing / FieldRing presence, HoverRing suppression.                                                                                             |
-| `insert.test.ts`               | Pure `resolveInsertAt`: column, row, grid wrap, empty box, walk-up `canPlace`, `draggedId` exclusion, globally nearest ancestor.                                                                          |
-| `toolbar.test.tsx`             | BlockToolbar / InsertButton throw outside Root, selection and `interactive="none"` gating, overlay chrome keeps hover.                                                                                    |
-| `dnd.test.ts`                  | Pure DnD helpers: `adjustMoveIndex`, `blockIdAtPoint`, store threshold, session vs target subscriptions.                                                                                                  |
-| `dnd-parts.test.tsx`           | DragHandle / PaletteItem / DropIndicator / DragPreview throw outside Root; palette click insert; click no-op when placement fails; click after drag; drag threshold; escape cancel; pointerup off handle. |
-| `provider.test.tsx`            | Palette outside Root under a Provider renders enabled and click-inserts; palette without Provider and Root throws; plain Root still provides the session.                                                 |
-| `canvas.browser.test.tsx`      | Chromium: host box, heading anchor rect, layout wait, pointer coordinates, click select/focus, select mode, none mode, ring alignment after layout / resize / scroll, nested field key, same-id union.    |
-| `insert.browser.test.tsx`      | Chromium: column / row / grid insert lines, empty container box, toolbar side / align, insert disabled gating, select mode without insert.                                                                |
-| `dnd.browser.test.tsx`         | Chromium: palette drop into empty stack, column and row sibling moves, escape cancel, auto-scroll, touch drag, forbidden placement, focus after drop, select mode without drag.                           |
-| `provider.browser.test.tsx`    | Chromium: sidebar palette drag into the canvas under a Provider; two canvases under one provider resolve drops on the hovered editable surface.                                                           |
-| `inline-text.test.ts`          | Pure inline helpers: `applyTextEdit`, placeholder injection, field kind.                                                                                                                                  |
-| `inline-parts.test.tsx`        | InlineText throw outside Root; string vs number activation; nested key; same element; two editors; empty badge commit.                                                                                    |
-| `inline-text.browser.test.tsx` | Chromium: glass activation, caret, typing, Enter/Escape, discardOnEscape, nested key, richText multiline, empty badge, suggest keyboard, two canvases, number field, undo during session.                 |
+| File                           | Covers                                                                                                                                                                                                                                          |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `editor.test.tsx`              | Canvas.Root shares context with Editor.Root; throws outside it. Overlay throw; Canvas namespace keys.                                                                                                                                           |
+| `renderer.test.tsx`            | Root fragment, edit anchors, unknown type, resolve cache, unresolved omit, referenced readonly, intercept, Hero snapshot.                                                                                                                       |
+| `rect.test.ts`                 | `unionRects`, readonly skip, nested field key own-block lookup.                                                                                                                                                                                 |
+| `overlay.test.tsx`             | Overlay portal into host, `useBlockRect` callable, SelectionRing / FieldRing presence, HoverRing suppression.                                                                                                                                   |
+| `insert.test.ts`               | Pure `resolveInsertAt`: column, row, grid wrap, empty box, walk-up `canPlace`, `draggedId` exclusion, globally nearest ancestor.                                                                                                                |
+| `toolbar.test.tsx`             | BlockToolbar / InsertButton throw outside Root, selection and `interactive="none"` gating, overlay chrome keeps hover.                                                                                                                          |
+| `dnd.test.ts`                  | Pure DnD helpers: `adjustMoveIndex`, `blockIdAtPoint`, store threshold, session vs target subscriptions.                                                                                                                                        |
+| `dnd-parts.test.tsx`           | DragHandle / PaletteItem / DropIndicator / DragPreview throw outside Root; preview uses translate3d during drag; palette click insert; click no-op when placement fails; click after drag; drag threshold; escape cancel; pointerup off handle. |
+| `provider.test.tsx`            | Palette outside Root under a Provider renders enabled and click-inserts; palette without Provider and Root throws; plain Root still provides the session.                                                                                       |
+| `canvas.browser.test.tsx`      | Chromium: host box, heading anchor rect, layout wait, pointer coordinates, click select/focus, select mode, none mode, ring alignment after layout / resize / scroll, nested field key, same-id union.                                          |
+| `insert.browser.test.tsx`      | Chromium: column / row / grid insert lines, empty container box, toolbar side / align, insert disabled gating, select mode without insert.                                                                                                      |
+| `dnd.browser.test.tsx`         | Chromium: palette drop into empty stack, column and row sibling moves, escape cancel, auto-scroll, touch drag, forbidden placement, focus after drop, select mode without drag.                                                                 |
+| `provider.browser.test.tsx`    | Chromium: sidebar palette drag into the canvas under a Provider; two canvases under one provider resolve drops on the hovered editable surface.                                                                                                 |
+| `inline-text.test.ts`          | Pure inline helpers: `applyTextEdit`, placeholder injection, field kind.                                                                                                                                                                        |
+| `inline-parts.test.tsx`        | InlineText throw outside Root; string vs number activation; nested key; same element; two editors; empty badge commit.                                                                                                                          |
+| `inline-text.browser.test.tsx` | Chromium: glass activation, caret, typing, Enter/Escape, discardOnEscape, nested key, richText multiline, empty badge, suggest keyboard, two canvases, number field, undo during session.                                                       |

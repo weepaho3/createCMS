@@ -41,6 +41,11 @@
   transform: translate(-50%, 50%);
 }
 
+[data-slot='editor-selection-ring'],
+[data-slot='editor-hover-ring'] {
+  transition-property: opacity;
+}
+
 @media (prefers-reduced-motion: reduce) {
   [data-slot='editor-selection-ring'],
   [data-slot='editor-hover-ring'],

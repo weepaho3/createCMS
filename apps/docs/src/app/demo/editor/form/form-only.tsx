@@ -6,7 +6,12 @@ import { pages } from '@/app/demo/_lib/pages-schema';
 import { PAGES_TREE } from '@/app/demo/_lib/pages-tree';
 import { useDemoFieldSources } from '@/app/demo/_lib/sources';
 import { useLocalDocument } from '@/app/demo/_lib/use-local-document';
-import { CmsSourcesProvider, cmsFields, Form } from '@/components/editor-form';
+import {
+  CmsSourcesProvider,
+  cmsFields,
+  FormSurface,
+} from '@/components/editor-form';
+import { EditorShell } from '@/components/editor-shell';
 
 export function FormOnlyEditor() {
   const sources = useDemoFieldSources();
@@ -22,12 +27,19 @@ export function FormOnlyEditor() {
         fields={cmsFields}
       >
         <CmsSourcesProvider sources={sources}>
-          <Form blockId={PAGES_TREE.blockId} />
+          <EditorShell>
+            <FormSurface />
+          </EditorShell>
         </CmsSourcesProvider>
       </Editor.Root>
-      <pre className="border-border max-h-48 overflow-auto border-t p-4 text-xs">
-        {JSON.stringify(saved, null, 2)}
-      </pre>
+      <details className="border-border shrink-0 border-t">
+        <summary className="text-muted-foreground cursor-pointer px-4 py-2 text-xs">
+          Document JSON
+        </summary>
+        <pre className="max-h-48 overflow-auto p-4 text-xs">
+          {JSON.stringify(saved, null, 2)}
+        </pre>
+      </details>
     </div>
   );
 }

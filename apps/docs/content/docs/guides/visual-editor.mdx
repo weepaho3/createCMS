@@ -46,7 +46,10 @@ The docs app hosts working demos composed from those registry items:
 ## Form only
 
 Local tree state with `onSave` that stores the latest tree. Pass
-`fields={cmsFields}` and wrap with `CmsSourcesProvider`. No canvas.
+`fields={cmsFields}` and wrap with `CmsSourcesProvider`. `EditorShell`
+provides palette, outline, and inspector; `FormSurface` is the padded form
+for the selected block (page fields when nothing is selected). JSON debug
+output stays collapsed.
 
 ```tsx
 'use client';
@@ -60,8 +63,9 @@ import { useLocalDocument } from '@/app/demo/_lib/use-local-document';
 import {
   CmsSourcesProvider,
   cmsFields,
-  Form,
+  FormSurface,
 } from '@/components/editor-form';
+import { EditorShell } from '@/components/editor-shell';
 
 export function FormOnlyEditor() {
   const sources = useDemoFieldSources();
@@ -77,12 +81,19 @@ export function FormOnlyEditor() {
         fields={cmsFields}
       >
         <CmsSourcesProvider sources={sources}>
-          <Form blockId={PAGES_TREE.blockId} />
+          <EditorShell>
+            <FormSurface />
+          </EditorShell>
         </CmsSourcesProvider>
       </Editor.Root>
-      <pre className="border-border max-h-48 overflow-auto border-t p-4 text-xs">
-        {JSON.stringify(saved, null, 2)}
-      </pre>
+      <details className="border-border shrink-0 border-t">
+        <summary className="text-muted-foreground cursor-pointer px-4 py-2 text-xs">
+          Document JSON
+        </summary>
+        <pre className="max-h-48 overflow-auto p-4 text-xs">
+          {JSON.stringify(saved, null, 2)}
+        </pre>
+      </details>
     </div>
   );
 }

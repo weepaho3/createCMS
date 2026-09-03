@@ -130,7 +130,7 @@ const sources = useCmsFieldSources(cmsClient);
 </Editor.Root>
 ```
 
-**Styled container.** Wrap the block's fields with the styled `Form` shell. Inner fields remain the headless primitives from `@createcms/react` unless you pass `fields={cmsFields}`.
+**Styled container.** Wrap the block's fields with the styled `Form` shell. Inner fields remain the headless primitives from `@createcms/react` unless you pass `fields={cmsFields}` (shadcn `Input` / `Textarea` / `Select` and CMS pickers). `FormSurface` is a padded selected-block form for `mode="form"` and the form-only demo.
 
 ```tsx
 import { Editor } from '@createcms/react/editor';

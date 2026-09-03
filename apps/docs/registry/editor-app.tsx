@@ -9,7 +9,7 @@ import type {
   UseCmsFieldSourcesClient,
 } from '@createcms/react/editor/cms';
 
-import { Editor, useEditor, useSelection } from '@createcms/react/editor';
+import { Editor, useSelection } from '@createcms/react/editor';
 import { Canvas } from '@createcms/react/editor/canvas';
 import {
   useCmsDocument,
@@ -49,7 +49,7 @@ import {
   Overlay,
   SelectionRing,
 } from './editor-canvas';
-import { CmsSourcesProvider, cmsFields, Form } from './editor-form';
+import { CmsSourcesProvider, cmsFields, FormSurface } from './editor-form';
 import { EditorShell, useEditorChrome } from './editor-shell';
 
 const RESERVED_COLLECTIONS = new Set(['media', 'variables', 'templates']);
@@ -251,11 +251,6 @@ function CanvasOverlays() {
       <InlineText />
     </Overlay>
   );
-}
-
-function FormSurface() {
-  const rootId = useEditor((state) => state.rootId);
-  return <Form blockId={rootId} />;
 }
 
 function CmsEditor({

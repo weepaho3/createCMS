@@ -6,5 +6,6 @@ export {
   FieldError,
   FieldLabel,
   Form,
+  FormSurface,
   cmsFields,
 } from '../../registry/editor-form';

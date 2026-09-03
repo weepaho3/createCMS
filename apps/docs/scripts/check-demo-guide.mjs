@@ -20,6 +20,7 @@ for (const required of [
   '/demo/editor/email',
   'EditorShell',
   'EditorEmail',
+  'FormSurface',
   'cmsFields',
   'CmsSourcesProvider',
   '@createcms/react/editor',

@@ -21,8 +21,8 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
-const motionSafe =
-  'motion-safe:transition-[left,top,width,height,opacity,transform] motion-safe:duration-200 motion-safe:ease-out motion-reduce:transition-none';
+const ringMotion =
+  'motion-safe:transition-[opacity] motion-safe:duration-150 motion-safe:ease-out motion-reduce:transition-none';
 
 function Overlay({
   className,
@@ -45,7 +45,7 @@ function SelectionRing({
   return (
     <Canvas.SelectionRing
       data-slot="editor-selection-ring"
-      className={cn('border-2 border-editor-selection', motionSafe, className)}
+      className={cn('border-editor-selection/50 border', ringMotion, className)}
       {...props}
       render={(ringProps, state) => (
         <div {...ringProps}>
@@ -71,11 +71,7 @@ function HoverRing({
   return (
     <Canvas.HoverRing
       data-slot="editor-hover-ring"
-      className={cn(
-        'border-editor-hover border',
-        'motion-safe:transition-[left,top,width,height,opacity] motion-safe:duration-150 motion-reduce:transition-none',
-        className,
-      )}
+      className={cn('border-editor-hover/40 border', ringMotion, className)}
       {...props}
     />
   );

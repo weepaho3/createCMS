@@ -5,7 +5,7 @@ import type { EditorStoreState } from '../store';
 import type { InsertTarget } from './insert';
 import type { InsertOrientation, InsertVariant } from './insert';
 
-import { useRender } from '../../use-render';
+import { composeRefs, useRender } from '../../use-render';
 import { useEditorSelector } from '../binding';
 import { useEditorContext } from '../context';
 import { placementOf } from '../hooks';
@@ -590,6 +590,18 @@ export type CanvasDragPreviewProps = React.ComponentPropsWithRef<'div'> & {
   render?: UseRenderComponentProps<'div', DragPreviewState>['render'];
 };
 
+function applyPreviewTransform(
+  node: HTMLElement,
+  snap: { x: number; y: number } | null,
+): void {
+  if (snap === null) {
+    node.style.visibility = 'hidden';
+    return;
+  }
+  node.style.visibility = '';
+  node.style.transform = `translate3d(${snap.x}px, ${snap.y}px, 0) translate(-50%, -50%)`;
+}
+
 export function CanvasDragPreview({
   render,
   style,
@@ -606,16 +618,39 @@ export function CanvasDragPreview({
     () => (measurer ? measurer.getBlockRect(moveId) : null),
     () => null,
   );
-  const pointerSnap = React.useSyncExternalStore(
-    pointer.subscribe,
-    () => pointer.getSnapshot(),
-    () => null,
-  );
+  const nodeRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Position is written on the DOM node (rAF + translate3d). Subscribing
+  // through React would re-render the tree on every pointermove.
+  React.useLayoutEffect(() => {
+    if (canvas === null || session === null) return;
+    const node = nodeRef.current;
+    if (!(node instanceof HTMLElement)) return;
+    node.style.willChange = 'transform';
+    applyPreviewTransform(node, pointer.getSnapshot());
+    let raf = 0;
+    const onPointer = () => {
+      if (raf !== 0) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const current = nodeRef.current;
+        if (current instanceof HTMLElement) {
+          applyPreviewTransform(current, pointer.getSnapshot());
+        }
+      });
+    };
+    const unsubscribe = pointer.subscribe(onPointer);
+    return () => {
+      unsubscribe();
+      if (raf !== 0) cancelAnimationFrame(raf);
+      node.style.willChange = '';
+    };
+  }, [canvas, pointer, session]);
 
   // Pointer snapshots are host-relative absolute coordinates, so the
   // preview positions itself only inside a Canvas.Root surface.
   if (canvas === null) return null;
-  if (session === null || pointerSnap === null) return null;
+  if (session === null) return null;
 
   const width = session.kind === 'move' && moveRect ? moveRect.width : 80;
   const height = session.kind === 'move' && moveRect ? moveRect.height : 40;
@@ -625,14 +660,14 @@ export function CanvasDragPreview({
     render,
     props: {
       ...rest,
+      ref: composeRefs(nodeRef, rest.ref),
       'aria-hidden': true,
       style: {
         position: 'absolute',
-        left: pointerSnap.x,
-        top: pointerSnap.y,
+        left: 0,
+        top: 0,
         width,
         height,
-        transform: 'translate(-50%, -50%)',
         pointerEvents: 'none',
         ...style,
       },

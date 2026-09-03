@@ -77,8 +77,9 @@ provider, for example in a shell sidebar outside the canvas host. During a
 drag, the surface under the pointer resolves the drop target against its own
 host; several canvases under one provider share the single session, and only
 the hovered canvas resolves targets and auto-scrolls. `Canvas.DragPreview`
-positions itself in host coordinates and therefore renders only inside a
-`Canvas.Root`. Without a provider nothing changes: `Canvas.Root` creates the
+follows the pointer with `translate3d` in host coordinates and therefore
+renders only inside a `Canvas.Root`. Without a provider nothing changes:
+`Canvas.Root` creates the
 session itself and provides it to its children.
 
 ```tsx

@@ -160,6 +160,30 @@ describe('Canvas.DragPreview', () => {
       'Canvas.DragPreview must be used within a Canvas.Provider or Canvas.Root component.',
     );
   });
+
+  it('is absent without a session and follows the pointer with translate3d', () => {
+    const { host } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.DragHandle blockId="h1" />
+        <Canvas.DragPreview />
+      </Canvas.Overlay>,
+    );
+    expect(host.querySelector('[data-editor-drag-preview]')).toBeNull();
+    const handle = host.querySelector('[data-editor-drag-handle]')!;
+    const rect = handle.getBoundingClientRect();
+    const from = { x: rect.x + 4, y: rect.y + 4 };
+    act(() => {
+      dispatchPointer(handle, 'pointerdown', from);
+      dispatchPointer(handle, 'pointermove', { x: from.x + 8, y: from.y });
+    });
+    const preview = host.querySelector(
+      '[data-editor-drag-preview]',
+    ) as HTMLElement | null;
+    expect(preview).not.toBeNull();
+    expect(preview!.style.left).toBe('0px');
+    expect(preview!.style.top).toBe('0px');
+    expect(preview!.style.transform).toMatch(/translate3d\(/);
+  });
 });
 
 describe('canvas drag escape', () => {

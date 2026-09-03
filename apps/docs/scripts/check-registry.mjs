@@ -95,6 +95,7 @@ if (
 const uiChecks = [
   ['data-slot="editor-field"', 'editor-field slot'],
   ['cmsFields', 'cmsFields export'],
+  ['data-slot="editor-form-surface"', 'editor-form-surface slot'],
   ['data-slot="editor-overlay"', 'editor-overlay slot'],
   ['data-slot="editor-shell"', 'editor-shell slot'],
   ['data-slot="editor-toolbar"', 'editor-toolbar slot'],
