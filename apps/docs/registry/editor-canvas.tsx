@@ -84,7 +84,7 @@ function FieldRing({
   return (
     <Canvas.FieldRing
       data-slot="editor-field-ring"
-      className={cn('border-editor-focus border', className)}
+      className={cn('border-editor-focus border', ringMotion, className)}
       {...props}
     />
   );
@@ -274,17 +274,23 @@ function PaletteItem({
 
 function DragPreview({
   className,
+  children,
   ...props
 }: React.ComponentProps<typeof Canvas.DragPreview>) {
   return (
     <Canvas.DragPreview
       data-slot="editor-drag-preview"
       className={cn(
-        'bg-background border-border rounded-md border px-2 py-1 text-sm shadow-md',
+        'bg-background/95 border-editor-drop text-foreground flex items-center justify-center rounded-md border px-2 py-1 text-sm font-medium shadow-md',
         'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-150 motion-reduce:animate-none',
         className,
       )}
       {...props}
+      render={(previewProps, state) => (
+        <div {...previewProps}>
+          {children ?? (state.kind === 'move' ? 'Move' : 'Insert')}
+        </div>
+      )}
     />
   );
 }

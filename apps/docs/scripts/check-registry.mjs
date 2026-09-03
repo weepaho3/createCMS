@@ -123,6 +123,7 @@ const uiChecks = [
   ['data-slot="editor-surface"', 'editor-surface slot'],
   ['data-slot="editor-selection-chip"', 'editor-selection-chip slot'],
   ['<DragHandle blockId={selected} />', 'toolbar drag handle'],
+  ['blockId={blockId}', 'outline row drag handle'],
   ['SidebarProvider', 'SidebarProvider usage'],
   ['CommandDialog', 'CommandDialog usage'],
   ['FramePreview', 'FramePreview usage'],

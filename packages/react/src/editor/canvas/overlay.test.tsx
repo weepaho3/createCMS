@@ -42,7 +42,7 @@ describe('Canvas.Overlay', () => {
 });
 
 describe('Canvas rings', () => {
-  it('mounts SelectionRing and FieldRing after select and focus', () => {
+  it('mounts SelectionRing after select, and FieldRing only without a same-block selection', () => {
     const { host, store } = renderCanvas(
       <Canvas.Overlay>
         <Canvas.SelectionRing />
@@ -54,6 +54,10 @@ describe('Canvas rings', () => {
       store.focus({ blockId: 'h1', key: 'text' });
     });
     expect(host.querySelector('[data-editor-selection-ring]')).not.toBeNull();
+    expect(host.querySelector('[data-editor-field-ring]')).toBeNull();
+    act(() => {
+      store.select(null);
+    });
     expect(host.querySelector('[data-editor-field-ring]')).not.toBeNull();
   });
 

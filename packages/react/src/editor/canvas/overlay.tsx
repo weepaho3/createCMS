@@ -221,6 +221,9 @@ export function CanvasFieldRing({
   const canvas = useCanvasContext('Canvas.FieldRing');
   const { userId } = useEditorContext('Canvas.FieldRing');
   const focus = useEditorSelector((s) => s.selection[userId]?.focus ?? null);
+  const selected = useEditorSelector(
+    (s) => s.selection[userId]?.selected ?? null,
+  );
   const node = useEditorSelector((s) =>
     focus ? (s.nodes[focus.blockId] ?? null) : null,
   );
@@ -237,5 +240,8 @@ export function CanvasFieldRing({
     state: { ...flags, editorFieldRing: true },
   });
   if (focus === null || rect === null) return null;
+  // Clicking a field also selects its block. Showing both rings stacks two
+  // orange outlines (Hero + inner image). Selection is the one calm ring.
+  if (selected !== null && selected === focus.blockId) return null;
   return element;
 }

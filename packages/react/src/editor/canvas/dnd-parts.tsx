@@ -1,9 +1,7 @@
 import * as React from 'react';
 
 import type { UseRenderComponentProps } from '../../use-render';
-import type { EditorStoreState } from '../store';
-import type { InsertTarget } from './insert';
-import type { InsertOrientation, InsertVariant } from './insert';
+import type { EditorNodes, EditorStoreState } from '../store';
 
 import { composeRefs, useRender } from '../../use-render';
 import { useEditorSelector } from '../binding';
@@ -18,6 +16,13 @@ import {
   findScrollParent,
   type DragSession,
 } from './dnd';
+import {
+  isSelfOrDescendant,
+  parentTypeOf,
+  type InsertOrientation,
+  type InsertTarget,
+  type InsertVariant,
+} from './insert';
 import {
   contentPointFromClient,
   createInsertAdapters,
@@ -60,6 +65,65 @@ function containsClientPoint(
     client.y >= rect.top &&
     client.y <= rect.bottom
   );
+}
+
+function outlineRowAtClient(
+  doc: Document,
+  client: { x: number; y: number },
+): HTMLElement | null {
+  const stack =
+    typeof doc.elementsFromPoint === 'function'
+      ? doc.elementsFromPoint(client.x, client.y)
+      : [doc.elementFromPoint(client.x, client.y)];
+  for (const hit of stack) {
+    if (!(hit instanceof Element)) continue;
+    const row = hit.closest('[role="treeitem"]');
+    if (row instanceof HTMLElement) return row;
+  }
+  return null;
+}
+
+/**
+ * Move drop when the pointer is over an `Editor.OutlineItem` row instead of
+ * the canvas. Same-parent reorder only — never `add()`.
+ */
+function outlineMoveTarget(
+  nodes: EditorNodes,
+  rootId: string,
+  session: DragSession,
+  client: { x: number; y: number },
+  doc: Document,
+  placement: ReturnType<typeof placementOf>,
+): InsertTarget | null {
+  if (session.kind !== 'move') return null;
+  const row = outlineRowAtClient(doc, client);
+  if (row === null) return null;
+  const targetId = row.getAttribute('data-block-id');
+  if (!targetId || targetId === session.id) return null;
+  const target = nodes[targetId];
+  const dragged = nodes[session.id];
+  if (!target || !dragged || target.parentId === null) return null;
+  if (dragged.parentId !== target.parentId) return null;
+  if (isSelfOrDescendant(nodes, targetId, session.id)) return null;
+  const parentType = parentTypeOf(nodes, rootId, target.parentId);
+  if (parentType === null || !canPlace(placement, dragged.type, parentType)) {
+    return null;
+  }
+  const parent = nodes[target.parentId];
+  if (!parent) return null;
+  let index = parent.childIds.indexOf(targetId);
+  if (index < 0) return null;
+  const box = row.getBoundingClientRect();
+  if (client.y > box.top + box.height / 2) index += 1;
+  return {
+    parentId: target.parentId,
+    index,
+    orientation: 'vertical',
+    variant: 'line',
+    rect: { x: 0, y: 0, width: 0, height: 0 },
+    allowedTypes: [],
+    nested: target.parentId !== rootId,
+  };
 }
 
 /** Editable surface under the pointer; the last registered match wins. */
@@ -223,7 +287,19 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
     (client: { x: number; y: number }) => {
       const surface = surfaceAtClient(canvasSession.getSurfaces(), client);
       if (surface === null) {
-        dnd.setDropTarget(null);
+        const doc = globalThis.document;
+        dnd.setDropTarget(
+          doc
+            ? outlineMoveTarget(
+                nodesRef.current,
+                rootId,
+                session,
+                client,
+                doc,
+                placement,
+              )
+            : null,
+        );
         return;
       }
       const { host, measurer } = surface;
@@ -605,6 +681,8 @@ export function CanvasDropIndicator({
   const target = useDropTargetSnapshot();
 
   if (session === null || target === null) return null;
+  // Outline-row moves use a zero rect (the indicator lives on the canvas).
+  if (target.rect.width <= 0 && target.rect.height <= 0) return null;
 
   return useRender<'div', DropIndicatorState>({
     defaultTagName: 'div',
@@ -720,8 +798,13 @@ export function CanvasDragPreview({
   if (canvas === null) return null;
   if (session === null) return null;
 
-  const width = session.kind === 'move' && moveRect ? moveRect.width : 80;
-  const height = session.kind === 'move' && moveRect ? moveRect.height : 40;
+  // Full block size plus translate(-50%, -50%) clips the ghost against
+  // overlay overflow. A compact chip stays under the cursor.
+  const width =
+    session.kind === 'move' && moveRect
+      ? Math.min(Math.max(120, moveRect.width * 0.28), 220)
+      : 120;
+  const height = 48;
 
   return useRender<'div', DragPreviewState>({
     defaultTagName: 'div',

@@ -81,8 +81,8 @@ export function PagesLiveCanvas() {
                 <InlineText />
               </Overlay>
             </Canvas.Root>
+            <DocumentJson />
           </EditorShell>
-          <DocumentJson />
         </CmsSourcesProvider>
       </Editor.Root>
     </div>

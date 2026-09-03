@@ -6,6 +6,8 @@ import type { EditorStore } from '../store';
 import { Editor, useEditorContext } from '../index';
 import { Canvas } from './index';
 import {
+  columnStackBlocks,
+  columnStackTree,
   emptyStackBlocks,
   emptyStackTree,
   insertStackSchema,
@@ -144,5 +146,118 @@ describe('Canvas.Provider pointer drag in a real browser', () => {
     expect(hostB.querySelector('[data-editor-drop-indicator]')).not.toBeNull();
     dispatchPointer(palette, 'pointerup', overB);
     expect(store.getState().nodes.stack1!.childIds.length).toBe(1);
+  });
+
+  it('DragHandle outside the canvas moves a sibling and does not add', async () => {
+    const probe: StoreProbeBag = { store: null };
+    const utils = render(
+      <Editor.Root schema={insertStackSchema} defaultValue={columnStackTree()}>
+        <StoreProbe probe={probe} />
+        <Canvas.Provider>
+          <aside>
+            <div role="tree">
+              <div role="treeitem" data-block-id="c1">
+                <Canvas.DragHandle blockId="c1">grip</Canvas.DragHandle>
+              </div>
+              <div role="treeitem" data-block-id="c3">
+                c3
+              </div>
+            </div>
+          </aside>
+          <Canvas.Root
+            data-testid="canvas"
+            components={columnStackBlocks}
+            style={hostStyle}
+          >
+            <Canvas.Overlay>
+              <Canvas.DropIndicator />
+              <Canvas.DragPreview />
+            </Canvas.Overlay>
+          </Canvas.Root>
+        </Canvas.Provider>
+      </Editor.Root>,
+    );
+    const store = probe.store!;
+    const host = utils.getByTestId('canvas');
+    const c3 = host.querySelector('[data-editor-block="c3"]');
+    expect(c3).not.toBeNull();
+    await waitForLayout(c3!);
+    const beforeIds = [...store.getState().nodes.stack1!.childIds];
+    const beforeNodeCount = Object.keys(store.getState().nodes).length;
+    const handle = utils.container.querySelector(
+      'aside [data-editor-drag-handle]',
+    )!;
+    expect(host.contains(handle)).toBe(false);
+    const from = centerOf(handle);
+    const c3Rect = rectOf(c3!);
+    const to = {
+      x: c3Rect.x + c3Rect.width / 2,
+      y: c3Rect.y + c3Rect.height - 2,
+    };
+    dispatchPointer(handle, 'pointerdown', from);
+    dispatchPointer(handle, 'pointermove', { x: from.x + 6, y: from.y + 6 });
+    dispatchPointer(handle, 'pointermove', to);
+    dispatchPointer(handle, 'pointerup', to);
+    const afterIds = store.getState().nodes.stack1!.childIds;
+    expect(afterIds).toHaveLength(beforeIds.length);
+    expect(afterIds.indexOf('c3')).toBeLessThan(afterIds.indexOf('c1'));
+    expect(Object.keys(store.getState().nodes)).toHaveLength(beforeNodeCount);
+  });
+
+  it('DragHandle over an outline row reorders without adding', async () => {
+    const probe: StoreProbeBag = { store: null };
+    const utils = render(
+      <Editor.Root schema={insertStackSchema} defaultValue={columnStackTree()}>
+        <StoreProbe probe={probe} />
+        <Canvas.Provider>
+          <aside>
+            <div role="tree">
+              <div role="treeitem" data-block-id="c1" style={{ height: 24 }}>
+                <Canvas.DragHandle blockId="c1">grip</Canvas.DragHandle>
+              </div>
+              <div
+                role="treeitem"
+                data-block-id="c3"
+                style={{ height: 24, width: 80 }}
+              >
+                c3
+              </div>
+            </div>
+          </aside>
+          <Canvas.Root
+            data-testid="canvas"
+            components={columnStackBlocks}
+            style={hostStyle}
+          >
+            <Canvas.Overlay>
+              <Canvas.DropIndicator />
+            </Canvas.Overlay>
+          </Canvas.Root>
+        </Canvas.Provider>
+      </Editor.Root>,
+    );
+    const store = probe.store!;
+    const host = utils.getByTestId('canvas');
+    await waitForLayout(host);
+    const beforeIds = [...store.getState().nodes.stack1!.childIds];
+    const beforeNodeCount = Object.keys(store.getState().nodes).length;
+    const handle = utils.container.querySelector(
+      'aside [data-editor-drag-handle]',
+    )!;
+    const row = utils.container.querySelector(
+      '[role="treeitem"][data-block-id="c3"]',
+    )!;
+    expect(host.contains(row)).toBe(false);
+    const from = centerOf(handle);
+    const to = centerOf(row);
+    dispatchPointer(handle, 'pointerdown', from);
+    dispatchPointer(handle, 'pointermove', { x: from.x + 6, y: from.y + 6 });
+    dispatchPointer(handle, 'pointermove', to);
+    dispatchPointer(handle, 'pointerup', to);
+    const afterIds = store.getState().nodes.stack1!.childIds;
+    expect(afterIds).toHaveLength(beforeIds.length);
+    expect(afterIds).toEqual(expect.arrayContaining(['c1', 'c2', 'c3']));
+    expect(afterIds).not.toEqual(beforeIds);
+    expect(Object.keys(store.getState().nodes)).toHaveLength(beforeNodeCount);
   });
 });
