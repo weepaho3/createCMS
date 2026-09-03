@@ -24,6 +24,8 @@ import {
   resolveDropTarget,
 } from './insert-dom';
 import { useCanvasSession, type CanvasSurfaceHandle } from './provider';
+import { OVERLAY_CHROME_INSET_PX, visibleIntersection } from './rect';
+import { useHostViewBox } from './rects';
 import { BlockToolbarContext } from './toolbar';
 
 const subscribeNoop = () => () => {};
@@ -447,6 +449,8 @@ export function CanvasDragHandle({
   const inToolbar = React.useContext(BlockToolbarContext);
   const canvas = React.useContext(CanvasContext);
   const measurer = canvas?.measurer ?? null;
+  const host = canvas?.host ?? null;
+  const view = useHostViewBox(host);
   const rect = React.useSyncExternalStore(
     measurer ? measurer.subscribe : subscribeNoop,
     () => (measurer ? measurer.getBlockRect(blockId) : null),
@@ -458,14 +462,15 @@ export function CanvasDragHandle({
     blockId,
   });
   const isDragging = session?.kind === 'move' && session.id === blockId;
+  const vis = rect ? (visibleIntersection(rect, view) ?? rect) : null;
   const anchorStyle: React.CSSProperties =
-    inToolbar || rect === null
+    inToolbar || vis === null
       ? {}
       : {
           position: 'absolute',
-          left: rect.x,
-          top: rect.y,
-          transform: 'translate(-50%, -50%)',
+          left: vis.x + OVERLAY_CHROME_INSET_PX,
+          top: vis.y + OVERLAY_CHROME_INSET_PX,
+          pointerEvents: 'auto',
           zIndex: 2,
         };
 

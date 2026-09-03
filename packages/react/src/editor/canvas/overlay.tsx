@@ -121,6 +121,8 @@ export function CanvasOverlay({
         position: 'absolute',
         inset: 0,
         pointerEvents: 'none',
+        // Clip scrolled-away chrome. BlockToolbar / DragHandle pin into the
+        // visible intersection so the first block stays hittable.
         overflow: 'hidden',
         zIndex: 'var(--editor-z-overlay, 1)',
         ...style,

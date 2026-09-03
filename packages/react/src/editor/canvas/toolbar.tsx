@@ -15,7 +15,12 @@ import {
   type InsertOrientation,
 } from './insert';
 import { createInsertAdapters } from './insert-dom';
-import { useBlockRect } from './rects';
+import {
+  overlayChromeFitsAbove,
+  overlayChromeFitsBelow,
+  visibleIntersection,
+} from './rect';
+import { useBlockRect, useHostViewBox } from './rects';
 
 const subscribeNoop = () => () => {};
 
@@ -129,6 +134,7 @@ export function CanvasBlockToolbar({
     selected ? (s.nodes[selected] ?? null) : null,
   );
   const rect = useBlockRect(selected ?? '');
+  const view = useHostViewBox(canvas.host);
 
   if (
     !canvas.host ||
@@ -139,6 +145,8 @@ export function CanvasBlockToolbar({
     return null;
   }
 
+  const vis = visibleIntersection(rect, view) ?? rect;
+
   const alignStyle: React.CSSProperties =
     align === 'center'
       ? { left: '50%', transform: 'translateX(-50%)' }
@@ -146,10 +154,16 @@ export function CanvasBlockToolbar({
         ? { right: 0 }
         : { left: 0 };
 
-  const sideStyle: React.CSSProperties =
+  const fitsOutside =
     side === 'bottom'
+      ? overlayChromeFitsBelow(rect, view, offset)
+      : overlayChromeFitsAbove(rect, view, offset);
+
+  const sideStyle: React.CSSProperties = fitsOutside
+    ? side === 'bottom'
       ? { top: '100%', marginTop: offset }
-      : { bottom: '100%', marginBottom: offset };
+      : { bottom: '100%', marginBottom: offset }
+    : { top: offset, marginTop: 0 };
 
   const chrome = useRender<'div', BlockToolbarState>({
     defaultTagName: 'div',
@@ -173,14 +187,16 @@ export function CanvasBlockToolbar({
     },
   });
 
+  const frame = fitsOutside ? rect : vis;
+
   return (
     <div
       style={{
         position: 'absolute',
-        left: rect.x,
-        top: rect.y,
-        width: rect.width,
-        height: rect.height,
+        left: frame.x,
+        top: frame.y,
+        width: frame.width,
+        height: frame.height,
         boxSizing: 'border-box',
         pointerEvents: 'none',
       }}

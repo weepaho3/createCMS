@@ -226,6 +226,33 @@ describe('Canvas insert geometry in a real browser', () => {
     expect(rectClose(chrome, { y: block.y - chrome.height })).toBe(true);
   });
 
+  it('BlockToolbar side top stays hittable on the first block', async () => {
+    const { host, store } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.BlockToolbar side="top" align="start">
+          <span>grip</span>
+        </Canvas.BlockToolbar>
+      </Canvas.Overlay>,
+      stackOptions(columnStackBlocks, columnStackTree()),
+    );
+    store.select('c1');
+    const c1 = host.querySelector('[data-editor-block="c1"]');
+    expect(c1).not.toBeNull();
+    await waitForLayout(c1!);
+    const overlay = host.querySelector('[data-editor-overlay]');
+    const toolbar = host.querySelector('[data-editor-block-toolbar]');
+    expect(overlay).not.toBeNull();
+    expect(toolbar).not.toBeNull();
+    const overlayBox = rectOf(overlay!);
+    const toolbarBox = rectOf(toolbar!);
+    expect(toolbarBox.y).toBeGreaterThanOrEqual(overlayBox.y - 1);
+    const hit = host.ownerDocument.elementFromPoint(
+      toolbarBox.x + Math.min(8, Math.max(1, toolbarBox.width / 2)),
+      toolbarBox.y + Math.min(8, Math.max(1, toolbarBox.height / 2)),
+    );
+    expect(hit?.closest('[data-editor-block-toolbar]')).not.toBeNull();
+  });
+
   it('InsertButton disables types the parent rejects', async () => {
     const { host, store } = renderCanvas(
       <Canvas.Overlay>

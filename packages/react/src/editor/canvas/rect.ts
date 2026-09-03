@@ -5,6 +5,20 @@ export type CanvasRect = {
   height: number;
 };
 
+/** Canvas host scrollport in content coordinates (`scroll*` + `client*`). */
+export type CanvasViewBox = {
+  scrollLeft: number;
+  scrollTop: number;
+  clientWidth: number;
+  clientHeight: number;
+};
+
+/** Estimated overlay toolbar height used to detect clip against `overflow: hidden`. */
+export const OVERLAY_TOOLBAR_ESTIMATE_PX = 40;
+
+/** Inset for overlay-anchored drag handles so they stay inside the clip. */
+export const OVERLAY_CHROME_INSET_PX = 8;
+
 export function unionRects(rects: readonly CanvasRect[]): CanvasRect | null {
   if (rects.length === 0) return null;
   let minX = rects[0]!.x;
@@ -60,4 +74,45 @@ export function adoptRect(
   next: CanvasRect,
 ): CanvasRect {
   return prev && sameRect(prev, next) ? prev : next;
+}
+
+/**
+ * Intersection of a block rect with the host scrollport, in content
+ * coordinates. Null when the block is fully scrolled out of view.
+ */
+export function visibleIntersection(
+  rect: CanvasRect,
+  view: CanvasViewBox,
+): CanvasRect | null {
+  const left = Math.max(rect.x, view.scrollLeft);
+  const top = Math.max(rect.y, view.scrollTop);
+  const right = Math.min(
+    rect.x + rect.width,
+    view.scrollLeft + view.clientWidth,
+  );
+  const bottom = Math.min(
+    rect.y + rect.height,
+    view.scrollTop + view.clientHeight,
+  );
+  if (right <= left || bottom <= top) return null;
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+export function overlayChromeFitsAbove(
+  rect: CanvasRect,
+  view: CanvasViewBox,
+  offset: number,
+): boolean {
+  return rect.y - OVERLAY_TOOLBAR_ESTIMATE_PX - offset >= view.scrollTop;
+}
+
+export function overlayChromeFitsBelow(
+  rect: CanvasRect,
+  view: CanvasViewBox,
+  offset: number,
+): boolean {
+  return (
+    rect.y + rect.height + offset + OVERLAY_TOOLBAR_ESTIMATE_PX <=
+    view.scrollTop + view.clientHeight
+  );
 }

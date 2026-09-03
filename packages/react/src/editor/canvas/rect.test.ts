@@ -2,7 +2,72 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { blockElements, fieldElements } from './anchors';
-import { unionRects } from './rect';
+import {
+  overlayChromeFitsAbove,
+  unionRects,
+  visibleIntersection,
+} from './rect';
+describe('visibleIntersection', () => {
+  const view = {
+    scrollLeft: 0,
+    scrollTop: 0,
+    clientWidth: 800,
+    clientHeight: 600,
+  };
+
+  it('returns the rect when it is fully in view', () => {
+    expect(
+      visibleIntersection({ x: 10, y: 20, width: 80, height: 40 }, view),
+    ).toEqual({ x: 10, y: 20, width: 80, height: 40 });
+  });
+
+  it('clips to the scrollport', () => {
+    expect(
+      visibleIntersection({ x: -20, y: -10, width: 80, height: 40 }, view),
+    ).toEqual({ x: 0, y: 0, width: 60, height: 30 });
+  });
+
+  it('returns null when fully scrolled away', () => {
+    expect(
+      visibleIntersection(
+        { x: 0, y: 0, width: 80, height: 40 },
+        { ...view, scrollTop: 80 },
+      ),
+    ).toBeNull();
+  });
+});
+
+describe('overlayChromeFitsAbove', () => {
+  it('is false when the block sits at the top of the scrollport', () => {
+    expect(
+      overlayChromeFitsAbove(
+        { x: 0, y: 0, width: 100, height: 80 },
+        {
+          scrollLeft: 0,
+          scrollTop: 0,
+          clientWidth: 800,
+          clientHeight: 600,
+        },
+        0,
+      ),
+    ).toBe(false);
+  });
+
+  it('is true when there is room above the block', () => {
+    expect(
+      overlayChromeFitsAbove(
+        { x: 0, y: 80, width: 100, height: 80 },
+        {
+          scrollLeft: 0,
+          scrollTop: 0,
+          clientWidth: 800,
+          clientHeight: 600,
+        },
+        0,
+      ),
+    ).toBe(true);
+  });
+});
 
 function mount(html: string): HTMLElement {
   const root = document.createElement('div');

@@ -52,7 +52,7 @@ function SelectionRing({
           {state.blockType ? (
             <span
               data-slot="editor-selection-chip"
-              className="bg-editor-selection text-primary-foreground pointer-events-none absolute -top-6 left-0 rounded-md px-1.5 py-0.5 text-[10px] leading-none font-medium"
+              className="bg-editor-selection text-primary-foreground pointer-events-none absolute top-1.5 left-1.5 rounded-md px-1.5 py-0.5 text-[10px] leading-none font-medium"
             >
               {state.blockType}
             </span>

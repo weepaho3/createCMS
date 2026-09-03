@@ -71,6 +71,22 @@ describe('Canvas.DragHandle', () => {
     expect(host.hasAttribute('data-dragging')).toBe(true);
     expect(store.getState().selection.local?.editing).toBeNull();
   });
+
+  it('insets an overlay handle and sets pointer-events auto', () => {
+    const { host } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.DragHandle blockId="h1" />
+      </Canvas.Overlay>,
+    );
+    const handle = host.querySelector(
+      '[data-editor-drag-handle]',
+    ) as HTMLElement;
+    expect(handle.style.position).toBe('absolute');
+    expect(handle.style.pointerEvents).toBe('auto');
+    expect(handle.style.transform).toBe('');
+    expect(handle.style.left).toMatch(/px$/);
+    expect(handle.style.top).toMatch(/px$/);
+  });
 });
 
 describe('Canvas.PaletteItem', () => {

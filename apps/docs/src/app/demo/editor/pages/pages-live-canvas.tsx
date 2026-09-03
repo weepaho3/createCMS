@@ -1,6 +1,6 @@
 'use client';
 
-import { Editor, useEditor, useSelection } from '@createcms/react/editor';
+import { Editor, useEditor } from '@createcms/react/editor';
 import { Canvas } from '@createcms/react/editor/canvas';
 import * as React from 'react';
 
@@ -11,7 +11,6 @@ import { useDemoFieldSources } from '@/app/demo/_lib/sources';
 import { useLocalDocument } from '@/app/demo/_lib/use-local-document';
 import {
   BlockToolbar,
-  DragHandle,
   DragPreview,
   DropIndicator,
   FieldRing,
@@ -28,12 +27,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-
-function DragHandleInner() {
-  const selected = useSelection().selected;
-  if (!selected) return null;
-  return <DragHandle blockId={selected} />;
-}
 
 function DocumentJson() {
   const version = useEditor((state) => state.version);
@@ -83,7 +76,6 @@ export function PagesLiveCanvas() {
                 <FieldRing />
                 <BlockToolbar side="top" align="start" />
                 <InsertButton placement="between" type="richText" />
-                <DragHandleInner />
                 <DropIndicator />
                 <DragPreview />
                 <InlineText />

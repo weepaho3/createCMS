@@ -9,7 +9,7 @@ import type {
   UseCmsFieldSourcesClient,
 } from '@createcms/react/editor/cms';
 
-import { Editor, useSelection } from '@createcms/react/editor';
+import { Editor } from '@createcms/react/editor';
 import { Canvas } from '@createcms/react/editor/canvas';
 import {
   useCmsDocument,
@@ -39,7 +39,6 @@ import { cn } from '@/lib/utils';
 
 import {
   BlockToolbar,
-  DragHandle,
   DragPreview,
   DropIndicator,
   FieldRing,
@@ -235,7 +234,6 @@ function ConflictDialog({
 }
 
 function CanvasOverlays() {
-  const selected = useSelection().selected;
   const { setAddOpen } = useEditorChrome();
 
   return (
@@ -246,7 +244,6 @@ function CanvasOverlays() {
       <BlockToolbar side="top" align="start" />
       <InsertButton placement="between" onInsert={() => setAddOpen(true)} />
       <InsertButton placement="container" onInsert={() => setAddOpen(true)} />
-      {selected ? <DragHandle blockId={selected} /> : null}
       <DropIndicator />
       <DragPreview />
       <InlineText />
