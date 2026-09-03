@@ -39,14 +39,16 @@ export default function HomePage() {
       </section>
 
       {/* CMS-81 Option E: animation at the features seam, not in the headline. */}
-      <div className="mt-16 w-full max-w-3xl sm:mt-20" aria-hidden="true">
-        <CreateCMSLogoAnimation
-          ink="var(--cc-ink)"
-          accent="var(--cc-accent)"
-          fontFamily="var(--font-geist-sans), system-ui, sans-serif"
-          maxWidth="100%"
-          style={{ justifyContent: 'flex-start' }}
-        />
+      <div className="mt-16 w-full max-w-4xl sm:mt-20" aria-hidden="true">
+        <div className="w-full max-w-3xl">
+          <CreateCMSLogoAnimation
+            ink="var(--cc-ink)"
+            accent="var(--cc-accent)"
+            fontFamily="var(--font-geist-sans), system-ui, sans-serif"
+            maxWidth="100%"
+            style={{ justifyContent: 'flex-start' }}
+          />
+        </div>
       </div>
 
       <section className="mt-8 grid w-full max-w-4xl gap-4 sm:mt-10 sm:grid-cols-2">
