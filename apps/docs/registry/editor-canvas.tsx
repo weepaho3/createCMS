@@ -130,6 +130,8 @@ function DefaultBlockToolbarActions() {
 
   return (
     <>
+      <DragHandle blockId={selected} />
+      <Separator orientation="vertical" className="h-4" />
       <CanvasIconButton
         label="Move up"
         disabled={!actions.canMoveUp}
@@ -239,7 +241,7 @@ function DragHandle({
     <Canvas.DragHandle
       data-slot="editor-drag-handle"
       className={cn(
-        'bg-background border-border pointer-events-auto cursor-grab rounded border p-1 active:cursor-grabbing',
+        'bg-background border-border pointer-events-auto cursor-grab rounded border p-1 select-none active:cursor-grabbing',
         className,
       )}
       {...props}

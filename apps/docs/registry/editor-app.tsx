@@ -304,7 +304,10 @@ function CmsEditor({
     <div
       data-slot="editor-app"
       data-mode={mode}
-      className={cn('relative flex min-h-0 flex-1 flex-col', className)}
+      className={cn(
+        'relative flex min-h-0 flex-1 flex-col overflow-hidden',
+        className,
+      )}
     >
       {doc.status === 'error' && doc.error ? (
         <div data-slot="editor-app-error-banner">
@@ -324,9 +327,12 @@ function CmsEditor({
         fields={cmsFields}
       >
         <CmsSourcesProvider sources={sources}>
-          <EditorShell requireCommitMessage={requireCommitMessage}>
+          <EditorShell mode={mode} requireCommitMessage={requireCommitMessage}>
             {mode === 'form' ? (
-              <FormSurface />
+              <>
+                <FormSurface />
+                {children}
+              </>
             ) : (
               <Canvas.Root
                 components={components}
@@ -337,7 +343,7 @@ function CmsEditor({
               </Canvas.Root>
             )}
           </EditorShell>
-          {children}
+          {mode === 'form' ? null : children}
         </CmsSourcesProvider>
       </Editor.Root>
       <ConflictDialog

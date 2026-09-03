@@ -95,6 +95,9 @@ export function useInsertTarget(options?: {
   return next;
 }
 
+/** True when a DragHandle is rendered inside BlockToolbar (in-flow). */
+export const BlockToolbarContext = React.createContext(false);
+
 type BlockToolbarState = {
   editorBlockToolbar: boolean;
   side: 'top' | 'bottom';
@@ -182,7 +185,9 @@ export function CanvasBlockToolbar({
         pointerEvents: 'none',
       }}
     >
-      {chrome}
+      <BlockToolbarContext.Provider value={true}>
+        {chrome}
+      </BlockToolbarContext.Provider>
     </div>
   );
 }

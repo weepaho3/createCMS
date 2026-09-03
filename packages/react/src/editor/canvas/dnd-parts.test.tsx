@@ -51,6 +51,26 @@ describe('Canvas.DragHandle', () => {
     });
     expect(host.hasAttribute('data-dragging')).toBe(true);
   });
+
+  it('starts a move while inline editing is active', () => {
+    const { host, store } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.DragHandle blockId="h1" />
+      </Canvas.Overlay>,
+    );
+    act(() => {
+      store.setEditing({ blockId: 'h1', key: 'text' });
+    });
+    const handle = host.querySelector('[data-editor-drag-handle]')!;
+    const rect = handle.getBoundingClientRect();
+    const from = { x: rect.x + 4, y: rect.y + 4 };
+    act(() => {
+      dispatchPointer(handle, 'pointerdown', from);
+      dispatchPointer(handle, 'pointermove', { x: from.x + 5, y: from.y });
+    });
+    expect(host.hasAttribute('data-dragging')).toBe(true);
+    expect(store.getState().selection.local?.editing).toBeNull();
+  });
 });
 
 describe('Canvas.PaletteItem', () => {

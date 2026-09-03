@@ -169,6 +169,7 @@ export function CanvasRoot({
       pointerStore.setFromEvent(event as PointerEvent, host);
     };
     const onPointerLeave = () => {
+      if (sessionRef.current.dnd.getSession()) return;
       pointerStore.clear();
       storeRef.current.hover(null);
     };

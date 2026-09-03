@@ -24,6 +24,7 @@ import {
   resolveDropTarget,
 } from './insert-dom';
 import { useCanvasSession, type CanvasSurfaceHandle } from './provider';
+import { BlockToolbarContext } from './toolbar';
 
 const subscribeNoop = () => () => {};
 
@@ -296,7 +297,9 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
       const containing =
         surfaces.find((surface) => surface.host.contains(handle)) ?? null;
       if (containing !== null) {
-        if (containing.interactive !== 'edit' || containing.editing) {
+        // Inline editing must not swallow the handle: live QA dragged block
+        // edges/text and got native selection because the handle never started.
+        if (containing.interactive !== 'edit') {
           return false;
         }
         if (isInsideReadonly(handle, containing.host)) return false;
@@ -332,21 +335,31 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
       } catch {
         // capture is optional; document listeners still end the gesture
       }
+      ctx.store.setEditing(null);
       dnd.beginGesture({ x: event.clientX, y: event.clientY });
       lastSurfaceRef.current = null;
 
       const onMove = (moveEvent: PointerEvent) => {
         if (moveEvent.pointerId !== pointerId) return;
         if (!dnd.getClientPoint() && !dnd.getSession()) return;
-        dnd.moveGesture(
-          { x: moveEvent.clientX, y: moveEvent.clientY },
-          session,
-        );
+        const client = { x: moveEvent.clientX, y: moveEvent.clientY };
+        dnd.moveGesture(client, session);
+        const surfaces = canvasSession.getSurfaces();
+        const surface =
+          surfaceAtClient(surfaces, client) ??
+          lastSurfaceRef.current ??
+          surfaces.find((entry) => entry.interactive === 'edit') ??
+          null;
+        // Keep the preview hot path alive off-canvas; resolveTarget only
+        // writes the pointer when a surface is under the cursor.
+        if (surface) {
+          pointer.setFromEvent(
+            { clientX: client.x, clientY: client.y } as PointerEvent,
+            surface.host,
+          );
+        }
         if (dnd.getSession()) {
-          resolveTarget({
-            x: moveEvent.clientX,
-            y: moveEvent.clientY,
-          });
+          resolveTarget(client);
         }
       };
 
@@ -397,7 +410,17 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
       doc.addEventListener('pointercancel', onCancel, true);
       view?.addEventListener('blur', onBlur);
     },
-    [canStart, commitDrop, dnd, onGestureEnd, resolveTarget, session],
+    [
+      canStart,
+      canvasSession,
+      commitDrop,
+      ctx.store,
+      dnd,
+      onGestureEnd,
+      pointer,
+      resolveTarget,
+      session,
+    ],
   );
 
   return onPointerDown;
@@ -421,12 +444,30 @@ export function CanvasDragHandle({
   ...rest
 }: CanvasDragHandleProps) {
   useCanvasSession('Canvas.DragHandle');
+  const inToolbar = React.useContext(BlockToolbarContext);
+  const canvas = React.useContext(CanvasContext);
+  const measurer = canvas?.measurer ?? null;
+  const rect = React.useSyncExternalStore(
+    measurer ? measurer.subscribe : subscribeNoop,
+    () => (measurer ? measurer.getBlockRect(blockId) : null),
+    () => null,
+  );
   const session = useDragSessionSnapshot();
   const gestureDown = usePointerGesture({
     session: { kind: 'move', id: blockId },
     blockId,
   });
   const isDragging = session?.kind === 'move' && session.id === blockId;
+  const anchorStyle: React.CSSProperties =
+    inToolbar || rect === null
+      ? {}
+      : {
+          position: 'absolute',
+          left: rect.x,
+          top: rect.y,
+          transform: 'translate(-50%, -50%)',
+          zIndex: 2,
+        };
 
   return useRender<'button', DragHandleState>({
     defaultTagName: 'button',
@@ -435,7 +476,12 @@ export function CanvasDragHandle({
       type: 'button',
       'aria-label': rest['aria-label'] ?? 'Drag to move',
       ...rest,
-      style: { touchAction: 'none', ...style },
+      style: {
+        touchAction: 'none',
+        userSelect: 'none',
+        ...anchorStyle,
+        ...style,
+      },
       onPointerDown: (event) => {
         onPointerDown?.(event);
         gestureDown(event);
@@ -602,16 +648,33 @@ function applyPreviewTransform(
   node.style.transform = `translate3d(${snap.x}px, ${snap.y}px, 0) translate(-50%, -50%)`;
 }
 
+function previewSnap(
+  pointer: { getSnapshot: () => { x: number; y: number } | null },
+  dnd: { getClientPoint: () => { x: number; y: number } | null },
+  host: HTMLElement | null,
+): { x: number; y: number } | null {
+  const snap = pointer.getSnapshot();
+  if (snap) return snap;
+  const client = dnd.getClientPoint();
+  if (!client || !host) return null;
+  const box = host.getBoundingClientRect();
+  return {
+    x: Math.round(client.x - box.left + host.scrollLeft),
+    y: Math.round(client.y - box.top + host.scrollTop),
+  };
+}
+
 export function CanvasDragPreview({
   render,
   style,
   children,
   ...rest
 }: CanvasDragPreviewProps) {
-  const { pointer } = useCanvasSession('Canvas.DragPreview');
+  const { pointer, dnd } = useCanvasSession('Canvas.DragPreview');
   const canvas = React.useContext(CanvasContext);
   const session = useDragSessionSnapshot();
   const measurer = canvas?.measurer ?? null;
+  const host = canvas?.host ?? null;
   const moveId = session?.kind === 'move' ? session.id : '';
   const moveRect = React.useSyncExternalStore(
     measurer ? measurer.subscribe : subscribeNoop,
@@ -627,7 +690,7 @@ export function CanvasDragPreview({
     const node = nodeRef.current;
     if (!(node instanceof HTMLElement)) return;
     node.style.willChange = 'transform';
-    applyPreviewTransform(node, pointer.getSnapshot());
+    applyPreviewTransform(node, previewSnap(pointer, dnd, host));
     let raf = 0;
     const onPointer = () => {
       if (raf !== 0) return;
@@ -635,7 +698,7 @@ export function CanvasDragPreview({
         raf = 0;
         const current = nodeRef.current;
         if (current instanceof HTMLElement) {
-          applyPreviewTransform(current, pointer.getSnapshot());
+          applyPreviewTransform(current, previewSnap(pointer, dnd, host));
         }
       });
     };
@@ -645,7 +708,7 @@ export function CanvasDragPreview({
       if (raf !== 0) cancelAnimationFrame(raf);
       node.style.willChange = '';
     };
-  }, [canvas, pointer, session]);
+  }, [canvas, dnd, host, pointer, session]);
 
   // Pointer snapshots are host-relative absolute coordinates, so the
   // preview positions itself only inside a Canvas.Root surface.
