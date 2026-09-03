@@ -117,8 +117,9 @@
         "editor-form",
         "editor-canvas",
         "editor-shell",
+        "alert",
+        "alert-dialog",
         "button",
-        "dialog",
         "skeleton"
       ],
       "files": [

@@ -15,16 +15,25 @@ import {
   useCmsDocument,
   useCmsFieldSources,
 } from '@createcms/react/editor/cms';
+import * as React from 'react';
 
-import { Button } from '@/components/ui/button';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
@@ -93,15 +102,57 @@ function EditorLoadingSkeleton({ className }: { className?: string }) {
   return (
     <div
       data-slot="editor-app-loading"
-      className={cn('flex min-h-0 flex-1 flex-col gap-3 p-4', className)}
+      role="status"
+      aria-busy="true"
+      aria-live="polite"
+      className={cn('flex min-h-0 flex-1 flex-col', className)}
     >
-      <Skeleton className="h-12 w-full" />
-      <div className="grid min-h-0 flex-1 grid-cols-[16rem_1fr_20rem] gap-3">
-        <Skeleton className="min-h-64" />
-        <Skeleton className="min-h-64" />
-        <Skeleton className="min-h-64" />
+      <span className="sr-only">Loading editor</span>
+      <Skeleton className="h-12 w-full shrink-0 rounded-none" />
+      <div className="flex min-h-0 flex-1">
+        <Skeleton className="hidden w-64 shrink-0 rounded-none md:block" />
+        <div className="min-h-0 min-w-0 flex-1 p-3">
+          <Skeleton className="h-full min-h-64 w-full" />
+        </div>
+        <Skeleton className="hidden w-64 shrink-0 rounded-none md:block" />
       </div>
     </div>
+  );
+}
+
+function EditorErrorAlert({
+  error,
+  onRetry,
+  className,
+}: {
+  error: CmsDocumentError | null;
+  onRetry: () => void;
+  className?: string;
+}) {
+  return (
+    <Alert variant="destructive" aria-live="assertive" className={className}>
+      <AlertTitle>
+        {error?.message ?? 'Failed to load the document.'}
+      </AlertTitle>
+      <AlertDescription>
+        {error?.fields?.length ? (
+          <ul>
+            {error.fields.map((field) => (
+              <li key={`${field.blockId}-${field.key}`}>
+                {field.key}: {field.message}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          'Retry to load the latest version.'
+        )}
+      </AlertDescription>
+      <AlertAction>
+        <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+          Retry
+        </Button>
+      </AlertAction>
+    </Alert>
   );
 }
 
@@ -118,25 +169,15 @@ function EditorErrorState({
     <div
       data-slot="editor-app-error"
       className={cn(
-        'flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center',
+        'flex min-h-0 flex-1 flex-col items-center justify-center p-8',
         className,
       )}
     >
-      <p className="text-destructive text-sm font-medium">
-        {error?.message ?? 'Failed to load the document.'}
-      </p>
-      {error?.fields?.length ? (
-        <ul className="text-muted-foreground max-w-md text-left text-sm">
-          {error.fields.map((field) => (
-            <li key={`${field.blockId}-${field.key}`}>
-              {field.key}: {field.message}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      <Button type="button" variant="outline" onClick={onRetry}>
-        Retry
-      </Button>
+      <EditorErrorAlert
+        error={error}
+        onRetry={onRetry}
+        className="w-full max-w-md"
+      />
     </div>
   );
 }
@@ -152,26 +193,43 @@ function ConflictDialog({
   onReload: () => void;
   onForce: () => void;
 }) {
+  const forcingRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!open) forcingRef.current = false;
+  }, [open]);
+
   return (
-    <Dialog open={open} onOpenChange={() => {}}>
-      <DialogContent className="max-w-sm" data-slot="editor-app-conflict">
-        <DialogHeader>
-          <DialogTitle>Document conflict</DialogTitle>
-          <DialogDescription>
+    <AlertDialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen || forcingRef.current) return;
+        onReload();
+      }}
+    >
+      <AlertDialogContent data-slot="editor-app-conflict">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Document conflict</AlertDialogTitle>
+          <AlertDialogDescription>
             {error?.message ??
               'This document changed on the server since you loaded it. Reload the latest version or overwrite it.'}
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onReload}>
-            Reload
-          </Button>
-          <Button type="button" onClick={onForce}>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel type="button">Reload</AlertDialogCancel>
+          <AlertDialogAction
+            type="button"
+            variant="destructive"
+            onClick={() => {
+              forcingRef.current = true;
+              onForce();
+            }}
+          >
             Overwrite
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -222,15 +280,23 @@ function CmsEditor({
   });
   const sources = useCmsFieldSources(client);
 
+  const retry = () => {
+    void doc.reload();
+  };
+
+  const forceSave = () => {
+    void doc.save({ force: true }).catch(() => {
+      // useCmsDocument already set status/error; EditorErrorAlert renders it.
+    });
+  };
+
   if (!doc.tree) {
     if (doc.status === 'error') {
       return (
         <EditorErrorState
           className={className}
           error={doc.error}
-          onRetry={() => {
-            void doc.reload();
-          }}
+          onRetry={retry}
         />
       );
     }
@@ -244,21 +310,12 @@ function CmsEditor({
       className={cn('relative flex min-h-0 flex-1 flex-col', className)}
     >
       {doc.status === 'error' && doc.error ? (
-        <div
-          data-slot="editor-app-error-banner"
-          className="border-destructive/40 bg-destructive/10 flex items-center justify-between gap-3 border-b px-3 py-2 text-sm"
-        >
-          <p>{doc.error.message}</p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              void doc.reload();
-            }}
-          >
-            Retry
-          </Button>
+        <div data-slot="editor-app-error-banner">
+          <EditorErrorAlert
+            error={doc.error}
+            onRetry={retry}
+            className="rounded-none border-x-0 border-t-0"
+          />
         </div>
       ) : null}
       <Editor.Root
@@ -277,7 +334,7 @@ function CmsEditor({
               <Canvas.Root
                 components={components}
                 resolve={doc.resolve}
-                style={{ position: 'relative' }}
+                className="relative"
               >
                 <CanvasOverlays />
               </Canvas.Root>
@@ -288,12 +345,8 @@ function CmsEditor({
       <ConflictDialog
         open={doc.status === 'conflict'}
         error={doc.error}
-        onReload={() => {
-          void doc.reload();
-        }}
-        onForce={() => {
-          void doc.save({ force: true }).catch(() => undefined);
-        }}
+        onReload={retry}
+        onForce={forceSave}
       />
     </div>
   );

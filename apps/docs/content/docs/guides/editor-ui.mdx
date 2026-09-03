@@ -59,7 +59,7 @@ What `CmsEditor` includes:
 - `EditorShell` and canvas overlays
 - Loading skeleton, error + Retry (`doc.reload`), and a conflict dialog on `HEAD_MISMATCH` (reload vs `save({ force: true })`)
 
-`mode="form"` skips `Canvas.Root` and keeps the same document wiring.
+`mode="form"` skips `Canvas.Root` and keeps the same document wiring. Palette, outline, inspector, and the device toggle still come from `EditorShell` — form mode is not a second shell.
 
 ### Props
 
@@ -72,7 +72,7 @@ What `CmsEditor` includes:
 | `schema` | yes | — | Editor schema. |
 | `components` | yes | — | Canvas block map. |
 | `templates` | no | `client.templates` | Override for `useCmsDocument` template defaults. |
-| `mode` | no | `'canvas'` | `'canvas'` or `'form'`. Form skips `Canvas.Root`. |
+| `mode` | no | `'canvas'` | `'canvas'` or `'form'`. Form skips `Canvas.Root` but still uses `EditorShell` chrome (palette, device toggle, inspector). |
 | `className` | no | — | Applied to the page root, loading skeleton, and error state. |
 | `requireCommitMessage` | no | `false` | Opens the shell commit-message dialog on save. |
 
