@@ -9,7 +9,7 @@
       "title": "Editor Form",
       "description": "Styled wrappers for Editor.Field parts and cms field controls. Does not wrap Editor.Root.",
       "dependencies": ["@createcms/react"],
-      "registryDependencies": ["button", "dialog", "input"],
+      "registryDependencies": ["button", "dialog", "input", "textarea"],
       "files": [
         {
           "path": "registry/editor-form.tsx",
