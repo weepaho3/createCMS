@@ -109,7 +109,11 @@ function Form({
   );
 }
 
-function FormSurface({ className, ...props }: React.ComponentProps<'div'>) {
+function FormSurface({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<'div'>) {
   const rootId = useEditor((state) => state.rootId);
   const selected = useSelection().selected;
   const blockId = selected ?? rootId;
@@ -133,6 +137,7 @@ function FormSurface({ className, ...props }: React.ComponentProps<'div'>) {
     >
       <h1 className="mb-6 text-lg font-semibold tracking-tight">{label}</h1>
       <Form blockId={blockId} />
+      {children}
     </div>
   );
 }

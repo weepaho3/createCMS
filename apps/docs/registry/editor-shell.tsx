@@ -425,9 +425,7 @@ function EditorToolbar({
       )}
       {...props}
     >
-      <SidebarTrigger
-        className={cn('md:inline-flex', mode === 'form' && 'hidden')}
-      />
+      {mode === 'form' ? null : <SidebarTrigger className="md:inline-flex" />}
       <ToolbarHintButton
         label="Undo"
         shortcut="⌘Z"

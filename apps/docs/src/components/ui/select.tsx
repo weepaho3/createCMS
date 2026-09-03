@@ -39,7 +39,7 @@ function SelectTrigger({
       data-size={size}
       className={cn(
         'border-input flex w-full items-center justify-between gap-1.5 rounded-md border bg-transparent py-2 pr-2 pl-2.5 text-sm whitespace-nowrap outline-none',
-        'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-3',
+        'focus-visible:border-ring focus-visible:ring-ring/30 focus-visible:ring-[3px]',
         'disabled:cursor-not-allowed disabled:opacity-50',
         'aria-invalid:border-destructive aria-invalid:ring-destructive/20',
         'data-placeholder:text-muted-foreground data-[size=default]:h-8 data-[size=sm]:h-7',

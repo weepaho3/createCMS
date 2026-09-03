@@ -329,10 +329,7 @@ function CmsEditor({
         <CmsSourcesProvider sources={sources}>
           <EditorShell mode={mode} requireCommitMessage={requireCommitMessage}>
             {mode === 'form' ? (
-              <>
-                <FormSurface />
-                {children}
-              </>
+              <FormSurface>{children}</FormSurface>
             ) : (
               <Canvas.Root
                 components={components}
