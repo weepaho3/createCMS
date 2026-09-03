@@ -45,7 +45,7 @@ function SelectionRing({
   return (
     <Canvas.SelectionRing
       data-slot="editor-selection-ring"
-      className={cn('border-editor-selection/50 border', ringMotion, className)}
+      className={cn('border-editor-selection border', ringMotion, className)}
       {...props}
       render={(ringProps, state) => (
         <div {...ringProps}>
@@ -71,7 +71,7 @@ function HoverRing({
   return (
     <Canvas.HoverRing
       data-slot="editor-hover-ring"
-      className={cn('border-editor-hover/40 border', ringMotion, className)}
+      className={cn('border-editor-hover border', ringMotion, className)}
       {...props}
     />
   );

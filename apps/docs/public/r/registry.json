@@ -9,7 +9,14 @@
       "title": "Editor Form",
       "description": "Styled wrappers for Editor.Field parts and cms field controls. Does not wrap Editor.Root.",
       "dependencies": ["@createcms/react"],
-      "registryDependencies": ["button", "dialog", "input", "textarea"],
+      "registryDependencies": [
+        "button",
+        "dialog",
+        "input",
+        "textarea",
+        "select",
+        "checkbox"
+      ],
       "files": [
         {
           "path": "registry/editor-form.tsx",
@@ -47,8 +54,8 @@
       ],
       "cssVars": {
         "theme": {
-          "editor-selection": "var(--primary)",
-          "editor-hover": "var(--muted-foreground)",
+          "editor-selection": "color-mix(in oklab, var(--primary) 55%, transparent)",
+          "editor-hover": "color-mix(in oklab, var(--muted-foreground) 40%, transparent)",
           "editor-focus": "var(--ring)",
           "editor-drop": "var(--primary)"
         }

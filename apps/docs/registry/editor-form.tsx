@@ -21,7 +21,7 @@ function Field({
   return (
     <Editor.Field
       data-slot="editor-field"
-      className={cn('flex flex-col gap-2', className)}
+      className={cn('flex flex-col gap-4', className)}
       {...props}
     />
   );
@@ -85,8 +85,10 @@ function Form({
     <Editor.Form
       data-slot="editor-form"
       className={cn(
-        'flex flex-col gap-6',
+        'flex flex-col gap-4',
+        '[&>div]:flex [&>div]:flex-col [&>div]:gap-4',
         '[&_fieldset]:flex [&_fieldset]:flex-col [&_fieldset]:gap-4',
+        '[&_fieldset>div]:flex [&_fieldset>div]:flex-col [&_fieldset>div]:gap-4',
         '[&_legend]:text-sm [&_legend]:font-medium',
         className,
       )}

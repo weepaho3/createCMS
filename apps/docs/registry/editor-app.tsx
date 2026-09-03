@@ -71,6 +71,7 @@ export type CmsEditorProps = {
   mode?: CmsEditorMode;
   className?: string;
   requireCommitMessage?: boolean;
+  children?: React.ReactNode;
 };
 
 function readDocumentClient(
@@ -264,6 +265,7 @@ function CmsEditor({
   mode = 'canvas',
   className,
   requireCommitMessage = false,
+  children,
 }: CmsEditorProps) {
   const documentClient = readDocumentClient(client, collection);
   const doc = useCmsDocument({
@@ -335,6 +337,7 @@ function CmsEditor({
               </Canvas.Root>
             )}
           </EditorShell>
+          {children}
         </CmsSourcesProvider>
       </Editor.Root>
       <ConflictDialog

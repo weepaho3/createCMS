@@ -15,8 +15,8 @@
   --editor-ring: var(--ring);
   --editor-invalid: var(--destructive);
   --editor-muted: var(--muted-foreground);
-  --editor-selection: var(--primary);
-  --editor-hover: var(--muted-foreground);
+  --editor-selection: color-mix(in oklab, var(--primary) 55%, transparent);
+  --editor-hover: color-mix(in oklab, var(--muted-foreground) 40%, transparent);
   --editor-focus: var(--ring);
   --editor-drop: var(--primary);
 }
@@ -30,8 +30,8 @@
   --editor-ring: var(--ring);
   --editor-invalid: var(--destructive);
   --editor-muted: var(--muted-foreground);
-  --editor-selection: var(--primary);
-  --editor-hover: var(--muted-foreground);
+  --editor-selection: color-mix(in oklab, var(--primary) 55%, transparent);
+  --editor-hover: color-mix(in oklab, var(--muted-foreground) 40%, transparent);
   --editor-focus: var(--ring);
   --editor-drop: var(--primary);
 }

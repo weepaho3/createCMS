@@ -59,7 +59,7 @@ What `CmsEditor` includes:
 - `EditorShell` and canvas overlays
 - Loading skeleton, error + Retry (`doc.reload`), and a conflict dialog on `HEAD_MISMATCH` (reload vs `save({ force: true })`)
 
-`mode="form"` skips `Canvas.Root` and keeps the same document wiring. Palette, outline, inspector, and the device toggle still come from `EditorShell` — form mode is not a second shell.
+`mode="form"` skips `Canvas.Root` and keeps the same document wiring. Palette, outline, inspector, and the device toggle still come from `EditorShell` — form mode is not a second shell. The [form-only demo](/demo/editor/form) is this path: `CmsEditor mode="form"` with a `Collapsible` JSON dump as children, not a bare `Editor.Root` + `Form` composition.
 
 ### Props
 
@@ -75,6 +75,7 @@ What `CmsEditor` includes:
 | `mode` | no | `'canvas'` | `'canvas'` or `'form'`. Form skips `Canvas.Root` but still uses `EditorShell` chrome (palette, device toggle, inspector). |
 | `className` | no | — | Applied to the page root, loading skeleton, and error state. |
 | `requireCommitMessage` | no | `false` | Opens the shell commit-message dialog on save. |
+| `children` | no | — | Rendered inside `Editor.Root` after the shell (demo extras such as a JSON `Collapsible`). |
 
 While developing the docs site locally, swap `https://createcms.dev` for `http://localhost:4000`.
 
@@ -130,7 +131,7 @@ const sources = useCmsFieldSources(cmsClient);
 </Editor.Root>
 ```
 
-**Styled container.** Wrap the block's fields with the styled `Form` shell. Inner fields remain the headless primitives from `@createcms/react` unless you pass `fields={cmsFields}` (shadcn `Input` / `Textarea` / `Select` and CMS pickers). `FormSurface` is a padded selected-block form for `mode="form"` and the form-only demo.
+**Styled container.** Wrap the block's fields with the styled `Form` shell. Inner fields remain the headless primitives from `@createcms/react` unless you pass `fields={cmsFields}` (shadcn `Input` / `Textarea` / `Select` / `Checkbox` and CMS pickers). `FormSurface` is a padded selected-block form for `CmsEditor mode="form"` and the form-only demo. Do not replace those primitives with custom input chrome.
 
 ```tsx
 import { Editor } from '@createcms/react/editor';

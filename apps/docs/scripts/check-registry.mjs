@@ -58,6 +58,18 @@ function assertNamedItem(item, name, expectedType) {
 
 const catalog = readJson('registry.json');
 const catalogNames = new Set((catalog.items ?? []).map((item) => item.name));
+const editorFormItem = catalog.items.find(
+  (item) => item.name === 'editor-form',
+);
+const editorFormDeps = editorFormItem?.registryDependencies ?? [];
+for (const dep of ['input', 'textarea', 'select', 'checkbox']) {
+  if (!editorFormDeps.includes(dep)) {
+    console.error(
+      `check-registry: editor-form registryDependencies must include "${dep}"`,
+    );
+    process.exit(1);
+  }
+}
 for (const name of [...UI_ITEM_NAMES, ...BLOCK_ITEM_NAMES]) {
   if (!catalogNames.has(name)) {
     console.error(`check-registry: public/r/registry.json missing "${name}"`);
@@ -95,6 +107,11 @@ if (
 const uiChecks = [
   ['data-slot="editor-field"', 'editor-field slot'],
   ['cmsFields', 'cmsFields export'],
+  ["from '@/components/ui/input'", 'shadcn Input control'],
+  ["from '@/components/ui/textarea'", 'shadcn Textarea control'],
+  ["from '@/components/ui/select'", 'shadcn Select control'],
+  ["from '@/components/ui/checkbox'", 'shadcn Checkbox control'],
+  ["'flex flex-col gap-4'", 'Field/Form gap-4'],
   ['data-slot="editor-form-surface"', 'editor-form-surface slot'],
   ['data-slot="editor-overlay"', 'editor-overlay slot'],
   ['data-slot="editor-shell"', 'editor-shell slot'],

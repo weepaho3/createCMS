@@ -24,10 +24,24 @@ for (const required of [
   'cmsFields',
   'CmsSourcesProvider',
   '@createcms/react/editor',
+  'CmsEditor',
+  'mode="form"',
+  'Collapsible',
 ]) {
   if (!mdx.includes(required)) {
     fail(`visual-editor.mdx is missing "${required}"`);
   }
+}
+
+const formOnly = read('src/app/demo/editor/form/form-only.tsx');
+if (!formOnly.includes('CmsEditor') || !formOnly.includes('mode="form"')) {
+  fail('form-only.tsx must use CmsEditor mode="form"');
+}
+if (!formOnly.includes('Collapsible')) {
+  fail('form-only.tsx must put document JSON in a Collapsible');
+}
+if (formOnly.includes('<details') || formOnly.includes('<Editor.Root')) {
+  fail('form-only.tsx must not use a bare Editor.Root or details JSON dump');
 }
 
 const liveCanvas = read('src/app/demo/editor/pages/pages-live-canvas.tsx');
