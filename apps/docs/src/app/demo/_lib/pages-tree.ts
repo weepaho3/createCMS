@@ -5,6 +5,10 @@ export const PAGES_TREE: BlockTreeNode = {
   type: 'root',
   properties: {
     title: 'Demo page',
+    excerpt: '<p>A short listing summary.</p>',
+    featured: true,
+    status: 'draft',
+    sortOrder: 1,
   },
   children: [
     {

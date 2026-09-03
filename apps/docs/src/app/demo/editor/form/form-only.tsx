@@ -1,33 +1,56 @@
 'use client';
 
-import { Editor } from '@createcms/react/editor';
+import { useEditor } from '@createcms/react/editor';
+import * as React from 'react';
 
+import { createDemoCmsClient } from '@/app/demo/_lib/demo-cms-client';
+import { pageBlocks } from '@/app/demo/_lib/pages-blocks';
 import { pages } from '@/app/demo/_lib/pages-schema';
 import { PAGES_TREE } from '@/app/demo/_lib/pages-tree';
-import { useDemoFieldSources } from '@/app/demo/_lib/sources';
-import { useLocalDocument } from '@/app/demo/_lib/use-local-document';
-import { CmsSourcesProvider, cmsFields, Form } from '@/components/editor-form';
+import { CmsEditor } from '@/components/editor-app';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 
-export function FormOnlyEditor() {
-  const sources = useDemoFieldSources();
-  const { saved, onChange, onSave } = useLocalDocument(PAGES_TREE);
+function DocumentJson() {
+  const version = useEditor((state) => state.version);
+  const { getTree } = useEditor();
+  const tree = getTree();
+  void version;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <Editor.Root
-        schema={pages}
-        defaultValue={PAGES_TREE}
-        onChange={onChange}
-        onSave={onSave}
-        fields={cmsFields}
-      >
-        <CmsSourcesProvider sources={sources}>
-          <Form blockId={PAGES_TREE.blockId} />
-        </CmsSourcesProvider>
-      </Editor.Root>
-      <pre className="border-border max-h-48 overflow-auto border-t p-4 text-xs">
-        {JSON.stringify(saved, null, 2)}
-      </pre>
-    </div>
+    <Collapsible
+      data-slot="editor-document-json"
+      className="border-border shrink-0 border-t"
+    >
+      <CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex w-full cursor-pointer items-center px-4 py-2 text-left text-xs font-medium">
+        Document JSON
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <pre className="max-h-48 overflow-auto p-4 text-xs leading-relaxed">
+          {JSON.stringify(tree, null, 2)}
+        </pre>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+export function FormOnlyEditor() {
+  const client = React.useMemo(() => createDemoCmsClient(), []);
+
+  return (
+    <CmsEditor
+      client={client}
+      collection="pages"
+      rootId={PAGES_TREE.blockId}
+      branchId="demo"
+      schema={pages}
+      components={pageBlocks}
+      mode="form"
+    >
+      <DocumentJson />
+    </CmsEditor>
   );
 }

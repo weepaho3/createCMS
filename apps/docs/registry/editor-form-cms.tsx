@@ -7,7 +7,11 @@ import type {
   CmsRootListItem,
 } from '@createcms/react/editor/cms';
 
-import { emptyListElement } from '@createcms/react/editor';
+import {
+  emptyListElement,
+  fromDatetimeLocal,
+  toDatetimeLocal,
+} from '@createcms/react/editor';
 import {
   assetUrl,
   referenceLabel,
@@ -17,6 +21,7 @@ import * as React from 'react';
 import { createPortal } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -26,6 +31,14 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 
 const CmsSourcesContext = React.createContext<CmsFieldSources | null>(null);
 
@@ -61,6 +74,106 @@ function fieldAria(props: {
     'aria-invalid': props.invalid || undefined,
     'aria-required': props.required || undefined,
   } as const;
+}
+
+function StringField(props: FieldControlProps<'string'>) {
+  return (
+    <Input
+      type="text"
+      id={props.id}
+      name={props.name}
+      value={props.value ?? ''}
+      placeholder={props.spec.placeholder}
+      required={props.required}
+      disabled={props.disabled}
+      minLength={props.spec.minLength}
+      maxLength={props.spec.maxLength}
+      {...fieldAria(props)}
+      onChange={(event) => props.onChange(event.currentTarget.value)}
+    />
+  );
+}
+
+function NumberField(props: FieldControlProps<'number'>) {
+  return (
+    <Input
+      type="number"
+      id={props.id}
+      name={props.name}
+      value={props.value ?? ''}
+      placeholder={props.spec.placeholder}
+      required={props.required}
+      disabled={props.disabled}
+      min={props.spec.min}
+      max={props.spec.max}
+      {...fieldAria(props)}
+      onChange={(event) => {
+        const raw = event.currentTarget.value;
+        props.onChange(raw === '' ? undefined : Number(raw));
+      }}
+    />
+  );
+}
+
+function BooleanField(props: FieldControlProps<'boolean'>) {
+  return (
+    <Checkbox
+      id={props.id}
+      name={props.name}
+      checked={props.value ?? false}
+      required={props.required}
+      disabled={props.disabled}
+      {...fieldAria(props)}
+      onCheckedChange={(checked) => props.onChange(checked === true)}
+    />
+  );
+}
+
+function DateField(props: FieldControlProps<'date'>) {
+  return (
+    <Input
+      type="datetime-local"
+      id={props.id}
+      name={props.name}
+      value={toDatetimeLocal(props.value)}
+      required={props.required}
+      disabled={props.disabled}
+      {...fieldAria(props)}
+      onChange={(event) =>
+        props.onChange(fromDatetimeLocal(event.currentTarget.value))
+      }
+    />
+  );
+}
+
+function SelectField(props: FieldControlProps<'select'>) {
+  return (
+    <Select
+      id={props.id}
+      name={props.name}
+      value={props.value ?? null}
+      required={props.required}
+      disabled={props.disabled}
+      items={props.spec.options.map((option) => ({
+        value: option.value,
+        label: option.label,
+      }))}
+      onValueChange={(value) =>
+        props.onChange(value === null || value === '' ? undefined : value)
+      }
+    >
+      <SelectTrigger className="w-full" {...fieldAria(props)}>
+        <SelectValue placeholder={props.spec.placeholder ?? ''} />
+      </SelectTrigger>
+      <SelectContent>
+        {props.spec.options.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 }
 
 const PAGE_SIZE = 20;
@@ -400,47 +513,57 @@ function LinkField(props: FieldControlProps<'link'>) {
 
   return (
     <div id={props.id} className="flex flex-col gap-2" {...fieldAria(props)}>
-      <select
-        className="border-input bg-background rounded-md border px-3 py-2 text-sm"
+      <Select
         value={kind}
         disabled={props.disabled}
-        onChange={(event) =>
-          setKind(event.target.value as (typeof LINK_KINDS)[number])
-        }
+        onValueChange={(value) => {
+          if (value === null) return;
+          setKind(value as (typeof LINK_KINDS)[number]);
+        }}
       >
-        {allowed.map((item) => (
-          <option key={item} value={item}>
-            {item}
-          </option>
-        ))}
-      </select>
+        <SelectTrigger className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {allowed.map((item) => (
+            <SelectItem key={item} value={item}>
+              {item}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       {kind === 'internal' ? (
         <div className="flex flex-col gap-2">
           {collections.length > 1 ? (
-            <select
-              className="border-input bg-background rounded-md border px-3 py-2 text-sm"
+            <Select
               value={
                 props.value?.kind === 'internal'
                   ? props.value.collection
-                  : collections[0]
+                  : (collections[0] ?? null)
               }
               disabled={props.disabled}
-              onChange={(event) => {
+              onValueChange={(value) => {
+                if (value === null) return;
                 const rootId =
                   props.value?.kind === 'internal' ? props.value.rootId : '';
                 props.onChange({
                   kind: 'internal',
                   rootId,
-                  collection: event.target.value,
+                  collection: value,
                 });
               }}
             >
-              {collections.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {collections.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : collections.length === 0 ? (
             <Input
               placeholder="Collection"
@@ -565,14 +688,13 @@ function RichTextField(props: FieldControlProps<'richText'>) {
 
   return (
     <div className="relative">
-      <textarea
+      <Textarea
         ref={textareaRef}
         id={props.id}
         name={props.name}
         disabled={props.disabled}
         value={props.value ?? ''}
         rows={4}
-        className="border-input bg-background focus-visible:ring-ring w-full rounded-md border px-3 py-2 text-sm outline-none focus-visible:ring-2"
         {...fieldAria(props)}
         onChange={(event) => {
           props.onChange(event.target.value);
@@ -718,6 +840,11 @@ function ListField(props: FieldControlProps<'list'>) {
 }
 
 export const cmsFields = {
+  string: StringField,
+  number: NumberField,
+  boolean: BooleanField,
+  date: DateField,
+  select: SelectField,
   image: MediaField,
   reference: ReferencePicker,
   link: LinkField,

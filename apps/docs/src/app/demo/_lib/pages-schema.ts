@@ -21,7 +21,7 @@ const featureItem = defineBlock({
   group: 'Layout',
   properties: {
     title: { type: 'string', label: 'Title', required: true },
-    body: { type: 'string', label: 'Body' },
+    body: { type: 'string', label: 'Body', description: 'Short feature copy.' },
   },
 });
 
@@ -48,6 +48,29 @@ export const pages = defineCollection({
   root: {
     properties: {
       title: { type: 'string', label: 'Title', required: true },
+      excerpt: {
+        type: 'richText',
+        label: 'Excerpt',
+        description: 'Longer summary shown in listings.',
+      },
+      featured: {
+        type: 'boolean',
+        label: 'Featured',
+        description: 'Show this page on the home page.',
+      },
+      status: {
+        type: 'select',
+        label: 'Status',
+        options: [
+          { label: 'Draft', value: 'draft' },
+          { label: 'Published', value: 'published' },
+        ],
+      },
+      sortOrder: {
+        type: 'number',
+        label: 'Sort order',
+        description: 'Lower numbers appear first.',
+      },
     },
   },
   blocks: { hero, featuresGrid, featureItem, image, richText },

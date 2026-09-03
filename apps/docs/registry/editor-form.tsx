@@ -3,7 +3,13 @@
 // Wraps Editor.Field parts. Does not wrap Root. Cms controls need
 // CmsSourcesProvider from editor-form-cms.
 
-import { Editor } from '@createcms/react/editor';
+import {
+  Editor,
+  useAnyBlock,
+  useEditor,
+  usePalette,
+  useSelection,
+} from '@createcms/react/editor';
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';
@@ -15,7 +21,7 @@ function Field({
   return (
     <Editor.Field
       data-slot="editor-field"
-      className={cn('flex flex-col gap-1.5', className)}
+      className={cn('flex flex-col gap-4', className)}
       {...props}
     />
   );
@@ -29,7 +35,7 @@ function FieldLabel({
     <Editor.FieldLabel
       data-slot="editor-field-label"
       className={cn(
-        'text-sm font-medium data-required:after:ml-0.5 data-required:after:content-["*"]',
+        'text-sm leading-none font-medium data-required:after:ml-0.5 data-required:after:content-["*"]',
         className,
       )}
       {...props}
@@ -39,16 +45,7 @@ function FieldLabel({
 
 function FieldControl(props: React.ComponentProps<typeof Editor.FieldControl>) {
   return (
-    <div
-      data-slot="editor-field-control"
-      className={cn(
-        'w-full',
-        '[&_input]:rounded-md [&_input]:border [&_input]:border-input',
-        '[&_input]:bg-background [&_input]:px-3 [&_input]:py-2 [&_input]:text-sm',
-        '[&_input]:outline-none [&_input]:focus-visible:ring-2',
-        '[&_input]:focus-visible:ring-editor-ring',
-      )}
-    >
+    <div data-slot="editor-field-control" className="w-full">
       <Editor.FieldControl {...props} />
     </div>
   );
@@ -87,11 +84,51 @@ function Form({
   return (
     <Editor.Form
       data-slot="editor-form"
-      className={cn('flex flex-col gap-4', className)}
+      className={cn(
+        'flex flex-col gap-4',
+        '[&>div]:flex [&>div]:flex-col [&>div]:gap-4',
+        '[&_fieldset]:flex [&_fieldset]:flex-col [&_fieldset]:gap-4',
+        '[&_fieldset>div]:flex [&_fieldset>div]:flex-col [&_fieldset>div]:gap-4',
+        '[&_legend]:text-sm [&_legend]:font-medium',
+        className,
+      )}
       {...props}
     />
   );
 }
 
-export { Field, FieldControl, FieldDescription, FieldError, FieldLabel, Form };
+function FormSurface({ className, ...props }: React.ComponentProps<'div'>) {
+  const rootId = useEditor((state) => state.rootId);
+  const selected = useSelection().selected;
+  const blockId = selected ?? rootId;
+  const block = useAnyBlock(blockId);
+  const palette = usePalette();
+  const label =
+    blockId === rootId
+      ? 'Page'
+      : (palette.find((item) => item.type === block?.type)?.label ??
+        block?.type ??
+        'Block');
+
+  return (
+    <div
+      data-slot="editor-form-surface"
+      className={cn('mx-auto w-full max-w-xl py-6', className)}
+      {...props}
+    >
+      <h2 className="mb-6 text-sm font-medium">{label}</h2>
+      <Form blockId={blockId} />
+    </div>
+  );
+}
+
+export {
+  Field,
+  FieldControl,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+  Form,
+  FormSurface,
+};
 export { CmsSourcesProvider, cmsFields } from './editor-form-cms';
