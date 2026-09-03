@@ -49,7 +49,7 @@ export const pages = defineCollection({
     properties: {
       title: { type: 'string', label: 'Title', required: true },
       excerpt: {
-        type: 'richText',
+        type: 'string',
         label: 'Excerpt',
         description: 'Longer summary shown in listings.',
       },

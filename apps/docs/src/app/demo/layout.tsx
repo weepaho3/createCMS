@@ -18,7 +18,7 @@ const links = [
 
 export default function DemoLayout({ children }: LayoutProps<'/demo'>) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <header className="border-border flex shrink-0 items-center gap-4 border-b px-4 py-2 text-sm">
         {links.map((link) => (
           <Link
@@ -30,7 +30,9 @@ export default function DemoLayout({ children }: LayoutProps<'/demo'>) {
           </Link>
         ))}
       </header>
-      <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {children}
+      </div>
     </div>
   );
 }

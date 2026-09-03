@@ -21,7 +21,15 @@ function Field({
   return (
     <Editor.Field
       data-slot="editor-field"
-      className={cn('flex flex-col gap-4', className)}
+      className={cn(
+        'flex flex-col gap-1.5',
+        'data-[kind=boolean]:grid data-[kind=boolean]:grid-cols-[auto_1fr] data-[kind=boolean]:items-center data-[kind=boolean]:gap-x-2 data-[kind=boolean]:gap-y-1',
+        'data-[kind=boolean]:[&>[data-slot=editor-field-control]]:col-start-1 data-[kind=boolean]:[&>[data-slot=editor-field-control]]:row-start-1 data-[kind=boolean]:[&>[data-slot=editor-field-control]]:w-fit',
+        'data-[kind=boolean]:[&>[data-slot=editor-field-label]]:col-start-2 data-[kind=boolean]:[&>[data-slot=editor-field-label]]:row-start-1',
+        'data-[kind=boolean]:[&>[data-slot=editor-field-description]]:col-start-2',
+        'data-[kind=boolean]:[&>[data-slot=editor-field-error]]:col-start-2',
+        className,
+      )}
       {...props}
     />
   );
@@ -86,9 +94,13 @@ function Form({
       data-slot="editor-form"
       className={cn(
         'flex flex-col gap-4',
-        '[&>div]:flex [&>div]:flex-col [&>div]:gap-4',
+        '[&>div]:flex [&>div]:flex-col [&>div]:gap-1.5',
+        '[&>div[data-kind=boolean]]:grid [&>div[data-kind=boolean]]:grid-cols-[auto_1fr] [&>div[data-kind=boolean]]:items-center [&>div[data-kind=boolean]]:gap-x-2 [&>div[data-kind=boolean]]:gap-y-1',
+        '[&>div[data-kind=boolean]>label]:col-start-2 [&>div[data-kind=boolean]>label]:row-start-1',
+        '[&>div[data-kind=boolean]>[data-slot=checkbox]]:col-start-1 [&>div[data-kind=boolean]>[data-slot=checkbox]]:row-start-1',
+        '[&>div[data-kind=boolean]>:not(label):not([data-slot=checkbox])]:col-start-2',
         '[&_fieldset]:flex [&_fieldset]:flex-col [&_fieldset]:gap-4',
-        '[&_fieldset>div]:flex [&_fieldset>div]:flex-col [&_fieldset>div]:gap-4',
+        '[&_fieldset>div]:flex [&_fieldset>div]:flex-col [&_fieldset>div]:gap-1.5',
         '[&_legend]:text-sm [&_legend]:font-medium',
         className,
       )}
@@ -97,7 +109,11 @@ function Form({
   );
 }
 
-function FormSurface({ className, ...props }: React.ComponentProps<'div'>) {
+function FormSurface({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<'div'>) {
   const rootId = useEditor((state) => state.rootId);
   const selected = useSelection().selected;
   const blockId = selected ?? rootId;
@@ -113,11 +129,15 @@ function FormSurface({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="editor-form-surface"
-      className={cn('mx-auto w-full max-w-xl py-6', className)}
+      className={cn(
+        'mx-auto min-h-0 w-full max-w-xl flex-1 overflow-y-auto px-6 py-8',
+        className,
+      )}
       {...props}
     >
-      <h2 className="mb-6 text-sm font-medium">{label}</h2>
+      <h1 className="mb-6 text-lg font-semibold tracking-tight">{label}</h1>
       <Form blockId={blockId} />
+      {children}
     </div>
   );
 }

@@ -152,6 +152,45 @@ describe('Canvas pointer drag in a real browser', () => {
     expect(ids.indexOf('c3')).toBeLessThan(ids.indexOf('c1'));
   });
 
+  it('moves a column sibling from an overlay-anchored handle', async () => {
+    const { host, store } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.DropIndicator />
+        <Canvas.DragHandle blockId="c1">grip</Canvas.DragHandle>
+      </Canvas.Overlay>,
+      stackOptions(columnStackBlocks, columnStackTree()),
+    );
+    const c1 = host.querySelector('[data-editor-block="c1"]');
+    const c3 = host.querySelector('[data-editor-block="c3"]');
+    expect(c1).not.toBeNull();
+    expect(c3).not.toBeNull();
+    await waitForLayout(c1!);
+    const overlay = host.querySelector('[data-editor-overlay]')!;
+    const handle = host.querySelector('[data-editor-drag-handle]')!;
+    const overlayBox = rectOf(overlay);
+    const handleRect = handle.getBoundingClientRect();
+    expect(handleRect.top).toBeGreaterThanOrEqual(overlayBox.y - 1);
+    const hit = host.ownerDocument.elementFromPoint(
+      handleRect.x + handleRect.width / 2,
+      handleRect.y + handleRect.height / 2,
+    );
+    expect(hit?.closest('[data-editor-drag-handle]')).not.toBeNull();
+    const c3Rect = rectOf(c3!);
+    dragPastThreshold(
+      handle,
+      {
+        x: handleRect.x + handleRect.width / 2,
+        y: handleRect.y + handleRect.height / 2,
+      },
+      {
+        x: c3Rect.x + c3Rect.width / 2,
+        y: c3Rect.y + c3Rect.height - 2,
+      },
+    );
+    const ids = store.getState().nodes.stack1!.childIds;
+    expect(ids.indexOf('c3')).toBeLessThan(ids.indexOf('c1'));
+  });
+
   it('moves a row sibling to the right with a vertical drop indicator', async () => {
     const { host, store } = renderCanvas(
       <Canvas.Overlay>

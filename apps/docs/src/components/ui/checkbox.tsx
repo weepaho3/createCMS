@@ -11,7 +11,7 @@ function Checkbox({ className, ...props }: CheckboxPrimitive.Root.Props) {
       data-slot="checkbox"
       className={cn(
         'border-input peer relative flex size-4 shrink-0 items-center justify-center rounded-[4px] border outline-none',
-        'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-3',
+        'focus-visible:border-ring focus-visible:ring-ring/30 focus-visible:ring-3',
         'disabled:cursor-not-allowed disabled:opacity-50',
         'aria-invalid:border-destructive aria-invalid:ring-destructive/20',
         'data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground',

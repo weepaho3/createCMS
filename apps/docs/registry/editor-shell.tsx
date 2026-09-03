@@ -114,6 +114,7 @@ const deviceMaxWidth: Record<Device, string> = {
 type EditorChromeContextValue = {
   device: Device;
   setDevice: (device: Device) => void;
+  mode: 'canvas' | 'form';
   requireCommitMessage: boolean;
   addOpen: boolean;
   setAddOpen: (open: boolean) => void;
@@ -188,12 +189,14 @@ function ToolbarHintButton({
 
 type EditorProviderProps = React.ComponentProps<typeof SidebarProvider> & {
   requireCommitMessage?: boolean;
+  mode?: 'canvas' | 'form';
 };
 
 function EditorProvider({
   className,
   children,
   requireCommitMessage = false,
+  mode = 'canvas',
   style,
   ...props
 }: EditorProviderProps) {
@@ -226,6 +229,7 @@ function EditorProvider({
         return;
       }
       if (key === 'k') {
+        if (mode === 'form') return;
         const target = event.target;
         if (
           target instanceof HTMLElement &&
@@ -239,7 +243,7 @@ function EditorProvider({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [dirty, requireCommitMessage, save, saving]);
+  }, [dirty, mode, requireCommitMessage, save, saving]);
 
   return (
     <TooltipProvider>
@@ -262,6 +266,7 @@ function EditorProvider({
             value={{
               device,
               setDevice,
+              mode,
               requireCommitMessage,
               addOpen,
               setAddOpen,
@@ -272,6 +277,7 @@ function EditorProvider({
             <div
               ref={scopeRef}
               data-slot="editor-shell"
+              data-mode={mode}
               className="flex min-h-0 min-w-0 flex-1"
             >
               {children}
@@ -392,8 +398,14 @@ function EditorToolbar({
 }: React.ComponentProps<'header'>) {
   const history = useHistory();
   const { dirty, saving, save } = useSave();
-  const { device, setDevice, requireCommitMessage, setAddOpen, setSaveOpen } =
-    useEditorChrome();
+  const {
+    device,
+    setDevice,
+    mode,
+    requireCommitMessage,
+    setAddOpen,
+    setSaveOpen,
+  } = useEditorChrome();
   const { isMobile } = useSidebar();
 
   const handleSave = () => {
@@ -413,7 +425,7 @@ function EditorToolbar({
       )}
       {...props}
     >
-      <SidebarTrigger className="md:inline-flex" />
+      {mode === 'form' ? null : <SidebarTrigger className="md:inline-flex" />}
       <ToolbarHintButton
         label="Undo"
         shortcut="⌘Z"
@@ -430,39 +442,47 @@ function EditorToolbar({
       >
         <Redo2Icon />
       </ToolbarHintButton>
-      <Separator orientation="vertical" className="mx-1 h-5" />
-      <ToggleGroup
-        value={[device]}
-        onValueChange={(value) => {
-          const next = value[0];
-          if (next === 'desktop' || next === 'tablet' || next === 'mobile') {
-            setDevice(next);
-          }
-        }}
-        variant="outline"
-        size="sm"
-        spacing={0}
-      >
-        <ToggleGroupItem value="desktop" aria-label="Desktop">
-          <MonitorIcon />
-        </ToggleGroupItem>
-        <ToggleGroupItem value="tablet" aria-label="Tablet">
-          <TabletIcon />
-        </ToggleGroupItem>
-        <ToggleGroupItem value="mobile" aria-label="Mobile">
-          <SmartphoneIcon />
-        </ToggleGroupItem>
-      </ToggleGroup>
-      <Separator orientation="vertical" className="mx-1 h-5" />
-      <ToolbarHintButton
-        label="Add block"
-        shortcut="⌘K"
-        onClick={() => setAddOpen(true)}
-      >
-        <PlusIcon />
-      </ToolbarHintButton>
+      {mode === 'canvas' ? (
+        <>
+          <Separator orientation="vertical" className="mx-1 h-5" />
+          <ToggleGroup
+            value={[device]}
+            onValueChange={(value) => {
+              const next = value[0];
+              if (
+                next === 'desktop' ||
+                next === 'tablet' ||
+                next === 'mobile'
+              ) {
+                setDevice(next);
+              }
+            }}
+            variant="outline"
+            size="sm"
+            spacing={0}
+          >
+            <ToggleGroupItem value="desktop" aria-label="Desktop">
+              <MonitorIcon />
+            </ToggleGroupItem>
+            <ToggleGroupItem value="tablet" aria-label="Tablet">
+              <TabletIcon />
+            </ToggleGroupItem>
+            <ToggleGroupItem value="mobile" aria-label="Mobile">
+              <SmartphoneIcon />
+            </ToggleGroupItem>
+          </ToggleGroup>
+          <Separator orientation="vertical" className="mx-1 h-5" />
+          <ToolbarHintButton
+            label="Add block"
+            shortcut="⌘K"
+            onClick={() => setAddOpen(true)}
+          >
+            <PlusIcon />
+          </ToolbarHintButton>
+        </>
+      ) : null}
       <div className="ml-auto flex items-center gap-1">
-        {isMobile ? (
+        {mode === 'canvas' && isMobile ? (
           <Sheet>
             <SheetTrigger
               render={<Button type="button" variant="ghost" size="icon-sm" />}
@@ -723,15 +743,19 @@ function EditorSurface({
   children,
   ...props
 }: React.ComponentProps<'div'>) {
-  const { device } = useEditorChrome();
+  const { device, mode } = useEditorChrome();
+  const framed = mode === 'canvas' && device !== 'desktop';
 
   return (
     <div
       data-slot="editor-surface"
       className={cn(
-        'min-h-0 flex-1 overflow-auto p-3',
-        deviceMaxWidth[device],
-        device !== 'desktop' && 'mx-auto w-full',
+        'min-h-0 flex-1',
+        mode === 'form'
+          ? 'flex flex-col overflow-hidden p-0'
+          : 'overflow-auto p-3',
+        mode === 'canvas' && deviceMaxWidth[device],
+        framed && 'mx-auto w-full',
         className,
       )}
       {...props}
@@ -758,30 +782,35 @@ type EditorShellProps = {
   className?: string;
   children?: React.ReactNode;
   requireCommitMessage?: boolean;
+  mode?: 'canvas' | 'form';
 };
 
 function EditorShell({
   className,
   children,
   requireCommitMessage = false,
+  mode = 'canvas',
 }: EditorShellProps) {
   return (
     <EditorProvider
       className={className}
       requireCommitMessage={requireCommitMessage}
+      mode={mode}
     >
-      <Sidebar side="left" collapsible="icon" className="absolute h-full">
-        <SidebarContent>
-          <EditorPalette />
-          <EditorOutline />
-        </SidebarContent>
-        <SidebarRail />
-      </Sidebar>
+      {mode === 'canvas' ? (
+        <Sidebar side="left" collapsible="icon" className="absolute h-full">
+          <SidebarContent>
+            <EditorPalette />
+            <EditorOutline />
+          </SidebarContent>
+          <SidebarRail />
+        </Sidebar>
+      ) : null}
       <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
         <EditorToolbar />
         <EditorSurface>{children}</EditorSurface>
       </SidebarInset>
-      <EditorRightSidebar />
+      {mode === 'canvas' ? <EditorRightSidebar /> : null}
     </EditorProvider>
   );
 }

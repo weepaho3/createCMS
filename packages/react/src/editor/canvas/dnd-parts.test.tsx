@@ -51,6 +51,42 @@ describe('Canvas.DragHandle', () => {
     });
     expect(host.hasAttribute('data-dragging')).toBe(true);
   });
+
+  it('starts a move while inline editing is active', () => {
+    const { host, store } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.DragHandle blockId="h1" />
+      </Canvas.Overlay>,
+    );
+    act(() => {
+      store.setEditing({ blockId: 'h1', key: 'text' });
+    });
+    const handle = host.querySelector('[data-editor-drag-handle]')!;
+    const rect = handle.getBoundingClientRect();
+    const from = { x: rect.x + 4, y: rect.y + 4 };
+    act(() => {
+      dispatchPointer(handle, 'pointerdown', from);
+      dispatchPointer(handle, 'pointermove', { x: from.x + 5, y: from.y });
+    });
+    expect(host.hasAttribute('data-dragging')).toBe(true);
+    expect(store.getState().selection.local?.editing).toBeNull();
+  });
+
+  it('insets an overlay handle and sets pointer-events auto', () => {
+    const { host } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.DragHandle blockId="h1" />
+      </Canvas.Overlay>,
+    );
+    const handle = host.querySelector(
+      '[data-editor-drag-handle]',
+    ) as HTMLElement;
+    expect(handle.style.position).toBe('absolute');
+    expect(handle.style.pointerEvents).toBe('auto');
+    expect(handle.style.transform).toBe('');
+    expect(handle.style.left).toMatch(/px$/);
+    expect(handle.style.top).toMatch(/px$/);
+  });
 });
 
 describe('Canvas.PaletteItem', () => {

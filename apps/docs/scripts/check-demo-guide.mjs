@@ -54,6 +54,16 @@ if (
     'visual-editor.mdx must include PagesLiveCanvas and Canvas.Root from pages-live-canvas.tsx',
   );
 }
+if (!liveCanvas.includes('Collapsible')) {
+  fail('pages-live-canvas.tsx must put document JSON in a Collapsible');
+}
+if (
+  liveCanvas.includes(
+    '<pre className="border-border max-h-48 overflow-auto border-t',
+  )
+) {
+  fail('pages-live-canvas.tsx must not always show a raw JSON dump');
+}
 
 const emailSplit = read('src/app/demo/editor/email/email-split.tsx');
 if (

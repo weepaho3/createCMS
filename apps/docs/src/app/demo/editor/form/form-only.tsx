@@ -25,7 +25,7 @@ function DocumentJson() {
       data-slot="editor-document-json"
       className="border-border shrink-0 border-t"
     >
-      <CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex w-full cursor-pointer items-center px-4 py-2 text-left text-xs font-medium">
+      <CollapsibleTrigger className="text-muted-foreground hover:text-foreground mt-8 flex w-full cursor-pointer items-center rounded-md border px-3 py-2 text-left text-xs font-medium">
         Document JSON
       </CollapsibleTrigger>
       <CollapsibleContent>

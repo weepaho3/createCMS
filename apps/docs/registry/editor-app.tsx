@@ -9,7 +9,7 @@ import type {
   UseCmsFieldSourcesClient,
 } from '@createcms/react/editor/cms';
 
-import { Editor, useSelection } from '@createcms/react/editor';
+import { Editor } from '@createcms/react/editor';
 import { Canvas } from '@createcms/react/editor/canvas';
 import {
   useCmsDocument,
@@ -39,7 +39,6 @@ import { cn } from '@/lib/utils';
 
 import {
   BlockToolbar,
-  DragHandle,
   DragPreview,
   DropIndicator,
   FieldRing,
@@ -235,7 +234,6 @@ function ConflictDialog({
 }
 
 function CanvasOverlays() {
-  const selected = useSelection().selected;
   const { setAddOpen } = useEditorChrome();
 
   return (
@@ -246,7 +244,6 @@ function CanvasOverlays() {
       <BlockToolbar side="top" align="start" />
       <InsertButton placement="between" onInsert={() => setAddOpen(true)} />
       <InsertButton placement="container" onInsert={() => setAddOpen(true)} />
-      {selected ? <DragHandle blockId={selected} /> : null}
       <DropIndicator />
       <DragPreview />
       <InlineText />
@@ -304,7 +301,10 @@ function CmsEditor({
     <div
       data-slot="editor-app"
       data-mode={mode}
-      className={cn('relative flex min-h-0 flex-1 flex-col', className)}
+      className={cn(
+        'relative flex min-h-0 flex-1 flex-col overflow-hidden',
+        className,
+      )}
     >
       {doc.status === 'error' && doc.error ? (
         <div data-slot="editor-app-error-banner">
@@ -324,9 +324,9 @@ function CmsEditor({
         fields={cmsFields}
       >
         <CmsSourcesProvider sources={sources}>
-          <EditorShell requireCommitMessage={requireCommitMessage}>
+          <EditorShell mode={mode} requireCommitMessage={requireCommitMessage}>
             {mode === 'form' ? (
-              <FormSurface />
+              <FormSurface>{children}</FormSurface>
             ) : (
               <Canvas.Root
                 components={components}
@@ -337,7 +337,7 @@ function CmsEditor({
               </Canvas.Root>
             )}
           </EditorShell>
-          {children}
+          {mode === 'form' ? null : children}
         </CmsSourcesProvider>
       </Editor.Root>
       <ConflictDialog

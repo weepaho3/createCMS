@@ -59,7 +59,7 @@ What `CmsEditor` includes:
 - `EditorShell` and canvas overlays
 - Loading skeleton, error + Retry (`doc.reload`), and a conflict dialog on `HEAD_MISMATCH` (reload vs `save({ force: true })`)
 
-`mode="form"` skips `Canvas.Root` and keeps the same document wiring. Palette, outline, inspector, and the device toggle still come from `EditorShell` — form mode is not a second shell. The [form-only demo](/demo/editor/form) is this path: `CmsEditor mode="form"` with a `Collapsible` JSON dump as children, not a bare `Editor.Root` + `Form` composition.
+`mode="form"` skips `Canvas.Root` and passes `mode` into `EditorShell`. Form mode hides device toggles, the palette/outline sidebar, Add block, and the inspector so **FormSurface is the only edit surface**. The [form-only demo](/demo/editor/form) is this path: `CmsEditor mode="form"` with a `Collapsible` JSON dump as children of the shell, not a bare `Editor.Root` + `Form` composition.
 
 ### Props
 
@@ -72,10 +72,10 @@ What `CmsEditor` includes:
 | `schema` | yes | — | Editor schema. |
 | `components` | yes | — | Canvas block map. |
 | `templates` | no | `client.templates` | Override for `useCmsDocument` template defaults. |
-| `mode` | no | `'canvas'` | `'canvas'` or `'form'`. Form skips `Canvas.Root` but still uses `EditorShell` chrome (palette, device toggle, inspector). |
+| `mode` | no | `'canvas'` | `'canvas'` or `'form'`. Form skips `Canvas.Root` and `EditorShell` hides canvas chrome (palette, outline, inspector, device toggle). |
 | `className` | no | — | Applied to the page root, loading skeleton, and error state. |
 | `requireCommitMessage` | no | `false` | Opens the shell commit-message dialog on save. |
-| `children` | no | — | Rendered inside `Editor.Root` after the shell (demo extras such as a JSON `Collapsible`). |
+| `children` | no | — | Canvas: after the shell. Form: inside the shell surface under `FormSurface` (demo extras such as a JSON `Collapsible`). |
 
 While developing the docs site locally, swap `https://createcms.dev` for `http://localhost:4000`.
 
@@ -167,12 +167,12 @@ The assembled `EditorShell` is a default composition of shadcn `Sidebar` (left p
 | Export            | Role                                                                                          | Composed from                                      |
 | ----------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------- |
 | `EditorProvider`  | `TooltipProvider` + `SidebarProvider` + `Canvas.Provider` + keyboard (⌘S, ⌘K, undo/redo)     | shadcn `sidebar`, `tooltip`                        |
-| `EditorToolbar`   | Icon buttons with `Tooltip` + `Kbd`, device `ToggleGroup`, save dirty-dot + spinner           | `button`, `tooltip`, `kbd`, `toggle-group`, `separator` |
+| `EditorToolbar`   | Icon buttons with `Tooltip` + `Kbd`, device `ToggleGroup` (canvas mode), save dirty-dot + spinner | `button`, `tooltip`, `kbd`, `toggle-group`, `separator` |
 | `EditorPalette`   | `SidebarGroup` of `Canvas.PaletteItem` rows with grip affordance                              | `sidebar`, `editor-canvas`                         |
 | `EditorOutline`   | Tree rows on `SidebarMenuButton` + `Editor.OutlineItem`, chevron collapse, type icon          | `sidebar`, `collapsible`                           |
 | `EditorInspector` | `Tabs` (Block / Page), empty state, sticky header with Duplicate / Delete                     | `tabs`, `editor-form`                              |
-| `EditorSurface`   | Device-width canvas column                                                                    | —                                                  |
-| `EditorShell`     | Default assembly of the parts above                                                           | all of the above                                   |
+| `EditorSurface`   | Device-width canvas column, or a scrolling form column in `mode="form"`                       | —                                                  |
+| `EditorShell`     | Default assembly. `mode="form"` hides palette, outline, inspector, and device toggles.        | all of the above                                   |
 
 `useEditorChrome()` reads device preview, add-block dialog, and save-dialog state from `EditorProvider`.
 
@@ -223,7 +223,7 @@ import {
 | `SelectionRing` | Selection outline with a block-type chip; motion respects reduced-motion |
 | `HoverRing`     | Hover outline                                                        |
 | `FieldRing`     | Focused field outline                                                |
-| `BlockToolbar`  | Icon buttons + tooltips (move, duplicate, delete) when no children   |
+| `BlockToolbar`  | Icon buttons + tooltips (drag, move, duplicate, delete) when no children |
 | `InsertButton`  | Between-block insert control                                         |
 | `DropIndicator` | Drop line with endpoint caps; box variant for empty containers       |
 | `DragHandle`    | Grip handle for moving a block                                       |

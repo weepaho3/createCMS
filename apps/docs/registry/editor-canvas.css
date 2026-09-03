@@ -7,6 +7,10 @@
   backdrop-filter: none;
 }
 
+[data-editor-canvas][data-dragging] {
+  user-select: none;
+}
+
 [data-slot='editor-drop-indicator'][data-variant='line']::before,
 [data-slot='editor-drop-indicator'][data-variant='line']::after {
   content: '';
