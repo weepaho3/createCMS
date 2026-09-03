@@ -798,8 +798,13 @@ export function CanvasDragPreview({
   if (canvas === null) return null;
   if (session === null) return null;
 
-  const width = session.kind === 'move' && moveRect ? moveRect.width : 80;
-  const height = session.kind === 'move' && moveRect ? moveRect.height : 40;
+  // Full block size plus translate(-50%, -50%) clips the ghost against
+  // overlay overflow. A compact chip stays under the cursor.
+  const width =
+    session.kind === 'move' && moveRect
+      ? Math.min(Math.max(120, moveRect.width * 0.28), 220)
+      : 120;
+  const height = 48;
 
   return useRender<'div', DragPreviewState>({
     defaultTagName: 'div',

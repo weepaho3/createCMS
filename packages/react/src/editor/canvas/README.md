@@ -61,7 +61,8 @@ below it registers itself as a surface. `Canvas.PaletteItem` and
 shell sidebar outside the canvas host; the surface under the pointer
 resolves the drop against its own host, and only the hovered canvas
 auto-scrolls. `Canvas.DragPreview` follows the pointer with `translate3d` on
-the DOM node (no React re-render per move) and renders only inside a
+the DOM node (no React re-render per move), stays a compact chip so overlay
+`overflow: hidden` does not clip a full-block ghost, and renders only inside a
 `Canvas.Root`. Without a provider, `Canvas.Root`
 creates the session itself and provides it to its children.
 
