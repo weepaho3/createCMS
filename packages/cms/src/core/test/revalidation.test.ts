@@ -1,11 +1,15 @@
+import { sql } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
 
+import type { RevalidationRunner } from '../revalidation';
 import type { RevalidateEvent } from '../types/definitions';
 
 import { setupTestDB } from '../../test-utils/db';
 import { DUMMY_MEDIA_CONFIG } from '../../test-utils/fixtures';
 import { allowAnonymous } from '../define';
+import { cmsMeta, createCMSEndpoint, toCMSEndpoints } from '../endpoint';
 import { createCMS } from '../factory';
+import { createHookRunner } from '../hooks';
 import { rootRevalidateTag } from '../revalidation';
 
 /**
@@ -243,5 +247,136 @@ describe('revalidation tags (FA3b)', () => {
     expect(ev!.paths.some((p) => p.includes('a/c'))).toBe(true);
     // … alongside the new path (under parent B).
     expect(ev!.paths.some((p) => p.includes('b/c'))).toBe(true);
+  });
+});
+
+describe('revalidation is best-effort', () => {
+  it('carries the pre-resolved slug through to the unpublishBranch event (publication row is gone by postProcess)', async () => {
+    const events: RevalidateEvent<typeof COLLECTIONS>[] = [];
+    const { db, cleanup } = await setupTestDB({ plugins: [] });
+    cleanups.push(cleanup);
+
+    const cms = createCMS({
+      db,
+      authMiddleware: allowAnonymous(),
+      media: DUMMY_MEDIA_CONFIG,
+      collections: COLLECTIONS,
+      onRevalidate: (event) => {
+        events.push(event);
+      },
+    }) as AnyApi;
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: 'unpub-me', properties: { title: 'Unpub' } },
+    });
+    const req = await cms.api.pages.requestApproval({
+      body: {
+        branchId: root.branchId,
+        requestedReviewers: ['rev'],
+      },
+      context: { userId: 'r' },
+    });
+    await cms.api.pages.submitApproval({
+      body: { approvalId: req.approvals[0].id },
+      context: { userId: 'rev' },
+    });
+    await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId, publishedBy: 'a' },
+    });
+
+    // By the time postProcess runs for unpublishBranch, the endpoint handler
+    // has already deleted the publication row — the slug must come from the
+    // pre-resolved state threaded through preProcess -> postProcess, not a
+    // fresh lookup.
+    await cms.api.pages.unpublishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId },
+    });
+
+    const ev = events.find((e) => e.action === 'unpublishBranch');
+    expect(ev).toBeDefined();
+    expect(ev!.storedSlug).toBe('unpub-me');
+  });
+
+  it('does not fail a committed publishBranch when postProcess (revalidation) throws', async () => {
+    const events: RevalidateEvent<typeof COLLECTIONS>[] = [];
+    const { db, cleanup } = await setupTestDB({ plugins: [] });
+    cleanups.push(cleanup);
+
+    const cms = createCMS({
+      db,
+      authMiddleware: allowAnonymous(),
+      media: DUMMY_MEDIA_CONFIG,
+      collections: COLLECTIONS,
+      onRevalidate: (event) => {
+        events.push(event);
+      },
+    }) as AnyApi;
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: 'resilient', properties: { title: 'Resilient' } },
+    });
+    const req = await cms.api.pages.requestApproval({
+      body: {
+        branchId: root.branchId,
+        requestedReviewers: ['rev'],
+      },
+      context: { userId: 'r' },
+    });
+    await cms.api.pages.submitApproval({
+      body: { approvalId: req.approvals[0].id },
+      context: { userId: 'rev' },
+    });
+    await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId, publishedBy: 'a' },
+    });
+
+    // publishBranch's postProcess unconditionally queries cms.redirects
+    // (subtreeInboundRedirectPaths). Drop it to force postProcess to throw,
+    // while the mutation itself (no slug change on this republish) never
+    // touches that table.
+    await db.execute(sql`DROP TABLE cms.redirects CASCADE`);
+
+    const result = await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId, publishedBy: 'a' },
+    });
+    expect(result).toBeDefined();
+  });
+
+  it('does not fail the endpoint when preProcess or postProcess throws (stub runner)', async () => {
+    const preErr = new Error('preProcess boom');
+    const postErr = new Error('postProcess boom');
+    const stubRunner: RevalidationRunner = {
+      shouldProcess: () => true,
+      preProcess: async () => {
+        throw preErr;
+      },
+      postProcess: async () => {
+        throw postErr;
+      },
+      fireManual: async () => {},
+    };
+
+    const testEndpoint = createCMSEndpoint(
+      '/test/action',
+      {
+        method: 'POST',
+        metadata: cmsMeta({}, { operation: 'update', scope: 'system' }),
+      },
+      async () => ({ ok: true }),
+    );
+
+    const wrapped = toCMSEndpoints(
+      { testAction: testEndpoint },
+      { db: undefined as never, collections: {} },
+      undefined,
+      createHookRunner([], []),
+      stubRunner,
+    );
+
+    await expect(
+      (wrapped.testAction as unknown as (ctx: unknown) => Promise<unknown>)({
+        body: {},
+      }),
+    ).resolves.toEqual({ ok: true });
   });
 });

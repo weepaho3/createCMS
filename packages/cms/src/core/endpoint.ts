@@ -292,12 +292,20 @@ export function toCMSEndpoints(
         body = { ...body, ...overrides };
       }
 
+      let revalidatePreState: unknown;
       if (revalidationRunner && revalidationRunner.shouldProcess(endpointKey)) {
-        await revalidationRunner.preProcess(
-          endpointKey,
-          meta.collection ?? '',
-          (body ?? {}) as Record<string, unknown>,
-        );
+        try {
+          revalidatePreState = await revalidationRunner.preProcess(
+            endpointKey,
+            meta.collection ?? '',
+            (body ?? {}) as Record<string, unknown>,
+          );
+        } catch (err) {
+          console.error(
+            `[cms:revalidate] preProcess failed for ${endpointKey}:`,
+            err,
+          );
+        }
       }
 
       // Decode + strip the user-enrichment flags so they never leak into the
@@ -365,12 +373,20 @@ export function toCMSEndpoints(
       }
 
       if (revalidationRunner && revalidationRunner.shouldProcess(endpointKey)) {
-        await revalidationRunner.postProcess(
-          endpointKey,
-          meta.collection ?? '',
-          (body ?? {}) as Record<string, unknown>,
-          result,
-        );
+        try {
+          await revalidationRunner.postProcess(
+            endpointKey,
+            meta.collection ?? '',
+            (body ?? {}) as Record<string, unknown>,
+            result,
+            revalidatePreState,
+          );
+        } catch (err) {
+          console.error(
+            `[cms:revalidate] postProcess failed for ${endpointKey}:`,
+            err,
+          );
+        }
       }
 
       return finalResult;
