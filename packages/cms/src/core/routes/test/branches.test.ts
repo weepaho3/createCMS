@@ -1229,6 +1229,7 @@ describe('revertBranch', () => {
 
     expect(result.commit.id).not.toBe(first.commit.id);
     expect(result.commit.id).not.toBe(second.commit.id);
+    expect(result.rootId).toBe(root.rootId);
 
     const [newCommit] = await db
       .select()
