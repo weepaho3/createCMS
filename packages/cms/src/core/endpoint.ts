@@ -116,6 +116,7 @@ function computeScope(
       'redirects',
       'templates',
       'variables',
+      'releases',
     ] as const) {
       const tableScope = result[table];
       if (!tableScope) continue;

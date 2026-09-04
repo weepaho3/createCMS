@@ -1,12 +1,13 @@
 import { APIError } from 'better-call';
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 import * as z from 'zod';
 
 import type { RevalidationRunner } from '../revalidation';
 import type { CMSProcedureContext } from '../types';
-import type { ResolvedSlugConfig } from '../types/definitions';
+import type { ResolvedSlugConfig, TableScope } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
 
+import { newId } from '../../utils/nanoid';
 import { resolveBranchPolicy } from '../branch-policy';
 import {
   branches,
@@ -18,6 +19,7 @@ import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
 import { syncAssetsOnPublish } from '../media/discovery';
 import { publishBranchInTx } from '../publish/publish-branch';
+import { scopedInsert } from '../scope';
 
 // ============================================================================
 // Release-specific errors. These domain codes are NOT part of the core
@@ -60,11 +62,14 @@ async function assertItemExists(
   db: DrizzleInstance,
   rootId: string,
   branchId: string,
+  rootScope: TableScope | undefined,
 ): Promise<void> {
   const [root] = await db
     .select({ id: roots.id })
     .from(roots)
-    .where(eq(roots.id, rootId));
+    .where(
+      and(eq(roots.id, rootId), isNull(roots.archivedAt), rootScope?.where),
+    );
   if (!root) throw new CMSError('ROOT_NOT_FOUND');
 
   const [branch] = await db
@@ -101,13 +106,24 @@ export function createReleaseEndpoints(
         ),
       },
       async (ctx) => {
-        const [release] = await db
-          .insert(releases)
-          .values({
+        // scopedInsert (raw SQL) so the plugin-injected scope column is set; a
+        // plain Drizzle insert can't carry the plugin-owned column. Re-select via
+        // Drizzle afterwards for the typed (camelCase) row the API returns.
+        const inserted = await scopedInsert(
+          db,
+          'cms.releases',
+          {
+            id: newId('release'),
             title: ctx.body.title,
-            createdBy: ctx.context.userId ?? null,
-          })
-          .returning();
+            created_by: ctx.context.userId ?? null,
+          },
+          ctx.context.scope.releases,
+        );
+        const [release] = await db
+          .select()
+          .from(releases)
+          .where(eq(releases.id, inserted.id))
+          .limit(1);
         return { release };
       },
     ),
@@ -147,9 +163,10 @@ export function createReleaseEndpoints(
       },
       async (ctx) => {
         const { releaseId, rootId, branchId } = ctx.body;
+        const scope = ctx.context.scope;
         return db.transaction(async (tx) => {
-          await assertDraftRelease(tx, releaseId);
-          await assertItemExists(tx, rootId, branchId);
+          await assertDraftRelease(tx, releaseId, scope.releases);
+          await assertItemExists(tx, rootId, branchId, scope.roots);
 
           const [item] = await tx
             .insert(releaseItems)
@@ -187,7 +204,7 @@ export function createReleaseEndpoints(
       async (ctx) => {
         const { releaseId, rootId } = ctx.body;
         return db.transaction(async (tx) => {
-          await assertDraftRelease(tx, releaseId);
+          await assertDraftRelease(tx, releaseId, ctx.context.scope.releases);
           const deleted = await tx
             .delete(releaseItems)
             .where(
@@ -236,6 +253,7 @@ export function createReleaseEndpoints(
       },
       async (ctx) => {
         const { releaseId, items } = ctx.body;
+        const scope = ctx.context.scope;
 
         // Reject duplicate roots up front — the (releaseId, rootId) unique index
         // would otherwise fail the insert mid-transaction with an opaque DB error.
@@ -248,11 +266,11 @@ export function createReleaseEndpoints(
             });
           }
           seen.add(it.rootId);
-          await assertItemExists(db, it.rootId, it.branchId);
+          await assertItemExists(db, it.rootId, it.branchId, scope.roots);
         }
 
         const result = await db.transaction(async (tx) => {
-          await assertDraftRelease(tx, releaseId);
+          await assertDraftRelease(tx, releaseId, scope.releases);
           await tx
             .delete(releaseItems)
             .where(eq(releaseItems.releaseId, releaseId));
@@ -293,7 +311,12 @@ export function createReleaseEndpoints(
         const [release] = await db
           .select()
           .from(releases)
-          .where(eq(releases.id, ctx.query.releaseId));
+          .where(
+            and(
+              eq(releases.id, ctx.query.releaseId),
+              ctx.context.scope.releases?.where,
+            ),
+          );
         if (!release) throw RELEASE_NOT_FOUND();
 
         const items = await db
@@ -339,9 +362,10 @@ export function createReleaseEndpoints(
       async (ctx) => {
         const limit = ctx.query?.limit ?? 20;
         const offset = ctx.query?.offset ?? 0;
-        const where = ctx.query?.status
-          ? eq(releases.status, ctx.query.status)
-          : undefined;
+        const where = and(
+          ctx.query?.status ? eq(releases.status, ctx.query.status) : undefined,
+          ctx.context.scope.releases?.where,
+        );
 
         const rows = await db
           .select()
@@ -418,7 +442,12 @@ export function createReleaseEndpoints(
           const [release] = await tx
             .select()
             .from(releases)
-            .where(eq(releases.id, releaseId))
+            .where(
+              and(
+                eq(releases.id, releaseId),
+                ctx.context.scope.releases?.where,
+              ),
+            )
             .for('update');
           if (!release) throw RELEASE_NOT_FOUND();
           if (release.status !== 'draft') throw RELEASE_NOT_DRAFT();
@@ -526,11 +555,12 @@ export function createReleaseEndpoints(
 async function assertDraftRelease(
   exec: DrizzleInstance,
   releaseId: string,
+  releaseScope: TableScope | undefined,
 ): Promise<void> {
   const [release] = await exec
     .select({ status: releases.status })
     .from(releases)
-    .where(eq(releases.id, releaseId))
+    .where(and(eq(releases.id, releaseId), releaseScope?.where))
     .for('update');
   if (!release) throw RELEASE_NOT_FOUND();
   if (release.status !== 'draft') throw RELEASE_NOT_DRAFT();

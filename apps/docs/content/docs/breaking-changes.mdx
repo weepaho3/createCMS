@@ -55,6 +55,18 @@ on, schema changes are picked up with `createcms generate` + a Drizzle migration
 
 ## Unreleased
 
+- **Releases are now scoped by the multi-tenant plugin.** `releases.ts`
+  reads/writes (`createRelease`, `getRelease`, `listReleases`, `addToRelease`,
+  `removeFromRelease`, `setReleaseItems`, `publishRelease`) all apply the
+  active plugin scope, matching every other first-class table (roots, assets,
+  folders, redirects, templates, variables). Under the multi-tenant plugin, a
+  tenant can no longer list, read, or mutate another tenant's releases, or add
+  another tenant's root to its own release.
+  → **Migration:** with the multiTenant plugin, run `createcms generate` and
+  apply the migration that adds `releases.tenant_slug` (NOT NULL). Existing
+  release rows need a `tenant_slug` backfill before the NOT NULL constraint can
+  be applied. Single-tenant deployments are unaffected — no predicate is added.
+
 - **`@createcms/react`: `Canvas.Root` requires `components` and renders the
   store tree.** Pass a block map (the same object `createBlocksMap` returns
   is accepted via `_components`). `children` are no longer the document;

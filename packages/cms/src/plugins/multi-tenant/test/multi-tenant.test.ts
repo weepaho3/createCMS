@@ -1716,3 +1716,112 @@ describe('multiTenant comment thread scope isolation', () => {
     ).rejects.toThrow(/not found/i);
   });
 });
+
+// ============================================================================
+// Tenant isolation: releases
+// ============================================================================
+
+describe('multiTenant release isolation', () => {
+  it('lists only releases belonging to the active tenant', async () => {
+    const { cms, setTenant } = await setupMultiTenantTestCMS();
+
+    setTenant('acme');
+    await cms.api.releases.createRelease({ body: { title: 'Acme One' } });
+    await cms.api.releases.createRelease({ body: { title: 'Acme Two' } });
+
+    setTenant('globex');
+    await cms.api.releases.createRelease({ body: { title: 'Globex One' } });
+
+    const globexList = await cms.api.releases.listReleases();
+    expect(globexList.releases).toHaveLength(1);
+    expect(globexList.total).toBe(1);
+    expect(globexList.releases[0].title).toBe('Globex One');
+
+    setTenant('acme');
+    const acmeList = await cms.api.releases.listReleases();
+    expect(acmeList.releases).toHaveLength(2);
+    expect(acmeList.total).toBe(2);
+  });
+
+  it("rejects cross-tenant getRelease of another tenant's release by id", async () => {
+    const { cms, setTenant } = await setupMultiTenantTestCMS();
+
+    setTenant('acme');
+    const { release } = await cms.api.releases.createRelease({
+      body: { title: 'Acme Release' },
+    });
+
+    setTenant('globex');
+    await expect(
+      cms.api.releases.getRelease({ query: { releaseId: release.id } }),
+    ).rejects.toThrow(/RELEASE_NOT_FOUND|not found/i);
+  });
+
+  it("rejects addToRelease with another tenant's root", async () => {
+    const { cms, setTenant } = await setupMultiTenantTestCMS();
+
+    setTenant('acme');
+    const acmeRoot = await cms.api.pages.createRoot({
+      body: { slug: '/acme-release-root', properties: { title: 'Acme Root' } },
+    });
+
+    setTenant('globex');
+    const { release } = await cms.api.releases.createRelease({
+      body: { title: 'Globex Release' },
+    });
+
+    await expect(
+      cms.api.releases.addToRelease({
+        body: {
+          releaseId: release.id,
+          rootId: acmeRoot.rootId,
+          branchId: acmeRoot.branchId,
+        },
+      }),
+    ).rejects.toThrow(/ROOT_NOT_FOUND|not found/i);
+  });
+
+  it("rejects setReleaseItems on another tenant's release", async () => {
+    const { cms, setTenant } = await setupMultiTenantTestCMS();
+
+    setTenant('acme');
+    const { release } = await cms.api.releases.createRelease({
+      body: { title: 'Acme Release' },
+    });
+
+    setTenant('globex');
+    await expect(
+      cms.api.releases.setReleaseItems({
+        body: { releaseId: release.id, items: [] },
+      }),
+    ).rejects.toThrow(/RELEASE_NOT_FOUND|not found/i);
+  });
+
+  it("rejects publishRelease on another tenant's release", async () => {
+    const { cms, setTenant } = await setupMultiTenantTestCMS();
+
+    setTenant('acme');
+    const { release } = await cms.api.releases.createRelease({
+      body: { title: 'Acme Release' },
+    });
+
+    setTenant('globex');
+    await expect(
+      cms.api.releases.publishRelease({ body: { releaseId: release.id } }),
+    ).rejects.toThrow(/RELEASE_NOT_FOUND|not found/i);
+  });
+
+  it('stamps the created release row with the active tenant', async () => {
+    const { cms, db, setTenant } = await setupMultiTenantTestCMS();
+
+    setTenant('acme');
+    const { release } = await cms.api.releases.createRelease({
+      body: { title: 'Acme Release' },
+    });
+
+    const rows = await db.execute(
+      sql`SELECT tenant_slug FROM cms.releases WHERE id = ${release.id}`,
+    );
+    expect(rows.rows[0].tenant_slug).toBe('acme');
+  });
+});
