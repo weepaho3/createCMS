@@ -23,7 +23,7 @@ every command is taken from `CONTRIBUTING.md` and `packages/cms/package.json`.
 | 005  | Keep a committed mutation from failing when post-commit revalidation throws; fix slug-map leak | P1 | S      | —          | DONE (worktree commit 044d3bb, cherry-picked) |
 | 002  | Fire revalidation when scheduled publishes and releases go live                         | P1       | M      | 005 (soft) | TODO   |
 | 003  | Verify the uploaded object before `media.commitReplace` repoints an asset               | P1       | M      | —          | DONE (worktree commit 0d4c1c2, cherry-picked) |
-| 006  | Lock the release row in the draft check; add `expectedHeadCommitId` to `duplicateBlock` | P2       | S      | —          | TODO   |
+| 006  | Lock the release row in the draft check; add `expectedHeadCommitId` to `duplicateBlock` | P2       | S      | —          | DONE (worktree commit 9f3698b, cherry-picked) |
 | 004  | Scope releases by plugin scope (multi-tenant isolation)                                 | P1       | M      | 006        | TODO   |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
