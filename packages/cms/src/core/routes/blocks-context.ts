@@ -150,6 +150,7 @@ export function buildBlocksContext<TDef extends CollectionWithName>(
     targetSlug?: string;
     targetIndex?: number;
     message?: string;
+    expectedHeadCommitId?: string;
   };
 
   async function runDuplicate(
@@ -316,6 +317,7 @@ export function buildBlocksContext<TDef extends CollectionWithName>(
       rootId: input.rootId,
       branchId: input.branchId,
       parentCommitId: oldHeadId,
+      expectedHeadCommitId: input.expectedHeadCommitId,
       message: commitMessage(input.message, `Duplicate block ${input.blockId}`),
       createdBy: userId,
       changed,

@@ -143,18 +143,20 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
       },
       async (ctx) => {
         const { releaseId, rootId, branchId } = ctx.body;
-        await assertDraftRelease(db, releaseId);
-        await assertItemExists(db, rootId, branchId);
+        return db.transaction(async (tx) => {
+          await assertDraftRelease(tx, releaseId);
+          await assertItemExists(tx, rootId, branchId);
 
-        const [item] = await db
-          .insert(releaseItems)
-          .values({ releaseId, rootId, branchId })
-          .onConflictDoUpdate({
-            target: [releaseItems.releaseId, releaseItems.rootId],
-            set: { branchId },
-          })
-          .returning();
-        return { item };
+          const [item] = await tx
+            .insert(releaseItems)
+            .values({ releaseId, rootId, branchId })
+            .onConflictDoUpdate({
+              target: [releaseItems.releaseId, releaseItems.rootId],
+              set: { branchId },
+            })
+            .returning();
+          return { item };
+        });
       },
     ),
 
@@ -180,17 +182,19 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
       },
       async (ctx) => {
         const { releaseId, rootId } = ctx.body;
-        await assertDraftRelease(db, releaseId);
-        const deleted = await db
-          .delete(releaseItems)
-          .where(
-            and(
-              eq(releaseItems.releaseId, releaseId),
-              eq(releaseItems.rootId, rootId),
-            ),
-          )
-          .returning({ id: releaseItems.id });
-        return { removed: deleted.length > 0 };
+        return db.transaction(async (tx) => {
+          await assertDraftRelease(tx, releaseId);
+          const deleted = await tx
+            .delete(releaseItems)
+            .where(
+              and(
+                eq(releaseItems.releaseId, releaseId),
+                eq(releaseItems.rootId, rootId),
+              ),
+            )
+            .returning({ id: releaseItems.id });
+          return { removed: deleted.length > 0 };
+        });
       },
     ),
 
@@ -228,7 +232,6 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
       },
       async (ctx) => {
         const { releaseId, items } = ctx.body;
-        await assertDraftRelease(db, releaseId);
 
         // Reject duplicate roots up front — the (releaseId, rootId) unique index
         // would otherwise fail the insert mid-transaction with an opaque DB error.
@@ -245,6 +248,7 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
         }
 
         const result = await db.transaction(async (tx) => {
+          await assertDraftRelease(tx, releaseId);
           await tx
             .delete(releaseItems)
             .where(eq(releaseItems.releaseId, releaseId));
@@ -490,13 +494,14 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
  * @throws RELEASE_NOT_FOUND / RELEASE_NOT_DRAFT
  */
 async function assertDraftRelease(
-  db: DrizzleInstance,
+  exec: DrizzleInstance,
   releaseId: string,
 ): Promise<void> {
-  const [release] = await db
+  const [release] = await exec
     .select({ status: releases.status })
     .from(releases)
-    .where(eq(releases.id, releaseId));
+    .where(eq(releases.id, releaseId))
+    .for('update');
   if (!release) throw RELEASE_NOT_FOUND();
   if (release.status !== 'draft') throw RELEASE_NOT_DRAFT();
 }

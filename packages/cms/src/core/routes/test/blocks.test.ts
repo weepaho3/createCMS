@@ -2351,6 +2351,62 @@ describe('optimistic concurrency (expectedHeadCommitId)', () => {
     });
     expect(typeof del.commit.id).toBe('string');
   });
+
+  it('duplicateBlock rejects a stale head and accepts the current head', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/concurrency-dup', properties: { title: 'Page' } },
+    });
+
+    const blockA = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'A' },
+      },
+    });
+    const headAfterA = blockA.commit.id;
+
+    const blockB = await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: 'B' },
+      },
+    });
+    const headAfterB = blockB.commit.id;
+    expect(headAfterB).not.toBe(headAfterA);
+
+    // Duplicating against the now-stale head is rejected.
+    await expect(
+      cms.api.pages.duplicateBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          blockId: blockA.blockId,
+          targetParentBlockId: root.rootId,
+          expectedHeadCommitId: headAfterA,
+        },
+      }),
+    ).rejects.toThrow(/advanced since/);
+
+    // Duplicating against the current head succeeds.
+    const dup = await cms.api.pages.duplicateBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        blockId: blockA.blockId,
+        targetParentBlockId: root.rootId,
+        expectedHeadCommitId: headAfterB,
+      },
+    });
+    expect(dup.commit.id).not.toBe(headAfterB);
+  });
 });
 
 // ============================================================================

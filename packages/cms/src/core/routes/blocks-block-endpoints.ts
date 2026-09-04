@@ -885,11 +885,13 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
      * @param targetParentBlockId Parent block for the duplicate.
      * @param targetIndex Index in parent's children.
      * @param message Optional commit message.
+     * @param expectedHeadCommitId Optional optimistic-concurrency precondition; if provided and the branch's current head differs, the write is rejected instead of silently overwriting concurrent changes.
      * @returns Object with `mode` (always `'child'`), `commit` ({ id, message, createdAt, createdBy }), and `blockId` (the new copy's id).
      * @throws BLOCK_NOT_FOUND when source blockId does not exist.
      * @throws BLOCK_ALREADY_DELETED when source block is marked deleted.
      * @throws PARENT_NOT_FOUND when targetParentBlockId does not exist.
      * @throws DUPLICATE_BLOCK_REQUIRES_PARENT when targetParentBlockId is omitted.
+     * @throws HEAD_MISMATCH when expectedHeadCommitId is provided and the branch has advanced since.
      */
     duplicateBlock: createCMSEndpoint(
       `/${collectionName}/duplicateBlock`,
@@ -904,6 +906,7 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
           targetSlug: z.string().optional(),
           targetIndex: z.number().int().min(0).optional(),
           message: z.string().optional(),
+          expectedHeadCommitId: z.string().optional(),
         }),
         metadata: cmsMeta(
           {
@@ -917,6 +920,7 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
                 targetSlug?: string;
                 targetIndex?: number;
                 message?: string;
+                expectedHeadCommitId?: string;
               },
             },
           },
