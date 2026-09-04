@@ -125,13 +125,13 @@ Convention: post-commit side effects are best-effort and logged with a
 
 ## Commands you will need
 
-| Purpose    | Command                                                                                                   | Expected on success |
-| ---------- | --------------------------------------------------------------------------------------------------------- | ------------------- |
-| Install    | `bun install --frozen-lockfile`                                                                           | exit 0              |
-| Typecheck  | `bun run --filter=@createcms/core check-types`                                                            | exit 0              |
-| Tests      | `cd packages/cms && bunx vitest run src/core/test/revalidation.test.ts src/core/routes/test/scheduled-publications.test.ts src/core/routes/test/releases.test.ts` | all pass |
-| Full suite | `bun run --filter=@createcms/core test`                                                                   | all pass            |
-| Lint       | `bun run lint && bunx oxfmt --check`                                                                      | exit 0              |
+| Purpose    | Command                                                                                                                                                           | Expected on success |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| Install    | `bun install --frozen-lockfile`                                                                                                                                   | exit 0              |
+| Typecheck  | `bun run --filter=@createcms/core check-types`                                                                                                                    | exit 0              |
+| Tests      | `cd packages/cms && bunx vitest run src/core/test/revalidation.test.ts src/core/routes/test/scheduled-publications.test.ts src/core/routes/test/releases.test.ts` | all pass            |
+| Full suite | `bun run --filter=@createcms/core test`                                                                                                                           | all pass            |
+| Lint       | `bun run lint && bunx oxfmt --check`                                                                                                                              | exit 0              |
 
 (From `CONTRIBUTING.md`; not executed by the advisor.)
 
@@ -246,8 +246,14 @@ In `packages/cms/src/core/admin/scheduling.ts`:
    ```ts
    if (opts.revalidationRunner) {
      await opts.revalidationRunner
-       .fireManual({ collection: outcome.collection, rootId: row.rootId, branchId: row.branchId })
-       .catch((err) => console.error('[cms] scheduled publish revalidation failed:', err));
+       .fireManual({
+         collection: outcome.collection,
+         rootId: row.rootId,
+         branchId: row.branchId,
+       })
+       .catch((err) =>
+         console.error('[cms] scheduled publish revalidation failed:', err),
+       );
    }
    ```
 
@@ -256,8 +262,15 @@ In `packages/cms/src/core/admin/scheduling.ts`:
    ```ts
    if (opts.revalidationRunner) {
      await opts.revalidationRunner
-       .fireManualUnpublish({ collection: outcome.collection, rootId: row.rootId, branchId: row.branchId, slug: outcome.slug })
-       .catch((err) => console.error('[cms] scheduled unpublish revalidation failed:', err));
+       .fireManualUnpublish({
+         collection: outcome.collection,
+         rootId: row.rootId,
+         branchId: row.branchId,
+         slug: outcome.slug,
+       })
+       .catch((err) =>
+         console.error('[cms] scheduled unpublish revalidation failed:', err),
+       );
    }
    ```
 
@@ -300,8 +313,14 @@ In `packages/cms/src/core/routes/releases.ts`:
    if (revalidationRunner) {
      for (const s of synced) {
        await revalidationRunner
-         .fireManual({ collection: s.collection, rootId: s.rootId, branchId: s.branchId })
-         .catch((err) => console.error('[cms] release publish revalidation failed:', err));
+         .fireManual({
+           collection: s.collection,
+           rootId: s.rootId,
+           branchId: s.branchId,
+         })
+         .catch((err) =>
+           console.error('[cms] release publish revalidation failed:', err),
+         );
      }
    }
    ```

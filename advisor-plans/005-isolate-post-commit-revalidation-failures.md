@@ -132,13 +132,13 @@ Convention: error logs use a bracketed prefix (`[cms:revalidate] ...`,
 
 ## Commands you will need
 
-| Purpose    | Command                                                                     | Expected on success |
-| ---------- | --------------------------------------------------------------------------- | ------------------- |
-| Install    | `bun install --frozen-lockfile`                                             | exit 0              |
-| Typecheck  | `bun run --filter=@createcms/core check-types`                              | exit 0              |
-| Tests      | `cd packages/cms && bunx vitest run src/core/test/revalidation.test.ts`     | all pass            |
-| Full suite | `bun run --filter=@createcms/core test`                                     | all pass            |
-| Lint       | `bun run lint && bunx oxfmt --check`                                        | exit 0              |
+| Purpose    | Command                                                                 | Expected on success |
+| ---------- | ----------------------------------------------------------------------- | ------------------- |
+| Install    | `bun install --frozen-lockfile`                                         | exit 0              |
+| Typecheck  | `bun run --filter=@createcms/core check-types`                          | exit 0              |
+| Tests      | `cd packages/cms && bunx vitest run src/core/test/revalidation.test.ts` | all pass            |
+| Full suite | `bun run --filter=@createcms/core test`                                 | all pass            |
+| Lint       | `bun run lint && bunx oxfmt --check`                                    | exit 0              |
 
 (From `CONTRIBUTING.md`; not executed by the advisor.)
 
@@ -211,7 +211,10 @@ In `packages/cms/src/core/endpoint.ts`:
          (body ?? {}) as Record<string, unknown>,
        );
      } catch (err) {
-       console.error(`[cms:revalidate] preProcess failed for ${endpointKey}:`, err);
+       console.error(
+         `[cms:revalidate] preProcess failed for ${endpointKey}:`,
+         err,
+       );
      }
    }
    ```
@@ -229,7 +232,10 @@ In `packages/cms/src/core/endpoint.ts`:
          revalidatePreState,
        );
      } catch (err) {
-       console.error(`[cms:revalidate] postProcess failed for ${endpointKey}:`, err);
+       console.error(
+         `[cms:revalidate] postProcess failed for ${endpointKey}:`,
+         err,
+       );
      }
    }
    ```
@@ -251,14 +257,12 @@ setup pattern:
 2. **a failing postProcess query does not fail the endpoint**: build the CMS
    with `onRevalidate: () => {}`. After publishing, make the post-process
    query fail by dropping a table the cascade reads, e.g.
-   `await db.execute(sql\`DROP TABLE cms.redirects CASCADE\`)` — check
-   `subtreeInboundRedirectPaths` in `revalidation.ts` reads `cms.redirects`
-   first. Then call `unpublishBranch` (or `publishBranch` of a second root)
-   and assert it **resolves**. If dropping that table also breaks the
-   endpoint's own handler, pick a table only the cascade reads (grep the
-   cascade helpers in `revalidation.ts` for `FROM cms.` to choose).
-   Use a fresh `setupTestDB` for this case so the dropped table does not
-   affect other tests (the file already takes a `cleanup` per test).
+   `await db.execute(sql\`DROP TABLE cms.redirects CASCADE\`)`— check`subtreeInboundRedirectPaths`in`revalidation.ts`reads`cms.redirects`first. Then call`unpublishBranch`(or`publishBranch`of a second root)
+and assert it **resolves**. If dropping that table also breaks the
+endpoint's own handler, pick a table only the cascade reads (grep the
+cascade helpers in`revalidation.ts`for`FROM cms.`to choose).
+Use a fresh`setupTestDB`for this case so the dropped table does not
+affect other tests (the file already takes a`cleanup` per test).
 3. **preProcess failure does not block the handler**: same setup, drop the
    table before `unpublishBranch`; assert the call resolves and the
    publication row is gone.

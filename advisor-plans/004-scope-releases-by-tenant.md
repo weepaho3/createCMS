@@ -64,10 +64,19 @@ Excerpts.
 `assertItemExists` (`releases.ts:58-74`):
 
 ```ts
-async function assertItemExists(db: DrizzleInstance, rootId: string, branchId: string): Promise<void> {
-  const [root] = await db.select({ id: roots.id }).from(roots).where(eq(roots.id, rootId));
+async function assertItemExists(
+  db: DrizzleInstance,
+  rootId: string,
+  branchId: string,
+): Promise<void> {
+  const [root] = await db
+    .select({ id: roots.id })
+    .from(roots)
+    .where(eq(roots.id, rootId));
   if (!root) throw new CMSError('ROOT_NOT_FOUND');
-  const [branch] = await db.select({ id: branches.id }).from(branches)
+  const [branch] = await db
+    .select({ id: branches.id })
+    .from(branches)
     .where(and(eq(branches.id, branchId), eq(branches.rootId, rootId)));
   if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
 }
@@ -76,7 +85,8 @@ async function assertItemExists(db: DrizzleInstance, rootId: string, branchId: s
 `createRelease` handler (`releases.ts:~97-105`):
 
 ```ts
-const [release] = await db.insert(releases)
+const [release] = await db
+  .insert(releases)
   .values({ title: ctx.body.title, createdBy: ctx.context.userId ?? null })
   .returning();
 return { release };
@@ -120,14 +130,14 @@ returns the raw row with snake_case keys.
 
 ## Commands you will need
 
-| Purpose    | Command                                                                                                                                | Expected on success |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
-| Install    | `bun install --frozen-lockfile`                                                                                                        | exit 0              |
-| Typecheck  | `bun run --filter=@createcms/core check-types`                                                                                         | exit 0              |
-| Tests      | `cd packages/cms && bunx vitest run src/core/routes/test/releases.test.ts src/plugins/multi-tenant/test/multi-tenant.test.ts`          | all pass            |
-| Full suite | `bun run --filter=@createcms/core test`                                                                                                | all pass            |
-| Lint       | `bun run lint && bunx oxfmt --check`                                                                                                   | exit 0              |
-| Sync docs  | `node scripts/sync-changelog.mjs --check`                                                                                              | exit 0              |
+| Purpose    | Command                                                                                                                       | Expected on success |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| Install    | `bun install --frozen-lockfile`                                                                                               | exit 0              |
+| Typecheck  | `bun run --filter=@createcms/core check-types`                                                                                | exit 0              |
+| Tests      | `cd packages/cms && bunx vitest run src/core/routes/test/releases.test.ts src/plugins/multi-tenant/test/multi-tenant.test.ts` | all pass            |
+| Full suite | `bun run --filter=@createcms/core test`                                                                                       | all pass            |
+| Lint       | `bun run lint && bunx oxfmt --check`                                                                                          | exit 0              |
+| Sync docs  | `node scripts/sync-changelog.mjs --check`                                                                                     | exit 0              |
 
 (From `CONTRIBUTING.md` and `.github/workflows/ci.yml`; not executed by the advisor.)
 

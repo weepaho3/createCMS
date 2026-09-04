@@ -61,7 +61,10 @@ Files:
 `assertDraftRelease` today (`releases.ts:492-503`):
 
 ```ts
-async function assertDraftRelease(db: DrizzleInstance, releaseId: string): Promise<void> {
+async function assertDraftRelease(
+  db: DrizzleInstance,
+  releaseId: string,
+): Promise<void> {
   const [release] = await db
     .select({ status: releases.status })
     .from(releases)
@@ -117,13 +120,13 @@ current head.
 
 ## Commands you will need
 
-| Purpose    | Command                                                                                                                     | Expected on success |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------- |
-| Install    | `bun install --frozen-lockfile`                                                                                             | exit 0              |
-| Typecheck  | `bun run --filter=@createcms/core check-types`                                                                              | exit 0              |
-| Tests      | `cd packages/cms && bunx vitest run src/core/routes/test/releases.test.ts src/core/routes/test/blocks.test.ts`              | all pass            |
-| Full suite | `bun run --filter=@createcms/core test`                                                                                     | all pass            |
-| Lint       | `bun run lint && bunx oxfmt --check`                                                                                        | exit 0              |
+| Purpose    | Command                                                                                                        | Expected on success |
+| ---------- | -------------------------------------------------------------------------------------------------------------- | ------------------- |
+| Install    | `bun install --frozen-lockfile`                                                                                | exit 0              |
+| Typecheck  | `bun run --filter=@createcms/core check-types`                                                                 | exit 0              |
+| Tests      | `cd packages/cms && bunx vitest run src/core/routes/test/releases.test.ts src/core/routes/test/blocks.test.ts` | all pass            |
+| Full suite | `bun run --filter=@createcms/core test`                                                                        | all pass            |
+| Lint       | `bun run lint && bunx oxfmt --check`                                                                           | exit 0              |
 
 (From `CONTRIBUTING.md`; not executed by the advisor.)
 
@@ -175,7 +178,10 @@ In `packages/cms/src/core/routes/releases.ts`:
 1. Change `assertDraftRelease` to take the executor and lock:
 
    ```ts
-   async function assertDraftRelease(exec: DrizzleInstance, releaseId: string): Promise<void> {
+   async function assertDraftRelease(
+     exec: DrizzleInstance,
+     releaseId: string,
+   ): Promise<void> {
      const [release] = await exec
        .select({ status: releases.status })
        .from(releases)

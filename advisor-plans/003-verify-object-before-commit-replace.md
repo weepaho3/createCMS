@@ -95,7 +95,9 @@ validateFiles([{ name: file.name, size: file.size, type: file.type }], {
   allowedMimeTypes,
 });
 const slug = await generateUniqueSlug(db, file.name, undefined, scope);
-if (!slug) { throw new CMSError('SLUG_GENERATION_FAILED'); }
+if (!slug) {
+  throw new CMSError('SLUG_GENERATION_FAILED');
+}
 const objectKey = buildObjectKey(slug);
 ```
 
@@ -132,13 +134,13 @@ if (method === 'GET' || method === 'HEAD') {
 
 ## Commands you will need
 
-| Purpose    | Command                                                                         | Expected on success |
-| ---------- | ------------------------------------------------------------------------------- | ------------------- |
-| Install    | `bun install --frozen-lockfile`                                                 | exit 0              |
-| Typecheck  | `bun run --filter=@createcms/core check-types`                                  | exit 0              |
-| Tests      | `cd packages/cms && bunx vitest run src/core/routes/test/media.test.ts`         | all pass            |
-| Full suite | `bun run --filter=@createcms/core test`                                         | all pass            |
-| Lint       | `bun run lint && bunx oxfmt --check`                                            | exit 0              |
+| Purpose    | Command                                                                 | Expected on success |
+| ---------- | ----------------------------------------------------------------------- | ------------------- |
+| Install    | `bun install --frozen-lockfile`                                         | exit 0              |
+| Typecheck  | `bun run --filter=@createcms/core check-types`                          | exit 0              |
+| Tests      | `cd packages/cms && bunx vitest run src/core/routes/test/media.test.ts` | all pass            |
+| Full suite | `bun run --filter=@createcms/core test`                                 | all pass            |
+| Lint       | `bun run lint && bunx oxfmt --check`                                    | exit 0              |
 
 (From `CONTRIBUTING.md`; not executed by the advisor.)
 
@@ -197,7 +199,10 @@ In `packages/cms/src/core/storage/s3/utils.ts`, after `deleteObject`, add:
 export async function headObject(
   client: S3Client,
   params: { bucket: string; key: string },
-): Promise<{ contentLength: number | null; contentType: string | null } | null> {
+): Promise<{
+  contentLength: number | null;
+  contentType: string | null;
+} | null> {
   const url = `${client.buildBucketUrl(params.bucket)}/${params.key}`;
   const res = await client.s3.fetch(url, { method: 'HEAD' });
   if (res.status === 404) return null;
@@ -244,7 +249,8 @@ declaration and the transaction, add these checks in order:
    if (objectKey !== buildObjectKey(slug)) {
      throw new APIError(400, {
        code: 'VALIDATION_ERROR',
-       message: 'objectKey does not match the slug issued by createSignedReplace',
+       message:
+         'objectKey does not match the slug issued by createSignedReplace',
      });
    }
    ```
@@ -252,7 +258,10 @@ declaration and the transaction, add these checks in order:
 3. Confirm the object exists and matches the declaration:
 
    ```ts
-   const head = await headObject(getS3Client(), { bucket: bucketName, key: objectKey });
+   const head = await headObject(getS3Client(), {
+     bucket: bucketName,
+     key: objectKey,
+   });
    if (!head) {
      throw new CMSError('UPLOAD_FAILED', {
        message: `No object at "${objectKey}"; the PUT to the signed URL did not complete`,
@@ -264,7 +273,10 @@ declaration and the transaction, add these checks in order:
        message: `Declared size ${size} does not match the uploaded object (${head.contentLength})`,
      });
    }
-   if (head.contentType !== null && head.contentType.split(';')[0].trim() !== mimeType) {
+   if (
+     head.contentType !== null &&
+     head.contentType.split(';')[0].trim() !== mimeType
+   ) {
      throw new APIError(400, {
        code: 'VALIDATION_ERROR',
        message: `Declared MIME type "${mimeType}" does not match the uploaded object ("${head.contentType}")`,

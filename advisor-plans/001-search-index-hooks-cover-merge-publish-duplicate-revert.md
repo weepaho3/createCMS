@@ -150,15 +150,15 @@ Conventions to honour:
 
 ## Commands you will need
 
-| Purpose    | Command                                                                              | Expected on success       |
-| ---------- | ------------------------------------------------------------------------------------ | ------------------------- |
-| Install    | `bun install --frozen-lockfile`                                                      | exit 0                    |
-| Typecheck  | `bun run --filter=@createcms/core check-types`                                       | exit 0, no errors         |
-| Unit test  | `cd packages/cms && bunx vitest run src/core/search/test/search-hooks.test.ts`       | all pass                  |
-| Route test | `cd packages/cms && bunx vitest run src/core/routes/test/branches.test.ts`           | all pass                  |
-| Full suite | `bun run --filter=@createcms/core test`                                              | all pass                  |
-| Lint       | `bun run lint`                                                                       | exit 0                    |
-| Format     | `bunx oxfmt --check`                                                                 | exit 0                    |
+| Purpose    | Command                                                                        | Expected on success |
+| ---------- | ------------------------------------------------------------------------------ | ------------------- |
+| Install    | `bun install --frozen-lockfile`                                                | exit 0              |
+| Typecheck  | `bun run --filter=@createcms/core check-types`                                 | exit 0, no errors   |
+| Unit test  | `cd packages/cms && bunx vitest run src/core/search/test/search-hooks.test.ts` | all pass            |
+| Route test | `cd packages/cms && bunx vitest run src/core/routes/test/branches.test.ts`     | all pass            |
+| Full suite | `bun run --filter=@createcms/core test`                                        | all pass            |
+| Lint       | `bun run lint`                                                                 | exit 0              |
+| Format     | `bunx oxfmt --check`                                                           | exit 0              |
 
 These commands come from `CONTRIBUTING.md` and `packages/cms/package.json`.
 They were not executed by the advisor (no `node_modules` in the advisor's

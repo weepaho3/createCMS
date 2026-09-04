@@ -17,14 +17,14 @@ every command is taken from `CONTRIBUTING.md` and `packages/cms/package.json`.
 
 ## Execution order & status
 
-| Plan | Title                                                                                   | Priority | Effort | Depends on | Status |
-| ---- | --------------------------------------------------------------------------------------- | -------- | ------ | ---------- | ------ |
-| 001  | Make the search index follow merges, publishes, root duplication and branch reverts     | P1       | S      | —          | DONE (worktree commit 2a6d50e, cherry-picked) |
-| 005  | Keep a committed mutation from failing when post-commit revalidation throws; fix slug-map leak | P1 | S      | —          | DONE (worktree commit 044d3bb, cherry-picked) |
-| 002  | Fire revalidation when scheduled publishes and releases go live                         | P1       | M      | 005 (soft) | TODO   |
-| 003  | Verify the uploaded object before `media.commitReplace` repoints an asset               | P1       | M      | —          | DONE (worktree commit 0d4c1c2, cherry-picked) |
-| 006  | Lock the release row in the draft check; add `expectedHeadCommitId` to `duplicateBlock` | P2       | S      | —          | DONE (worktree commit 9f3698b, cherry-picked) |
-| 004  | Scope releases by plugin scope (multi-tenant isolation)                                 | P1       | M      | 006        | TODO   |
+| Plan | Title                                                                                          | Priority | Effort | Depends on | Status                                        |
+| ---- | ---------------------------------------------------------------------------------------------- | -------- | ------ | ---------- | --------------------------------------------- |
+| 001  | Make the search index follow merges, publishes, root duplication and branch reverts            | P1       | S      | —          | DONE (worktree commit 2a6d50e, cherry-picked) |
+| 005  | Keep a committed mutation from failing when post-commit revalidation throws; fix slug-map leak | P1       | S      | —          | DONE (worktree commit 044d3bb, cherry-picked) |
+| 002  | Fire revalidation when scheduled publishes and releases go live                                | P1       | M      | 005 (soft) | DONE (worktree commit 6c2376f, cherry-picked) |
+| 003  | Verify the uploaded object before `media.commitReplace` repoints an asset                      | P1       | M      | —          | DONE (worktree commit 0d4c1c2, cherry-picked) |
+| 006  | Lock the release row in the draft check; add `expectedHeadCommitId` to `duplicateBlock`        | P2       | S      | —          | DONE (worktree commit 9f3698b, cherry-picked) |
+| 004  | Scope releases by plugin scope (multi-tenant isolation)                                        | P1       | M      | 006        | TODO                                          |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
@@ -95,7 +95,7 @@ candidate for the next planning run.
   insert column** (`plugins/ab-test/endpoints.ts:85-87, 142-161`); any other
   scoping plugin degrades it to unscoped. Effort M.
 - **[SEC-09] Comment mentions are not validated** (`comments.ts:153-159,
-  442-463`): any user id becomes a notification recipient with the raw
+442-463`): any user id becomes a notification recipient with the raw
   comment body. Effort S.
 - **[PERF-01] `findAssetsInAllPublications` walks every publication in the
   database** on each unpublish (`media/discovery.ts:35-67`); the pruning pass
@@ -104,7 +104,7 @@ candidate for the next planning run.
 - **[PERF-03/PERF-05] Per-link ancestry CTEs on every published render**
   (`links.ts:135-145` → `redirects/resolve.ts:78-116`) and unbounded
   `Promise.all` fan-out in cascade revalidation (`revalidation.ts:396-406,
-  452-458`); `listRoots` already has the batched CTE to lift
+452-458`); `listRoots` already has the batched CTE to lift
   (`blocks-root-endpoints.ts:505-524`). Effort S–M.
 - **[PERF-02] Search reindex on every keystroke-level save, always of the
   default branch** (`search/hooks.ts:71-81`, `index-builder.ts:134-142`).
