@@ -1,5 +1,6 @@
 import { and, asc, eq, isNull, lte } from 'drizzle-orm';
 
+import type { RevalidationRunner } from '../revalidation';
 import type { CMSProcedureContext } from '../types';
 import type { ResolvedScope, ResolvedSlugConfig } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
@@ -21,6 +22,10 @@ export type RunScheduledOptions = {
    * the wall clock; accepted mainly so tests can drive time deterministically.
    */
   now?: Date;
+  /**
+   * When set, each committed publish/unpublish fires its revalidation event.
+   */
+  revalidationRunner?: RevalidationRunner | null;
 };
 
 export type RunScheduledFailure = {
@@ -170,14 +175,29 @@ export async function runScheduledPass(
             rootScope: scope?.roots,
             redirectScope: scope?.redirects,
           });
-          return { status: 'published' as const, commitId: res.commitId };
+          return {
+            status: 'published' as const,
+            commitId: res.commitId,
+            collection: rootRow.collection,
+          };
         }
+        // Slug must be read BEFORE unpublishBranchInTx removes the publication
+        // row, so the revalidation event can still report the page's path.
+        const [pubRow] = await tx
+          .select({ slug: roots.slug })
+          .from(roots)
+          .where(eq(roots.id, row.rootId));
         const res = await unpublishBranchInTx(tx, {
           collectionName: rootRow.collection,
           rootId: row.rootId,
           branchId: row.branchId,
         });
-        return { status: 'unpublished' as const, commitId: res.commitId };
+        return {
+          status: 'unpublished' as const,
+          commitId: res.commitId,
+          collection: rootRow.collection,
+          slug: pubRow?.slug ?? null,
+        };
       });
 
       if (outcome.status === 'skipped') continue;
@@ -190,6 +210,20 @@ export async function runScheduledPass(
           (err) =>
             console.error('[cms] scheduled publish asset sync failed:', err),
         );
+        if (opts.revalidationRunner) {
+          await opts.revalidationRunner
+            .fireManual({
+              collection: outcome.collection,
+              rootId: row.rootId,
+              branchId: row.branchId,
+            })
+            .catch((err) =>
+              console.error(
+                '[cms] scheduled publish revalidation failed:',
+                err,
+              ),
+            );
+        }
       } else {
         result.unpublished++;
         await syncAssetsOnUnpublish(
@@ -200,6 +234,21 @@ export async function runScheduledPass(
         ).catch((err) =>
           console.error('[cms] scheduled unpublish asset sync failed:', err),
         );
+        if (opts.revalidationRunner) {
+          await opts.revalidationRunner
+            .fireManualUnpublish({
+              collection: outcome.collection,
+              rootId: row.rootId,
+              branchId: row.branchId,
+              slug: outcome.slug,
+            })
+            .catch((err) =>
+              console.error(
+                '[cms] scheduled unpublish revalidation failed:',
+                err,
+              ),
+            );
+        }
       }
     } catch (err) {
       const code = getCMSErrorCode(err) ?? 'UNKNOWN';

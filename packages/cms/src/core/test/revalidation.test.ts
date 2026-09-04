@@ -354,6 +354,7 @@ describe('revalidation is best-effort', () => {
         throw postErr;
       },
       fireManual: async () => {},
+      fireManualUnpublish: async () => {},
     };
 
     const testEndpoint = createCMSEndpoint(
@@ -378,5 +379,153 @@ describe('revalidation is best-effort', () => {
         body: {},
       }),
     ).resolves.toEqual({ ok: true });
+  });
+});
+
+describe('revalidation for scheduled and release publishes', () => {
+  it('fires a publishBranch event when a scheduled publish goes live via admin.runScheduled', async () => {
+    const events: RevalidateEvent<typeof COLLECTIONS>[] = [];
+    const { db, cleanup } = await setupTestDB({ plugins: [] });
+    cleanups.push(cleanup);
+
+    const cms = createCMS({
+      db,
+      authMiddleware: allowAnonymous(),
+      media: DUMMY_MEDIA_CONFIG,
+      collections: COLLECTIONS,
+      onRevalidate: (event) => {
+        events.push(event);
+      },
+    }) as AnyApi;
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: 'scheduled-pub', properties: { title: 'Scheduled' } },
+    });
+    await cms.api.pages.schedulePublication({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        scheduledAt: new Date(Date.now() - 60_000),
+      },
+    });
+
+    events.length = 0;
+    const result = await cms.api.admin.runScheduled({ body: {} });
+    expect(result.published).toBe(1);
+
+    const ev = events.find(
+      (e) => e.action === 'publishBranch' && e.rootId === root.rootId,
+    );
+    expect(ev).toBeDefined();
+  });
+
+  it('fires an unpublishBranch event (with the pre-published slug) when a scheduled unpublish fires', async () => {
+    const events: RevalidateEvent<typeof COLLECTIONS>[] = [];
+    const { db, cleanup } = await setupTestDB({ plugins: [] });
+    cleanups.push(cleanup);
+
+    const cms = createCMS({
+      db,
+      authMiddleware: allowAnonymous(),
+      media: DUMMY_MEDIA_CONFIG,
+      collections: COLLECTIONS,
+      onRevalidate: (event) => {
+        events.push(event);
+      },
+    }) as AnyApi;
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: 'scheduled-unpub', properties: { title: 'Scheduled' } },
+    });
+    await cms.api.pages.publishBranch({
+      body: { rootId: root.rootId, branchId: root.branchId, publishedBy: 'a' },
+    });
+    await cms.api.pages.scheduleUnpublish({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        scheduledAt: new Date(Date.now() - 60_000),
+      },
+    });
+
+    events.length = 0;
+    const result = await cms.api.admin.runScheduled({ body: {} });
+    expect(result.unpublished).toBe(1);
+
+    const ev = events.find(
+      (e) => e.action === 'unpublishBranch' && e.rootId === root.rootId,
+    );
+    expect(ev).toBeDefined();
+    expect(ev!.storedSlug).toBe('scheduled-unpub');
+  });
+
+  it('fires one publishBranch event per item when a release publishes', async () => {
+    const events: RevalidateEvent<typeof COLLECTIONS>[] = [];
+    const { db, cleanup } = await setupTestDB({ plugins: [] });
+    cleanups.push(cleanup);
+
+    const cms = createCMS({
+      db,
+      authMiddleware: allowAnonymous(),
+      media: DUMMY_MEDIA_CONFIG,
+      collections: COLLECTIONS,
+      onRevalidate: (event) => {
+        events.push(event);
+      },
+    }) as AnyApi;
+
+    const r1 = await cms.api.pages.createRoot({
+      body: { slug: 'release-a', properties: { title: 'A' } },
+    });
+    const r2 = await cms.api.pages.createRoot({
+      body: { slug: 'release-b', properties: { title: 'B' } },
+    });
+
+    const { release } = await cms.api.releases.createRelease({
+      body: { title: 'Launch' },
+    });
+    await cms.api.releases.addToRelease({
+      body: { releaseId: release.id, rootId: r1.rootId, branchId: r1.branchId },
+    });
+    await cms.api.releases.addToRelease({
+      body: { releaseId: release.id, rootId: r2.rootId, branchId: r2.branchId },
+    });
+
+    events.length = 0;
+    await cms.api.releases.publishRelease({ body: { releaseId: release.id } });
+
+    const published = events.filter((e) => e.action === 'publishBranch');
+    expect(published.map((e) => e.rootId).sort()).toEqual(
+      [r1.rootId, r2.rootId].sort(),
+    );
+  });
+
+  it('does not fail runScheduled when the onRevalidate handler throws', async () => {
+    const { db, cleanup } = await setupTestDB({ plugins: [] });
+    cleanups.push(cleanup);
+
+    const cms = createCMS({
+      db,
+      authMiddleware: allowAnonymous(),
+      media: DUMMY_MEDIA_CONFIG,
+      collections: COLLECTIONS,
+      onRevalidate: () => {
+        throw new Error('boom');
+      },
+    }) as AnyApi;
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: 'resilient-scheduled', properties: { title: 'R' } },
+    });
+    await cms.api.pages.schedulePublication({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        scheduledAt: new Date(Date.now() - 60_000),
+      },
+    });
+
+    const result = await cms.api.admin.runScheduled({ body: {} });
+    expect(result.published).toBe(1);
   });
 });

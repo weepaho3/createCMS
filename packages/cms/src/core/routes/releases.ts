@@ -2,6 +2,7 @@ import { APIError } from 'better-call';
 import { and, asc, desc, eq } from 'drizzle-orm';
 import * as z from 'zod';
 
+import type { RevalidationRunner } from '../revalidation';
 import type { CMSProcedureContext } from '../types';
 import type { ResolvedSlugConfig } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
@@ -73,7 +74,10 @@ async function assertItemExists(
   if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
 }
 
-export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
+export function createReleaseEndpoints(
+  cmsCtx: CMSProcedureContext,
+  revalidationRunner: RevalidationRunner | null = null,
+) {
   const { db } = cmsCtx;
 
   return {
@@ -404,7 +408,12 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
         const actor = ctx.context.userId ?? publishedBy ?? 'system';
 
         // Everything below commits or rolls back together — the atomicity guarantee.
-        const synced: { commitId: string; rootId: string }[] = [];
+        const synced: {
+          commitId: string;
+          rootId: string;
+          branchId: string;
+          collection: string;
+        }[] = [];
         const outcome = await db.transaction(async (tx) => {
           const [release] = await tx
             .select()
@@ -462,7 +471,12 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
               redirectScope: ctx.context.scope.redirects,
             });
             publications.push(publication);
-            synced.push({ commitId, rootId: item.rootId });
+            synced.push({
+              commitId,
+              rootId: item.rootId,
+              branchId: item.branchId,
+              collection: rootRow.collection,
+            });
           }
 
           const [updated] = await tx
@@ -479,6 +493,22 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
           await syncAssetsOnPublish(db, s.commitId, s.rootId).catch((err) =>
             console.error('[cms] release publish asset sync failed:', err),
           );
+        }
+        if (revalidationRunner) {
+          for (const s of synced) {
+            await revalidationRunner
+              .fireManual({
+                collection: s.collection,
+                rootId: s.rootId,
+                branchId: s.branchId,
+              })
+              .catch((err) =>
+                console.error(
+                  '[cms] release publish revalidation failed:',
+                  err,
+                ),
+              );
+          }
         }
 
         return outcome;

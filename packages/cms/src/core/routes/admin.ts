@@ -1,5 +1,6 @@
 import * as z from 'zod';
 
+import type { RevalidationRunner } from '../revalidation';
 import type { CMSProcedureContext, MediaConfig } from '../types';
 import type { CMSPlugin } from '../types/plugin';
 
@@ -23,6 +24,7 @@ export function createAdminEndpoints(
   cmsCtx: CMSProcedureContext,
   plugins: CMSPlugin[] = [],
   mediaConfig: MediaConfig,
+  revalidationRunner: RevalidationRunner | null = null,
 ) {
   const { db, dataRetention } = cmsCtx;
 
@@ -124,6 +126,7 @@ export function createAdminEndpoints(
           cmsCtx,
           {
             limit: ctx.body?.limit,
+            revalidationRunner,
           },
           ctx.context.scope,
         );

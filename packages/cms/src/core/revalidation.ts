@@ -292,6 +292,16 @@ export type RevalidationRunner = {
     rootId: string;
     branchId: string;
   }): Promise<void>;
+  /**
+   * Fires the unpublish event for a page whose publication row is already
+   * gone. `slug` must have been read before the row was deleted.
+   */
+  fireManualUnpublish(opts: {
+    collection: string;
+    rootId: string;
+    branchId: string;
+    slug: string | null;
+  }): Promise<void>;
 };
 
 export function createRevalidationRunner<
@@ -657,6 +667,21 @@ export function createRevalidationRunner<
         opts.rootId,
         opts.branchId,
         pub.slug,
+      );
+    },
+
+    async fireManualUnpublish(opts) {
+      await buildAndFire(
+        'unpublishBranch',
+        opts.collection,
+        opts.rootId,
+        opts.branchId,
+        opts.slug,
+      );
+      await cascadeRevalidation(
+        'unpublishBranch',
+        opts.collection,
+        opts.rootId,
       );
     },
   };

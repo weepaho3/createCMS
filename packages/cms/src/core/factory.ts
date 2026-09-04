@@ -730,14 +730,6 @@ export const createCMS = <
     }),
   ) as unknown as InferCollectionApis<DefCollections, DefPlugins>;
 
-  const adminEndpoints = createAdminEndpoints(
-    cmsContext,
-    plugins,
-    definition.media,
-  );
-
-  const mediaEndpoints = createMediaEndpoints(cmsContext, definition.media);
-
   const revalidateConfig = normalizeRevalidateConfig(definition.onRevalidate);
   const revalidationRunner = revalidateConfig
     ? createRevalidationRunner(
@@ -747,13 +739,25 @@ export const createCMS = <
       )
     : null;
 
+  const adminEndpoints = createAdminEndpoints(
+    cmsContext,
+    plugins,
+    definition.media,
+    revalidationRunner,
+  );
+
+  const mediaEndpoints = createMediaEndpoints(cmsContext, definition.media);
+
   const variableEndpoints = createVariableEndpoints(
     cmsContext,
     revalidationRunner,
   );
   const templateEndpoints = createTemplateEndpoints(cmsContext);
   const searchEndpoints = createSearchEndpoints(cmsContext);
-  const releaseEndpoints = createReleaseEndpoints(cmsContext);
+  const releaseEndpoints = createReleaseEndpoints(
+    cmsContext,
+    revalidationRunner,
+  );
   const userEndpoints = createUserEndpoints(cmsContext);
 
   // `notifications: false` fully disables the feature (no service, no routes,
