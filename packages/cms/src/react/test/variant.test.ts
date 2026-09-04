@@ -234,7 +234,7 @@ describe('pickVariant (FA3 server-side pick)', () => {
     });
     expect(res.variants.length).toBe(2);
 
-    // FA3b: getPublishedContent exposes the page-level test descriptor.
+    // getPublishedContent exposes the page-level test descriptor.
     expect(res.abTest).toBeDefined();
     expect(res.abTest.trafficPercentage).toBe(100);
     expect(res.abTest.controlBranchId).toBe(page.mainBranchId);

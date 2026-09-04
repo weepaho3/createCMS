@@ -60,7 +60,7 @@ afterAll(async () => {
   await Promise.allSettled(cleanups.map((fn) => fn()));
 });
 
-describe('revalidation tags (FA3b)', () => {
+describe('revalidation tags', () => {
   it('fires a publishBranch event carrying the root cache tag', async () => {
     const events: RevalidateEvent<typeof COLLECTIONS>[] = [];
     const { db, cleanup } = await setupTestDB({ plugins: [] });
@@ -228,7 +228,7 @@ describe('revalidation tags (FA3b)', () => {
         properties: { title: 'C' },
       },
     });
-    // cms-05: publish the whole chain so its slugs materialize into the live
+    // Publish the whole chain so its slugs materialize into the live
     // /docs/a/c path before the reparent (moveRoot reads roots.slug).
     for (const r of [parentA, parentB, child]) {
       await cms.api.pages.publishBranch({
@@ -284,10 +284,8 @@ describe('revalidation is best-effort', () => {
       body: { rootId: root.rootId, branchId: root.branchId, publishedBy: 'a' },
     });
 
-    // By the time postProcess runs for unpublishBranch, the endpoint handler
-    // has already deleted the publication row — the slug must come from the
-    // pre-resolved state threaded through preProcess -> postProcess, not a
-    // fresh lookup.
+    // The publication row is gone before postProcess runs, so the slug must
+    // come from the preProcess result.
     await cms.api.pages.unpublishBranch({
       body: { rootId: root.rootId, branchId: root.branchId },
     });
@@ -330,10 +328,9 @@ describe('revalidation is best-effort', () => {
       body: { rootId: root.rootId, branchId: root.branchId, publishedBy: 'a' },
     });
 
-    // publishBranch's postProcess unconditionally queries cms.redirects
-    // (subtreeInboundRedirectPaths). Drop it to force postProcess to throw,
-    // while the mutation itself (no slug change on this republish) never
-    // touches that table.
+    // publishBranch's postProcess reads cms.redirects (subtreeInboundRedirectPaths)
+    // and the republish itself does not, so dropping the table fails only
+    // postProcess.
     await db.execute(sql`DROP TABLE cms.redirects CASCADE`);
 
     const result = await cms.api.pages.publishBranch({

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // The create-after-hooks read the mutation RESULT to find the id to index. When
-// ret-08/ret-12 wrapped createMergeRequest/createCommentMessage returns in an
+// createMergeRequest/createCommentMessage return their entity in an
 // entity envelope, the hooks had to follow (result.mergeRequest.id /
 // result.message.id) — reading the old flat key silently indexed nothing. The
 // existing search tests use reindexSearch (which re-indexes everything), so they
@@ -30,7 +30,7 @@ async function fire(action: string, input: unknown, result: unknown) {
 describe('search after-hooks extract ids from the wrapped return shapes', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('createMergeRequest indexes result.mergeRequest.id (ret-08 envelope)', async () => {
+  it('createMergeRequest indexes result.mergeRequest.id (envelope)', async () => {
     await fire(
       'createMergeRequest',
       {},
@@ -39,7 +39,7 @@ describe('search after-hooks extract ids from the wrapped return shapes', () => 
     expect(indexMergeRequest).toHaveBeenCalledWith(db, 'mr_1');
   });
 
-  it('createCommentMessage indexes result.message.id (ret-12 envelope)', async () => {
+  it('createCommentMessage indexes result.message.id (envelope)', async () => {
     await fire('createCommentMessage', {}, { message: { id: 'msg_1' } });
     expect(indexComment).toHaveBeenCalledWith(db, 'msg_1');
   });

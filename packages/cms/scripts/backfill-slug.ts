@@ -1,10 +1,10 @@
 /**
- * cms-05 backfill — seed the VERSIONED draft slug for existing content.
+ * Backfill: seed the versioned draft slug for existing content.
  *
- * Under cms-05 a root's slug is versioned: the draft slug rides the root block
+ * A root's slug is versioned: the draft slug rides the root block
  * version's reserved `__slug` property and is materialized into `roots.slug` only
  * on publish (see `core/blocks/reconstruct-snapshot.ts` and
- * `core/routes/publications.ts`). Content created BEFORE cms-05 has a populated
+ * `core/routes/publications.ts`). Content created before versioned slugs has a populated
  * `roots.slug` but no `__slug` on its head root version, so the editor (which now
  * reads the draft slug from `getBlockTree`'s root node) would show an empty slug.
  *

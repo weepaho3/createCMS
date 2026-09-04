@@ -117,7 +117,7 @@ export function createSearchEndpoints(cmsCtx: CMSProcedureContext) {
         }
 
         // ------------------------------------------------------------------
-        // SECURITY (cms-08): the search index is a SHARED, cross-entity table,
+        // SECURITY: the search index is a SHARED, cross-entity table,
         // so it must honour the SAME read boundary as the normal endpoints —
         // otherwise a multi-tenant tenant could find another tenant's content
         // and a user could read another user's notifications, purely via

@@ -140,7 +140,7 @@ describe('listRoots', () => {
       },
     });
 
-    // cms-05: the slug column (roots.slug) only materializes on publish, so a
+    // The slug column (roots.slug) only materializes on publish, so a
     // filter on the `slug` column below needs a published page.
     const about = await cms.api.pages.createRoot({
       body: {
@@ -714,7 +714,7 @@ describe('getBlockTree', () => {
     expect(result.reconstructed).toBe(false);
     const tree = result.tree;
     expect(tree.blockId).toBe(root.rootId);
-    // cms-05: the editor read keeps the versioned draft slug on the root node.
+    // The editor read keeps the versioned draft slug on the root node.
     expect(tree.properties).toEqual({ title: 'Page', __slug: 'page' });
     expect(tree.children).toHaveLength(2);
 
@@ -1216,7 +1216,7 @@ describe('deleteBlock', () => {
       },
     });
 
-    // deleteBlock reports the removed subtree ids (ret-20); a leaf paragraph is
+    // deleteBlock reports the removed subtree ids; a leaf paragraph is
     // its own whole subtree.
     expect(del.deletedBlockIds).toEqual([para.blockId]);
 
@@ -1945,7 +1945,7 @@ describe('duplicateBlock', () => {
           eq(blockVersions.blockId, dup.rootId),
         ),
       );
-    // cms-05: the duplicate seeds its slug as the versioned draft `__slug` on the
+    // The duplicate seeds its slug as the versioned draft `__slug` on the
     // new root version (roots.slug stays null until publish).
     expect(rootBv.properties).toEqual({
       title: 'Copy of Original',
@@ -2124,7 +2124,7 @@ describe('duplicateBlock', () => {
 });
 
 // ============================================================================
-// duplicateRoot Tests (cms-21)
+// duplicateRoot Tests
 // ============================================================================
 
 describe('duplicateRoot', () => {
@@ -2170,7 +2170,7 @@ describe('duplicateRoot', () => {
     // Returns a fresh root + branch (like createRoot) — no `mode` discriminant.
     expect(dup.rootId).not.toBe(root.rootId);
     expect(typeof dup.branchId).toBe('string');
-    // cms-05: `slug` is the DRAFT slug; roots.slug stays null until publish.
+    // `slug` is the DRAFT slug; roots.slug stays null until publish.
     expect(dup.slug).toBe('source-copy');
 
     const [newRoot] = await db
@@ -2196,7 +2196,7 @@ describe('duplicateRoot', () => {
       query: { rootId: dup.rootId, branchId: dup.branchId, raw: true },
     });
     expect(tree.blockId).toBe(dup.rootId);
-    // cms-05: editor read keeps the versioned draft slug on the root node.
+    // Editor read keeps the versioned draft slug on the root node.
     expect(tree.properties).toEqual({
       title: 'Source (copy)',
       __slug: 'source-copy',
@@ -2276,7 +2276,7 @@ describe('duplicateRoot', () => {
 });
 
 // ============================================================================
-// Optimistic concurrency — expectedHeadCommitId (cms-18)
+// Optimistic concurrency — expectedHeadCommitId
 // ============================================================================
 
 describe('optimistic concurrency (expectedHeadCommitId)', () => {
@@ -2382,7 +2382,6 @@ describe('optimistic concurrency (expectedHeadCommitId)', () => {
     const headAfterB = blockB.commit.id;
     expect(headAfterB).not.toBe(headAfterA);
 
-    // Duplicating against the now-stale head is rejected.
     await expect(
       cms.api.pages.duplicateBlock({
         body: {
@@ -2395,7 +2394,6 @@ describe('optimistic concurrency (expectedHeadCommitId)', () => {
       }),
     ).rejects.toThrow(/advanced since/);
 
-    // Duplicating against the current head succeeds.
     const dup = await cms.api.pages.duplicateBlock({
       body: {
         rootId: root.rootId,
@@ -2410,10 +2408,10 @@ describe('optimistic concurrency (expectedHeadCommitId)', () => {
 });
 
 // ============================================================================
-// Write-time image existence (cms-04)
+// Write-time image existence
 // ============================================================================
 
-describe('write-time image existence (cms-04)', () => {
+describe('write-time image existence', () => {
   it('rejects an image property pointing at a nonexistent asset id', async () => {
     const { cms } = await setupTestCMS();
 
@@ -2484,14 +2482,14 @@ describe('write-time image existence (cms-04)', () => {
 });
 
 // ============================================================================
-// Write-time list existence (cms-03)
+// Write-time list existence
 // ============================================================================
 
 // A `list` of `image` / `reference` is walked element-by-element by the
 // write-time existence check, exactly like the scalar image/reference case, so a
 // nonexistent id inside the list is rejected at write time. (Before the fix, the
 // existence check skipped `list` properties entirely.)
-describe('write-time list existence (cms-03)', () => {
+describe('write-time list existence', () => {
   async function setupListCMS() {
     const { db } = await setupTestDB();
     const cms = createCMS({
@@ -2793,7 +2791,7 @@ describe('updateBlock', () => {
           eq(blockVersions.blockId, root.rootId),
         ),
       );
-    // title updated; cms-05: the draft slug seeded at createRoot ('old') rides the
+    // Title updated; the draft slug seeded at createRoot ('old') rides the
     // root version's `__slug` and is preserved through this property patch.
     expect(rootBv.properties).toEqual({ title: 'New Title', __slug: 'old' });
 
@@ -3087,7 +3085,7 @@ describe('updateBlocks', () => {
     });
 
     expect(result.commit.id).toBeDefined();
-    // A real save reports changed:true (ret-04).
+    // A real save reports changed:true.
     expect(result.changed).toBe(true);
 
     const [newCommit] = await db
@@ -3487,7 +3485,7 @@ describe('updateBlocks', () => {
         tree: {
           blockId: root.rootId,
           type: 'pages',
-          // cms-05: the stored root version carries the versioned draft slug, so
+          // The stored root version carries the versioned draft slug, so
           // an identical round-trip must include it to stay a no-op.
           properties: { title: 'Page', __slug: 'page' },
           children: [
@@ -3503,7 +3501,7 @@ describe('updateBlocks', () => {
     });
 
     expect(result.commit.id).toBe(branchBefore.headCommitId);
-    // No-op is distinguishable from a real save via `changed` (ret-04).
+    // No-op is distinguishable from a real save via `changed`.
     expect(result.changed).toBe(false);
 
     const [branchAfter] = await db
@@ -4059,13 +4057,13 @@ describe('updateBlocks', () => {
     expect(rootBv.type).toBe('pages');
   });
 
-  // cms-04 perf: the batch save collects image/reference ids across the WHOLE
+  // The batch save collects image/reference ids across the WHOLE
   // diff and validates them with one query per collection instead of one
   // query pair per block. These tests exercise that batched path directly
-  // (as opposed to the single-block createBlock/updateBlock cms-04 tests
+  // (as opposed to the single-block createBlock/updateBlock tests
   // above) to prove the collect-then-validate refactor still enforces the
   // same existence check across multiple blocks in one updateBlocks call.
-  describe('batched reference-existence check (cms-04 perf)', () => {
+  describe('batched reference-existence check', () => {
     it('accepts multiple image blocks each pointing at a distinct valid asset id', async () => {
       const { newId } = await import('../../../utils/nanoid');
       const { cms, db } = await setupTestCMS();
@@ -4602,7 +4600,7 @@ describe('getRootBySlug', () => {
     const created = await cms.api.pages.createRoot({
       body: { slug: '/about', properties: { title: 'About' } },
     });
-    // cms-05: getRootBySlug is a DRAFT read — it matches the versioned draft slug
+    // getRootBySlug is a DRAFT read — it matches the versioned draft slug
     // (`created.slug`) even before publish, whereas getRoot().slug (published
     // roots.slug) is still null here.
     expect(created.slug).toBe('about');
@@ -4622,10 +4620,10 @@ describe('getRootBySlug', () => {
 });
 
 // ============================================================================
-// cms-05 — versioned slug (draft slug isolated per branch, materialized on publish)
+// Versioned slug (draft slug isolated per branch, materialized on publish)
 // ============================================================================
 
-describe('cms-05 versioned slug (write path)', () => {
+describe('versioned slug (write path)', () => {
   const dbSlug = async (db: any, rootId: string): Promise<string | null> => {
     const [r] = await db.select().from(roots).where(eq(roots.id, rootId));
     return r.slug;

@@ -221,7 +221,7 @@ describe('nested pages', () => {
     it('normalizes the draft slug on creation', async () => {
       const { cms } = await setupNestedCMS();
 
-      // cms-05: the slug is a versioned draft — createRoot returns the normalized
+      // The slug is a versioned draft — createRoot returns the normalized
       // draft slug; roots.slug stays null until publish.
       const root = await cms.api.pages.createRoot({
         body: { slug: 'Hello World!', properties: { title: 'Hello World' } },
@@ -266,7 +266,7 @@ describe('nested pages', () => {
     it('rejects a duplicate slug among siblings at PUBLISH (drafts may collide)', async () => {
       const { cms } = await setupNestedCMS();
 
-      // cms-05: two draft siblings can share a slug; the conflict fires when the
+      // Two draft siblings can share a slug; the conflict fires when the
       // second one publishes into the already-live slug.
       const a = await cms.api.pages.createRoot({
         body: { slug: 'about', properties: { title: 'Page A' } },
@@ -344,7 +344,7 @@ describe('nested pages', () => {
       await cms.api.pages.publishBranch({
         body: { rootId: a.rootId, branchId: a.branchId },
       });
-      // cms-05: the duplicate seeds 'about' as a DRAFT slug (allowed); publishing
+      // The duplicate seeds 'about' as a DRAFT slug (allowed); publishing
       // it into the already-live 'about' collides.
       const dup = await cms.api.pages.duplicateRoot({
         body: {
@@ -506,7 +506,7 @@ describe('nested pages', () => {
           properties: { title: 'Child' },
         },
       });
-      // cms-05: listRoots reflects the PUBLISHED slug, so publish the child.
+      // listRoots reflects the PUBLISHED slug, so publish the child.
       await cms.api.pages.publishBranch({
         body: { rootId: child.rootId, branchId: child.branchId },
       });
@@ -710,7 +710,7 @@ describe('nested pages', () => {
         },
       });
 
-      // cms-05: moveRoot validates against the LIVE slug set (roots.slug), so both
+      // moveRoot validates against the LIVE slug set (roots.slug), so both
       // must be published for the conflict to exist.
       for (const c of [childA, childB]) {
         await cms.api.pages.publishBranch({
@@ -765,7 +765,7 @@ describe('nested pages', () => {
           properties: {},
         },
       });
-      // cms-05: the draft rename is not live yet…
+      // The draft rename is not live yet…
       let result = await db.execute(
         /* sql */ `SELECT slug FROM cms.roots WHERE id = '${root.rootId}'`,
       );
@@ -788,7 +788,7 @@ describe('nested pages', () => {
         body: { slug: 'page', properties: { title: 'Page' } },
       });
 
-      // cms-05: updateRoot returns the normalized DRAFT slug.
+      // updateRoot returns the normalized DRAFT slug.
       const upd = await cms.api.pages.updateRoot({
         body: {
           rootId: root.rootId,
@@ -975,7 +975,7 @@ describe('nested pages', () => {
           properties: { title: 'Installation' },
         },
       });
-      // cms-05: listRoots paths are built from the PUBLISHED slug chain (roots.slug).
+      // listRoots paths are built from the PUBLISHED slug chain (roots.slug).
       for (const r of [parent, child]) {
         await cms.api.pages.publishBranch({
           body: { rootId: r.rootId, branchId: r.branchId },

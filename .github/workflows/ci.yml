@@ -9,7 +9,7 @@ on:
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   # Only cancel superseded PR runs; never cancel a main-branch run mid-flight, so
-  # every merged commit gets a CI verdict (ci-06).
+  # every merged commit gets a CI verdict.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:

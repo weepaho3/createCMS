@@ -1361,7 +1361,7 @@ describe('getRootHistory', () => {
     expect(commit.parents).toEqual([]);
     expect(commit.branch).toBe('main');
     expect(commit.isPublished).toBe(false);
-    // createdAt is a Date, like every other list endpoint (ret-15), not an ISO string.
+    // createdAt is a Date, like every other list endpoint, not an ISO string.
     expect(commit.createdAt).toBeInstanceOf(Date);
   });
 

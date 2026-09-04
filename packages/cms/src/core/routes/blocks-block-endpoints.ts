@@ -205,7 +205,7 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
             ...(properties as Record<string, unknown> | undefined),
           };
 
-          // cms-04: reject nonexistent image asset / reference ids at write time.
+          // Reject nonexistent image asset / reference ids at write time.
           await assertPropertyReferencesExist(tx, type, blockProps);
 
           const newChildrenArray = [...(parentVersion.children ?? [])];
@@ -223,7 +223,7 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
             rootId,
             branchId,
             parentCommitId: oldHeadId,
-            // cms-18: optional optimistic-concurrency head precondition. Field
+            // Optional optimistic-concurrency head precondition. Field
             // added to the create-block body schema by the schema-builders; read
             // defensively so this file is self-contained.
             expectedHeadCommitId: (
@@ -998,7 +998,7 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
             properties,
             message,
             fallbackMessage: `Update ${type} block ${blockId}`,
-            // cms-18: optional optimistic-concurrency head precondition. The
+            // Optional optimistic-concurrency head precondition. The
             // field is added to the update-block body schema by the
             // schema-builders; read it defensively so this file is self-
             // contained (undefined when the schema has not yet added it).
@@ -1266,7 +1266,7 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
               assertPlacementAllowed(placementIndex, child.type, parentType);
           }
 
-          // cms-04: validate image/reference ids on every block being written
+          // Validate image/reference ids on every block being written
           // (created or updated). Collect all ids across the diff first, then
           // validate with ONE asset query + ONE roots query per distinct
           // collection — instead of two-plus queries per block serialized

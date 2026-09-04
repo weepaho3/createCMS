@@ -220,7 +220,7 @@ export function buildBlocksContext<TDef extends CollectionWithName>(
           : input.targetSlug;
       }
 
-      // cms-05: the slug is VERSIONED — seed it as the new root version's draft
+      // The slug is VERSIONED — seed it as the new root version's draft
       // `__slug`, NOT onto roots.slug (which stays null until this root is first
       // published). Drafts may collide, so there is no write-time uniqueness
       // check here; publish enforces it (PUBLISH_SLUG_CONFLICT).
@@ -260,7 +260,7 @@ export function buildBlocksContext<TDef extends CollectionWithName>(
         versions,
       });
 
-      // cms-05: `slug` is the DRAFT slug just seeded; `path` is a PUBLISHED
+      // `slug` is the DRAFT slug just seeded; `path` is a PUBLISHED
       // concern (roots.slug is still null), so it is undefined until this root is
       // published and the slug materializes.
       return {
@@ -330,7 +330,7 @@ export function buildBlocksContext<TDef extends CollectionWithName>(
     };
   }
 
-  // cms-04: write-time existence check for `image` and `reference` property
+  // Write-time existence check for `image` and `reference` property
   // values. Zod validates only the SHAPE (both are stored as strings); it cannot
   // confirm the id actually resolves. Without this, a nonexistent asset id or
   // reference rootId is silently stored and only surfaces as a 404 at render.
@@ -477,7 +477,7 @@ export function buildBlocksContext<TDef extends CollectionWithName>(
       message: string | undefined;
       fallbackMessage: string;
       verifyType: (storedType: string) => void;
-      // Optimistic-concurrency precondition (cms-18); undefined → unchecked.
+      // Optimistic-concurrency precondition; undefined → unchecked.
       expectedHeadCommitId?: string;
     },
   ) {
@@ -517,7 +517,7 @@ export function buildBlocksContext<TDef extends CollectionWithName>(
 
     input.verifyType(currentVersion.type);
 
-    // cms-04: only the incoming patch values are new, so validate just those
+    // Only the incoming patch values are new, so validate just those
     // (nulls are deletes — skipped inside the helper).
     await assertPropertyReferencesExist(
       tx,

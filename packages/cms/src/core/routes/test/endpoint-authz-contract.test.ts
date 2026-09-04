@@ -49,13 +49,11 @@ const EXPECTED: Record<string, Record<string, Expected>> = {
     resolveTree: { permissionResource: 'block', operation: 'read' },
     moveBlock: { permissionResource: 'block', operation: 'update' },
     deleteBlock: { permissionResource: 'block', operation: 'delete' },
-    // duplicateBlock is now child-duplication only — the root-mode branch
-    // (the privileged root:create act) was removed, not relabeled, so
-    // block:create stays correct and exhaustive. See Plan 002.
+    // duplicateBlock is child-duplication only; root-mode duplication lives
+    // in duplicateRoot, so block:create is exhaustive here.
     duplicateBlock: { permissionResource: 'block', operation: 'create' },
-    // Relabeled root:create (was block:create) — duplicateRoot forces root
-    // mode (no parent) and mints a NEW top-level root, the same privileged
-    // act createRoot guards as 'root'. See Plan 003 Step 3.
+    // duplicateRoot mints a new top-level root, the same privileged act
+    // createRoot guards as 'root'.
     duplicateRoot: { permissionResource: 'root', operation: 'create' },
     updateBlock: { permissionResource: 'block', operation: 'update' },
     updateRoot: { permissionResource: 'root', operation: 'update' },
@@ -192,9 +190,8 @@ const EXPECTED: Record<string, Record<string, Expected>> = {
     createSignedUpload: { permissionResource: 'media', operation: 'create' },
     uploadAssets: { permissionResource: 'media', operation: 'create' },
     replaceAsset: { permissionResource: 'media', operation: 'update' },
-    // routes/media.ts — the browser-callable replace flow (Plan 007 part A).
-    // Same permissionResource/operation as replaceAsset: a weaker label on
-    // either half would reintroduce a bypass class already closed once.
+    // The browser-callable replace flow must carry the same label as
+    // replaceAsset; a weaker label on either half reopens the bypass.
     createSignedReplace: { permissionResource: 'media', operation: 'update' },
     commitReplace: { permissionResource: 'media', operation: 'update' },
   },
@@ -260,9 +257,8 @@ const EXPECTED: Record<string, Record<string, Expected>> = {
     setReleaseItems: { permissionResource: 'release', operation: 'update' },
     getRelease: { permissionResource: 'release', operation: 'read' },
     listReleases: { permissionResource: 'release', operation: 'read' },
-    // Relabeled publication:create (was release:update) — publishRelease runs
-    // the same publishBranchInTx machinery publications.publishBranch guards
-    // as 'publication':'create'. See Plan 002.
+    // publishRelease runs the same publishBranchInTx machinery that
+    // publications.publishBranch guards as 'publication':'create'.
     publishRelease: { permissionResource: 'publication', operation: 'create' },
   },
 

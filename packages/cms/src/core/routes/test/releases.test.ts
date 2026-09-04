@@ -246,9 +246,7 @@ describe('releases — atomic multi-page publish', () => {
       body: { title: 'Launch' },
     });
 
-    // branchId belongs to a different root — assertItemExists must reject
-    // this, and the failure must roll back the whole transaction (no
-    // half-written item).
+    // branchId belongs to a different root, so the insert must roll back.
     await expect(
       cms.api.releases.addToRelease({
         body: {

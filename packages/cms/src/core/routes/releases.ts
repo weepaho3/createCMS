@@ -457,7 +457,7 @@ export function createReleaseEndpoints(
               branchId: item.branchId,
               actor,
               branchPolicy,
-              // cms-05: materialize the versioned draft slug on publish. A
+              // Materialize the versioned draft slug on publish. A
               // PUBLISH_SLUG_CONFLICT here rolls the whole atomic release back.
               slugConfig: def?.slug as ResolvedSlugConfig | undefined,
               // A release publishes WITHIN the caller's request scope, so forward

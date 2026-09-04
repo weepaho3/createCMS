@@ -181,8 +181,8 @@ export async function runScheduledPass(
             collection: rootRow.collection,
           };
         }
-        // Slug must be read BEFORE unpublishBranchInTx removes the publication
-        // row, so the revalidation event can still report the page's path.
+        // Read the slug before unpublishBranchInTx removes the publication row;
+        // the revalidation event needs it for the page's path.
         const [pubRow] = await tx
           .select({ slug: roots.slug })
           .from(roots)

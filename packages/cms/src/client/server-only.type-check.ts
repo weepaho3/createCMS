@@ -1,4 +1,4 @@
-// Type-only assertions for plan 008's client-visibility filter (ts-08).
+// Type-only assertions for the client-visibility filter.
 // Checked by `check-types`, never executed. Confirms:
 //   1-2. `media.uploadAssets` / `media.replaceAsset` are ABSENT from the
 //        client's type surface — both take a `Blob`/`ArrayBuffer` body that
@@ -62,8 +62,7 @@ export const _commitReplaceCallable = () =>
     },
   });
 
-// 4. Server-side `cms.api.media.replaceAsset` / `uploadAssets` are untouched
-// — the regression guard for the trap (plan 008 STOP condition #1).
+// 4. Server-side `cms.api.media.replaceAsset` / `uploadAssets` stay callable.
 export const _serverReplaceAssetCallable = () =>
   cms.api.media.replaceAsset({
     body: {

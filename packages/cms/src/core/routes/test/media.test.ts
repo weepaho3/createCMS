@@ -1,10 +1,6 @@
 import { eq, inArray, sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 
-// Real multi-tenant scoping infra (not modified — only imported) to exercise
-// the genuine scope guard on the new signed-replace endpoints (Plan 007
-// part A), the same way plugins/multi-tenant/test/multi-tenant.test.ts does
-// for createSignedUpload.
 import { setupMultiTenantTestCMS } from '../../../plugins/multi-tenant/test/utils/cms';
 import { assetFolders, assets } from '../../../schema';
 import { setupTestCMS } from '../../../test-utils/cms';
@@ -2163,8 +2159,7 @@ describe('media.replaceAsset', () => {
 });
 
 // ============================================================================
-// createSignedReplace / commitReplace (browser-callable replace — Plan 007
-// part A)
+// createSignedReplace / commitReplace (browser-callable replace)
 // ============================================================================
 
 describe('media.createSignedReplace', () => {
@@ -2407,7 +2402,7 @@ describe('media.commitReplace', () => {
       },
     });
 
-    // No PUT to signed.signedUrl — the object was never uploaded.
+    // No PUT to signed.signedUrl, so the object was never uploaded.
     await expect(
       cms.api.media.commitReplace({
         body: {
@@ -2559,10 +2554,10 @@ describe('media.commitReplace', () => {
 });
 
 // ============================================================================
-// Object reclaim after a replace (Plan 007 part B)
+// Object reclaim after a replace
 // ============================================================================
 
-describe('replaced asset object reclaim (Plan 007 part B)', () => {
+describe('replaced asset object reclaim', () => {
   let cleanup: (() => Promise<void>) | undefined;
   afterEach(async () => {
     await cleanup?.();
@@ -2748,10 +2743,10 @@ describe('replaced asset object reclaim (Plan 007 part B)', () => {
 });
 
 // ============================================================================
-// Upload error detail does not reach the client (Plan 007 part C)
+// Upload error detail does not reach the client
 // ============================================================================
 
-describe('upload error detail (Plan 007 part C)', () => {
+describe('upload error detail', () => {
   const pixel = new Uint8Array([
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
   ]);
