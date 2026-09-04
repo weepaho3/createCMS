@@ -2394,6 +2394,168 @@ describe('media.commitReplace', () => {
     expect(tombstone.archivedAt).not.toBeNull();
     expect(tombstone.id).not.toBe(orig.id);
   });
+
+  it('rejects a commit whose object was never uploaded (UPLOAD_FAILED)', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const [orig] = await insertAsset(db, 'logo.png');
+
+    const signed = await cms.api.media.createSignedReplace({
+      body: {
+        assetId: orig.id,
+        file: { name: 'logo-v2.png', size: 8, type: 'image/png' },
+      },
+    });
+
+    // No PUT to signed.signedUrl — the object was never uploaded.
+    await expect(
+      cms.api.media.commitReplace({
+        body: {
+          assetId: orig.id,
+          objectKey: signed.objectKey,
+          slug: signed.slug,
+          mimeType: 'image/png',
+          size: 8,
+        },
+      }),
+    ).rejects.toThrow(/did not complete/i);
+  });
+
+  it('rejects a disallowed MIME type on commit', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const [orig] = await insertAsset(db, 'logo.png');
+
+    const signed = await cms.api.media.createSignedReplace({
+      body: {
+        assetId: orig.id,
+        file: { name: 'logo-v2.png', size: 8, type: 'image/png' },
+      },
+    });
+
+    await fetch(signed.signedUrl, {
+      method: 'PUT',
+      headers: { 'content-type': 'image/png', 'content-length': '8' },
+      body: new Uint8Array(8),
+    });
+
+    await expect(
+      cms.api.media.commitReplace({
+        body: {
+          assetId: orig.id,
+          objectKey: signed.objectKey,
+          slug: signed.slug,
+          mimeType: 'application/x-msdownload',
+          size: 8,
+        },
+      }),
+    ).rejects.toThrow(/disallowed MIME type/i);
+
+    const [row] = await db.select().from(assets).where(eq(assets.id, orig.id));
+    expect(row.objectKey).toBe('logo.png');
+  });
+
+  it('rejects a size that does not match the uploaded object', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const [orig] = await insertAsset(db, 'logo.png');
+
+    const signed = await cms.api.media.createSignedReplace({
+      body: {
+        assetId: orig.id,
+        file: { name: 'logo-v2.png', size: 8, type: 'image/png' },
+      },
+    });
+
+    await fetch(signed.signedUrl, {
+      method: 'PUT',
+      headers: { 'content-type': 'image/png', 'content-length': '8' },
+      body: new Uint8Array(8),
+    });
+
+    await expect(
+      cms.api.media.commitReplace({
+        body: {
+          assetId: orig.id,
+          objectKey: signed.objectKey,
+          slug: signed.slug,
+          mimeType: 'image/png',
+          size: 999,
+        },
+      }),
+    ).rejects.toThrow(/does not match the uploaded object/i);
+
+    const [row] = await db.select().from(assets).where(eq(assets.id, orig.id));
+    expect(row.objectKey).toBe('logo.png');
+  });
+
+  it('rejects an objectKey that does not derive from slug', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const [orig] = await insertAsset(db, 'logo.png');
+
+    const signed = await cms.api.media.createSignedReplace({
+      body: {
+        assetId: orig.id,
+        file: { name: 'logo-v2.png', size: 8, type: 'image/png' },
+      },
+    });
+
+    await fetch(signed.signedUrl, {
+      method: 'PUT',
+      headers: { 'content-type': 'image/png', 'content-length': '8' },
+      body: new Uint8Array(8),
+    });
+
+    await expect(
+      cms.api.media.commitReplace({
+        body: {
+          assetId: orig.id,
+          objectKey: 'some-other-key',
+          slug: signed.slug,
+          mimeType: 'image/png',
+          size: 8,
+        },
+      }),
+    ).rejects.toThrow(/objectKey does not match the slug/i);
+
+    const [row] = await db.select().from(assets).where(eq(assets.id, orig.id));
+    expect(row.objectKey).toBe('logo.png');
+  });
+
+  it('rejects a mismatched content type between the declared mimeType and the uploaded object', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const [orig] = await insertAsset(db, 'logo.png');
+
+    const signed = await cms.api.media.createSignedReplace({
+      body: {
+        assetId: orig.id,
+        file: { name: 'logo-v2.png', size: 8, type: 'image/png' },
+      },
+    });
+
+    await fetch(signed.signedUrl, {
+      method: 'PUT',
+      headers: { 'content-type': 'image/png', 'content-length': '8' },
+      body: new Uint8Array(8),
+    });
+
+    await expect(
+      cms.api.media.commitReplace({
+        body: {
+          assetId: orig.id,
+          objectKey: signed.objectKey,
+          slug: signed.slug,
+          mimeType: 'image/jpeg',
+          size: 8,
+        },
+      }),
+    ).rejects.toThrow(/does not match the uploaded object/i);
+
+    const [row] = await db.select().from(assets).where(eq(assets.id, orig.id));
+    expect(row.objectKey).toBe('logo.png');
+  });
 });
 
 // ============================================================================

@@ -54,10 +54,10 @@ export async function setupTestS3(): Promise<TestS3> {
         );
         return;
       }
-      res.writeHead(
-        200,
-        obj.contentType ? { 'content-type': obj.contentType } : {},
-      );
+      res.writeHead(200, {
+        'content-length': String(obj.body.length),
+        ...(obj.contentType ? { 'content-type': obj.contentType } : {}),
+      });
       res.end(method === 'HEAD' ? undefined : obj.body);
       return;
     }

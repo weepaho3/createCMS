@@ -38,6 +38,7 @@ import {
   buildObjectKey,
   buildPublicObjectUrl,
   buildVariantSlug,
+  headObject,
   putObject,
   S3Error,
   signPutObject,
@@ -1468,6 +1469,9 @@ export function createMediaEndpoints(
      * @param size - The uploaded file's declared byte size.
      * @returns `{ asset }` with the same fields a `listAssets` row carries.
      * @throws ASSET_NOT_FOUND if the asset was archived / left scope since `createSignedReplace` (TOCTOU).
+     * @throws FILE_TOO_LARGE / INVALID_FILE_TYPE / TOO_MANY_FILES if mimeType/size fail the media config.
+     * @throws VALIDATION_ERROR if objectKey does not derive from slug, or the declared mimeType/size does not match the uploaded object.
+     * @throws UPLOAD_FAILED if no object exists at objectKey (the PUT to the signed URL never completed).
      * @example await cmsClient.media.commitReplace({ body: { assetId, objectKey, slug, mimeType, size } })
      */
     commitReplace: createCMSEndpoint(
@@ -1488,6 +1492,54 @@ export function createMediaEndpoints(
         const { assetId, objectKey, slug, mimeType, size } = ctx.body;
 
         const now = new Date();
+
+        // Re-run the same config validation createSignedReplace applied to
+        // the declared file — the request body is fully attacker-controlled
+        // at this point, so a disallowed type or an out-of-range size must
+        // be rejected before it is ever written onto the row.
+        validateFiles([{ name: slug, size, type: mimeType }], {
+          maxFiles,
+          maxFileSize,
+          allowedMimeTypes,
+        });
+
+        // objectKey must be exactly what createSignedReplace would have
+        // issued for this slug — otherwise the caller could repoint the
+        // asset at an arbitrary key already present in the bucket.
+        if (objectKey !== buildObjectKey(slug)) {
+          throw new APIError(400, {
+            code: 'VALIDATION_ERROR',
+            message:
+              'objectKey does not match the slug issued by createSignedReplace',
+          });
+        }
+
+        // Confirm the object was actually PUT to the signed URL, and that
+        // its real content length/type match what the caller declared.
+        const head = await headObject(getS3Client(), {
+          bucket: bucketName,
+          key: objectKey,
+        });
+        if (!head) {
+          throw new CMSError('UPLOAD_FAILED', {
+            message: `No object at "${objectKey}"; the PUT to the signed URL did not complete`,
+          });
+        }
+        if (head.contentLength !== null && head.contentLength !== size) {
+          throw new APIError(400, {
+            code: 'VALIDATION_ERROR',
+            message: `Declared size ${size} does not match the uploaded object (${head.contentLength})`,
+          });
+        }
+        if (
+          head.contentType !== null &&
+          head.contentType.split(';')[0].trim() !== mimeType
+        ) {
+          throw new APIError(400, {
+            code: 'VALIDATION_ERROR',
+            message: `Declared MIME type "${mimeType}" does not match the uploaded object ("${head.contentType}")`,
+          });
+        }
 
         // `.value` is set inside the transaction ONLY on the TOCTOU-rollback
         // branch, so the outer catch below knows to tombstone the just-PUT NEW
