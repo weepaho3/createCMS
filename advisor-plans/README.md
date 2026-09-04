@@ -19,7 +19,7 @@ every command is taken from `CONTRIBUTING.md` and `packages/cms/package.json`.
 
 | Plan | Title                                                                                   | Priority | Effort | Depends on | Status |
 | ---- | --------------------------------------------------------------------------------------- | -------- | ------ | ---------- | ------ |
-| 001  | Make the search index follow merges, publishes, root duplication and branch reverts     | P1       | S      | —          | TODO   |
+| 001  | Make the search index follow merges, publishes, root duplication and branch reverts     | P1       | S      | —          | DONE (worktree commit 2a6d50e, cherry-picked) |
 | 005  | Keep a committed mutation from failing when post-commit revalidation throws; fix slug-map leak | P1 | S      | —          | TODO   |
 | 002  | Fire revalidation when scheduled publishes and releases go live                         | P1       | M      | 005 (soft) | TODO   |
 | 003  | Verify the uploaded object before `media.commitReplace` repoints an asset               | P1       | M      | —          | TODO   |
