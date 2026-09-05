@@ -220,7 +220,9 @@ export function findTable(
       .join('\n');
     throw new Error(
       `Expected exactly 1 table with header [${match.header.join(' | ')}]` +
-        `${match.heading === undefined ? '' : ` under heading "${match.heading}"`}` +
+        (match.heading === undefined
+          ? ''
+          : ` under heading "${match.heading}"`) +
         `, found ${hits.length}. Tables on this page:\n${seen}`,
     );
   }

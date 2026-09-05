@@ -16,7 +16,7 @@ const minimalDir = path.resolve(dirname, '../../../../../examples/minimal');
 
 // These assertions load the REAL i18n plugin from dist — skip cleanly on an
 // unbuilt checkout rather than reporting a false failure.
-let built = false;
+let built: boolean;
 try {
   createRequire(path.join(minimalDir, '_')).resolve(
     '@createcms/core/plugins/i18n',

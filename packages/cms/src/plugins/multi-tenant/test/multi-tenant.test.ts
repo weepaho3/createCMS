@@ -749,7 +749,7 @@ describe('multiTenant redirect isolation', () => {
     const rows = await db.execute(
       sql`SELECT count(*)::int AS n FROM cms.redirects WHERE source_path = '/pages/x' AND tenant_slug = 'acme'`,
     );
-    expect(Number((rows.rows[0] as { n: number }).n)).toBe(2);
+    expect(Number((rows.rows[0] as { n: string }).n)).toBe(2);
   });
 });
 

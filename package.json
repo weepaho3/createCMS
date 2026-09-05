@@ -14,7 +14,7 @@
     "check-types": "turbo check-types",
     "clean": "turbo clean",
     "format": "oxfmt --write",
-    "lint": "oxlint",
+    "lint": "oxlint --type-aware",
     "release": "changeset publish",
     "test": "turbo test",
     "test:scripts": "node --test scripts/linear-release-attribution.test.mjs",
@@ -27,6 +27,7 @@
     "@types/node": "^22.20.1",
     "oxfmt": "^0.61.0",
     "oxlint": "1.81.0",
+    "oxlint-tsgolint": "7.0.2001",
     "turbo": "^2.10.8"
   },
   "packageManager": "bun@1.2.23"

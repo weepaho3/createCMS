@@ -1,7 +1,6 @@
 import * as React from 'react';
 
 import type { UseRenderComponentProps } from '../../use-render';
-import type { InsertTarget } from './insert';
 
 import { useRender } from '../../use-render';
 import { useEditorSelector } from '../binding';
@@ -10,6 +9,7 @@ import { placementOf, useBlockActions } from '../hooks';
 import { canPlace } from '../schema';
 import { useCanvasContext } from './context';
 import {
+  type InsertTarget,
   parentTypeOf,
   resolveInsertAt,
   type InsertOrientation,
@@ -136,16 +136,14 @@ export function CanvasBlockToolbar({
   const rect = useBlockRect(selected ?? '');
   const view = useHostViewBox(canvas.host);
 
-  if (
-    !canvas.host ||
-    canvas.interactive === 'none' ||
-    selected === null ||
-    rect === null
-  ) {
-    return null;
-  }
+  const active =
+    Boolean(canvas.host) &&
+    canvas.interactive !== 'none' &&
+    selected !== null &&
+    rect !== null;
+  const frameRect = rect ?? { x: 0, y: 0, width: 0, height: 0 };
 
-  const vis = visibleIntersection(rect, view) ?? rect;
+  const vis = visibleIntersection(frameRect, view) ?? frameRect;
 
   const alignStyle: React.CSSProperties =
     align === 'center'
@@ -156,8 +154,8 @@ export function CanvasBlockToolbar({
 
   const fitsOutside =
     side === 'bottom'
-      ? overlayChromeFitsBelow(rect, view, offset)
-      : overlayChromeFitsAbove(rect, view, offset);
+      ? overlayChromeFitsBelow(frameRect, view, offset)
+      : overlayChromeFitsAbove(frameRect, view, offset);
 
   const sideStyle: React.CSSProperties = fitsOutside
     ? side === 'bottom'
@@ -187,7 +185,8 @@ export function CanvasBlockToolbar({
     },
   });
 
-  const frame = fitsOutside ? rect : vis;
+  if (!active) return null;
+  const frame = fitsOutside ? frameRect : vis;
 
   return (
     <div
@@ -243,18 +242,22 @@ export function CanvasInsertButton({
   const actions = useBlockActions(target?.parentId ?? '');
   const placementIndex = placementOf(ctx.schema);
 
-  if (target === null) return null;
-  if (placement === 'between' && target.variant !== 'line') return null;
-  if (placement === 'container' && target.variant !== 'box') return null;
+  const active =
+    target !== null &&
+    (placement === 'between'
+      ? target.variant === 'line'
+      : target.variant === 'box');
 
-  const pType = parentTypeOf(nodes, rootId, target.parentId);
+  const pType = target ? parentTypeOf(nodes, rootId, target.parentId) : null;
   const disabled =
+    target !== null &&
     type !== undefined &&
     (pType === null ||
       !canPlace(placementIndex, type, pType) ||
       nodes[target.parentId] === undefined);
 
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (target === null) return;
     onClick?.(event);
     if (event.defaultPrevented) return;
     if (type) {
@@ -269,7 +272,7 @@ export function CanvasInsertButton({
 
   const allowedTypes = [...actions.allowedChildTypes];
 
-  return useRender<'button', InsertButtonState>({
+  const element = useRender<'button', InsertButtonState>({
     defaultTagName: 'button',
     render,
     props: {
@@ -279,8 +282,8 @@ export function CanvasInsertButton({
       ...rest,
       style: {
         position: 'absolute',
-        left: target.rect.x + target.rect.width / 2,
-        top: target.rect.y + target.rect.height / 2,
+        left: target ? target.rect.x + target.rect.width / 2 : 0,
+        top: target ? target.rect.y + target.rect.height / 2 : 0,
         transform: 'translate(-50%, -50%)',
         pointerEvents: 'auto',
         ...style,
@@ -289,9 +292,11 @@ export function CanvasInsertButton({
     },
     state: {
       editorInsertButton: true,
-      orientation: target.orientation,
-      emptyContainer: target.variant === 'box',
+      orientation: target?.orientation ?? 'horizontal',
+      emptyContainer: target?.variant === 'box',
       allowedChildTypes: allowedTypes,
     },
   });
+  if (!active) return null;
+  return element;
 }

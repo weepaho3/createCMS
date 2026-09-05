@@ -169,12 +169,12 @@ function settlePendingMisses(batch: PendingResolve[]): void {
 }
 
 function clearResolveState(
-  sidecarRef: React.MutableRefObject<Map<string, BlockTreeNode>>,
-  linkCacheRef: React.MutableRefObject<Map<string, ResolvedLink>>,
-  stringCacheRef: React.MutableRefObject<Map<string, string>>,
-  pendingRef: React.MutableRefObject<PendingResolve[]>,
-  timerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>,
-  resolveEpochRef: React.MutableRefObject<number>,
+  sidecarRef: React.RefObject<Map<string, BlockTreeNode>>,
+  linkCacheRef: React.RefObject<Map<string, ResolvedLink>>,
+  stringCacheRef: React.RefObject<Map<string, string>>,
+  pendingRef: React.RefObject<PendingResolve[]>,
+  timerRef: React.RefObject<ReturnType<typeof setTimeout> | null>,
+  resolveEpochRef: React.RefObject<number>,
 ): void {
   const pending = pendingRef.current;
   pendingRef.current = [];
@@ -362,7 +362,7 @@ export function useCmsDocument(
     rootIdRef.current = rootId;
     branchIdRef.current = branchId;
     void reload();
-  }, [reload]);
+  }, [reload, rootId, branchId]);
 
   React.useEffect(() => {
     return () => {
@@ -380,7 +380,7 @@ export function useCmsDocument(
       meta?: { message?: string; force?: boolean },
     ): Promise<void> => {
       let tree: BlockTreeNode;
-      let force = false;
+      let force: boolean;
       if (isForceArg(treeOrForce)) {
         const pending = pendingForceTreeRef.current;
         if (!pending) {

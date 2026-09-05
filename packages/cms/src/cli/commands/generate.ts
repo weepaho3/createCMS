@@ -253,8 +253,7 @@ export function registerGenerateCommand(cli: CAC) {
         const forced = options?.force === true || options?.yes === true;
 
         if (!forced && (await fileExists(outputPath))) {
-          const interactive =
-            process.stdin.isTTY === true && process.stdout.isTTY === true;
+          const interactive = process.stdin.isTTY && process.stdout.isTTY;
 
           if (!interactive) {
             // Non-interactive (CI): fail loudly instead of leaving a stale

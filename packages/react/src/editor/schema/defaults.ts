@@ -52,8 +52,11 @@ export function defaultValuesFor(
       case 'list':
         out[key] = [];
         break;
-      default:
-        // date, image, reference, link: no valid neutral value, stay absent.
+      case 'date':
+      case 'image':
+      case 'reference':
+      case 'link':
+        // No valid neutral value, the key stays absent.
         break;
     }
   }

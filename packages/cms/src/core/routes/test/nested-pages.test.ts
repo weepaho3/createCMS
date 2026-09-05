@@ -333,7 +333,7 @@ describe('nested pages', () => {
       const rows = await db.execute(
         sql`SELECT count(*)::int AS n FROM cms.roots WHERE slug = 'about'`,
       );
-      expect(Number((rows.rows[0] as { n: number }).n)).toBe(2);
+      expect(Number((rows.rows[0] as { n: string }).n)).toBe(2);
     });
 
     it('duplicateBlock into a colliding slug is rejected at PUBLISH', async () => {

@@ -18,6 +18,7 @@ import { newId } from '../../../utils/nanoid';
 // runtime keeps the import dynamic so Node resolves it at execution time.
 const _upstashRedisId = ['@upstash', 'redis'].join('/');
 const _importUpstashRedis = () =>
+  // oxlint-disable-next-line typescript/no-implied-eval
   new Function('id', 'return import(id)')(_upstashRedisId) as Promise<any>;
 
 const aggregationsTable: TableDefinition = {

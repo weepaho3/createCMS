@@ -148,7 +148,7 @@ export const UserNavDemo = ({
 }: UserNavProps) => {
   // Use mock session
   const session = mockSession;
-  const [isPending, setIsPending] = useState(Boolean(simulatePending));
+  const [isPending, setIsPending] = useState(simulatePending);
 
   useEffect(() => {
     if (!simulatePending) return;

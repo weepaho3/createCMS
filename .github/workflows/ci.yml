@@ -39,11 +39,13 @@ jobs:
         with:
           bun-version-file: package.json # single source of truth: packageManager
 
-      - name: Cache bun
+      - name: Cache bun & turbo
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-lint-${{ hashFiles('bun.lock') }}
+          path: |
+            ~/.bun/install/cache
+            .turbo
+          key: ${{ runner.os }}-lint-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-lint-
 
@@ -52,6 +54,12 @@ jobs:
 
       - name: Format
         run: bunx oxfmt --check
+
+      # The type-aware rules resolve the workspace packages through their
+      # built `dist` types; without the build every import from
+      # `@createcms/*` is an error type.
+      - name: Build packages
+        run: bunx turbo run build --filter='./packages/*'
 
       - name: Lint
         run: bun run lint

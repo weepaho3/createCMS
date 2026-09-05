@@ -104,13 +104,15 @@ export function useC15tConsentBridge(
   const { consents, hasConsented } = c15t;
   // `key` is the stringified mapped decision: the effect re-pushes only when
   // that changes, not on every render (c15t's `consents` is a fresh ref each
-  // render). It captures the current consents/client/mapping via closure.
-  const key = hasConsented
-    ? JSON.stringify(consentModeFromC15t(consents, mapping))
-    : '';
+  // render). The decision holds only string signals, so the JSON round trip
+  // is lossless.
+  const key =
+    hasConsented && consents
+      ? JSON.stringify(consentModeFromC15t(consents, mapping))
+      : '';
 
   useEffect(() => {
-    if (!hasConsented || !consents) return;
-    client.consent.setConsent(consentModeFromC15t(consents, mapping));
-  }, [hasConsented, key]);
+    if (key === '') return;
+    client.consent.setConsent(JSON.parse(key) as Partial<ConsentState>);
+  }, [client, key]);
 }

@@ -115,8 +115,7 @@ export type _optionalValue = Expect<
 // --- TreeOf -----------------------------------------------------------------
 type ExpectedTree = InferBlockTreeNode<
   NonNullable<Pages['blocks']>,
-  Pages['root']['properties'],
-  'raw'
+  Pages['root']['properties']
 >;
 export type _treeIsInfer = Expect<MutuallyAssignable<TreeOf<Pages>, ExpectedTree>>;
 export type _treeIsBlockTreeNode = Expect<

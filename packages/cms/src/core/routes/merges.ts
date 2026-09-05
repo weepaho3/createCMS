@@ -2251,7 +2251,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
           const updatePromises = resolutions.map((r) => {
             const conflict = conflictMap.get(r.conflictId)!;
 
-            let resolvedVersionId: string | null = null;
+            let resolvedVersionId: string | null;
             if (r.resolution === 'source') {
               resolvedVersionId = conflict.sourceVersionId;
             } else if (r.resolution === 'target') {

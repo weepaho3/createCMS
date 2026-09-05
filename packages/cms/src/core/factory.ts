@@ -92,8 +92,7 @@ type CollectionEndpointKey = keyof ReturnType<
   typeof createCollectionEndpoints<
     CollectionWithName & { blocks: Record<string, AnyBlockDefinition> }
   >
-> &
-  string;
+>;
 
 export type CMSEndpointKey<TPlugins extends CMSPlugin[] = []> =
   | CollectionEndpointKey
@@ -190,8 +189,7 @@ type EndpointCaller<E> =
     infer Query,
     any,
     infer R,
-    infer Meta,
-    any
+    infer Meta
   >
     ? (AreEndpointOptionsOptional<Body, Query> extends true
         ? (

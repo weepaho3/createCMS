@@ -107,10 +107,11 @@ function renderNode(
     <Component
       key={node.blockId}
       properties={display}
-      children={allChildren}
       blockId={node.blockId}
       node={node}
       edit={edit}
-    />
+    >
+      {allChildren}
+    </Component>
   );
 }

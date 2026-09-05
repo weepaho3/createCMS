@@ -130,7 +130,7 @@ export function i18n<const L extends readonly string[]>(config: I18nConfig<L>) {
   const universe = new Set<string>(config.languages as readonly string[]);
   if (!universe.has(config.defaultLanguage as string)) {
     throw new Error(
-      `i18n: defaultLanguage "${String(config.defaultLanguage)}" must be one of languages [${config.languages.join(', ')}]`,
+      `i18n: defaultLanguage "${config.defaultLanguage}" must be one of languages [${config.languages.join(', ')}]`,
     );
   }
   // Catch fallback-config typos at construction (like defaultLanguage): keys

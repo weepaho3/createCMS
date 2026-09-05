@@ -161,7 +161,7 @@ async function startTest(
   await cms.api.abTest.updateTest({ body: { testId, status: 'running' } });
 }
 
-function findByType(node: any, type: string): any | undefined {
+function findByType(node: any, type: string): any {
   if (node?.type === type) return node;
   for (const c of node?.children ?? []) {
     const hit = findByType(c, type);

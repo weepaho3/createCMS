@@ -12,7 +12,7 @@ export function createHookRunner(
   afterHooks: CMSAfterHook[],
 ) {
   function matchesHook(
-    hook: { action: string | '*'; collection?: string },
+    hook: { action: '*' | (string & {}); collection?: string },
     action: string,
     collection: string,
   ): boolean {

@@ -432,10 +432,8 @@ export default function CreateCMSLogoAnimation({
       raf = requestAnimationFrame(frame);
     };
 
-    // The two-arg then(start, start) already handles fulfillment AND
-    // rejection; the rule only recognizes the .catch() form.
-    // oxlint-disable-next-line promise/catch-or-return
-    if (document.fonts?.ready) document.fonts.ready.then(start, start);
+    // then(start, start) handles fulfillment and rejection alike.
+    if (document.fonts) document.fonts.ready.then(start, start);
     else start();
 
     return () => {

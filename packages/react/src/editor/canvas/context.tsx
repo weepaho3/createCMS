@@ -25,7 +25,7 @@ export type CanvasContextValue = CanvasResolveContextValue & {
   interactive: CanvasInteractive;
   dragging: boolean;
   editing: boolean;
-  inlineCaret: React.MutableRefObject<InlineCaretPoint | null>;
+  inlineCaret: React.RefObject<InlineCaretPoint | null>;
 };
 
 export const CanvasContext = React.createContext<CanvasContextValue | null>(

@@ -82,8 +82,7 @@ export type RootPropsOf<S extends AnyEditorSchema> = BlockPropsOf<S, 'root'>;
 /** The tree of `S` as `getBlockTree` delivers it (raw mode). */
 export type TreeOf<S extends AnyEditorSchema> = InferBlockTreeNode<
   AsBlocks<BlocksOf<S>>,
-  S['root']['properties'],
-  'raw'
+  S['root']['properties']
 >;
 
 /** The raw property values of a spec record (`NonNullable` because all-optional records infer `… | undefined`). */
@@ -266,7 +265,7 @@ export function createEditor<const S extends AnyEditorSchema>(
 ): EditorFactory<S> {
   const { schema } = options;
 
-  function assertSchema(hookName: string): void {
+  function useSchemaGuard(hookName: string): void {
     const ctx = useEditorContext(hookName);
     if (ctx.schema !== schema) {
       throw new Error(
@@ -297,7 +296,7 @@ export function createEditor<const S extends AnyEditorSchema>(
       render: (tree: TreeOf<S>) => React.ReactNode;
     },
   ): React.JSX.Element {
-    assertSchema('Preview');
+    useSchemaGuard('Preview');
     const { render, ...rest } = props;
     return (
       <EditorPreview
@@ -315,7 +314,7 @@ export function createEditor<const S extends AnyEditorSchema>(
       ) => Promise<string | Blob>;
     },
   ): React.JSX.Element {
-    assertSchema('FramePreview');
+    useSchemaGuard('FramePreview');
     const { render, ...rest } = props;
     return (
       <EditorFramePreview
@@ -336,15 +335,15 @@ export function createEditor<const S extends AnyEditorSchema>(
     Preview,
     FramePreview,
     useEditor() {
-      assertSchema('useEditor');
+      useSchemaGuard('useEditor');
       return useEditor() as TypedEditorApi<S>;
     },
     useBlock(id) {
-      assertSchema('useBlock');
+      useSchemaGuard('useBlock');
       return useAnyBlock(id) as BlockHandleOf<S> | null;
     },
     useField(ref, key) {
-      assertSchema('useField');
+      useSchemaGuard('useField');
       return useAnyField(ref.id, key) as FieldHandleOf<
         S,
         typeof ref.type,
@@ -352,35 +351,35 @@ export function createEditor<const S extends AnyEditorSchema>(
       >;
     },
     useChildren(parentId) {
-      assertSchema('useChildren');
+      useSchemaGuard('useChildren');
       return useChildren(parentId) as readonly ChildRefOf<S>[];
     },
     useBlockActions(id) {
-      assertSchema('useBlockActions');
+      useSchemaGuard('useBlockActions');
       return useBlockActions(id) as TypedBlockActions<S>;
     },
     useSelection(userId) {
-      assertSchema('useSelection');
+      useSchemaGuard('useSelection');
       return useSelection(userId);
     },
     useHistory() {
-      assertSchema('useHistory');
+      useSchemaGuard('useHistory');
       return useHistory();
     },
     useEditorKeyboard(scopeRef, options) {
-      assertSchema('useEditorKeyboard');
+      useSchemaGuard('useEditorKeyboard');
       return useEditorKeyboard(scopeRef, options);
     },
     useSave() {
-      assertSchema('useSave');
+      useSchemaGuard('useSave');
       return useSave();
     },
     useDirty() {
-      assertSchema('useDirty');
+      useSchemaGuard('useDirty');
       return useDirty();
     },
     usePalette() {
-      assertSchema('usePalette');
+      useSchemaGuard('usePalette');
       return usePalette() as TypedPaletteItems<S>;
     },
     types: {} as EditorTypes<S>,

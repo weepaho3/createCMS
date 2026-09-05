@@ -39,7 +39,13 @@ export function encodeFlagQuery(
   }
   const rawWithRoot = query[WITH_ROOT_KEY];
   if (rawWithRoot !== undefined) {
-    out = { ...out, [WITH_ROOT_KEY]: String(rawWithRoot) };
+    out = {
+      ...out,
+      [WITH_ROOT_KEY]:
+        typeof rawWithRoot === 'string'
+          ? rawWithRoot
+          : JSON.stringify(rawWithRoot),
+    };
   }
   return out;
 }

@@ -2,8 +2,7 @@ import * as React from 'react';
 
 import type { UseRenderComponentProps } from '../../use-render';
 import type { EditorStoreState } from '../store';
-import type { InsertTarget } from './insert';
-import type { InsertOrientation, InsertVariant } from './insert';
+import type { InsertTarget, InsertOrientation, InsertVariant } from './insert';
 
 import { composeRefs, useRender } from '../../use-render';
 import { useEditorSelector } from '../binding';
@@ -604,9 +603,7 @@ export function CanvasDropIndicator({
   const session = useDragSessionSnapshot();
   const target = useDropTargetSnapshot();
 
-  if (session === null || target === null) return null;
-
-  return useRender<'div', DropIndicatorState>({
+  const element = useRender<'div', DropIndicatorState>({
     defaultTagName: 'div',
     render,
     props: {
@@ -614,10 +611,10 @@ export function CanvasDropIndicator({
       'aria-hidden': true,
       style: {
         position: 'absolute',
-        left: target.rect.x,
-        top: target.rect.y,
-        width: target.rect.width,
-        height: target.rect.height,
+        left: target?.rect.x,
+        top: target?.rect.y,
+        width: target?.rect.width,
+        height: target?.rect.height,
         boxSizing: 'border-box',
         pointerEvents: 'none',
         ...style,
@@ -625,11 +622,13 @@ export function CanvasDropIndicator({
     },
     state: {
       editorDropIndicator: true,
-      orientation: target.orientation,
-      variant: target.variant,
-      kind: session.kind,
+      orientation: target?.orientation ?? 'horizontal',
+      variant: target?.variant ?? 'line',
+      kind: session?.kind ?? 'new',
     },
   });
+  if (session === null || target === null) return null;
+  return element;
 }
 
 type DragPreviewState = {
@@ -715,15 +714,10 @@ export function CanvasDragPreview({
     };
   }, [canvas, dnd, host, pointer, session]);
 
-  // Pointer snapshots are host-relative absolute coordinates, so the
-  // preview positions itself only inside a Canvas.Root surface.
-  if (canvas === null) return null;
-  if (session === null) return null;
+  const width = session?.kind === 'move' && moveRect ? moveRect.width : 80;
+  const height = session?.kind === 'move' && moveRect ? moveRect.height : 40;
 
-  const width = session.kind === 'move' && moveRect ? moveRect.width : 80;
-  const height = session.kind === 'move' && moveRect ? moveRect.height : 40;
-
-  return useRender<'div', DragPreviewState>({
+  const element = useRender<'div', DragPreviewState>({
     defaultTagName: 'div',
     render,
     props: {
@@ -743,9 +737,13 @@ export function CanvasDragPreview({
     },
     state: {
       editorDragPreview: true,
-      kind: session.kind,
+      kind: session?.kind ?? 'new',
     },
   });
+  // Pointer snapshots are host-relative absolute coordinates, so the
+  // preview positions itself only inside a Canvas.Root surface.
+  if (canvas === null || session === null) return null;
+  return element;
 }
 
 export function CanvasDndEffects() {
