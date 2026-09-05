@@ -6,7 +6,6 @@ import type { UseRenderComponentProps } from '../../use-render';
 import type { CanvasContextValue, InlineCaretPoint } from './context';
 import type { CanvasComponents } from './map';
 import type { Measurer } from './measurer';
-import type { CanvasResolve, ResolveKind } from './resolve';
 
 import { composeRefs, useRender } from '../../use-render';
 import { useEditorSelector } from '../binding';
@@ -25,7 +24,13 @@ import {
   type CanvasSessionContextValue,
 } from './provider';
 import { renderStoreTree } from './renderer';
-import { createResolveCache, readResolved, type ResolveCache } from './resolve';
+import {
+  type CanvasResolve,
+  type ResolveKind,
+  createResolveCache,
+  readResolved,
+  type ResolveCache,
+} from './resolve';
 
 const subscribeNoop = () => () => {};
 

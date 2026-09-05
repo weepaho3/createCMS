@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import type * as React from 'react';
 
 import { createGenerator } from 'fumadocs-typescript';
 import { AutoTypeTable } from 'fumadocs-typescript/ui';
@@ -16,11 +17,18 @@ import { COPY } from '@/lib/launch-copy';
 import { getPageImage, source } from '@/lib/source';
 import { getMDXComponents } from '@/mdx-components';
 
+const generator = createGenerator();
+
+function DocsAutoTypeTable(
+  props: Omit<React.ComponentProps<typeof AutoTypeTable>, 'generator'>,
+) {
+  return <AutoTypeTable {...props} generator={generator} />;
+}
+
 export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   const params = await props.params;
   const page = source.getPage(params.slug);
   if (!page) notFound();
-  const generator = createGenerator();
 
   const MDX = page.data.body;
 
@@ -33,9 +41,7 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
           components={getMDXComponents({
             // this allows you to link to other pages with relative file paths
             a: createRelativeLink(source, page),
-            AutoTypeTable: (props) => (
-              <AutoTypeTable {...props} generator={generator} />
-            ),
+            AutoTypeTable: DocsAutoTypeTable,
             TypeTable,
           })}
         />

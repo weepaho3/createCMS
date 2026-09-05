@@ -9,7 +9,7 @@ export type EditorScrollToOptions = ScrollIntoViewOptions & {
 export function prefersReducedMotion(): boolean {
   return (
     typeof window !== 'undefined' &&
-    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
   );
 }
 

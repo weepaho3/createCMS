@@ -827,7 +827,7 @@ describe('A/B Test Analytics', () => {
   it('postgres adapter dedupes by row id (idempotent ingestion)', async () => {
     const { db } = await createTestCMS();
     const adapter = postgresAnalytics();
-    adapter.init?.(db);
+    await adapter.init?.(db);
 
     const event = {
       id: 'abe_fixed_idempotency_key',
@@ -849,7 +849,7 @@ describe('A/B Test Analytics', () => {
   it('postgres adapter mints a fresh id for a blank id (no silent drop)', async () => {
     const { db } = await createTestCMS();
     const adapter = postgresAnalytics();
-    adapter.init?.(db);
+    await adapter.init?.(db);
 
     // Two distinct events that both arrive with id "" must both persist; a
     // naive `event.id ?? mint` would write one row then swallow the rest.
@@ -1418,7 +1418,7 @@ describe('A/B Test trackingId guard', () => {
     // returns early (foreign root), so it never reads tenant-a's blocks and the
     // failure is a generic not-found, not a trackingId leak.
     setTenant('tenant-b');
-    let message = '';
+    let message: string;
     try {
       await cms.api.pages.publishBranch({
         body: {

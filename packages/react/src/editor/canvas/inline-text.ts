@@ -66,6 +66,8 @@ export function caretRangeAtPoint(
       range.collapse(true);
       return range;
     }
+    // Safari before 18 only implements this deprecated predecessor.
+    // oxlint-disable-next-line typescript/no-deprecated
     const legacy = caretDoc.caretRangeFromPoint?.(x, y);
     if (legacy) {
       legacy.collapse(true);

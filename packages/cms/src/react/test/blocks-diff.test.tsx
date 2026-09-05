@@ -336,7 +336,7 @@ describe('ghost nodes and tracking', () => {
     useEffect(() => {
       fire('click', { label });
     }, [fire, label]);
-    return <button>{label}</button>;
+    return <button type="button">{label}</button>;
   }
 
   it('does not wrap deleted ghost nodes in a BlockTracker', () => {

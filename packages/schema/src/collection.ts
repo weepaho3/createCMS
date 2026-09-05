@@ -111,10 +111,7 @@ export type CollectionDefinition<
   branchProtection?: Partial<BranchProtectionConfig>;
 };
 
-export type AnyCollectionDefinition = CollectionDefinition<
-  Record<string, BlockProperty>,
-  Record<string, AnyBlockDefinition>
->;
+export type AnyCollectionDefinition = CollectionDefinition;
 
 export type CollectionWithName = Omit<AnyCollectionDefinition, 'blocks'> & {
   name: string;

@@ -3,9 +3,9 @@
 // entry; the shared chunk inherits `'use client'`, Next.js stubs it on the
 // server, and CMSError throws TypeError on `def.status`. Two files means two
 // chunks. Do not import the generated clone from server code.
-import * as fs from 'fs';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourcePath = path.join(root, 'src/errors-data.ts');

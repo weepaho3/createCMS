@@ -123,6 +123,9 @@ type ActorOf<TCMS> = TCMS extends {
 type KnownNotificationType<TCMS> =
   | NotificationType
   | Extract<keyof PluginMetaOf<TCMS>, string>
+  // `NotificationMetaMap` is an augmentation point: empty (never) until the
+  // app declares its own notification types.
+  // oxlint-disable-next-line typescript/no-redundant-type-constituents
   | Extract<keyof NotificationMetaMap, string>;
 
 /** The `meta` type for one notification `type`: core, then plugin, then app,

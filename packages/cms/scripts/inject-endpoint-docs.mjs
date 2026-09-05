@@ -8,10 +8,10 @@
 // `<method>: ...Endpoint<...>` property signatures in every emitted declaration,
 // so the doc reaches `cmsClient.<ns>.<method>` autocomplete via the (homomorphic,
 // doc-preserving) EndpointCaller mapping. Idempotent; safe to re-run.
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
-import { fileURLToPath } from 'url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = path.join(root, 'src');

@@ -1,7 +1,7 @@
 'use client';
 
 import { cva } from 'class-variance-authority';
-import Link from 'fumadocs-core/link';
+import DocsLink from 'fumadocs-core/link';
 import { ChevronDown } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 
@@ -115,9 +115,12 @@ function Item({
           {!required && '?'}
         </code>
         {typeDescriptionLink ? (
-          <Link href={typeDescriptionLink} className="underline @max-xl:hidden">
+          <DocsLink
+            href={typeDescriptionLink}
+            className="underline @max-xl:hidden"
+          >
             {type}
-          </Link>
+          </DocsLink>
         ) : (
           <span className="@max-xl:hidden">{type}</span>
         )}

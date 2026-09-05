@@ -97,7 +97,7 @@ export type BlockComponentMap<
  * (tests, stories). Its `field` is an index signature of OPTIONAL entries, so
  * it is assignable to `EditProps<…>` of every block definition.
  */
-export const NO_EDIT: EditProps<Record<string, BlockProperty>> = Object.freeze({
+export const NO_EDIT: EditProps = Object.freeze({
   active: false,
   block: Object.freeze({}),
   field: Object.freeze({}),
@@ -386,7 +386,7 @@ type RenderContext = {
 function previewEdit(
   node: BlockTreeNode,
   blocks: Record<string, AnyBlockDefinition> | undefined,
-): EditProps<Record<string, BlockProperty>> {
+): EditProps {
   const field: Record<string, EditAttrs> = {};
   for (const key of Object.keys(blocks?.[node.type]?.properties ?? {})) {
     field[key] = { 'data-editor-field': key };
@@ -532,11 +532,12 @@ function renderNodeElement(
     <Component
       key={node.blockId}
       properties={node.properties}
-      children={allChildren}
       blockId={node.blockId}
       node={node}
       edit={edit}
-    />
+    >
+      {allChildren}
+    </Component>
   );
 
   // M3c — a FUNCTIONAL block (declared `events`, carried in BlocksMap._events)

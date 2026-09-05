@@ -421,7 +421,7 @@ describe('control resolution', () => {
         controlRender: (p) => (
           <input
             data-testid="r"
-            value={String(p.value ?? '')}
+            value={typeof p.value === 'string' ? p.value : ''}
             onChange={(event) => p.onChange(event.target.value)}
           />
         ),
@@ -780,13 +780,11 @@ describe('Editor.Form autoScroll', () => {
       media: query,
       addEventListener() {},
       removeEventListener() {},
-      addListener() {},
-      removeListener() {},
       dispatchEvent() {
         return false;
       },
       onchange: null,
-    })) as typeof window.matchMedia;
+    })) as unknown as typeof window.matchMedia;
   }
 
   beforeEach(() => {

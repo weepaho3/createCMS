@@ -183,7 +183,7 @@ export function createMeasurer(canvasEl: HTMLElement): Measurer {
   }
 
   const fonts = doc.fonts;
-  if (fonts?.ready) {
+  if (fonts) {
     void fonts.ready.then(() => {
       if (destroyed || fontsSettled) return;
       fontsSettled = true;

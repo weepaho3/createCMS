@@ -32,10 +32,7 @@ export type CacheEntry =
   | { status: 'pending'; promise: Promise<unknown> }
   | { status: 'miss' };
 
-export type ResolveFn = (
-  value: unknown,
-  spec: BlockProperty,
-) => unknown | Promise<unknown> | undefined;
+export type ResolveFn = (value: unknown, spec: BlockProperty) => unknown;
 
 export type ResolveCache = {
   lookup: (

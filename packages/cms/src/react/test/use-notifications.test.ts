@@ -26,7 +26,7 @@ import * as rt from '@upstash/realtime/client';
 
 import { useNotifications } from '../realtime';
 
-type SeededList = Serialize<ListNotificationsResult<Record<string, unknown>>>;
+type SeededList = Serialize<ListNotificationsResult>;
 
 // A full, wire-valid seed row (createdAt as an ISO string, matching the poll's
 // serialized shape).

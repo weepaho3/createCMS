@@ -122,8 +122,12 @@ describe.each(TABLES)(
       ).toEqual([]);
     });
 
-    if (requiredColumn !== undefined) {
-      it('marks the same fields required as the type does', () => {
+    it.runIf(requiredColumn !== undefined)(
+      'marks the same fields required as the type does',
+      () => {
+        if (requiredColumn === undefined) {
+          throw new Error('unreachable: guarded by runIf');
+        }
         const optional = new Map(
           members().map((member) => [member.name, member.optional]),
         );
@@ -147,7 +151,7 @@ describe.each(TABLES)(
           wrong,
           `wrong Required column in the ${label} table in ${CONFIG_MDX}:\n  ${wrong.join('\n  ')}`,
         ).toEqual([]);
-      });
-    }
+      },
+    );
   },
 );

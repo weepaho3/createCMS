@@ -89,13 +89,13 @@ export function getClientConfigSync(options: CMSClientOptions): ClientConfig {
     }
   }
 
-  let pluginsActions: Record<string, unknown> = {};
+  const pluginsActions: Record<string, unknown> = {};
   for (const plugin of plugins) {
     if (plugin.getActions) {
-      pluginsActions = {
-        ...pluginsActions,
-        ...plugin.getActions($fetch, $store, options.baseURL),
-      };
+      Object.assign(
+        pluginsActions,
+        plugin.getActions($fetch, $store, options.baseURL),
+      );
     }
   }
 

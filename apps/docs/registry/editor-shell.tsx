@@ -4,8 +4,8 @@
 // Kbd, Sheet, Button, Dialog, Input, and Collapsible. Do not replace those
 // primitives with custom chrome.
 
-import { Editor } from '@createcms/react/editor';
 import {
+  Editor,
   groupPaletteItems,
   useAnyBlock,
   useBlockActions,

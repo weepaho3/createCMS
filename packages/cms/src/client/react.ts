@@ -152,9 +152,7 @@ export function createCMSClient<TCMS = unknown>(
       console.error('[cms] plugin init failed:', err),
     );
     const replaceAtom = createMediaReplaceAtom(config.$fetch);
-    return buildClient<
-      WithReplaceAsset<CMSClientInstance<TCMS, CMSClientPlugin[]>>
-    >(config, {
+    return buildClient<WithReplaceAsset<CMSClientInstance<TCMS>>>(config, {
       useUploadAssets: makeUseUploadAssets(config),
       useReplaceAsset: makeUseReplaceAsset(replaceAtom),
     });

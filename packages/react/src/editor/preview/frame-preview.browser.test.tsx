@@ -188,7 +188,7 @@ describe('Editor.FramePreview in a real browser', () => {
       return url;
     });
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation((url) => {
-      revoked.push(String(url));
+      revoked.push(url);
       origRevoke(url);
     });
     let n = 0;

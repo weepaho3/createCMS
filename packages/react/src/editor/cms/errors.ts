@@ -62,8 +62,13 @@ function mapTypeMismatchFields(
     if (!issue || typeof issue !== 'object') continue;
     const row = issue as { path?: unknown[]; message?: string };
     const path = Array.isArray(row.path) ? row.path : [];
+    const head = path[0];
     const key =
-      path[0] !== undefined && path[0] !== null ? String(path[0]) : '';
+      typeof head === 'string'
+        ? head
+        : typeof head === 'number'
+          ? String(head)
+          : '';
     const msg = typeof row.message === 'string' ? row.message : '';
     fields.push({ blockId, key, message: msg });
   }

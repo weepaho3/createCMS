@@ -2,8 +2,7 @@
 
 import type { FramePreviewIssue } from '@createcms/react/editor';
 
-import { Editor } from '@createcms/react/editor';
-import { useEditor, useSelection } from '@createcms/react/editor';
+import { Editor, useEditor, useSelection } from '@createcms/react/editor';
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';

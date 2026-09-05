@@ -73,7 +73,7 @@ export function createNotificationService(
         const result = handler(payload);
         if (result instanceof Promise) {
           // Floated async-handler rejection. Tracked so `flush()` waits.
-          track(
+          void track(
             result.catch((err) => {
               console.error('[cms] onNotification handler failed:', err);
             }),

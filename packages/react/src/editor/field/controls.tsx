@@ -29,7 +29,11 @@ export function emptyListElement(
       return false;
     case 'select':
       return of.options[0]?.value ?? '';
-    default:
+    case 'string':
+    case 'richText':
+    case 'date':
+    case 'image':
+    case 'reference':
       return '';
   }
 }

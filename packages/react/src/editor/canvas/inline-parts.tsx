@@ -185,10 +185,9 @@ export function CanvasInlineText({
 
   const fieldRect = syncedFieldRect ?? fallbackRect;
 
-  const storeValue =
-    editing === null
-      ? ''
-      : String(nodes[editing.blockId]?.properties[editing.key] ?? '');
+  const storeRaw =
+    editing === null ? '' : nodes[editing.blockId]?.properties[editing.key];
+  const storeValue = typeof storeRaw === 'string' ? storeRaw : '';
 
   const fieldKind =
     editing === null

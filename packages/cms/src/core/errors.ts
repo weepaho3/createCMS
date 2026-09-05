@@ -14,7 +14,7 @@ type CmsErrorStatus = (typeof CMS_ERRORS)[CMSErrorCode]['status'];
 
 export type CMSAPIError = APIError & {
   body?: {
-    code?: CMSErrorCode | string;
+    code?: CMSErrorCode | (string & {});
   };
 };
 

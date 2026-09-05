@@ -2,9 +2,9 @@
 // entry. If CMS_ERRORS lands in one of those client chunks, Next.js stubs the
 // map on the server and CMSError throws TypeError on `def.status`. Server files
 // must import the map from a chunk that is not a client boundary.
-import * as fs from 'fs';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const dist = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

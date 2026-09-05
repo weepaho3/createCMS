@@ -124,7 +124,7 @@ function BooleanField(props: FieldControlProps<'boolean'>) {
       required={props.required}
       disabled={props.disabled}
       {...fieldAria(props)}
-      onCheckedChange={(checked) => props.onChange(checked === true)}
+      onCheckedChange={(checked) => props.onChange(checked)}
     />
   );
 }
@@ -317,6 +317,7 @@ function MediaField(props: FieldControlProps<'image'>) {
   const [offset, setOffset] = React.useState(0);
   const [assets, setAssets] = React.useState<CmsAssetListItem[]>([]);
   const [hasMore, setHasMore] = React.useState(false);
+  const { onChange } = props;
 
   const loadAssets = React.useCallback(async () => {
     const page = await sources.assets.list({
@@ -341,16 +342,10 @@ function MediaField(props: FieldControlProps<'image'>) {
 
     const uploaded = upload.files.find((file) => file.result?.id);
     if (uploaded?.result?.id) {
-      props.onChange(uploaded.result.id);
+      onChange(uploaded.result.id);
       void loadAssets();
     }
-  }, [
-    loadAssets,
-    props.onChange,
-    upload.error,
-    upload.files,
-    upload.isUploading,
-  ]);
+  }, [loadAssets, onChange, upload.error, upload.files, upload.isUploading]);
 
   const previewUrl = props.value ? assetUrl(props.value) : null;
 

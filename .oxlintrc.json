@@ -16,36 +16,65 @@
   "jsPlugins": [
     { "name": "anti-slop", "specifier": "./tools/oxlint/anti-slop/index.ts" }
   ],
-  // Ruleset rationale (CMS-8): every rule is either satisfied, fixed, or
-  // deliberately off with a reason — zero standing findings is the contract.
-  // `pedantic` was measured at ~1.7k hits on this codebase and rejected: a
-  // ruleset that noisy gets disabled, not followed.
-  "plugins": ["typescript", "unicorn", "oxc", "import", "promise"],
+  // Ruleset rationale: every rule is either satisfied, fixed, or deliberately
+  // off with a reason; zero standing findings is the contract. `pedantic` was
+  // measured at ~1.7k hits on this codebase and rejected: a ruleset that noisy
+  // gets disabled, not followed.
+  "plugins": [
+    "typescript",
+    "unicorn",
+    "oxc",
+    "import",
+    "promise",
+    "react",
+    "vitest"
+  ],
   "categories": {
     "correctness": "error",
-    // Heuristic rules stay warnings for now; flip to "error" once a few
-    // weeks prove them quiet on real changes.
+    // Heuristic rules stay warnings; flip to "error" once a few weeks prove
+    // them quiet on real changes.
     "suspicious": "warn"
   },
   "rules": {
     "eslint/no-unused-vars": "error",
     // `disallowTypeAnnotations: false`: inline `import('...').T` annotations
-    // stay allowed — the type-inference machinery in core/types uses them
-    // deliberately (18 sites); converting them to top-level type imports is
+    // stay allowed; the type-inference machinery in core/types uses them
+    // deliberately (18 sites), and converting them to top-level type imports is
     // a refactor of its own, not a lint fix.
     "typescript/consistent-type-imports": [
       "error",
       { "disallowTypeAnnotations": false }
     ],
-    // The closest type-free approximation of no-floating-promises: a promise
-    // chain must end in catch() or be returned. The codebase's deliberate
-    // fire-and-forget idiom `.catch(console.error)` satisfies it, so hits are
-    // exactly the UNINTENDED cases. Real no-floating-promises needs
-    // typescript-eslint (type-aware) — deliberately not added; oxlint stays
-    // the only linter until that trade-off is decided.
-    "promise/catch-or-return": "error",
+    // Type-aware rules run through oxlint-tsgolint (`oxlint --type-aware`, the
+    // root `lint` script). A chain that ends in `.catch(handler)` counts as
+    // handled, so the deliberate fire-and-forget idiom `.catch(console.error)`
+    // passes no-floating-promises and only unintended floats are reported.
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/switch-exhaustiveness-check": "error",
+    "typescript/no-deprecated": "error",
+    // tsgolint treats `{} as T` as redundant whenever every property of T is
+    // optional, which is exactly the better-call `$Infer: { query: {} as T }`
+    // phantom the routes rely on; its autofix strips those types.
+    "typescript/no-unnecessary-type-assertion": "off",
+    // Flags every narrowing cast (760 hits); the anti-slop chain rule covers
+    // the actionable part and the rest are raw-SQL and better-call boundaries.
+    "typescript/no-unsafe-type-assertion": "off",
+    // Hook results and store handles are closure objects whose methods never
+    // read `this`; destructuring `const { save } = useSave()` is the intended
+    // use.
+    "typescript/unbound-method": "off",
+    // Explicit return types already enforce this; the hits are exhaustive
+    // switches TypeScript proves complete.
+    "typescript/consistent-return": "off",
+    // Single-use type parameters carry literal types into inferred return
+    // types (`createXEndpoints<TDef>(def)`), which the rule cannot see.
+    "typescript/no-unnecessary-type-parameters": "off",
+    // Every hit sorts a string array, which the default comparator handles;
+    // tsgolint 7.0.2001 ignores the rule's `ignoreStringArrays` option.
+    "typescript/require-array-sort-compare": "off",
     // Fire-and-forget then() callbacks returning nothing is the point of the
-    // `.then(...).catch(console.error)` idiom — requiring a return value in
+    // `.then(...).catch(console.error)` idiom; requiring a return value in
     // every then() fights the codebase style without catching bugs.
     "promise/always-return": "off",
     // Conflicts with this repo's own convention: deliberately-unused
@@ -67,6 +96,55 @@
     "unicorn/consistent-function-scoping": "off",
     // Side-effect imports are the point for stylesheets.
     "import/no-unassigned-import": ["error", { "allow": ["**/*.css"] }],
+    // `== null` is the one loose comparison with a defined meaning (null or
+    // undefined) and the codebase uses it on purpose.
+    "eslint/eqeqeq": ["error", "always", { "null": "ignore" }],
+    // Dead code: a value assigned and never read again.
+    "eslint/no-useless-assignment": "error",
+    "import/no-cycle": "error",
+    "import/no-self-import": "error",
+    "import/no-duplicates": "error",
+    // Spreading an accumulator per iteration is quadratic.
+    "oxc/no-accumulating-spread": "error",
+    // Copies inside map() are deliberate: the inputs are caller-owned (schema
+    // definitions, store state, query rows handed back to the caller).
+    "oxc/no-map-spread": "off",
+    "unicorn/prefer-node-protocol": "error",
+    // React: the hook rules are correctness, the rest are the cheap classics.
+    // no-array-index-key stays off: list elements here are identity-less
+    // primitives, so the index is the key.
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "error",
+    "react/jsx-key": "error",
+    "react/no-children-prop": "error",
+    "react/button-has-type": "error",
+    // The automatic JSX runtime (React 19) needs no React in scope.
+    "react/react-in-jsx-scope": "off",
+    // React Compiler-derived rules, still in oxlint's nursery: half of their
+    // hits are test harnesses that set variables outside the component on
+    // purpose, and `exhaustive-effect-dependencies` duplicates
+    // react-hooks/exhaustive-deps. Off until they stabilise.
+    "react/refs": "off",
+    "react/immutability": "off",
+    "react/globals": "off",
+    "react/set-state-in-effect": "off",
+    "react/static-components": "off",
+    "react/hooks": "off",
+    "react/memo-dependencies": "off",
+    "react/exhaustive-effect-dependencies": "off",
+    // Vitest: guard against the accidents (a forgotten `.only`, a skipped or
+    // duplicated test); the style rules below are churn without signal.
+    "vitest/no-focused-tests": "error",
+    "vitest/no-disabled-tests": "error",
+    "vitest/no-identical-title": "error",
+    "vitest/require-mock-type-parameters": "off",
+    "vitest/require-to-throw-message": "off",
+    // Route tests assert inside loops and result branches on purpose.
+    "vitest/no-conditional-expect": "off",
+    // vitest's expect() accepts an assertion message as second argument.
+    "vitest/valid-expect": ["error", { "maxArgs": 2 }],
+    // Matches prose comments that happen to contain "it (".
+    "vitest/no-commented-out-tests": "off",
     // Vendored local plugin (tools/oxlint/anti-slop). Kept rules are the ones
     // whose fix makes a type stricter or a name clearer without touching the
     // public type vocabulary: no assertion chains, no conditional empty-object
@@ -94,6 +172,30 @@
       ],
       "rules": {
         "anti-slop/no-chained-type-assertions": "off"
+      }
+    },
+    {
+      // Compile-only files call hooks from plain probe functions to check
+      // their types; nothing here runs.
+      "files": ["**/*.type-check.ts"],
+      "rules": {
+        "react-hooks/rules-of-hooks": "off"
+      }
+    },
+    {
+      // Without JSX, `createElement(Component, props, children)` cannot pass a
+      // required `children` prop except inside the props object.
+      "files": ["**/*.ts"],
+      "rules": {
+        "react/no-children-prop": "off"
+      }
+    },
+    {
+      // node:test's `test()` returns the runner's promise; awaiting it is not
+      // the caller's job.
+      "files": ["scripts/**"],
+      "rules": {
+        "typescript/no-floating-promises": "off"
       }
     }
   ]

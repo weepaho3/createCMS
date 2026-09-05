@@ -145,7 +145,7 @@ async function startTest(
 }
 
 /** Recursively find the first block of a given type in a resolved tree. */
-function findByType(node: any, type: string): any | undefined {
+function findByType(node: any, type: string): any {
   if (node?.type === type) return node;
   for (const child of node?.children ?? []) {
     const hit = findByType(child, type);

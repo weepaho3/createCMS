@@ -79,7 +79,7 @@ function emitColumn(
 } {
   const columnName = columnDef.columnName ?? toSnakeCase(columnKey);
 
-  let builder = '';
+  let builder: string;
   let needsTsvector = false;
   if (typeof columnDef.type === 'string') {
     if (columnDef.type === 'tsvector') {
@@ -246,7 +246,6 @@ function emitTable(table: ResolvedTable): {
 } {
   let needsSql = false;
   let needsAnyPgColumn = false;
-  let needsForeignKeyImport = false;
   let needsPrimaryKeyImport = false;
   let needsTsvector = false;
 
@@ -268,9 +267,8 @@ function emitTable(table: ResolvedTable): {
   const compositePK = emitCompositePrimaryKey(table);
   if (compositePK) needsPrimaryKeyImport = true;
 
-  const { lines: fkLines, needsForeignKeyImport: needsFK } =
+  const { lines: fkLines, needsForeignKeyImport } =
     emitTableLevelForeignKeys(table);
-  needsForeignKeyImport = needsFK;
 
   const tableFactory = 'cmsSchema.table';
 

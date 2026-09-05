@@ -109,7 +109,7 @@ describe('useRender: render as element', () => {
           style: { color: 'red' },
           'data-testid': 'probe',
         } as React.ComponentPropsWithRef<'button'>,
-        render: <button style={{ background: 'blue' }} />,
+        render: <button type="button" style={{ background: 'blue' }} />,
       });
     }
     const { getByTestId } = render(<StyledProbe />);
@@ -128,7 +128,7 @@ describe('useRender: render as element', () => {
           ref: internalRef,
           'data-testid': 'probe',
         } as React.ComponentPropsWithRef<'button'>,
-        render: <button ref={consumerRef} />,
+        render: <button type="button" ref={consumerRef} />,
       });
     }
     render(<RefProbe />);
@@ -149,7 +149,7 @@ describe('useRender: render as element', () => {
           onClick: internalOnClick,
           'data-testid': 'probe',
         } as React.ComponentPropsWithRef<'button'>,
-        render: <button onClick={consumerOnClick} />,
+        render: <button type="button" onClick={consumerOnClick} />,
       });
     }
     const { getByTestId } = render(<ClickProbe />);
