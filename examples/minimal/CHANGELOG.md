@@ -1,5 +1,12 @@
 # @createcms/example-minimal
 
+## 0.0.22
+
+### Patch Changes
+
+- Updated dependencies [[`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240), [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240), [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240), [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240), [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240), [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240)]:
+  - @createcms/core@0.8.0
+
 ## 0.0.21
 
 ### Patch Changes

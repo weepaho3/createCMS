@@ -5,6 +5,41 @@ description: Release notes for @createcms/core and @createcms/react, generated f
 
 ## @createcms/core
 
+### 0.8.0
+
+#### Minor Changes
+
+- [#142](https://github.com/weepaho3/createCMS/pull/142) [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240) Thanks [@weepaho3](https://github.com/weepaho3)! - Releases are now a scoped table: the multi-tenant plugin adds tenant_slug
+  to cms.releases and every release endpoint applies the scope predicate.
+
+  BREAKING CHANGE: with the multiTenant plugin, run `createcms generate` and
+  apply the migration that adds `releases.tenant_slug` (NOT NULL). Existing
+  release rows need a tenant_slug backfill before the NOT NULL constraint
+  can be applied.
+
+#### Patch Changes
+
+- [#142](https://github.com/weepaho3/createCMS/pull/142) [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240) Thanks [@weepaho3](https://github.com/weepaho3)! - `media.commitReplace` now re-validates the declared MIME type and size
+  against the media config, requires `objectKey` to match the issued `slug`,
+  and confirms the object exists in the bucket with the declared content
+  length and type before repointing the asset row.
+
+- [#142](https://github.com/weepaho3/createCMS/pull/142) [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240) Thanks [@weepaho3](https://github.com/weepaho3)! - Release item mutations check draft status under a row lock inside their
+  transaction, and `duplicateBlock` accepts `expectedHeadCommitId`
+  (`HEAD_MISMATCH` when the branch has advanced), like the other mutations.
+
+- [#142](https://github.com/weepaho3/createCMS/pull/142) [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240) Thanks [@weepaho3](https://github.com/weepaho3)! - `admin.runScheduled` and `releases.publishRelease` now fire `onRevalidate`
+  events for every page they publish or unpublish, matching `publishBranch`
+  and `unpublishBranch`.
+
+- [#142](https://github.com/weepaho3/createCMS/pull/142) [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240) Thanks [@weepaho3](https://github.com/weepaho3)! - Revalidation pre/post-processing failures are logged and no longer turn a
+  committed mutation into an error response. The pre-resolved unpublish slug
+  is passed through the call instead of a process-lifetime map.
+
+- [#142](https://github.com/weepaho3/createCMS/pull/142) [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240) Thanks [@weepaho3](https://github.com/weepaho3)! - Search index now updates after `executeMerge`, `publishBranch`,
+  `duplicateRoot` and `revertBranch`. `revertBranch` additionally returns
+  `rootId`.
+
 ### 0.7.2
 
 #### Patch Changes
@@ -1130,6 +1165,27 @@ createdBy }, ... }` — one uniform shape instead of three divergent keys
 
 
 ## @createcms/react
+
+### 0.3.3
+
+#### Patch Changes
+
+- [#129](https://github.com/weepaho3/createCMS/pull/129) [`237e17e`](https://github.com/weepaho3/createCMS/commit/237e17e61137de0649440198fd15b8324b659dac) Thanks [@weepaho3](https://github.com/weepaho3)! - `Canvas.Provider` lets chrome outside the canvas start drag sessions:
+  `Canvas.PaletteItem`, `Canvas.DragHandle` and `Canvas.DragPreview` now work
+  anywhere under a shared provider (for example a shell sidebar), and each
+  `Canvas.Root` resolves drops while the pointer is over its own surface.
+  Without a provider nothing changes; `Canvas.Root` creates the session itself.
+
+- [#139](https://github.com/weepaho3/createCMS/pull/139) [`1ea00fe`](https://github.com/weepaho3/createCMS/commit/1ea00fe9fcb00a739e643ffa0ccfb8a9eabd3113) Thanks [@weepaho3](https://github.com/weepaho3)! - `Canvas.DragPreview` follows the pointer with `translate3d` on a DOM ref
+  (coalesced to animation frames) instead of re-rendering React on every
+  `pointermove`.
+
+- [#140](https://github.com/weepaho3/createCMS/pull/140) [`b6a71a6`](https://github.com/weepaho3/createCMS/commit/b6a71a6e7a4eb7c7eee32dad55d837ca5592a199) Thanks [@weepaho3](https://github.com/weepaho3)! - `Canvas.DragHandle` anchors to the selected block unless it is inside
+  `Canvas.BlockToolbar`. Overlay chrome pins inside the visible block when
+  `side="top"` would clip under `Canvas.Overlay` `overflow: hidden`, so the
+  first-block drag handle stays hittable. Drag gestures still start while
+  inline text is focused, and the preview keeps `translate3d` updates
+  off-canvas.
 
 ### 0.3.2
 

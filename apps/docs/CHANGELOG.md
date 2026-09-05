@@ -1,5 +1,13 @@
 # docs
 
+## 0.0.5
+
+### Patch Changes
+
+- Updated dependencies [[`237e17e`](https://github.com/weepaho3/createCMS/commit/237e17e61137de0649440198fd15b8324b659dac), [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240), [`1ea00fe`](https://github.com/weepaho3/createCMS/commit/1ea00fe9fcb00a739e643ffa0ccfb8a9eabd3113), [`b6a71a6`](https://github.com/weepaho3/createCMS/commit/b6a71a6e7a4eb7c7eee32dad55d837ca5592a199), [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240), [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240), [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240), [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240), [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240)]:
+  - @createcms/react@0.3.3
+  - @createcms/core@0.8.0
+
 ## 0.0.4
 
 ### Patch Changes
