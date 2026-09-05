@@ -1,5 +1,26 @@
 # @createcms/react
 
+## 0.3.3
+
+### Patch Changes
+
+- [#129](https://github.com/weepaho3/createCMS/pull/129) [`237e17e`](https://github.com/weepaho3/createCMS/commit/237e17e61137de0649440198fd15b8324b659dac) Thanks [@weepaho3](https://github.com/weepaho3)! - `Canvas.Provider` lets chrome outside the canvas start drag sessions:
+  `Canvas.PaletteItem`, `Canvas.DragHandle` and `Canvas.DragPreview` now work
+  anywhere under a shared provider (for example a shell sidebar), and each
+  `Canvas.Root` resolves drops while the pointer is over its own surface.
+  Without a provider nothing changes; `Canvas.Root` creates the session itself.
+
+- [#139](https://github.com/weepaho3/createCMS/pull/139) [`1ea00fe`](https://github.com/weepaho3/createCMS/commit/1ea00fe9fcb00a739e643ffa0ccfb8a9eabd3113) Thanks [@weepaho3](https://github.com/weepaho3)! - `Canvas.DragPreview` follows the pointer with `translate3d` on a DOM ref
+  (coalesced to animation frames) instead of re-rendering React on every
+  `pointermove`.
+
+- [#140](https://github.com/weepaho3/createCMS/pull/140) [`b6a71a6`](https://github.com/weepaho3/createCMS/commit/b6a71a6e7a4eb7c7eee32dad55d837ca5592a199) Thanks [@weepaho3](https://github.com/weepaho3)! - `Canvas.DragHandle` anchors to the selected block unless it is inside
+  `Canvas.BlockToolbar`. Overlay chrome pins inside the visible block when
+  `side="top"` would clip under `Canvas.Overlay` `overflow: hidden`, so the
+  first-block drag handle stays hittable. Drag gestures still start while
+  inline text is focused, and the preview keeps `translate3d` updates
+  off-canvas.
+
 ## 0.3.2
 
 ### Patch Changes

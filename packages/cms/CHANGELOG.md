@@ -1,5 +1,40 @@
 # @createcms/core
 
+## 0.8.0
+
+### Minor Changes
+
+- [#142](https://github.com/weepaho3/createCMS/pull/142) [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240) Thanks [@weepaho3](https://github.com/weepaho3)! - Releases are now a scoped table: the multi-tenant plugin adds tenant_slug
+  to cms.releases and every release endpoint applies the scope predicate.
+
+  BREAKING CHANGE: with the multiTenant plugin, run `createcms generate` and
+  apply the migration that adds `releases.tenant_slug` (NOT NULL). Existing
+  release rows need a tenant_slug backfill before the NOT NULL constraint
+  can be applied.
+
+### Patch Changes
+
+- [#142](https://github.com/weepaho3/createCMS/pull/142) [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240) Thanks [@weepaho3](https://github.com/weepaho3)! - `media.commitReplace` now re-validates the declared MIME type and size
+  against the media config, requires `objectKey` to match the issued `slug`,
+  and confirms the object exists in the bucket with the declared content
+  length and type before repointing the asset row.
+
+- [#142](https://github.com/weepaho3/createCMS/pull/142) [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240) Thanks [@weepaho3](https://github.com/weepaho3)! - Release item mutations check draft status under a row lock inside their
+  transaction, and `duplicateBlock` accepts `expectedHeadCommitId`
+  (`HEAD_MISMATCH` when the branch has advanced), like the other mutations.
+
+- [#142](https://github.com/weepaho3/createCMS/pull/142) [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240) Thanks [@weepaho3](https://github.com/weepaho3)! - `admin.runScheduled` and `releases.publishRelease` now fire `onRevalidate`
+  events for every page they publish or unpublish, matching `publishBranch`
+  and `unpublishBranch`.
+
+- [#142](https://github.com/weepaho3/createCMS/pull/142) [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240) Thanks [@weepaho3](https://github.com/weepaho3)! - Revalidation pre/post-processing failures are logged and no longer turn a
+  committed mutation into an error response. The pre-resolved unpublish slug
+  is passed through the call instead of a process-lifetime map.
+
+- [#142](https://github.com/weepaho3/createCMS/pull/142) [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240) Thanks [@weepaho3](https://github.com/weepaho3)! - Search index now updates after `executeMerge`, `publishBranch`,
+  `duplicateRoot` and `revertBranch`. `revertBranch` additionally returns
+  `rootId`.
+
 ## 0.7.2
 
 ### Patch Changes
