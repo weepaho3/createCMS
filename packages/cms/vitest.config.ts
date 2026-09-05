@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitest/config';
 
 /**
- * Directory-level coverage floors (test-01).
+ * Directory-level coverage floors.
  *
  * Every number was measured from a full `bun run test:coverage` run and then
  * parked a few points BELOW that baseline, so the gate catches a real slide

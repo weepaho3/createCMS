@@ -269,18 +269,24 @@ export function createVariableEndpoints(
           value !== existing.value &&
           revalidationRunner
         ) {
-          const affected = await findPublishedRootsUsingVariable(
-            db,
-            key,
-            scope,
-          );
-          for (const root of affected) {
-            await revalidationRunner.postProcess(
-              'updateBlock',
-              root.collection,
-              { rootId: root.rootId, branchId: root.branchId },
-              null,
+          // The variable is already updated; a revalidation failure must not
+          // fail the request (same contract as the endpoint wrapper).
+          try {
+            const affected = await findPublishedRootsUsingVariable(
+              db,
+              key,
+              scope,
             );
+            for (const root of affected) {
+              await revalidationRunner.postProcess(
+                'updateBlock',
+                root.collection,
+                { rootId: root.rootId, branchId: root.branchId },
+                null,
+              );
+            }
+          } catch (err) {
+            console.error('[cms:revalidate] updateVariable failed:', err);
           }
         }
 

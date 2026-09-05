@@ -81,7 +81,13 @@ export function createSearchHooks(defaultBranchName: string): CMSAfterHook[] {
     createSearchAfterHook('moveBlock', inputRootId, indexRootFn),
     createSearchAfterHook('duplicateBlock', inputRootId, indexRootFn),
     createSearchAfterHook('moveRoot', inputRootId, indexRootFn),
-    createSearchAfterHook('executeMerge', inputRootId, indexRootFn),
+    createSearchAfterHook('executeMerge', resultRootId, indexRootFn),
+    // publishBranch materializes roots.slug, which indexRoot stores in the entry.
+    createSearchAfterHook('publishBranch', inputRootId, indexRootFn),
+    // duplicateRoot mints a new root; its id is only in the result.
+    createSearchAfterHook('duplicateRoot', resultRootId, indexRootFn),
+    // revertBranch's body has only branchId; the handler returns rootId.
+    createSearchAfterHook('revertBranch', resultRootId, indexRootFn),
     // Archiving a root removes it from the working set, so drop its entry.
     createDeleteAfterHook('archiveRoot', 'root', inputRootId),
 

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // The create-after-hooks read the mutation RESULT to find the id to index. When
-// ret-08/ret-12 wrapped createMergeRequest/createCommentMessage returns in an
+// createMergeRequest/createCommentMessage return their entity in an
 // entity envelope, the hooks had to follow (result.mergeRequest.id /
 // result.message.id) — reading the old flat key silently indexed nothing. The
 // existing search tests use reindexSearch (which re-indexes everything), so they
@@ -17,7 +17,7 @@ vi.mock('../index-builder', () => ({
 }));
 
 import { createSearchHooks } from '../hooks';
-import { indexComment, indexMergeRequest } from '../index-builder';
+import { indexComment, indexMergeRequest, indexRoot } from '../index-builder';
 
 const hooks = createSearchHooks('main');
 const hookFor = (action: string) => hooks.find((h) => h.action === action)!;
@@ -30,7 +30,7 @@ async function fire(action: string, input: unknown, result: unknown) {
 describe('search after-hooks extract ids from the wrapped return shapes', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('createMergeRequest indexes result.mergeRequest.id (ret-08 envelope)', async () => {
+  it('createMergeRequest indexes result.mergeRequest.id (envelope)', async () => {
     await fire(
       'createMergeRequest',
       {},
@@ -39,7 +39,7 @@ describe('search after-hooks extract ids from the wrapped return shapes', () => 
     expect(indexMergeRequest).toHaveBeenCalledWith(db, 'mr_1');
   });
 
-  it('createCommentMessage indexes result.message.id (ret-12 envelope)', async () => {
+  it('createCommentMessage indexes result.message.id (envelope)', async () => {
     await fire('createCommentMessage', {}, { message: { id: 'msg_1' } });
     expect(indexComment).toHaveBeenCalledWith(db, 'msg_1');
   });
@@ -50,5 +50,50 @@ describe('search after-hooks extract ids from the wrapped return shapes', () => 
     await fire('createCommentMessage', {}, { id: 'msg_old' });
     expect(indexMergeRequest).not.toHaveBeenCalled();
     expect(indexComment).not.toHaveBeenCalled();
+  });
+});
+
+describe('search after-hooks cover merge, publish, duplicateRoot, revertBranch', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('executeMerge indexes result.rootId', async () => {
+    await fire(
+      'executeMerge',
+      { mergeRequestId: 'mr_1' },
+      { rootId: 'root_1', targetBranchId: 'b_1' },
+    );
+    expect(indexRoot).toHaveBeenCalledWith(db, 'root_1', 'main');
+  });
+
+  it('executeMerge does not index when the result has no rootId', async () => {
+    await fire(
+      'executeMerge',
+      { rootId: 'root_x', mergeRequestId: 'mr_1' },
+      {},
+    );
+    expect(indexRoot).not.toHaveBeenCalled();
+  });
+
+  it('publishBranch indexes input.rootId', async () => {
+    await fire('publishBranch', { rootId: 'root_1', branchId: 'b_1' }, {});
+    expect(indexRoot).toHaveBeenCalledWith(db, 'root_1', 'main');
+  });
+
+  it('duplicateRoot indexes result.rootId', async () => {
+    await fire(
+      'duplicateRoot',
+      {},
+      { mode: 'root', rootId: 'root_new', branchId: 'b', commit: { id: 'c' } },
+    );
+    expect(indexRoot).toHaveBeenCalledWith(db, 'root_new', 'main');
+  });
+
+  it('revertBranch indexes result.rootId', async () => {
+    await fire(
+      'revertBranch',
+      { branchId: 'b_1', targetCommitId: 'c_1' },
+      { rootId: 'root_1', commit: { id: 'c' } },
+    );
+    expect(indexRoot).toHaveBeenCalledWith(db, 'root_1', 'main');
   });
 });

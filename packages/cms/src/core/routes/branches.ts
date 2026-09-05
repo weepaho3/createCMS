@@ -671,7 +671,7 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
      * @param targetCommitId The commit whose snapshot to restore.
      * @param message Optional custom commit message (default: auto-generated).
      * @param createdBy Optional explicit actor id, used only as a fallback when ctx.context.userId is absent; context identity takes precedence.
-     * @returns Object with the commit envelope (id, message, createdAt, createdBy) of the revert commit.
+     * @returns Object with rootId and the commit envelope (id, message, createdAt, createdBy) of the revert commit.
      * @throws BRANCH_NOT_FOUND if the branch does not exist.
      * @throws COMMIT_NOT_FOUND if targetCommitId does not belong to this root.
      * @throws EMPTY_SNAPSHOT if the target commit snapshot is empty.
@@ -788,6 +788,7 @@ export function createBranchEndpoints<TDef extends CollectionWithName>(
             .where(eq(branches.id, branchId));
 
           return {
+            rootId: branch.rootId,
             commit: {
               id: newCommit.id,
               message: newCommit.message,

@@ -38,6 +38,7 @@ import {
   buildObjectKey,
   buildPublicObjectUrl,
   buildVariantSlug,
+  headObject,
   putObject,
   S3Error,
   signPutObject,
@@ -1449,17 +1450,13 @@ export function createMediaEndpoints(
     ),
 
     /**
-     * Repoints an asset's row at a NEW object after the browser has
-     * successfully PUT it to the signed URL from `createSignedReplace` — the
-     * second half of the client-side replace flow. Server-side and atomic
-     * like `replaceAsset` step 6: the row is repointed and the asset's old
-     * variants archived in one transaction, and the superseded slug/objectKey
-     * is tombstoned (a fresh, immediately-archived asset row reusing the OLD
-     * slug/objectKey) so the pruning pass's existing asset-reclaim query picks
-     * it up and deletes the now-unreachable S3 object once the trash window
-     * elapses (Plan 007 part B). If the asset was archived / left scope since
-     * `createSignedReplace` (TOCTOU), the just-PUT NEW object is tombstoned
-     * instead, since no row will ever reference it.
+     * Repoints an asset's row at the new object after the browser has PUT it
+     * to the signed URL from `createSignedReplace`. In one transaction the row
+     * is repointed, the asset's old variants are archived, and the superseded
+     * slug/objectKey is tombstoned (an immediately-archived asset row) so the
+     * pruning pass reclaims the old S3 object after the trash window. If the
+     * asset was archived or left scope since `createSignedReplace`, the new
+     * object is tombstoned instead, since no row will reference it.
      *
      * @param assetId - The asset being replaced (must match the `createSignedReplace` call).
      * @param objectKey - The `objectKey` returned by `createSignedReplace`.
@@ -1468,6 +1465,9 @@ export function createMediaEndpoints(
      * @param size - The uploaded file's declared byte size.
      * @returns `{ asset }` with the same fields a `listAssets` row carries.
      * @throws ASSET_NOT_FOUND if the asset was archived / left scope since `createSignedReplace` (TOCTOU).
+     * @throws FILE_TOO_LARGE / INVALID_FILE_TYPE / TOO_MANY_FILES if mimeType/size fail the media config.
+     * @throws VALIDATION_ERROR if objectKey does not derive from slug, or the declared mimeType/size does not match the uploaded object.
+     * @throws UPLOAD_FAILED if no object exists at objectKey (the PUT to the signed URL never completed).
      * @example await cmsClient.media.commitReplace({ body: { assetId, objectKey, slug, mimeType, size } })
      */
     commitReplace: createCMSEndpoint(
@@ -1488,6 +1488,50 @@ export function createMediaEndpoints(
         const { assetId, objectKey, slug, mimeType, size } = ctx.body;
 
         const now = new Date();
+
+        // The body is client-controlled: re-run the config validation
+        // createSignedReplace applied to the declared file.
+        validateFiles([{ name: slug, size, type: mimeType }], {
+          maxFiles,
+          maxFileSize,
+          allowedMimeTypes,
+        });
+
+        // objectKey must be the key createSignedReplace issues for this slug;
+        // otherwise the caller could repoint the asset at any bucket key.
+        if (objectKey !== buildObjectKey(slug)) {
+          throw new APIError(400, {
+            code: 'VALIDATION_ERROR',
+            message:
+              'objectKey does not match the slug issued by createSignedReplace',
+          });
+        }
+
+        // The object must exist and match the declared length and type.
+        const head = await headObject(getS3Client(), {
+          bucket: bucketName,
+          key: objectKey,
+        });
+        if (!head) {
+          throw new CMSError('UPLOAD_FAILED', {
+            message: `No object at "${objectKey}"; the PUT to the signed URL did not complete`,
+          });
+        }
+        if (head.contentLength !== null && head.contentLength !== size) {
+          throw new APIError(400, {
+            code: 'VALIDATION_ERROR',
+            message: `Declared size ${size} does not match the uploaded object (${head.contentLength})`,
+          });
+        }
+        if (
+          head.contentType !== null &&
+          head.contentType.split(';')[0].trim() !== mimeType
+        ) {
+          throw new APIError(400, {
+            code: 'VALIDATION_ERROR',
+            message: `Declared MIME type "${mimeType}" does not match the uploaded object ("${head.contentType}")`,
+          });
+        }
 
         // `.value` is set inside the transaction ONLY on the TOCTOU-rollback
         // branch, so the outer catch below knows to tombstone the just-PUT NEW
@@ -1571,14 +1615,10 @@ export function createMediaEndpoints(
               .set({ archivedAt: now, updatedAt: now })
               .where(and(...variantConditions));
 
-            // Tombstone the SUPERSEDED slug/objectKey so the pruning pass's
-            // asset reclaim (admin/pruning.ts) finds and deletes the now-
-            // unreachable S3 object — Plan 007 part B. MUST run AFTER the
-            // update above: the live row still held `before.slug`/
-            // `before.objectKey` until that UPDATE ran, and both columns are
-            // globally UNIQUE (core-schema.ts) — inserting this tombstone
-            // first would collide with the still-live row on both indexes and
-            // abort the transaction.
+            // Tombstone the superseded slug/objectKey so the pruning pass
+            // reclaims the old S3 object. Must run after the update above:
+            // both columns are globally unique, so inserting the tombstone
+            // first collides with the still-live row.
             await scopedInsert(
               tx,
               'cms.assets',
@@ -1764,11 +1804,9 @@ export function createMediaEndpoints(
               acl: 'public-read',
             });
           } catch (err) {
-            // Full provider detail (the raw S3 error) stays server-side only —
-            // it must never reach the client (Plan 007 part C). This is the
-            // only place an operator sees it; there is no definition-level
-            // onAPIError hook reachable from a handler-thrown CMSError (see
-            // CMSDefinition['onAPIError']'s doc comment in types/definitions.ts).
+            // The raw S3 error must not reach the client. This log is the only
+            // channel: no definition-level onAPIError hook is reachable from a
+            // handler-thrown CMSError (see CMSDefinition['onAPIError']).
             console.error('[cms:media] upload failed', err);
             const status = err instanceof S3Error ? 500 : 0;
             throw new CMSError('UPLOAD_FAILED', {
@@ -1825,7 +1863,7 @@ export function createMediaEndpoints(
      * are unreachable from the new slug) and tombstones the superseded
      * slug/objectKey — a fresh, immediately-archived asset row reusing the OLD
      * values — so the pruning pass's existing asset-reclaim query deletes the
-     * now-unreachable S3 object once the trash window elapses (Plan 007 part B).
+     * now-unreachable S3 object once the trash window elapses.
      * Returns the updated asset.
      *
      * @param assetId - The asset to replace.
@@ -1916,11 +1954,8 @@ export function createMediaEndpoints(
             acl: 'public-read',
           });
         } catch (err) {
-          // Full provider detail (the raw S3 error) stays server-side only —
-          // it must never reach the client (Plan 007 part C). See the same
-          // note on uploadAssets's catch block for why this console.error is
-          // the only channel: there is no definition-level onAPIError hook
-          // reachable from a handler-thrown CMSError.
+          // The raw S3 error must not reach the client; this log is the only
+          // channel (see the uploadAssets catch block).
           console.error('[cms:media] upload failed', err);
           const status = err instanceof S3Error ? 500 : 0;
           throw new CMSError('UPLOAD_FAILED', {
@@ -1928,12 +1963,10 @@ export function createMediaEndpoints(
           });
         }
 
-        // 6. Atomically repoint the row at the new object, archive the old
-        //    variants (stale bytes, unreachable from the new slug), and
-        //    tombstone the SUPERSEDED slug/objectKey so the pruning pass's
-        //    asset-reclaim query (admin/pruning.ts) finds and deletes the now-
-        //    unreachable S3 object once the trash window elapses (Plan 007
-        //    part B). id, folderId, status, variantOf are unchanged.
+        // 6. Atomically repoint the row, archive the old variants, and
+        //    tombstone the superseded slug/objectKey so the pruning pass
+        //    reclaims the old S3 object. id, folderId, status, variantOf are
+        //    unchanged.
         const now = new Date();
 
         // `.value` is set inside the transaction ONLY on the TOCTOU-rollback

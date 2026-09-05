@@ -140,5 +140,19 @@ export const multiTenantSchema = definePluginSchema<CoreTables>()({
         },
       },
     },
+    // Releases are per-tenant. No DB-unique added; lookup indexed.
+    releases: {
+      columns: {
+        tenantSlug: {
+          type: 'text',
+          notNull: true,
+        },
+      },
+      indexes: {
+        tenantIdx: {
+          columns: ['tenantSlug'],
+        },
+      },
+    },
   },
 });

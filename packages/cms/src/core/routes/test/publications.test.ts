@@ -43,7 +43,7 @@ describe('publishBranch', () => {
     expect(result.publication.commitId).toBe(change.commit.id);
     expect(result.publication.publishedBy).toBe('user-1');
     expect(result.publication.publishedAt).toBeInstanceOf(Date);
-    // branchName is carried on the publish result (ret-22), matching listPublications.
+    // branchName is carried on the publish result, matching listPublications.
     expect(result.publication.branchName).toBe('draft');
 
     const [publication] = await db
@@ -218,7 +218,7 @@ describe('unpublishBranch', () => {
 
     expect(result.rootId).toBe(root.rootId);
     expect(result.branchId).toBe(root.branchId);
-    // The previously-live commit + when it was unpublished (ret-13).
+    // The previously-live commit + when it was unpublished.
     expect(result.unpublishedCommitId).toBe(root.commit.id);
     expect(result.unpublishedAt).toBeInstanceOf(Date);
 
@@ -871,10 +871,10 @@ describe('listPublications', () => {
 });
 
 // ============================================================================
-// cms-05 — slug materialization on publish
+// Slug materialization on publish
 // ============================================================================
 
-describe('cms-05 slug materialization on publish', () => {
+describe('slug materialization on publish', () => {
   const dbSlug = async (db: any, rootId: string): Promise<string | null> => {
     const [r] = await db.select().from(roots).where(eq(roots.id, rootId));
     return r.slug;

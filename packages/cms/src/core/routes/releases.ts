@@ -1,11 +1,13 @@
 import { APIError } from 'better-call';
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 import * as z from 'zod';
 
+import type { RevalidationRunner } from '../revalidation';
 import type { CMSProcedureContext } from '../types';
-import type { ResolvedSlugConfig } from '../types/definitions';
+import type { ResolvedSlugConfig, TableScope } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
 
+import { newId } from '../../utils/nanoid';
 import { resolveBranchPolicy } from '../branch-policy';
 import {
   branches,
@@ -17,6 +19,7 @@ import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
 import { syncAssetsOnPublish } from '../media/discovery';
 import { publishBranchInTx } from '../publish/publish-branch';
+import { scopedInsert } from '../scope';
 
 // ============================================================================
 // Release-specific errors. These domain codes are NOT part of the core
@@ -59,11 +62,14 @@ async function assertItemExists(
   db: DrizzleInstance,
   rootId: string,
   branchId: string,
+  rootScope: TableScope | undefined,
 ): Promise<void> {
   const [root] = await db
     .select({ id: roots.id })
     .from(roots)
-    .where(eq(roots.id, rootId));
+    .where(
+      and(eq(roots.id, rootId), isNull(roots.archivedAt), rootScope?.where),
+    );
   if (!root) throw new CMSError('ROOT_NOT_FOUND');
 
   const [branch] = await db
@@ -73,7 +79,10 @@ async function assertItemExists(
   if (!branch) throw new CMSError('BRANCH_NOT_FOUND');
 }
 
-export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
+export function createReleaseEndpoints(
+  cmsCtx: CMSProcedureContext,
+  revalidationRunner: RevalidationRunner | null = null,
+) {
   const { db } = cmsCtx;
 
   return {
@@ -97,13 +106,24 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
         ),
       },
       async (ctx) => {
-        const [release] = await db
-          .insert(releases)
-          .values({
+        // scopedInsert (raw SQL) so the plugin-injected scope column is set; a
+        // plain Drizzle insert can't carry the plugin-owned column. Re-select via
+        // Drizzle afterwards for the typed (camelCase) row the API returns.
+        const inserted = await scopedInsert(
+          db,
+          'cms.releases',
+          {
+            id: newId('release'),
             title: ctx.body.title,
-            createdBy: ctx.context.userId ?? null,
-          })
-          .returning();
+            created_by: ctx.context.userId ?? null,
+          },
+          ctx.context.scope.releases,
+        );
+        const [release] = await db
+          .select()
+          .from(releases)
+          .where(eq(releases.id, inserted.id))
+          .limit(1);
         return { release };
       },
     ),
@@ -143,18 +163,21 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
       },
       async (ctx) => {
         const { releaseId, rootId, branchId } = ctx.body;
-        await assertDraftRelease(db, releaseId);
-        await assertItemExists(db, rootId, branchId);
+        const scope = ctx.context.scope;
+        return db.transaction(async (tx) => {
+          await assertDraftRelease(tx, releaseId, scope.releases);
+          await assertItemExists(tx, rootId, branchId, scope.roots);
 
-        const [item] = await db
-          .insert(releaseItems)
-          .values({ releaseId, rootId, branchId })
-          .onConflictDoUpdate({
-            target: [releaseItems.releaseId, releaseItems.rootId],
-            set: { branchId },
-          })
-          .returning();
-        return { item };
+          const [item] = await tx
+            .insert(releaseItems)
+            .values({ releaseId, rootId, branchId })
+            .onConflictDoUpdate({
+              target: [releaseItems.releaseId, releaseItems.rootId],
+              set: { branchId },
+            })
+            .returning();
+          return { item };
+        });
       },
     ),
 
@@ -180,17 +203,19 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
       },
       async (ctx) => {
         const { releaseId, rootId } = ctx.body;
-        await assertDraftRelease(db, releaseId);
-        const deleted = await db
-          .delete(releaseItems)
-          .where(
-            and(
-              eq(releaseItems.releaseId, releaseId),
-              eq(releaseItems.rootId, rootId),
-            ),
-          )
-          .returning({ id: releaseItems.id });
-        return { removed: deleted.length > 0 };
+        return db.transaction(async (tx) => {
+          await assertDraftRelease(tx, releaseId, ctx.context.scope.releases);
+          const deleted = await tx
+            .delete(releaseItems)
+            .where(
+              and(
+                eq(releaseItems.releaseId, releaseId),
+                eq(releaseItems.rootId, rootId),
+              ),
+            )
+            .returning({ id: releaseItems.id });
+          return { removed: deleted.length > 0 };
+        });
       },
     ),
 
@@ -228,7 +253,7 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
       },
       async (ctx) => {
         const { releaseId, items } = ctx.body;
-        await assertDraftRelease(db, releaseId);
+        const scope = ctx.context.scope;
 
         // Reject duplicate roots up front — the (releaseId, rootId) unique index
         // would otherwise fail the insert mid-transaction with an opaque DB error.
@@ -241,10 +266,11 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
             });
           }
           seen.add(it.rootId);
-          await assertItemExists(db, it.rootId, it.branchId);
+          await assertItemExists(db, it.rootId, it.branchId, scope.roots);
         }
 
         const result = await db.transaction(async (tx) => {
+          await assertDraftRelease(tx, releaseId, scope.releases);
           await tx
             .delete(releaseItems)
             .where(eq(releaseItems.releaseId, releaseId));
@@ -285,7 +311,12 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
         const [release] = await db
           .select()
           .from(releases)
-          .where(eq(releases.id, ctx.query.releaseId));
+          .where(
+            and(
+              eq(releases.id, ctx.query.releaseId),
+              ctx.context.scope.releases?.where,
+            ),
+          );
         if (!release) throw RELEASE_NOT_FOUND();
 
         const items = await db
@@ -331,9 +362,10 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
       async (ctx) => {
         const limit = ctx.query?.limit ?? 20;
         const offset = ctx.query?.offset ?? 0;
-        const where = ctx.query?.status
-          ? eq(releases.status, ctx.query.status)
-          : undefined;
+        const where = and(
+          ctx.query?.status ? eq(releases.status, ctx.query.status) : undefined,
+          ctx.context.scope.releases?.where,
+        );
 
         const rows = await db
           .select()
@@ -400,12 +432,22 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
         const actor = ctx.context.userId ?? publishedBy ?? 'system';
 
         // Everything below commits or rolls back together — the atomicity guarantee.
-        const synced: { commitId: string; rootId: string }[] = [];
+        const synced: {
+          commitId: string;
+          rootId: string;
+          branchId: string;
+          collection: string;
+        }[] = [];
         const outcome = await db.transaction(async (tx) => {
           const [release] = await tx
             .select()
             .from(releases)
-            .where(eq(releases.id, releaseId))
+            .where(
+              and(
+                eq(releases.id, releaseId),
+                ctx.context.scope.releases?.where,
+              ),
+            )
             .for('update');
           if (!release) throw RELEASE_NOT_FOUND();
           if (release.status !== 'draft') throw RELEASE_NOT_DRAFT();
@@ -444,7 +486,7 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
               branchId: item.branchId,
               actor,
               branchPolicy,
-              // cms-05: materialize the versioned draft slug on publish. A
+              // Materialize the versioned draft slug on publish. A
               // PUBLISH_SLUG_CONFLICT here rolls the whole atomic release back.
               slugConfig: def?.slug as ResolvedSlugConfig | undefined,
               // A release publishes WITHIN the caller's request scope, so forward
@@ -458,7 +500,12 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
               redirectScope: ctx.context.scope.redirects,
             });
             publications.push(publication);
-            synced.push({ commitId, rootId: item.rootId });
+            synced.push({
+              commitId,
+              rootId: item.rootId,
+              branchId: item.branchId,
+              collection: rootRow.collection,
+            });
           }
 
           const [updated] = await tx
@@ -476,6 +523,22 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
             console.error('[cms] release publish asset sync failed:', err),
           );
         }
+        if (revalidationRunner) {
+          for (const s of synced) {
+            await revalidationRunner
+              .fireManual({
+                collection: s.collection,
+                rootId: s.rootId,
+                branchId: s.branchId,
+              })
+              .catch((err) =>
+                console.error(
+                  '[cms] release publish revalidation failed:',
+                  err,
+                ),
+              );
+          }
+        }
 
         return outcome;
       },
@@ -490,13 +553,15 @@ export function createReleaseEndpoints(cmsCtx: CMSProcedureContext) {
  * @throws RELEASE_NOT_FOUND / RELEASE_NOT_DRAFT
  */
 async function assertDraftRelease(
-  db: DrizzleInstance,
+  exec: DrizzleInstance,
   releaseId: string,
+  releaseScope: TableScope | undefined,
 ): Promise<void> {
-  const [release] = await db
+  const [release] = await exec
     .select({ status: releases.status })
     .from(releases)
-    .where(eq(releases.id, releaseId));
+    .where(and(eq(releases.id, releaseId), releaseScope?.where))
+    .for('update');
   if (!release) throw RELEASE_NOT_FOUND();
   if (release.status !== 'draft') throw RELEASE_NOT_DRAFT();
 }

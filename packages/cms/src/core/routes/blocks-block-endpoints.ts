@@ -205,7 +205,7 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
             ...(properties as Record<string, unknown> | undefined),
           };
 
-          // cms-04: reject nonexistent image asset / reference ids at write time.
+          // Reject nonexistent image asset / reference ids at write time.
           await assertPropertyReferencesExist(tx, type, blockProps);
 
           const newChildrenArray = [...(parentVersion.children ?? [])];
@@ -223,7 +223,7 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
             rootId,
             branchId,
             parentCommitId: oldHeadId,
-            // cms-18: optional optimistic-concurrency head precondition. Field
+            // Optional optimistic-concurrency head precondition. Field
             // added to the create-block body schema by the schema-builders; read
             // defensively so this file is self-contained.
             expectedHeadCommitId: (
@@ -885,11 +885,13 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
      * @param targetParentBlockId Parent block for the duplicate.
      * @param targetIndex Index in parent's children.
      * @param message Optional commit message.
+     * @param expectedHeadCommitId Optional optimistic-concurrency precondition; if provided and the branch's current head differs, the write is rejected instead of silently overwriting concurrent changes.
      * @returns Object with `mode` (always `'child'`), `commit` ({ id, message, createdAt, createdBy }), and `blockId` (the new copy's id).
      * @throws BLOCK_NOT_FOUND when source blockId does not exist.
      * @throws BLOCK_ALREADY_DELETED when source block is marked deleted.
      * @throws PARENT_NOT_FOUND when targetParentBlockId does not exist.
      * @throws DUPLICATE_BLOCK_REQUIRES_PARENT when targetParentBlockId is omitted.
+     * @throws HEAD_MISMATCH when expectedHeadCommitId is provided and the branch has advanced since.
      */
     duplicateBlock: createCMSEndpoint(
       `/${collectionName}/duplicateBlock`,
@@ -904,6 +906,7 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
           targetSlug: z.string().optional(),
           targetIndex: z.number().int().min(0).optional(),
           message: z.string().optional(),
+          expectedHeadCommitId: z.string().optional(),
         }),
         metadata: cmsMeta(
           {
@@ -917,6 +920,7 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
                 targetSlug?: string;
                 targetIndex?: number;
                 message?: string;
+                expectedHeadCommitId?: string;
               },
             },
           },
@@ -994,7 +998,7 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
             properties,
             message,
             fallbackMessage: `Update ${type} block ${blockId}`,
-            // cms-18: optional optimistic-concurrency head precondition. The
+            // Optional optimistic-concurrency head precondition. The
             // field is added to the update-block body schema by the
             // schema-builders; read it defensively so this file is self-
             // contained (undefined when the schema has not yet added it).
@@ -1262,7 +1266,7 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
               assertPlacementAllowed(placementIndex, child.type, parentType);
           }
 
-          // cms-04: validate image/reference ids on every block being written
+          // Validate image/reference ids on every block being written
           // (created or updated). Collect all ids across the diff first, then
           // validate with ONE asset query + ONE roots query per distinct
           // collection — instead of two-plus queries per block serialized

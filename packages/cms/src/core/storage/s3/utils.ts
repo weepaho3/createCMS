@@ -123,6 +123,28 @@ export async function deleteObject(
   );
 }
 
+/**
+ * HEADs an object. Returns `null` when the bucket answers 404; throws
+ * `S3Error` on any other non-2xx response.
+ */
+export async function headObject(
+  client: S3Client,
+  params: { bucket: string; key: string },
+): Promise<{
+  contentLength: number | null;
+  contentType: string | null;
+} | null> {
+  const url = `${client.buildBucketUrl(params.bucket)}/${params.key}`;
+  const res = await client.s3.fetch(url, { method: 'HEAD' });
+  if (res.status === 404) return null;
+  await throwS3Error(Promise.resolve(res));
+  const len = res.headers.get('content-length');
+  return {
+    contentLength: len === null ? null : Number(len),
+    contentType: res.headers.get('content-type'),
+  };
+}
+
 export function buildPublicObjectUrl(
   publicBaseUrl: string,
   key: string,

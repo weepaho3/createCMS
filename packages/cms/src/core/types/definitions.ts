@@ -214,6 +214,7 @@ export type ResolvedScope = {
   redirects?: TableScope;
   templates?: TableScope;
   variables?: TableScope;
+  releases?: TableScope;
   /**
    * Plugin-provided reference resolver (i18n translation-group resolution). When
    * absent, callers use core's identity default. Generic — see `ReferenceResolver`.

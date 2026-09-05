@@ -197,7 +197,7 @@ export function createPublicationEndpoints<
             actor,
             branchPolicy,
             scopeWhere: ctx.context.scope.roots?.where,
-            // cms-05: materialize the versioned draft slug on publish.
+            // Materialize the versioned draft slug on publish.
             slugConfig: def.slug as ResolvedSlugConfig | undefined,
             rootScope: ctx.context.scope.roots,
             redirectScope: ctx.context.scope.redirects,
@@ -608,7 +608,7 @@ export function createPublicationEndpoints<
               resolvedRootId,
             );
 
-            // cms-05: public render path — strip the reserved `__slug` draft key
+            // Public render path — strip the reserved `__slug` draft key
             // so it never reaches the rendered tree, variable substitution, or
             // link/reference resolution below.
             const tree = assembleBlockTree(blocks, resolvedRootId, {
@@ -892,7 +892,7 @@ export function createPublicationEndpoints<
             publishedBy: row.published_by,
             publishedAt: parseTimestampOrNull(row.published_at),
             branchName: row.branch_name,
-            // cms-05: strip the reserved `__slug` draft key from the user-facing
+            // Strip the reserved `__slug` draft key from the user-facing
             // root property bag.
             rootProperties: withRootSlug(
               (row.root_properties ?? {}) as Record<string, unknown>,

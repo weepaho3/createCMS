@@ -150,7 +150,7 @@ export function createRootEndpoints<TDef extends CollectionWithName>(
             if (!parent) throw new CMSError('PARENT_ROOT_NOT_FOUND');
           }
 
-          // cms-05: the slug is VERSIONED. It is seeded as the root version's
+          // The slug is VERSIONED. It is seeded as the root version's
           // draft `__slug` (below) and left OFF roots.slug — the global slug
           // stays null until this root is first published. Drafts may collide,
           // so there is no blocking write-time uniqueness check; publish enforces
@@ -356,7 +356,7 @@ export function createRootEndpoints<TDef extends CollectionWithName>(
           (def.root.properties as Record<string, { type?: string }>)[sortBy]
             ?.type === 'number'
         ) {
-          // cms-10: a numeric property must sort as a NUMBER, not as JSONB text
+          // A numeric property must sort as a NUMBER, not as JSONB text
           // (where "10" < "9"). Number properties validate as `z.number()`, so
           // fresh data is always a JSON number or absent. Guard the cast against
           // any non-numeric text (a legacy row, a `string -> number` type change,
@@ -475,7 +475,7 @@ export function createRootEndpoints<TDef extends CollectionWithName>(
             slug: row.slug ?? undefined,
             sortOrder: row.sort_order,
             // JSON column — the one genuinely-dynamic leaf. Strip the reserved
-            // `__slug` draft key (cms-05) so it never leaks into list output;
+            // `__slug` draft key so it never leaks into list output;
             // this raw query bypasses the batchFetch helpers that strip elsewhere.
             properties: withRootSlug(
               (row.properties ?? {}) as Record<string, unknown>,
@@ -662,7 +662,7 @@ export function createRootEndpoints<TDef extends CollectionWithName>(
         const blockId = rootId;
         const slugCfg = def.slug as ResolvedSlugConfig | undefined;
 
-        // cms-05: the slug is VERSIONED — a slug edit is folded into the root
+        // The slug is VERSIONED — a slug edit is folded into the root
         // version's reserved `__slug` property and committed to THIS branch, so
         // it no longer touches roots.slug (the live URL) until publish. Redirects
         // and uniqueness therefore move to the publish path; here we keep only
@@ -694,7 +694,7 @@ export function createRootEndpoints<TDef extends CollectionWithName>(
               properties: patch,
               message,
               fallbackMessage: `Update root block ${blockId}`,
-              // cms-18: optional optimistic-concurrency head precondition (see
+              // Optional optimistic-concurrency head precondition (see
               // updateBlock). Field added to the update-root body schema by the
               // schema-builders; read defensively.
               expectedHeadCommitId: (
@@ -947,8 +947,8 @@ export function createRootEndpoints<TDef extends CollectionWithName>(
 
     /**
      * Lookup a root by its DRAFT slug (and optional parent); returns root summary
-     * if unique. This is a DRAFT read (companion to `getRoot` by id): under cms-05
-     * the slug is versioned, so it matches the per-branch `__slug` stored on the
+     * if unique. This is a DRAFT read (companion to `getRoot` by id): the
+     * slug is versioned, so it matches the per-branch `__slug` stored on the
      * default branch's head root version — NOT the published `roots.slug` (which
      * `getPublishedContent` resolves). An unpublished page is therefore findable by
      * the slug the editor is about to publish. Slugs are normalized if
@@ -1400,7 +1400,7 @@ export function createRootEndpoints<TDef extends CollectionWithName>(
             message: r.message,
             createdBy: r.created_by,
             // A Date, like every other list endpoint (listRoots, listBranches,
-            // comments, approvals) — not an ISO string (ret-15).
+            // comments, approvals) — not an ISO string.
             createdAt: parseTimestamp(r.created_at),
             branch: r.branch_name as string,
             parents,

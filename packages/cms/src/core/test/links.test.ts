@@ -54,7 +54,7 @@ describe('link property type', () => {
     const about = await cms.api.pages.createRoot({
       body: { slug: 'about', properties: { title: 'About' } },
     });
-    // cms-05: internal links resolve to the target's PUBLISHED path.
+    // Internal links resolve to the target's PUBLISHED path.
     await cms.api.pages.publishBranch({
       body: { rootId: about.rootId, branchId: about.branchId },
     });
@@ -112,7 +112,7 @@ describe('link property type', () => {
       },
     });
 
-    // cms-05: a DRAFT slug edit does NOT change the resolved href.
+    // A DRAFT slug edit does NOT change the resolved href.
     await cms.api.pages.updateRoot({
       body: {
         rootId: about.rootId,
@@ -310,7 +310,7 @@ async function seedEmbeddedLink(cms: { api: any }) {
   const about = await cms.api.pages.createRoot({
     body: { slug: 'about', properties: { title: 'About' } },
   });
-  // cms-05: the link target resolves to its PUBLISHED path, so publish `about`.
+  // The link target resolves to its PUBLISHED path, so publish `about`.
   await publishBranch(cms.api.pages, {
     rootId: about.rootId,
     branchId: about.branchId,

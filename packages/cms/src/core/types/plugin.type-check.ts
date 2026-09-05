@@ -1,4 +1,4 @@
-// Type-only assertions for the `definePlugin` authoring helper (ts-03). Checked
+// Type-only assertions for the `definePlugin` authoring helper. Checked
 // by `check-types` (tsc --noEmit over src), not executed. The `@ts-expect-error`
 // directives are self-verifying: if the guarantee regresses, the directive goes
 // unused and tsc fails.

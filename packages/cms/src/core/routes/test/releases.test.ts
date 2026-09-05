@@ -186,4 +186,80 @@ describe('releases — atomic multi-page publish', () => {
       cms.api.releases.publishRelease({ body: { releaseId: release.id } }),
     ).rejects.toThrow(/denied/i);
   });
+
+  it('rejects item mutations on a published release', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/a', properties: { title: 'A' } },
+    });
+    const other = await cms.api.pages.createRoot({
+      body: { slug: '/b', properties: { title: 'B' } },
+    });
+
+    const { release } = await cms.api.releases.createRelease({
+      body: { title: 'Launch' },
+    });
+    await cms.api.releases.addToRelease({
+      body: {
+        releaseId: release.id,
+        rootId: root.rootId,
+        branchId: root.branchId,
+      },
+    });
+    await cms.api.releases.publishRelease({ body: { releaseId: release.id } });
+
+    await expect(
+      cms.api.releases.addToRelease({
+        body: {
+          releaseId: release.id,
+          rootId: other.rootId,
+          branchId: other.branchId,
+        },
+      }),
+    ).rejects.toThrow(/RELEASE_NOT_DRAFT|already published/i);
+
+    await expect(
+      cms.api.releases.removeFromRelease({
+        body: { releaseId: release.id, rootId: root.rootId },
+      }),
+    ).rejects.toThrow(/RELEASE_NOT_DRAFT|already published/i);
+
+    await expect(
+      cms.api.releases.setReleaseItems({
+        body: { releaseId: release.id, items: [] },
+      }),
+    ).rejects.toThrow(/RELEASE_NOT_DRAFT|already published/i);
+  });
+
+  it('addToRelease and removeFromRelease are transactional', async () => {
+    const { cms } = await setupTestCMS();
+
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/a', properties: { title: 'A' } },
+    });
+    const otherRoot = await cms.api.pages.createRoot({
+      body: { slug: '/b', properties: { title: 'B' } },
+    });
+
+    const { release } = await cms.api.releases.createRelease({
+      body: { title: 'Launch' },
+    });
+
+    // branchId belongs to a different root, so the insert must roll back.
+    await expect(
+      cms.api.releases.addToRelease({
+        body: {
+          releaseId: release.id,
+          rootId: root.rootId,
+          branchId: otherRoot.branchId,
+        },
+      }),
+    ).rejects.toThrow();
+
+    const { items } = await cms.api.releases.getRelease({
+      query: { releaseId: release.id },
+    });
+    expect(items).toHaveLength(0);
+  });
 });

@@ -273,21 +273,34 @@ export type RevalidationRunner = {
     action: string,
     collection: string,
     input: Record<string, unknown>,
-  ): Promise<void>;
+  ): Promise<unknown>;
   /**
    * After the endpoint handler + hooks complete, check publication status
-   * and fire onRevalidate if the branch is published.
+   * and fire onRevalidate if the branch is published. `preState` is
+   * whatever `preProcess` returned for this same call (e.g. the
+   * pre-resolved slug for `unpublishBranch`).
    */
   postProcess(
     action: string,
     collection: string,
     input: Record<string, unknown>,
     result: unknown,
+    preState?: unknown,
   ): Promise<void>;
   fireManual(opts: {
     collection: string;
     rootId: string;
     branchId: string;
+  }): Promise<void>;
+  /**
+   * Fires the unpublish event for a page whose publication row is already
+   * gone. `slug` must have been read before the row was deleted.
+   */
+  fireManualUnpublish(opts: {
+    collection: string;
+    rootId: string;
+    branchId: string;
+    slug: string | null;
   }): Promise<void>;
 };
 
@@ -298,7 +311,6 @@ export function createRevalidationRunner<
   config: NormalizedConfig<TCollections>,
   collections?: Record<string, CollectionWithName>,
 ): RevalidationRunner {
-  const preResolvedSlugs = new Map<string, string | null>();
   const reverseRefIndex = collections
     ? buildReverseReferenceIndex(collections)
     : new Map<string, ReferenceEntry[]>();
@@ -468,7 +480,7 @@ export function createRevalidationRunner<
       _collection: string,
       input: Record<string, unknown>,
     ) {
-      if (action !== 'unpublishBranch') return;
+      if (action !== 'unpublishBranch') return undefined;
 
       // For unpublish we must resolve the slug *before* the publication
       // row is deleted by the endpoint handler.
@@ -476,8 +488,9 @@ export function createRevalidationRunner<
       const branchId = input.branchId as string;
       if (rootId && branchId) {
         const pub = await checkPublication(db, rootId, branchId);
-        preResolvedSlugs.set(`${rootId}:${branchId}`, pub?.slug ?? null);
+        return pub?.slug ?? null;
       }
+      return undefined;
     },
 
     async postProcess(
@@ -485,6 +498,7 @@ export function createRevalidationRunner<
       collection: string,
       input: Record<string, unknown>,
       result: unknown,
+      preState?: unknown,
     ) {
       if (action === 'publishBranch') {
         const rootId = input.rootId as string;
@@ -525,9 +539,7 @@ export function createRevalidationRunner<
         const rootId = input.rootId as string;
         const branchId = input.branchId as string;
         if (rootId && branchId) {
-          const key = `${rootId}:${branchId}`;
-          const slug = preResolvedSlugs.get(key) ?? null;
-          preResolvedSlugs.delete(key);
+          const slug = typeof preState === 'string' ? preState : null;
           await buildAndFire(action, collection, rootId, branchId, slug);
           await cascadeRevalidation(action, collection, rootId);
         }
@@ -655,6 +667,21 @@ export function createRevalidationRunner<
         opts.rootId,
         opts.branchId,
         pub.slug,
+      );
+    },
+
+    async fireManualUnpublish(opts) {
+      await buildAndFire(
+        'unpublishBranch',
+        opts.collection,
+        opts.rootId,
+        opts.branchId,
+        opts.slug,
+      );
+      await cascadeRevalidation(
+        'unpublishBranch',
+        opts.collection,
+        opts.rootId,
       );
     },
   };

@@ -1,4 +1,4 @@
-// Type-only assertions proving the currying of `definePluginSchema` (ts-02)
+// Type-only assertions proving the currying of `definePluginSchema`
 // makes the schema DSL actually type-checked. Checked by `check-types`
 // (tsc --noEmit over src), not executed. Each `@ts-expect-error` is
 // self-verifying: if the DSL check regresses, the directive goes unused and

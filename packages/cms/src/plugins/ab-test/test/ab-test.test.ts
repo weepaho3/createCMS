@@ -672,7 +672,7 @@ describe('A/B Test Analytics', () => {
     expect(noTest.rewritePath).toBe(`/ab/${CONTROL_CODE}/landing`);
     expect(noTest.assignCode).toBeNull();
 
-    // FA3b: the render route loads every published variant plus the page-level
+    // The render route loads every published variant plus the page-level
     // A/B descriptor (control branch + test id).
     const content = await cms.api.pages.getPublishedContent({
       query: { slug: '/landing' },

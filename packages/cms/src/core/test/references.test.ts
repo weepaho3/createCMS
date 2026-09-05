@@ -330,7 +330,7 @@ describe('reference field', () => {
     expect(authorBlock!.properties.author).toBe(author.rootId);
   });
 
-  // cms-04: a reference value is validated against the target collection at
+  // A reference value is validated against the target collection at
   // write time, so a nonexistent rootId is rejected instead of silently stored.
   it('rejects a reference pointing at a nonexistent rootId', async () => {
     const { cms } = await setupReferenceCMS();
@@ -708,7 +708,7 @@ describe('reference delete guard (RB4)', () => {
     expect(res.rootId).toBe(reusable.rootId);
   });
 
-  // cms-03: a root embedded inside a `list`-of-`reference` value is indexed into
+  // A root embedded inside a `list`-of-`reference` value is indexed into
   // content_usages exactly like a scalar reference, so the delete guard protects
   // it too. (Before the fix, list references were not indexed and the guard
   // missed them.)

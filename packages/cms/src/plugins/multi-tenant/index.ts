@@ -128,6 +128,10 @@ export function multiTenant() {
             where: sql`"cms"."variables"."tenant_slug" = ${tenantSlug}`,
             insertColumns,
           },
+          releases: {
+            where: sql`"cms"."releases"."tenant_slug" = ${tenantSlug}`,
+            insertColumns,
+          },
         };
       };
 

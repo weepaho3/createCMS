@@ -1229,6 +1229,7 @@ describe('revertBranch', () => {
 
     expect(result.commit.id).not.toBe(first.commit.id);
     expect(result.commit.id).not.toBe(second.commit.id);
+    expect(result.rootId).toBe(root.rootId);
 
     const [newCommit] = await db
       .select()
@@ -1360,7 +1361,7 @@ describe('getRootHistory', () => {
     expect(commit.parents).toEqual([]);
     expect(commit.branch).toBe('main');
     expect(commit.isPublished).toBe(false);
-    // createdAt is a Date, like every other list endpoint (ret-15), not an ISO string.
+    // createdAt is a Date, like every other list endpoint, not an ISO string.
     expect(commit.createdAt).toBeInstanceOf(Date);
   });
 

@@ -1,7 +1,7 @@
 /**
  * Type-level guarantees for `InferBlockProperties` — the block-property value
  * inference the typed content API (createBlock/updateBlock/getBlockTree) is
- * built on (ts-16). Ships nothing; covered by `tsc --noEmit`. A `@ts-expect-error`
+ * built on. Ships nothing; covered by `tsc --noEmit`. A `@ts-expect-error`
  * that stops erroring fails the gate, so these double as regression tests.
  */
 import { defineBlock } from '../define';
@@ -33,7 +33,7 @@ export const _missingRequired: Props = { headline: 'Join' };
 export const _optionalWrongType: Props = { headline: 'Join', active: true, ctaCount: 'two' };
 
 // ---------------------------------------------------------------------------
-// list + multi-reference property inference (cms-03)
+// List + multi-reference property inference
 // ---------------------------------------------------------------------------
 
 const gallery = defineBlock({
@@ -89,7 +89,7 @@ export const _listBadOption: GalleryProps = { tags: [], related: [], sizes: ['xl
 export const _listMissingRequired: GalleryProps = { tags: [], sizes: [] };
 
 // ---------------------------------------------------------------------------
-// declarative constraint fields are accepted on the spec (cms-04)
+// Declarative constraint fields are accepted on the spec
 // ---------------------------------------------------------------------------
 
 const constrained = defineBlock({

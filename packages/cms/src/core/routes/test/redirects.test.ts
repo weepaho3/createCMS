@@ -146,7 +146,7 @@ describe('redirect resolution (R2)', () => {
     const root = await cms.api.pages.createRoot({
       body: { slug: 'foo', properties: { title: 'Foo' } },
     });
-    // cms-05: the slug materializes on publish, so the page is only live at
+    // The slug materializes on publish, so the page is only live at
     // /pages/foo once published.
     await cms.api.pages.publishBranch({
       body: { rootId: root.rootId, branchId: root.branchId },
@@ -187,7 +187,7 @@ describe('redirect resolution (R2)', () => {
     const target = await cms.api.pages.createRoot({
       body: { slug: 'target', properties: { title: 'T' } },
     });
-    // cms-05: publish so the target's slug materializes and its live path resolves.
+    // Publish so the target's slug materializes and its live path resolves.
     await cms.api.pages.publishBranch({
       body: { rootId: target.rootId, branchId: target.branchId },
     });
@@ -241,7 +241,7 @@ describe('redirect resolution (R2)', () => {
         properties: { title: 'C' },
       },
     });
-    // cms-05: publish both so their slugs materialize into the live path chain.
+    // Publish both so their slugs materialize into the live path chain.
     await cms.api.pages.publishBranch({
       body: { rootId: parent.rootId, branchId: parent.branchId },
     });
@@ -439,7 +439,7 @@ describe('redirect CRUD (R3)', () => {
     const target = await cms.api.pages.createRoot({
       body: { slug: 'dest', properties: { title: 'D' } },
     });
-    // cms-05: publish so the page-target's slug materializes and resolves.
+    // Publish so the page-target's slug materializes and resolves.
     await cms.api.pages.publishBranch({
       body: { rootId: target.rootId, branchId: target.branchId },
     });
@@ -560,7 +560,7 @@ describe('redirect CRUD (R3)', () => {
     const target = await cms.api.pages.createRoot({
       body: { slug: 'live', properties: { title: 'L' } },
     });
-    // cms-05: publish so the page-ref's current path materializes.
+    // Publish so the page-ref's current path materializes.
     await cms.api.pages.publishBranch({
       body: { rootId: target.rootId, branchId: target.branchId },
     });
@@ -589,7 +589,7 @@ describe('redirect auto-creation (R4)', () => {
     const root = await cms.api.pages.createRoot({
       body: { slug: 'old-slug', properties: { title: 'P' } },
     });
-    // cms-05: establish the live slug by publishing first.
+    // Establish the live slug by publishing first.
     await cms.api.pages.publishBranch({
       body: { rootId: root.rootId, branchId: root.branchId },
     });
@@ -653,7 +653,7 @@ describe('redirect auto-creation (R4)', () => {
     const root = await cms.api.pages.createRoot({
       body: { slug: 'a', properties: { title: 'P' } },
     });
-    // cms-05: each rename becomes live (and auto-redirects) only when published.
+    // Each rename becomes live (and auto-redirects) only when published.
     const publish = () =>
       cms.api.pages.publishBranch({
         body: { rootId: root.rootId, branchId: root.branchId },
@@ -718,7 +718,7 @@ describe('redirect auto-creation (R4)', () => {
         properties: { title: 'C' },
       },
     });
-    // cms-05: publish so the live path chain exists before archiving. archiveRoot
+    // Publish so the live path chain exists before archiving. archiveRoot
     // still fires its redirect immediately (it reads the live roots.slug).
     await cms.api.pages.publishBranch({
       body: { rootId: parent.rootId, branchId: parent.branchId },
@@ -749,7 +749,7 @@ describe('redirect auto-creation (R4)', () => {
     const y = await cms.api.pages.createRoot({
       body: { parentRootId: x.rootId, slug: 'y', properties: { title: 'Y' } },
     });
-    // cms-05: publish the whole subtree so its live slugs materialize before the
+    // Publish the whole subtree so its live slugs materialize before the
     // move. moveRoot still reparents + redirects immediately (it reads roots.slug).
     for (const p of [a, b, x, y]) {
       await cms.api.pages.publishBranch({
@@ -803,7 +803,7 @@ describe('redirect auto-creation (R4)', () => {
     const x = await cms.api.pages.createRoot({
       body: { slug: 'keep', properties: { title: 'X' } },
     });
-    // cms-05: publish so /pages/keep is the page's live path.
+    // Publish so /pages/keep is the page's live path.
     await cms.api.pages.publishBranch({
       body: { rootId: x.rootId, branchId: x.branchId },
     });

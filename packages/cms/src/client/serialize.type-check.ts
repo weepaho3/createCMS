@@ -1,4 +1,4 @@
-// Type-only assertions for the client `Serialize` boundary (ts-01). Checked by
+// Type-only assertions for the client `Serialize` boundary. Checked by
 // `check-types`, not executed. If Serialize stops mapping Date → string the
 // `@ts-expect-error` below goes unused and tsc fails — self-verifying.
 
