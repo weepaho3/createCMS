@@ -86,7 +86,7 @@ export const createCMSEndpoint: typeof cmsEndpointFactory = ((
     path,
     { ...options, onValidationError: cmsOnValidationError },
     handler,
-  )) as unknown as typeof cmsEndpointFactory;
+  )) as typeof cmsEndpointFactory;
 
 export function cmsMeta<T extends Record<string, unknown>>(
   base: T,
@@ -214,7 +214,7 @@ export function toCMSEndpoints(
   const wrapped: Record<string, Endpoint> = {};
 
   for (const [key, endpoint] of Object.entries(endpoints)) {
-    const ep = endpoint as unknown as {
+    const ep = endpoint as {
       path?: string;
       options?: { metadata?: { cms?: CMSEndpointMeta } };
       (...args: unknown[]): Promise<unknown>;
@@ -331,28 +331,30 @@ export function toCMSEndpoints(
         requestContext.query = cleanQuery;
       }
 
+      const context: Record<string, unknown> = {
+        ...requestContext.context,
+        db: cmsCtx.db,
+        // Middleware-resolved identity (from the request/headers) wins; an
+        // in-process `cms.api.*({ context: { userId } })` caller's value is
+        // only the fallback, and safe because HTTP requests never populate
+        // `context` from client input.
+        userId:
+          mwResult.userId ??
+          (requestContext.context as { userId?: string } | undefined)?.userId,
+        collection: meta.collection ?? '',
+        scope,
+        revalidationRunner: revalidationRunner ?? null,
+        realtime: cmsCtx.realtime,
+      };
+      if (withUser && cmsCtx.resolvedUser) {
+        context.withUser = withUser;
+        context.userConfig = cmsCtx.resolvedUser;
+      }
+      if (withRoot) context.withRoot = withRoot;
       const enrichedCtx: EndpointCallContext = {
         ...requestContext,
         body,
-        context: {
-          ...requestContext.context,
-          db: cmsCtx.db,
-          // Middleware-resolved identity (from the request/headers) wins; an
-          // in-process `cms.api.*({ context: { userId } })` caller's value is
-          // only the fallback, and safe because HTTP requests never populate
-          // `context` from client input.
-          userId:
-            mwResult.userId ??
-            (requestContext.context as { userId?: string } | undefined)?.userId,
-          collection: meta.collection ?? '',
-          scope,
-          revalidationRunner: revalidationRunner ?? null,
-          realtime: cmsCtx.realtime,
-          ...(withUser && cmsCtx.resolvedUser
-            ? { withUser, userConfig: cmsCtx.resolvedUser }
-            : {}),
-          ...(withRoot ? { withRoot } : {}),
-        },
+        context,
       };
 
       const result = await ep(enrichedCtx);
@@ -394,7 +396,7 @@ export function toCMSEndpoints(
     };
 
     Object.assign(wrappedHandler, { path: ep.path, options: ep.options });
-    wrapped[key] = wrappedHandler as unknown as Endpoint;
+    wrapped[key] = wrappedHandler as Endpoint;
   }
 
   return wrapped;

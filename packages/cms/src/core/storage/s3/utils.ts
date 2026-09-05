@@ -71,14 +71,16 @@ export async function signPutObject(
   );
   url.searchParams.set('X-Amz-Content-Sha256', 'UNSIGNED-PAYLOAD');
 
+  const headers: Record<string, string> = {
+    'content-length': params.contentLength.toString(),
+    'content-type': params.contentType,
+  };
+  if (params.acl) headers['x-amz-acl'] = params.acl;
+
   return (
     await client.s3.sign(url.toString(), {
       method: 'PUT',
-      headers: {
-        'content-length': params.contentLength.toString(),
-        'content-type': params.contentType,
-        ...(params.acl ? { 'x-amz-acl': params.acl } : {}),
-      },
+      headers,
       aws: { signQuery: true, allHeaders: true },
     })
   ).url;
@@ -97,14 +99,16 @@ export async function putObject(
 ): Promise<Response> {
   const url = `${client.buildBucketUrl(params.bucket)}/${params.key}`;
 
+  const headers: Record<string, string> = {
+    'content-type': params.contentType,
+    'content-length': params.contentLength.toString(),
+  };
+  if (params.acl) headers['x-amz-acl'] = params.acl;
+
   return throwS3Error(
     client.s3.fetch(url, {
       method: 'PUT',
-      headers: {
-        'content-type': params.contentType,
-        'content-length': params.contentLength.toString(),
-        ...(params.acl ? { 'x-amz-acl': params.acl } : {}),
-      },
+      headers,
       body: params.body,
     }),
   );

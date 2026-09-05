@@ -22,17 +22,13 @@ type WireBody = {
   data?: Record<string, unknown>;
 };
 
-function readWire(err: object): {
+type WireError = WireBody & { body?: WireBody };
+
+function readWire(top: WireError): {
   code: string | undefined;
   message: string;
   data: Record<string, unknown> | undefined;
 } {
-  const top = err as {
-    code?: string;
-    message?: string;
-    data?: Record<string, unknown>;
-    body?: WireBody;
-  };
   const body = top.body;
   const code =
     typeof top.code === 'string'
@@ -78,14 +74,12 @@ export function readCmsError(err: unknown): CmsDocumentError {
   if (!err || typeof err !== 'object') {
     return { code: 'UNKNOWN', message: 'Unknown CMS error' };
   }
-  const { code, message, data } = readWire(err);
+  const { code, message, data } = readWire(err as WireError);
   let fields: CmsFieldError[] | undefined;
   if (code === TYPE_MISMATCH && data) {
     fields = mapTypeMismatchFields(data);
   }
-  return {
-    code: code ?? 'UNKNOWN',
-    message,
-    ...(fields ? { fields } : {}),
-  };
+  const error: CmsDocumentError = { code: code ?? 'UNKNOWN', message };
+  if (fields) error.fields = fields;
+  return error;
 }

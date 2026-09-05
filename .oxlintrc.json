@@ -1,4 +1,21 @@
 {
+  "ignorePatterns": [
+    ".agent/**",
+    ".agents/**",
+    ".claude/**",
+    ".codex/**",
+    ".continue/**",
+    ".cursor/**",
+    ".gemini/**",
+    ".opencode/**",
+    ".pi/**",
+    ".roo/**",
+    ".windsurf/**",
+    "tools/oxlint/anti-slop/**"
+  ],
+  "jsPlugins": [
+    { "name": "anti-slop", "specifier": "./tools/oxlint/anti-slop/index.ts" }
+  ],
   // Ruleset rationale (CMS-8): every rule is either satisfied, fixed, or
   // deliberately off with a reason — zero standing findings is the contract.
   // `pedantic` was measured at ~1.7k hits on this codebase and rejected: a
@@ -49,6 +66,35 @@
     // matters, and every hit was a hoist-for-the-linter.
     "unicorn/consistent-function-scoping": "off",
     // Side-effect imports are the point for stylesheets.
-    "import/no-unassigned-import": ["error", { "allow": ["**/*.css"] }]
-  }
+    "import/no-unassigned-import": ["error", { "allow": ["**/*.css"] }],
+    // Vendored local plugin (tools/oxlint/anti-slop). Kept rules are the ones
+    // whose fix makes a type stricter or a name clearer without touching the
+    // public type vocabulary: no assertion chains, no conditional empty-object
+    // spreads, no `object`-typed parameters, no aliases that hide `unknown`,
+    // no Reflect.apply/Reflect.get, no "shape" in symbol names.
+    "anti-slop/no-chained-type-assertions": "error",
+    "anti-slop/no-conditional-empty-object-spread": "error",
+    "anti-slop/no-object-parameters": "error",
+    "anti-slop/no-reflect-apply": "error",
+    "anti-slop/no-reflect-get": "error",
+    "anti-slop/no-shape-in-symbol-names": "error",
+    "anti-slop/no-unknown-type-aliases": "error",
+    "anti-slop/no-widen-then-assert": "error"
+  },
+  "overrides": [
+    {
+      // Tests and compile-only type-check files pass wire representations
+      // (`'false' as unknown as boolean`) and partial fixtures on purpose;
+      // the chain is the honest way to write that.
+      "files": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/test/**",
+        "**/*.type-check.ts"
+      ],
+      "rules": {
+        "anti-slop/no-chained-type-assertions": "off"
+      }
+    }
+  ]
 }

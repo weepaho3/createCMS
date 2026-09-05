@@ -189,7 +189,7 @@ type Writable<T> = { -readonly [K in keyof T]: T[K] };
 
 type HeroProps = InferBlockProperties<Writable<(typeof hero)['properties']>>;
 // required key stays required, optional key stays optional.
-export type _heroShape = Expect<
+export type _heroProperties = Expect<
   Equal<HeroProps, { headline: string; subheadline?: string }>
 >;
 
@@ -197,7 +197,7 @@ type FeatureItemProps = InferBlockProperties<
   Writable<(typeof featureItem)['properties']>
 >;
 // every property optional -> the whole object becomes optional (| undefined).
-export type _featureItemShape = Expect<
+export type _featureItemProperties = Expect<
   Equal<FeatureItemProps, { text?: string } | undefined>
 >;
 
@@ -205,7 +205,7 @@ type SinkPropsRaw = InferBlockProperties<
   Writable<(typeof kitchenSink)['properties']>
 >;
 // select narrows to the option-value union; reference/link stay in raw form.
-export type _sinkRawShape = Expect<
+export type _sinkRawProperties = Expect<
   Equal<
     SinkPropsRaw,
     {
@@ -222,7 +222,7 @@ type SinkPropsResolved = InferBlockProperties<
   'resolved'
 >;
 // `resolved` mode inlines reference -> ResolvedReference and link -> ResolvedLink.
-export type _sinkResolvedShape = Expect<
+export type _sinkResolvedProperties = Expect<
   Equal<
     SinkPropsResolved,
     {

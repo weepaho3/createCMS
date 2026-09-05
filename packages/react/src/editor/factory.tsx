@@ -345,7 +345,7 @@ export function createEditor<const S extends AnyEditorSchema>(
     },
     useField(ref, key) {
       assertSchema('useField');
-      return useAnyField(ref.id, key) as unknown as FieldHandleOf<
+      return useAnyField(ref.id, key) as FieldHandleOf<
         S,
         typeof ref.type,
         typeof key

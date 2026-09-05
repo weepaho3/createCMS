@@ -74,39 +74,36 @@ export function buildGa4Payload(event: AnalyticsEvent): Ga4Payload | null {
   const params: Record<string, unknown> = {
     // metadata first, but with every server-owned param stripped (see
     // RESERVED_GA4_PARAMS): it is public-ingest input, so a caller can never
-    // fabricate or overwrite these params, and a conditional spread would
-    // otherwise leave an attacker's value standing when the server-derived
-    // value is absent.
+    // fabricate or overwrite these params; the server-derived params below
+    // are only set when present, so a stripped key never comes back from
+    // metadata.
     ...sanitizeMetadata(event.metadata),
     // GA4 needs a non-zero engagement time, else the hit is realtime-invisible.
     engagement_time_msec: event.transport?.engagementTimeMsec ?? 1,
-    ...(event.transport?.sessionId
-      ? { session_id: event.transport.sessionId }
-      : {}),
-    ...(event.ab
-      ? {
-          experiment_id: event.ab.testId,
-          experiment_variant: event.ab.variantId,
-        }
-      : {}),
-    ...(event.source?.handle ? { tracking_id: event.source.handle } : {}),
-    ...(event.interactionId ? { interaction_id: event.interactionId } : {}),
   };
+  if (event.transport?.sessionId) {
+    params.session_id = event.transport.sessionId;
+  }
+  if (event.ab) {
+    params.experiment_id = event.ab.testId;
+    params.experiment_variant = event.ab.variantId;
+  }
+  if (event.source?.handle) params.tracking_id = event.source.handle;
+  if (event.interactionId) params.interaction_id = event.interactionId;
 
-  return {
+  const payload: Ga4Payload = {
     client_id: clientId,
     events: [{ name: event.name, params }],
-    // GA4 Consent Mode block (ad signals). analytics_storage is gated above;
-    // the ad_* signals tell GA4 how it may use the data.
-    ...(event.consent
-      ? {
-          consent: {
-            ad_user_data: event.consent.ad_user_data,
-            ad_personalization: event.consent.ad_personalization,
-          },
-        }
-      : {}),
   };
+  // GA4 Consent Mode block (ad signals). analytics_storage is gated above;
+  // the ad_* signals tell GA4 how it may use the data.
+  if (event.consent) {
+    payload.consent = {
+      ad_user_data: event.consent.ad_user_data,
+      ad_personalization: event.consent.ad_personalization,
+    };
+  }
+  return payload;
 }
 
 /** Resolves the POST URL for a config (MP appends measurement_id + api_secret). */

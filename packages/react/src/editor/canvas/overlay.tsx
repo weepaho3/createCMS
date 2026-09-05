@@ -171,7 +171,7 @@ export function CanvasSelectionRing({
     props: {
       ...rest,
       'aria-hidden': true,
-      style: { ...(rect ? ringStyle(rect) : {}), ...style },
+      style: rect ? { ...ringStyle(rect), ...style } : style,
     },
     state: { ...flags, editorSelectionRing: true },
   });
@@ -203,7 +203,7 @@ export function CanvasHoverRing({
     props: {
       ...rest,
       'aria-hidden': true,
-      style: { ...(rect ? ringStyle(rect) : {}), ...style },
+      style: rect ? { ...ringStyle(rect), ...style } : style,
     },
     state: { ...flags, editorHoverRing: true },
   });
@@ -232,7 +232,7 @@ export function CanvasFieldRing({
     props: {
       ...rest,
       'aria-hidden': true,
-      style: { ...(rect ? ringStyle(rect) : {}), ...style },
+      style: rect ? { ...ringStyle(rect), ...style } : style,
     },
     state: { ...flags, editorFieldRing: true },
   });

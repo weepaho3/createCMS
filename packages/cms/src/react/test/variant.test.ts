@@ -110,7 +110,9 @@ async function twoVariantRoot(
   slug?: string,
 ) {
   const root = await cms.api[collection].createRoot({
-    body: { ...(slug ? { slug } : {}), properties: { [prop]: controlVal } },
+    body: slug
+      ? { slug, properties: { [prop]: controlVal } }
+      : { properties: { [prop]: controlVal } },
   });
   await publish(cms, collection, root.rootId, root.branchId);
   const variant = await cms.api[collection].createBranch({

@@ -109,19 +109,20 @@ export function buildBlockEvent(
   block: BlockTrackingCtx | null,
   interactionId?: string,
 ): ClientCMSEvent {
-  return {
+  const event: ClientCMSEvent = {
     // The typed API fires the event KEY; the wire (GA4/dataLayer + the stored
     // event_type) carries the resolved wire name. Outside a BlockTracker
     // (block === null) there is nothing to resolve against, so the key passes.
     name: block ? resolveWireName(key, block.blockType, block.events) : key,
     anonymous: true,
-    ...(runtime.ab ? { ab: runtime.ab } : {}),
-    ...(block
-      ? { source: { handle: block.trackingId, type: block.blockType } }
-      : {}),
-    ...(interactionId ? { interactionId } : {}),
-    ...(params ? { params } : {}),
   };
+  if (runtime.ab) event.ab = runtime.ab;
+  if (block) {
+    event.source = { handle: block.trackingId, type: block.blockType };
+  }
+  if (interactionId) event.interactionId = interactionId;
+  if (params) event.params = params;
+  return event;
 }
 
 /**

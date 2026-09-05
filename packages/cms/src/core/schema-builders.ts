@@ -64,13 +64,10 @@ function buildLinkSchema(
 ): z.ZodType {
   const kinds = allowedKinds?.length ? allowedKinds : ALL_LINK_KINDS;
   const members = kinds.map((k) => linkKindSchema(k, allowedCollections)) as [
-    z.ZodType,
-    ...z.ZodType[],
+    z.ZodObject,
+    ...z.ZodObject[],
   ];
-  return z.discriminatedUnion(
-    'kind',
-    members as unknown as [z.ZodObject, ...z.ZodObject[]],
-  );
+  return z.discriminatedUnion('kind', members);
 }
 
 /**
@@ -133,7 +130,7 @@ export function buildPropertiesSchema<T extends Record<string, BlockProperty>>(
   properties: T,
   allOptional?: boolean,
 ): z.ZodType<InferBlockProperties<T>> {
-  const shape: Record<string, z.ZodType> = {};
+  const fields: Record<string, z.ZodType> = {};
   let hasRequired = false;
   for (const [key, prop] of Object.entries(properties)) {
     let field: z.ZodType;
@@ -156,15 +153,15 @@ export function buildPropertiesSchema<T extends Record<string, BlockProperty>>(
     if (allOptional) {
       // Update (PATCH): a key may carry a value, be `null` (delete it), or be
       // omitted (leave it unchanged).
-      shape[key] = field.nullable().optional();
+      fields[key] = field.nullable().optional();
     } else if (prop.required === true) {
       hasRequired = true;
-      shape[key] = field;
+      fields[key] = field;
     } else {
-      shape[key] = field.optional();
+      fields[key] = field.optional();
     }
   }
-  const schema = z.object(shape);
+  const schema = z.object(fields);
   if (allOptional) return schema as any;
   return (hasRequired ? schema : schema.optional()) as any;
 }
@@ -207,9 +204,7 @@ export function buildBlockInputSchema<
   );
   if (variants.length === 0) return z.never() as any;
   if (variants.length === 1) return variants[0] as any;
-  return z.union(
-    variants as unknown as [z.ZodType, z.ZodType, ...z.ZodType[]],
-  ) as any;
+  return z.union(variants) as any;
 }
 
 export function buildUpdateBlockInputSchema<
@@ -229,9 +224,7 @@ export function buildUpdateBlockInputSchema<
   );
   if (variants.length === 0) return z.never() as any;
   if (variants.length === 1) return variants[0] as any;
-  return z.union(
-    variants as unknown as [z.ZodType, z.ZodType, ...z.ZodType[]],
-  ) as any;
+  return z.union(variants) as any;
 }
 
 export function buildMergeBlockVersionInputSchema<
@@ -263,9 +256,7 @@ export function buildMergeBlockVersionInputSchema<
 
   const variants = [...childVariants, rootVariant];
   if (variants.length === 1) return variants[0] as any;
-  return z.union(
-    variants as unknown as [z.ZodType, z.ZodType, ...z.ZodType[]],
-  ) as any;
+  return z.union(variants) as any;
 }
 
 export type UpdateRootInput<T extends Record<string, BlockProperty>> = {

@@ -72,14 +72,19 @@ export class CMSError extends APIError {
         { readonly status: CmsErrorStatus; readonly message: string }
       >
     )[code];
-    super(def?.status ?? (500 as CmsErrorStatus), {
+    const body: {
+      message: string;
+      code: CMSErrorCode;
+      data?: Record<string, unknown>;
+    } = {
       message:
         overrides?.message ?? def?.message ?? `Unknown CMS error: ${code}`,
       code,
-      // better-call serializes the whole body to the wire, so structured
-      // `data` reaches the client (read back via `CMSClientError.data`).
-      ...(overrides?.data ? { data: overrides.data } : {}),
-    });
+    };
+    // better-call serializes the whole body to the wire, so structured
+    // `data` reaches the client (read back via `CMSClientError.data`).
+    if (overrides?.data) body.data = overrides.data;
+    super(def?.status ?? (500 as CmsErrorStatus), body);
     this.cmsCode = code;
   }
 }

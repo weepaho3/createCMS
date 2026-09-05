@@ -333,8 +333,8 @@ export function EditorFieldControl({ render }: EditorFieldControlProps) {
     disabled: field.disabled,
     invalid: field.invalid,
     describedBy: field.describedBy,
-    ...(field.spec.type === 'list' ? { renderElement } : {}),
   };
+  if (field.spec.type === 'list') controlProps.renderElement = renderElement;
   if (render) return render(controlProps);
   const Component = resolve(field.spec.type);
   if (!Component) {

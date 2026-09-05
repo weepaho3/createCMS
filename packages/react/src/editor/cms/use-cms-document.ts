@@ -404,10 +404,9 @@ export function useCmsDocument(
             rootId,
             branchId,
             tree,
-            ...(bodyMessage !== undefined ? { message: bodyMessage } : {}),
-            ...(force || headCommitId === null
-              ? {}
-              : { expectedHeadCommitId: headCommitId }),
+            message: bodyMessage,
+            expectedHeadCommitId:
+              force || headCommitId === null ? undefined : headCommitId,
           },
         });
         setHeadCommitId(result.commit.id);

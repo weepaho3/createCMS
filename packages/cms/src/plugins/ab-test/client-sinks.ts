@@ -136,6 +136,21 @@ export function dispatchEvent(
 // Built-in sinks
 // ============================================================================
 
+/** Wire body of the `/abTest/trackEvent` ingest. */
+type TrackEventBody = {
+  eventType: string;
+  anonymous: boolean;
+  testId?: string;
+  branchId?: string;
+  variantId?: string;
+  visitorId?: string;
+  source?: ClientCMSEvent['source'];
+  interactionId?: string;
+  transport?: ClientCMSEvent['transport'];
+  consent?: ClientCMSEvent['consent'];
+  metadata?: ClientCMSEvent['metadata'];
+};
+
 /**
  * The A/B store leg: the keepalive POST to the CMS event ingest. Consent-free
  * (no `requires`); it records the anonymous aggregate count that drives the
@@ -146,27 +161,26 @@ export function createAbTestStoreSink($fetch: CMSFetch): ClientEventSink {
   return {
     id: 'abTestStore',
     send(event) {
+      const body: TrackEventBody = {
+        eventType: event.name,
+        anonymous: event.anonymous,
+      };
+      if (event.ab?.testId) body.testId = event.ab.testId;
+      if (event.ab?.branchId) body.branchId = event.ab.branchId;
+      if (event.ab?.variantId) body.variantId = event.ab.variantId;
+      if (event.visitorId) body.visitorId = event.visitorId;
+      if (event.source) body.source = event.source;
+      if (event.interactionId) body.interactionId = event.interactionId;
+      if (event.transport) body.transport = event.transport;
+      if (event.consent) body.consent = event.consent;
+      if (event.metadata) body.metadata = event.metadata;
       $fetch('/abTest/trackEvent', {
         method: 'POST',
         // keepalive: a goal beacon often fires on a CTA click that navigates
         // away. Without it the browser cancels the in-flight POST and the count
         // is lost (and the per-session dedup already marked it sent).
         keepalive: true,
-        body: {
-          eventType: event.name,
-          anonymous: event.anonymous,
-          ...(event.ab?.testId ? { testId: event.ab.testId } : {}),
-          ...(event.ab?.branchId ? { branchId: event.ab.branchId } : {}),
-          ...(event.ab?.variantId ? { variantId: event.ab.variantId } : {}),
-          ...(event.visitorId ? { visitorId: event.visitorId } : {}),
-          ...(event.source ? { source: event.source } : {}),
-          ...(event.interactionId
-            ? { interactionId: event.interactionId }
-            : {}),
-          ...(event.transport ? { transport: event.transport } : {}),
-          ...(event.consent ? { consent: event.consent } : {}),
-          ...(event.metadata ? { metadata: event.metadata } : {}),
-        },
+        body,
       }).catch(warnAbDrop);
     },
   };
@@ -186,21 +200,17 @@ export function createGtmClientSink(): ClientEventSink {
     requires: 'analytics_storage',
     send(event) {
       if (typeof window === 'undefined') return;
-      const w = window as unknown as DataLayerWindow;
+      const w = window as Window & DataLayerWindow;
       const dataLayer = (w.dataLayer = w.dataLayer ?? []);
-      dataLayer.push({
-        event: event.name,
-        ...(event.ab
-          ? {
-              ab_test_id: event.ab.testId,
-              ab_variant: event.ab.branchId ?? event.ab.variantId,
-            }
-          : {}),
-        ...(event.source?.handle ? { tracking_id: event.source.handle } : {}),
-        ...(event.source?.type ? { block_type: event.source.type } : {}),
-        ...(event.interactionId ? { interaction_id: event.interactionId } : {}),
-        ...event.params,
-      });
+      const entry: Record<string, unknown> = { event: event.name };
+      if (event.ab) {
+        entry.ab_test_id = event.ab.testId;
+        entry.ab_variant = event.ab.branchId ?? event.ab.variantId;
+      }
+      if (event.source?.handle) entry.tracking_id = event.source.handle;
+      if (event.source?.type) entry.block_type = event.source.type;
+      if (event.interactionId) entry.interaction_id = event.interactionId;
+      dataLayer.push({ ...entry, ...event.params });
     },
   };
 }

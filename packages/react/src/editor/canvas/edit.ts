@@ -20,10 +20,9 @@ export function canvasEdit(
   for (const key of Object.keys(propertiesOf(schema, type))) {
     field[key] = { 'data-editor-field': key };
   }
-  const block = {
-    'data-editor-block': blockId,
-    ...(unresolved ? { 'data-unresolved': '' } : {}),
-  };
+  const block = unresolved
+    ? { 'data-editor-block': blockId, 'data-unresolved': '' }
+    : { 'data-editor-block': blockId };
   return {
     active: true,
     block: block as EditAttrs,

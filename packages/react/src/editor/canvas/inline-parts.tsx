@@ -573,7 +573,7 @@ export function CanvasInlineText({
       role: 'textbox',
       'aria-label': rest['aria-label'] ?? 'Edit text',
       'aria-multiline': fieldKind === 'richText' ? 'true' : 'false',
-      contentEditable: 'plaintext-only' as unknown as boolean,
+      contentEditable: 'plaintext-only',
       suppressContentEditableWarning: true,
       onBlur,
       onKeyDown,

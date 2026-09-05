@@ -356,13 +356,14 @@ export async function resolveTreeReferences(
         }
       }
 
-      resolvedMap.set(storedValue, {
+      const entry: ResolvedReference = {
         rootId,
         collection: targetCollectionName,
         properties: data.properties,
         tree: data.tree,
-        ...(data.abTest ? { abTest: data.abTest } : {}),
-      });
+      };
+      if (data.abTest) entry.abTest = data.abTest;
+      resolvedMap.set(storedValue, entry);
     }
   }
 

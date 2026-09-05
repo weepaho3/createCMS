@@ -271,9 +271,36 @@ type WithUserApi<T, TTable extends AnyPgTable> = {
 // cannot flow to this call site. Every non-exposed column is therefore typed as
 // optionally-present (never wrongly required); the runtime filter in
 // user/resolve.ts is the source of truth.
-type ActorUserShape<TTable extends AnyPgTable> = Partial<
-  TTable['$inferSelect']
->;
+type ActorUserRow<TTable extends AnyPgTable> = Partial<TTable['$inferSelect']>;
+
+/** Type-level-only value: the returned `undefined` is never read at runtime. */
+function phantom<T>(): T {
+  return undefined as T;
+}
+
+/**
+ * Rebuilds `api` namespace by namespace with every endpoint replaced by its
+ * wrapped counterpart in `wrapped` (keyed `ns:key`). Keys stay identical;
+ * `TOut` is the caller-facing type of that same object (server callers plus
+ * the user-config typing), which TypeScript cannot derive from `TIn`.
+ */
+function rewrapNamespaces<TOut, TIn = unknown>(
+  api: TIn,
+  wrapped: Record<string, Endpoint>,
+): TOut {
+  const namespaces = api as Record<string, Record<string, Endpoint>>;
+  return Object.fromEntries(
+    Object.entries(namespaces).map(([ns, nsEndpoints]) => [
+      ns,
+      Object.fromEntries(
+        Object.entries(nsEndpoints).map(([key, raw]) => [
+          key,
+          wrapped[`${ns}:${key}`] ?? raw,
+        ]),
+      ),
+    ]),
+  ) as TOut;
+}
 
 // Rewrite a `withUser`-enriched RESULT: wherever a `createdByUser` / `actorUser`
 // field is DECLARED on a result type, type it off the user table instead of
@@ -297,7 +324,7 @@ type InjectUserField<T, TTable extends AnyPgTable> = T extends Date
         : T extends object
           ? {
               [K in keyof T]: K extends 'createdByUser' | 'actorUser'
-                ? ActorUserShape<TTable> | null
+                ? ActorUserRow<TTable> | null
                 : InjectUserField<T[K], TTable>;
             }
           : T;
@@ -389,7 +416,7 @@ function checkEndpointConflicts(endpoints: Record<string, Endpoint>) {
   const registry = new Map<string, { source: string; methods: string[] }[]>();
 
   for (const [source, endpoint] of Object.entries(endpoints)) {
-    const ep = endpoint as unknown as {
+    const ep = endpoint as {
       path?: unknown;
       options?: { method?: unknown };
     };
@@ -728,7 +755,7 @@ export const createCMS = <
       }
       return [name, endpoints];
     }),
-  ) as unknown as InferCollectionApis<DefCollections, DefPlugins>;
+  ) as InferCollectionApis<DefCollections, DefPlugins>;
 
   const revalidateConfig = normalizeRevalidateConfig(definition.onRevalidate);
   const revalidationRunner = revalidateConfig
@@ -831,7 +858,7 @@ export const createCMS = <
       : Record<never, never>) &
     InferPluginNamespaces<DefPlugins & CMSPlugin[]>;
 
-  const rawApi: RawApi = {
+  const coreApi = {
     ...collectionApis,
     admin: adminEndpoints,
     media: mediaEndpoints,
@@ -840,19 +867,22 @@ export const createCMS = <
     search: searchEndpoints,
     releases: releaseEndpoints,
     users: userEndpoints,
-    // Omitted entirely (not just undefined) when notifications are disabled, so
-    // the route never registers and `client.notifications` is absent from
-    // types.
-    ...(notificationsEnabled ? { notifications: notificationEndpoints } : {}),
-    ...pluginApis,
-  } as RawApi;
+  };
+  // `notifications` is omitted entirely (not just undefined) when the feature
+  // is disabled, so the route never registers and `client.notifications` is
+  // absent from types.
+  const rawApi: RawApi = (
+    notificationsEnabled
+      ? { ...coreApi, notifications: notificationEndpoints, ...pluginApis }
+      : { ...coreApi, ...pluginApis }
+  ) as RawApi;
 
   // Auto-set `permissionResource` from plugin id for plugin endpoints that
   // don't set one.
   for (const plugin of plugins) {
     if (!plugin.endpoints) continue;
     for (const ep of Object.values(plugin.endpoints)) {
-      const epAny = ep as unknown as {
+      const epAny = ep as {
         options?: { metadata?: { cms?: { permissionResource?: string } } };
       };
       const meta = epAny.options?.metadata?.cms;
@@ -879,7 +909,7 @@ export const createCMS = <
   // routes ({}/:) aren't RPC-proxied, mirroring endpoint-paths.test.ts.
   const pathMethods: Record<string, 'GET' | 'POST'> = {};
   for (const endpoint of Object.values(flatEndpoints)) {
-    const ep = endpoint as unknown as {
+    const ep = endpoint as {
       path?: string;
       options?: { method?: string | string[] };
     };
@@ -910,16 +940,7 @@ export const createCMS = <
     ? WithActorUserApi<WithUserApi<BaseApi, U>, U>
     : BaseApi;
 
-  const api = Object.fromEntries(
-    Object.entries(rawApi).map(([ns, nsEndpoints]) => [
-      ns,
-      Object.fromEntries(
-        Object.entries(nsEndpoints as Record<string, Endpoint>).map(
-          ([key, _raw]) => [key, wrappedEndpoints[`${ns}:${key}`] ?? _raw],
-        ),
-      ),
-    ]),
-  ) as unknown as FinalApi;
+  const api = rewrapNamespaces<FinalApi>(rawApi, wrappedEndpoints);
 
   // Collect path-bound middlewares from all plugins.
   const routerMiddleware = plugins.flatMap((plugin) =>
@@ -1017,13 +1038,13 @@ export const createCMS = <
     // `createNotificationRouter<typeof cms>` for plugin-contributed notification
     // `meta` shapes and the `user`-config actor-user shape. NEVER access it as a
     // value; it will throw `TypeError: Cannot read properties of undefined`.
-    $InferNotifications: undefined as unknown as {
+    $InferNotifications: phantom<{
       meta: InferPluginNotificationMeta<TPlugins>;
       actorUser: TDef extends {
         user: CMSUserConfig<infer U extends AnyPgTable>;
       }
-        ? ActorUserShape<U>
+        ? ActorUserRow<U>
         : Record<string, unknown>;
-    },
+    }>(),
   };
 };

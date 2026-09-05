@@ -58,7 +58,7 @@ export const setupTestCMS = async (options?: {
     branchProtection: options?.branchProtection,
     mergeStrategy: options?.mergeStrategy,
     notifications: options?.notifications,
-    ...(options?.user ? { user: options.user } : {}),
+    user: options?.user,
   });
 
   return {

@@ -941,7 +941,7 @@ export function createRootEndpoints<TDef extends CollectionWithName>(
         const root = map.get(rootId);
         if (!root) throw new CMSError('ROOT_NOT_FOUND');
 
-        return root as unknown as RootListItem<TDef['root']['properties']>;
+        return root as RootListItem<TDef['root']['properties']>;
       },
     ),
 
@@ -1032,7 +1032,7 @@ export function createRootEndpoints<TDef extends CollectionWithName>(
         const root = map.get(rootId);
         if (!root) throw new CMSError('ROOT_NOT_FOUND');
 
-        return root as unknown as RootListItem<TDef['root']['properties']>;
+        return root as RootListItem<TDef['root']['properties']>;
       },
     ),
 

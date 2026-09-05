@@ -716,8 +716,8 @@ export function createPublicationEndpoints<
           rootId: resolvedRootId,
           collection: root.collection,
           variants,
-          ...(pageAbTest ? { abTest: pageAbTest } : {}),
         };
+        if (pageAbTest) response.abTest = pageAbTest;
 
         if (slugCfg?.enabled && slugCfg.nested) {
           const ancestors = await resolveAncestors(

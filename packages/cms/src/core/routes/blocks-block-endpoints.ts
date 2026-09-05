@@ -386,15 +386,19 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
           );
         }
 
-        return {
-          tree,
-          reconstructed,
-          ...(references ? { references } : {}),
-        } as unknown as {
+        const result: {
           tree: InferBlockTreeNode<TDef['blocks'], TDef['root']['properties']>;
           reconstructed: boolean;
           references?: Record<string, BlockTreeNode>;
+        } = {
+          tree: tree as InferBlockTreeNode<
+            TDef['blocks'],
+            TDef['root']['properties']
+          >,
+          reconstructed,
         };
+        if (references) result.references = references;
+        return result;
       },
     ),
 
@@ -522,13 +526,17 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
           scopeColumns,
         );
 
-        return {
-          tree,
-          ...(references ? { references } : {}),
-        } as unknown as {
+        const result: {
           tree: InferBlockTreeNode<TDef['blocks'], TDef['root']['properties']>;
           references?: Record<string, BlockTreeNode>;
+        } = {
+          tree: tree as InferBlockTreeNode<
+            TDef['blocks'],
+            TDef['root']['properties']
+          >,
         };
+        if (references) result.references = references;
+        return result;
       },
     ),
 
@@ -1232,19 +1240,18 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
               const message = isRoot
                 ? `Invalid root properties (block ${node.blockId}): ${parsed.error.message}`
                 : `Invalid properties for block type '${node.type}' (block ${node.blockId}): ${parsed.error.message}`;
+              const data: Record<string, unknown> = {
+                reason: isRoot
+                  ? 'invalid-root-properties'
+                  : 'invalid-properties',
+                type: node.type,
+                blockId: node.blockId,
+                issues: parsed.error.issues,
+              };
+              if (resolved.length > 0) data.resolvedLinkKeys = resolved;
               throw new CMSError('TYPE_MISMATCH', {
                 message: `${message}${hint}`,
-                data: {
-                  reason: isRoot
-                    ? 'invalid-root-properties'
-                    : 'invalid-properties',
-                  type: node.type,
-                  blockId: node.blockId,
-                  issues: parsed.error.issues,
-                  ...(resolved.length > 0
-                    ? { resolvedLinkKeys: resolved }
-                    : {}),
-                },
+                data,
               });
             }
           };

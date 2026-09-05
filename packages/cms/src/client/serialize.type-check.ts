@@ -16,7 +16,7 @@ type Row = {
 };
 type SRow = Serialize<Row>;
 
-export const _serializedShape: SRow = {
+export const _serializedRow: SRow = {
   id: 'x',
   createdAt: '2026-07-07T00:00:00.000Z',
   updatedAt: null,
@@ -27,12 +27,12 @@ export const _serializedShape: SRow = {
 // A mutable array stays mutable (push must compile) — regression guard for the
 // `Array<infer U>`-before-`ReadonlyArray` ordering in Serialize.
 export const _mutable = () => {
-  const s: SRow = _serializedShape;
+  const s: SRow = _serializedRow;
   s.nested.push({ at: 'iso' });
 };
 
 // @ts-expect-error - after Serialize, createdAt is `string`, not `Date`
-export const _rejectsDate: SRow = { ...(_serializedShape as SRow), createdAt: new Date() };
+export const _rejectsDate: SRow = { ...(_serializedRow as SRow), createdAt: new Date() };
 
 // A function value is preserved as-is (not mapped into an object).
 type _Fn = Serialize<{ fn: (x: number) => Date }>;

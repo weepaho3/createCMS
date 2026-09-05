@@ -5,7 +5,8 @@
     "**/*.type-check.ts",
     "**/*.type-check.tsx",
     "**/*.mdx",
-    "apps/docs/public/r/**"
+    "apps/docs/public/r/**",
+    "tools/oxlint/anti-slop/**"
   ],
   "printWidth": 80,
   "singleQuote": true,
