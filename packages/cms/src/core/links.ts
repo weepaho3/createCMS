@@ -176,14 +176,15 @@ function resolveOne(
         hit?.path != null
           ? withSuffix(hit.path, value.fragment, value.query)
           : null;
-      return {
+      const link: Extract<ResolvedLink, { kind: 'internal' }> = {
         kind: 'internal',
         targetRootId: hit?.targetRootId ?? value.rootId,
         collection: value.collection,
         href,
-        ...(value.fragment ? { fragment: value.fragment } : {}),
-        ...(value.query ? { query: value.query } : {}),
       };
+      if (value.fragment) link.fragment = value.fragment;
+      if (value.query) link.query = value.query;
+      return link;
     }
   }
 }

@@ -558,7 +558,7 @@ describe('media.listAssets', () => {
 
     for (let guard = 0; guard < 20; guard++) {
       const page = await cms.api.media.listAssets({
-        query: { limit: 2, ...(cursor ? { cursor } : {}) },
+        query: cursor ? { limit: 2, cursor } : { limit: 2 },
       });
       pages++;
       seen.push(...page.assets.map((a) => a.slug));
@@ -652,7 +652,7 @@ describe('media.listAssets', () => {
     let cursor: string | null | undefined;
     for (let guard = 0; guard < 10; guard++) {
       const page = await cms.api.media.listAssets({
-        query: { limit: 1, ...(cursor ? { cursor } : {}) },
+        query: cursor ? { limit: 1, cursor } : { limit: 1 },
       });
       seen.push(...page.assets.map((x) => x.id));
       if (!page.nextCursor) break;
@@ -1847,7 +1847,11 @@ describe('media.archiveAsset', () => {
 // ============================================================================
 
 describe('media.moveAssets', () => {
-  const insertAsset = (db: any, slug: string, extra: object = {}) =>
+  const insertAsset = (
+    db: any,
+    slug: string,
+    extra: Partial<typeof assets.$inferInsert> = {},
+  ) =>
     db
       .insert(assets)
       .values({
@@ -2004,7 +2008,11 @@ describe('media.replaceAsset', () => {
     type,
     buffer: new Blob([pixel]),
   });
-  const insertAsset = (db: any, slug: string, extra: object = {}) =>
+  const insertAsset = (
+    db: any,
+    slug: string,
+    extra: Partial<typeof assets.$inferInsert> = {},
+  ) =>
     db
       .insert(assets)
       .values({
@@ -2168,7 +2176,11 @@ describe('media.createSignedReplace', () => {
     await cleanup?.();
   });
 
-  const insertAsset = (db: any, slug: string, extra: object = {}) =>
+  const insertAsset = (
+    db: any,
+    slug: string,
+    extra: Partial<typeof assets.$inferInsert> = {},
+  ) =>
     db
       .insert(assets)
       .values({
@@ -2276,7 +2288,11 @@ describe('media.commitReplace', () => {
     await cleanup?.();
   });
 
-  const insertAsset = (db: any, slug: string, extra: object = {}) =>
+  const insertAsset = (
+    db: any,
+    slug: string,
+    extra: Partial<typeof assets.$inferInsert> = {},
+  ) =>
     db
       .insert(assets)
       .values({
@@ -2572,7 +2588,11 @@ describe('replaced asset object reclaim', () => {
     type: 'image/png',
     buffer: new Blob([pixel]),
   });
-  const insertAsset = (db: any, slug: string, extra: object = {}) =>
+  const insertAsset = (
+    db: any,
+    slug: string,
+    extra: Partial<typeof assets.$inferInsert> = {},
+  ) =>
     db
       .insert(assets)
       .values({

@@ -27,7 +27,7 @@ function routeConsentEntry(gate: ConsentGate, entry: unknown): void {
  */
 export function startConsentAutoRead(gate: ConsentGate): void {
   if (typeof window === 'undefined') return;
-  const w = window as unknown as { dataLayer?: DataLayer };
+  const w = window as Window & { dataLayer?: DataLayer };
 
   let scannedArray: DataLayer | null = null;
   let idx = 0;

@@ -71,11 +71,13 @@ function createNamespaceProxy(
 
         const query = encodeFlagQuery(opts?.query);
 
-        return $fetch(routePath, {
+        const init: NonNullable<Parameters<CMSFetch>[1]> = {
           method: httpMethod,
           ...opts,
-          ...(query ? { query } : {}),
-        }).then((data) => {
+        };
+        if (query) init.query = query;
+
+        return $fetch(routePath, init).then((data) => {
           // Only mutations invalidate: a GET toggle would refetch every
           // subscribed query atom in a loop after a plain read.
           if (httpMethod !== 'GET') {

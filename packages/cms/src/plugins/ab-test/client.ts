@@ -42,6 +42,13 @@ type AbTestContext = {
   anonymous?: boolean;
 };
 
+/** GA4 stitching ids read from the `_ga` cookies once analytics consent is granted. */
+type GaTransport = {
+  clientId: string;
+  sessionId?: string;
+  engagementTimeMsec: number;
+};
+
 type CachedAssignment = {
   variantId: string;
   branchId: string;
@@ -245,18 +252,14 @@ export function abTestClient(options?: AbTestClientOptions) {
        * server never forwards and the consent-free aggregate path stays
        * identifier-less.
        */
-      function gaTransport():
-        | { clientId: string; sessionId?: string; engagementTimeMsec: number }
-        | undefined {
+      function gaTransport(): GaTransport | undefined {
         if (!analyticsGranted()) return undefined;
         const clientId = parseGaClientId();
         if (!clientId) return undefined;
         const sessionId = parseGaSessionId();
-        return {
-          clientId,
-          ...(sessionId ? { sessionId } : {}),
-          engagementTimeMsec: 1,
-        };
+        const transport: GaTransport = { clientId, engagementTimeMsec: 1 };
+        if (sessionId) transport.sessionId = sessionId;
+        return transport;
       }
 
       function persistAssignments() {
@@ -483,12 +486,13 @@ export function abTestClient(options?: AbTestClientOptions) {
             // server's denied-consent guard.
             const transport = event.transport ?? gaTransport();
             dispatchToSinks(
-              {
-                ...event,
-                ...(transport
-                  ? { transport, consent: event.consent ?? gate.getState() }
-                  : {}),
-              },
+              transport
+                ? {
+                    ...event,
+                    transport,
+                    consent: event.consent ?? gate.getState(),
+                  }
+                : event,
               sinks,
               gate,
             );

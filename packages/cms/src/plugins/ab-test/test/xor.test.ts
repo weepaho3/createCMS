@@ -118,7 +118,7 @@ async function publishedRootWithVariant(
   slug?: string,
 ) {
   const root = await cms.api[collection].createRoot({
-    body: { ...(slug ? { slug } : {}), properties: props },
+    body: slug ? { slug, properties: props } : { properties: props },
   });
   await publish(cms, collection, root.rootId, root.branchId);
   const variant = await cms.api[collection].createBranch({
