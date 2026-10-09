@@ -6,8 +6,11 @@ import type {
   CMSFetch,
   CMSMediaUploadFileState,
   CMSMediaUploadOptions,
+  CMSMediaUploadProgress,
   CMSMediaUploadState,
 } from './types';
+
+import { CMSClientError } from './error';
 
 const FORBIDDEN_XHR_HEADERS = new Set([
   'content-length',
@@ -58,6 +61,28 @@ export type CMSMediaReplaceState = {
   reset: () => void;
 };
 
+/**
+ * Thrown by `uploadWithXHR` for a failed PUT. `code` is `NETWORK_ERROR` for
+ * the XHR `error` event and `UPLOAD_FAILED` for a non-2xx response.
+ */
+class UploadRequestError extends Error {
+  readonly code: 'NETWORK_ERROR' | 'UPLOAD_FAILED';
+
+  constructor(code: 'NETWORK_ERROR' | 'UPLOAD_FAILED', message: string) {
+    super(message);
+    this.name = 'UploadRequestError';
+    this.code = code;
+  }
+}
+
+function abortError(): DOMException {
+  return new DOMException('Upload aborted', 'AbortError');
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'AbortError';
+}
+
 function uploadWithXHR(
   url: string,
   file: File | Blob,
@@ -67,7 +92,7 @@ function uploadWithXHR(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
-      reject(new DOMException('Upload aborted', 'AbortError'));
+      reject(abortError());
       return;
     }
 
@@ -80,16 +105,17 @@ function uploadWithXHR(
       }
     }
 
-    if (signal) {
-      signal.addEventListener(
-        'abort',
-        () => {
-          xhr.abort();
-          reject(new DOMException('Upload aborted', 'AbortError'));
-        },
-        { once: true },
-      );
-    }
+    // `settle` removes the abort listener before resolving or rejecting.
+    const onAbort = () => {
+      xhr.abort();
+      settle(reject, abortError());
+    };
+    const settle = <T>(fn: (value: T) => void, value: T) => {
+      signal?.removeEventListener('abort', onAbort);
+      fn(value);
+    };
+
+    signal?.addEventListener('abort', onAbort);
 
     xhr.upload.addEventListener('progress', (event) => {
       if (event.lengthComputable) {
@@ -99,176 +125,303 @@ function uploadWithXHR(
 
     xhr.addEventListener('load', () => {
       if (xhr.status >= 200 && xhr.status < 300) {
-        resolve();
+        settle(resolve, undefined);
       } else {
-        reject(new Error(`Upload failed with status ${xhr.status}`));
+        settle(
+          reject,
+          new UploadRequestError(
+            'UPLOAD_FAILED',
+            `Upload failed with status ${xhr.status}`,
+          ),
+        );
       }
     });
 
     xhr.addEventListener('error', () =>
-      reject(new Error('Network error during upload')),
+      settle(
+        reject,
+        new UploadRequestError('NETWORK_ERROR', 'Network error during upload'),
+      ),
     );
-    xhr.addEventListener('abort', () =>
-      reject(new DOMException('Upload aborted', 'AbortError')),
-    );
+    xhr.addEventListener('abort', () => settle(reject, abortError()));
 
     xhr.send(file);
   });
 }
 
-function computeTotalProgress(files: CMSMediaUploadFileState[]): number {
-  if (files.length === 0) return 0;
-  const sum = files.reduce((acc, f) => acc + f.progress, 0);
-  return Math.round(sum / files.length);
+let entrySequence = 0;
+
+function isActive(entry: CMSMediaUploadFileState): boolean {
+  return entry.status === 'pending' || entry.status === 'uploading';
+}
+
+/**
+ * Byte-summed progress over `pending`, `uploading` and `success` entries.
+ * `error` and `aborted` entries are excluded.
+ */
+function aggregate(files: CMSMediaUploadFileState[]): CMSMediaUploadProgress {
+  let loaded = 0;
+  let total = 0;
+  for (const entry of files) {
+    if (entry.status === 'error' || entry.status === 'aborted') continue;
+    loaded += entry.loaded;
+    total += entry.total;
+  }
+  return { loaded, total, fraction: total === 0 ? 0 : loaded / total };
+}
+
+function toUploadError(err: unknown): { code: string; message: string } {
+  if (err instanceof CMSClientError) {
+    return { code: err.code ?? 'UPLOAD_FAILED', message: err.message };
+  }
+  if (err instanceof UploadRequestError) {
+    return { code: err.code, message: err.message };
+  }
+  if (err instanceof TypeError) {
+    return { code: 'NETWORK_ERROR', message: err.message };
+  }
+  return {
+    code: 'UPLOAD_FAILED',
+    message: err instanceof Error ? err.message : 'Upload failed',
+  };
+}
+
+/**
+ * One signal that aborts when either input aborts. `release` detaches the
+ * fallback listeners; `AbortSignal.any` holds its sources weakly and needs
+ * no cleanup.
+ */
+function mergeSignals(
+  root: AbortSignal,
+  extra: AbortSignal | undefined,
+): { signal: AbortSignal; release: () => void } {
+  if (!extra) return { signal: root, release: () => {} };
+  if (typeof AbortSignal.any === 'function') {
+    return { signal: AbortSignal.any([root, extra]), release: () => {} };
+  }
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  const release = () => {
+    root.removeEventListener('abort', onAbort);
+    extra.removeEventListener('abort', onAbort);
+  };
+  if (root.aborted || extra.aborted) {
+    controller.abort();
+  } else {
+    root.addEventListener('abort', onAbort);
+    extra.addEventListener('abort', onAbort);
+  }
+  return { signal: controller.signal, release };
 }
 
 const INITIAL_STATE: CMSMediaUploadState = {
   isUploading: false,
-  isAborted: false,
   files: [],
-  totalProgress: 0,
+  progress: { loaded: 0, total: 0, fraction: 0 },
   error: null,
-  upload: () => Promise.resolve(),
+  upload: () => Promise.resolve([]),
   abort: () => {},
   reset: () => {},
 };
 
+const DEFAULT_CONCURRENCY = 4;
+
 /**
- * Nanostores atom managing media upload state. Validation of file size,
- * count, and MIME types lives server-side in the `createSignedUpload`
- * endpoint.
+ * Nanostores atom holding the upload ledger. Entries accumulate across
+ * `upload()` calls until `reset()` drops the finished ones. Validation of
+ * file size, count, and MIME types lives server-side in the
+ * `createSignedUpload` endpoint.
  */
 export function createMediaUploadAtom(
   $fetch: CMSFetch,
 ): WritableAtom<CMSMediaUploadState> {
   const store = atom<CMSMediaUploadState>({ ...INITIAL_STATE });
 
-  let controller: AbortController | null = null;
+  let root = new AbortController();
 
-  function updateFileState(
-    index: number,
-    patch: Partial<CMSMediaUploadFileState>,
+  function commit(
+    files: CMSMediaUploadFileState[],
+    extra: Partial<Pick<CMSMediaUploadState, 'error'>> = {},
   ) {
-    const current = store.get();
-    const files = [...current.files];
-    files[index] = { ...files[index], ...patch };
     store.set({
-      ...current,
+      ...store.get(),
+      ...extra,
       files,
-      totalProgress: computeTotalProgress(files),
+      progress: aggregate(files),
+      isUploading: files.some(isActive),
     });
   }
 
+  function patch(
+    ids: Iterable<string>,
+    update: (entry: CMSMediaUploadFileState) => CMSMediaUploadFileState,
+    extra?: Partial<Pick<CMSMediaUploadState, 'error'>>,
+  ) {
+    const set = new Set(ids);
+    commit(
+      store
+        .get()
+        .files.map((entry) => (set.has(entry.id) ? update(entry) : entry)),
+      extra,
+    );
+  }
+
+  function snapshot(ids: string[]): CMSMediaUploadFileState[] {
+    const byId = new Map(store.get().files.map((entry) => [entry.id, entry]));
+    return ids.flatMap((id) => {
+      const entry = byId.get(id);
+      return entry ? [entry] : [];
+    });
+  }
+
+  function abortPending(ids: Iterable<string>) {
+    patch(ids, (entry) =>
+      entry.status === 'pending' ? { ...entry, status: 'aborted' } : entry,
+    );
+  }
+
+  /** Flips every entry whose PUT completed to `success`. */
+  function finalize(ids: Iterable<string>) {
+    patch(ids, (entry) =>
+      entry.status === 'uploading'
+        ? { ...entry, status: 'success', loaded: entry.total, progress: 1 }
+        : entry,
+    );
+  }
+
   function abort() {
-    controller?.abort();
-    controller = null;
-    const current = store.get();
-    store.set({ ...current, isUploading: false, isAborted: true });
+    root.abort();
+    root = new AbortController();
+    abortPending(store.get().files.map((entry) => entry.id));
   }
 
   function reset() {
-    controller?.abort();
-    controller = null;
-    store.set({ ...INITIAL_STATE, upload, abort, reset });
+    if (root.signal.aborted) root = new AbortController();
+    commit(store.get().files.filter(isActive), { error: null });
   }
 
   async function upload(
     files: File[],
     options?: CMSMediaUploadOptions,
-  ): Promise<void> {
-    if (files.length === 0) return;
+  ): Promise<CMSMediaUploadFileState[]> {
+    if (files.length === 0) return [];
 
-    controller = new AbortController();
-    const { signal } = controller;
+    const entries: CMSMediaUploadFileState[] = files.map((file) => ({
+      id: `upl_${++entrySequence}`,
+      file,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      status: 'pending',
+      loaded: 0,
+      total: file.size,
+      progress: 0,
+    }));
+    const ids = entries.map((entry) => entry.id);
+    commit([...store.get().files, ...entries], { error: null });
 
-    store.set({
-      ...store.get(),
-      isUploading: true,
-      isAborted: false,
-      files: files.map((f) => ({
-        name: f.name,
-        progress: 0,
-        status: 'pending',
-      })),
-      totalProgress: 0,
-      error: null,
-    });
+    const { signal, release } = mergeSignals(root.signal, options?.signal);
 
     try {
-      if (signal.aborted) return;
+      if (signal.aborted) {
+        abortPending(ids);
+        return snapshot(ids);
+      }
 
-      // Sign, then upload, then finalize; check `signal.aborted` between steps.
-      const signResponse = (await $fetch('/media/createSignedUpload', {
-        method: 'POST',
-        body: {
-          files: files.map((f) => ({
-            name: f.name,
-            size: f.size,
-            type: f.type,
-          })),
-          folderId: options?.folderId,
-        },
-      })) as { assets: SignedAsset[]; expiresAt: Date };
+      let signResponse: { assets: SignedAsset[]; expiresAt: Date };
+      try {
+        signResponse = (await $fetch('/media/createSignedUpload', {
+          method: 'POST',
+          body: {
+            files: files.map((f) => ({
+              name: f.name,
+              size: f.size,
+              type: f.type,
+            })),
+            folderId: options?.folderId,
+          },
+        })) as { assets: SignedAsset[]; expiresAt: Date };
+      } catch (err) {
+        const error = toUploadError(err);
+        patch(ids, (entry) => ({ ...entry, status: 'error', error }), {
+          error: err,
+        });
+        return snapshot(ids);
+      }
 
-      if (signal.aborted) return;
+      if (signal.aborted) {
+        abortPending(ids);
+        return snapshot(ids);
+      }
 
-      // Upload the signed assets to S3 in parallel.
-      const uploadPromises = signResponse.assets.map(async (asset, index) => {
-        updateFileState(index, { status: 'uploading' });
+      const assets = signResponse.assets;
+      let cursor = 0;
 
-        try {
-          await uploadWithXHR(
-            asset.signedUrl,
-            files[index],
-            asset.headers,
-            (loaded, total) => {
-              updateFileState(index, {
-                progress: Math.round((loaded / total) * 100),
-              });
-            },
-            signal,
-          );
+      async function worker() {
+        while (cursor < entries.length) {
+          const index = cursor++;
+          const id = ids[index];
+          const asset = assets[index];
+          if (signal.aborted) {
+            abortPending([id]);
+            continue;
+          }
+          if (snapshot([id])[0]?.status !== 'pending') continue;
 
-          updateFileState(index, {
-            progress: 100,
-            status: 'done',
-            result: {
-              id: asset.id,
-              slug: asset.slug,
-              objectKey: asset.objectKey,
-            },
-          });
-        } catch (err) {
-          const isAbortErr =
-            err instanceof DOMException && err.name === 'AbortError';
-          updateFileState(index, {
-            status: 'error',
-            error: isAbortErr
-              ? 'Upload aborted.'
-              : err instanceof Error
-                ? err.message
-                : 'Upload failed',
-          });
+          patch([id], (entry) => ({ ...entry, status: 'uploading' }));
+
+          try {
+            await uploadWithXHR(
+              asset.signedUrl,
+              files[index],
+              asset.headers,
+              (loaded, total) => {
+                patch([id], (entry) => ({
+                  ...entry,
+                  loaded,
+                  total,
+                  progress: total === 0 ? 0 : loaded / total,
+                }));
+              },
+              signal,
+            );
+
+            patch([id], (entry) => ({
+              ...entry,
+              loaded: entry.total,
+              progress: 1,
+              result: {
+                id: asset.id,
+                slug: asset.slug,
+                objectKey: asset.objectKey,
+              },
+            }));
+          } catch (err) {
+            if (isAbortError(err)) {
+              patch([id], (entry) => ({ ...entry, status: 'aborted' }));
+            } else {
+              const error = toUploadError(err);
+              patch([id], (entry) => ({ ...entry, status: 'error', error }));
+            }
+          }
         }
-      });
+      }
 
-      await Promise.allSettled(uploadPromises);
+      const size = Math.max(
+        1,
+        Math.min(options?.concurrency ?? DEFAULT_CONCURRENCY, entries.length),
+      );
+      await Promise.all(Array.from({ length: size }, worker));
 
-      const finalState = store.get();
-      const hasErrors = finalState.files.some((f) => f.status === 'error');
+      finalize(ids);
 
-      store.set({
-        ...finalState,
-        isUploading: false,
-        totalProgress: computeTotalProgress(finalState.files),
-        error: hasErrors ? 'Some files failed to upload' : null,
-      });
-    } catch (err) {
-      store.set({
-        ...store.get(),
-        isUploading: false,
-        error: err instanceof Error ? err.message : err,
-      });
+      const failed = snapshot(ids).some((entry) => entry.status === 'error');
+      if (failed) {
+        commit(store.get().files, { error: 'Some files failed to upload' });
+      }
+      return snapshot(ids);
+    } finally {
+      release();
     }
   }
 

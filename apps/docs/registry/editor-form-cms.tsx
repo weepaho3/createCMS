@@ -311,7 +311,6 @@ function MediaField(props: FieldControlProps<'image'>) {
   const sources = useCmsSources();
   const upload = sources.assets.useUpload();
   const fileInputRef = React.useRef<HTMLInputElement>(null);
-  const expectingUploadRef = React.useRef(false);
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState('');
   const [offset, setOffset] = React.useState(0);
@@ -333,19 +332,6 @@ function MediaField(props: FieldControlProps<'image'>) {
     if (!open) return;
     void loadAssets();
   }, [loadAssets, open]);
-
-  React.useEffect(() => {
-    if (!expectingUploadRef.current || upload.isUploading) return;
-
-    expectingUploadRef.current = false;
-    if (upload.error) return;
-
-    const uploaded = upload.files.find((file) => file.result?.id);
-    if (uploaded?.result?.id) {
-      onChange(uploaded.result.id);
-      void loadAssets();
-    }
-  }, [loadAssets, onChange, upload.error, upload.files, upload.isUploading]);
 
   const previewUrl = props.value ? assetUrl(props.value) : null;
 
@@ -444,8 +430,15 @@ function MediaField(props: FieldControlProps<'image'>) {
           onChange={(event) => {
             const files = event.target.files;
             if (!files?.length) return;
-            expectingUploadRef.current = true;
-            void upload.upload(Array.from(files));
+            void upload.upload(Array.from(files)).then((entries) => {
+              const done = entries.find(
+                (entry) => entry.status === 'success' && entry.result,
+              );
+              if (done?.result) {
+                onChange(done.result.id);
+                void loadAssets();
+              }
+            });
             event.target.value = '';
           }}
         />

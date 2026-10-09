@@ -94,6 +94,33 @@ on, schema changes are picked up with `createcms generate` + a Drizzle migration
   → **Migration:** replace `useChildren(id).map((childId) => ...)` with
   `useChildren(id).map((child) => ... child.id ...)`; nothing else changes.
 
+- **`media.useUploadAssets()` is a byte-accurate ledger.** `totalProgress`
+  (0 to 100) is replaced by `progress: { loaded, total, fraction }` with
+  `fraction` 0 to 1, summed over bytes rather than averaged over files.
+  `isAborted` is removed. Per-file `status` ends in `success` (was `done`),
+  `error`, or `aborted` (was `error` with the message `Upload aborted.`);
+  `error` is `{ code, message }` instead of a string. Each entry carries
+  `id`, `file`, `size`, `type`, `loaded`, and `total`, and `progress` is
+  0 to 1. `files` accumulates across `upload()` calls until `reset()`, which
+  drops finished entries only. `upload()` resolves with that call's entries,
+  accepts `concurrency` (default 4) and `signal`, and PUTs at most
+  `concurrency` files at once. `client.media.uploadState` (vanilla) exposes
+  the same shape.
+  → **Migration:** read `progress.fraction * 100` instead of
+  `totalProgress`; match `status === 'success'` instead of `'done'`; treat
+  `status === 'aborted'` as cancelled rather than failed; read the new
+  asset from the array `upload()` resolves with (or from `files` by `id`)
+  and call `reset()` to clear finished rows.
+
+- **`@createcms/react`: `CmsMediaUploadState` and `CmsMediaUploadFileState`
+  mirror the new core shape.** `isAborted` and `totalProgress` are gone,
+  `progress` is `CmsMediaUploadProgress`, `status` is `CmsMediaUploadStatus`
+  (`success` instead of `done`, plus `aborted`), `error` on an entry is
+  `{ code, message }`, and `upload` returns `Promise<CmsMediaUploadFileState[]>`.
+  → **Migration:** update fakes and idle states to
+  `{ isUploading, files: [], progress: { loaded: 0, total: 0, fraction: 0 }, error, upload: async () => [], abort, reset }`
+  and any UI that read `totalProgress` or `status === 'done'`.
+
 ---
 
 ## 0.6.0 — 2026-08-14

@@ -38,6 +38,8 @@ export type {
   CMSMediaUploadState,
   CMSMediaUploadFileState,
   CMSMediaUploadOptions,
+  CMSMediaUploadProgress,
+  CMSMediaUploadStatus,
 } from './client/types';
 
 export { cmsMeta, cmsContext, createCMSEndpoint } from './core/endpoint';

@@ -183,8 +183,10 @@ level, not inside callbacks.
 | `CmsSuggestItem`            | One suggest row for variables.                                       |
 | `CmsSuggestRenderContext`   | Context passed to variable suggest UI.                               |
 | `CmsVariableSuggest`        | Suggest config from `useVariableSuggest`.                            |
-| `CmsMediaUploadState`       | Upload batch state from `assets.useUpload()`.                        |
-| `CmsMediaUploadFileState`   | Per-file upload state.                                               |
+| `CmsMediaUploadState`       | Upload ledger from `assets.useUpload()`; entries accumulate until `reset()`. |
+| `CmsMediaUploadFileState`   | Per-file upload entry (`status`, `loaded`, `total`, `result`).       |
+| `CmsMediaUploadStatus`      | `pending`, `uploading`, `success`, `error`, or `aborted`.            |
+| `CmsMediaUploadProgress`    | Byte-summed `{ loaded, total, fraction }` over the ledger.           |
 | `AssetUrlOptions`           | Options for `assetUrl` (`format`, `w`, `h`, …).                    |
 | `CMS_RESOLVE_DEBOUNCE_MS`   | Debounce before `resolveTree` after local edits (default 300 ms).  |
 | `linkLabel`                 | Resolve a link value to a display string.                            |

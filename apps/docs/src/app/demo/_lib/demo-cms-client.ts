@@ -26,11 +26,10 @@ export type DemoCmsClient = UseCmsFieldSourcesClient & {
 function idleUploadState(): CmsMediaUploadState {
   return {
     isUploading: false,
-    isAborted: false,
     files: [],
-    totalProgress: 0,
+    progress: { loaded: 0, total: 0, fraction: 0 },
     error: undefined,
-    upload: async () => {},
+    upload: async () => [],
     abort: () => {},
     reset: () => {},
   };

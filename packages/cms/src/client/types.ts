@@ -47,28 +47,56 @@ export interface CMSClientPlugin {
   $ERROR_CODES?: Record<string, { status: number; message: string }>;
 }
 
+export type CMSMediaUploadStatus =
+  | 'pending'
+  | 'uploading'
+  | 'success'
+  | 'error'
+  | 'aborted';
+
 export type CMSMediaUploadFileState = {
+  /** Stable per-entry id, unique for the atom's lifetime. */
+  id: string;
+  file: File;
   name: string;
+  size: number;
+  type: string;
+  status: CMSMediaUploadStatus;
+  loaded: number;
+  total: number;
+  /** 0..1 */
   progress: number;
-  status: 'pending' | 'uploading' | 'done' | 'error';
-  error?: string;
+  error?: { code: string; message: string };
   optimized?: boolean;
   originalVariantId?: string;
   result?: { id: string; slug: string; objectKey: string };
 };
 
+export type CMSMediaUploadProgress = {
+  loaded: number;
+  total: number;
+  fraction: number;
+};
+
 export type CMSMediaUploadOptions = {
   folderId?: string;
+  /** Max concurrent PUTs. Default 4. */
+  concurrency?: number;
+  signal?: AbortSignal;
 };
 
 export type CMSMediaUploadState = {
   isUploading: boolean;
-  isAborted: boolean;
   files: CMSMediaUploadFileState[];
-  totalProgress: number;
+  progress: CMSMediaUploadProgress;
   error: unknown;
-  upload: (files: File[], options?: CMSMediaUploadOptions) => Promise<void>;
+  upload: (
+    files: File[],
+    options?: CMSMediaUploadOptions,
+  ) => Promise<CMSMediaUploadFileState[]>;
+  /** Aborts every in-flight upload; their entries end `aborted`. */
   abort: () => void;
+  /** Drops finished entries (success/error/aborted) and clears `error`; in-flight entries stay. */
   reset: () => void;
 };
 
