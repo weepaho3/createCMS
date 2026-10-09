@@ -295,6 +295,30 @@ describe('createMediaUploadAtom', () => {
     expect(FakeXHR.instances).toHaveLength(0);
   });
 
+  it('keeps entries aborted when signing fails after an abort', async () => {
+    let rejectSign: (err: unknown) => void = () => {};
+    const pending = (() =>
+      new Promise((_, reject) => {
+        rejectSign = reject;
+      })) as CMSFetch;
+    const store = createMediaUploadAtom(pending);
+
+    const result = store.get().upload([makeFile('a.bin', 10)]);
+    await tick();
+    store.get().abort();
+    rejectSign(
+      new CMSClientError({
+        code: 'FILE_TOO_LARGE',
+        message: 'File exceeds the size limit',
+        status: 413,
+      }),
+    );
+    const entries = await result;
+
+    expect(entries[0].status).toBe('aborted');
+    expect(store.get().error).toBeNull();
+  });
+
   it('resolves with the entries of that call only', async () => {
     const store = createMediaUploadAtom(signingFetch());
     const first = store.get().upload([makeFile('a.bin', 10)]);

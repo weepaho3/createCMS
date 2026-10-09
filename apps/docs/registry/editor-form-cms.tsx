@@ -327,6 +327,10 @@ function MediaField(props: FieldControlProps<'image'>) {
     setAssets(page.assets);
     setHasMore(page.hasMore);
   }, [offset, search, sources.assets]);
+  const loadAssetsRef = React.useRef(loadAssets);
+  React.useLayoutEffect(() => {
+    loadAssetsRef.current = loadAssets;
+  }, [loadAssets]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -430,15 +434,18 @@ function MediaField(props: FieldControlProps<'image'>) {
           onChange={(event) => {
             const files = event.target.files;
             if (!files?.length) return;
-            void upload.upload(Array.from(files)).then((entries) => {
-              const done = entries.find(
-                (entry) => entry.status === 'success' && entry.result,
-              );
-              if (done?.result) {
-                onChange(done.result.id);
-                void loadAssets();
-              }
-            });
+            void upload
+              .upload(Array.from(files))
+              .then((entries) => {
+                const done = entries.find(
+                  (entry) => entry.status === 'success' && entry.result,
+                );
+                if (done?.result) {
+                  onChange(done.result.id);
+                  void loadAssetsRef.current();
+                }
+              })
+              .catch(() => {});
             event.target.value = '';
           }}
         />

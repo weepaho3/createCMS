@@ -39,9 +39,9 @@ export function Uploader() {
         multiple
         onChange={async (e) => {
           const entries = await upload(Array.from(e.target.files ?? []));
-          const ids = entries
-            .filter((entry) => entry.status === 'success')
-            .map((entry) => entry.result!.id);
+          const ids = entries.flatMap((entry) =>
+            entry.status === 'success' && entry.result ? [entry.result.id] : [],
+          );
           console.log('uploaded', ids);
         }}
       />

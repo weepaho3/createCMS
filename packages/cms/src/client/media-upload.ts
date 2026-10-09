@@ -186,9 +186,6 @@ function toUploadError(err: unknown): { code: string; message: string } {
   if (err instanceof UploadRequestError) {
     return { code: err.code, message: err.message };
   }
-  if (err instanceof TypeError) {
-    return { code: 'NETWORK_ERROR', message: err.message };
-  }
   return {
     code: 'UPLOAD_FAILED',
     message: err instanceof Error ? err.message : 'Upload failed',
@@ -365,7 +362,6 @@ export function createMediaUploadAtom(
   }
 
   function reset() {
-    if (root.signal.aborted) root = new AbortController();
     commit(store.get().files.filter(isActive), { error: null });
   }
 
@@ -411,6 +407,10 @@ export function createMediaUploadAtom(
           },
         })) as { uploads: SignedUpload[]; expiresAt: Date };
       } catch (err) {
+        if (signal.aborted) {
+          abortPending(ids);
+          return snapshot(ids);
+        }
         const error = toUploadError(err);
         patch(ids, (entry) => ({ ...entry, status: 'error', error }), {
           error: err,
