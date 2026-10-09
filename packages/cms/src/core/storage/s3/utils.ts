@@ -149,6 +149,28 @@ export async function headObject(
   };
 }
 
+/**
+ * GETs `bytes=<start>-<end>` of an object. Returns `null` when the bucket
+ * answers 404; throws `S3Error` on any other non-2xx response. A 200 (range
+ * ignored) is sliced to the requested length.
+ */
+export async function getObjectRange(
+  client: S3Client,
+  params: { bucket: string; key: string; start: number; end: number },
+): Promise<Uint8Array | null> {
+  const url = `${client.buildBucketUrl(params.bucket)}/${params.key}`;
+  const res = await client.s3.fetch(url, {
+    method: 'GET',
+    headers: { range: `bytes=${params.start}-${params.end}` },
+  });
+  if (res.status === 404) return null;
+  await throwS3Error(Promise.resolve(res));
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  const length = params.end - params.start + 1;
+  if (res.status === 206 || bytes.length <= length) return bytes;
+  return bytes.slice(params.start, params.start + length);
+}
+
 export function buildPublicObjectUrl(
   publicBaseUrl: string,
   key: string,
@@ -195,6 +217,15 @@ export function createSlug(text: string): string {
  */
 export function buildObjectKey(assetSlug: string): string {
   return assetSlug;
+}
+
+/**
+ * The S3 object key for a browser (presign/complete) upload: `<id>/<slug of
+ * fileName>`. Unique without a database row, so two presigns of the same file
+ * name never share an object.
+ */
+export function buildUploadObjectKey(id: string, fileName: string): string {
+  return `${id}/${createSlug(fileName)}`;
 }
 
 export function buildVariantSlug(

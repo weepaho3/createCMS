@@ -188,6 +188,7 @@ const EXPECTED: Record<string, Record<string, Expected>> = {
     archiveAssets: { permissionResource: 'media', operation: 'delete' },
     getAssetUsages: { permissionResource: 'media', operation: 'read' },
     createSignedUpload: { permissionResource: 'media', operation: 'create' },
+    completeUpload: { permissionResource: 'media', operation: 'create' },
     uploadAssets: { permissionResource: 'media', operation: 'create' },
     replaceAsset: { permissionResource: 'media', operation: 'update' },
     // The browser-callable replace flow must carry the same label as

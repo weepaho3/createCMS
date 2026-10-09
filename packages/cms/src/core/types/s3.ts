@@ -88,6 +88,13 @@ type BaseMediaConfig = {
   // URL generation
   /** Signed URL expiration time in seconds. @default 120 */
   signedUrlExpiresIn?: number;
+
+  /**
+   * HMAC secret for the presign/complete upload tokens. Defaults to a key
+   * derived from `secretAccessKey`; set it when the credentials are temporary
+   * (STS), since a rotated secret invalidates tokens minted before the rotation.
+   */
+  uploadSecret?: string;
 };
 
 /** AWS S3 configuration */

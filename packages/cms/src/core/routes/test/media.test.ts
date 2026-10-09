@@ -5,6 +5,85 @@ import { setupMultiTenantTestCMS } from '../../../plugins/multi-tenant/test/util
 import { assetFolders, assets } from '../../../schema';
 import { setupTestCMS } from '../../../test-utils/cms';
 
+const PNG_BYTES = new Uint8Array([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+]);
+const JPEG_BYTES = new Uint8Array([
+  0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46,
+]);
+const WEBP_BYTES = new Uint8Array([
+  0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50,
+]);
+const PDF_BYTES = new TextEncoder().encode('%PDF-1.4');
+const SVG_BYTES = new TextEncoder().encode(
+  '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+);
+
+function bytesFor(type: string): Uint8Array<ArrayBuffer> {
+  switch (type) {
+    case 'image/png':
+      return PNG_BYTES;
+    case 'image/jpeg':
+      return JPEG_BYTES;
+    case 'image/webp':
+      return WEBP_BYTES;
+    default:
+      return PDF_BYTES;
+  }
+}
+
+type SignedPut = { signedUrl: string; headers: Record<string, string> };
+
+/** The browser's PUT to a presigned URL. */
+async function putSigned(target: SignedPut, body: Uint8Array<ArrayBuffer>) {
+  const res = await fetch(target.signedUrl, {
+    method: 'PUT',
+    headers: {
+      'content-type': target.headers['Content-Type'],
+      'content-length': String(body.byteLength),
+    },
+    body,
+  });
+  expect(res.ok).toBe(true);
+}
+
+async function objectExists(url: string): Promise<boolean> {
+  return (await fetch(url, { method: 'HEAD' })).status === 200;
+}
+
+/** Re-encodes the token payload with `size` changed, keeping the signature. */
+function tamperToken(token: string): string {
+  const [body, signature] = token.split('.');
+  const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+  payload.size = 1;
+  const forged = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  return `${forged}.${signature}`;
+}
+
+type TestCMS = Awaited<ReturnType<typeof setupTestCMS>>['cms'];
+
+/** presign, PUT each type's fixture bytes, complete; fails on any entry error. */
+async function uploadSigned(
+  cms: TestCMS,
+  files: { name: string; type: string; variantOf?: string }[],
+  folderId?: string,
+) {
+  const signed = await cms.api.media.createSignedUpload({
+    body: {
+      files: files.map((f) => ({ ...f, size: bytesFor(f.type).byteLength })),
+      folderId,
+    },
+  });
+  for (let i = 0; i < files.length; i++) {
+    await putSigned(signed.uploads[i], bytesFor(files[i].type));
+  }
+  const completed = await cms.api.media.completeUpload({
+    body: { uploads: signed.uploads.map(({ token }) => ({ token })) },
+  });
+  expect(completed.errors).toEqual([]);
+  return { signed, assets: completed.assets };
+}
+
 // ============================================================================
 // Folder Operations
 // ============================================================================
@@ -782,7 +861,7 @@ describe('media.createSignedUpload', () => {
     await cleanup?.();
   });
 
-  it('returns signed URLs for client-side upload', async () => {
+  it('returns signed URLs and tokens for client-side upload', async () => {
     const { cms, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
 
@@ -790,37 +869,29 @@ describe('media.createSignedUpload', () => {
       body: { files: [{ name: 'photo.jpg', size: 1024, type: 'image/jpeg' }] },
     });
 
-    expect(result.assets).toHaveLength(1);
-    expect(result.assets[0].id).toBeDefined();
-    expect(result.assets[0].objectKey).toContain('photo.jpg');
-    expect(result.assets[0].signedUrl).toBeDefined();
-    expect(result.assets[0].signedUrl).toContain('X-Amz-');
-    expect(result.assets[0].headers).toBeDefined();
-    expect(result.assets[0].headers['Content-Type']).toBe('image/jpeg');
+    expect(result.uploads).toHaveLength(1);
+    const [upload] = result.uploads;
+    expect(upload.id).toMatch(/^ast_/);
+    expect(upload.objectKey).toBe(`${upload.id}/photo.jpg`);
+    expect(upload.url).toBe(`${s3.config.publicUrl}/${upload.objectKey}`);
+    expect(upload.signedUrl).toContain('X-Amz-');
+    expect(upload.headers['Content-Type']).toBe('image/jpeg');
+    expect(upload.token.split('.')).toHaveLength(2);
     expect(result.expiresAt).toBeInstanceOf(Date);
     expect(result.expiresAt.getTime()).toBeGreaterThan(Date.now());
   });
 
-  it('creates asset records in the database with private status', async () => {
+  it('creates no row until completeUpload', async () => {
     const { cms, db, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
 
-    const result = await cms.api.media.createSignedUpload({
+    await cms.api.media.createSignedUpload({
       body: {
         files: [{ name: 'doc.pdf', size: 2048, type: 'application/pdf' }],
       },
     });
 
-    const [asset] = await db
-      .select()
-      .from(assets)
-      .where(eq(assets.id, result.assets[0].id));
-
-    expect(asset).toBeDefined();
-    expect(asset.slug).toBe('doc.pdf');
-    expect(asset.mimeType).toBe('application/pdf');
-    expect(asset.size).toBe(2048);
-    expect(asset.status).toBe('private');
+    expect(await db.select().from(assets)).toHaveLength(0);
   });
 
   it('handles multiple files in a single request', async () => {
@@ -837,10 +908,40 @@ describe('media.createSignedUpload', () => {
       },
     });
 
-    expect(result.assets).toHaveLength(3);
-    for (const asset of result.assets) {
-      expect(asset.signedUrl).toBeDefined();
+    expect(result.uploads).toHaveLength(3);
+    for (const upload of result.uploads) {
+      expect(upload.signedUrl).toBeDefined();
     }
+    expect(new Set(result.uploads.map((u) => u.objectKey)).size).toBe(3);
+  });
+
+  it('completes a PUT object into a private asset row', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+
+    const { signed, assets: completed } = await uploadSigned(cms, [
+      { name: 'pixel.png', type: 'image/png' },
+    ]);
+
+    const id = signed.uploads[0].id;
+    expect(completed).toHaveLength(1);
+    expect(completed[0].id).toBe(id);
+    expect(completed[0].slug).toBe('pixel.png');
+    expect(completed[0].objectKey).toBe(`${id}/pixel.png`);
+    expect(completed[0].url).toBe(`${s3.config.publicUrl}/${id}/pixel.png`);
+    expect(completed[0].status).toBe('private');
+    expect(completed[0].createdAt).toBeInstanceOf(Date);
+
+    const rows = await db.select().from(assets);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id,
+      slug: 'pixel.png',
+      mimeType: 'image/png',
+      size: 8,
+      objectKey: `${id}/pixel.png`,
+      status: 'private',
+    });
   });
 
   it('places assets in the specified folder', async () => {
@@ -851,51 +952,197 @@ describe('media.createSignedUpload', () => {
       body: { name: 'Uploads' },
     });
 
-    const result = await cms.api.media.createSignedUpload({
-      body: {
-        files: [{ name: 'photo.jpg', size: 1024, type: 'image/jpeg' }],
-        folderId: folder.folder.id,
-      },
-    });
+    const { signed } = await uploadSigned(
+      cms,
+      [{ name: 'photo.jpg', type: 'image/jpeg' }],
+      folder.folder.id,
+    );
 
     const [asset] = await db
       .select()
       .from(assets)
-      .where(eq(assets.id, result.assets[0].id));
+      .where(eq(assets.id, signed.uploads[0].id));
 
     expect(asset.folderId).toBe(folder.folder.id);
-    // Object key is just the slug in flat S3 structure (no folder in path)
-    expect(asset.objectKey).toBe('photo.jpg');
+    // The object key is `<id>/<slug>`; the folder is not part of the path.
+    expect(asset.objectKey).toBe(`${signed.uploads[0].id}/photo.jpg`);
   });
 
-  it('uses the signed URL to upload to the test S3 fake successfully', async () => {
-    const { cms, s3 } = await setupTestCMS({ withS3: true });
+  it('reports UPLOAD_NOT_FOUND when nothing was PUT and writes no row', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
 
-    const pixel = new Uint8Array([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-    ]);
+    const signed = await cms.api.media.createSignedUpload({
+      body: { files: [{ name: 'pixel.png', size: 8, type: 'image/png' }] },
+    });
+    const completed = await cms.api.media.completeUpload({
+      body: { uploads: [{ token: signed.uploads[0].token }] },
+    });
 
-    const result = await cms.api.media.createSignedUpload({
+    expect(completed.assets).toEqual([]);
+    expect(completed.errors).toEqual([
+      {
+        index: 0,
+        code: 'UPLOAD_NOT_FOUND',
+        message: expect.stringContaining('did not complete'),
+      },
+    ]);
+    expect(await db.select().from(assets)).toHaveLength(0);
+  });
+
+  it('rejects a tampered or malformed token (UPLOAD_TOKEN_INVALID)', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+
+    const signed = await cms.api.media.createSignedUpload({
+      body: { files: [{ name: 'pixel.png', size: 8, type: 'image/png' }] },
+    });
+    await putSigned(signed.uploads[0], PNG_BYTES);
+
+    const completed = await cms.api.media.completeUpload({
       body: {
-        files: [
-          { name: 'pixel.png', size: pixel.byteLength, type: 'image/png' },
+        uploads: [
+          { token: tamperToken(signed.uploads[0].token) },
+          { token: 'not-a-token' },
         ],
       },
     });
 
-    const signedUrl = result.assets[0].signedUrl;
+    expect(completed.assets).toEqual([]);
+    expect(completed.errors.map((e) => [e.index, e.code])).toEqual([
+      [0, 'UPLOAD_TOKEN_INVALID'],
+      [1, 'UPLOAD_TOKEN_INVALID'],
+    ]);
+    expect(await db.select().from(assets)).toHaveLength(0);
+  });
 
-    const uploadResponse = await fetch(signedUrl, {
-      method: 'PUT',
-      headers: {
-        'content-type': 'image/png',
-        'content-length': pixel.byteLength.toString(),
-      },
-      body: pixel,
+  it('rejects a token minted in another tenant (UPLOAD_TOKEN_INVALID)', async () => {
+    const { cms, db, setTenant, s3 } = await setupMultiTenantTestCMS({
+      withS3: true,
+    });
+    cleanup = s3.cleanup;
+
+    setTenant('acme');
+    const signed = await cms.api.media.createSignedUpload({
+      body: { files: [{ name: 'pixel.png', size: 8, type: 'image/png' }] },
+    });
+    await putSigned(signed.uploads[0], PNG_BYTES);
+
+    setTenant('globex');
+    const foreign = await cms.api.media.completeUpload({
+      body: { uploads: [{ token: signed.uploads[0].token }] },
+    });
+    expect(foreign.assets).toEqual([]);
+    expect(foreign.errors[0].code).toBe('UPLOAD_TOKEN_INVALID');
+    expect(await db.select().from(assets)).toHaveLength(0);
+
+    setTenant('acme');
+    const own = await cms.api.media.completeUpload({
+      body: { uploads: [{ token: signed.uploads[0].token }] },
+    });
+    expect(own.assets).toHaveLength(1);
+    const rows = await db.execute(
+      sql`SELECT tenant_slug FROM cms.assets WHERE id = ${own.assets[0].id}`,
+    );
+    expect(rows.rows[0]).toEqual({ tenant_slug: 'acme' });
+  });
+
+  it('rejects an object shorter than the declared size, deletes it and writes no row', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+
+    const signed = await cms.api.media.createSignedUpload({
+      body: { files: [{ name: 'pixel.png', size: 1024, type: 'image/png' }] },
+    });
+    await putSigned(signed.uploads[0], PNG_BYTES);
+
+    const completed = await cms.api.media.completeUpload({
+      body: { uploads: [{ token: signed.uploads[0].token }] },
     });
 
-    expect(uploadResponse.ok).toBe(true);
+    expect(completed.assets).toEqual([]);
+    expect(completed.errors[0].code).toBe('VALIDATION_ERROR');
+    expect(completed.errors[0].message).toMatch(/does not match/);
+    expect(await objectExists(signed.uploads[0].url)).toBe(false);
+    expect(await db.select().from(assets)).toHaveLength(0);
+  });
+
+  it('rejects an SVG declared as image/png and deletes it (INVALID_FILE_TYPE)', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+
+    const signed = await cms.api.media.createSignedUpload({
+      body: {
+        files: [
+          { name: 'evil.png', size: SVG_BYTES.byteLength, type: 'image/png' },
+        ],
+      },
+    });
+    await putSigned(signed.uploads[0], SVG_BYTES);
+
+    const completed = await cms.api.media.completeUpload({
+      body: { uploads: [{ token: signed.uploads[0].token }] },
+    });
+
+    expect(completed.assets).toEqual([]);
+    expect(completed.errors[0].code).toBe('INVALID_FILE_TYPE');
+    expect(await objectExists(signed.uploads[0].url)).toBe(false);
+    expect(await db.select().from(assets)).toHaveLength(0);
+  });
+
+  it('replays a completed token to the same asset without a second row', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+
+    const { signed, assets: first } = await uploadSigned(cms, [
+      { name: 'pixel.png', type: 'image/png' },
+    ]);
+    const again = await cms.api.media.completeUpload({
+      body: { uploads: [{ token: signed.uploads[0].token }] },
+    });
+
+    expect(again.errors).toEqual([]);
+    expect(again.assets[0].id).toBe(first[0].id);
+    expect(again.assets[0].slug).toBe('pixel.png');
+    expect(await db.select().from(assets)).toHaveLength(1);
+  });
+
+  it('reports FOLDER_NOT_FOUND for the entry whose folder was deleted after presign', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+
+    const folder = await cms.api.media.createFolder({ body: { name: 'Tmp' } });
+    const filed = await cms.api.media.createSignedUpload({
+      body: {
+        files: [{ name: 'filed.png', size: 8, type: 'image/png' }],
+        folderId: folder.folder.id,
+      },
+    });
+    const unfiled = await cms.api.media.createSignedUpload({
+      body: { files: [{ name: 'unfiled.png', size: 8, type: 'image/png' }] },
+    });
+    await putSigned(filed.uploads[0], PNG_BYTES);
+    await putSigned(unfiled.uploads[0], PNG_BYTES);
+    await cms.api.media.deleteFolder({ body: { folderId: folder.folder.id } });
+
+    const completed = await cms.api.media.completeUpload({
+      body: {
+        uploads: [
+          { token: filed.uploads[0].token },
+          { token: unfiled.uploads[0].token },
+        ],
+      },
+    });
+
+    expect(completed.errors).toEqual([
+      {
+        index: 0,
+        code: 'FOLDER_NOT_FOUND',
+        message: expect.stringContaining(folder.folder.id),
+      },
+    ]);
+    expect(completed.assets.map((a) => a.slug)).toEqual(['unfiled.png']);
+    expect(await db.select().from(assets)).toHaveLength(1);
   });
 });
 
@@ -1314,37 +1561,26 @@ describe('variantOf support', () => {
     await cleanup?.();
   });
 
-  it('createSignedUpload stores variantOf in the asset record', async () => {
+  it('signed upload stores variantOf in the asset record', async () => {
     const { cms, db, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
 
-    // Create primary asset first
-    const primary = await cms.api.media.createSignedUpload({
-      body: { files: [{ name: 'photo.webp', size: 1024, type: 'image/webp' }] },
-    });
+    const {
+      assets: [primary],
+    } = await uploadSigned(cms, [{ name: 'photo.webp', type: 'image/webp' }]);
 
-    const primaryId = primary.assets[0].id;
-
-    // Create variant linked to primary
-    const variant = await cms.api.media.createSignedUpload({
-      body: {
-        files: [
-          {
-            name: 'photo.jpeg',
-            size: 2048,
-            type: 'image/jpeg',
-            variantOf: primaryId,
-          },
-        ],
-      },
-    });
+    const {
+      assets: [variant],
+    } = await uploadSigned(cms, [
+      { name: 'photo.jpeg', type: 'image/jpeg', variantOf: primary.id },
+    ]);
 
     const [variantAsset] = await db
       .select()
       .from(assets)
-      .where(eq(assets.id, variant.assets[0].id));
+      .where(eq(assets.id, variant.id));
 
-    expect(variantAsset.variantOf).toBe(primaryId);
+    expect(variantAsset.variantOf).toBe(primary.id);
     expect(variantAsset.mimeType).toBe('image/jpeg');
   });
 
@@ -1399,16 +1635,16 @@ describe('variantOf support', () => {
     const { cms, db, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
 
-    const result = await cms.api.media.createSignedUpload({
-      body: {
-        files: [{ name: 'standalone.jpg', size: 1024, type: 'image/jpeg' }],
-      },
-    });
+    const {
+      assets: [uploaded],
+    } = await uploadSigned(cms, [
+      { name: 'standalone.jpg', type: 'image/jpeg' },
+    ]);
 
     const [asset] = await db
       .select()
       .from(assets)
-      .where(eq(assets.id, result.assets[0].id));
+      .where(eq(assets.id, uploaded.id));
 
     expect(asset.variantOf).toBeNull();
   });
@@ -1424,24 +1660,32 @@ describe('slug collision handling', () => {
     await cleanup?.();
   });
 
-  it('appends counter when slug already exists', async () => {
+  it('mints distinct object keys at presign and a counter slug at complete', async () => {
     const { cms, db, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
 
+    const file = { name: 'photo.jpg', size: 8, type: 'image/jpeg' };
     const first = await cms.api.media.createSignedUpload({
-      body: { files: [{ name: 'photo.jpg', size: 1024, type: 'image/jpeg' }] },
+      body: { files: [file] },
     });
-
     const second = await cms.api.media.createSignedUpload({
-      body: { files: [{ name: 'photo.jpg', size: 1024, type: 'image/jpeg' }] },
+      body: { files: [file] },
+    });
+    expect(first.uploads[0].objectKey).not.toBe(second.uploads[0].objectKey);
+
+    await putSigned(first.uploads[0], JPEG_BYTES);
+    await putSigned(second.uploads[0], JPEG_BYTES);
+    const firstDone = await cms.api.media.completeUpload({
+      body: { uploads: [{ token: first.uploads[0].token }] },
+    });
+    const secondDone = await cms.api.media.completeUpload({
+      body: { uploads: [{ token: second.uploads[0].token }] },
     });
 
-    expect(first.assets[0].slug).toBe('photo.jpg');
-    expect(second.assets[0].slug).toBe('photo-2.jpg');
+    expect(firstDone.assets[0].slug).toBe('photo.jpg');
+    expect(secondDone.assets[0].slug).toBe('photo-2.jpg');
 
-    // Verify both exist in DB
     const rows = await db.select({ slug: assets.slug }).from(assets);
-
     const slugs = rows.map((r) => r.slug);
     expect(slugs).toContain('photo.jpg');
     expect(slugs).toContain('photo-2.jpg');
@@ -1453,12 +1697,10 @@ describe('slug collision handling', () => {
 
     const results: string[] = [];
     for (let i = 0; i < 4; i++) {
-      const result = await cms.api.media.createSignedUpload({
-        body: {
-          files: [{ name: 'banner.png', size: 1024, type: 'image/png' }],
-        },
-      });
-      results.push(result.assets[0].slug);
+      const { assets: completed } = await uploadSigned(cms, [
+        { name: 'banner.png', type: 'image/png' },
+      ]);
+      results.push(completed[0].slug);
     }
 
     expect(results).toEqual([
@@ -1473,16 +1715,12 @@ describe('slug collision handling', () => {
     const { cms, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
 
-    const first = await cms.api.media.createSignedUpload({
-      body: { files: [{ name: 'readme', size: 100, type: 'application/pdf' }] },
-    });
+    const file = { name: 'readme', type: 'application/pdf' };
+    const { assets: first } = await uploadSigned(cms, [file]);
+    const { assets: second } = await uploadSigned(cms, [file]);
 
-    const second = await cms.api.media.createSignedUpload({
-      body: { files: [{ name: 'readme', size: 100, type: 'application/pdf' }] },
-    });
-
-    expect(first.assets[0].slug).toBe('readme');
-    expect(second.assets[0].slug).toBe('readme-2');
+    expect(first[0].slug).toBe('readme');
+    expect(second[0].slug).toBe('readme-2');
   });
 });
 
@@ -1720,22 +1958,15 @@ describe('sequential upload slug safety', () => {
 
     const slugs: string[] = [];
     for (let i = 0; i < 5; i++) {
-      const result = await cms.api.media.createSignedUpload({
-        body: {
-          files: [{ name: 'sequential.jpg', size: 1024, type: 'image/jpeg' }],
-        },
-      });
-      slugs.push(result.assets[0].slug);
+      const { assets: completed } = await uploadSigned(cms, [
+        { name: 'sequential.jpg', type: 'image/jpeg' },
+      ]);
+      slugs.push(completed[0].slug);
     }
 
-    const uniqueSlugs = new Set(slugs);
+    expect(new Set(slugs).size).toBe(5);
 
-    // All slugs must be unique
-    expect(uniqueSlugs.size).toBe(5);
-
-    // Verify all exist in DB
     const rows = await db.select({ slug: assets.slug }).from(assets);
-
     for (const slug of slugs) {
       expect(rows.some((r) => r.slug === slug)).toBe(true);
     }
@@ -1745,19 +1976,15 @@ describe('sequential upload slug safety', () => {
     const { cms, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
 
-    const result = await cms.api.media.createSignedUpload({
-      body: {
-        files: [
-          { name: 'batch.jpg', size: 1024, type: 'image/jpeg' },
-          { name: 'batch.jpg', size: 2048, type: 'image/jpeg' },
-          { name: 'batch.jpg', size: 4096, type: 'image/jpeg' },
-        ],
-      },
-    });
+    const file = { name: 'batch.jpg', type: 'image/jpeg' };
+    const { signed, assets: completed } = await uploadSigned(cms, [
+      file,
+      file,
+      file,
+    ]);
 
-    const slugs = result.assets.map((a) => a.slug);
-    const uniqueSlugs = new Set(slugs);
-    expect(uniqueSlugs.size).toBe(3);
+    expect(new Set(signed.uploads.map((u) => u.objectKey)).size).toBe(3);
+    expect(new Set(completed.map((a) => a.slug)).size).toBe(3);
   });
 });
 
@@ -2208,8 +2435,10 @@ describe('media.createSignedReplace', () => {
     expect(result.assetId).toBe(orig.id);
     expect(result.slug).not.toBe('logo.png');
     expect(result.slug).toContain('logo-v2');
-    expect(result.objectKey).toBe(result.slug);
+    expect(result.objectKey).toMatch(/^ast_[a-z0-9]+\//);
+    expect(result.objectKey.endsWith(`/${result.slug}`)).toBe(true);
     expect(result.signedUrl).toContain('X-Amz-');
+    expect(result.token.split('.')).toHaveLength(2);
     expect(result.expiresAt).toBeInstanceOf(Date);
 
     // The row is untouched — only commitReplace repoints it.
@@ -2305,6 +2534,11 @@ describe('media.commitReplace', () => {
       })
       .returning({ id: assets.id });
 
+  const signReplace = (cms: TestCMS, assetId: string, name = 'logo-v2.png') =>
+    cms.api.media.createSignedReplace({
+      body: { assetId, file: { name, size: 8, type: 'image/png' } },
+    });
+
   it('repoints the row and archives old variants', async () => {
     const { cms, db, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
@@ -2319,29 +2553,11 @@ describe('media.commitReplace', () => {
       variantOf: orig.id,
     });
 
-    const signed = await cms.api.media.createSignedReplace({
-      body: {
-        assetId: orig.id,
-        file: { name: 'globex-logo.png', size: 8, type: 'image/png' },
-      },
-    });
-
-    // Simulate the browser's PUT to the signed URL.
-    const uploadResponse = await fetch(signed.signedUrl, {
-      method: 'PUT',
-      headers: { 'content-type': 'image/png', 'content-length': '8' },
-      body: new Uint8Array(8),
-    });
-    expect(uploadResponse.ok).toBe(true);
+    const signed = await signReplace(cms, orig.id, 'globex-logo.png');
+    await putSigned(signed, PNG_BYTES);
 
     const result = await cms.api.media.commitReplace({
-      body: {
-        assetId: orig.id,
-        objectKey: signed.objectKey,
-        slug: signed.slug,
-        mimeType: 'image/png',
-        size: 8,
-      },
+      body: { token: signed.token },
     });
 
     expect(result.asset.id).toBe(orig.id); // id unchanged
@@ -2366,32 +2582,14 @@ describe('media.commitReplace', () => {
     cleanup = s3.cleanup;
     const [orig] = await insertAsset(db, 'logo.png');
 
-    const signed = await cms.api.media.createSignedReplace({
-      body: {
-        assetId: orig.id,
-        file: { name: 'logo-v2.png', size: 8, type: 'image/png' },
-      },
-    });
-
-    await fetch(signed.signedUrl, {
-      method: 'PUT',
-      headers: { 'content-type': 'image/png', 'content-length': '8' },
-      body: new Uint8Array(8),
-    });
+    const signed = await signReplace(cms, orig.id);
+    await putSigned(signed, PNG_BYTES);
 
     // The asset is archived BETWEEN sign and commit (TOCTOU).
     await cms.api.media.archiveAssets({ body: { assetIds: [orig.id] } });
 
     await expect(
-      cms.api.media.commitReplace({
-        body: {
-          assetId: orig.id,
-          objectKey: signed.objectKey,
-          slug: signed.slug,
-          mimeType: 'image/png',
-          size: 8,
-        },
-      }),
+      cms.api.media.commitReplace({ body: { token: signed.token } }),
     ).rejects.toThrow(/found/i);
 
     // The just-PUT NEW object (which will never be referenced by any row,
@@ -2406,166 +2604,116 @@ describe('media.commitReplace', () => {
     expect(tombstone.id).not.toBe(orig.id);
   });
 
-  it('rejects a commit whose object was never uploaded (UPLOAD_FAILED)', async () => {
+  it('rejects a commit whose object was never uploaded (UPLOAD_NOT_FOUND)', async () => {
     const { cms, db, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
     const [orig] = await insertAsset(db, 'logo.png');
 
-    const signed = await cms.api.media.createSignedReplace({
-      body: {
-        assetId: orig.id,
-        file: { name: 'logo-v2.png', size: 8, type: 'image/png' },
-      },
-    });
+    const signed = await signReplace(cms, orig.id);
 
     // No PUT to signed.signedUrl, so the object was never uploaded.
     await expect(
-      cms.api.media.commitReplace({
-        body: {
-          assetId: orig.id,
-          objectKey: signed.objectKey,
-          slug: signed.slug,
-          mimeType: 'image/png',
-          size: 8,
-        },
-      }),
+      cms.api.media.commitReplace({ body: { token: signed.token } }),
     ).rejects.toThrow(/did not complete/i);
   });
 
-  it('rejects a disallowed MIME type on commit', async () => {
+  it('rejects a tampered token (UPLOAD_TOKEN_INVALID) and leaves the row unchanged', async () => {
     const { cms, db, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
     const [orig] = await insertAsset(db, 'logo.png');
 
-    const signed = await cms.api.media.createSignedReplace({
-      body: {
-        assetId: orig.id,
-        file: { name: 'logo-v2.png', size: 8, type: 'image/png' },
-      },
-    });
-
-    await fetch(signed.signedUrl, {
-      method: 'PUT',
-      headers: { 'content-type': 'image/png', 'content-length': '8' },
-      body: new Uint8Array(8),
-    });
+    const signed = await signReplace(cms, orig.id);
+    await putSigned(signed, PNG_BYTES);
 
     await expect(
       cms.api.media.commitReplace({
-        body: {
-          assetId: orig.id,
-          objectKey: signed.objectKey,
-          slug: signed.slug,
-          mimeType: 'application/x-msdownload',
-          size: 8,
-        },
+        body: { token: tamperToken(signed.token) },
       }),
+    ).rejects.toThrow(/token/i);
+    await expect(
+      cms.api.media.commitReplace({ body: { token: 'not-a-token' } }),
+    ).rejects.toThrow(/token/i);
+
+    const [row] = await db.select().from(assets).where(eq(assets.id, orig.id));
+    expect(row.objectKey).toBe('logo.png');
+  });
+
+  it('rejects a size that does not match the uploaded object and deletes it', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const [orig] = await insertAsset(db, 'logo.png');
+
+    const signed = await signReplace(cms, orig.id);
+    await putSigned(signed, PNG_BYTES.slice(0, 4));
+
+    await expect(
+      cms.api.media.commitReplace({ body: { token: signed.token } }),
+    ).rejects.toThrow(/does not match the uploaded object/i);
+
+    expect(await objectExists(signed.url)).toBe(false);
+    const [row] = await db.select().from(assets).where(eq(assets.id, orig.id));
+    expect(row.objectKey).toBe('logo.png');
+  });
+
+  it('rejects a mismatched content type between the token and the uploaded object', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const [orig] = await insertAsset(db, 'logo.png');
+
+    const signed = await signReplace(cms, orig.id);
+    await putSigned(
+      {
+        signedUrl: signed.signedUrl,
+        headers: { 'Content-Type': 'image/jpeg' },
+      },
+      PNG_BYTES,
+    );
+
+    await expect(
+      cms.api.media.commitReplace({ body: { token: signed.token } }),
+    ).rejects.toThrow(/does not match the uploaded object/i);
+
+    const [row] = await db.select().from(assets).where(eq(assets.id, orig.id));
+    expect(row.objectKey).toBe('logo.png');
+  });
+
+  it('rejects an object whose bytes contradict the declared image type', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const [orig] = await insertAsset(db, 'logo.png');
+
+    const signed = await signReplace(cms, orig.id);
+    await putSigned(signed, new Uint8Array(8));
+
+    await expect(
+      cms.api.media.commitReplace({ body: { token: signed.token } }),
     ).rejects.toThrow(/disallowed MIME type/i);
 
+    expect(await objectExists(signed.url)).toBe(false);
     const [row] = await db.select().from(assets).where(eq(assets.id, orig.id));
     expect(row.objectKey).toBe('logo.png');
   });
 
-  it('rejects a size that does not match the uploaded object', async () => {
+  it('repoints only the asset the token was minted for', async () => {
     const { cms, db, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
-    const [orig] = await insertAsset(db, 'logo.png');
+    const [first] = await insertAsset(db, 'first.png');
+    const [second] = await insertAsset(db, 'second.png');
 
-    const signed = await cms.api.media.createSignedReplace({
-      body: {
-        assetId: orig.id,
-        file: { name: 'logo-v2.png', size: 8, type: 'image/png' },
-      },
+    const signed = await signReplace(cms, second.id, 'second-v2.png');
+    await putSigned(signed, PNG_BYTES);
+
+    const result = await cms.api.media.commitReplace({
+      body: { token: signed.token },
     });
+    expect(result.asset.id).toBe(second.id);
 
-    await fetch(signed.signedUrl, {
-      method: 'PUT',
-      headers: { 'content-type': 'image/png', 'content-length': '8' },
-      body: new Uint8Array(8),
-    });
-
-    await expect(
-      cms.api.media.commitReplace({
-        body: {
-          assetId: orig.id,
-          objectKey: signed.objectKey,
-          slug: signed.slug,
-          mimeType: 'image/png',
-          size: 999,
-        },
-      }),
-    ).rejects.toThrow(/does not match the uploaded object/i);
-
-    const [row] = await db.select().from(assets).where(eq(assets.id, orig.id));
-    expect(row.objectKey).toBe('logo.png');
-  });
-
-  it('rejects an objectKey that does not derive from slug', async () => {
-    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
-    cleanup = s3.cleanup;
-    const [orig] = await insertAsset(db, 'logo.png');
-
-    const signed = await cms.api.media.createSignedReplace({
-      body: {
-        assetId: orig.id,
-        file: { name: 'logo-v2.png', size: 8, type: 'image/png' },
-      },
-    });
-
-    await fetch(signed.signedUrl, {
-      method: 'PUT',
-      headers: { 'content-type': 'image/png', 'content-length': '8' },
-      body: new Uint8Array(8),
-    });
-
-    await expect(
-      cms.api.media.commitReplace({
-        body: {
-          assetId: orig.id,
-          objectKey: 'some-other-key',
-          slug: signed.slug,
-          mimeType: 'image/png',
-          size: 8,
-        },
-      }),
-    ).rejects.toThrow(/objectKey does not match the slug/i);
-
-    const [row] = await db.select().from(assets).where(eq(assets.id, orig.id));
-    expect(row.objectKey).toBe('logo.png');
-  });
-
-  it('rejects a mismatched content type between the declared mimeType and the uploaded object', async () => {
-    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
-    cleanup = s3.cleanup;
-    const [orig] = await insertAsset(db, 'logo.png');
-
-    const signed = await cms.api.media.createSignedReplace({
-      body: {
-        assetId: orig.id,
-        file: { name: 'logo-v2.png', size: 8, type: 'image/png' },
-      },
-    });
-
-    await fetch(signed.signedUrl, {
-      method: 'PUT',
-      headers: { 'content-type': 'image/png', 'content-length': '8' },
-      body: new Uint8Array(8),
-    });
-
-    await expect(
-      cms.api.media.commitReplace({
-        body: {
-          assetId: orig.id,
-          objectKey: signed.objectKey,
-          slug: signed.slug,
-          mimeType: 'image/jpeg',
-          size: 8,
-        },
-      }),
-    ).rejects.toThrow(/does not match the uploaded object/i);
-
-    const [row] = await db.select().from(assets).where(eq(assets.id, orig.id));
-    expect(row.objectKey).toBe('logo.png');
+    const [firstRow] = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.id, first.id));
+    expect(firstRow.objectKey).toBe('first.png');
+    expect(firstRow.slug).toBe('first.png');
   });
 });
 

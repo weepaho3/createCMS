@@ -52,6 +52,29 @@ on, schema changes are picked up with `createcms generate` + a Drizzle migration
 
 ## Unreleased
 
+- **Browser uploads are a presign/complete protocol.** `createSignedUpload`
+  no longer creates rows: it returns
+  `{ uploads: [{ id, objectKey, url, signedUrl, headers, token }], expiresAt }`
+  (no `slug`). After the PUT, the browser calls
+  `completeUpload({ uploads: [{ token }] })`, which verifies the landed
+  object (length, content type, magic bytes of a declared image) and then
+  creates the row; the core client's `useUploadAssets` / `uploadState` do
+  this, and an entry is `success` only once `completeUpload` returns it.
+  New browser uploads are stored at the object key `<id>/<slug>` (the public
+  `url` becomes `<publicUrl>/<id>/<slug>`); existing rows keep their keys.
+  `createSignedReplace` returns a `token` and its object key is
+  `<fresh id>/<slug>`; `commitReplace` takes `{ token }` only (the
+  `assetId`, `objectKey`, `slug`, `mimeType`, `size` body is gone) and
+  throws `UPLOAD_NOT_FOUND` instead of `UPLOAD_FAILED` when the PUT never
+  landed. New error codes `UPLOAD_TOKEN_INVALID` (403) and
+  `UPLOAD_NOT_FOUND` (404); new optional `media.uploadSecret`. A PUT that is
+  never completed leaves an object in the bucket but no row.
+  → **Migration:** callers of the raw protocol read `uploads` instead of
+  `assets`, PUT, then call `completeUpload` with the tokens and read the
+  asset (including its `slug`) from its response; `commitReplace` callers
+  pass `{ token: signed.token }`. Set `media.uploadSecret` when the S3
+  credentials rotate (STS). The React hooks need no change.
+
 - **Releases are now scoped by the multi-tenant plugin.** `releases.ts`
   reads/writes (`createRelease`, `getRelease`, `listReleases`, `addToRelease`,
   `removeFromRelease`, `setReleaseItems`, `publishRelease`) all apply the

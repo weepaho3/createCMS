@@ -52,15 +52,7 @@ export const _createSignedReplaceCallable = () =>
   });
 
 export const _commitReplaceCallable = () =>
-  client.media.commitReplace({
-    body: {
-      assetId: 'ast_x',
-      objectKey: 'obj_x',
-      slug: 'slug_x',
-      mimeType: 'image/png',
-      size: 1,
-    },
-  });
+  client.media.commitReplace({ body: { token: 'tok_x' } });
 
 // 4. Server-side `cms.api.media.replaceAsset` / `uploadAssets` stay callable.
 export const _serverReplaceAssetCallable = () =>

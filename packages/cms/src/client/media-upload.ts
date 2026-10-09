@@ -21,12 +21,20 @@ const FORBIDDEN_XHR_HEADERS = new Set([
   'origin',
 ]);
 
-type SignedAsset = {
+// One `createSignedUpload` entry (routes/media.ts).
+type SignedUpload = {
   id: string;
-  slug: string;
   objectKey: string;
   signedUrl: string;
   headers: Record<string, string>;
+  token: string;
+};
+
+// The `completeUpload` response shape (routes/media.ts), trimmed to what the
+// ledger surfaces.
+type CompleteUploadResult = {
+  assets: { id: string; slug: string; objectKey: string }[];
+  errors: { index: number; code: string; message: string }[];
 };
 
 // The `createSignedReplace` response shape (routes/media.ts).
@@ -36,6 +44,7 @@ type SignedReplace = {
   objectKey: string;
   signedUrl: string;
   headers: Record<string, string>;
+  token: string;
 };
 
 // The `commitReplace` response shape (routes/media.ts), trimmed to what the
@@ -228,9 +237,10 @@ const DEFAULT_CONCURRENCY = 4;
 
 /**
  * Nanostores atom holding the upload ledger. Entries accumulate across
- * `upload()` calls until `reset()` drops the finished ones. Validation of
- * file size, count, and MIME types lives server-side in the
- * `createSignedUpload` endpoint.
+ * `upload()` calls until `reset()` drops the finished ones. Each call signs
+ * (`createSignedUpload`), PUTs with a bounded worker pool, then completes
+ * (`completeUpload`); an entry is `success` only once its row exists.
+ * Validation of file size, count, and MIME types lives server-side.
  */
 export function createMediaUploadAtom(
   $fetch: CMSFetch,
@@ -280,13 +290,72 @@ export function createMediaUploadAtom(
     );
   }
 
-  /** Flips every entry whose PUT completed to `success`. */
-  function finalize(ids: Iterable<string>) {
-    patch(ids, (entry) =>
-      entry.status === 'uploading'
-        ? { ...entry, status: 'success', loaded: entry.total, progress: 1 }
-        : entry,
+  /**
+   * Completes every entry whose PUT finished: one `completeUpload` call for
+   * the batch, then `success` with the asset (matched by the token's asset
+   * id) or `error` with the entry's reported code. A rejected call marks all
+   * of them `error`. Runs after an abort as well, since the objects already
+   * exist in the bucket.
+   */
+  async function finalize(
+    sent: { id: string; assetId: string; token: string }[],
+  ) {
+    if (sent.length === 0) return;
+
+    let result: CompleteUploadResult;
+    try {
+      result = (await $fetch('/media/completeUpload', {
+        method: 'POST',
+        body: { uploads: sent.map(({ token }) => ({ token })) },
+      })) as CompleteUploadResult;
+    } catch (err) {
+      const error = toUploadError(err);
+      patch(
+        sent.map(({ id }) => id),
+        (entry) => ({ ...entry, status: 'error', error }),
+      );
+      return;
+    }
+
+    const assetsById = new Map(result.assets.map((a) => [a.id, a]));
+    const errorsByIndex = new Map(result.errors.map((e) => [e.index, e]));
+    const updates = new Map(
+      sent.map(({ id, assetId }, index) => {
+        const asset = assetsById.get(assetId);
+        const failure = errorsByIndex.get(index);
+        return [
+          id,
+          asset
+            ? {
+                status: 'success' as const,
+                result: {
+                  id: asset.id,
+                  slug: asset.slug,
+                  objectKey: asset.objectKey,
+                },
+              }
+            : {
+                status: 'error' as const,
+                error: {
+                  code: failure?.code ?? 'UPLOAD_FAILED',
+                  message: failure?.message ?? 'Upload was not completed',
+                },
+              },
+        ];
+      }),
     );
+    patch(updates.keys(), (entry) => {
+      const update = updates.get(entry.id)!;
+      return update.status === 'success'
+        ? {
+            ...entry,
+            status: 'success',
+            loaded: entry.total,
+            progress: 1,
+            result: update.result,
+          }
+        : { ...entry, status: 'error', error: update.error };
+    });
   }
 
   function abort() {
@@ -328,7 +397,7 @@ export function createMediaUploadAtom(
         return snapshot(ids);
       }
 
-      let signResponse: { assets: SignedAsset[]; expiresAt: Date };
+      let signResponse: { uploads: SignedUpload[]; expiresAt: Date };
       try {
         signResponse = (await $fetch('/media/createSignedUpload', {
           method: 'POST',
@@ -340,7 +409,7 @@ export function createMediaUploadAtom(
             })),
             folderId: options?.folderId,
           },
-        })) as { assets: SignedAsset[]; expiresAt: Date };
+        })) as { uploads: SignedUpload[]; expiresAt: Date };
       } catch (err) {
         const error = toUploadError(err);
         patch(ids, (entry) => ({ ...entry, status: 'error', error }), {
@@ -354,14 +423,15 @@ export function createMediaUploadAtom(
         return snapshot(ids);
       }
 
-      const assets = signResponse.assets;
+      const uploads = signResponse.uploads;
+      const landed: { id: string; assetId: string; token: string }[] = [];
       let cursor = 0;
 
       async function worker() {
         while (cursor < entries.length) {
           const index = cursor++;
           const id = ids[index];
-          const asset = assets[index];
+          const upload = uploads[index];
           if (signal.aborted) {
             abortPending([id]);
             continue;
@@ -372,9 +442,9 @@ export function createMediaUploadAtom(
 
           try {
             await uploadWithXHR(
-              asset.signedUrl,
+              upload.signedUrl,
               files[index],
-              asset.headers,
+              upload.headers,
               (loaded, total) => {
                 patch([id], (entry) => ({
                   ...entry,
@@ -386,15 +456,11 @@ export function createMediaUploadAtom(
               signal,
             );
 
+            landed.push({ id, assetId: upload.id, token: upload.token });
             patch([id], (entry) => ({
               ...entry,
               loaded: entry.total,
               progress: 1,
-              result: {
-                id: asset.id,
-                slug: asset.slug,
-                objectKey: asset.objectKey,
-              },
             }));
           } catch (err) {
             if (isAbortError(err)) {
@@ -413,7 +479,7 @@ export function createMediaUploadAtom(
       );
       await Promise.all(Array.from({ length: size }, worker));
 
-      finalize(ids);
+      await finalize(landed);
 
       const failed = snapshot(ids).some((entry) => entry.status === 'error');
       if (failed) {
@@ -512,13 +578,7 @@ export function createMediaReplaceAtom(
       // Commit: repoint the asset's row at the new object.
       const commit = (await $fetch('/media/commitReplace', {
         method: 'POST',
-        body: {
-          assetId,
-          objectKey: signed.objectKey,
-          slug: signed.slug,
-          mimeType: file.type,
-          size: file.size,
-        },
+        body: { token: signed.token },
       })) as CommitReplaceResult;
 
       store.set({

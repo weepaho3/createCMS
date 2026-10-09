@@ -13,10 +13,10 @@ export type TestS3 = {
 
 /**
  * Starts a minimal in-memory S3-compatible HTTP server on a random port.
- * Implements exactly what the media tests exercise: PUT (store), GET (serve),
- * DELETE (remove), keyed by the request path. No SigV4 verification, no
- * LIST/multipart/ACL. Returns an S3-flavored <Error> XML body on a missing
- * GET.
+ * Implements exactly what the media tests exercise: PUT (store), GET (serve,
+ * with a single-range `Range` answered as 206), HEAD, DELETE (remove), keyed
+ * by the request path. No SigV4 verification, no LIST/multipart/ACL. Returns
+ * an S3-flavored <Error> XML body on a missing GET.
  */
 export async function setupTestS3(): Promise<TestS3> {
   const store = new Map<string, { body: Buffer; contentType?: string }>();
@@ -54,10 +54,25 @@ export async function setupTestS3(): Promise<TestS3> {
         );
         return;
       }
-      const headers: Record<string, string> = {
-        'content-length': String(obj.body.length),
-      };
+      const headers: Record<string, string> = {};
       if (obj.contentType) headers['content-type'] = obj.contentType;
+      const range = /^bytes=(\d+)-(\d*)$/.exec(
+        method === 'GET' ? (req.headers.range ?? '') : '',
+      );
+      if (range) {
+        const start = Number(range[1]);
+        const end = Math.min(
+          range[2] === '' ? obj.body.length - 1 : Number(range[2]),
+          obj.body.length - 1,
+        );
+        const slice = obj.body.subarray(start, end + 1);
+        headers['content-length'] = String(slice.length);
+        headers['content-range'] = `bytes ${start}-${end}/${obj.body.length}`;
+        res.writeHead(206, headers);
+        res.end(slice);
+        return;
+      }
+      headers['content-length'] = String(obj.body.length);
       res.writeHead(200, headers);
       res.end(method === 'HEAD' ? undefined : obj.body);
       return;

@@ -97,13 +97,20 @@ const thumb = asset.url; // direct object URL — admin/library display only
 
 ### Upload from the server
 
-For server-initiated uploads, call the API directly. `createSignedUpload` returns presigned PUT URLs (you then PUT the bytes with the returned headers); `uploadAssets` sends the bytes through the server (each file needs a `buffer: Blob | ArrayBuffer`):
+For server-initiated uploads, call the API directly. `createSignedUpload` returns presigned PUT URLs and a token per file (you PUT the bytes with the returned headers, then pass the tokens to `completeUpload`, which creates the rows); `uploadAssets` sends the bytes through the server (each file needs a `buffer: Blob | ArrayBuffer`):
 
 ```ts
-const { assets } = await cms.api.media.createSignedUpload({
+const { uploads } = await cms.api.media.createSignedUpload({
   body: { files: [{ name: 'hero.jpg', size: file.size, type: 'image/jpeg' }] },
 });
-// PUT the file to assets[0].signedUrl using assets[0].headers
+await fetch(uploads[0].signedUrl, {
+  method: 'PUT',
+  headers: uploads[0].headers,
+  body: file,
+});
+const { assets, errors } = await cms.api.media.completeUpload({
+  body: { uploads: [{ token: uploads[0].token }] },
+});
 ```
 
 <Callout type="info">

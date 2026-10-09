@@ -72,18 +72,50 @@ function makeFile(name: string, size: number): File {
   });
 }
 
-function signingFetch(): CMSFetch {
-  return (async (_path: string, options?: { body?: unknown }) => {
-    const body = options?.body as { files: { name: string }[] };
+type CompleteCall = { uploads: { token: string }[] };
+
+// Tokens are `tok:<asset id>:<file name>`, so the fake `completeUpload`
+// branch can derive the asset from the token alone.
+function signingFetch(options?: {
+  // Returns the `errors` entry for a completed index, or undefined.
+  reject?: (
+    index: number,
+    name: string,
+  ) => { code: string; message: string } | undefined;
+  onComplete?: (body: CompleteCall) => void;
+  completeError?: Error;
+}): CMSFetch {
+  return (async (path: string, init?: { body?: unknown }) => {
+    if (path === '/media/completeUpload') {
+      const body = init?.body as CompleteCall;
+      options?.onComplete?.(body);
+      if (options?.completeError) throw options.completeError;
+      const assets: { id: string; slug: string; objectKey: string }[] = [];
+      const errors: { index: number; code: string; message: string }[] = [];
+      body.uploads.forEach(({ token }, index) => {
+        const [, id, name] = token.split(':');
+        const failure = options?.reject?.(index, name);
+        if (failure) {
+          errors.push({ index, ...failure });
+        } else {
+          assets.push({ id, slug: name, objectKey: `uploads/${name}` });
+        }
+      });
+      return { assets, errors };
+    }
+    const body = init?.body as { files: { name: string }[] };
     return {
-      assets: body.files.map((file, index) => ({
-        id: `ast_${index}_${file.name}`,
-        slug: file.name,
-        objectKey: `uploads/${file.name}`,
-        url: `https://cdn.example.com/${file.name}`,
-        signedUrl: `https://bucket.example.com/${file.name}`,
-        headers: { 'content-type': 'application/octet-stream' },
-      })),
+      uploads: body.files.map((file, index) => {
+        const id = `ast_${index}_${file.name}`;
+        return {
+          id,
+          objectKey: `uploads/${file.name}`,
+          url: `https://cdn.example.com/${file.name}`,
+          signedUrl: `https://bucket.example.com/${file.name}`,
+          headers: { 'content-type': 'application/octet-stream' },
+          token: `tok:${id}:${file.name}`,
+        };
+      }),
       expiresAt: new Date(),
     };
   }) as CMSFetch;
@@ -348,6 +380,111 @@ describe('createMediaUploadAtom', () => {
     const result = await promise;
     expect(result.map((f) => f.status)).toEqual(['success', 'success']);
     expect(store.get().isUploading).toBe(false);
+  });
+
+  it('marks an entry success only after completeUpload resolves', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const inner = signingFetch();
+    const gated = (async (path: string, init?: unknown) => {
+      if (path === '/media/completeUpload') await gate;
+      return inner(path, init as never);
+    }) as CMSFetch;
+    const store = createMediaUploadAtom(gated);
+    const promise = store.get().upload([makeFile('a.bin', 10)]);
+    await tick();
+
+    FakeXHR.instances[0].fireLoad();
+    await tick();
+    expect(store.get().files[0].status).toBe('uploading');
+    expect(store.get().files[0].result).toBeUndefined();
+
+    release();
+    const [entry] = await promise;
+    expect(entry.status).toBe('success');
+    expect(entry.result).toEqual({
+      id: 'ast_0_a.bin',
+      slug: 'a.bin',
+      objectKey: 'uploads/a.bin',
+    });
+  });
+
+  it('maps a completeUpload error onto the entry at that index', async () => {
+    const store = createMediaUploadAtom(
+      signingFetch({
+        reject: (index) =>
+          index === 1
+            ? { code: 'UPLOAD_NOT_FOUND', message: 'No object' }
+            : undefined,
+      }),
+    );
+    const promise = store
+      .get()
+      .upload([makeFile('a.bin', 10), makeFile('b.bin', 20)]);
+    await tick();
+    await completeAll(FakeXHR.instances);
+    const result = await promise;
+
+    expect(result[0].status).toBe('success');
+    expect(result[0].result?.id).toBe('ast_0_a.bin');
+    expect(result[1].status).toBe('error');
+    expect(result[1].error).toEqual({
+      code: 'UPLOAD_NOT_FOUND',
+      message: 'No object',
+    });
+    expect(store.get().error).toBe('Some files failed to upload');
+  });
+
+  it('marks every sent entry error when completeUpload throws', async () => {
+    const store = createMediaUploadAtom(
+      signingFetch({
+        completeError: new CMSClientError({
+          code: 'UPLOAD_TOKEN_INVALID',
+          message: 'Upload token is invalid',
+          status: 403,
+        }),
+      }),
+    );
+    const promise = store
+      .get()
+      .upload([makeFile('a.bin', 10), makeFile('b.bin', 20)]);
+    await tick();
+    await completeAll(FakeXHR.instances);
+    const result = await promise;
+
+    expect(result.map((f) => f.status)).toEqual(['error', 'error']);
+    expect(result[0].error?.code).toBe('UPLOAD_TOKEN_INVALID');
+  });
+
+  it('completes an entry whose PUT finished before the abort', async () => {
+    const calls: CompleteCall[] = [];
+    const store = createMediaUploadAtom(
+      signingFetch({ onComplete: (body) => calls.push(body) }),
+    );
+    const promise = store
+      .get()
+      .upload(
+        [makeFile('a.bin', 10), makeFile('b.bin', 20), makeFile('c.bin', 30)],
+        { concurrency: 1 },
+      );
+    await tick();
+
+    FakeXHR.instances[0].fireLoad();
+    await tick();
+    expect(FakeXHR.instances).toHaveLength(2);
+    store.get().abort();
+    const result = await promise;
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].uploads).toEqual([{ token: 'tok:ast_0_a.bin:a.bin' }]);
+    expect(result.map((f) => f.status)).toEqual([
+      'success',
+      'aborted',
+      'aborted',
+    ]);
+    expect(result[0].result?.id).toBe('ast_0_a.bin');
   });
 
   it('removes abort listeners once each request settles', async () => {
