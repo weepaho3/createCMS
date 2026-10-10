@@ -17,13 +17,14 @@ import { type TestS3, setupTestS3 } from './s3';
  * Creates a fully wired CMS instance backed by an in-memory PGlite database.
  * With `withS3: true`, a local S3rver instance is started and the returned
  * `s3.cleanup()` must be called after the test; otherwise a dummy media
- * config is used.
+ * config is used. `media` is merged over that config.
  */
 export const setupTestCMS = async (options?: {
   dataRetention?: DataRetentionConfig;
   authMiddleware?: CMSMiddleware;
   plugins?: CMSPlugin<any>[];
   withS3?: boolean;
+  media?: Partial<CustomMediaConfig>;
   user?: CMSUserConfig;
   forceCommitMessage?: boolean;
   defaultBranchName?: string;
@@ -41,6 +42,10 @@ export const setupTestCMS = async (options?: {
     mediaConfig = testS3.config;
   } else {
     mediaConfig = { ...DUMMY_MEDIA_CONFIG };
+  }
+  if (options?.media) {
+    mediaConfig = { ...mediaConfig, ...options.media };
+    if (testS3) testS3.config = mediaConfig;
   }
 
   const userPlugins = options?.plugins ?? [];

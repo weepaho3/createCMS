@@ -16,7 +16,6 @@ import * as z from 'zod';
 
 import type { CMSProcedureContext, MediaConfig } from '../types';
 import type { ResolvedScope } from '../types/definitions';
-import type { S3Client } from '../types/s3';
 
 import { newId } from '../../utils/nanoid';
 import { assetFolders, assets } from '../db/schema.generated';
@@ -42,18 +41,12 @@ import {
   getAssetUsageDetails,
 } from '../media/usage';
 import { crossScopeColumns, scopedInsert, scopedInsertBatch } from '../scope';
-import { createS3Client } from '../storage/s3/client';
+import { requireCapability, StorageError } from '../storage/adapter';
+import { getStorage } from '../storage/get-storage';
 import {
   buildObjectKey,
   buildPublicObjectUrl,
   buildVariantSlug,
-  deleteObject,
-  getObjectRange,
-  headObject,
-  putObject,
-  S3Error,
-  signGetObject,
-  signPutObject,
 } from '../storage/s3/utils';
 import { MEDIA_DEFAULTS } from '../types/s3';
 import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
@@ -317,14 +310,6 @@ export function createMediaEndpoints(
 ) {
   const { db } = cmsCtx;
 
-  let s3Client: S3Client | null = null;
-  function getS3Client(): S3Client {
-    if (!s3Client) {
-      s3Client = createS3Client(mediaConfig);
-    }
-    return s3Client;
-  }
-
   const maxFileSize = mediaConfig.maxFileSize ?? MEDIA_DEFAULTS.maxFileSize;
   const maxFiles = mediaConfig.maxFiles ?? MEDIA_DEFAULTS.maxFiles;
   const allowedMimeTypes = mediaConfig.allowedMimeTypes ?? [
@@ -332,7 +317,6 @@ export function createMediaEndpoints(
   ];
   const signedUrlExpiresIn =
     mediaConfig.signedUrlExpiresIn ?? MEDIA_DEFAULTS.signedUrlExpiresIn;
-  const bucketName = mediaConfig.bucketName;
 
   /**
    * Checks an object the browser PUT against the token's claim. Returns the
@@ -341,7 +325,8 @@ export function createMediaEndpoints(
    * differs from `type`, or the leading bytes contradict a declared image
    * type. The object is deleted in the last three cases; a failed delete is
    * logged and the error still returned. Returns `null` when the object
-   * matches.
+   * matches. Throws STORAGE_UNSUPPORTED for an image type when the adapter
+   * cannot read a byte range, since an image is never accepted unsniffed.
    */
   async function inspectUploadedObject(claim: {
     name: string;
@@ -349,21 +334,20 @@ export function createMediaEndpoints(
     type: string;
     size: number;
   }): Promise<APIError | null> {
-    const client = getS3Client();
-    const location = { bucket: bucketName, key: claim.objectKey };
+    const storage = getStorage(mediaConfig);
     const missing = () =>
       new CMSError('UPLOAD_NOT_FOUND', {
         message: `No object at "${claim.objectKey}"; the PUT to the signed URL did not complete`,
       });
     const discard = async () => {
       try {
-        await deleteObject(client, location);
+        await storage.delete(claim.objectKey);
       } catch (err) {
         console.error('[cms:media] failed to delete rejected upload', err);
       }
     };
 
-    const head = await headObject(client, location);
+    const head = await storage.head(claim.objectKey);
     if (!head) return missing();
     if (head.contentLength !== claim.size) {
       await discard();
@@ -383,11 +367,12 @@ export function createMediaEndpoints(
       });
     }
     if (claim.type.startsWith('image/')) {
-      const bytes = await getObjectRange(client, {
-        ...location,
-        start: 0,
-        end: 11,
-      });
+      requireCapability(
+        storage,
+        (c) => c.rangeRead,
+        'range reads, which verifying an uploaded image requires',
+      );
+      const bytes = await storage.getRange(claim.objectKey, 0, 11);
       if (!bytes) return missing();
       if (!verifyImageBytes(claim.type, bytes)) {
         await discard();
@@ -1142,9 +1127,13 @@ export function createMediaEndpoints(
         }
         const safeName = asset.slug.replace(/["\\\r\n]/g, '_');
         const disposition = `attachment;filename="${safeName}";filename*=UTF-8''${encodeURIComponent(asset.slug)}`;
-        const signed = await signGetObject(getS3Client(), {
-          bucket: bucketName,
-          key: targetKey,
+        const storage = getStorage(mediaConfig);
+        requireCapability(
+          storage,
+          (c) => c.signedUrl.supported && c.signedUrl.disposition,
+          'signed URLs with a bound content disposition',
+        );
+        const signed = await storage.signGet(targetKey, {
           expiresIn: 3600,
           responseContentDisposition: disposition,
         });
@@ -1508,7 +1497,12 @@ export function createMediaEndpoints(
           scope,
         });
 
-        const client = getS3Client();
+        const storage = getStorage(mediaConfig);
+        requireCapability(
+          storage,
+          (c) => c.signedUpload.supported,
+          'signed uploads',
+        );
         const key = await deriveUploadKey(mediaConfig);
         const scopeId = await scopeFingerprint(scope.assets?.insertColumns);
         const exp = Date.now() + signedUrlExpiresIn * 1000;
@@ -1516,9 +1510,7 @@ export function createMediaEndpoints(
 
         const uploads = await Promise.all(
           prepared.map(async (p) => {
-            const signedUrl = await signPutObject(client, {
-              bucket: bucketName,
-              key: p.objectKey,
+            const signed = await storage.signPut(p.objectKey, {
               contentType: p.file.type,
               contentLength: p.file.size,
               expiresIn: signedUrlExpiresIn,
@@ -1545,11 +1537,8 @@ export function createMediaEndpoints(
               // media library, not for embedding in content (which references
               // the asset id and serves through `/media/asset/{id}`).
               url: buildPublicObjectUrl(mediaConfig.publicUrl, p.objectKey),
-              signedUrl,
-              headers: {
-                'Content-Type': p.file.type,
-                'x-amz-acl': 'public-read',
-              },
+              signedUrl: signed.url,
+              headers: signed.headers,
               token,
             };
           }),
@@ -1632,7 +1621,7 @@ export function createMediaEndpoints(
               fail(i, err);
               continue;
             }
-            if (err instanceof S3Error) {
+            if (err instanceof StorageError) {
               fail(
                 i,
                 new CMSError('UPLOAD_FAILED', {
@@ -1734,12 +1723,15 @@ export function createMediaEndpoints(
         }
         const objectKey = `${newId('asset')}/${slug}`;
 
-        const client = getS3Client();
+        const storage = getStorage(mediaConfig);
+        requireCapability(
+          storage,
+          (c) => c.signedUpload.supported,
+          'signed uploads',
+        );
         const exp = Date.now() + signedUrlExpiresIn * 1000;
         const expiresAt = new Date(exp);
-        const signedUrl = await signPutObject(client, {
-          bucket: bucketName,
-          key: objectKey,
+        const signed = await storage.signPut(objectKey, {
           contentType: file.type,
           contentLength: file.size,
           expiresIn: signedUrlExpiresIn,
@@ -1768,11 +1760,8 @@ export function createMediaEndpoints(
           // AND commitReplace repoints the row — for INTERNAL/admin display
           // only (see createSignedUpload).
           url: buildPublicObjectUrl(mediaConfig.publicUrl, objectKey),
-          signedUrl,
-          headers: {
-            'Content-Type': file.type,
-            'x-amz-acl': 'public-read',
-          },
+          signedUrl: signed.url,
+          headers: signed.headers,
           expiresAt,
           token,
         };
@@ -2094,7 +2083,7 @@ export function createMediaEndpoints(
           );
         }
 
-        const client = getS3Client();
+        const storage = getStorage(mediaConfig);
 
         const filesByIndex = new Map(files.map((f, i) => [i, f]));
 
@@ -2120,10 +2109,7 @@ export function createMediaEndpoints(
           const p = prepared[i];
           const file = filesByIndex.get(i)!;
           try {
-            await putObject(client, {
-              bucket: bucketName,
-              key: p.objectKey,
-              body: file.buffer,
+            await storage.put(p.objectKey, file.buffer, {
               contentType: file.type,
               contentLength: file.size,
               acl: 'public-read',
@@ -2133,7 +2119,7 @@ export function createMediaEndpoints(
             // channel: no definition-level onAPIError hook is reachable from a
             // handler-thrown CMSError (see CMSDefinition['onAPIError']).
             console.error('[cms:media] upload failed', err);
-            const status = err instanceof S3Error ? 500 : 0;
+            const status = err instanceof StorageError ? 500 : 0;
             throw new CMSError('UPLOAD_FAILED', {
               message: errorMessages.uploadFailed(file.name, status),
             });
@@ -2270,10 +2256,7 @@ export function createMediaEndpoints(
         // 5. PUT the new object FIRST — on failure the row is untouched, so the
         //    asset keeps serving its existing (still-present) object.
         try {
-          await putObject(getS3Client(), {
-            bucket: bucketName,
-            key: objectKey,
-            body: file.buffer,
+          await getStorage(mediaConfig).put(objectKey, file.buffer, {
             contentType: file.type,
             contentLength: measuredSize,
             acl: 'public-read',
@@ -2282,7 +2265,7 @@ export function createMediaEndpoints(
           // The raw S3 error must not reach the client; this log is the only
           // channel (see the uploadAssets catch block).
           console.error('[cms:media] upload failed', err);
-          const status = err instanceof S3Error ? 500 : 0;
+          const status = err instanceof StorageError ? 500 : 0;
           throw new CMSError('UPLOAD_FAILED', {
             message: errorMessages.uploadFailed(file.name, status),
           });

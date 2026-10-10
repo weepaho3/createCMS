@@ -3,6 +3,8 @@ import slugify from 'slugify';
 
 import type { ObjectAcl, S3Client } from '../../types/s3';
 
+import { StorageError } from '../adapter';
+
 export function parseXml<T = Record<string, unknown>>(
   xml: string,
   params?: {
@@ -17,7 +19,7 @@ export function parseXml<T = Record<string, unknown>>(
   return parser.parse(xml) as T;
 }
 
-export class S3Error extends Error {
+export class S3Error extends StorageError {
   constructor(message: string) {
     super(message);
     this.name = 'S3Error';

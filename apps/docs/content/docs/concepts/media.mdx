@@ -126,6 +126,10 @@ Archiving an asset ([`archiveAssets`](/docs/reference/media#archiveassets)) is s
 
 Replacing an asset (either path above) mints a *new* object for the new bytes but keeps the row's `id`, so the row that used to name the *old* object no longer exists after the swap — nothing would ever reference the superseded object for reclaim. To close that gap, a replace also inserts a **tombstone**: a fresh, already-archived asset row that reuses the *old* slug/object key (with a brand-new `id`, never referenced by any content). That tombstone is what the pruning pass actually finds and reclaims once its trash window elapses — so a superseded object is not left behind forever, and replacing the same asset repeatedly does not accumulate orphaned bytes in your bucket.
 
+## Storage adapters [#storage-adapters]
+
+Objects are stored in an S3-compatible bucket by default (`provider` picks AWS, DigitalOcean Spaces, Cloudflare R2 or a custom endpoint). Set `media.storage` to a `StorageAdapter` to use another backend; every `put`, `delete`, `head`, range read and signed URL then goes through it, while public URLs still come from `media.publicUrl`. An adapter declares its `capabilities`, and those decide what the media routes do: `signedUpload.supported` gates `createSignedUpload` / `createSignedReplace`, `rangeRead` is required to verify an uploaded image's bytes in `completeUpload` / `commitReplace`, and `signedUrl.supported` plus `signedUrl.disposition` are required for the gate's download redirect. An operation the adapter does not declare fails with `STORAGE_UNSUPPORTED` instead of degrading to a weaker check. `createS3StorageAdapter(mediaConfig)` builds the default adapter, and backend failures thrown as `StorageError` map to a 500.
+
 ## Limitations
 
 The media pipeline is deliberately thin. Know these boundaries before you design around it:

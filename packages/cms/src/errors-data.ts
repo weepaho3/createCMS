@@ -247,6 +247,10 @@ export const CMS_ERRORS = {
     status: 404 as const,
     message: 'No object was uploaded for this token',
   },
+  STORAGE_UNSUPPORTED: {
+    status: 500 as const,
+    message: 'The storage adapter does not support this operation',
+  },
   SLUG_ALREADY_EXISTS: {
     status: 409 as const,
     message:

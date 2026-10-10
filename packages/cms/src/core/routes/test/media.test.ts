@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { setupMultiTenantTestCMS } from '../../../plugins/multi-tenant/test/utils/cms';
 import { assetFolders, assets } from '../../../schema';
 import { setupTestCMS } from '../../../test-utils/cms';
+import { createMemoryStorage } from '../../../test-utils/storage';
 
 const PNG_BYTES = new Uint8Array([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -3207,5 +3208,107 @@ describe('upload error detail', () => {
     expect(JSON.stringify(caught.body ?? {})).not.toMatch(
       /ECONNREFUSED|fetch failed|ENOTFOUND|refused/i,
     );
+  });
+});
+
+describe('custom storage adapter', () => {
+  it('uploadAssets stores the bytes through the adapter', async () => {
+    const storage = createMemoryStorage();
+    const { cms } = await setupTestCMS({ media: { storage } });
+
+    const result = await cms.api.media.uploadAssets({
+      body: {
+        files: [
+          {
+            name: 'memory.png',
+            size: PNG_BYTES.byteLength,
+            type: 'image/png',
+            buffer: new Blob([PNG_BYTES]),
+          },
+        ],
+      },
+    });
+
+    expect(result.assets).toHaveLength(1);
+    expect(await storage.head(result.assets[0].objectKey)).toEqual({
+      contentLength: PNG_BYTES.byteLength,
+      contentType: 'image/png',
+    });
+  });
+
+  it('createSignedUpload fails with STORAGE_UNSUPPORTED', async () => {
+    const { cms } = await setupTestCMS({
+      media: { storage: createMemoryStorage() },
+    });
+
+    await expect(
+      cms.api.media.createSignedUpload({
+        body: {
+          files: [{ name: 'photo.png', size: 100, type: 'image/png' }],
+        },
+      }),
+    ).rejects.toMatchObject({ cmsCode: 'STORAGE_UNSUPPORTED', status: 500 });
+  });
+
+  it('gate: public URL without ?download, STORAGE_UNSUPPORTED with it', async () => {
+    const { cms, db, s3 } = await setupTestCMS({
+      media: { storage: createMemoryStorage() },
+    });
+
+    const [asset] = await db
+      .insert(assets)
+      .values({
+        slug: 'photo.png',
+        mimeType: 'image/png',
+        size: 5000,
+        objectKey: 'photo.png',
+        status: 'public',
+      })
+      .returning({ id: assets.id });
+
+    const inline = await cms.router.handler(
+      new Request(`http://localhost/api/cms/media/asset/${asset.id}`),
+    );
+    expect(inline.status).toBe(302);
+    expect(inline.headers.get('location')).toBe(
+      `${s3.config.publicUrl}/photo.png`,
+    );
+
+    const download = await cms.router.handler(
+      new Request(
+        `http://localhost/api/cms/media/asset/${asset.id}?download=true`,
+      ),
+    );
+    expect(download.status).toBe(500);
+    expect(await download.json()).toMatchObject({
+      code: 'STORAGE_UNSUPPORTED',
+    });
+  });
+
+  it('pruning reclaim deletes the object through the adapter', async () => {
+    const storage = createMemoryStorage();
+    const { cms, db } = await setupTestCMS({
+      media: { storage },
+      dataRetention: { keepDays: 7, keepMinCommits: 1, archiveKeepDays: 7 },
+    });
+    await storage.put('gc.png', PNG_BYTES, {
+      contentType: 'image/png',
+      contentLength: PNG_BYTES.byteLength,
+    });
+
+    const [asset] = await db
+      .insert(assets)
+      .values({
+        slug: 'gc.png',
+        mimeType: 'image/png',
+        size: PNG_BYTES.byteLength,
+        objectKey: 'gc.png',
+        archivedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      })
+      .returning();
+
+    const result = await cms.api.admin.runPruning({ body: { dryRun: false } });
+    expect(result.deletedAssets).toContain(asset.id);
+    expect(await storage.head('gc.png')).toBeNull();
   });
 });

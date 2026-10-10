@@ -37,8 +37,7 @@ import {
   roots,
   searchIndex,
 } from '../db/schema.generated';
-import { createS3Client } from '../storage/s3/client';
-import { deleteObject } from '../storage/s3/utils';
+import { getStorage } from '../storage/get-storage';
 
 export type PruningResult = {
   deletedCommits: number;
@@ -844,17 +843,12 @@ export async function runPruningPass(
     .orderBy(asc(assets.archivedAt))
     .limit(maxAssets);
 
-  let s3: ReturnType<typeof createS3Client> | null = null;
   for (const asset of reclaimable) {
     if (Date.now() >= deadline) return finish('budget');
     if (!dryRun) {
       await db.delete(assets).where(eq(assets.id, asset.id));
       try {
-        s3 ??= createS3Client(mediaConfig);
-        await deleteObject(s3, {
-          bucket: mediaConfig.bucketName,
-          key: asset.objectKey,
-        });
+        await getStorage(mediaConfig).delete(asset.objectKey);
       } catch {
         // Best-effort: an orphaned S3 object is recoverable garbage; never let
         // a storage error block reclamation (the DB row is already gone).
