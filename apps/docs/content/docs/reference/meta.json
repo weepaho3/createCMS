@@ -33,6 +33,7 @@
     "react-editor",
     "react-editor-canvas",
     "react-editor-cms",
+    "react-media",
     "edge",
     "cli"
   ]
