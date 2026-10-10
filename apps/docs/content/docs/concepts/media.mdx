@@ -97,6 +97,8 @@ await cms.api.media.createSignedUpload({
 
 Create the variants you need ahead of time. The [media optimize plugin](/docs/plugins/media-optimize) resizes and re-encodes images in the browser before upload, so the stored bytes are already small.
 
+`?download=true` redirects to a short-lived **signed** object URL (valid for one hour) that carries `response-content-disposition=attachment` bound into the signature, so the bucket answers with a `Content-Disposition` header and the browser downloads the file under its slug; a `Content-Disposition` header on the `302` itself would be ignored by browsers. Types outside the raster-image (PNG, JPEG, GIF, WebP, AVIF), video, audio and PDF set are always served that way, so an allowed SVG or HTML asset never renders inline from the gate even if `allowedMimeTypes` admits it.
+
 The redirect itself is **short-cached** (`max-age=300`, not immutable). Because it is keyed by the stable id, swapping the bytes behind that id (keeping the id) re-resolves and propagates to already-rendered pages within minutes, while the object bytes stay long-cached at the CDN, since each version has its own object key.
 
 <Callout type="warn">

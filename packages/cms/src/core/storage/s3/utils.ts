@@ -86,6 +86,39 @@ export async function signPutObject(
   ).url;
 }
 
+/**
+ * Presigns a GET. `responseContentDisposition` is bound into the signature
+ * as the `response-content-disposition` query parameter, so the bucket
+ * answers with that `Content-Disposition` header.
+ */
+export async function signGetObject(
+  client: S3Client,
+  params: {
+    bucket: string;
+    key: string;
+    expiresIn: number;
+    responseContentDisposition?: string;
+  },
+): Promise<string> {
+  const url = baseSignedUrl(
+    `${client.buildBucketUrl(params.bucket)}/${params.key}`,
+    { expiresIn: params.expiresIn },
+  );
+  // aws4fetch 1.0.20 keeps preset query params in the canonical query.
+  if (params.responseContentDisposition) {
+    url.searchParams.set(
+      'response-content-disposition',
+      params.responseContentDisposition,
+    );
+  }
+  return (
+    await client.s3.sign(url.toString(), {
+      method: 'GET',
+      aws: { signQuery: true },
+    })
+  ).url;
+}
+
 export async function putObject(
   client: S3Client,
   params: {

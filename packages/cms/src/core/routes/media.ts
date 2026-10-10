@@ -52,10 +52,20 @@ import {
   headObject,
   putObject,
   S3Error,
+  signGetObject,
   signPutObject,
 } from '../storage/s3/utils';
 import { MEDIA_DEFAULTS } from '../types/s3';
 import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
+
+/**
+ * Types the gate redirects to the bare public URL. Everything else, and every
+ * `?download` request, is redirected to a signed URL whose
+ * `response-content-disposition` forces a download. Raster formats are listed
+ * explicitly so `image/svg+xml` never renders inline from the gate.
+ */
+const INLINE_SAFE =
+  /^(image\/(png|jpeg|gif|webp|avif)|video\/|audio\/|application\/pdf$)/;
 
 const MEDIA_META = {
   scope: 'system' as const,
@@ -1016,6 +1026,13 @@ export function createMediaEndpoints(
      * Public asset redirect. Marked `public: true` so toCMSEndpoints skips the
      * auth/scope/hook chain — it serves <img>-style requests and does its own
      * access control (rejects assets whose status is `private`).
+     *
+     * Inline-safe types (raster images, video, audio, PDF) redirect to the
+     * public object URL. `?download=true` and every other type redirect to a
+     * signed GET URL, valid for one hour, whose `response-content-disposition`
+     * is `attachment`, so the bucket answers with a download. A
+     * `Content-Disposition` header on the `302` itself would be ignored by
+     * browsers, which apply the header of the final response only.
      */
     asset: createEndpoint(
       // Addressed by the STABLE asset id, not the slug: content stores the id,
@@ -1086,8 +1103,6 @@ export function createMediaEndpoints(
           }
         }
 
-        const location = buildPublicObjectUrl(mediaConfig.publicUrl, targetKey);
-
         // Redirect (302) so a real `<img src>` / browser request follows
         // `location` to the public object URL. better-call applies response
         // headers from `ctx.responseHeaders` (and the status from `ctx.redirect`),
@@ -1100,14 +1115,28 @@ export function createMediaEndpoints(
         // propagate to already-rendered pages within minutes, while the bytes
         // themselves stay long-cached at the CDN (each object key is unique per
         // version). The 302 is bodyless, so re-resolving it is cheap.
+        //
+        // The signed URL expires after 3600 s, so a `302` cached for 300 s
+        // always points at a still-valid URL. The disposition contains no
+        // spaces: aws4fetch serialises the final URL with `URLSearchParams`
+        // (space as `+`) while the canonical query encodes it as `%20`.
         ctx.responseHeaders.set('cache-control', 'public, max-age=300');
-        if (wireBooleanIsTrue(ctx.query?.download)) {
-          ctx.responseHeaders.set(
-            'content-disposition',
-            `attachment; filename="${asset.slug.replace(/["\\\r\n]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(asset.slug)}`,
+        const wantsDownload = wireBooleanIsTrue(ctx.query?.download);
+        const inlineSafe = INLINE_SAFE.test(asset.mimeType);
+        if (!wantsDownload && inlineSafe) {
+          return ctx.redirect(
+            buildPublicObjectUrl(mediaConfig.publicUrl, targetKey),
           );
         }
-        return ctx.redirect(location);
+        const safeName = asset.slug.replace(/["\\\r\n]/g, '_');
+        const disposition = `attachment;filename="${safeName}";filename*=UTF-8''${encodeURIComponent(asset.slug)}`;
+        const signed = await signGetObject(getS3Client(), {
+          bucket: bucketName,
+          key: targetKey,
+          expiresIn: 3600,
+          responseContentDisposition: disposition,
+        });
+        return ctx.redirect(signed);
       },
     ),
 

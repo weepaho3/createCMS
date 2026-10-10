@@ -1798,7 +1798,7 @@ describe('variant delivery via asset endpoint', () => {
     expect(res.headers.get('location')).toContain('photo.jpg');
   });
 
-  it('returns download Content-Disposition when download=true', async () => {
+  it('redirects download=true to a signed URL with an attachment disposition', async () => {
     const { cms, db, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
 
@@ -1820,15 +1820,124 @@ describe('variant delivery via asset endpoint', () => {
     );
 
     expect(res.status).toBe(302);
-    expect(res.headers.get('content-disposition')).toContain(
-      'attachment; filename="report.pdf"',
+    const location = new URL(res.headers.get('location')!);
+    expect(location.pathname).toBe('/test-bucket/report.pdf');
+    expect(location.searchParams.get('response-content-disposition')).toBe(
+      `attachment;filename="report.pdf";filename*=UTF-8''report.pdf`,
     );
+    expect(location.searchParams.get('X-Amz-Signature')).toMatch(
+      /^[0-9a-f]{64}$/,
+    );
+    expect(location.searchParams.get('X-Amz-Expires')).toBe('3600');
+    expect(res.headers.get('content-disposition')).toBeNull();
+  });
+
+  it('serves the uploaded bytes through the signed download redirect', async () => {
+    const { cms, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+
+    const pixel = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ]);
+    const uploaded = await cms.api.media.uploadAssets({
+      body: {
+        files: [
+          {
+            name: 'download-me.png',
+            size: pixel.byteLength,
+            type: 'image/png',
+            buffer: new Blob([pixel]),
+          },
+        ],
+      },
+    });
+    const assetId = uploaded.assets[0].id;
+    await cms.api.media.updateAssetsStatus({
+      body: { assetIds: [assetId], status: 'public' },
+    });
+
+    const res = await cms.router.handler(
+      new Request(
+        `http://localhost/api/cms/media/asset/${assetId}?download=true`,
+      ),
+    );
+
+    expect(res.status).toBe(302);
+    const location = res.headers.get('location')!;
+    expect(location).toContain('response-content-disposition=attachment');
+    expect(location).toContain('X-Amz-Signature=');
+
+    const bytes = await fetch(location);
+    expect(bytes.status).toBe(200);
+    expect(new Uint8Array(await bytes.arrayBuffer())).toEqual(pixel);
+  });
+
+  it('redirects a type outside the inline-safe set to a signed download without ?download', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+
+    const [asset] = await db
+      .insert(assets)
+      .values({
+        slug: 'logo.svg',
+        mimeType: 'image/svg+xml',
+        size: 300,
+        objectKey: 'logo.svg',
+        status: 'public',
+      })
+      .returning({ id: assets.id });
+
+    const res = await cms.router.handler(
+      new Request(`http://localhost/api/cms/media/asset/${asset.id}`),
+    );
+
+    expect(res.status).toBe(302);
+    const location = new URL(res.headers.get('location')!);
+    expect(location.toString()).not.toBe(
+      `http://${s3.config.hostname}/test-bucket/logo.svg`,
+    );
+    expect(location.pathname).toBe('/test-bucket/logo.svg');
+    expect(location.searchParams.get('response-content-disposition')).toContain(
+      'attachment;filename="logo.svg"',
+    );
+    expect(location.searchParams.get('X-Amz-Signature')).toMatch(
+      /^[0-9a-f]{64}$/,
+    );
+    expect(res.headers.get('content-disposition')).toBeNull();
+  });
+
+  it('redirects an inline-safe type to the bare public URL without ?download', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+
+    const [asset] = await db
+      .insert(assets)
+      .values({
+        slug: 'photo.png',
+        mimeType: 'image/png',
+        size: 5000,
+        objectKey: 'photo.png',
+        status: 'public',
+      })
+      .returning({ id: assets.id });
+
+    const res = await cms.router.handler(
+      new Request(`http://localhost/api/cms/media/asset/${asset.id}`),
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(
+      `http://${s3.config.hostname}/test-bucket/photo.png`,
+    );
+    expect(res.headers.get('location')).not.toContain('X-Amz-');
+    expect(res.headers.get('content-disposition')).toBeNull();
   });
 
   it('does not invert download when the wire string "false" is passed', async () => {
     // Regression guard for the z.coerce.boolean() wire trap: over HTTP a
     // client serializes booleans to strings, and `Boolean('false') === true`.
-    // `?download=false` must NOT set the content-disposition header.
+    // `?download=false` on an inline-safe type must redirect to the bare
+    // public URL, not to a signed download.
     const { cms, db, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
 
@@ -1850,6 +1959,12 @@ describe('variant delivery via asset endpoint', () => {
     );
 
     expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(
+      `http://${s3.config.hostname}/test-bucket/report.pdf`,
+    );
+    expect(res.headers.get('location')).not.toContain(
+      'response-content-disposition',
+    );
     expect(res.headers.get('content-disposition')).toBeNull();
   });
 });

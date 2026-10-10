@@ -500,12 +500,12 @@ Serve an asset on a public page by addressing it by **asset id** (what content s
   query: { w: 800, format: 'webp' },
 }`}
   returns={{
-    Location: { type: '302 redirect', description: "A `302` to the asset's public object URL (short-cached, `max-age=300`). No JSON body: the browser follows the `Location` header to the bytes." },
+    Location: { type: '302 redirect', description: "A `302` (short-cached, `max-age=300`) to the asset's public object URL for raster images (PNG, JPEG, GIF, WebP, AVIF), video, audio and PDF, or, for `download=true` and every other type, to a signed object URL valid for one hour whose `response-content-disposition=attachment` makes the bucket answer with a download. No JSON body: the browser follows the `Location` header to the bytes." },
   }}
   params={{
     assetId: { type: 'string', required: true, description: 'Path parameter: the asset id to serve.' },
     format: { type: "'webp' | 'jpeg' | 'png'", description: 'Serve a pre-uploaded format variant, falling back to the original.' },
     w: { type: 'number', description: 'Serve a pre-uploaded width variant (positive integer), falling back to the original.' },
-    download: { type: 'boolean', description: 'Set `true` to send a `Content-Disposition: attachment` header.' },
+    download: { type: 'boolean', description: 'Set `true` to redirect to a signed URL that forces a download (`Content-Disposition: attachment`, filename = the asset slug) instead of the public object URL.' },
   }}
 />
