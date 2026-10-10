@@ -27,6 +27,7 @@ import {
 import { cn } from '@/lib/utils';
 
 import {
+  MEDIA_EMPTY_CLASS,
   MEDIA_LABELS,
   MediaAssetCard,
   MediaBreadcrumbs,
@@ -77,9 +78,45 @@ function PickerSelection({ value }: { value: string | undefined }) {
 }
 
 /**
+ * The grid with its own roving `tabIndex` over the assets that match
+ * `accept`. `Media.Grid` hands `tabIndex=0` to the first listed asset, which
+ * `MediaAssetCard` does not render when it fails `accept`; the override keeps
+ * exactly one rendered option tabbable.
+ */
+function PickerGrid({ accept }: { accept: string | undefined }) {
+  const { assets } = useMediaLibrary();
+  const { selected } = useMediaSelection();
+  const [focusedId, setFocusedId] = React.useState<string | null>(null);
+
+  const visible = assets.filter((asset) => matchesAccept(accept, asset));
+  const isVisible = (id: string | null): id is string =>
+    id !== null && visible.some((asset) => asset.id === id);
+  const activeId = isVisible(focusedId)
+    ? focusedId
+    : isVisible(selected[0] ?? null)
+      ? selected[0]
+      : (visible[0]?.id ?? null);
+
+  return (
+    <MediaGrid>
+      {(asset) => (
+        <MediaAssetCard
+          key={asset.id}
+          asset={asset}
+          accept={accept}
+          tabIndex={activeId === asset.id ? 0 : -1}
+          onFocus={() => setFocusedId(asset.id)}
+        />
+      )}
+    </MediaGrid>
+  );
+}
+
+/**
  * Appends pages while every listed asset is hidden by `accept` and a cursor
  * remains, at most `AUTO_PAGE_LIMIT` times per folder, search or sort.
- * Renders the empty notice once no page can show an asset.
+ * Renders the empty notice once no cursor is left and no page showed an asset;
+ * with a cursor left past the limit only `MediaLoadMore` stays.
  */
 function PickerAutoPage({ accept }: { accept: string | undefined }) {
   const {
@@ -115,14 +152,16 @@ function PickerAutoPage({ accept }: { accept: string | undefined }) {
     void loadMore();
   }, [canAutoPage, loadMore]);
 
-  if (!allHidden || canAutoPage || status !== 'idle' || folders.length > 0) {
+  if (
+    !allHidden ||
+    nextCursor !== null ||
+    status !== 'idle' ||
+    folders.length > 0
+  ) {
     return null;
   }
   return (
-    <div
-      data-slot="media-empty"
-      className="text-muted-foreground rounded-lg border border-dashed px-4 py-10 text-center text-sm"
-    >
+    <div data-slot="media-empty" className={MEDIA_EMPTY_CLASS}>
       {MEDIA_LABELS.empty}
     </div>
   );
@@ -209,11 +248,7 @@ function MediaPicker({
             <MediaFolderList>
               {(folder) => <MediaFolderCard key={folder.id} folder={folder} />}
             </MediaFolderList>
-            <MediaGrid>
-              {(asset) => (
-                <MediaAssetCard key={asset.id} asset={asset} accept={accept} />
-              )}
-            </MediaGrid>
+            <PickerGrid accept={accept} />
             <MediaEmpty />
             <PickerAutoPage accept={accept} />
             <MediaLoadMore />

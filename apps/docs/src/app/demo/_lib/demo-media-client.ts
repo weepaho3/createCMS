@@ -186,3 +186,6 @@ export function demoMediaClient(): MediaClient {
     useUploadAssets: idleUploadState,
   };
 }
+
+/** The one client the demo media page uses, so its mutations survive remounts. */
+export const demoMedia = demoMediaClient();

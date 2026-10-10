@@ -273,15 +273,23 @@ function MediaCrumb({
   return (
     <BreadcrumbItem data-slot="media-crumb">
       <Media.Crumb
-        className={cn('cursor-pointer', className)}
+        className={className}
         {...props}
         render={(crumbProps, state) =>
           state.current ? (
-            <BreadcrumbPage className={crumbProps.className}>
+            <BreadcrumbPage className={crumbProps.className} data-current="">
               {crumbProps.children}
             </BreadcrumbPage>
           ) : (
-            <BreadcrumbLink render={<button type="button" {...crumbProps} />} />
+            <BreadcrumbLink
+              render={
+                <button
+                  type="button"
+                  {...crumbProps}
+                  className={cn('cursor-pointer', crumbProps.className)}
+                />
+              }
+            />
           )
         }
       />
@@ -363,14 +371,13 @@ function MediaNewFolder({ className }: { className?: string }) {
     }
   };
 
+  const onOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (!next) clearMutationError();
+  };
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) clearMutationError();
-      }}
-    >
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger
         render={
           <Button
@@ -416,7 +423,7 @@ function MediaNewFolder({ className }: { className?: string }) {
               type="button"
               variant="outline"
               disabled={pending}
-              onClick={() => setOpen(false)}
+              onClick={() => onOpenChange(false)}
             >
               {MEDIA_LABELS.cancel}
             </Button>
@@ -678,6 +685,9 @@ function MediaUploadList({ className }: { className?: string }) {
 
 // --- States --------------------------------------------------------------------
 
+const MEDIA_EMPTY_CLASS =
+  'text-muted-foreground rounded-lg border border-dashed px-4 py-10 text-center text-sm';
+
 function MediaEmpty({
   className,
   children,
@@ -686,10 +696,7 @@ function MediaEmpty({
   return (
     <Media.Empty
       data-slot="media-empty"
-      className={cn(
-        'text-muted-foreground rounded-lg border border-dashed px-4 py-10 text-center text-sm',
-        className,
-      )}
+      className={cn(MEDIA_EMPTY_CLASS, className)}
       {...props}
     >
       {children ?? MEDIA_LABELS.empty}
@@ -974,6 +981,7 @@ function MediaLibraryLayout({ className }: { className?: string }) {
 }
 
 export {
+  MEDIA_EMPTY_CLASS,
   MediaAssetCard,
   MediaBreadcrumbs,
   MediaCrumb,

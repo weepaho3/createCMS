@@ -291,6 +291,12 @@ function CmsEditor({
     collection,
   });
   const sources = useCmsFieldSources(client);
+  // On the proxy client every method is a function, so the guard only
+  // distinguishes hand-written clients.
+  const media = React.useMemo(() => {
+    const m = client.media;
+    return isMediaClient(m) ? m : undefined;
+  }, [client]);
 
   const retry = () => {
     void doc.reload();
@@ -341,10 +347,7 @@ function CmsEditor({
         onChange={doc.onChange}
         fields={cmsFields}
       >
-        <CmsSourcesProvider
-          sources={sources}
-          media={isMediaClient(client.media) ? client.media : undefined}
-        >
+        <CmsSourcesProvider sources={sources} media={media}>
           <EditorShell mode={mode} requireCommitMessage={requireCommitMessage}>
             {mode === 'form' ? (
               <FormSurface>{children}</FormSurface>
