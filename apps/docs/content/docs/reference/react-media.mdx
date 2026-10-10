@@ -141,7 +141,10 @@ folder name or `Root`.
 
 A `defaultFolderId` has no known ancestry: the store starts with an empty
 `path`, and the breadcrumbs hand their children one crumb for the current
-folder named `…` until the user navigates from a listed parent.
+folder named `…` until the user navigates from a listed parent. `navigate`
+pushes a child of the current folder onto `path` (keeping the `…` entry for
+an unknown starting folder), truncates `path` after a folder already in it,
+and starts a new `path = [folder]` for a folder that is neither.
 
 ### `Media.FolderList` and `Media.Folder`
 
@@ -220,7 +223,8 @@ the aggregate `progress.fraction` with the label `All uploads`.
 ### `useMediaLibrary`
 
 Returns `MediaLibrary`: the whole `MediaLibraryState` merged with the store
-actions (`MediaStoreActions`). Re-renders on every state change.
+actions (`MediaStoreActions` without `dispose`, which `Media.Root` calls on
+unmount). Re-renders on every state change.
 
 ```ts
 type MediaLibraryState = {
@@ -243,8 +247,8 @@ type MediaLibraryState = {
 Actions: `load()`, `loadMore()`, `refresh()`, `navigate(folder | null)`,
 `setSearch(value)`, `setSort(sortBy, sortDirection)`, `select(id)`,
 `toggle(id)`, `clearSelection()`, `archive(ids)`, `move(ids, folderId)`,
-`setStatus(ids, status)`, `createFolder(name)`, `clearMutationError()` and
-`dispose()`. The bulk mutations resolve with a `MediaBulkResult`
+`setStatus(ids, status)`, `createFolder(name)` and `clearMutationError()`.
+The bulk mutations resolve with a `MediaBulkResult`
 (`{ ids, skipped }`; `createFolder` resolves with the new `MediaFolder`),
 store the server's `skipped` ids on `mutation` and refresh the list; a
 rejection sets `mutation.status: 'error'` and rethrows.
@@ -281,6 +285,10 @@ root.
 
 `createMediaStore(options)` (`CreateMediaStoreOptions`: `client`,
 `defaultFolderId`, `pageSize`, `selection`) returns a `MediaStore`
-(`subscribe`, `getState`, `selection`, `actions`) usable without React. List
-requests carry a ticket: a response whose ticket is no longer current is
-dropped, so a fast second navigation never shows the first folder's result.
+(`subscribe`, `getState`, `selection`, `actions`) usable without React;
+`pageSize` is clamped to 1–100 and `actions.dispose()` cancels the pending
+search reload and invalidates in-flight list requests. List requests carry a
+ticket: a response whose ticket is no longer current is dropped, so a fast
+second navigation never shows the first folder's result. A failed `load()`
+clears `nextCursor`, and `setSearch` and `setSort` clear it before reloading,
+so `loadMore()` never appends a page of a different query.

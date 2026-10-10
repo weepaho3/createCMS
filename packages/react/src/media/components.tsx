@@ -14,7 +14,7 @@ import type {
 import { shallowEqual } from '../editor/binding';
 import { mergeProps, useRender } from '../use-render';
 import { MediaContext, MediaUploadsContext, useMediaContext } from './context';
-import { createMediaStore } from './store';
+import { UNKNOWN_FOLDER_NAME, createMediaStore } from './store';
 import { useSelector } from './use-store';
 
 // --- Media.Root -------------------------------------------------------------
@@ -144,9 +144,9 @@ type GridState = { status: MediaListStatus; empty: boolean };
 
 type GridContextValue = {
   listbox: boolean;
+  /** Id of the option with `tabIndex=0`; always one of the listed assets. */
   activeId: string | null;
   setActiveId: (id: string) => void;
-  fallbackId: string | null;
 };
 
 const GridContext = React.createContext<GridContextValue | null>(null);
@@ -161,12 +161,23 @@ const selectGrid = (state: MediaLibraryState) => ({
   firstSelected: state.selected[0] ?? null,
 });
 
+function isEditable(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
+    target.isContentEditable
+  );
+}
+
 function moveFocus(container: HTMLElement, key: string): boolean {
   const options = Array.from(
     container.querySelectorAll<HTMLElement>('[role="option"]'),
   );
   if (options.length === 0) return false;
-  const current = options.indexOf(document.activeElement as HTMLElement);
+  const focused = document.activeElement;
+  const current = options.findIndex((option) => option.contains(focused));
   let next: number;
   switch (key) {
     case 'ArrowRight':
@@ -200,20 +211,22 @@ export function MediaGrid(props: MediaGridProps) {
   const { store, selection } = useMediaContext('Media.Grid');
   const { status, assets, firstSelected } = useSelector(store, selectGrid);
   const listbox = selection !== 'none';
-  const [activeId, setActiveId] = React.useState<string | null>(null);
+  const [focusedId, setActiveId] = React.useState<string | null>(null);
 
-  const fallbackId =
-    (firstSelected !== null &&
-    assets.some((asset) => asset.id === firstSelected)
+  const hasAsset = (id: string | null): id is string =>
+    id !== null && assets.some((asset) => asset.id === id);
+  const activeId = hasAsset(focusedId)
+    ? focusedId
+    : hasAsset(firstSelected)
       ? firstSelected
-      : assets[0]?.id) ?? null;
+      : (assets[0]?.id ?? null);
   const gridValue = React.useMemo<GridContextValue>(
-    () => ({ listbox, activeId, setActiveId, fallbackId }),
-    [listbox, activeId, fallbackId],
+    () => ({ listbox, activeId, setActiveId }),
+    [listbox, activeId],
   );
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLUListElement>) => {
-    if (!listbox) return;
+    if (!listbox || isEditable(event.target)) return;
     if (moveFocus(event.currentTarget, event.key)) event.preventDefault();
   };
 
@@ -284,11 +297,7 @@ export function MediaItem(props: MediaItemProps) {
     else store.actions.select(asset.id);
   };
 
-  const tabIndex = listbox
-    ? (grid?.activeId ?? grid?.fallbackId) === asset.id
-      ? 0
-      : -1
-    : undefined;
+  const tabIndex = listbox ? (grid?.activeId === asset.id ? 0 : -1) : undefined;
 
   const itemValue = React.useMemo(
     () => ({ asset, selected }),
@@ -383,8 +392,6 @@ export type MediaBreadcrumbsProps = RenderProps<
   /** Receives the folders below the root, current folder last. */
   children: (path: MediaFolderRecord[]) => React.ReactNode;
 };
-
-const UNKNOWN_FOLDER_NAME = '…';
 
 const selectPath = (state: MediaLibraryState) => ({
   folderId: state.folderId,

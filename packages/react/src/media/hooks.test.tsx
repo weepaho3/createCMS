@@ -58,6 +58,15 @@ describe('useMediaLibrary', () => {
     );
   });
 
+  it('does not expose dispose', async () => {
+    const { result } = renderHook(() => useMediaLibrary(), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(result.current.status).toBe('idle'));
+    expect('dispose' in result.current).toBe(false);
+    expect(typeof result.current.clearMutationError).toBe('function');
+  });
+
   it('disposes the store on unmount', async () => {
     const client = makeClient();
     const { result, unmount } = renderHook(() => useMediaLibrary(), {

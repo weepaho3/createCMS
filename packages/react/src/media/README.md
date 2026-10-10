@@ -92,11 +92,14 @@ proxy envelope: `listAssets({ query })`, `listFolders({ query })`,
 The root level (`folderId: null`) lists unfiled assets and the top-level
 folders. `navigate(folder)` pushes a child of the current folder onto
 `path`, truncates `path` after a folder that is already in it, and clears
-`path` for `null`. Navigating resets search, selection and the cursor.
+`path` for `null`; a folder that is neither in `path` nor a child of the
+current folder starts a new `path = [folder]`. Navigating resets search,
+selection and the cursor.
 
 A `defaultFolderId` has no known ancestry: the store starts with
 `path = []` and `folderId = defaultFolderId`, and `Media.Breadcrumbs` hands
-its children one crumb for the current folder named `…`. The name becomes
+its children one crumb for the current folder named `…`. Navigating into a
+child keeps that `…` entry in `path` ahead of the child; the name becomes
 known once the user navigates from a listed parent. There is no rename and
 no get-folder-by-id endpoint.
 
@@ -143,7 +146,7 @@ pages pass `assetUrl={(asset) => assetUrl(asset.id)}` from
 
 | Hook                        | Returns                                                                        |
 | --------------------------- | ------------------------------------------------------------------------------ |
-| `useMediaLibrary()`         | The whole `MediaLibraryState` merged with the store actions                    |
+| `useMediaLibrary()`         | The whole `MediaLibraryState` merged with the store actions except `dispose`   |
 | `useMediaSelection()`       | `{ selected, select, toggle, clear, mode }`                                    |
 | `useMediaUploads()`         | The `MediaUploadState` of the client (`client.useUploadAssets()`)              |
 | `useMediaAsset(id)`         | The listed asset or `null`                                                     |
@@ -151,9 +154,11 @@ pages pass `assetUrl={(asset) => assetUrl(asset.id)}` from
 | `useMediaItemContext(name)` | `{ asset, selected }` of the enclosing `Media.Item`                            |
 | `useSelector(store, fn)`    | Generic subscription with shallow-equal memo for any `{ subscribe, getState }` |
 
-The store (`createMediaStore`) is framework-free and usable without React.
-List requests carry a ticket: a response whose ticket is no longer current
-is dropped. Bulk mutations (`archive`, `move`, `setStatus`, `createFolder`)
+The store (`createMediaStore`) is framework-free and usable without React;
+`pageSize` is clamped to 1–100. List requests carry a ticket: a response
+whose ticket is no longer current is dropped. A failed `load()` clears
+`nextCursor`, and `setSearch` and `setSort` clear it before reloading, so
+`loadMore()` never appends a page of a different query. Bulk mutations (`archive`, `move`, `setStatus`, `createFolder`)
 set `mutation.status`, call the client, store the server's `skipped` ids,
 then `refresh()`; a rejection sets `mutation.status: 'error'` and rethrows
 without touching the list `status`. `Media.Root` also calls `refresh()` when

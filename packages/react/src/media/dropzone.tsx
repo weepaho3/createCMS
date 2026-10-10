@@ -84,9 +84,10 @@ const selectFolderId = (state: MediaLibraryState) => state.folderId;
 /**
  * A `button` that opens a file picker and accepts drops. Files are checked
  * against `accept`, `maxSize` and `maxFiles` before `upload()` runs; the
- * button is `aria-disabled` (never `disabled`) and ignores drops while an
- * upload is in flight. The result summary of the last attempt lives in a
- * polite `output` referenced by `aria-describedby`.
+ * button is `aria-disabled` (never `disabled`), ignores drops and stays
+ * without `data-drag-active` while an upload is in flight. The result
+ * summary of the last attempt lives in a polite `output` referenced by
+ * `aria-describedby`.
  */
 export function MediaDropzone(props: MediaDropzoneProps) {
   const {
@@ -189,6 +190,7 @@ export function MediaDropzone(props: MediaDropzoneProps) {
         },
         onDragEnter: (event: React.DragEvent) => {
           event.preventDefault();
+          if (uploading) return;
           depth.current += 1;
           if (depth.current === 1) setDragActive(true);
         },

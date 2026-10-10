@@ -12,12 +12,13 @@ import type {
 } from './types';
 
 export const SEARCH_DEBOUNCE_MS = 250;
-const MAX_PAGE_SIZE = 100;
+export const UNKNOWN_FOLDER_NAME = '…';
+export const MAX_PAGE_SIZE = 100;
 
 export type MediaStoreActions = {
   /** Lists folders and the first page of assets of the current folder; drops the result if a newer request started. */
   load(): Promise<void>;
-  /** Appends the next page of assets; no-op without a cursor or while a list request is in flight. */
+  /** Appends the next page of assets; no-op without a cursor or while a list request is in flight. A failed `load` clears the cursor. */
   loadMore(): Promise<void>;
   /** `load()` with a limit that covers every asset currently shown. */
   refresh(): Promise<void>;
@@ -25,6 +26,7 @@ export type MediaStoreActions = {
   navigate(folder: MediaFolder | null): void;
   /** Sets `search` immediately and reloads after `SEARCH_DEBOUNCE_MS`. */
   setSearch(value: string): void;
+  /** Resets the cursor and reloads. */
   setSort(sortBy: MediaSortBy, sortDirection: MediaSortDirection): void;
   select(id: string): void;
   toggle(id: string): void;
@@ -76,9 +78,13 @@ function pruneSelection(selected: string[], assets: MediaAsset[]): string[] {
 export function createMediaStore({
   client,
   defaultFolderId = null,
-  pageSize = 40,
+  pageSize: requestedPageSize = 40,
   selection = 'none',
 }: CreateMediaStoreOptions): MediaStore {
+  const pageSize = Math.min(
+    Math.max(Math.floor(requestedPageSize) || 1, 1),
+    MAX_PAGE_SIZE,
+  );
   let state: MediaLibraryState = {
     folderId: defaultFolderId,
     path: [],
@@ -149,7 +155,7 @@ export function createMediaStore({
       });
     } catch (error) {
       if (current !== ticket) return;
-      setState({ status: 'error', error });
+      setState({ status: 'error', error, nextCursor: null });
     }
   };
 
@@ -199,7 +205,21 @@ export function createMediaStore({
       if (index !== -1) {
         path = state.path.slice(0, index + 1);
       } else if (folder.parentId === state.folderId) {
-        path = [...state.path, folder];
+        // A starting folder opened by id is not in `path`; keep it as the
+        // placeholder entry `Media.Breadcrumbs` renders for it.
+        const base =
+          state.folderId !== null &&
+          state.path[state.path.length - 1]?.id !== state.folderId
+            ? [
+                ...state.path,
+                {
+                  id: state.folderId,
+                  name: UNKNOWN_FOLDER_NAME,
+                  parentId: null,
+                },
+              ]
+            : state.path;
+        path = [...base, folder];
       } else {
         path = [folder];
       }
@@ -216,7 +236,7 @@ export function createMediaStore({
 
   const setSearch = (value: string): void => {
     clearSearchTimer();
-    setState({ search: value });
+    setState({ search: value, nextCursor: null });
     searchTimer = setTimeout(() => {
       searchTimer = null;
       void load();
@@ -227,7 +247,7 @@ export function createMediaStore({
     sortBy: MediaSortBy,
     sortDirection: MediaSortDirection,
   ): void => {
-    setState({ sortBy, sortDirection });
+    setState({ sortBy, sortDirection, nextCursor: null });
     void load();
   };
 

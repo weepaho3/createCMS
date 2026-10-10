@@ -11,19 +11,23 @@ import type {
 import { useMediaContext, useMediaUploadsContext } from './context';
 import { useSelector } from './use-store';
 
-export type MediaLibrary = MediaLibraryState & MediaStoreActions;
+export type MediaLibrary = MediaLibraryState &
+  Omit<MediaStoreActions, 'dispose'>;
 
 const identity = (state: MediaLibraryState): MediaLibraryState => state;
 
 /**
- * The whole library state merged with the store actions. Re-renders on
- * every state change; use `useMediaSelection` or `useMediaAsset` for
- * narrower subscriptions.
+ * The whole library state merged with the store actions except `dispose`,
+ * which `Media.Root` calls on unmount. Re-renders on every state change;
+ * use `useMediaSelection` or `useMediaAsset` for narrower subscriptions.
  */
 export function useMediaLibrary(): MediaLibrary {
   const { store } = useMediaContext('useMediaLibrary');
   const state = useSelector(store, identity, Object.is);
-  return React.useMemo(() => ({ ...state, ...store.actions }), [state, store]);
+  return React.useMemo(() => {
+    const { dispose: _dispose, ...actions } = store.actions;
+    return { ...state, ...actions };
+  }, [state, store]);
 }
 
 export type MediaSelection = {

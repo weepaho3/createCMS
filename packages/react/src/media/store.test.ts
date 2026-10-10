@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CmsAssetListResult } from '../editor/cms/types';
 
-import { SEARCH_DEBOUNCE_MS, createMediaStore } from './store';
+import { MAX_PAGE_SIZE, SEARCH_DEBOUNCE_MS, createMediaStore } from './store';
 import {
   deferred,
   flush,
@@ -124,6 +124,45 @@ describe('createMediaStore', () => {
     await flush();
     expect(store.getState().folderId).toBeNull();
     expect(store.getState().path).toEqual([]);
+  });
+
+  it('navigating from an unknown starting folder into a child keeps a placeholder ancestor', async () => {
+    const client = makeClient();
+    const store = createMediaStore({ client, defaultFolderId: 'fld_x' });
+    await store.actions.load();
+    const child = makeFolder({ id: 'fld_y', parentId: 'fld_x' });
+
+    store.actions.navigate(child);
+    await flush();
+    expect(store.getState().folderId).toBe('fld_y');
+    expect(store.getState().path).toEqual([
+      { id: 'fld_x', name: '…', parentId: null },
+      child,
+    ]);
+
+    const placeholder = store.getState().path[0]!;
+    store.actions.navigate(placeholder);
+    await flush();
+    expect(store.getState().folderId).toBe('fld_x');
+    expect(store.getState().path).toEqual([placeholder]);
+
+    const elsewhere = makeFolder({ id: 'fld_z', parentId: 'fld_other' });
+    store.actions.navigate(elsewhere);
+    await flush();
+    expect(store.getState().path).toEqual([elsewhere]);
+  });
+
+  it('clamps pageSize to 1..MAX_PAGE_SIZE', async () => {
+    const limitOf = async (pageSize: number) => {
+      const client = makeClient();
+      await createMediaStore({ client, pageSize }).actions.load();
+      return client.listAssets.mock.calls[0]?.[0]?.query?.limit;
+    };
+    expect(await limitOf(0)).toBe(1);
+    expect(await limitOf(-5)).toBe(1);
+    expect(await limitOf(Number.NaN)).toBe(1);
+    expect(await limitOf(40)).toBe(40);
+    expect(await limitOf(1000)).toBe(MAX_PAGE_SIZE);
   });
 
   it('starts at defaultFolderId with an empty path', () => {
@@ -324,6 +363,61 @@ describe('createMediaStore', () => {
     store.actions.dispose();
     await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS);
     expect(client.listAssets).toHaveBeenCalledTimes(1);
+  });
+
+  it('a failed load clears the cursor so loadMore does not append to the old list', async () => {
+    const client = makeClient({
+      listAssets: vi
+        .fn()
+        .mockResolvedValueOnce(
+          listResult({
+            assets: makeAssets(2),
+            hasMore: true,
+            nextCursor: 'c1',
+          }),
+        )
+        .mockRejectedValueOnce(new Error('offline'))
+        .mockResolvedValue(listResult({ assets: makeAssets(1, 'next_') })),
+    });
+    const store = createMediaStore({ client });
+    await store.actions.load();
+    expect(store.getState().nextCursor).toBe('c1');
+
+    await store.actions.refresh();
+    expect(store.getState().status).toBe('error');
+    expect(store.getState().nextCursor).toBeNull();
+
+    await store.actions.loadMore();
+    expect(client.listAssets).toHaveBeenCalledTimes(2);
+    expect(store.getState().assets.map((a) => a.id)).toEqual([
+      'ast_1',
+      'ast_2',
+    ]);
+  });
+
+  it('setSearch and setSort clear the cursor before reloading', async () => {
+    vi.useFakeTimers();
+    const client = makeClient({
+      listAssets: vi.fn(async () =>
+        listResult({ hasMore: true, nextCursor: 'c1' }),
+      ),
+    });
+    const store = createMediaStore({ client });
+    await store.actions.load();
+    expect(store.getState().nextCursor).toBe('c1');
+
+    store.actions.setSearch('hero');
+    expect(store.getState().nextCursor).toBeNull();
+    await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS);
+    expect(store.getState().nextCursor).toBe('c1');
+
+    store.actions.setSort('slug', 'asc');
+    expect(store.getState().nextCursor).toBeNull();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getState().nextCursor).toBe('c1');
+    expect(
+      client.listAssets.mock.calls.every(([arg]) => !arg?.query?.cursor),
+    ).toBe(true);
   });
 
   it('a rejected list sets status error and a later load recovers', async () => {

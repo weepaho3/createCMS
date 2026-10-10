@@ -132,6 +132,14 @@ describe('Media.Dropzone', () => {
     expect(upload).not.toHaveBeenCalled();
   });
 
+  it('does not become drag-active while uploading', () => {
+    const { button } = setup(makeUploadState({ isUploading: true }));
+    fireEvent.dragEnter(button);
+    expect(button.hasAttribute('data-drag-active')).toBe(false);
+    fireEvent.dragLeave(button);
+    expect(button.hasAttribute('data-drag-active')).toBe(false);
+  });
+
   it('keeps data-drag-active while crossing children', () => {
     const { button } = setup(makeUploadState());
     fireEvent.dragEnter(button);

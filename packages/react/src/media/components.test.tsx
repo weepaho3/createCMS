@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+} from '@testing-library/react';
 // @vitest-environment happy-dom
 import * as React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -185,6 +191,63 @@ describe('Media.Grid / Media.Item', () => {
     expect(document.activeElement).toBe(options[1]);
     fireEvent.keyDown(grid, { key: 'Home' });
     expect(document.activeElement).toBe(options[0]);
+  });
+
+  it('moves the roving tabIndex to a listed option after the focused asset disappears', async () => {
+    const client = makeClient({
+      listAssets: vi
+        .fn()
+        .mockResolvedValueOnce(listResult(3))
+        .mockResolvedValueOnce({
+          assets: [makeAsset({ id: 'ast_1' }), makeAsset({ id: 'ast_2' })],
+          total: 2,
+          hasMore: false,
+          nextCursor: null,
+        }),
+    });
+    const { getByRole, getAllByRole } = render(
+      <Library client={client} selection="single" />,
+    );
+    await waitFor(() => expect(getAllByRole('option')).toHaveLength(3));
+    act(() => getAllByRole('option')[2]!.focus());
+    expect(getAllByRole('option')[2]!.getAttribute('tabindex')).toBe('0');
+
+    fireEvent.change(getByRole('searchbox'), { target: { value: 'ast' } });
+    await waitFor(() => expect(getAllByRole('option')).toHaveLength(2));
+    const tabbable = getAllByRole('option').filter(
+      (option) => option.getAttribute('tabindex') === '0',
+    );
+    expect(tabbable.map((option) => option.textContent)).toEqual(['ast_1']);
+  });
+
+  it('arrow keys find the option around a focused descendant and ignore editable targets', async () => {
+    const client = makeClient({ listAssets: listOf(3) });
+    const { getByTestId, getAllByRole } = render(
+      <MediaRoot client={client} selection="single">
+        <MediaGrid data-testid="grid">
+          {(asset) => (
+            <MediaItem key={asset.id} asset={asset}>
+              <button type="button">{asset.slug}</button>
+              <input aria-label={`rename ${asset.slug}`} />
+            </MediaItem>
+          )}
+        </MediaGrid>
+      </MediaRoot>,
+    );
+    await waitFor(() => expect(getAllByRole('option')).toHaveLength(3));
+    const grid = getByTestId('grid');
+    const options = getAllByRole('option');
+    const inner = options[1]!.querySelector('button')!;
+    inner.focus();
+    fireEvent.keyDown(grid, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(options[2]);
+
+    const input = options[2]!.querySelector('input')!;
+    input.focus();
+    fireEvent.keyDown(input, { key: 'ArrowLeft' });
+    expect(document.activeElement).toBe(input);
+    fireEvent.keyDown(input, { key: 'Home' });
+    expect(document.activeElement).toBe(input);
   });
 
   it('thumbnails use assetUrl for images and the fallback otherwise', async () => {
