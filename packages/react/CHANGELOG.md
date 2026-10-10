@@ -1,5 +1,49 @@
 # @createcms/react
 
+## 0.4.0
+
+### Minor Changes
+
+- [#145](https://github.com/weepaho3/createCMS/pull/145) [`4247ac2`](https://github.com/weepaho3/createCMS/commit/4247ac2214dfc2664f849243715a7124af8897fa) Thanks [@weepaho3](https://github.com/weepaho3)! - `media.useUploadAssets()` keeps a ledger of every file handed to `upload()`
+  until `reset()` drops the finished entries. `progress` is byte-summed
+  (`{ loaded, total, fraction }`) instead of a per-file average, each entry
+  ends `success`, `error` (`{ code, message }`) or `aborted`, `upload()`
+  resolves with that call's entries and PUTs at most `concurrency` files
+  (default 4) at once, and `signal` aborts a single call. `isAborted` and
+  `totalProgress` are removed; `status: 'done'` is now `'success'`. The
+  `@createcms/react` mirror types `CmsMediaUploadState` and
+  `CmsMediaUploadFileState` follow, with `CmsMediaUploadStatus` and
+  `CmsMediaUploadProgress` added.
+
+### Patch Changes
+
+- [#129](https://github.com/weepaho3/createCMS/pull/129) [`237e17e`](https://github.com/weepaho3/createCMS/commit/237e17e61137de0649440198fd15b8324b659dac) Thanks [@weepaho3](https://github.com/weepaho3)! - `Canvas.Provider` lets chrome outside the canvas start drag sessions:
+  `Canvas.PaletteItem`, `Canvas.DragHandle` and `Canvas.DragPreview` now work
+  anywhere under a shared provider (for example a shell sidebar), and each
+  `Canvas.Root` resolves drops while the pointer is over its own surface.
+  Without a provider nothing changes; `Canvas.Root` creates the session itself.
+
+- [#139](https://github.com/weepaho3/createCMS/pull/139) [`1ea00fe`](https://github.com/weepaho3/createCMS/commit/1ea00fe9fcb00a739e643ffa0ccfb8a9eabd3113) Thanks [@weepaho3](https://github.com/weepaho3)! - `Canvas.DragPreview` follows the pointer with `translate3d` on a DOM ref
+  (coalesced to animation frames) instead of re-rendering React on every
+  `pointermove`.
+
+- [#140](https://github.com/weepaho3/createCMS/pull/140) [`b6a71a6`](https://github.com/weepaho3/createCMS/commit/b6a71a6e7a4eb7c7eee32dad55d837ca5592a199) Thanks [@weepaho3](https://github.com/weepaho3)! - `Canvas.DragHandle` anchors to the selected block unless it is inside
+  `Canvas.BlockToolbar`. Overlay chrome pins inside the visible block when
+  `side="top"` would clip under `Canvas.Overlay` `overflow: hidden`, so the
+  first-block drag handle stays hittable. Drag gestures still start while
+  inline text is focused, and the preview keeps `translate3d` updates
+  off-canvas.
+
+- [#145](https://github.com/weepaho3/createCMS/pull/145) [`4247ac2`](https://github.com/weepaho3/createCMS/commit/4247ac2214dfc2664f849243715a7124af8897fa) Thanks [@weepaho3](https://github.com/weepaho3)! - New `@createcms/react/media` entry: a headless media library primitive.
+  `Media.Root` owns a store over `cmsClient.media` (folders, paged assets,
+  search, sort, selection, bulk mutations); `Media.Grid`, `Media.Item`,
+  `Media.Thumbnail`, `Media.Breadcrumbs`, `Media.Crumb`, `Media.FolderList`,
+  `Media.Folder`, `Media.Search`, `Media.LoadMore`, `Media.Empty`,
+  `Media.Error` and `Media.MutationError` render unstyled elements with
+  `data-*` state; `Media.Dropzone` and the `Media.Upload*` parts wrap the
+  client's upload ledger with accessible progress and announcements. Hooks:
+  `useMediaLibrary`, `useMediaSelection`, `useMediaUploads`, `useMediaAsset`.
+
 ## 0.3.2
 
 ### Patch Changes

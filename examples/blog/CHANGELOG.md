@@ -1,5 +1,12 @@
 # @createcms/example-blog
 
+## 0.0.22
+
+### Patch Changes
+
+- Updated dependencies [[`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240), [`4247ac2`](https://github.com/weepaho3/createCMS/commit/4247ac2214dfc2664f849243715a7124af8897fa), [`4247ac2`](https://github.com/weepaho3/createCMS/commit/4247ac2214dfc2664f849243715a7124af8897fa), [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240), [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240), [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240), [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240), [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240), [`4247ac2`](https://github.com/weepaho3/createCMS/commit/4247ac2214dfc2664f849243715a7124af8897fa), [`4247ac2`](https://github.com/weepaho3/createCMS/commit/4247ac2214dfc2664f849243715a7124af8897fa)]:
+  - @createcms/core@0.8.0
+
 ## 0.0.21
 
 ### Patch Changes
