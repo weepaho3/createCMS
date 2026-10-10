@@ -64,6 +64,10 @@ export const setupTestCMS = async (options?: {
   return {
     cms,
     db,
-    s3: testS3 ?? { config: mediaConfig, cleanup: async () => {} },
+    s3: testS3 ?? {
+      config: mediaConfig,
+      failKeys: new Set<string>(),
+      cleanup: async () => {},
+    },
   };
 };

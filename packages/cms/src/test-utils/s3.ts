@@ -8,6 +8,8 @@ const TEST_SECRET_KEY = 'S3RVER';
 
 export type TestS3 = {
   config: CustomMediaConfig;
+  /** Object keys (without bucket prefix) every GET/HEAD/DELETE answers with 500. */
+  failKeys: Set<string>;
   cleanup: () => Promise<void>;
 };
 
@@ -16,10 +18,12 @@ export type TestS3 = {
  * Implements exactly what the media tests exercise: PUT (store), GET (serve,
  * with a single-range `Range` answered as 206), HEAD, DELETE (remove), keyed
  * by the request path. No SigV4 verification, no LIST/multipart/ACL. Returns
- * an S3-flavored <Error> XML body on a missing GET.
+ * an S3-flavored <Error> XML body on a missing GET. Keys added to `failKeys`
+ * answer every non-PUT request with 500.
  */
 export async function setupTestS3(): Promise<TestS3> {
   const store = new Map<string, { body: Buffer; contentType?: string }>();
+  const failKeys = new Set<string>();
 
   const server: Server = createServer((req, res) => {
     // Signed URLs carry ?X-Amz-... query params on PUT; strip the query so a
@@ -38,6 +42,13 @@ export async function setupTestS3(): Promise<TestS3> {
         res.writeHead(200, { ETag: '"test-etag"' });
         res.end();
       });
+      return;
+    }
+    if (method !== 'PUT' && failKeys.has(key.replace(`/${TEST_BUCKET}/`, ''))) {
+      res.writeHead(500, { 'content-type': 'application/xml' });
+      res.end(
+        `<?xml version="1.0" encoding="UTF-8"?><Error><Code>InternalError</Code><Message>We encountered an internal error.</Message></Error>`,
+      );
       return;
     }
     if (method === 'DELETE') {
@@ -104,5 +115,5 @@ export async function setupTestS3(): Promise<TestS3> {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   };
 
-  return { config, cleanup };
+  return { config, failKeys, cleanup };
 }

@@ -245,7 +245,7 @@ Create the asset rows for the files the browser PUT to the URLs from `createSign
   }}
 />
 
-Returns `{ assets, errors }`. Per-entry `code` is one of `UPLOAD_TOKEN_INVALID` (malformed, expired, or minted for another user or tenant), `UPLOAD_NOT_FOUND` (no object at the key: the PUT never completed), `VALIDATION_ERROR` (the object's length or content type differs from the declared file), `INVALID_FILE_TYPE` (the bytes contradict the declared image type), `FOLDER_NOT_FOUND` or `ASSET_NOT_FOUND` (the folder or `variantOf` target was removed after presign), or `SLUG_GENERATION_FAILED`.
+Returns `{ assets, errors }`. Per-entry `code` is one of `UPLOAD_TOKEN_INVALID` (malformed, expired, or minted for another user or tenant), `UPLOAD_NOT_FOUND` (no object at the key: the PUT never completed), `VALIDATION_ERROR` (the object's length or content type differs from the declared file), `INVALID_FILE_TYPE` (the bytes contradict the declared image type), `FOLDER_NOT_FOUND` or `ASSET_NOT_FOUND` (the folder or `variantOf` target was removed after presign, or the asset from an earlier completion of this token was archived), `UPLOAD_FAILED` (the bucket answered the object check with an error), or `SLUG_GENERATION_FAILED`.
 
 ```ts
 // Full browser-side upload flow (the `useUploadAssets` hook does this for you).
@@ -384,7 +384,7 @@ Repoints the asset's row at the new object after the browser's PUT to `createSig
   }}
 />
 
-Returns `{ asset }` with the same fields a `listAssets` row carries. Throws `UPLOAD_TOKEN_INVALID` (malformed, expired, or minted for another user or tenant), `UPLOAD_NOT_FOUND` (no object at the token's key: the PUT never completed), `VALIDATION_ERROR` (the object's length or content type differs from the token), `INVALID_FILE_TYPE` (the bytes contradict the declared image type), or `ASSET_NOT_FOUND` if the asset was archived or left scope since `createSignedReplace` (TOCTOU) — the row is left unchanged and the just-uploaded object is tombstoned for reclaim rather than abandoned.
+Returns `{ asset }` with the same fields a `listAssets` row carries. Committing the same token twice returns the already-repointed asset. Throws `UPLOAD_TOKEN_INVALID` (malformed, expired, or minted for another user or tenant), `UPLOAD_NOT_FOUND` (no object at the token's key: the PUT never completed), `FILE_TOO_LARGE` / `INVALID_FILE_TYPE` / `TOO_MANY_FILES` (the token's type or size fails the media config as it is at commit time, or the bytes contradict the declared image type), `VALIDATION_ERROR` (the object's length or content type differs from the token), or `ASSET_NOT_FOUND` if the asset was archived or left scope since `createSignedReplace` (TOCTOU) — the row is left unchanged and the just-uploaded object is tombstoned for reclaim rather than abandoned.
 
 ```ts
 // Full browser-side replace flow.

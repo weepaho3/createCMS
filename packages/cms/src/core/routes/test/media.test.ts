@@ -1144,6 +1144,85 @@ describe('media.createSignedUpload', () => {
     expect(completed.assets.map((a) => a.slug)).toEqual(['unfiled.png']);
     expect(await db.select().from(assets)).toHaveLength(1);
   });
+
+  it('advances the slug counter past a slug held by another tenant', async () => {
+    const { cms, db, setTenant, s3 } = await setupMultiTenantTestCMS({
+      withS3: true,
+    });
+    cleanup = s3.cleanup;
+
+    await db.execute(sql`
+      INSERT INTO cms.assets (id, slug, mime_type, size, object_key, status, tenant_slug)
+      VALUES ('asset-globex-photo', 'photo.jpg', 'image/jpeg', 8, 'globex/photo.jpg', 'public', 'globex')
+    `);
+
+    setTenant('acme');
+    const { assets: completed } = await uploadSigned(cms, [
+      { name: 'photo.jpg', type: 'image/jpeg' },
+    ]);
+
+    expect(completed[0].slug).toBe('photo-2.jpg');
+    const rows = await db.execute(
+      sql`SELECT tenant_slug FROM cms.assets WHERE id = ${completed[0].id}`,
+    );
+    expect(rows.rows[0]).toEqual({ tenant_slug: 'acme' });
+  });
+
+  it('reports UPLOAD_FAILED for the entry whose object check errors and completes the rest', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+
+    const signed = await cms.api.media.createSignedUpload({
+      body: {
+        files: [
+          { name: 'broken.png', size: 8, type: 'image/png' },
+          { name: 'fine.png', size: 8, type: 'image/png' },
+        ],
+      },
+    });
+    await putSigned(signed.uploads[0], PNG_BYTES);
+    await putSigned(signed.uploads[1], PNG_BYTES);
+    s3.failKeys.add(signed.uploads[0].objectKey);
+
+    const completed = await cms.api.media.completeUpload({
+      body: { uploads: signed.uploads.map(({ token }) => ({ token })) },
+    });
+
+    expect(completed.errors).toEqual([
+      {
+        index: 0,
+        code: 'UPLOAD_FAILED',
+        message: expect.stringContaining('broken.png'),
+      },
+    ]);
+    expect(completed.errors[0].message).not.toMatch(/InternalError|500/);
+    expect(completed.assets.map((a) => a.slug)).toEqual(['fine.png']);
+    expect(await db.select().from(assets)).toHaveLength(1);
+  });
+
+  it('reports ASSET_NOT_FOUND when a replayed token names an archived asset', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+
+    const { signed, assets: first } = await uploadSigned(cms, [
+      { name: 'pixel.png', type: 'image/png' },
+    ]);
+    await cms.api.media.archiveAssets({ body: { assetIds: [first[0].id] } });
+
+    const again = await cms.api.media.completeUpload({
+      body: { uploads: [{ token: signed.uploads[0].token }] },
+    });
+
+    expect(again.assets).toEqual([]);
+    expect(again.errors).toEqual([
+      {
+        index: 0,
+        code: 'ASSET_NOT_FOUND',
+        message: expect.stringContaining(first[0].id),
+      },
+    ]);
+    expect(await db.select().from(assets)).toHaveLength(1);
+  });
 });
 
 // ============================================================================
@@ -2690,6 +2769,33 @@ describe('media.commitReplace', () => {
       .from(assets)
       .where(eq(assets.id, variant.id));
     expect(v.archivedAt).not.toBeNull(); // old variant archived
+  });
+
+  it('replays the same token to the already-repointed row without a second tombstone', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const [orig] = await insertAsset(db, 'logo.png');
+
+    const signed = await signReplace(cms, orig.id);
+    await putSigned(signed, PNG_BYTES);
+
+    const first = await cms.api.media.commitReplace({
+      body: { token: signed.token },
+    });
+    const second = await cms.api.media.commitReplace({
+      body: { token: signed.token },
+    });
+
+    expect(second.asset).toEqual(first.asset);
+    expect(second.asset.id).toBe(orig.id);
+    expect(second.asset.objectKey).toBe(signed.objectKey);
+
+    const rows = await db.select().from(assets);
+    const live = rows.filter((r) => r.archivedAt === null);
+    const tombstones = rows.filter((r) => r.archivedAt !== null);
+    expect(live).toHaveLength(1);
+    expect(tombstones).toHaveLength(1);
+    expect(tombstones[0].slug).toBe('logo.png');
   });
 
   it('rejects when the asset was archived in between (TOCTOU) and tombstones the just-PUT object', async () => {

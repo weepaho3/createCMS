@@ -403,15 +403,19 @@ export function createMediaEndpoints(
    * Inserts the `assets` row for a verified upload token and returns it
    * through drizzle. The slug is minted here, up to three times when another
    * row takes it first. A primary-key or object-key conflict means this token
-   * was completed before: the existing row is returned. A foreign-key
-   * violation maps to FOLDER_NOT_FOUND / ASSET_NOT_FOUND.
+   * was completed before: the live row is returned, or ASSET_NOT_FOUND is
+   * thrown when that row has since been archived. A foreign-key violation
+   * maps to FOLDER_NOT_FOUND / ASSET_NOT_FOUND.
    */
   async function insertCompletedUpload(
     payload: Extract<UploadTokenPayload, { kind: 'upload' }>,
     scope: ResolvedScope,
   ): Promise<AssetRow> {
     const loadRow = async () => {
-      const conditions: SQL[] = [eq(assets.id, payload.id)];
+      const conditions: SQL[] = [
+        eq(assets.id, payload.id),
+        isNull(assets.archivedAt),
+      ];
       if (scope.assets?.where) conditions.push(scope.assets.where);
       const [row] = await db
         .select()
@@ -420,8 +424,13 @@ export function createMediaEndpoints(
       return row;
     };
 
+    // `assets_slug_unique` is global while the probe in generateUniqueSlug is
+    // scope-filtered; a slug held by a row outside the scope is excluded here
+    // so the next attempt moves to the next counter.
+    const taken = new Set<string>();
+
     for (let attempt = 0; attempt < 3; attempt++) {
-      const slug = await generateUniqueSlug(db, payload.name, undefined, scope);
+      const slug = await generateUniqueSlug(db, payload.name, taken, scope);
       if (!slug) throw new CMSError('SLUG_GENERATION_FAILED');
 
       try {
@@ -448,9 +457,14 @@ export function createMediaEndpoints(
         ) {
           const existing = await loadRow();
           if (existing) return existing;
-          throw err;
+          throw new CMSError('ASSET_NOT_FOUND', {
+            message: errorMessages.assetNotFound(payload.id),
+          });
         }
-        if (isConstraintViolation(err, '23505', 'assets_slug_unique')) continue;
+        if (isConstraintViolation(err, '23505', 'assets_slug_unique')) {
+          taken.add(slug);
+          continue;
+        }
         if (isConstraintViolation(err, '23503', 'folder_id')) {
           throw new CMSError('FOLDER_NOT_FOUND', {
             message: errorMessages.folderNotFound(payload.folderId ?? ''),
@@ -1556,6 +1570,8 @@ export function createMediaEndpoints(
      * object that fails the length, type, or sniff check is deleted.
      * Idempotent per token: a second completion returns the existing asset.
      * One entry's failure never fails the call; it is reported in `errors`.
+     * A bucket error while checking an entry's object is reported as
+     * UPLOAD_FAILED for that entry.
      *
      * @param uploads - One `{ token }` per file, from `createSignedUpload`.
      * @returns `{ assets, errors }`: the created assets (same fields as a `listAssets` row) and `{ index, code, message }` per rejected entry, `index` into `uploads`.
@@ -1605,18 +1621,26 @@ export function createMediaEndpoints(
             continue;
           }
 
-          const rejected = await inspectUploadedObject(payload);
-          if (rejected) {
-            fail(i, rejected);
-            continue;
-          }
-
           try {
+            const rejected = await inspectUploadedObject(payload);
+            if (rejected) {
+              fail(i, rejected);
+              continue;
+            }
             const row = await insertCompletedUpload(payload, scope);
             completed.push(toAssetListItem(row, mediaConfig.publicUrl));
           } catch (err) {
             if (err instanceof APIError) {
               fail(i, err);
+              continue;
+            }
+            if (err instanceof S3Error) {
+              fail(
+                i,
+                new CMSError('UPLOAD_FAILED', {
+                  message: `Could not verify the uploaded object for "${payload.name}"`,
+                }),
+              );
               continue;
             }
             throw err;
@@ -1769,7 +1793,9 @@ export function createMediaEndpoints(
      * immediately-archived asset row) so the pruning pass reclaims the old
      * S3 object after the trash window. If the asset was archived or left
      * scope since `createSignedReplace`, the new object is tombstoned
-     * instead, since no row will reference it.
+     * instead, since no row will reference it. Idempotent per token: a
+     * commit whose row already points at the token's object returns that
+     * row unchanged.
      *
      * @param token - The `token` returned by `createSignedReplace`.
      * @returns `{ asset }` with the same fields a `listAssets` row carries.
@@ -1872,6 +1898,18 @@ export function createMediaEndpoints(
               throw new CMSError('ASSET_NOT_FOUND', {
                 message: errorMessages.assetNotFound(assetId),
               });
+            }
+
+            // The row already points at this token's object: an earlier
+            // commit landed and its response was lost. The tombstone for
+            // `before` exists from that commit and would collide on
+            // assets_slug_unique if written again.
+            if (before.objectKey === objectKey) {
+              const [current] = await tx
+                .select()
+                .from(assets)
+                .where(and(...loadConditions));
+              return current;
             }
 
             const updateConditions: SQL[] = [
