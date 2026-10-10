@@ -1,5 +1,80 @@
 # @createcms/core
 
+## 0.8.0
+
+### Minor Changes
+
+- [#145](https://github.com/weepaho3/createCMS/pull/145) [`4247ac2`](https://github.com/weepaho3/createCMS/commit/4247ac2214dfc2664f849243715a7124af8897fa) Thanks [@weepaho3](https://github.com/weepaho3)! - `media.useUploadAssets()` keeps a ledger of every file handed to `upload()`
+  until `reset()` drops the finished entries. `progress` is byte-summed
+  (`{ loaded, total, fraction }`) instead of a per-file average, each entry
+  ends `success`, `error` (`{ code, message }`) or `aborted`, `upload()`
+  resolves with that call's entries and PUTs at most `concurrency` files
+  (default 4) at once, and `signal` aborts a single call. `isAborted` and
+  `totalProgress` are removed; `status: 'done'` is now `'success'`. The
+  `@createcms/react` mirror types `CmsMediaUploadState` and
+  `CmsMediaUploadFileState` follow, with `CmsMediaUploadStatus` and
+  `CmsMediaUploadProgress` added.
+
+- [#142](https://github.com/weepaho3/createCMS/pull/142) [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240) Thanks [@weepaho3](https://github.com/weepaho3)! - Releases are now a scoped table: the multi-tenant plugin adds tenant_slug
+  to cms.releases and every release endpoint applies the scope predicate.
+
+  BREAKING CHANGE: with the multiTenant plugin, run `createcms generate` and
+  apply the migration that adds `releases.tenant_slug` (NOT NULL). Existing
+  release rows need a tenant_slug backfill before the NOT NULL constraint
+  can be applied.
+
+- [#145](https://github.com/weepaho3/createCMS/pull/145) [`4247ac2`](https://github.com/weepaho3/createCMS/commit/4247ac2214dfc2664f849243715a7124af8897fa) Thanks [@weepaho3](https://github.com/weepaho3)! - Browser uploads use a presign/complete protocol. `createSignedUpload` writes
+  no row and returns `{ uploads: [{ id, objectKey, url, signedUrl, headers,
+token }], expiresAt }`; after the PUT, `completeUpload({ uploads: [{ token }] })`
+  verifies the landed object (length, content type, magic bytes of a declared
+  image) and creates the row, so an abandoned PUT never produces an asset. New
+  browser uploads are stored at `<id>/<slug>`. `createSignedReplace` returns a
+  `token` and `commitReplace` takes `{ token }` only. New error codes
+  `UPLOAD_TOKEN_INVALID` and `UPLOAD_NOT_FOUND`; new optional
+  `media.uploadSecret`. The core client's upload ledger and replace atom follow
+  the protocol.
+
+### Patch Changes
+
+- [#142](https://github.com/weepaho3/createCMS/pull/142) [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240) Thanks [@weepaho3](https://github.com/weepaho3)! - `media.commitReplace` now re-validates the declared MIME type and size
+  against the media config, requires `objectKey` to match the issued `slug`,
+  and confirms the object exists in the bucket with the declared content
+  length and type before repointing the asset row.
+
+- [#145](https://github.com/weepaho3/createCMS/pull/145) [`4247ac2`](https://github.com/weepaho3/createCMS/commit/4247ac2214dfc2664f849243715a7124af8897fa) Thanks [@weepaho3](https://github.com/weepaho3)! - `GET /media/asset/:id?download=true` now redirects to a signed object URL
+  (valid for one hour) with `response-content-disposition=attachment` bound into
+  the signature, so the browser downloads the file; the `Content-Disposition`
+  header previously set on the `302` was ignored. Types outside raster images
+  (PNG, JPEG, GIF, WebP, AVIF), video, audio and PDF are always served through
+  that signed download redirect, so an allowed SVG or HTML asset never renders
+  inline from the gate. New `signGetObject` in the S3 utils.
+
+- [#142](https://github.com/weepaho3/createCMS/pull/142) [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240) Thanks [@weepaho3](https://github.com/weepaho3)! - Release item mutations check draft status under a row lock inside their
+  transaction, and `duplicateBlock` accepts `expectedHeadCommitId`
+  (`HEAD_MISMATCH` when the branch has advanced), like the other mutations.
+
+- [#142](https://github.com/weepaho3/createCMS/pull/142) [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240) Thanks [@weepaho3](https://github.com/weepaho3)! - `admin.runScheduled` and `releases.publishRelease` now fire `onRevalidate`
+  events for every page they publish or unpublish, matching `publishBranch`
+  and `unpublishBranch`.
+
+- [#142](https://github.com/weepaho3/createCMS/pull/142) [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240) Thanks [@weepaho3](https://github.com/weepaho3)! - Revalidation pre/post-processing failures are logged and no longer turn a
+  committed mutation into an error response. The pre-resolved unpublish slug
+  is passed through the call instead of a process-lifetime map.
+
+- [#142](https://github.com/weepaho3/createCMS/pull/142) [`3f7894a`](https://github.com/weepaho3/createCMS/commit/3f7894a7360485e08dc9d9d8d61b732ca29fe240) Thanks [@weepaho3](https://github.com/weepaho3)! - Search index now updates after `executeMerge`, `publishBranch`,
+  `duplicateRoot` and `revertBranch`. `revertBranch` additionally returns
+  `rootId`.
+
+- [#145](https://github.com/weepaho3/createCMS/pull/145) [`4247ac2`](https://github.com/weepaho3/createCMS/commit/4247ac2214dfc2664f849243715a7124af8897fa) Thanks [@weepaho3](https://github.com/weepaho3)! - New `StorageAdapter` interface with declared `capabilities`, exported with
+  `StorageCapabilities`, `StorageError` and `createS3StorageAdapter`. Set
+  `media.storage` to route every storage operation (put, delete, head, range
+  read, signed PUT/GET URLs) through a custom backend; S3 stays the default and
+  is unchanged. Routes check capabilities before any I/O: signed uploads, the
+  image byte check on `completeUpload`/`commitReplace` and the gate's download
+  redirect fail with the new `STORAGE_UNSUPPORTED` (500) when the adapter does
+  not declare them. The signed-upload response `headers` now come from the
+  adapter.
+
 ## 0.7.2
 
 ### Patch Changes
