@@ -41,7 +41,11 @@ import {
   getAssetUsageDetails,
 } from '../media/usage';
 import { crossScopeColumns, scopedInsert, scopedInsertBatch } from '../scope';
-import { requireCapability, StorageError } from '../storage/adapter';
+import {
+  requireCapability,
+  type StorageAdapter,
+  StorageError,
+} from '../storage/adapter';
 import { getStorage } from '../storage/get-storage';
 import {
   buildObjectKey,
@@ -319,6 +323,25 @@ export function createMediaEndpoints(
     mediaConfig.signedUrlExpiresIn ?? MEDIA_DEFAULTS.signedUrlExpiresIn;
 
   /**
+   * Throws STORAGE_UNSUPPORTED unless the adapter signs uploads and, when any
+   * declared type is `image/*`, can read byte ranges: an image that cannot be
+   * sniffed afterwards would never pass `completeUpload` / `commitReplace`.
+   */
+  function requireSignedUploadCapability(
+    storage: StorageAdapter,
+    types: string[],
+  ): void {
+    const hasImage = types.some((t) => t.startsWith('image/'));
+    requireCapability(
+      storage,
+      (c) => c.signedUpload.supported && (c.rangeRead || !hasImage),
+      hasImage
+        ? 'signed uploads with range reads, which verifying an uploaded image requires'
+        : 'signed uploads',
+    );
+  }
+
+  /**
    * Checks an object the browser PUT against the token's claim. Returns the
    * error to report when no object exists at the key, its content length is
    * missing or differs from `size`, its content type (parameters stripped)
@@ -347,6 +370,14 @@ export function createMediaEndpoints(
       }
     };
 
+    if (claim.type.startsWith('image/')) {
+      requireCapability(
+        storage,
+        (c) => c.rangeRead,
+        'range reads, which verifying an uploaded image requires',
+      );
+    }
+
     const head = await storage.head(claim.objectKey);
     if (!head) return missing();
     if (head.contentLength !== claim.size) {
@@ -367,11 +398,6 @@ export function createMediaEndpoints(
       });
     }
     if (claim.type.startsWith('image/')) {
-      requireCapability(
-        storage,
-        (c) => c.rangeRead,
-        'range reads, which verifying an uploaded image requires',
-      );
       const bytes = await storage.getRange(claim.objectKey, 0, 11);
       if (!bytes) return missing();
       if (!verifyImageBytes(claim.type, bytes)) {
@@ -1115,8 +1141,8 @@ export function createMediaEndpoints(
         // themselves stay long-cached at the CDN (each object key is unique per
         // version). The 302 is bodyless, so re-resolving it is cheap.
         //
-        // The signed URL expires after 3600 s, so a `302` cached for 300 s
-        // always points at a still-valid URL.
+        // The signed URL expires after at most 3600 s (less when the adapter
+        // declares a lower `signedUrl.maxExpiresIn`).
         ctx.responseHeaders.set('cache-control', 'public, max-age=300');
         const wantsDownload = wireBooleanIsTrue(ctx.query?.download);
         const inlineSafe = INLINE_SAFE.test(asset.mimeType);
@@ -1134,7 +1160,10 @@ export function createMediaEndpoints(
           'signed URLs with a bound content disposition',
         );
         const signed = await storage.signGet(targetKey, {
-          expiresIn: 3600,
+          expiresIn: Math.min(
+            3600,
+            storage.capabilities.signedUrl.maxExpiresIn,
+          ),
           responseContentDisposition: disposition,
         });
         return ctx.redirect(signed);
@@ -1498,10 +1527,9 @@ export function createMediaEndpoints(
         });
 
         const storage = getStorage(mediaConfig);
-        requireCapability(
+        requireSignedUploadCapability(
           storage,
-          (c) => c.signedUpload.supported,
-          'signed uploads',
+          prepared.map((p) => p.file.type),
         );
         const key = await deriveUploadKey(mediaConfig);
         const scopeId = await scopeFingerprint(scope.assets?.insertColumns);
@@ -1724,11 +1752,7 @@ export function createMediaEndpoints(
         const objectKey = `${newId('asset')}/${slug}`;
 
         const storage = getStorage(mediaConfig);
-        requireCapability(
-          storage,
-          (c) => c.signedUpload.supported,
-          'signed uploads',
-        );
+        requireSignedUploadCapability(storage, [file.type]);
         const exp = Date.now() + signedUrlExpiresIn * 1000;
         const expiresAt = new Date(exp);
         const signed = await storage.signPut(objectKey, {
@@ -1827,12 +1851,22 @@ export function createMediaEndpoints(
           allowedMimeTypes,
         });
 
-        const rejected = await inspectUploadedObject({
-          name: slug,
-          objectKey,
-          type: mimeType,
-          size,
-        });
+        let rejected: APIError | null;
+        try {
+          rejected = await inspectUploadedObject({
+            name: slug,
+            objectKey,
+            type: mimeType,
+            size,
+          });
+        } catch (err) {
+          if (err instanceof StorageError) {
+            throw new CMSError('UPLOAD_FAILED', {
+              message: 'Could not verify the uploaded object',
+            });
+          }
+          throw err;
+        }
         if (rejected) throw rejected;
 
         // `.value` is set inside the transaction ONLY on the TOCTOU-rollback

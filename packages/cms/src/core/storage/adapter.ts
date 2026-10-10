@@ -57,13 +57,6 @@ export class StorageError extends Error {
   }
 }
 
-export function hasCapability(
-  adapter: StorageAdapter,
-  check: (c: StorageCapabilities) => boolean,
-): boolean {
-  return check(adapter.capabilities);
-}
-
 export function requireCapability(
   adapter: StorageAdapter,
   check: (c: StorageCapabilities) => boolean,

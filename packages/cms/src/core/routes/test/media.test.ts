@@ -2839,6 +2839,29 @@ describe('media.commitReplace', () => {
     ).rejects.toThrow(/did not complete/i);
   });
 
+  it('throws UPLOAD_FAILED when the object check errors and leaves the row unchanged', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const [orig] = await insertAsset(db, 'logo.png');
+
+    const signed = await signReplace(cms, orig.id);
+    await putSigned(signed, PNG_BYTES);
+    s3.failKeys.add(signed.objectKey);
+
+    const err = await cms.api.media
+      .commitReplace({ body: { token: signed.token } })
+      .then(
+        () => null,
+        (e: unknown) =>
+          e as { cmsCode?: string; status?: number; message: string },
+      );
+    expect(err).toMatchObject({ cmsCode: 'UPLOAD_FAILED', status: 500 });
+    expect(err?.message).not.toMatch(/InternalError/);
+
+    const [row] = await db.select().from(assets).where(eq(assets.id, orig.id));
+    expect(row.objectKey).toBe('logo.png');
+  });
+
   it('rejects a tampered token (UPLOAD_TOKEN_INVALID) and leaves the row unchanged', async () => {
     const { cms, db, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
@@ -3248,6 +3271,102 @@ describe('custom storage adapter', () => {
         },
       }),
     ).rejects.toMatchObject({ cmsCode: 'STORAGE_UNSUPPORTED', status: 500 });
+  });
+
+  it('signed uploads without range reads: image presign fails, non-image presign succeeds', async () => {
+    const storage = createMemoryStorage({
+      signedUpload: { supported: true, contentType: true, contentLength: true },
+      rangeRead: false,
+    });
+    const { cms, db } = await setupTestCMS({ media: { storage } });
+
+    await expect(
+      cms.api.media.createSignedUpload({
+        body: {
+          files: [
+            { name: 'doc.pdf', size: 100, type: 'application/pdf' },
+            { name: 'photo.png', size: 100, type: 'image/png' },
+          ],
+        },
+      }),
+    ).rejects.toMatchObject({ cmsCode: 'STORAGE_UNSUPPORTED', status: 500 });
+
+    const pdf = await cms.api.media.createSignedUpload({
+      body: {
+        files: [{ name: 'doc.pdf', size: 100, type: 'application/pdf' }],
+      },
+    });
+    expect(pdf.uploads).toHaveLength(1);
+    expect(pdf.uploads[0].signedUrl).toMatch(/^memory:\/\//);
+
+    const [png] = await db
+      .insert(assets)
+      .values({
+        slug: 'logo.png',
+        mimeType: 'image/png',
+        size: 8,
+        objectKey: 'logo.png',
+        status: 'public',
+      })
+      .returning({ id: assets.id });
+    await expect(
+      cms.api.media.createSignedReplace({
+        body: {
+          assetId: png.id,
+          file: { name: 'logo-v2.png', size: 8, type: 'image/png' },
+        },
+      }),
+    ).rejects.toMatchObject({ cmsCode: 'STORAGE_UNSUPPORTED', status: 500 });
+    const [pdfRow] = await db
+      .insert(assets)
+      .values({
+        slug: 'doc.pdf',
+        mimeType: 'application/pdf',
+        size: 8,
+        objectKey: 'doc.pdf',
+        status: 'public',
+      })
+      .returning({ id: assets.id });
+    const replaced = await cms.api.media.createSignedReplace({
+      body: {
+        assetId: pdfRow.id,
+        file: { name: 'doc-v2.pdf', size: 8, type: 'application/pdf' },
+      },
+    });
+    expect(replaced.signedUrl).toMatch(/^memory:\/\//);
+  });
+
+  it('gate: signed GET expiry is clamped to the declared maxExpiresIn', async () => {
+    const storage = createMemoryStorage({
+      signedUrl: { supported: true, disposition: true, maxExpiresIn: 60 },
+    });
+    const seen: number[] = [];
+    const signGet = storage.signGet.bind(storage);
+    storage.signGet = async (key, opts) => {
+      seen.push(opts.expiresIn);
+      return signGet(key, opts);
+    };
+    const { cms, db } = await setupTestCMS({ media: { storage } });
+
+    const [asset] = await db
+      .insert(assets)
+      .values({
+        slug: 'photo.png',
+        mimeType: 'image/png',
+        size: 5000,
+        objectKey: 'photo.png',
+        status: 'public',
+      })
+      .returning({ id: assets.id });
+
+    const download = await cms.router.handler(
+      new Request(
+        `http://localhost/api/cms/media/asset/${asset.id}?download=true`,
+      ),
+    );
+    expect(download.status).toBe(302);
+    expect(download.headers.get('location')).toBe('memory://photo.png');
+    expect(seen).toEqual([60]);
   });
 
   it('gate: public URL without ?download, STORAGE_UNSUPPORTED with it', async () => {
