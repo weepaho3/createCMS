@@ -111,12 +111,15 @@ export async function signGetObject(
       params.responseContentDisposition,
     );
   }
-  return (
-    await client.s3.sign(url.toString(), {
-      method: 'GET',
-      aws: { signQuery: true },
-    })
-  ).url;
+  const signed = await client.s3.sign(url.toString(), {
+    method: 'GET',
+    aws: { signQuery: true },
+  });
+  // aws4fetch signs spaces as `%20` but serialises the URL through
+  // `URLSearchParams`, which writes them as `+`; S3 does not decode `+` as a
+  // space in the query, so the signature would not match. A literal `+` is
+  // serialised as `%2B`, so every remaining `+` is a space.
+  return signed.url.replace(/\+/g, '%20');
 }
 
 export async function putObject(

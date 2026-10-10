@@ -38,6 +38,21 @@ describe('signGetObject', () => {
     expect(signed.searchParams.get('X-Amz-SignedHeaders')).toBe('host');
   });
 
+  it('encodes spaces as %20 so the signed query matches the canonical form', async () => {
+    const signed = await signGetObject(client(), {
+      bucket: 'bucket',
+      key: 'a.bin',
+      expiresIn: 3600,
+      responseContentDisposition: 'attachment;filename="my file.p df"',
+    });
+
+    expect(signed).not.toContain('+');
+    expect(signed).toContain('my%20file.p%20df');
+    expect(
+      new URL(signed).searchParams.get('response-content-disposition'),
+    ).toBe('attachment;filename="my file.p df"');
+  });
+
   it('changes the signature when the disposition changes', async () => {
     const base = { bucket: 'bucket', key: 'a.bin', expiresIn: 3600 };
     const [a, b, c] = await Promise.all([

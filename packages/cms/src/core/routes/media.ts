@@ -1131,9 +1131,7 @@ export function createMediaEndpoints(
         // version). The 302 is bodyless, so re-resolving it is cheap.
         //
         // The signed URL expires after 3600 s, so a `302` cached for 300 s
-        // always points at a still-valid URL. The disposition contains no
-        // spaces: aws4fetch serialises the final URL with `URLSearchParams`
-        // (space as `+`) while the canonical query encodes it as `%20`.
+        // always points at a still-valid URL.
         ctx.responseHeaders.set('cache-control', 'public, max-age=300');
         const wantsDownload = wireBooleanIsTrue(ctx.query?.download);
         const inlineSafe = INLINE_SAFE.test(asset.mimeType);
