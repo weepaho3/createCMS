@@ -194,7 +194,7 @@ Check where an asset is used across your live content before you touch it — yo
 
 ### Create a Signed Upload [#createsignedupload]
 
-Hand the browser presigned PUT URLs so it can upload files straight to your bucket — no bytes pass through your server. The asset rows are created up front as `private`; PUT each file to its `signedUrl` with the returned `headers`, then flip the assets to `public` when you're ready to serve them.
+Hand the browser presigned PUT URLs so it can upload files straight to your bucket — no bytes pass through your server. Nothing is written to the database here: each entry carries a signed `token`, and the asset row is created by [`completeUpload`](#completeupload) once the PUT has landed. PUT each file to its `signedUrl` with the returned `headers`, pass the tokens to `completeUpload`, then flip the assets to `public` when you're ready to serve them. New uploads are stored at the object key `<id>/<slug>`.
 
 <APIMethod
   method="POST"
@@ -209,7 +209,7 @@ Hand the browser presigned PUT URLs so it can upload files straight to your buck
   },
 }`}
   returns={{
-    assets: { type: '{ id, slug, objectKey, url, signedUrl, headers }[]', description: 'One entry per file: the created (private) asset plus its presigned `signedUrl` and the `headers` to send with the PUT.' },
+    uploads: { type: '{ id, objectKey, url, signedUrl, headers, token }[]', description: 'One entry per file: the asset id and object key it will get, its presigned `signedUrl`, the `headers` to send with the PUT, and the `token` to pass to `completeUpload`.' },
     expiresAt: { type: 'Date', description: 'When the signed URLs expire.' },
   }}
   params={{
@@ -218,7 +218,49 @@ Hand the browser presigned PUT URLs so it can upload files straight to your buck
   }}
 />
 
-Returns `{ assets: { id, slug, objectKey, url, signedUrl, headers }[], expiresAt }`. PUT each file to its `signedUrl` with the returned `headers` (`Content-Type`, `x-amz-acl: public-read`); `expiresAt` is when the signed URLs expire. Throws `TOO_MANY_FILES`, `FILE_TOO_LARGE`, `INVALID_FILE_TYPE`, `FOLDER_NOT_FOUND`, `ASSET_NOT_FOUND` (unknown `variantOf`), or `SLUG_GENERATION_FAILED`.
+Returns `{ uploads: { id, objectKey, url, signedUrl, headers, token }[], expiresAt }`. PUT each file to its `signedUrl` with the returned `headers` (`Content-Type`, `x-amz-acl: public-read`); `expiresAt` is when the signed URLs expire. The token stays valid for one hour past `expiresAt`, so a PUT that started before expiry can still be completed. Throws `TOO_MANY_FILES`, `FILE_TOO_LARGE`, `INVALID_FILE_TYPE`, `FOLDER_NOT_FOUND`, or `ASSET_NOT_FOUND` (unknown `variantOf`).
+
+### Complete an Upload [#completeupload]
+
+Create the asset rows for the files the browser PUT to the URLs from `createSignedUpload`. For each token the CMS checks the signature, the calling user and scope, `HEAD`s the object (its length must equal and its content type must match the declared file), sniffs the leading bytes of a declared image against its magic bytes, mints the slug, and inserts the row as `private`. An object that fails the length, type, or sniff check is deleted from the bucket. Completing the same token twice returns the existing asset. One file's failure never fails the call: it is reported per entry in `errors`.
+
+<APIMethod
+  method="POST"
+  path="/media/completeUpload"
+  fn="completeUpload"
+  collection="media"
+  resource="media"
+  operation="create"
+  args={`{
+  body: {
+    uploads: signed.uploads.map(({ token }) => ({ token })), // required
+  },
+}`}
+  returns={{
+    assets: { type: 'AssetListItem[]', description: 'The created assets, with the same fields a `listAssets` row carries.' },
+    errors: { type: '{ index: number; code: string; message: string }[]', description: 'One entry per rejected token; `index` is its position in `uploads`.' },
+  }}
+  params={{
+    uploads: { type: '{ token: string }[]', required: true, description: 'The tokens from `createSignedUpload`, at least one and at most `maxFiles`.' },
+  }}
+/>
+
+Returns `{ assets, errors }`. Per-entry `code` is one of `UPLOAD_TOKEN_INVALID` (malformed, expired, or minted for another user or tenant), `UPLOAD_NOT_FOUND` (no object at the key: the PUT never completed), `VALIDATION_ERROR` (the object's length or content type differs from the declared file), `INVALID_FILE_TYPE` (the bytes contradict the declared image type), `FOLDER_NOT_FOUND` or `ASSET_NOT_FOUND` (the folder or `variantOf` target was removed after presign, or the asset from an earlier completion of this token was archived), `UPLOAD_FAILED` (the bucket answered the object check with an error), or `SLUG_GENERATION_FAILED`.
+
+```ts
+// Full browser-side upload flow (the `useUploadAssets` hook does this for you).
+const signed = await cmsClient.media.createSignedUpload({
+  body: { files: [{ name: file.name, size: file.size, type: file.type }] },
+});
+await fetch(signed.uploads[0].signedUrl, {
+  method: 'PUT',
+  headers: signed.uploads[0].headers,
+  body: file,
+});
+const { assets, errors } = await cmsClient.media.completeUpload({
+  body: { uploads: [{ token: signed.uploads[0].token }] },
+});
+```
 
 ### Upload Assets [#uploadassets]
 
@@ -285,7 +327,7 @@ Returns `{ asset }` with the same fields a `listAssets` row carries. Throws `CAN
 
 ### Create a Signed Replace [#createsignedreplace]
 
-The browser-callable half of a replace: validates the target asset (live, in scope, not itself a variant) and the new file's declared metadata, mints a new slug/object key, and returns a presigned PUT URL — the same shape as `createSignedUpload`, but for an *existing* asset. It does **not** touch the database; call [`commitReplace`](#commitreplace) once the PUT succeeds.
+The browser-callable half of a replace: validates the target asset (live, in scope, not itself a variant) and the new file's declared metadata, mints a new slug and object key (`<fresh id>/<slug>`), and returns a presigned PUT URL plus a signed `token` — the same shape as `createSignedUpload`, but for an *existing* asset. It does **not** touch the database; call [`commitReplace`](#commitreplace) with the token once the PUT succeeds.
 
 <APIMethod
   method="POST"
@@ -301,13 +343,14 @@ The browser-callable half of a replace: validates the target asset (live, in sco
   },
 }`}
   returns={{
-    assetId: { type: 'string', description: 'Echoes the requested asset id — pass it through to `commitReplace`.' },
-    slug: { type: 'string', description: 'The freshly minted slug (cache-bust). Pass it through to `commitReplace`.' },
-    objectKey: { type: 'string', description: 'The freshly minted object key (equal to `slug`). Pass it through to `commitReplace`.' },
+    assetId: { type: 'string', description: 'Echoes the requested asset id.' },
+    slug: { type: 'string', description: 'The freshly minted slug (cache-bust) the row will carry after `commitReplace`.' },
+    objectKey: { type: 'string', description: 'The freshly minted object key (`<fresh id>/<slug>`).' },
     url: { type: 'string', description: "The object's public URL once the PUT below succeeds AND `commitReplace` repoints the row. For internal/admin display only." },
     signedUrl: { type: 'string', description: 'Presigned PUT URL — upload the new bytes here.' },
     headers: { type: 'Record<string, string>', description: 'Headers to send with the PUT (`Content-Type`, `x-amz-acl: public-read`).' },
     expiresAt: { type: 'Date', description: 'When the signed URL expires.' },
+    token: { type: 'string', description: 'Signed token binding the asset, object key, slug, type, size, user and scope. Pass it to `commitReplace`.' },
   }}
   params={{
     assetId: { type: 'string', required: true, description: 'The asset to replace.' },
@@ -319,7 +362,7 @@ Throws `ASSET_NOT_FOUND` (missing, archived, or out of scope), `CANNOT_REPLACE_V
 
 ### Commit a Replace [#commitreplace]
 
-Repoints the asset's row at the new object after the browser's PUT to `createSignedReplace`'s `signedUrl` has succeeded — the second half of the browser-callable replace flow. Atomic and TOCTOU-safe like `replaceAsset`: the row is repointed and old variants archived in one transaction, and it keeps every guarantee `replaceAsset` has (including tombstoning the superseded object so it becomes reclaimable — see [Object lifecycle](/docs/concepts/media#object-lifecycle)).
+Repoints the asset's row at the new object after the browser's PUT to `createSignedReplace`'s `signedUrl` has succeeded — the second half of the browser-callable replace flow. The token names the asset, object key, slug, type and size, and must have been minted for the calling user and scope. Before anything is written the object is `HEAD`ed (its length must equal and its content type must match the token) and a declared image is sniffed against its magic bytes; a mismatching object is deleted. Atomic and TOCTOU-safe like `replaceAsset`: the row is repointed and old variants archived in one transaction, and it keeps every guarantee `replaceAsset` has (including tombstoning the superseded object so it becomes reclaimable — see [Object lifecycle](/docs/concepts/media#object-lifecycle)).
 
 <APIMethod
   method="POST"
@@ -330,26 +373,18 @@ Repoints the asset's row at the new object after the browser's PUT to `createSig
   operation="update"
   args={`{
   body: {
-    assetId: 'ast_123', // required
-    objectKey: signed.objectKey, // required — from createSignedReplace
-    slug: signed.slug, // required — from createSignedReplace
-    mimeType: file.type, // required
-    size: file.size, // required
+    token: signed.token, // required — from createSignedReplace
   },
 }`}
   returns={{
     asset: { type: 'AssetListItem', description: 'The updated asset (same `id`, new `slug`/`objectKey`/`url`), with the same fields a `listAssets` row carries.' },
   }}
   params={{
-    assetId: { type: 'string', required: true, description: 'The asset being replaced (must match the `createSignedReplace` call).' },
-    objectKey: { type: 'string', required: true, description: 'The `objectKey` returned by `createSignedReplace`.' },
-    slug: { type: 'string', required: true, description: 'The `slug` returned by `createSignedReplace`.' },
-    mimeType: { type: 'string', required: true, description: "The uploaded file's declared MIME type." },
-    size: { type: 'number', required: true, description: "The uploaded file's declared byte size." },
+    token: { type: 'string', required: true, description: 'The `token` returned by `createSignedReplace`.' },
   }}
 />
 
-Returns `{ asset }` with the same fields a `listAssets` row carries. Throws `ASSET_NOT_FOUND` if the asset was archived or left scope since `createSignedReplace` (TOCTOU) — the row is left unchanged and the just-uploaded object is tombstoned for reclaim rather than abandoned.
+Returns `{ asset }` with the same fields a `listAssets` row carries. Committing the same token twice returns the already-repointed asset. Throws `UPLOAD_TOKEN_INVALID` (malformed, expired, or minted for another user or tenant), `UPLOAD_NOT_FOUND` (no object at the token's key: the PUT never completed), `FILE_TOO_LARGE` / `INVALID_FILE_TYPE` / `TOO_MANY_FILES` (the token's type or size fails the media config as it is at commit time, or the bytes contradict the declared image type), `VALIDATION_ERROR` (the object's length or content type differs from the token), or `ASSET_NOT_FOUND` if the asset was archived or left scope since `createSignedReplace` (TOCTOU) — the row is left unchanged and the just-uploaded object is tombstoned for reclaim rather than abandoned.
 
 ```ts
 // Full browser-side replace flow.
@@ -358,13 +393,7 @@ const signed = await cmsClient.media.createSignedReplace({
 });
 await fetch(signed.signedUrl, { method: 'PUT', headers: signed.headers, body: file });
 const { asset } = await cmsClient.media.commitReplace({
-  body: {
-    assetId: hero.id,
-    objectKey: signed.objectKey,
-    slug: signed.slug,
-    mimeType: file.type,
-    size: file.size,
-  },
+  body: { token: signed.token },
 });
 ```
 
@@ -471,12 +500,12 @@ Serve an asset on a public page by addressing it by **asset id** (what content s
   query: { w: 800, format: 'webp' },
 }`}
   returns={{
-    Location: { type: '302 redirect', description: "A `302` to the asset's public object URL (short-cached, `max-age=300`). No JSON body: the browser follows the `Location` header to the bytes." },
+    Location: { type: '302 redirect', description: "A `302` (short-cached, `max-age=300`) to the asset's public object URL for raster images (PNG, JPEG, GIF, WebP, AVIF), video, audio and PDF, or, for `download=true` and every other type, to a signed object URL valid for one hour whose `response-content-disposition=attachment` makes the bucket answer with a download. No JSON body: the browser follows the `Location` header to the bytes." },
   }}
   params={{
     assetId: { type: 'string', required: true, description: 'Path parameter: the asset id to serve.' },
     format: { type: "'webp' | 'jpeg' | 'png'", description: 'Serve a pre-uploaded format variant, falling back to the original.' },
     w: { type: 'number', description: 'Serve a pre-uploaded width variant (positive integer), falling back to the original.' },
-    download: { type: 'boolean', description: 'Set `true` to send a `Content-Disposition: attachment` header.' },
+    download: { type: 'boolean', description: 'Set `true` to redirect to a signed URL that forces a download (`Content-Disposition: attachment`, filename = the asset slug) instead of the public object URL.' },
   }}
 />

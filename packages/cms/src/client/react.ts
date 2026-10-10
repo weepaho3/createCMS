@@ -8,6 +8,7 @@ import type {
   CMSClientInstance,
   CMSClientOptions,
   CMSClientPlugin,
+  CMSMediaUploadFileState,
   CMSMediaUploadOptions,
   CMSMediaUploadState,
 } from './types';
@@ -62,7 +63,10 @@ function makeUseUploadAssets(config: ClientConfig): () => CMSMediaUploadState {
 
     const wrappedUpload = useMemo(() => {
       const baseUpload = state.upload;
-      return async (files: File[], options?: UploadOptions): Promise<void> => {
+      return async (
+        files: File[],
+        options?: UploadOptions,
+      ): Promise<CMSMediaUploadFileState[]> => {
         const optimizer = (
           config.pluginsAtoms[UPLOAD_OPTIMIZER_KEY] as
             | ReadableAtom<UploadOptimizer>

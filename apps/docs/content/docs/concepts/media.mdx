@@ -12,15 +12,15 @@ Each upload creates a row in `assets`:
 | Field | Meaning |
 | --- | --- |
 | `id` | Stable primary key (`ast_…`). What content stores and what the gate resolves. Never changes, even when the bytes are replaced. |
-| `slug` | Unique, URL-friendly name derived from the filename. Equal to the `objectKey`. Regenerated on `replaceAsset`. |
-| `objectKey` | The key in your bucket (currently the slug verbatim). |
+| `slug` | Unique, URL-friendly name derived from the filename. Regenerated on `replaceAsset`. |
+| `objectKey` | The key in your bucket: `<id>/<slug>` for browser uploads and replaces, the slug verbatim for server-side `uploadAssets` / `replaceAsset`. |
 | `status` | `'private'` (default) or `'public'`. |
 | `folderId` | The folder it lives in, if any. |
 | `variantOf` | If set, this asset is a variant (a resized or reformatted copy) of another. |
 | `mimeType`, `size` | Content type and byte size. |
 | `archivedAt` | Soft-delete marker for pruning. |
 
-Three of these are identifiers, and keeping them straight is the key to the whole model. The `id` is stable and opaque: content references it, and the gate is addressed by it. The `slug` is a human-readable, unique name derived from the filename, and it doubles as the `objectKey` in your bucket. The two are decoupled on purpose. [`replaceAsset`](/docs/reference/media#replaceasset) (server-side) or [`createSignedReplace`](/docs/reference/media#createsignedreplace) + [`commitReplace`](/docs/reference/media#commitreplace) (browser) mints a new slug and object key for the new bytes but keeps the `id`, so every reference follows the swap while the CDN still treats each version's object as immutable.
+Three of these are identifiers, and keeping them straight is the key to the whole model. The `id` is stable and opaque: content references it, and the gate is addressed by it. The `slug` is a human-readable, unique name derived from the filename; the `objectKey` is where the bytes live in your bucket and ends in the slug. The `id` and the slug/key pair are decoupled on purpose. [`replaceAsset`](/docs/reference/media#replaceasset) (server-side) or [`createSignedReplace`](/docs/reference/media#createsignedreplace) + [`commitReplace`](/docs/reference/media#commitreplace) (browser) mints a new slug and object key for the new bytes but keeps the `id`, so every reference follows the swap while the CDN still treats each version's object as immutable.
 
 Folders are a nested tree (`asset_folders`, each with a `parentId`). They organize the media library and nothing more: a folder does not affect an asset's URL, its status, or how it is served. [`listFolders`](/docs/reference/media#listfolders) reads one level at a time (the children of a parent, or the root-level folders when no `parentFolderId` is given); [`createFolder`](/docs/reference/media#createfolder), [`moveFolder`](/docs/reference/media#movefolder), and [`deleteFolder`](/docs/reference/media#deletefolder) manage them. A folder that still holds assets or subfolders cannot be deleted (it throws `FOLDER_HAS_CONTENT`), and moving an asset carries its variants along, so an original and its variants are never split across folders.
 
@@ -34,7 +34,7 @@ The gate is enforced by the CMS endpoints, not by the object store. Uploaded obj
 
 Two upload paths write the same rows and enforce the same limits; they differ only in who holds the bytes:
 
-- **[`createSignedUpload`](/docs/reference/media#createsignedupload) (default).** The CMS creates the asset rows and returns presigned PUT URLs; the browser uploads each file straight to the bucket. No file bytes pass through your server, so there are no serverless body-size limits and less egress. Use this for browser uploads; the React `useUploadAssets` hook wraps it.
+- **[`createSignedUpload`](/docs/reference/media#createsignedupload) + [`completeUpload`](/docs/reference/media#completeupload) (default).** `createSignedUpload` returns presigned PUT URLs and a signed token per file without writing a row; the browser uploads each file straight to the bucket; `completeUpload` verifies each landed object (length, content type, and the magic bytes of a declared image) and only then creates the row. No file bytes pass through your server, so there are no serverless body-size limits and less egress. A PUT that is never completed leaves an object in the bucket but no row, so it never appears in the library. Use this for browser uploads; the React `useUploadAssets` hook wraps all three steps.
 - **[`uploadAssets`](/docs/reference/media#uploadassets).** You send the file bytes (a `buffer: Blob | ArrayBuffer` per file) to the CMS, which PUTs them to the bucket. Use this for server-side sources.
 
 Both validate against the limits (defaults: `maxFiles` 10, `maxFileSize` 4 MB, and an `allowedMimeTypes` allowlist that **excludes SVG**; see [Configuration](/docs/reference/configuration#media)), and signed URLs expire after 120s by default. Every new asset lands `private`, so uploading and serving are two steps:
@@ -66,10 +66,10 @@ The browser hook is covered step by step in [Upload and serve media](/docs/guide
 
 Swapping an existing asset's bytes has the same two-path split as uploading, for the same reason — a browser cannot send raw file bytes through a JSON request body:
 
-- **[`createSignedReplace`](/docs/reference/media#createsignedreplace) + [`commitReplace`](/docs/reference/media#commitreplace) (browser).** `createSignedReplace` validates the target and mints a signed PUT URL without touching the row; the browser PUTs the bytes straight to the bucket; `commitReplace` repoints the row once that succeeds. The React `useReplaceAsset` hook wraps both calls.
+- **[`createSignedReplace`](/docs/reference/media#createsignedreplace) + [`commitReplace`](/docs/reference/media#commitreplace) (browser).** `createSignedReplace` validates the target and mints a signed PUT URL plus a signed token without touching the row; the browser PUTs the bytes straight to the bucket; `commitReplace` takes the token, verifies the landed object the same way `completeUpload` does, and repoints the row. The React `useReplaceAsset` hook wraps both calls.
 - **[`replaceAsset`](/docs/reference/media#replaceasset) (server-side only).** Takes the file bytes directly (`buffer: Blob | ArrayBuffer`) in one call. A browser `File` cannot survive `replaceAsset`'s JSON body — it serializes to `{}` — so this endpoint is for server-initiated replacements only.
 
-Both mint a fresh slug/object key (the cache-bust) and keep the asset's `id` stable, exactly like `replaceAsset` described above.
+Both mint a fresh slug and object key (the cache-bust) and keep the asset's `id` stable, exactly like `replaceAsset` described above.
 
 ## Serving assets
 
@@ -97,6 +97,8 @@ await cms.api.media.createSignedUpload({
 
 Create the variants you need ahead of time. The [media optimize plugin](/docs/plugins/media-optimize) resizes and re-encodes images in the browser before upload, so the stored bytes are already small.
 
+`?download=true` redirects to a short-lived **signed** object URL (valid for one hour) that carries `response-content-disposition=attachment` bound into the signature, so the bucket answers with a `Content-Disposition` header and the browser downloads the file under its slug; a `Content-Disposition` header on the `302` itself would be ignored by browsers. Types outside the raster-image (PNG, JPEG, GIF, WebP, AVIF), video, audio and PDF set are always served that way, so an allowed SVG or HTML asset never renders inline from the gate even if `allowedMimeTypes` admits it.
+
 The redirect itself is **short-cached** (`max-age=300`, not immutable). Because it is keyed by the stable id, swapping the bytes behind that id (keeping the id) re-resolves and propagates to already-rendered pages within minutes, while the object bytes stay long-cached at the CDN, since each version has its own object key.
 
 <Callout type="warn">
@@ -123,6 +125,10 @@ const { pageCount, pages } = await cms.api.media.getAssetUsages({
 Archiving an asset ([`archiveAssets`](/docs/reference/media#archiveassets)) is soft-delete: the row gets `archivedAt` set and drops out of `listAssets`/the gate, but the row and its S3 object both stay put until a later [pruning pass](/docs/concepts/data-retention) reclaims them — once it is past the trash window (`archiveKeepDays`) and no live content references it.
 
 Replacing an asset (either path above) mints a *new* object for the new bytes but keeps the row's `id`, so the row that used to name the *old* object no longer exists after the swap — nothing would ever reference the superseded object for reclaim. To close that gap, a replace also inserts a **tombstone**: a fresh, already-archived asset row that reuses the *old* slug/object key (with a brand-new `id`, never referenced by any content). That tombstone is what the pruning pass actually finds and reclaims once its trash window elapses — so a superseded object is not left behind forever, and replacing the same asset repeatedly does not accumulate orphaned bytes in your bucket.
+
+## Storage adapters [#storage-adapters]
+
+Objects are stored in an S3-compatible bucket by default (`provider` picks AWS, DigitalOcean Spaces, Cloudflare R2 or a custom endpoint). Set `media.storage` to a `StorageAdapter` to use another backend; every `put`, `delete`, `head`, range read and signed URL then goes through it, while public URLs still come from `media.publicUrl`. An adapter declares its `capabilities`, and those decide what the media routes do: `signedUpload.supported` gates `createSignedUpload` / `createSignedReplace`, `rangeRead` is required to verify an uploaded image's bytes in `completeUpload` / `commitReplace` (so presigning an `image/*` file also requires it, and nothing is minted that could never be completed), the gate's download redirect signs for at most `min(3600, signedUrl.maxExpiresIn)` seconds, and `signedUrl.supported` plus `signedUrl.disposition` are required for the gate's download redirect. An operation the adapter does not declare fails with `STORAGE_UNSUPPORTED` instead of degrading to a weaker check. `createS3StorageAdapter(mediaConfig)` builds the default adapter, and backend failures thrown as `StorageError` map to a 500.
 
 ## Limitations
 

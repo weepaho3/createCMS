@@ -186,23 +186,45 @@ export type CmsVariableListResult = {
   hasMore: boolean;
 };
 
+export type CmsMediaUploadStatus =
+  | 'pending'
+  | 'uploading'
+  | 'success'
+  | 'error'
+  | 'aborted';
+
 export type CmsMediaUploadFileState = {
+  id: string;
+  file: File;
   name: string;
+  size: number;
+  type: string;
+  status: CmsMediaUploadStatus;
+  loaded: number;
+  total: number;
+  /** 0..1 */
   progress: number;
-  status: 'pending' | 'uploading' | 'done' | 'error';
-  error?: string;
+  error?: { code: string; message: string };
   optimized?: boolean;
   originalVariantId?: string;
   result?: { id: string; slug: string; objectKey: string };
 };
 
+export type CmsMediaUploadProgress = {
+  loaded: number;
+  total: number;
+  fraction: number;
+};
+
 export type CmsMediaUploadState = {
   isUploading: boolean;
-  isAborted: boolean;
   files: CmsMediaUploadFileState[];
-  totalProgress: number;
+  progress: CmsMediaUploadProgress;
   error: unknown;
-  upload: (files: File[], options?: { folderId?: string }) => Promise<void>;
+  upload: (
+    files: File[],
+    options?: { folderId?: string; concurrency?: number; signal?: AbortSignal },
+  ) => Promise<CmsMediaUploadFileState[]>;
   abort: () => void;
   reset: () => void;
 };

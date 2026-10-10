@@ -38,6 +38,8 @@ export type {
   CMSMediaUploadState,
   CMSMediaUploadFileState,
   CMSMediaUploadOptions,
+  CMSMediaUploadProgress,
+  CMSMediaUploadStatus,
 } from './client/types';
 
 export { cmsMeta, cmsContext, createCMSEndpoint } from './core/endpoint';
@@ -219,6 +221,13 @@ export type {
   CloudflareMediaConfig,
   CustomMediaConfig,
 } from './core/types/s3';
+export type {
+  StorageAdapter,
+  StorageCapabilities,
+  StorageObjectAcl,
+} from './core/storage/adapter';
+export { StorageError } from './core/storage/adapter';
+export { createS3StorageAdapter } from './core/storage/s3/adapter';
 
 // Realtime (optional, Upstash-only). Configure with `realtime: { url, token }`
 // on createCMS to enable the shared `/realtime` SSE route and per-user push;

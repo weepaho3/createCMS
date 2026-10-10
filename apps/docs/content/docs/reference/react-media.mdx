@@ -1,0 +1,294 @@
+---
+title: Media
+description: Unstyled parts, hooks, and types for @createcms/react/media.
+---
+
+The headless media library primitive: folder navigation, paged asset
+listing, search, sort, selection, bulk mutations and uploads over the
+`media` surface of a createcms React client. Unstyled; styling happens in
+the consumer's wrapper components (registry).
+
+```ts
+import { Media, useMediaLibrary, useMediaSelection } from '@createcms/react/media';
+```
+
+## Usage
+
+`Media.Root` owns the store and takes `cmsClient.media`. The list parts
+take a render function per entry; every part renders an unstyled element
+with `data-*` state and accepts a `render` prop.
+
+```tsx
+import { Media } from '@createcms/react/media';
+
+import { cmsClient } from './cms-client';
+
+function MediaLibrary({ onPick }: { onPick: (ids: string[]) => void }) {
+  return (
+    <Media.Root client={cmsClient.media} selection="multiple" onSelectionChange={onPick}>
+      <Media.Breadcrumbs>
+        {(path) => (
+          <>
+            <Media.Crumb folder={null}>Library</Media.Crumb>
+            {path.map((folder) => (
+              <Media.Crumb key={folder.id} folder={folder} />
+            ))}
+          </>
+        )}
+      </Media.Breadcrumbs>
+      <Media.Search />
+      <Media.FolderList>{(folder) => <Media.Folder key={folder.id} folder={folder} />}</Media.FolderList>
+      <Media.Grid>
+        {(asset) => (
+          <Media.Item key={asset.id} asset={asset}>
+            <Media.Thumbnail fallback={<span>{asset.mimeType}</span>} />
+            {asset.slug}
+          </Media.Item>
+        )}
+      </Media.Grid>
+      <Media.Empty>No assets yet.</Media.Empty>
+      <Media.Error>{({ retry }) => <button onClick={retry}>Retry</button>}</Media.Error>
+      <Media.MutationError>{({ error, dismiss }) => <button onClick={dismiss}>{String(error)}</button>}</Media.MutationError>
+      <Media.LoadMore>Load more</Media.LoadMore>
+      <Media.Dropzone accept="image/*">{({ uploading }) => (uploading ? 'Uploading…' : 'Drop or pick files')}</Media.Dropzone>
+      <Media.UploadList>
+        {(entry) => (
+          <Media.UploadItem key={entry.id} entry={entry}>
+            {entry.name}
+            <Media.UploadProgress />
+          </Media.UploadItem>
+        )}
+      </Media.UploadList>
+      <Media.UploadAbort>Cancel</Media.UploadAbort>
+      <Media.UploadClear>Clear</Media.UploadClear>
+    </Media.Root>
+  );
+}
+```
+
+`client` is read once at mount: `Media.Root` calls `client.useUploadAssets()`
+as a hook on every render and the store keeps the first client it saw.
+Render with a different `key` to swap clients.
+
+## Client shape
+
+`MediaClient` duck-types the media surface of the React client with the live
+proxy envelope: `listAssets({ query })`, `listFolders({ query })`,
+`createFolder({ body })`, `moveAssets({ body })`, `archiveAssets({ body })`,
+`updateAssetsStatus({ body })` and the `useUploadAssets()` hook, which
+returns a `MediaUploadState` (the `CmsMediaUploadState` of
+`@createcms/react/editor/cms`). `MediaAsset` is one listed asset,
+`MediaFolder` one folder (`{ id, name, parentId }`), `MediaUploadEntry` one
+ledger entry and `MediaUploadedAsset` the `result` of a successful entry.
+`MediaAssetStatus` is `'private' | 'public'`.
+
+## Parts
+
+### `Media.Root`
+
+Provider-only root (`MediaRootProps`): renders no DOM element, creates the
+store once, lists the starting folder on mount and re-lists when an upload
+batch settles (`isUploading` falls back to `false`).
+
+```ts
+type MediaRootProps = {
+  client: MediaClient; // read once at mount
+  defaultFolderId?: string | null; // read once; null = root
+  selection?: MediaSelectionMode; // 'none' | 'single' | 'multiple', read once
+  pageSize?: number; // 1–100, default 40, read once
+  onSelectionChange?: (ids: string[]) => void;
+  assetUrl?: (asset: MediaAsset) => string; // default asset.url
+  children?: ReactNode;
+};
+```
+
+`Media.Thumbnail` defaults to `asset.url`, the direct object URL. Public
+pages pass `assetUrl={(asset) => assetUrl(asset.id)}` from
+`@createcms/react/editor/cms`.
+
+### `Media.Grid` and `Media.Item`
+
+`Media.Grid` (`MediaGridProps`) is a `ul` with `data-status` (the list
+status) and `data-empty`; `children(asset)` renders one entry. With a
+selection mode it is a `role="listbox"` with `aria-multiselectable`, roving
+`tabIndex` and arrow-key navigation (ArrowRight/ArrowDown next,
+ArrowLeft/ArrowUp previous, Home/End first/last); without one it is a plain
+`role="list"`.
+
+`Media.Item` (`MediaItemProps`, `asset` required) is a `li` with
+`data-selected`, `data-asset-status` (`private`/`public`) and `data-type`
+(`MediaType`: `image`, `video`, `audio`, `document` or `other`, from
+`mediaTypeOf(mimeType)`). In a listbox it is a `role="option"` with
+`aria-selected` that selects on click, Enter and Space: single mode
+replaces, multiple mode toggles. It provides `ItemContextValue`
+(`{ asset, selected }`) through `useMediaItemContext(name)`.
+
+### `Media.Thumbnail`
+
+`MediaThumbnailProps`: an `img` with `src` from the root's `assetUrl`,
+`loading="lazy"`, `decoding="async"`, `alt` defaulting to the slug, and
+`data-loaded` / `data-error`. Non-image assets render the `fallback` node
+(or nothing).
+
+### `Media.Breadcrumbs` and `Media.Crumb`
+
+`Media.Breadcrumbs` (`MediaBreadcrumbsProps`) is a
+`nav[aria-label="Folder path"]`; `children(path)` receives the folders below
+the root, current folder last. `Media.Crumb` (`MediaCrumbProps`, `folder`
+required, `null` = root) is a `button` that navigates, with `data-current`
+and `aria-current="page"` on the current folder; `children` defaults to the
+folder name or `Root`.
+
+A `defaultFolderId` has no known ancestry: the store starts with an empty
+`path`, and the breadcrumbs hand their children one crumb for the current
+folder named `…` until the user navigates from a listed parent. `navigate`
+pushes a child of the current folder onto `path` (keeping the `…` entry for
+an unknown starting folder), truncates `path` after a folder already in it,
+and starts a new `path = [folder]` for a folder that is neither.
+
+### `Media.FolderList` and `Media.Folder`
+
+`Media.FolderList` (`MediaFolderListProps`) is a `ul` with `data-empty`;
+`children(folder)` renders one subfolder. `Media.Folder`
+(`MediaFolderProps`, `folder` required) is a `button` that opens it;
+`children` defaults to the name.
+
+### `Media.Search`, `Media.LoadMore`, `Media.Empty`
+
+`Media.Search` (`MediaSearchProps`) is a controlled `input[type="search"]`
+(`aria-label` defaults to `Search assets`) whose value reloads the list
+after `SEARCH_DEBOUNCE_MS` (250 ms). `Media.LoadMore` (`MediaLoadMoreProps`)
+is a `button` with `data-has-more` and `data-loading`, `disabled` without a
+cursor or while loading. `Media.Empty` (`MediaEmptyProps`) is a `div`
+rendered only while the listing is idle with neither folders nor assets.
+
+### `Media.Error` and `Media.MutationError`
+
+Both are `div[role="alert"]`. `Media.Error` (`MediaErrorProps`) renders on
+a failed list request with `children({ error, retry })`.
+`Media.MutationError` (`MediaMutationErrorProps`) renders on a rejected bulk
+mutation with `children({ error, dismiss })`. List and mutation errors are
+independent: a failed mutation never touches the list status.
+
+### `Media.Dropzone`
+
+`MediaDropzoneProps`: a `button` plus a hidden file input and a visually
+hidden polite `output`. `children` is a node or a function of
+`MediaDropzoneState` (`{ dragActive, uploading }`); state attributes are
+`data-drag-active`, `data-uploading` and `data-disabled`.
+
+```ts
+type MediaDropzoneProps = {
+  accept?: string; // .ext, type/* or exact types
+  maxFiles?: number; // default 10; the rest is rejected as 'count'
+  maxSize?: number; // bytes; larger files are rejected as 'size'
+  folderId?: string | null; // default: the current folder
+  onUploaded?: (assets: MediaUploadedAsset[]) => void;
+  onRejected?: (file: File, reason: MediaRejectReason) => void;
+  children: ReactNode | ((state: MediaDropzoneState) => ReactNode);
+};
+```
+
+Files are checked with `acceptsFile(accept, file)`, `maxSize` and `maxFiles`
+before `upload()` runs; rejected files reach `onRejected` with a
+`MediaRejectReason` (`'type'`, `'size'` or `'count'`). `onUploaded` receives
+the `result`s of the entries that one call resolved with, never the shared
+ledger. While uploading the button is `aria-disabled` (never `disabled`) and
+ignores drops. The summary of the last attempt ("3 uploaded, 1 rejected:
+too large") lives in the `output`, referenced by `aria-describedby` and
+re-mounted per attempt so repeats re-announce. Drag state uses an
+enter/leave depth counter, so crossing children does not flicker.
+
+### `Media.UploadList`, `Media.UploadItem`, `Media.UploadProgress`
+
+`Media.UploadList` (`MediaUploadListProps`) is a `ul` with `data-empty`;
+`children(entry)` renders one ledger entry. A visually hidden
+`role="log" aria-live="polite"` region announces each entry once when it
+reaches `success`, `error` or `aborted`. `Media.UploadItem`
+(`MediaUploadItemProps`, `entry` required) is a `li` with `data-status`.
+`Media.UploadProgress` (`MediaUploadProgressProps`) is a
+`div[role="progressbar"]` with `aria-valuemin`, `aria-valuemax`,
+`aria-valuenow`, `aria-valuetext` (`45%`, `Failed: <message>`,
+`Cancelled`) and `aria-label` (the file name); outside an item it renders
+the aggregate `progress.fraction` with the label `All uploads`.
+
+### `Media.UploadAbort` and `Media.UploadClear`
+
+`Media.UploadAbort` (`MediaUploadAbortProps`) is a `button` that calls
+`abort()`, `disabled` while nothing is in flight. `Media.UploadClear`
+(`MediaUploadClearProps`) is a `button` that calls `reset()`.
+
+## Hooks
+
+### `useMediaLibrary`
+
+Returns `MediaLibrary`: the whole `MediaLibraryState` merged with the store
+actions (`MediaStoreActions` without `dispose`, which `Media.Root` calls on
+unmount). Re-renders on every state change.
+
+```ts
+type MediaLibraryState = {
+  folderId: string | null;
+  path: MediaFolder[];
+  folders: MediaFolder[];
+  assets: MediaAsset[];
+  total: number;
+  nextCursor: string | null;
+  search: string;
+  sortBy: MediaSortBy; // 'createdAt' | 'slug' | 'size'
+  sortDirection: MediaSortDirection; // 'asc' | 'desc'
+  status: MediaListStatus; // 'idle' | 'loading' | 'loadingMore' | 'error'
+  error: unknown;
+  mutation: MediaMutationState; // { status: 'idle' | 'pending' | 'error'; error; skipped }
+  selected: string[];
+};
+```
+
+Actions: `load()`, `loadMore()`, `refresh()`, `navigate(folder | null)`,
+`setSearch(value)`, `setSort(sortBy, sortDirection)`, `select(id)`,
+`toggle(id)`, `clearSelection()`, `archive(ids)`, `move(ids, folderId)`,
+`setStatus(ids, status)`, `createFolder(name)` and `clearMutationError()`.
+The bulk mutations resolve with a `MediaBulkResult`
+(`{ ids, skipped }`; `createFolder` resolves with the new `MediaFolder`),
+store the server's `skipped` ids on `mutation` and refresh the list; a
+rejection sets `mutation.status: 'error'` and rethrows.
+
+### `useMediaSelection`
+
+Returns `MediaSelection`: `{ selected, select, toggle, clear, mode }`.
+`mode` is the root's `MediaSelectionMode`.
+
+### `useMediaUploads`
+
+Returns the `MediaUploadState` of the client (`client.useUploadAssets()`).
+It lives in its own context so progress ticks re-render only the upload
+parts.
+
+### `useMediaAsset`
+
+`useMediaAsset(id)` returns the listed `MediaAsset` or `null`.
+
+### `useMediaContext`
+
+`useMediaContext(componentName)` returns `MediaContextValue`
+(`{ store, selection, assetUrl }`) and throws
+`<componentName> must be used within a Media.Root component.` outside the
+root.
+
+### `useSelector`
+
+`useSelector(store, selector, isEqual?)` subscribes to any `ReadableStore`
+(`{ subscribe, getState }`) with the same shallow-equal memo as the editor's
+`useEditorSelector`.
+
+## Store
+
+`createMediaStore(options)` (`CreateMediaStoreOptions`: `client`,
+`defaultFolderId`, `pageSize`, `selection`) returns a `MediaStore`
+(`subscribe`, `getState`, `selection`, `actions`) usable without React;
+`pageSize` is clamped to 1–100 and `actions.dispose()` cancels the pending
+search reload and invalidates in-flight list requests. List requests carry a
+ticket: a response whose ticket is no longer current is dropped, so a fast
+second navigation never shows the first folder's result. A failed `load()`
+clears `nextCursor`, and `setSearch` and `setSort` clear it before reloading,
+so `loadMore()` never appends a page of a different query.

@@ -22,6 +22,12 @@ const demos = [
     title: 'Email split',
     description: 'Form pane and compiled HTML iframe via react-email.',
   },
+  {
+    href: '/demo/media',
+    title: 'Media library',
+    description:
+      'MediaLibraryLayout with folders, selection actions and uploads.',
+  },
 ];
 
 export default function DemoEditorIndexPage() {

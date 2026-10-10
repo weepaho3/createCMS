@@ -56,7 +56,11 @@ export const setupMultiTenantTestCMS = async (options?: {
   return {
     cms,
     db,
-    s3: testS3 ?? { config: mediaConfig, cleanup: async () => {} },
+    s3: testS3 ?? {
+      config: mediaConfig,
+      failKeys: new Set<string>(),
+      cleanup: async () => {},
+    },
     cleanupSchema,
     setTenant(slug: string) {
       currentTenant = slug;

@@ -1,5 +1,7 @@
 import type { AwsClient } from 'aws4fetch';
 
+import type { StorageAdapter } from '../storage/adapter';
+
 export type S3Client = {
   s3: AwsClient;
   buildBucketUrl: (bucket: string) => string;
@@ -88,6 +90,20 @@ type BaseMediaConfig = {
   // URL generation
   /** Signed URL expiration time in seconds. @default 120 */
   signedUrlExpiresIn?: number;
+
+  /**
+   * HMAC secret for the presign/complete upload tokens. Defaults to a key
+   * derived from `secretAccessKey`; set it when the credentials are temporary
+   * (STS), since a rotated secret invalidates tokens minted before the rotation.
+   */
+  uploadSecret?: string;
+
+  /**
+   * Custom storage backend. When set, every storage operation goes through
+   * it. `provider` and credentials are still required by the type but unused
+   * for storage I/O.
+   */
+  storage?: StorageAdapter;
 };
 
 /** AWS S3 configuration */

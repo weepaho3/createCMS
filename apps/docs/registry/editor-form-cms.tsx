@@ -2,10 +2,10 @@
 
 import type { FieldControlProps, FieldControls } from '@createcms/react/editor';
 import type {
-  CmsAssetListItem,
   CmsFieldSources,
   CmsRootListItem,
 } from '@createcms/react/editor/cms';
+import type { MediaClient } from '@createcms/react/media';
 
 import {
   emptyListElement,
@@ -40,28 +40,80 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 
-const CmsSourcesContext = React.createContext<CmsFieldSources | null>(null);
+import { MediaPicker } from './media-picker';
+
+type CmsSourcesContextValue = {
+  sources: CmsFieldSources;
+  media: MediaClient | undefined;
+};
+
+const CmsSourcesContext = React.createContext<CmsSourcesContextValue | null>(
+  null,
+);
 
 export function CmsSourcesProvider({
   sources,
+  media,
   children,
 }: {
   sources: CmsFieldSources;
+  /** Full media client for the picker; without one the picker reads through `sources.assets`. */
+  media?: MediaClient;
   children: React.ReactNode;
 }) {
+  const value = React.useMemo(() => ({ sources, media }), [sources, media]);
   return (
-    <CmsSourcesContext.Provider value={sources}>
+    <CmsSourcesContext.Provider value={value}>
       {children}
     </CmsSourcesContext.Provider>
   );
 }
 
-function useCmsSources(): CmsFieldSources {
+function useCmsSourcesContext(): CmsSourcesContextValue {
   const value = React.useContext(CmsSourcesContext);
   if (!value) {
     throw new Error('CmsSourcesProvider is required for cms field controls');
   }
   return value;
+}
+
+function useCmsSources(): CmsFieldSources {
+  return useCmsSourcesContext().sources;
+}
+
+const UNSUPPORTED = 'Not supported by this media source';
+
+/**
+ * Read-only `MediaClient` over `CmsFieldSources`: offset paging as the
+ * cursor, no folders, uploads through `sources.assets.useUpload`; every
+ * mutation rejects.
+ */
+export function sourcesMediaClient(sources: CmsFieldSources): MediaClient {
+  return {
+    async listAssets(args) {
+      const query = args?.query;
+      const offset = Number(query?.cursor ?? 0);
+      const page = await sources.assets.list({
+        search: query?.search,
+        limit: query?.limit,
+        offset,
+      });
+      return {
+        assets: page.assets,
+        total: page.total,
+        hasMore: page.hasMore,
+        nextCursor: page.hasMore ? String(offset + page.assets.length) : null,
+      };
+    },
+    async listFolders() {
+      return { folders: [] };
+    },
+    createFolder: () => Promise.reject(new Error(UNSUPPORTED)),
+    moveAssets: () => Promise.reject(new Error(UNSUPPORTED)),
+    archiveAssets: () => Promise.reject(new Error(UNSUPPORTED)),
+    updateAssetsStatus: () => Promise.reject(new Error(UNSUPPORTED)),
+    useUploadAssets: () => sources.assets.useUpload(),
+  };
 }
 
 function fieldAria(props: {
@@ -308,45 +360,8 @@ function RootPickerDialog({
 }
 
 function MediaField(props: FieldControlProps<'image'>) {
-  const sources = useCmsSources();
-  const upload = sources.assets.useUpload();
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
-  const expectingUploadRef = React.useRef(false);
-  const [open, setOpen] = React.useState(false);
-  const [search, setSearch] = React.useState('');
-  const [offset, setOffset] = React.useState(0);
-  const [assets, setAssets] = React.useState<CmsAssetListItem[]>([]);
-  const [hasMore, setHasMore] = React.useState(false);
-  const { onChange } = props;
-
-  const loadAssets = React.useCallback(async () => {
-    const page = await sources.assets.list({
-      search: search || undefined,
-      limit: PAGE_SIZE,
-      offset,
-    });
-    setAssets(page.assets);
-    setHasMore(page.hasMore);
-  }, [offset, search, sources.assets]);
-
-  React.useEffect(() => {
-    if (!open) return;
-    void loadAssets();
-  }, [loadAssets, open]);
-
-  React.useEffect(() => {
-    if (!expectingUploadRef.current || upload.isUploading) return;
-
-    expectingUploadRef.current = false;
-    if (upload.error) return;
-
-    const uploaded = upload.files.find((file) => file.result?.id);
-    if (uploaded?.result?.id) {
-      onChange(uploaded.result.id);
-      void loadAssets();
-    }
-  }, [loadAssets, onChange, upload.error, upload.files, upload.isUploading]);
-
+  const { sources, media } = useCmsSourcesContext();
+  const adapter = React.useMemo(() => sourcesMediaClient(sources), [sources]);
   const previewUrl = props.value ? assetUrl(props.value) : null;
 
   return (
@@ -359,95 +374,24 @@ function MediaField(props: FieldControlProps<'image'>) {
         />
       ) : null}
       <div className="flex flex-wrap gap-2">
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger
-            render={
-              <Button
-                type="button"
-                variant="outline"
-                disabled={props.disabled}
-                aria-describedby={props.describedBy}
-                aria-invalid={props.invalid || undefined}
-                aria-required={props.required || undefined}
-              >
-                {props.value ? 'Change image' : 'Select image'}
-              </Button>
-            }
-          />
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Select image</DialogTitle>
-            </DialogHeader>
-            <Input
-              placeholder="Search assets"
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
-                setOffset(0);
-              }}
-            />
-            <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto">
-              {assets.map((asset) => (
-                <li key={asset.id}>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="w-full justify-start"
-                    onClick={() => {
-                      props.onChange(asset.id);
-                      setOpen(false);
-                    }}
-                  >
-                    {asset.slug || asset.id}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={offset === 0}
-                onClick={() =>
-                  setOffset((prev) => Math.max(0, prev - PAGE_SIZE))
-                }
-              >
-                Previous
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={!hasMore}
-                onClick={() => setOffset((prev) => prev + PAGE_SIZE)}
-              >
-                Next
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={props.disabled || upload.isUploading}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          {upload.isUploading ? 'Uploading…' : 'Upload'}
-        </Button>
-        <input
-          ref={fileInputRef}
-          type="file"
+        <MediaPicker
+          client={media ?? adapter}
+          value={props.value}
+          onChange={props.onChange}
           accept="image/*"
-          className="sr-only"
-          disabled={props.disabled || upload.isUploading}
-          onChange={(event) => {
-            const files = event.target.files;
-            if (!files?.length) return;
-            expectingUploadRef.current = true;
-            void upload.upload(Array.from(files));
-            event.target.value = '';
-          }}
+          disabled={props.disabled}
+          trigger={
+            <Button
+              type="button"
+              variant="outline"
+              disabled={props.disabled}
+              aria-describedby={props.describedBy}
+              aria-invalid={props.invalid || undefined}
+              aria-required={props.required || undefined}
+            >
+              {props.value ? 'Change image' : 'Choose image'}
+            </Button>
+          }
         />
         {props.value ? (
           <Button

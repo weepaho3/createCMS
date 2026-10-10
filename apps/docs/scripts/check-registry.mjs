@@ -10,6 +10,8 @@ const UI_ITEM_NAMES = [
   'editor-canvas',
   'editor-shell',
   'editor-email',
+  'media-library',
+  'media-picker',
 ];
 
 const BLOCK_ITEM_NAMES = ['editor-app'];
@@ -101,6 +103,23 @@ if (
   console.error(
     'check-registry: editor-app must render Editor.Root and Canvas.Root',
   );
+  process.exit(1);
+}
+
+const mediaLibraryContents = itemContents(
+  uiItems.find((item) => item.name === 'media-library'),
+);
+const mediaPickerContents = itemContents(
+  uiItems.find((item) => item.name === 'media-picker'),
+);
+
+if (mediaLibraryContents.includes('<Media.Root')) {
+  console.error('check-registry: media-library must not render Media.Root');
+  process.exit(1);
+}
+
+if (!mediaPickerContents.includes('<Media.Root')) {
+  console.error('check-registry: media-picker must render Media.Root');
   process.exit(1);
 }
 

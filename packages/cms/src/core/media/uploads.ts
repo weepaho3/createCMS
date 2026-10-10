@@ -8,6 +8,7 @@ import { assetFolders, assets } from '../db/schema.generated';
 import { CMSError, errorMessages } from '../errors';
 import {
   buildObjectKey,
+  buildUploadObjectKey,
   createSlug,
   isFileTypeAllowed,
 } from '../storage/s3/utils';
@@ -31,11 +32,11 @@ type PrepareUploadInput = {
   scope: ResolvedScope;
 };
 
-export async function prepareAssetUpload(
+async function validateUploadBatch(
   db: DrizzleInstance,
   input: PrepareUploadInput,
 ) {
-  const { actor, files, folderId, scope } = input;
+  const { files, folderId, scope } = input;
 
   validateFiles(files, {
     maxFiles: input.maxFiles,
@@ -48,6 +49,19 @@ export async function prepareAssetUpload(
   }
 
   await validateVariantRefs(db, files, scope);
+}
+
+/**
+ * Validation for the server byte paths (`uploadAssets`): mints an id, a
+ * unique slug (probing `assets` in scope) and `objectKey === slug` per file.
+ */
+export async function prepareAssetUpload(
+  db: DrizzleInstance,
+  input: PrepareUploadInput,
+) {
+  const { actor, files, folderId, scope } = input;
+
+  await validateUploadBatch(db, input);
 
   const prepared: {
     id: string;
@@ -71,6 +85,27 @@ export async function prepareAssetUpload(
 
     prepared.push({ id, slug, objectKey, file });
   }
+
+  return { actor, folderId, prepared };
+}
+
+/**
+ * Validation for the presign path (`createSignedUpload`): the same checks as
+ * `prepareAssetUpload`, but no slug is minted and no row is probed. The object
+ * key is `buildUploadObjectKey(id, file.name)`, unique by the fresh id alone.
+ */
+export async function prepareSignedUpload(
+  db: DrizzleInstance,
+  input: PrepareUploadInput,
+) {
+  const { actor, files, folderId } = input;
+
+  await validateUploadBatch(db, input);
+
+  const prepared = files.map((file) => {
+    const id = newId('asset');
+    return { id, objectKey: buildUploadObjectKey(id, file.name), file };
+  });
 
   return { actor, folderId, prepared };
 }

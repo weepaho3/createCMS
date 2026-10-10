@@ -45,11 +45,10 @@ function makeClient(
 ): UseCmsFieldSourcesClient & { pages: CmsCollectionRootsClient } {
   const uploadState: CmsMediaUploadState = {
     isUploading: false,
-    isAborted: false,
     files: [],
-    totalProgress: 0,
+    progress: { loaded: 0, total: 0, fraction: 0 },
     error: null,
-    upload: vi.fn(async () => {}),
+    upload: vi.fn(async () => []),
     abort: vi.fn(),
     reset: vi.fn(),
   };
@@ -471,11 +470,10 @@ describe('useCmsFieldSources assets.useUpload', () => {
   it('returns the upload hook state from media.useUploadAssets', () => {
     const uploadState: CmsMediaUploadState = {
       isUploading: true,
-      isAborted: false,
       files: [],
-      totalProgress: 50,
+      progress: { loaded: 50, total: 100, fraction: 0.5 },
       error: null,
-      upload: vi.fn(async () => {}),
+      upload: vi.fn(async () => []),
       abort: vi.fn(),
       reset: vi.fn(),
     };

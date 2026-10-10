@@ -22,37 +22,59 @@ media: {
 
 ### Upload from the browser
 
-The React client's `media.useUploadAssets()` returns an `upload` function plus progress state. Under the hood it requests signed URLs and PUTs each file straight to your bucket:
+The React client's `media.useUploadAssets()` returns an `upload` function plus a ledger of every file handed to it. Under the hood it requests signed URLs and PUTs each file straight to your bucket, at most four at a time:
 
 ```tsx title="components/uploader.tsx"
 'use client';
 import { cmsClient } from '@/lib/cms-client';
 
 export function Uploader() {
-  const { upload, isUploading, totalProgress } = cmsClient.media.useUploadAssets();
+  const { upload, isUploading, progress, files, reset } =
+    cmsClient.media.useUploadAssets();
 
   return (
     <>
       <input
         type="file"
         multiple
-        onChange={(e) => upload(Array.from(e.target.files ?? []))}
+        onChange={async (e) => {
+          const entries = await upload(Array.from(e.target.files ?? []));
+          const ids = entries.flatMap((entry) =>
+            entry.status === 'success' && entry.result ? [entry.result.id] : [],
+          );
+          console.log('uploaded', ids);
+        }}
       />
-      {isUploading ? <p>Uploading {totalProgress}%</p> : null}
+      {isUploading ? (
+        <p>Uploading {Math.round(progress.fraction * 100)}%</p>
+      ) : null}
+      <ul>
+        {files.map((entry) => (
+          <li key={entry.id}>
+            {entry.name}: {entry.status}
+            {entry.error ? ` (${entry.error.code})` : null}
+          </li>
+        ))}
+      </ul>
+      <button type="button" onClick={reset}>
+        Clear finished
+      </button>
     </>
   );
 }
 ```
 
-`upload(files, options?)` takes a `File[]` and an optional `{ folderId }`. Uploads are validated server-side against the limits (defaults: `maxFiles` 10, `maxFileSize` 4 MB, `allowedMimeTypes` an explicit image/video/PDF allowlist that **excludes SVG**, see [Configuration](/docs/reference/configuration#media)); a rejected file surfaces as `FILE_TOO_LARGE`, `TOO_MANY_FILES`, or `INVALID_FILE_TYPE`. New assets are created **private**.
+`upload(files, options?)` takes a `File[]` and an optional `{ folderId, concurrency, signal }`. It resolves with that call's entries once every PUT has settled, so a caller reads `result.id` from the returned array instead of scanning `files`. Uploads are validated server-side against the limits (defaults: `maxFiles` 10, `maxFileSize` 4 MB, `allowedMimeTypes` an explicit image/video/PDF allowlist that **excludes SVG**, see [Configuration](/docs/reference/configuration#media)); a rejected batch marks every entry of that call `error` with the server code (`FILE_TOO_LARGE`, `TOO_MANY_FILES`, or `INVALID_FILE_TYPE`). A PUT that fails on the network is `NETWORK_ERROR`; any other PUT failure is `UPLOAD_FAILED`. New assets are created **private**.
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `upload` | `(files: File[], options?: { folderId?: string }) => Promise<void>` | Start an upload. |
-| `isUploading` | `boolean` | Whether an upload is in progress. |
-| `totalProgress` | `number` | Overall progress, 0 to 100. |
-| `files` | `CMSMediaUploadFileState[]` | Per-file `name`, `progress`, `status`, and `result` (`{ id, slug, objectKey }`). |
-| `abort` / `reset` | `() => void` | Cancel or clear. |
+| `upload` | `(files: File[], options?: CMSMediaUploadOptions) => Promise<CMSMediaUploadFileState[]>` | Start an upload; resolves with that call's entries. Options: `folderId`, `concurrency` (max parallel PUTs, default 4), `signal` (aborts this call only). |
+| `isUploading` | `boolean` | `true` while any entry is `pending` or `uploading`. |
+| `progress` | `{ loaded, total, fraction }` | Bytes uploaded over bytes expected across `pending`, `uploading`, and `success` entries; `fraction` is 0 to 1. `error` and `aborted` entries are excluded. |
+| `files` | `CMSMediaUploadFileState[]` | Every entry handed to `upload` since the last `reset()`, in call order. Each has `id`, `file`, `name`, `size`, `type`, `status` (`pending`, `uploading`, `success`, `error`, `aborted`), `loaded`, `total`, `progress` (0 to 1), `error?` (`{ code, message }`), and `result?` (`{ id, slug, objectKey }`). |
+| `error` | `unknown` | The signing error, or `'Some files failed to upload'` when a PUT failed. `null` otherwise. |
+| `abort` | `() => void` | Aborts every in-flight and pending entry; they end `aborted`, not `error`. |
+| `reset` | `() => void` | Drops `success`, `error`, and `aborted` entries and clears `error`; in-flight entries stay. |
 
 ### Optimize before upload
 
@@ -75,13 +97,20 @@ const thumb = asset.url; // direct object URL — admin/library display only
 
 ### Upload from the server
 
-For server-initiated uploads, call the API directly. `createSignedUpload` returns presigned PUT URLs (you then PUT the bytes with the returned headers); `uploadAssets` sends the bytes through the server (each file needs a `buffer: Blob | ArrayBuffer`):
+For server-initiated uploads, call the API directly. `createSignedUpload` returns presigned PUT URLs and a token per file (you PUT the bytes with the returned headers, then pass the tokens to `completeUpload`, which creates the rows); `uploadAssets` sends the bytes through the server (each file needs a `buffer: Blob | ArrayBuffer`):
 
 ```ts
-const { assets } = await cms.api.media.createSignedUpload({
+const { uploads } = await cms.api.media.createSignedUpload({
   body: { files: [{ name: 'hero.jpg', size: file.size, type: 'image/jpeg' }] },
 });
-// PUT the file to assets[0].signedUrl using assets[0].headers
+await fetch(uploads[0].signedUrl, {
+  method: 'PUT',
+  headers: uploads[0].headers,
+  body: file,
+});
+const { assets, errors } = await cms.api.media.completeUpload({
+  body: { uploads: [{ token: uploads[0].token }] },
+});
 ```
 
 <Callout type="info">

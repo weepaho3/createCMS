@@ -14,6 +14,7 @@ const links = [
   { href: '/demo/editor/form', label: 'Form only' },
   { href: '/demo/editor/preview', label: 'Form plus preview' },
   { href: '/demo/editor/email', label: 'Email split' },
+  { href: '/demo/media', label: 'Media library' },
 ];
 
 export default function DemoLayout({ children }: LayoutProps<'/demo'>) {

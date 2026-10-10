@@ -15,17 +15,25 @@ import {
 import * as z from 'zod';
 
 import type { CMSProcedureContext, MediaConfig } from '../types';
-import type { S3Client } from '../types/s3';
+import type { ResolvedScope } from '../types/definitions';
 
 import { newId } from '../../utils/nanoid';
 import { assetFolders, assets } from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError, errorMessages } from '../errors';
 import {
+  deriveUploadKey,
+  mintUploadToken,
+  scopeFingerprint,
+  type UploadTokenPayload,
+  verifyUploadToken,
+} from '../media/upload-token';
+import {
   assertFolderExists,
   generateUniqueSlug,
   measureBufferSize,
   prepareAssetUpload,
+  prepareSignedUpload,
   validateFiles,
 } from '../media/uploads';
 import {
@@ -33,18 +41,28 @@ import {
   getAssetUsageDetails,
 } from '../media/usage';
 import { crossScopeColumns, scopedInsert, scopedInsertBatch } from '../scope';
-import { createS3Client } from '../storage/s3/client';
+import {
+  requireCapability,
+  type StorageAdapter,
+  StorageError,
+} from '../storage/adapter';
+import { getStorage } from '../storage/get-storage';
 import {
   buildObjectKey,
   buildPublicObjectUrl,
   buildVariantSlug,
-  headObject,
-  putObject,
-  S3Error,
-  signPutObject,
 } from '../storage/s3/utils';
 import { MEDIA_DEFAULTS } from '../types/s3';
 import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
+
+/**
+ * Types the gate redirects to the bare public URL. Everything else, and every
+ * `?download` request, is redirected to a signed URL whose
+ * `response-content-disposition` forces a download. Raster formats are listed
+ * explicitly so `image/svg+xml` never renders inline from the gate.
+ */
+const INLINE_SAFE =
+  /^(image\/(png|jpeg|gif|webp|avif)|video\/|audio\/|application\/pdf$)/;
 
 const MEDIA_META = {
   scope: 'system' as const,
@@ -134,13 +152,26 @@ async function readLeadingBytes(
 }
 
 /**
- * Content-type validation for the SERVER upload paths, which hold the actual
- * bytes (the client signed-upload path never does, so it cannot be sniffed
- * server-side — see createSignedUpload). Runs AFTER the declared-type allowlist:
- * for a declared `image/*` type it sniffs the buffer's magic bytes and throws
- * INVALID_FILE_TYPE if they contradict the declared type — blocking a script-
- * bearing file (e.g. an SVG) smuggled in under an allowed image content-type for
- * stored XSS. Video/PDF are declared-type-only (not sniffed).
+ * True when the leading bytes of a payload are consistent with
+ * `declaredType`. Non-image types always pass. A declared image type fails
+ * when the bytes match a different known signature, or match no signature
+ * while the declared type is in SNIFFABLE_IMAGE_TYPES (the SVG/HTML-as-image
+ * case). A declared type outside that set with unrecognized bytes passes and
+ * is left to the declared-type allowlist.
+ */
+function verifyImageBytes(declaredType: string, bytes: Uint8Array): boolean {
+  if (!declaredType.startsWith('image/')) return true;
+  const sniffed = sniffImageType(bytes);
+  if (sniffed === declaredType) return true;
+  return sniffed === undefined && !SNIFFABLE_IMAGE_TYPES.has(declaredType);
+}
+
+/**
+ * Content-type validation for the server upload paths (`uploadAssets`,
+ * `replaceAsset`), which hold the bytes. `completeUpload` and `commitReplace`
+ * apply `verifyImageBytes` to the first 12 bytes of the landed object. Runs
+ * AFTER the declared-type allowlist and throws INVALID_FILE_TYPE when the
+ * bytes contradict a declared image type. Video/PDF are declared-type-only.
  */
 async function assertDeclaredTypeMatchesBytes(
   fileName: string,
@@ -148,19 +179,37 @@ async function assertDeclaredTypeMatchesBytes(
   buffer: Blob | ArrayBuffer,
 ): Promise<void> {
   if (!declaredType.startsWith('image/')) return;
-
-  const sniffed = sniffImageType(await readLeadingBytes(buffer, 12));
-  if (sniffed === declaredType) return;
-
-  // Reject when the bytes are a recognized-but-different image type, OR when the
-  // declared type is one we CAN sniff yet the bytes match no signature (the
-  // SVG/HTML-as-image case). A declared type outside the sniffable set with
-  // unrecognized bytes is left to the declared-type allowlist.
-  if (sniffed !== undefined || SNIFFABLE_IMAGE_TYPES.has(declaredType)) {
-    throw new CMSError('INVALID_FILE_TYPE', {
-      message: errorMessages.invalidFileType(fileName, declaredType),
-    });
+  if (verifyImageBytes(declaredType, await readLeadingBytes(buffer, 12))) {
+    return;
   }
+  throw new CMSError('INVALID_FILE_TYPE', {
+    message: errorMessages.invalidFileType(fileName, declaredType),
+  });
+}
+
+/**
+ * SQLSTATE and constraint name of a Postgres error. drizzle wraps the driver
+ * error in `DrizzleQueryError.cause`, so both the error and its cause are read.
+ */
+function pgErrorInfo(err: unknown): { code?: string; constraint?: string } {
+  const top = err as { code?: unknown; constraint?: unknown; cause?: unknown };
+  if (typeof top?.code === 'string') {
+    return top as { code: string; constraint?: string };
+  }
+  const cause = top?.cause as { code?: unknown; constraint?: unknown };
+  if (typeof cause?.code === 'string') {
+    return cause as { code: string; constraint?: string };
+  }
+  return {};
+}
+
+function isConstraintViolation(
+  err: unknown,
+  sqlState: '23503' | '23505',
+  constraint: string,
+): boolean {
+  const info = pgErrorInfo(err);
+  return info.code === sqlState && !!info.constraint?.includes(constraint);
 }
 
 /** The public-facing shape of an asset row (listAssets / getAssets / upload). */
@@ -265,14 +314,6 @@ export function createMediaEndpoints(
 ) {
   const { db } = cmsCtx;
 
-  let s3Client: S3Client | null = null;
-  function getS3Client(): S3Client {
-    if (!s3Client) {
-      s3Client = createS3Client(mediaConfig);
-    }
-    return s3Client;
-  }
-
   const maxFileSize = mediaConfig.maxFileSize ?? MEDIA_DEFAULTS.maxFileSize;
   const maxFiles = mediaConfig.maxFiles ?? MEDIA_DEFAULTS.maxFiles;
   const allowedMimeTypes = mediaConfig.allowedMimeTypes ?? [
@@ -280,7 +321,185 @@ export function createMediaEndpoints(
   ];
   const signedUrlExpiresIn =
     mediaConfig.signedUrlExpiresIn ?? MEDIA_DEFAULTS.signedUrlExpiresIn;
-  const bucketName = mediaConfig.bucketName;
+
+  /**
+   * Throws STORAGE_UNSUPPORTED unless the adapter signs uploads and, when any
+   * declared type is `image/*`, can read byte ranges: an image that cannot be
+   * sniffed afterwards would never pass `completeUpload` / `commitReplace`.
+   */
+  function requireSignedUploadCapability(
+    storage: StorageAdapter,
+    types: string[],
+  ): void {
+    const hasImage = types.some((t) => t.startsWith('image/'));
+    requireCapability(
+      storage,
+      (c) => c.signedUpload.supported && (c.rangeRead || !hasImage),
+      hasImage
+        ? 'signed uploads with range reads, which verifying an uploaded image requires'
+        : 'signed uploads',
+    );
+  }
+
+  /**
+   * Checks an object the browser PUT against the token's claim. Returns the
+   * error to report when no object exists at the key, its content length is
+   * missing or differs from `size`, its content type (parameters stripped)
+   * differs from `type`, or the leading bytes contradict a declared image
+   * type. The object is deleted in the last three cases; a failed delete is
+   * logged and the error still returned. Returns `null` when the object
+   * matches. Throws STORAGE_UNSUPPORTED for an image type when the adapter
+   * cannot read a byte range, since an image is never accepted unsniffed.
+   */
+  async function inspectUploadedObject(claim: {
+    name: string;
+    objectKey: string;
+    type: string;
+    size: number;
+  }): Promise<APIError | null> {
+    const storage = getStorage(mediaConfig);
+    const missing = () =>
+      new CMSError('UPLOAD_NOT_FOUND', {
+        message: `No object at "${claim.objectKey}"; the PUT to the signed URL did not complete`,
+      });
+    const discard = async () => {
+      try {
+        await storage.delete(claim.objectKey);
+      } catch (err) {
+        console.error('[cms:media] failed to delete rejected upload', err);
+      }
+    };
+
+    if (claim.type.startsWith('image/')) {
+      requireCapability(
+        storage,
+        (c) => c.rangeRead,
+        'range reads, which verifying an uploaded image requires',
+      );
+    }
+
+    const head = await storage.head(claim.objectKey);
+    if (!head) return missing();
+    if (head.contentLength !== claim.size) {
+      await discard();
+      return new APIError(400, {
+        code: 'VALIDATION_ERROR',
+        message: `Declared size ${claim.size} does not match the uploaded object (${head.contentLength ?? 'unknown length'})`,
+      });
+    }
+    if (
+      head.contentType !== null &&
+      head.contentType.split(';')[0].trim() !== claim.type
+    ) {
+      await discard();
+      return new APIError(400, {
+        code: 'VALIDATION_ERROR',
+        message: `Declared MIME type "${claim.type}" does not match the uploaded object ("${head.contentType}")`,
+      });
+    }
+    if (claim.type.startsWith('image/')) {
+      const bytes = await storage.getRange(claim.objectKey, 0, 11);
+      if (!bytes) return missing();
+      if (!verifyImageBytes(claim.type, bytes)) {
+        await discard();
+        return new CMSError('INVALID_FILE_TYPE', {
+          message: errorMessages.invalidFileType(claim.name, claim.type),
+        });
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Inserts the `assets` row for a verified upload token and returns it
+   * through drizzle. The slug is minted here, up to three times when another
+   * row takes it first. A primary-key or object-key conflict means this token
+   * was completed before: the live row is returned, or ASSET_NOT_FOUND is
+   * thrown when that row has since been archived. A foreign-key violation
+   * maps to FOLDER_NOT_FOUND / ASSET_NOT_FOUND.
+   */
+  async function insertCompletedUpload(
+    payload: Extract<UploadTokenPayload, { kind: 'upload' }>,
+    scope: ResolvedScope,
+  ): Promise<AssetRow> {
+    const loadRow = async () => {
+      const conditions: SQL[] = [
+        eq(assets.id, payload.id),
+        isNull(assets.archivedAt),
+      ];
+      if (scope.assets?.where) conditions.push(scope.assets.where);
+      const [row] = await db
+        .select()
+        .from(assets)
+        .where(and(...conditions));
+      return row;
+    };
+
+    // `assets_slug_unique` is global while the probe in generateUniqueSlug is
+    // scope-filtered; a slug held by a row outside the scope is excluded here
+    // so the next attempt moves to the next counter.
+    const taken = new Set<string>();
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const slug = await generateUniqueSlug(db, payload.name, taken, scope);
+      if (!slug) throw new CMSError('SLUG_GENERATION_FAILED');
+
+      try {
+        await scopedInsert(
+          db,
+          'cms.assets',
+          {
+            id: payload.id,
+            slug,
+            mime_type: payload.type,
+            size: payload.size,
+            object_key: payload.objectKey,
+            status: 'private' as const,
+            folder_id: payload.folderId,
+            variant_of: payload.variantOf,
+            uploaded_by: payload.actor,
+          },
+          scope.assets,
+        );
+      } catch (err) {
+        if (
+          isConstraintViolation(err, '23505', 'assets_pkey') ||
+          isConstraintViolation(err, '23505', 'assets_object_key_unique')
+        ) {
+          const existing = await loadRow();
+          if (existing) return existing;
+          throw new CMSError('ASSET_NOT_FOUND', {
+            message: errorMessages.assetNotFound(payload.id),
+          });
+        }
+        if (isConstraintViolation(err, '23505', 'assets_slug_unique')) {
+          taken.add(slug);
+          continue;
+        }
+        if (isConstraintViolation(err, '23503', 'folder_id')) {
+          throw new CMSError('FOLDER_NOT_FOUND', {
+            message: errorMessages.folderNotFound(payload.folderId ?? ''),
+          });
+        }
+        if (isConstraintViolation(err, '23503', 'variant_of')) {
+          throw new CMSError('ASSET_NOT_FOUND', {
+            message: errorMessages.assetNotFound(payload.variantOf ?? ''),
+          });
+        }
+        throw err;
+      }
+
+      const row = await loadRow();
+      if (!row) {
+        throw new Error(
+          `completeUpload: inserted asset ${payload.id} is not readable in scope`,
+        );
+      }
+      return row;
+    }
+
+    throw new CMSError('SLUG_GENERATION_FAILED');
+  }
 
   return {
     // ========================================================================
@@ -832,6 +1051,13 @@ export function createMediaEndpoints(
      * Public asset redirect. Marked `public: true` so toCMSEndpoints skips the
      * auth/scope/hook chain — it serves <img>-style requests and does its own
      * access control (rejects assets whose status is `private`).
+     *
+     * Inline-safe types (raster images, video, audio, PDF) redirect to the
+     * public object URL. `?download=true` and every other type redirect to a
+     * signed GET URL, valid for one hour, whose `response-content-disposition`
+     * is `attachment`, so the bucket answers with a download. A
+     * `Content-Disposition` header on the `302` itself would be ignored by
+     * browsers, which apply the header of the final response only.
      */
     asset: createEndpoint(
       // Addressed by the STABLE asset id, not the slug: content stores the id,
@@ -902,8 +1128,6 @@ export function createMediaEndpoints(
           }
         }
 
-        const location = buildPublicObjectUrl(mediaConfig.publicUrl, targetKey);
-
         // Redirect (302) so a real `<img src>` / browser request follows
         // `location` to the public object URL. better-call applies response
         // headers from `ctx.responseHeaders` (and the status from `ctx.redirect`),
@@ -916,14 +1140,33 @@ export function createMediaEndpoints(
         // propagate to already-rendered pages within minutes, while the bytes
         // themselves stay long-cached at the CDN (each object key is unique per
         // version). The 302 is bodyless, so re-resolving it is cheap.
+        //
+        // The signed URL expires after at most 3600 s (less when the adapter
+        // declares a lower `signedUrl.maxExpiresIn`).
         ctx.responseHeaders.set('cache-control', 'public, max-age=300');
-        if (wireBooleanIsTrue(ctx.query?.download)) {
-          ctx.responseHeaders.set(
-            'content-disposition',
-            `attachment; filename="${asset.slug.replace(/["\\\r\n]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(asset.slug)}`,
+        const wantsDownload = wireBooleanIsTrue(ctx.query?.download);
+        const inlineSafe = INLINE_SAFE.test(asset.mimeType);
+        if (!wantsDownload && inlineSafe) {
+          return ctx.redirect(
+            buildPublicObjectUrl(mediaConfig.publicUrl, targetKey),
           );
         }
-        return ctx.redirect(location);
+        const safeName = asset.slug.replace(/["\\\r\n]/g, '_');
+        const disposition = `attachment;filename="${safeName}";filename*=UTF-8''${encodeURIComponent(asset.slug)}`;
+        const storage = getStorage(mediaConfig);
+        requireCapability(
+          storage,
+          (c) => c.signedUrl.supported && c.signedUrl.disposition,
+          'signed URLs with a bound content disposition',
+        );
+        const signed = await storage.signGet(targetKey, {
+          expiresIn: Math.min(
+            3600,
+            storage.capabilities.signedUrl.maxExpiresIn,
+          ),
+          responseContentDisposition: disposition,
+        });
+        return ctx.redirect(signed);
       },
     ),
 
@@ -1236,18 +1479,20 @@ export function createMediaEndpoints(
     // ========================================================================
 
     /**
-     * Prepares assets for client-side S3 upload and returns signed PUT URLs.
-     * Creates database records and generates time-limited S3 signed URLs for direct browser upload.
+     * Presigns direct browser uploads: validates the declared files, mints an
+     * asset id and an object key (`<id>/<slug of name>`) per file, and returns
+     * time-limited S3 PUT URLs plus a signed `token` per file. Writes no
+     * database row; the asset exists only after `completeUpload` verifies the
+     * landed object.
      *
      * @param files - Array of file metadata (name, size, type, optional variantOf).
      * @param folderId - Optional target folder id.
-     * @returns Array of assets with their signed upload URLs and headers, plus the `expiresAt` Date the signed URLs expire at.
+     * @returns `{ uploads: { id, objectKey, url, signedUrl, headers, token }[], expiresAt }`. PUT each file to its `signedUrl` with `headers`, then pass each `token` to `completeUpload`.
      * @throws TOO_MANY_FILES if file count exceeds the configured limit.
      * @throws FILE_TOO_LARGE if any file exceeds the configured size limit.
      * @throws INVALID_FILE_TYPE if any file has a disallowed MIME type.
      * @throws FOLDER_NOT_FOUND if folderId does not exist.
      * @throws ASSET_NOT_FOUND if a variantOf id does not reference an existing asset.
-     * @throws SLUG_GENERATION_FAILED if slug generation exhausts retry attempts.
      * @example await cmsClient.media.createSignedUpload({ files: [{ name: 'photo.jpg', size: 512000, type: 'image/jpeg' }] })
      */
     createSignedUpload: createCMSEndpoint(
@@ -1271,7 +1516,7 @@ export function createMediaEndpoints(
       },
       async (ctx) => {
         const { userId: actor, scope } = ctx.context;
-        const { folderId, prepared } = await prepareAssetUpload(db, {
+        const { folderId, prepared } = await prepareSignedUpload(db, {
           actor,
           files: ctx.body.files,
           folderId: ctx.body.folderId,
@@ -1281,55 +1526,143 @@ export function createMediaEndpoints(
           scope,
         });
 
-        const client = getS3Client();
-        const expiresAt = new Date(Date.now() + signedUrlExpiresIn * 1000);
-
-        await scopedInsertBatch(
-          db,
-          'cms.assets',
-          prepared.map((p) => ({
-            id: p.id,
-            slug: p.slug,
-            mime_type: p.file.type,
-            size: p.file.size,
-            object_key: p.objectKey,
-            status: 'private' as const,
-            folder_id: folderId ?? null,
-            variant_of: p.file.variantOf ?? null,
-            uploaded_by: actor ?? null,
-          })),
-          scope.assets,
+        const storage = getStorage(mediaConfig);
+        requireSignedUploadCapability(
+          storage,
+          prepared.map((p) => p.file.type),
         );
+        const key = await deriveUploadKey(mediaConfig);
+        const scopeId = await scopeFingerprint(scope.assets?.insertColumns);
+        const exp = Date.now() + signedUrlExpiresIn * 1000;
+        const expiresAt = new Date(exp);
 
-        const signedResults = await Promise.all(
+        const uploads = await Promise.all(
           prepared.map(async (p) => {
-            const signedUrl = await signPutObject(client, {
-              bucket: bucketName,
-              key: p.objectKey,
+            const signed = await storage.signPut(p.objectKey, {
               contentType: p.file.type,
               contentLength: p.file.size,
               expiresIn: signedUrlExpiresIn,
               acl: 'public-read',
             });
+            const token = await mintUploadToken(key, {
+              kind: 'upload',
+              id: p.id,
+              name: p.file.name,
+              objectKey: p.objectKey,
+              type: p.file.type,
+              size: p.file.size,
+              folderId: folderId ?? null,
+              variantOf: p.file.variantOf ?? null,
+              actor: actor ?? null,
+              scope: scopeId,
+              exp,
+            });
             return {
               id: p.id,
-              slug: p.slug,
               objectKey: p.objectKey,
-              // Direct object URL the asset will have once the PUT below succeeds
-              // (deterministic from the object key) — for INTERNAL/admin display
-              // like a media library, not for embedding in content (which
-              // references the asset id and serves through `/media/asset/{slug}`).
+              // Direct object URL the asset will have once the PUT and
+              // completeUpload succeed — for INTERNAL/admin display like a
+              // media library, not for embedding in content (which references
+              // the asset id and serves through `/media/asset/{id}`).
               url: buildPublicObjectUrl(mediaConfig.publicUrl, p.objectKey),
-              signedUrl,
-              headers: {
-                'Content-Type': p.file.type,
-                'x-amz-acl': 'public-read',
-              },
+              signedUrl: signed.url,
+              headers: signed.headers,
+              token,
             };
           }),
         );
 
-        return { assets: signedResults, expiresAt };
+        return { uploads, expiresAt };
+      },
+    ),
+
+    /**
+     * Creates the asset rows for objects the browser PUT to the URLs from
+     * `createSignedUpload`. Per token: verifies the signature, the caller's
+     * scope and user, HEADs the object (its length must equal and its content
+     * type must match the token's claim), sniffs the leading bytes of a
+     * declared image, mints the slug, and inserts the row as `private`. An
+     * object that fails the length, type, or sniff check is deleted.
+     * Idempotent per token: a second completion returns the existing asset.
+     * One entry's failure never fails the call; it is reported in `errors`.
+     * A bucket error while checking an entry's object is reported as
+     * UPLOAD_FAILED for that entry.
+     *
+     * @param uploads - One `{ token }` per file, from `createSignedUpload`.
+     * @returns `{ assets, errors }`: the created assets (same fields as a `listAssets` row) and `{ index, code, message }` per rejected entry, `index` into `uploads`.
+     * @example await cmsClient.media.completeUpload({ uploads: signed.uploads.map(({ token }) => ({ token })) })
+     */
+    completeUpload: createCMSEndpoint(
+      '/media/completeUpload',
+      {
+        method: 'POST',
+        body: z.object({
+          uploads: z
+            .array(z.object({ token: z.string().min(1) }))
+            .min(1)
+            .max(maxFiles),
+        }),
+        metadata: cmsMeta({}, { operation: 'create', ...MEDIA_META }),
+      },
+      async (ctx) => {
+        const { userId, scope } = ctx.context;
+        const actor = userId ?? null;
+        const key = await deriveUploadKey(mediaConfig);
+        const scopeId = await scopeFingerprint(scope.assets?.insertColumns);
+
+        const completed: ReturnType<typeof toAssetListItem>[] = [];
+        const errors: { index: number; code: string; message: string }[] = [];
+        const fail = (index: number, err: APIError) => {
+          errors.push({
+            index,
+            code:
+              (err as CMSError).cmsCode ?? err.body?.code ?? 'UPLOAD_FAILED',
+            message: err.message,
+          });
+        };
+
+        for (let i = 0; i < ctx.body.uploads.length; i++) {
+          const payload = await verifyUploadToken(
+            key,
+            ctx.body.uploads[i].token,
+          );
+          if (
+            !payload ||
+            payload.kind !== 'upload' ||
+            payload.scope !== scopeId ||
+            payload.actor !== actor
+          ) {
+            fail(i, new CMSError('UPLOAD_TOKEN_INVALID'));
+            continue;
+          }
+
+          try {
+            const rejected = await inspectUploadedObject(payload);
+            if (rejected) {
+              fail(i, rejected);
+              continue;
+            }
+            const row = await insertCompletedUpload(payload, scope);
+            completed.push(toAssetListItem(row, mediaConfig.publicUrl));
+          } catch (err) {
+            if (err instanceof APIError) {
+              fail(i, err);
+              continue;
+            }
+            if (err instanceof StorageError) {
+              fail(
+                i,
+                new CMSError('UPLOAD_FAILED', {
+                  message: `Could not verify the uploaded object for "${payload.name}"`,
+                }),
+              );
+              continue;
+            }
+            throw err;
+          }
+        }
+
+        return { assets: completed, errors };
       },
     ),
 
@@ -1338,13 +1671,14 @@ export function createMediaEndpoints(
      * the browser-callable half of `replaceAsset` (see its docstring for the
      * id/slug cache-bust rationale). Validates the target asset and the new
      * file's declared metadata the same way `replaceAsset` does, mints a new
-     * slug/objectKey, and returns a signed PUT URL. Unlike `createSignedUpload`,
-     * this does NOT write any database row — the target asset's row is only
+     * slug and an object key (`<fresh id>/<slug>`), and returns a signed PUT
+     * URL plus a signed `token` binding the asset, key, type, size, caller
+     * and scope. Writes no database row — the target asset's row is only
      * repointed once `commitReplace` is called after the client's PUT succeeds.
      *
      * @param assetId - The asset to replace.
      * @param file - The new file's metadata (name, size, type) — no bytes; the browser PUTs them straight to S3.
-     * @returns `{ assetId, slug, objectKey, url, signedUrl, headers, expiresAt }`.
+     * @returns `{ assetId, slug, objectKey, url, signedUrl, headers, expiresAt, token }`.
      * @throws ASSET_NOT_FOUND if the asset does not exist (in scope) or is archived.
      * @throws CANNOT_REPLACE_VARIANT if the target is itself a variant.
      * @throws FILE_TOO_LARGE / INVALID_FILE_TYPE on validation failure.
@@ -1354,9 +1688,7 @@ export function createMediaEndpoints(
      *   body: { assetId, file: { name: file.name, size: file.size, type: file.type } },
      * });
      * await fetch(signed.signedUrl, { method: 'PUT', headers: signed.headers, body: file });
-     * await cmsClient.media.commitReplace({
-     *   body: { assetId, objectKey: signed.objectKey, slug: signed.slug, mimeType: file.type, size: file.size },
-     * });
+     * await cmsClient.media.commitReplace({ body: { token: signed.token } });
      */
     createSignedReplace: createCMSEndpoint(
       '/media/createSignedReplace',
@@ -1373,7 +1705,7 @@ export function createMediaEndpoints(
         metadata: cmsMeta({}, { operation: 'update', ...MEDIA_META }),
       },
       async (ctx) => {
-        const { scope } = ctx.context;
+        const { userId: actor, scope } = ctx.context;
         const { assetId, file } = ctx.body;
 
         // 1. Load the target (live, in scope) — same guard as replaceAsset
@@ -1401,35 +1733,48 @@ export function createMediaEndpoints(
           throw new CMSError('CANNOT_REPLACE_VARIANT');
         }
 
-        // 3. Validate the declared file (size / MIME type). No bytes are held
-        //    here — this is the client signed-upload path, so magic-byte
-        //    sniffing is not possible server-side (see
-        //    assertDeclaredTypeMatchesBytes).
+        // 3. Validate the declared file (size / MIME type). The bytes are
+        //    checked by commitReplace once they have landed.
         validateFiles([{ name: file.name, size: file.size, type: file.type }], {
           maxFiles,
           maxFileSize,
           allowedMimeTypes,
         });
 
-        // 4. Mint a NEW slug/objectKey from the new file (cache-bust) — same
-        //    as replaceAsset step 4. The row itself is repointed later, by
-        //    commitReplace, once the client's PUT below has succeeded.
+        // 4. Mint a NEW slug and object key from the new file (cache-bust) —
+        //    same as replaceAsset step 4. The key carries a fresh id so two
+        //    concurrent replaces of one asset cannot overwrite each other's
+        //    bytes. The row itself is repointed later, by commitReplace.
         const slug = await generateUniqueSlug(db, file.name, undefined, scope);
         if (!slug) {
           throw new CMSError('SLUG_GENERATION_FAILED');
         }
-        const objectKey = buildObjectKey(slug);
+        const objectKey = `${newId('asset')}/${slug}`;
 
-        const client = getS3Client();
-        const expiresAt = new Date(Date.now() + signedUrlExpiresIn * 1000);
-        const signedUrl = await signPutObject(client, {
-          bucket: bucketName,
-          key: objectKey,
+        const storage = getStorage(mediaConfig);
+        requireSignedUploadCapability(storage, [file.type]);
+        const exp = Date.now() + signedUrlExpiresIn * 1000;
+        const expiresAt = new Date(exp);
+        const signed = await storage.signPut(objectKey, {
           contentType: file.type,
           contentLength: file.size,
           expiresIn: signedUrlExpiresIn,
           acl: 'public-read',
         });
+        const token = await mintUploadToken(
+          await deriveUploadKey(mediaConfig),
+          {
+            kind: 'replace',
+            assetId,
+            slug,
+            objectKey,
+            type: file.type,
+            size: file.size,
+            actor: actor ?? null,
+            scope: await scopeFingerprint(scope.assets?.insertColumns),
+            exp,
+          },
+        );
 
         return {
           assetId,
@@ -1439,99 +1784,90 @@ export function createMediaEndpoints(
           // AND commitReplace repoints the row — for INTERNAL/admin display
           // only (see createSignedUpload).
           url: buildPublicObjectUrl(mediaConfig.publicUrl, objectKey),
-          signedUrl,
-          headers: {
-            'Content-Type': file.type,
-            'x-amz-acl': 'public-read',
-          },
+          signedUrl: signed.url,
+          headers: signed.headers,
           expiresAt,
+          token,
         };
       },
     ),
 
     /**
      * Repoints an asset's row at the new object after the browser has PUT it
-     * to the signed URL from `createSignedReplace`. In one transaction the row
-     * is repointed, the asset's old variants are archived, and the superseded
-     * slug/objectKey is tombstoned (an immediately-archived asset row) so the
-     * pruning pass reclaims the old S3 object after the trash window. If the
-     * asset was archived or left scope since `createSignedReplace`, the new
-     * object is tombstoned instead, since no row will reference it.
+     * to the signed URL from `createSignedReplace`. The `token` names the
+     * asset, object key, slug, type and size; it must have been minted for
+     * the calling user and scope. The object is HEADed (length must equal and
+     * content type must match the token) and a declared image is sniffed
+     * before anything is written; a mismatching object is deleted. In one
+     * transaction the row is repointed, the asset's old variants are
+     * archived, and the superseded slug/objectKey is tombstoned (an
+     * immediately-archived asset row) so the pruning pass reclaims the old
+     * S3 object after the trash window. If the asset was archived or left
+     * scope since `createSignedReplace`, the new object is tombstoned
+     * instead, since no row will reference it. Idempotent per token: a
+     * commit whose row already points at the token's object returns that
+     * row unchanged.
      *
-     * @param assetId - The asset being replaced (must match the `createSignedReplace` call).
-     * @param objectKey - The `objectKey` returned by `createSignedReplace`.
-     * @param slug - The `slug` returned by `createSignedReplace`.
-     * @param mimeType - The uploaded file's declared MIME type.
-     * @param size - The uploaded file's declared byte size.
+     * @param token - The `token` returned by `createSignedReplace`.
      * @returns `{ asset }` with the same fields a `listAssets` row carries.
+     * @throws UPLOAD_TOKEN_INVALID if the token is malformed, expired, not a replace token, or was issued to another user or scope.
+     * @throws UPLOAD_NOT_FOUND if no object exists at the token's object key (the PUT to the signed URL never completed).
      * @throws ASSET_NOT_FOUND if the asset was archived / left scope since `createSignedReplace` (TOCTOU).
-     * @throws FILE_TOO_LARGE / INVALID_FILE_TYPE / TOO_MANY_FILES if mimeType/size fail the media config.
-     * @throws VALIDATION_ERROR if objectKey does not derive from slug, or the declared mimeType/size does not match the uploaded object.
-     * @throws UPLOAD_FAILED if no object exists at objectKey (the PUT to the signed URL never completed).
-     * @example await cmsClient.media.commitReplace({ body: { assetId, objectKey, slug, mimeType, size } })
+     * @throws FILE_TOO_LARGE / INVALID_FILE_TYPE / TOO_MANY_FILES if the token's type/size fail the media config, or the object's bytes contradict a declared image type.
+     * @throws VALIDATION_ERROR if the uploaded object's length or content type differs from the token.
+     * @example await cmsClient.media.commitReplace({ body: { token: signed.token } })
      */
     commitReplace: createCMSEndpoint(
       '/media/commitReplace',
       {
         method: 'POST',
-        body: z.object({
-          assetId: z.string().min(1),
-          objectKey: z.string().min(1),
-          slug: z.string().min(1),
-          mimeType: z.string().min(1),
-          size: z.number().int().positive(),
-        }),
+        body: z.object({ token: z.string().min(1) }),
         metadata: cmsMeta({}, { operation: 'update', ...MEDIA_META }),
       },
       async (ctx) => {
-        const { scope } = ctx.context;
-        const { assetId, objectKey, slug, mimeType, size } = ctx.body;
+        const { userId, scope } = ctx.context;
+
+        const payload = await verifyUploadToken(
+          await deriveUploadKey(mediaConfig),
+          ctx.body.token,
+        );
+        if (
+          !payload ||
+          payload.kind !== 'replace' ||
+          payload.scope !==
+            (await scopeFingerprint(scope.assets?.insertColumns)) ||
+          payload.actor !== (userId ?? null)
+        ) {
+          throw new CMSError('UPLOAD_TOKEN_INVALID');
+        }
+        const { assetId, objectKey, slug, type: mimeType, size } = payload;
 
         const now = new Date();
 
-        // The body is client-controlled: re-run the config validation
-        // createSignedReplace applied to the declared file.
+        // The media config may have changed since the token was minted.
         validateFiles([{ name: slug, size, type: mimeType }], {
           maxFiles,
           maxFileSize,
           allowedMimeTypes,
         });
 
-        // objectKey must be the key createSignedReplace issues for this slug;
-        // otherwise the caller could repoint the asset at any bucket key.
-        if (objectKey !== buildObjectKey(slug)) {
-          throw new APIError(400, {
-            code: 'VALIDATION_ERROR',
-            message:
-              'objectKey does not match the slug issued by createSignedReplace',
+        let rejected: APIError | null;
+        try {
+          rejected = await inspectUploadedObject({
+            name: slug,
+            objectKey,
+            type: mimeType,
+            size,
           });
+        } catch (err) {
+          if (err instanceof StorageError) {
+            throw new CMSError('UPLOAD_FAILED', {
+              message: 'Could not verify the uploaded object',
+            });
+          }
+          throw err;
         }
-
-        // The object must exist and match the declared length and type.
-        const head = await headObject(getS3Client(), {
-          bucket: bucketName,
-          key: objectKey,
-        });
-        if (!head) {
-          throw new CMSError('UPLOAD_FAILED', {
-            message: `No object at "${objectKey}"; the PUT to the signed URL did not complete`,
-          });
-        }
-        if (head.contentLength !== null && head.contentLength !== size) {
-          throw new APIError(400, {
-            code: 'VALIDATION_ERROR',
-            message: `Declared size ${size} does not match the uploaded object (${head.contentLength})`,
-          });
-        }
-        if (
-          head.contentType !== null &&
-          head.contentType.split(';')[0].trim() !== mimeType
-        ) {
-          throw new APIError(400, {
-            code: 'VALIDATION_ERROR',
-            message: `Declared MIME type "${mimeType}" does not match the uploaded object ("${head.contentType}")`,
-          });
-        }
+        if (rejected) throw rejected;
 
         // `.value` is set inside the transaction ONLY on the TOCTOU-rollback
         // branch, so the outer catch below knows to tombstone the just-PUT NEW
@@ -1583,6 +1919,18 @@ export function createMediaEndpoints(
               throw new CMSError('ASSET_NOT_FOUND', {
                 message: errorMessages.assetNotFound(assetId),
               });
+            }
+
+            // The row already points at this token's object: an earlier
+            // commit landed and its response was lost. The tombstone for
+            // `before` exists from that commit and would collide on
+            // assets_slug_unique if written again.
+            if (before.objectKey === objectKey) {
+              const [current] = await tx
+                .select()
+                .from(assets)
+                .where(and(...loadConditions));
+              return current;
             }
 
             const updateConditions: SQL[] = [
@@ -1735,7 +2083,7 @@ export function createMediaEndpoints(
         }),
         // Body takes in-process bytes (Blob/ArrayBuffer), which can't survive
         // the client's JSON serialization; browsers use the signed upload flow
-        // instead (createSignedUpload + uploadAssets' signed path).
+        // instead (createSignedUpload + completeUpload).
         metadata: cmsMeta(
           { scope: 'server' as const },
           { operation: 'create', ...MEDIA_META },
@@ -1769,7 +2117,7 @@ export function createMediaEndpoints(
           );
         }
 
-        const client = getS3Client();
+        const storage = getStorage(mediaConfig);
 
         const filesByIndex = new Map(files.map((f, i) => [i, f]));
 
@@ -1795,10 +2143,7 @@ export function createMediaEndpoints(
           const p = prepared[i];
           const file = filesByIndex.get(i)!;
           try {
-            await putObject(client, {
-              bucket: bucketName,
-              key: p.objectKey,
-              body: file.buffer,
+            await storage.put(p.objectKey, file.buffer, {
               contentType: file.type,
               contentLength: file.size,
               acl: 'public-read',
@@ -1808,7 +2153,7 @@ export function createMediaEndpoints(
             // channel: no definition-level onAPIError hook is reachable from a
             // handler-thrown CMSError (see CMSDefinition['onAPIError']).
             console.error('[cms:media] upload failed', err);
-            const status = err instanceof S3Error ? 500 : 0;
+            const status = err instanceof StorageError ? 500 : 0;
             throw new CMSError('UPLOAD_FAILED', {
               message: errorMessages.uploadFailed(file.name, status),
             });
@@ -1945,10 +2290,7 @@ export function createMediaEndpoints(
         // 5. PUT the new object FIRST — on failure the row is untouched, so the
         //    asset keeps serving its existing (still-present) object.
         try {
-          await putObject(getS3Client(), {
-            bucket: bucketName,
-            key: objectKey,
-            body: file.buffer,
+          await getStorage(mediaConfig).put(objectKey, file.buffer, {
             contentType: file.type,
             contentLength: measuredSize,
             acl: 'public-read',
@@ -1957,7 +2299,7 @@ export function createMediaEndpoints(
           // The raw S3 error must not reach the client; this log is the only
           // channel (see the uploadAssets catch block).
           console.error('[cms:media] upload failed', err);
-          const status = err instanceof S3Error ? 500 : 0;
+          const status = err instanceof StorageError ? 500 : 0;
           throw new CMSError('UPLOAD_FAILED', {
             message: errorMessages.uploadFailed(file.name, status),
           });

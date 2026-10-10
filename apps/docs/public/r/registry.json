@@ -15,7 +15,8 @@
         "input",
         "textarea",
         "select",
-        "checkbox"
+        "checkbox",
+        "media-picker"
       ],
       "files": [
         {
@@ -133,6 +134,50 @@
         {
           "path": "registry/editor-app.tsx",
           "type": "registry:block"
+        }
+      ]
+    },
+    {
+      "name": "media-library",
+      "type": "registry:ui",
+      "title": "Media Library",
+      "description": "Styled wrappers for every Media.* part plus MediaLibraryLayout. Does not wrap Media.Root.",
+      "dependencies": ["@createcms/react", "lucide-react"],
+      "registryDependencies": [
+        "button",
+        "input",
+        "select",
+        "dialog",
+        "alert",
+        "alert-dialog",
+        "progress",
+        "badge",
+        "breadcrumb"
+      ],
+      "files": [
+        {
+          "path": "registry/media-library.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "cssVars": {
+        "theme": {
+          "media-selection": "var(--ring)",
+          "media-drop": "var(--primary)"
+        }
+      }
+    },
+    {
+      "name": "media-picker",
+      "type": "registry:ui",
+      "title": "Media Picker",
+      "description": "Dialog control that owns its own Media.Root and returns one selected asset id.",
+      "dependencies": ["@createcms/react"],
+      "registryDependencies": ["media-library", "dialog", "button"],
+      "files": [
+        {
+          "path": "registry/media-picker.tsx",
+          "type": "registry:ui"
         }
       ]
     }

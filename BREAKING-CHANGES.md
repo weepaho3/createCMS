@@ -52,6 +52,29 @@ on, schema changes are picked up with `createcms generate` + a Drizzle migration
 
 ## Unreleased
 
+- **Browser uploads are a presign/complete protocol.** `createSignedUpload`
+  no longer creates rows: it returns
+  `{ uploads: [{ id, objectKey, url, signedUrl, headers, token }], expiresAt }`
+  (no `slug`). After the PUT, the browser calls
+  `completeUpload({ uploads: [{ token }] })`, which verifies the landed
+  object (length, content type, magic bytes of a declared image) and then
+  creates the row; the core client's `useUploadAssets` / `uploadState` do
+  this, and an entry is `success` only once `completeUpload` returns it.
+  New browser uploads are stored at the object key `<id>/<slug>` (the public
+  `url` becomes `<publicUrl>/<id>/<slug>`); existing rows keep their keys.
+  `createSignedReplace` returns a `token` and its object key is
+  `<fresh id>/<slug>`; `commitReplace` takes `{ token }` only (the
+  `assetId`, `objectKey`, `slug`, `mimeType`, `size` body is gone) and
+  throws `UPLOAD_NOT_FOUND` instead of `UPLOAD_FAILED` when the PUT never
+  landed. New error codes `UPLOAD_TOKEN_INVALID` (403) and
+  `UPLOAD_NOT_FOUND` (404); new optional `media.uploadSecret`. A PUT that is
+  never completed leaves an object in the bucket but no row.
+  → **Migration:** callers of the raw protocol read `uploads` instead of
+  `assets`, PUT, then call `completeUpload` with the tokens and read the
+  asset (including its `slug`) from its response; `commitReplace` callers
+  pass `{ token: signed.token }`. Set `media.uploadSecret` when the S3
+  credentials rotate (STS). The React hooks need no change.
+
 - **Releases are now scoped by the multi-tenant plugin.** `releases.ts`
   reads/writes (`createRelease`, `getRelease`, `listReleases`, `addToRelease`,
   `removeFromRelease`, `setReleaseItems`, `publishRelease`) all apply the
@@ -90,6 +113,33 @@ on, schema changes are picked up with `createcms generate` + a Drizzle migration
   or types change.
   → **Migration:** replace `useChildren(id).map((childId) => ...)` with
   `useChildren(id).map((child) => ... child.id ...)`; nothing else changes.
+
+- **`media.useUploadAssets()` is a byte-accurate ledger.** `totalProgress`
+  (0 to 100) is replaced by `progress: { loaded, total, fraction }` with
+  `fraction` 0 to 1, summed over bytes rather than averaged over files.
+  `isAborted` is removed. Per-file `status` ends in `success` (was `done`),
+  `error`, or `aborted` (was `error` with the message `Upload aborted.`);
+  `error` is `{ code, message }` instead of a string. Each entry carries
+  `id`, `file`, `size`, `type`, `loaded`, and `total`, and `progress` is
+  0 to 1. `files` accumulates across `upload()` calls until `reset()`, which
+  drops finished entries only. `upload()` resolves with that call's entries,
+  accepts `concurrency` (default 4) and `signal`, and PUTs at most
+  `concurrency` files at once. `client.media.uploadState` (vanilla) exposes
+  the same shape.
+  → **Migration:** read `progress.fraction * 100` instead of
+  `totalProgress`; match `status === 'success'` instead of `'done'`; treat
+  `status === 'aborted'` as cancelled rather than failed; read the new
+  asset from the array `upload()` resolves with (or from `files` by `id`)
+  and call `reset()` to clear finished rows.
+
+- **`@createcms/react`: `CmsMediaUploadState` and `CmsMediaUploadFileState`
+  mirror the new core shape.** `isAborted` and `totalProgress` are gone,
+  `progress` is `CmsMediaUploadProgress`, `status` is `CmsMediaUploadStatus`
+  (`success` instead of `done`, plus `aborted`), `error` on an entry is
+  `{ code, message }`, and `upload` returns `Promise<CmsMediaUploadFileState[]>`.
+  → **Migration:** update fakes and idle states to
+  `{ isUploading, files: [], progress: { loaded: 0, total: 0, fraction: 0 }, error, upload: async () => [], abort, reset }`
+  and any UI that read `totalProgress` or `status === 'done'`.
 
 ---
 
