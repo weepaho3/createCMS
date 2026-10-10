@@ -19,6 +19,8 @@
   --editor-hover: color-mix(in oklab, var(--muted-foreground) 40%, transparent);
   --editor-focus: var(--ring);
   --editor-drop: var(--primary);
+  --media-selection: var(--ring);
+  --media-drop: var(--primary);
 }
 
 .dark {
@@ -34,6 +36,8 @@
   --editor-hover: color-mix(in oklab, var(--muted-foreground) 40%, transparent);
   --editor-focus: var(--ring);
   --editor-drop: var(--primary);
+  --media-selection: var(--ring);
+  --media-drop: var(--primary);
 }
 
 html,
@@ -90,6 +94,8 @@ body {
   --color-editor-hover: var(--editor-hover);
   --color-editor-focus: var(--editor-focus);
   --color-editor-drop: var(--editor-drop);
+  --color-media-selection: var(--media-selection);
+  --color-media-drop: var(--media-drop);
   --color-fd-background: var(--background);
   --color-fd-foreground: var(--foreground);
   --color-fd-muted: var(--muted);

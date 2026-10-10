@@ -8,6 +8,7 @@ import type {
   CmsTemplatesClient,
   UseCmsFieldSourcesClient,
 } from '@createcms/react/editor/cms';
+import type { MediaClient } from '@createcms/react/media';
 
 import { Editor } from '@createcms/react/editor';
 import { Canvas } from '@createcms/react/editor/canvas';
@@ -55,7 +56,11 @@ const RESERVED_COLLECTIONS = new Set(['media', 'variables', 'templates']);
 
 export type CmsEditorMode = 'canvas' | 'form';
 
+type CmsMediaClient = UseCmsFieldSourcesClient['media'];
+
 export type CmsEditorClient = UseCmsFieldSourcesClient & {
+  /** The full `MediaClient` surface enables the media picker's folders and uploads. */
+  media: CmsMediaClient & Partial<MediaClient>;
   readonly [collection: string]: unknown;
 };
 
@@ -72,6 +77,19 @@ export type CmsEditorProps = {
   requireCommitMessage?: boolean;
   children?: React.ReactNode;
 };
+
+function isMediaClient(
+  media: CmsMediaClient & Partial<MediaClient>,
+): media is CmsMediaClient & MediaClient {
+  return (
+    typeof media.listFolders === 'function' &&
+    typeof media.createFolder === 'function' &&
+    typeof media.moveAssets === 'function' &&
+    typeof media.archiveAssets === 'function' &&
+    typeof media.updateAssetsStatus === 'function' &&
+    typeof media.useUploadAssets === 'function'
+  );
+}
 
 function readDocumentClient(
   client: CmsEditorClient,
@@ -323,7 +341,10 @@ function CmsEditor({
         onChange={doc.onChange}
         fields={cmsFields}
       >
-        <CmsSourcesProvider sources={sources}>
+        <CmsSourcesProvider
+          sources={sources}
+          media={isMediaClient(client.media) ? client.media : undefined}
+        >
           <EditorShell mode={mode} requireCommitMessage={requireCommitMessage}>
             {mode === 'form' ? (
               <FormSurface>{children}</FormSurface>
