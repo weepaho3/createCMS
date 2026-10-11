@@ -33,7 +33,7 @@ The following scenes take the stations in the order content flows through them.
 
 ## Scene 1: the book
 
-An entry is one book. In the database it is a row in `roots`: an id, the collection it belongs to, and its live slug. That row is the cover board at the back of the figure, with the collection and slug on its label plate.
+An entry is one book. In the database it is a row in `roots`: an id, the collection it belongs to, and its live slug. That row is the name plate on the front of the tray, carrying the collection and the slug.
 
 The content of the book is a tree of blocks. The root block is the page itself; its children are the sections, in order; a section can hold children of its own. In the figure the tray is the root block, the three compartments hold its children in `children` order, and the gallery compartment carries a smaller tray with its three image blocks.
 

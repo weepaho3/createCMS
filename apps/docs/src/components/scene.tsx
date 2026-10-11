@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from 'react';
 
 type SceneProps = {
-  /** Figure name under public/how-it-works, e.g. "scene-0". */
+  /** Figure name under public/how-it-works, e.g. 'scene-0'. */
   name: string;
   /** Accessible title of the figure. */
   title: string;
@@ -11,18 +11,18 @@ type SceneProps = {
   height?: number;
 };
 
-type Theme = "light" | "dark";
+type Theme = 'light' | 'dark';
 
 /** The site theme, read from the `dark` class next-themes keeps on <html>. */
 function useSiteTheme(): Theme {
-  const [theme, setTheme] = useState<Theme>("light");
+  const [theme, setTheme] = useState<Theme>('light');
   useEffect(() => {
     const root = document.documentElement;
     const read = () =>
-      setTheme(root.classList.contains("dark") ? "dark" : "light");
+      setTheme(root.classList.contains('dark') ? 'dark' : 'light');
     read();
     const observer = new MutationObserver(read);
-    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
     return () => observer.disconnect();
   }, []);
   return theme;
@@ -38,7 +38,7 @@ export function Scene({ name, title, height = 560 }: SceneProps) {
   const [initial] = useState(theme);
 
   useEffect(() => {
-    frame.current?.contentWindow?.postMessage({ theme }, "*");
+    frame.current?.contentWindow?.postMessage({ theme }, '*');
   }, [theme]);
 
   return (
@@ -48,11 +48,11 @@ export function Scene({ name, title, height = 560 }: SceneProps) {
       src={`/how-it-works/${name}.html?theme=${initial}`}
       loading="lazy"
       style={{
-        width: "100%",
+        width: '100%',
         height,
         border: 0,
-        display: "block",
-        margin: "1.5rem 0",
+        display: 'block',
+        margin: '1.5rem 0',
       }}
     />
   );
