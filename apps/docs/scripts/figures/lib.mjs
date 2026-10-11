@@ -1,16 +1,20 @@
 // Shared page wrapper for the "How createCMS works" figures.
 // Each figure is a standalone page under public/how-it-works, embedded by the <Scene> MDX component in an iframe.
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import * as k from "./kit/iso-kit.mjs";
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import * as k from './kit/iso-kit.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-export const OUT = join(HERE, "..", "..", "public", "how-it-works");
+export const OUT = join(HERE, '..', '..', 'public', 'how-it-works');
 
 /** The kit source inlined into a page so live code can call its functions. */
 export function kitScript() {
-  return readFileSync(join(HERE, "kit", "iso-kit.mjs"), "utf8").replace(/^export /gm, "");
+  return readFileSync(join(HERE, 'kit', 'iso-kit.mjs'), 'utf8').replace(
+    /^export /gm,
+    '',
+  );
 }
 
 // The theme follows the embedding page: `?theme=dark|light` on load, then `postMessage({ theme })` updates.
@@ -31,9 +35,17 @@ html, body { margin: 0; background: transparent; }
 
 export function writeScene(name, { title, body, script }) {
   mkdirSync(OUT, { recursive: true });
-  let html = k.pageHtml({ title, theme: "light", body, script: kitScript() + script, width: 720 });
-  html = html.replace("</style>", EMBED_CSS + "</style>").replace("</head>", `<script>${THEME_SCRIPT}</script></head>`);
+  let html = k.pageHtml({
+    title,
+    theme: 'light',
+    body,
+    script: kitScript() + script,
+    width: 720,
+  });
+  html = html
+    .replace('</style>', EMBED_CSS + '</style>')
+    .replace('</head>', `<script>${THEME_SCRIPT}</script></head>`);
   const file = join(OUT, `${name}.html`);
   writeFileSync(file, html);
-  console.log("wrote", file);
+  console.log('wrote', file);
 }

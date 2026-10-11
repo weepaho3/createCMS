@@ -1,56 +1,56 @@
 ---
 title: How createCMS works
-description: The data model and its database tables, told as a bookbinder's shop, one scene at a time.
+description: The data model and its database tables, explained on one machine, a multiplane animation camera, one scene at a time.
 ---
 
-createCMS stores content the way a careful bookbinder's shop would run: every entry is a book, every block is a printed sheet, every commit is a table of contents, and a branch is nothing more than a bookmark. This page walks through that shop station by station. Each scene zooms into one part of the model and names the database tables behind it, so by the end you can read the schema the way you read the shop.
+createCMS stores content the way an animation studio shoots a film on a multiplane camera. An entry is a film. Its blocks are cels, transparent sheets with a drawing on each, stacked on the camera's glass planes. A commit is one exposure: the camera photographs the stack, and the negative records exactly which cels were in it. A branch is a pointer clip at the end of a strip of exposed frames, and publishing threads a strip into the projector.
+
+This page walks through that one machine, part by part. Each scene zooms into one station, shows what moves, and names the database tables behind it, so by the end you can read the schema the way you read the camera.
 
 The scenes are interactive. Hover a part, or focus a figure and use the arrow keys.
 
-## The shop
+## The camera
 
-Here is the whole shop at a glance. The street is at the front: a shop window with the books that are live, and a door. Behind the counter lies the workshop that produces them. Hover a station, or press 1 to 7.
+Here is the whole machine. A column on a heavy foot carries three glass planes and, at the top, the camera pointing straight down at them. The cabinet of spare cels stands to the left. At the front, a developed film strip lies on a light table. The projector stands on its pedestal to the right. Hover a station, or press 1 to 5.
 
 <Scene
   name="scene-0"
-  title="Fig 0: the whole shop as a map, with seven numbered stations"
-  height={640}
+  title="Fig 0: the whole multiplane camera, with five numbered stations"
+  height={690}
 />
 
 The stations map onto the model like this:
 
-| Station                | In the model                                       | Tables                                    |
-| ---------------------- | -------------------------------------------------- | ----------------------------------------- |
-| 01 The books           | Entries of a collection                            | `roots`                                   |
-| 02 The press           | A change prints one new block version              | `block_versions`                          |
-| 03 The archive         | Every block version ever written                   | `block_versions`                          |
-| 04 The card index      | Commits, their snapshots, and the branches on them | `commits`, `commit_snapshots`, `branches` |
-| 05 The writing desk    | Merge requests and conflicts                       | `merge_requests`, `merge_conflicts`       |
-| 06 The binding machine | Publishing a branch                                | `publications`                            |
-| 07 The shop window     | What visitors read                                 | `getPublishedContent`                     |
+| Station             | In the model                                        | Tables                        |
+| ------------------- | --------------------------------------------------- | ----------------------------- |
+| 01 The cel cabinet  | Every block version ever written                    | `block_versions`              |
+| 02 The glass planes | One entry's block tree, a cel per block             | `roots`, `block_versions`     |
+| 03 The camera       | A commit: one exposure and its negative             | `commits`, `commit_snapshots` |
+| 04 The film strip   | The chain of commits, with a pointer clip per branch | `commits`, `branches`         |
+| 05 The projector    | A published branch, always showing its last frame   | `publications`                |
 
-The following scenes take the stations in the order content flows through them.
+The following scenes take the stations in the order content flows through them: cels on the planes, an exposure, the strip, the projector.
 
-## Scene 1: the book
+## Scene 1: the planes
 
-An entry is one book. In the database it is a row in `roots`: an id, the collection it belongs to, and its live slug. In the figure that row is the front cover with its name plate, `books` and `/handbook`.
+An entry is one film. In the database it is a row in `roots`: an id, the collection it belongs to, and its live slug. Everything the entry contains lies on the planes as cels.
 
-The content of the book is a tree of blocks, and the tree is where the metaphor earns its keep. The book itself is the root block. Its children are the chapters, in order. A chapter is a nested block: its children are the pages under its register tab. A page is a leaf block, a sheet with a title and a body and no children of its own. Hover the cover, a tab or a page, or walk the stack with the arrow keys.
+The content is a tree of blocks, and the planes are what make the tree visible. A block is a cel. A block that has children is a plane: its children lie on it, side by side, in `children` order. In the figure the hero cel fills the bottom plane, the text cel lies on the middle plane, and the top plane carries the gallery, whose three image cels lie on it in order. The entry's root block is the whole stack. Hover a cel, or walk through the blocks with the arrow keys.
 
 <Scene
   name="scene-1"
-  title="Fig 1: one entry as an open book, chapters as register tabs, pages as sheets"
-  height={600}
+  title="Fig 1: the three glass planes with one entry's cels on them, a cel per block"
+  height={620}
 />
 
-Every one of these, the book, each chapter and each page, is a row in `block_versions`. That row is the whole block: its `type`, its `properties` as JSON, the ordered `children` ids, and a `deleted` flag. The rows under the figure show the one you point at. Two things are worth noticing already:
+Every cel, the hero, the text, the gallery and each image, is a row in `block_versions`. That row is the whole block: its `type`, its `properties` as JSON, the ordered `children` ids, and a `deleted` flag. The rows under the figure show the one you point at. Two things are worth noticing already:
 
-- The tree is not stored as a nested document. Each block is its own row, and a parent only lists its children's ids. A chapter does not contain its pages, it names them. That is what lets a later commit replace one page without touching the chapter or the other pages, which the next scenes build on.
-- The root block is a block like any other, with the same kind of row. It carries the book's own properties, including the draft slug (`__slug`), which only becomes the live `roots.slug` when the branch is published.
+- The tree is not stored as a nested document. Each block is its own row, and a parent only lists its children's ids. The gallery does not contain its images, it names them, and they lie on its plane. That is what lets a later exposure swap one cel without touching the plane or the cels next to it, which the next scenes build on.
+- The root block is a block like any other, with the same kind of row. It carries the entry's own properties, including the draft slug (`__slug`), which only becomes the live `roots.slug` when the branch is published.
 
 <Callout type="info">
-  Scenes 2 to 10 follow: the press (one block version), the card index (commits
-  and snapshots), the bookmark (branches), working on a branch, divergence, the
-  merge, the shop window (publishing), reading fast (the snapshot cache), and
-  turning back (revert).
+  Scenes 2 to 9 follow: the cel cabinet (one block version, and a deletion),
+  the exposure (commits and snapshots, and why only one cel is redrawn), the
+  film strip (branches), two strips (divergence), the merge, the projector
+  (publishing), showing fast (the snapshot cache), and turning back (revert).
 </Callout>
