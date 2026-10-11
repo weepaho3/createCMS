@@ -47,6 +47,7 @@ export function Scene({ name, title, height = 560 }: SceneProps) {
       title={title}
       src={`/how-it-works/${name}.html?theme=${initial}`}
       loading="lazy"
+      sandbox="allow-scripts"
       style={{
         width: '100%',
         height,
