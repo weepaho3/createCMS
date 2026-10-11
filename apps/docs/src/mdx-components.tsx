@@ -1,14 +1,15 @@
-import type { MDXComponents } from 'mdx/types';
+import type { MDXComponents } from "mdx/types";
 
-import defaultMdxComponents from 'fumadocs-ui/mdx';
+import defaultMdxComponents from "fumadocs-ui/mdx";
 
-import { APIMethod } from './components/api-method';
+import { APIMethod } from "./components/api-method";
 import {
   ComponentExample,
   ComponentPreview,
-} from './components/component-preview';
-import { ImageZoom } from './components/image-zoom';
-import { UserNavDemo } from './components/user-nav-demo';
+} from "./components/component-preview";
+import { ImageZoom } from "./components/image-zoom";
+import { Scene } from "./components/scene";
+import { UserNavDemo } from "./components/user-nav-demo";
 
 export function getMDXComponents(components?: MDXComponents): MDXComponents {
   return {
@@ -17,6 +18,7 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     ComponentPreview,
     ComponentExample,
     UserNavDemo,
+    Scene,
     img: (props) => <ImageZoom {...(props as any)} />,
     ...components,
   };

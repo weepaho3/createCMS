@@ -1,0 +1,56 @@
+---
+title: How createCMS works
+description: The data model and its database tables, told as a bookbinder's shop, one scene at a time.
+---
+
+createCMS stores content the way a careful bookbinder's shop would run: every entry is a book, every block is a printed sheet, every commit is a table of contents, and a branch is nothing more than a bookmark. This page walks through that shop station by station. Each scene zooms into one part of the model and names the database tables behind it, so by the end you can read the schema the way you read the shop.
+
+The scenes are interactive. Hover a part, or focus a figure and use the arrow keys.
+
+## The shop
+
+Here is the whole shop at a glance. The street is at the front: a shop window with the books that are live, and a door. Behind the counter lies the workshop that produces them. Hover a station, or press 1 to 7.
+
+<Scene
+  name="scene-0"
+  title="Fig 0: the whole shop as a map, with seven numbered stations"
+  height={640}
+/>
+
+The stations map onto the model like this:
+
+| Station                | In the model                                       | Tables                                    |
+| ---------------------- | -------------------------------------------------- | ----------------------------------------- |
+| 01 The books           | Entries of a collection                            | `roots`                                   |
+| 02 The press           | A change prints one new block version              | `block_versions`                          |
+| 03 The archive         | Every block version ever written                   | `block_versions`                          |
+| 04 The card index      | Commits, their snapshots, and the branches on them | `commits`, `commit_snapshots`, `branches` |
+| 05 The writing desk    | Merge requests and conflicts                       | `merge_requests`, `merge_conflicts`       |
+| 06 The binding machine | Publishing a branch                                | `publications`                            |
+| 07 The shop window     | What visitors read                                 | `getPublishedContent`                     |
+
+The following scenes take the stations in the order content flows through them.
+
+## Scene 1: the book
+
+An entry is one book. In the database it is a row in `roots`: an id, the collection it belongs to, and its live slug. That row is the cover board at the back of the figure, with the collection and slug on its label plate.
+
+The content of the book is a tree of blocks. The root block is the page itself; its children are the sections, in order; a section can hold children of its own. In the figure the tray is the root block, the three compartments hold its children in `children` order, and the gallery compartment carries a smaller tray with its three image blocks.
+
+<Scene
+  name="scene-1"
+  title="Fig 1: one entry as a tray of nested compartments, one card per block"
+  height={600}
+/>
+
+Every card is a row in `block_versions`. That row is the whole block: its `type`, its `properties` as JSON, the ordered `children` ids, and a `deleted` flag. Hover a card and the rows under the figure show what it stores. Two things are worth noticing already:
+
+- The tree is not stored as a nested document. Each block is its own row, and the parent only lists its children's ids. That is what lets a later commit replace one block without touching the others, which the next scenes build on.
+- The root block is a block like any other, with the same kind of row. It carries the page's own properties, including the draft slug (`__slug`), which only becomes the live `roots.slug` when the branch is published.
+
+<Callout type="info">
+  Scenes 2 to 10 follow: the press (one block version), the card index (commits
+  and snapshots), the bookmark (branches), working on a branch, divergence, the
+  merge, the shop window (publishing), reading fast (the snapshot cache), and
+  turning back (revert).
+</Callout>

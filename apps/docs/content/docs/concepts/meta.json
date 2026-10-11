@@ -2,6 +2,7 @@
   "title": "Core Concepts",
   "icon": "Lightbulb",
   "pages": [
+    "how-it-works",
     "collections",
     "blocks",
     "media",
