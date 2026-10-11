@@ -33,20 +33,20 @@ The following scenes take the stations in the order content flows through them.
 
 ## Scene 1: the book
 
-An entry is one book. In the database it is a row in `roots`: an id, the collection it belongs to, and its live slug. That row is the name plate on the front of the tray, carrying the collection and the slug.
+An entry is one book. In the database it is a row in `roots`: an id, the collection it belongs to, and its live slug. In the figure that row is the front cover with its name plate, `books` and `/handbook`.
 
-The content of the book is a tree of blocks. The root block is the page itself; its children are the sections, in order; a section can hold children of its own. In the figure the tray is the root block, the three compartments hold its children in `children` order, and the gallery compartment carries a smaller tray with its three image blocks.
+The content of the book is a tree of blocks, and the tree is where the metaphor earns its keep. The book itself is the root block. Its children are the chapters, in order. A chapter is a nested block: its children are the pages under its register tab. A page is a leaf block, a sheet with a title and a body and no children of its own. Hover the cover, a tab or a page, or walk the stack with the arrow keys.
 
 <Scene
   name="scene-1"
-  title="Fig 1: one entry as a tray of nested compartments, one card per block"
+  title="Fig 1: one entry as an open book, chapters as register tabs, pages as sheets"
   height={600}
 />
 
-Every card is a row in `block_versions`. That row is the whole block: its `type`, its `properties` as JSON, the ordered `children` ids, and a `deleted` flag. Hover a card and the rows under the figure show what it stores. Two things are worth noticing already:
+Every one of these, the book, each chapter and each page, is a row in `block_versions`. That row is the whole block: its `type`, its `properties` as JSON, the ordered `children` ids, and a `deleted` flag. The rows under the figure show the one you point at. Two things are worth noticing already:
 
-- The tree is not stored as a nested document. Each block is its own row, and the parent only lists its children's ids. That is what lets a later commit replace one block without touching the others, which the next scenes build on.
-- The root block is a block like any other, with the same kind of row. It carries the page's own properties, including the draft slug (`__slug`), which only becomes the live `roots.slug` when the branch is published.
+- The tree is not stored as a nested document. Each block is its own row, and a parent only lists its children's ids. A chapter does not contain its pages, it names them. That is what lets a later commit replace one page without touching the chapter or the other pages, which the next scenes build on.
+- The root block is a block like any other, with the same kind of row. It carries the book's own properties, including the draft slug (`__slug`), which only becomes the live `roots.slug` when the branch is published.
 
 <Callout type="info">
   Scenes 2 to 10 follow: the press (one block version), the card index (commits
