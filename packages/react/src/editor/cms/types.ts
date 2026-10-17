@@ -1,12 +1,12 @@
 import type {
-  BlockProperty,
+  AnyCollectionDefinition,
   BlockTreeNode,
-  LinkValue,
   ResolvedLink,
   ResolvedReference,
 } from '@createcms/schema';
 import type { ReactNode } from 'react';
 
+import type { EditorDocument, Field } from '../core';
 import type { CmsDocumentError } from './errors';
 
 export type { CmsDocumentError, CmsFieldError } from './errors';
@@ -62,33 +62,47 @@ export type CmsTemplatesClient = {
   }): Promise<{ defaults: Record<string, string> }>;
 };
 
+/**
+ * Display resolvers per field kind for `Canvas.Root`'s `resolve`:
+ * references from the `getBlockTree` sidecar or `resolveTree`, links to
+ * their current href, `{{variables}}` in text filled in.
+ */
 export type CmsDocumentResolve = {
-  reference?: (
-    rootId: string,
-    spec: BlockProperty,
-  ) => ResolvedReference | Promise<ResolvedReference> | undefined;
-  link?: (
-    value: LinkValue,
-    spec: BlockProperty,
-  ) => ResolvedLink | Promise<ResolvedLink> | undefined;
-  string?: (
-    value: string,
-    spec: BlockProperty,
+  reference: (
+    value: unknown,
+    spec: Field,
+  ) => ResolvedReference | Promise<ResolvedReference | undefined> | undefined;
+  link: (
+    value: unknown,
+    spec: Field,
+  ) => ResolvedLink | Promise<ResolvedLink | undefined> | undefined;
+  text: (value: unknown, spec: Field) => string | Promise<string> | undefined;
+  textarea: (
+    value: unknown,
+    spec: Field,
+  ) => string | Promise<string> | undefined;
+  richText: (
+    value: unknown,
+    spec: Field,
   ) => string | Promise<string> | undefined;
 };
 
 export type UseCmsDocumentOptions = {
   client: CmsDocumentClient;
+  /** The collection definition of the document; maps trees to editor documents. */
+  definition: AnyCollectionDefinition;
   rootId: string;
   branchId: string;
   message?: () => string | undefined;
   includeReferencePreviews?: boolean;
   templates?: CmsTemplatesClient;
+  /** Collection name for `templates.getTemplateDefaults`. */
   collection?: string;
 };
 
 export type UseCmsDocumentResult = {
-  tree: BlockTreeNode | null;
+  /** The loaded document in editor shape, `null` while loading. */
+  doc: EditorDocument | null;
   key: string;
   headCommitId: string | null;
   resolve: CmsDocumentResolve;
@@ -96,13 +110,14 @@ export type UseCmsDocumentResult = {
   error: CmsDocumentError | null;
   save: {
     (
-      tree: BlockTreeNode,
+      doc: EditorDocument,
       meta?: { message?: string; force?: boolean },
     ): Promise<void>;
     (force: { force: true }): Promise<void>;
   };
   reload: () => Promise<void>;
-  onChange: (change: { getTree: () => BlockTreeNode }) => void;
+  onChange: (change: { getDocument: () => EditorDocument }) => void;
+  /** Template defaults for a new block of `blockType`, in editor shape. */
   onAdd: (blockType: string) => Promise<Record<string, unknown>>;
 };
 

@@ -2,11 +2,11 @@ import { cleanup, render, waitFor } from '@testing-library/react';
 import { act, type ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { EditorStore } from '../store';
+import type { EditorStore } from '../core/store';
 
 import { useEditorContext } from '../context';
+import { makeDoc, storeSchema } from '../core/store/fixtures';
 import { Editor } from '../index';
-import { makeTree, storeSchema } from '../store/fixtures';
 
 afterEach(cleanup);
 
@@ -53,7 +53,7 @@ function renderFrame(options: {
   const compile =
     options.render ?? (async () => options.html ?? '<p>hello</p>');
   const utils = render(
-    <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+    <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
       <StoreProbe probe={probe} />
       {options.extra}
       <Editor.FramePreview
@@ -147,6 +147,32 @@ describe('Editor.FramePreview in a real browser', () => {
       const local = store.getState().selection.local;
       expect(local?.selected).toBe('h1');
       expect(local?.focus).toEqual({ blockId: 'h1', key: 'text' });
+    });
+  });
+
+  it('selectable click on a slot selects its block without a field focus', async () => {
+    const { host, store } = renderFrame({
+      html:
+        '<section data-editor-block="sec1">' +
+        '<div data-editor-slot="children"><p id="gap">gap</p></div>' +
+        '</section>',
+      selectable: true,
+    });
+    await waitFor(
+      () => {
+        expect(
+          frontFrame(host).contentDocument?.querySelector('#gap'),
+        ).not.toBeNull();
+      },
+      { timeout: 5000 },
+    );
+    const gap = frontFrame(host).contentDocument?.querySelector('#gap');
+    if (!gap) throw new Error('missing slot child');
+    (gap as HTMLElement).click();
+    await waitFor(() => {
+      const local = store.getState().selection.local;
+      expect(local?.selected).toBe('sec1');
+      expect(local?.focus).toBeNull();
     });
   });
 

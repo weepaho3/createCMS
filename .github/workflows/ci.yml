@@ -410,6 +410,9 @@ jobs:
       - name: Build
         run: bun run build
 
+      - name: Test docs app
+        run: bunx turbo run test --filter=docs
+
       # env-10: `next build` never connects to the database, so a stale generated
       # schema (env-01) compiles green yet 500s at runtime. Boot the built example
       # — it runs on in-process PGlite and seeds on first request, so no database
@@ -455,6 +458,12 @@ jobs:
             bunx --yes publint "$pkg"
             bunx --yes @arethetypeswrong/cli --pack "$pkg" --profile esm-only
           done
+
+      # The built `@createcms/react/editor/core` entry has no runtime
+      # dependency and no directive, and loads in Node with every bare import
+      # refused (servers, workers and RSC import it without React).
+      - name: Check React-free editor core
+        run: node packages/react/scripts/check-core-dist.mjs
 
   # The one status check branch protection should require. Green only when
   # every needed job succeeded; red on any failure, skip, or cancellation —

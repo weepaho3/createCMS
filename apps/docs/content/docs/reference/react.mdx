@@ -40,7 +40,7 @@ function BlocksRenderer(props: {
 
 The optional `diff` prop turns on diff-aware rendering for an annotated tree from `getDiff({ view: 'tree' })`: changed blocks get wrapped in a `<div data-diff="added | deleted | modified | moved">` element (or your own `wrap` callback). See [Review changes visually](/docs/guides/visual-diff).
 
-The optional `edit` prop selects how the `edit` prop of every block component is filled: absent → `NO_EDIT` (no anchors in the HTML); `'preview'` → `data-editor-block` / `data-editor-field` anchors on every block of the tree (referenced trees never get anchors), so an HTML preview can map a click back to a block and a field. `edit.active` is `false` in both cases.
+The optional `edit` prop selects how the `edit` prop of every block component is filled: absent → `NO_EDIT` (no anchors in the HTML); `'preview'` → `data-editor-block` / `data-editor-field` anchors on every block of the tree, plus `data-editor-slot` on `edit.slot.children` for blocks with `allowChildren` (referenced trees never get anchors), so an HTML preview can map a click back to a block, a field and a slot. `edit.active` is `false` in both cases.
 
 ### `createContentRenderer`
 
@@ -70,12 +70,14 @@ type BlockComponentProps = {
 type EditAttrs = {
   'data-editor-block'?: string;
   'data-editor-field'?: string;
+  'data-editor-slot'?: string;
 };
 
 type EditProps = {
   active: boolean; // true only inside an interactive editor canvas
   block: EditAttrs;
   field: { [key: string]: EditAttrs | undefined };
+  slot?: { [name: string]: EditAttrs | undefined }; // spread slot.children where children render
 };
 ```
 

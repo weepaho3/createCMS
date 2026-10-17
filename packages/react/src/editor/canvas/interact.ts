@@ -1,4 +1,4 @@
-import type { EditorStore } from '../store';
+import type { EditorStore } from '../core/store';
 
 import { frameClickAnchor } from '../preview/frame-anchor';
 

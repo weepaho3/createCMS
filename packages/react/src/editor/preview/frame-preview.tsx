@@ -1,7 +1,6 @@
-import type { BlockTreeNode } from '@createcms/schema';
-
 import * as React from 'react';
 
+import type { EditorDocument } from '../core/document';
 import type { FramePreviewAnchor } from './frame-anchor';
 import type { FramePreviewIssue } from './frame-issues';
 
@@ -24,7 +23,7 @@ export type EditorFramePreviewProps = Omit<
   'children' | 'title'
 > & {
   render: (
-    tree: BlockTreeNode,
+    doc: EditorDocument,
     ctx: { signal: AbortSignal },
   ) => Promise<string | Blob>;
   debounceMs?: number;
@@ -204,7 +203,7 @@ export function EditorFramePreview({
 
           let result: string | Blob;
           try {
-            result = await renderRef.current(storeRef.current.getTree(), {
+            result = await renderRef.current(storeRef.current.getDocument(), {
               signal: ac.signal,
             });
           } catch (caught) {

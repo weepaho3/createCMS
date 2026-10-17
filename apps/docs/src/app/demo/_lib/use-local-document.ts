@@ -1,15 +1,15 @@
 'use client';
 
-import type { BlockTreeNode } from '@createcms/core';
+import type { EditorDocument } from '@createcms/react/editor/core';
 
 import * as React from 'react';
 
-export function useLocalDocument(initial: BlockTreeNode) {
+export function useLocalDocument(initial: EditorDocument) {
   const [saved, setSaved] = React.useState(initial);
   const latest = React.useRef(initial);
   const onChange = React.useCallback(
-    (change: { getTree: () => BlockTreeNode }) => {
-      latest.current = change.getTree();
+    (change: { getDocument: () => EditorDocument }) => {
+      latest.current = change.getDocument();
     },
     [],
   );

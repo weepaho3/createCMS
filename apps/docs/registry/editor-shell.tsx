@@ -6,7 +6,6 @@
 
 import {
   Editor,
-  groupPaletteItems,
   useAnyBlock,
   useBlockActions,
   useChildren,
@@ -18,6 +17,7 @@ import {
   useSelection,
 } from '@createcms/react/editor';
 import { Canvas } from '@createcms/react/editor/canvas';
+import { groupPaletteItems } from '@createcms/react/editor/core';
 import {
   BoxIcon,
   CopyIcon,
@@ -317,8 +317,8 @@ function EditorAddBlockDialog() {
           <CommandEmpty>No blocks found.</CommandEmpty>
           {groups.map((group) => (
             <CommandGroup
-              key={group.group ?? 'ungrouped'}
-              heading={group.group ?? 'Blocks'}
+              key={group.category ?? 'ungrouped'}
+              heading={group.category ?? 'Blocks'}
             >
               {group.items.map((item) => {
                 const Icon = blockTypeIcon(item.type);
@@ -328,7 +328,7 @@ function EditorAddBlockDialog() {
                 return (
                   <CommandItem
                     key={item.type}
-                    value={`${item.label} ${item.type} ${group.group ?? ''}`}
+                    value={`${item.label} ${item.type} ${group.category ?? ''}`}
                     disabled={!allowed}
                     onSelect={() => {
                       const id = editor.add(item.type, {
@@ -547,10 +547,10 @@ function EditorPalette({ className, ...props }: React.ComponentProps<'div'>) {
       </SidebarGroupAction>
       <SidebarGroupContent>
         {groups.map((group) => (
-          <div key={group.group ?? 'ungrouped'} className="mb-2">
-            {group.group ? (
+          <div key={group.category ?? 'ungrouped'} className="mb-2">
+            {group.category ? (
               <p className="text-sidebar-foreground/70 px-2 py-1 text-xs">
-                {group.group}
+                {group.category}
               </p>
             ) : null}
             <SidebarMenu>

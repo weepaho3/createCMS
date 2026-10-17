@@ -4,7 +4,7 @@
  * unused `@ts-expect-error` fails the type-check gate.
  */
 import type { EditorFactory, TypedBlockActions } from '../factory';
-import { storeSchema } from '../store/fixtures';
+import { storeSchema } from '../core/store/fixtures';
 import type { EditorAddBlockProps, EditorOutlineItemProps } from './types';
 
 type Equal<A, B> =

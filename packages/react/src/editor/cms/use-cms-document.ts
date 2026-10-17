@@ -1,5 +1,5 @@
 import type {
-  BlockProperty,
+  AnyCollectionDefinition,
   BlockTreeNode,
   LinkValue,
   ResolvedLink,
@@ -8,6 +8,7 @@ import type {
 
 import * as React from 'react';
 
+import type { EditorDocument, Field } from '../core';
 import type {
   CmsDocumentResolve,
   CmsDocumentStatus,
@@ -15,7 +16,14 @@ import type {
   UseCmsDocumentResult,
 } from './types';
 
+import { createCmsAdapter } from './adapter';
 import { HEAD_MISMATCH, readCmsError } from './errors';
+import { cmsValueToEditor, fromEditor } from './mapping';
+
+/** The createcms error behind an adapter error (its `cause`), for `readCmsError`. */
+function causeOf(err: unknown): unknown {
+  return err instanceof Error && err.cause !== undefined ? err.cause : err;
+}
 
 export const CMS_RESOLVE_DEBOUNCE_MS = 100;
 
@@ -23,19 +31,19 @@ type PendingResolve =
   | {
       kind: 'reference';
       raw: string;
-      spec: BlockProperty;
+      spec: Field;
       resolve: (value: ResolvedReference | undefined) => void;
     }
   | {
       kind: 'link';
       raw: LinkValue;
-      spec: BlockProperty;
+      spec: Field;
       resolve: (value: ResolvedLink | undefined) => void;
     }
   | {
       kind: 'string';
       raw: string;
-      spec: BlockProperty;
+      spec: Field;
       resolve: (value: string | undefined) => void;
     };
 
@@ -49,15 +57,21 @@ function isForceArg(value: unknown): value is { force: true } {
   );
 }
 
-function readReferenceCollection(spec: BlockProperty): string {
-  const collection = (spec as { collection?: string }).collection;
-  return typeof collection === 'string' ? collection : '';
+function readReferenceCollection(spec: Field): string {
+  return spec.type === 'reference' ? spec.collection : '';
+}
+
+/** The id inside a reference value (`{ id }`), or `undefined`. */
+function referenceId(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const id = (value as { id?: unknown }).id;
+  return typeof id === 'string' && id !== '' ? id : undefined;
 }
 
 function sidecarReference(
   rootId: string,
   tree: BlockTreeNode,
-  spec: BlockProperty,
+  spec: Field,
 ): ResolvedReference {
   const properties =
     tree.properties && typeof tree.properties === 'object'
@@ -127,8 +141,20 @@ function createResolveObject(
     }, CMS_RESOLVE_DEBOUNCE_MS);
   };
 
+  const resolveString = (value: unknown, spec: Field) => {
+    if (typeof value !== 'string') return undefined;
+    const cached = stringCacheRef.current.get(value);
+    if (cached !== undefined) return cached;
+    return new Promise<string | undefined>((resolve) => {
+      pendingRef.current.push({ kind: 'string', raw: value, spec, resolve });
+      scheduleFlush();
+    }) as Promise<string>;
+  };
+
   return {
-    reference(rootId, spec) {
+    reference(value, spec) {
+      const rootId = referenceId(value);
+      if (rootId === undefined) return undefined;
       const sidecar = sidecarRef.current.get(rootId);
       if (sidecar) {
         return sidecarReference(rootId, sidecar, spec);
@@ -141,24 +167,21 @@ function createResolveObject(
           resolve,
         });
         scheduleFlush();
-      }) as Promise<ResolvedReference>;
+      });
     },
     link(value, spec) {
-      const cached = linkCacheRef.current.get(JSON.stringify(value));
+      if (typeof value !== 'object' || value === null) return undefined;
+      const link = value as LinkValue;
+      const cached = linkCacheRef.current.get(JSON.stringify(link));
       if (cached) return cached;
       return new Promise<ResolvedLink | undefined>((resolve) => {
-        pendingRef.current.push({ kind: 'link', raw: value, spec, resolve });
+        pendingRef.current.push({ kind: 'link', raw: link, spec, resolve });
         scheduleFlush();
-      }) as Promise<ResolvedLink>;
+      });
     },
-    string(value, spec) {
-      const cached = stringCacheRef.current.get(value);
-      if (cached !== undefined) return cached;
-      return new Promise<string | undefined>((resolve) => {
-        pendingRef.current.push({ kind: 'string', raw: value, spec, resolve });
-        scheduleFlush();
-      }) as Promise<string>;
-    },
+    text: resolveString,
+    textarea: resolveString,
+    richText: resolveString,
   } satisfies CmsDocumentResolve;
 }
 
@@ -193,6 +216,9 @@ export function useCmsDocument(
   options: UseCmsDocumentOptions,
 ): UseCmsDocumentResult {
   const clientRef = React.useRef(options.client);
+  const definitionRef = React.useRef<AnyCollectionDefinition>(
+    options.definition,
+  );
   const {
     rootId,
     branchId,
@@ -202,7 +228,7 @@ export function useCmsDocument(
     collection,
   } = options;
 
-  const [tree, setTree] = React.useState<BlockTreeNode | null>(null);
+  const [doc, setDoc] = React.useState<EditorDocument | null>(null);
   const [headCommitId, setHeadCommitId] = React.useState<string | null>(null);
   const [key, setKey] = React.useState('');
   const [status, setStatus] = React.useState<CmsDocumentStatus>('loading');
@@ -211,7 +237,7 @@ export function useCmsDocument(
   >(null);
 
   const lastTreeRef = React.useRef<BlockTreeNode | null>(null);
-  const pendingForceTreeRef = React.useRef<BlockTreeNode | null>(null);
+  const pendingForceDocRef = React.useRef<EditorDocument | null>(null);
   const generationRef = React.useRef(0);
 
   const sidecarRef = React.useRef(new Map<string, BlockTreeNode>());
@@ -326,35 +352,28 @@ export function useCmsDocument(
     );
 
     try {
-      const [blockResult, branchResult] = await Promise.all([
-        clientRef.current.getBlockTree({
-          query: {
-            rootId,
-            branchId,
-            raw: true,
-            includeReferencePreviews,
-          },
-        }),
-        clientRef.current.getBranch({ query: { branchId } }),
-      ]);
+      const snapshot = await createCmsAdapter({
+        client: clientRef.current,
+        definition: definitionRef.current,
+        branchId,
+        includeReferencePreviews,
+      }).loadSnapshot(rootId);
       if (gen !== generationRef.current) return;
 
-      const head = branchResult.headCommitId;
-      setTree(blockResult.tree);
+      const head = snapshot.headCommitId;
+      setDoc(snapshot.doc);
       setHeadCommitId(head);
       setKey(`${rootId}:${branchId}:${head}`);
-      lastTreeRef.current = blockResult.tree;
-      pendingForceTreeRef.current = null;
+      lastTreeRef.current = snapshot.tree;
+      pendingForceDocRef.current = null;
 
-      sidecarRef.current = new Map(
-        Object.entries(blockResult.references ?? {}),
-      );
+      sidecarRef.current = new Map(Object.entries(snapshot.references));
       setStatus('idle');
       setError(null);
     } catch (err) {
       if (gen !== generationRef.current) return;
       setStatus('error');
-      setError(readCmsError(err));
+      setError(readCmsError(causeOf(err)));
     }
   }, [rootId, branchId, includeReferencePreviews]);
 
@@ -376,20 +395,20 @@ export function useCmsDocument(
 
   const saveImpl = React.useCallback(
     async (
-      treeOrForce: BlockTreeNode | { force: true },
+      docOrForce: EditorDocument | { force: true },
       meta?: { message?: string; force?: boolean },
     ): Promise<void> => {
-      let tree: BlockTreeNode;
+      let doc: EditorDocument;
       let force: boolean;
-      if (isForceArg(treeOrForce)) {
-        const pending = pendingForceTreeRef.current;
+      if (isForceArg(docOrForce)) {
+        const pending = pendingForceDocRef.current;
         if (!pending) {
-          throw new Error('useCmsDocument: no tree to force-save');
+          throw new Error('useCmsDocument: no document to force-save');
         }
-        tree = pending;
+        doc = pending;
         force = true;
       } else {
-        tree = treeOrForce;
+        doc = docOrForce;
         force = meta?.force === true;
       }
 
@@ -399,27 +418,28 @@ export function useCmsDocument(
 
       setStatus('saving');
       try {
-        const result = await clientRef.current.updateBlocks({
-          body: {
-            rootId,
-            branchId,
-            tree,
-            message: bodyMessage,
-            expectedHeadCommitId:
-              force || headCommitId === null ? undefined : headCommitId,
-          },
+        const adapter = createCmsAdapter({
+          client: clientRef.current,
+          definition: definitionRef.current,
+          branchId,
         });
-        setHeadCommitId(result.commit.id);
-        lastTreeRef.current = tree;
-        pendingForceTreeRef.current = null;
+        const result = await adapter.save(rootId, doc, {
+          ops: [],
+          baseVersion:
+            force || headCommitId === null ? undefined : headCommitId,
+          message: bodyMessage,
+        });
+        setHeadCommitId(result.version);
+        lastTreeRef.current = fromEditor(doc, definitionRef.current);
+        pendingForceDocRef.current = null;
         setStatus('idle');
         setError(null);
       } catch (err) {
-        const cmsError = readCmsError(err);
+        const cmsError = readCmsError(causeOf(err));
         if (cmsError.code === HEAD_MISMATCH) {
           setStatus('conflict');
           setError(cmsError);
-          pendingForceTreeRef.current = tree;
+          pendingForceDocRef.current = doc;
           throw err;
         }
         setStatus('error');
@@ -433,8 +453,11 @@ export function useCmsDocument(
   const save = saveImpl as UseCmsDocumentResult['save'];
 
   const onChange = React.useCallback(
-    (change: { getTree: () => BlockTreeNode }) => {
-      lastTreeRef.current = change.getTree();
+    (change: { getDocument: () => EditorDocument }) => {
+      lastTreeRef.current = fromEditor(
+        change.getDocument(),
+        definitionRef.current,
+      );
     },
     [],
   );
@@ -445,13 +468,19 @@ export function useCmsDocument(
       const { defaults } = await templates.getTemplateDefaults({
         query: { collection, blockType },
       });
-      return { ...defaults };
+      const specs = definitionRef.current.blocks?.[blockType]?.properties ?? {};
+      const out: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(defaults)) {
+        const spec = specs[key];
+        out[key] = spec ? cmsValueToEditor(spec, value) : value;
+      }
+      return out;
     },
     [templates, collection],
   );
 
   return {
-    tree,
+    doc,
     key,
     headCommitId,
     resolve: resolveObjRef.current,

@@ -1,21 +1,23 @@
 import * as React from 'react';
 
 import type { UseRenderComponentProps } from '../../use-render';
-import type { FieldKind } from '../schema';
+import type { Field } from '../core/schema';
 import type {
   AnyFieldControlProps,
   FieldContextValue,
   ListElementRender,
+  NestedFieldRender,
 } from './types';
 
 import { composeRefs, useRender } from '../../use-render';
 import { useEditorSelector } from '../binding';
 import { useEditorContext } from '../context';
+import { groupFields, validateField } from '../core/schema';
 import { useAnyField, useFields } from '../hooks';
-import { groupFields, validateField } from '../schema';
 import { scrollElementIntoView } from '../scroll';
 import { FieldContext, useFieldContext } from './context';
 import { defaultFieldControls } from './controls';
+import { formatFieldError } from './messages';
 
 const warned = new Set<string>();
 
@@ -34,6 +36,7 @@ type FieldState = {
   required: boolean;
   invalid: boolean;
   disabled: boolean;
+  readOnly: boolean;
   focused: boolean;
 };
 
@@ -108,6 +111,7 @@ export function EditorField(props: EditorFieldProps) {
             describedBy,
             required: spec.required === true,
             disabled,
+            readOnly: spec.readOnly === true,
             invalid,
             errors,
             focused,
@@ -145,6 +149,7 @@ export function EditorField(props: EditorFieldProps) {
       required: spec?.required === true,
       invalid,
       disabled,
+      readOnly: spec?.readOnly === true,
       focused,
     },
   });
@@ -174,7 +179,7 @@ export type EditorFieldLabelProps = UseRenderComponentProps<
   FieldLabelState
 >;
 
-/** A `<label htmlFor>` pointing at the field's control; the spec's `label` unless children are given. */
+/** A `<label htmlFor>` pointing at the field's control; the field's `label` (or its key) unless children are given. */
 export function EditorFieldLabel({
   children,
   render,
@@ -185,7 +190,7 @@ export function EditorFieldLabel({
     defaultTagName: 'label',
     props: {
       htmlFor: field.id,
-      children: children ?? field.spec.label,
+      children: children ?? field.spec.label ?? field.name,
       ...rest,
     },
     render,
@@ -258,8 +263,7 @@ export function EditorFieldError({
     props: {
       id: errorId,
       role: 'alert',
-      children:
-        children ?? field.errors.map((error) => error.message).join(' '),
+      children: children ?? field.errors.map(formatFieldError).join(' '),
       ...rest,
     },
     render,
@@ -277,20 +281,24 @@ export type EditorFieldControlProps = {
 
 /**
  * Renders the field's control, resolved in this order: the `render` prop,
- * the `fields` map of `Editor.Root`, the built-in default for the kind.
- * `image`, `reference` and `link` have no default: without a map entry the
- * part renders nothing and warns once (dev only). List elements resolve
- * through the same map/defaults via `renderElement`.
+ * the `fields` map of `Editor.Root` (`fields.custom[kind]` for a `custom`
+ * field), the built-in default for the kind. `media`, `reference`, `link`
+ * and `custom` have no default: without a map entry the part renders nothing
+ * and warns once (dev only). List elements and the nested fields of an
+ * `object` resolve through the same map/defaults.
  */
 export function EditorFieldControl({ render }: EditorFieldControlProps) {
   const ctx = useEditorContext('Editor.FieldControl');
   const field = useFieldContext('Editor.FieldControl');
   const resolve = React.useCallback(
-    (kind: FieldKind): React.ComponentType<AnyFieldControlProps> | null => {
-      const component = ctx.fields[kind] ?? defaultFieldControls[kind];
+    (spec: Field): React.ComponentType<AnyFieldControlProps> | null => {
       // The map is typed per kind for consumers; this resolver dispatches on
       // the runtime `spec.type`, so the wide props are exactly what that
       // component was declared for.
+      const component =
+        spec.type === 'custom'
+          ? ctx.fields.custom?.[spec.kind]
+          : (ctx.fields[spec.type] ?? defaultFieldControls[spec.type]);
       return (
         (component as React.ComponentType<AnyFieldControlProps> | undefined) ??
         null
@@ -298,30 +306,42 @@ export function EditorFieldControl({ render }: EditorFieldControlProps) {
     },
     [ctx.fields],
   );
-  const renderElement = React.useCallback<ListElementRender>(
-    (props) => {
-      const Component = resolve(props.spec.type);
+  const renderWith = React.useCallback(
+    (
+      spec: Field,
+      props: Omit<AnyFieldControlProps, 'spec' | 'required'>,
+      what: string,
+    ): React.ReactElement | null => {
+      const Component = resolve(spec);
       if (!Component) {
         warnOnce(
-          `Editor.FieldControl: no control for list elements of kind "${props.spec.type}"; pass one through Editor.Root's fields prop.`,
+          `Editor.FieldControl: no control for ${what} of kind "${spec.type === 'custom' ? `custom:${spec.kind}` : spec.type}"; pass one through Editor.Root's fields prop.`,
         );
         return null;
       }
-      return (
-        <Component
-          spec={props.spec}
-          value={props.value}
-          onChange={props.onChange}
-          id={props.id}
-          name={props.name}
-          required={false}
-          disabled={props.disabled}
-          invalid={props.invalid}
-          describedBy={props.describedBy}
-        />
-      );
+      const nested: AnyFieldControlProps = {
+        ...props,
+        spec,
+        required: spec.required === true,
+        readOnly: props.readOnly || spec.readOnly === true,
+      };
+      if (spec.type === 'list') nested.renderElement = renderElement;
+      if (spec.type === 'object') nested.renderNested = renderNested;
+      return <Component {...nested} />;
     },
+    // renderElement/renderNested are declared below and stable per resolve.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [resolve],
+  );
+  const renderElement = React.useCallback<ListElementRender>(
+    ({ spec, index: _index, ...props }) =>
+      renderWith(spec, props, 'list elements'),
+    [renderWith],
+  );
+  const renderNested = React.useCallback<NestedFieldRender>(
+    ({ spec, fieldKey: _fieldKey, ...props }) =>
+      renderWith(spec, props, 'nested fields'),
+    [renderWith],
   );
   const controlProps: AnyFieldControlProps = {
     spec: field.spec,
@@ -331,15 +351,17 @@ export function EditorFieldControl({ render }: EditorFieldControlProps) {
     name: field.name,
     required: field.required,
     disabled: field.disabled,
+    readOnly: field.readOnly,
     invalid: field.invalid,
     describedBy: field.describedBy,
   };
   if (field.spec.type === 'list') controlProps.renderElement = renderElement;
+  if (field.spec.type === 'object') controlProps.renderNested = renderNested;
   if (render) return render(controlProps);
-  const Component = resolve(field.spec.type);
+  const Component = resolve(field.spec);
   if (!Component) {
     warnOnce(
-      `Editor.FieldControl: no control for kind "${field.spec.type}" (field "${field.name}"); pass one through Editor.Root's fields prop.`,
+      `Editor.FieldControl: no control for kind "${field.spec.type === 'custom' ? `custom:${field.spec.kind}` : field.spec.type}" (field "${field.name}"); pass one through Editor.Root's fields prop.`,
     );
     return null;
   }
@@ -366,8 +388,8 @@ export type EditorFormProps = Omit<
 };
 
 /**
- * Every declared property of the block as a complete field (label, control,
- * description, error), grouped by the specs' `group`: named groups in a
+ * Every visible field of the block as a complete field (label, control,
+ * description, error), grouped by the fields' `group`: named groups in a
  * `<fieldset data-group>` with a `<legend>`, ungrouped fields directly.
  * Renders `null` for an unknown block.
  */

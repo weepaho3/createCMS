@@ -18,6 +18,7 @@ import {
   CanvasSelectionRing,
 } from './overlay';
 import { CanvasProvider } from './provider';
+import { CanvasReadonlySubtree } from './readonly';
 import { CanvasBlockToolbar, CanvasInsertButton } from './toolbar';
 
 export type {
@@ -26,7 +27,12 @@ export type {
   CanvasSurface,
 } from './components';
 export type { CanvasProviderProps } from './provider';
-export type { CanvasComponent, CanvasComponents } from './map';
+export type {
+  CanvasComponent,
+  CanvasComponentProps,
+  CanvasComponents,
+} from './map';
+export type { CanvasReadonlySubtreeProps } from './readonly';
 export type {
   InsertOrientation,
   InsertTarget,
@@ -57,7 +63,7 @@ export type {
   CanvasSelectionRingProps,
 } from './overlay';
 export type { CanvasRect } from './rect';
-export type { CanvasResolve, ResolveKind } from './resolve';
+export type { CanvasResolve, FieldResolver } from './resolve';
 export type { PointerSnapshot, PointerStore } from './pointer';
 export type { DragSession } from './dnd';
 export { useBlockRect, useFieldRect } from './rects';
@@ -89,4 +95,5 @@ export const Canvas = {
   DropIndicator: CanvasDropIndicator,
   DragPreview: CanvasDragPreview,
   InlineText: CanvasInlineText,
+  ReadonlySubtree: CanvasReadonlySubtree,
 };

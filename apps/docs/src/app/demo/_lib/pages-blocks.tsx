@@ -6,6 +6,7 @@ import { createBlocksMap } from '@createcms/core/react/blocks';
 import { assetUrl } from '@createcms/react/editor/cms';
 
 import { pages } from '@/app/demo/_lib/pages-schema';
+import { sanitizeRichTextHtml } from '@/lib/sanitize-rich-text';
 
 function Hero({ properties, edit }: BlockComponentProps) {
   return (
@@ -49,14 +50,25 @@ function FeatureItem({ properties, edit }: BlockComponentProps) {
 }
 
 function ImageBlock({ properties, edit }: BlockComponentProps) {
+  // A freshly inserted image block has no src yet; assetUrl rejects empty ids.
+  const src = properties.src as string | undefined;
   return (
     <figure {...edit.block} className="p-8">
-      <img
-        {...edit.field.src}
-        src={assetUrl(properties.src as string)}
-        alt={(properties.alt as string) ?? ''}
-        className="max-h-64 w-full object-contain"
-      />
+      {src ? (
+        <img
+          {...edit.field.src}
+          src={assetUrl(src)}
+          alt={(properties.alt as string) ?? ''}
+          className="max-h-64 w-full object-contain"
+        />
+      ) : (
+        <div
+          {...edit.field.src}
+          className="bg-muted text-muted-foreground flex h-40 w-full items-center justify-center rounded-md text-sm"
+        >
+          No image selected
+        </div>
+      )}
     </figure>
   );
 }
@@ -67,7 +79,9 @@ function RichTextBlock({ properties, edit }: BlockComponentProps) {
       {...edit.block}
       {...edit.field.text}
       className="prose dark:prose-invert max-w-none p-8"
-      dangerouslySetInnerHTML={{ __html: properties.text as string }}
+      dangerouslySetInnerHTML={{
+        __html: sanitizeRichTextHtml(properties.text),
+      }}
     />
   );
 }

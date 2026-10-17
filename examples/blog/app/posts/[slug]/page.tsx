@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { cms } from '@/lib/cms';
 import { seeded } from '@/lib/cms-data';
 import { collections } from '@/lib/collections';
+import { sanitizeRichTextHtml } from '@/lib/sanitize-rich-text';
 
 // Read CMS data at request time, never at build time, so `next build` does not
 // touch the database. REQUIRED for every page that reads CMS content.
@@ -17,8 +18,12 @@ export const dynamic = 'force-dynamic';
 // `properties` of each block are fully typed from the collection definition.
 const postBlocks = createBlocksMap(collections.posts, {
   richText: ({ properties }) => (
-    // `richText` stores markup; render it as HTML (sanitize if untrusted).
-    <div dangerouslySetInnerHTML={{ __html: properties.content }} />
+    // `richText` stores raw HTML: sanitize it before rendering.
+    <div
+      dangerouslySetInnerHTML={{
+        __html: sanitizeRichTextHtml(properties.content),
+      }}
+    />
   ),
   quote: ({ properties }) => (
     <blockquote>

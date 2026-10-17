@@ -1,18 +1,16 @@
-import type { BlockTreeNode } from '@createcms/schema';
-
 import * as React from 'react';
 
-import type { AnyEditorSchema } from '../schema';
-import type { EditorNodes } from '../store';
+import type { NodeData } from '../core/document';
+import type { AnyEditorSchema } from '../core/schema';
+import type { EditorNodes } from '../core/store';
 import type { EditCache } from './edit';
 import type { CanvasComponent } from './map';
 import type { CanvasResolve, ResolveCache } from './resolve';
 
-import { propertiesOf } from '../schema';
-import { serializeToTree } from '../store';
-import { NO_EDIT } from './edit';
+import { DEFAULT_SLOT, fieldsOf } from '../core/schema';
+import { serializeToTree } from '../core/store';
 import { withEmptyFieldPlaceholder } from './inline-text';
-import { isResolvedReference, resolveNodeProperties } from './resolve';
+import { resolveNodeProperties } from './resolve';
 
 export type RenderStoreTreeArgs = {
   nodes: EditorNodes;
@@ -25,58 +23,22 @@ export type RenderStoreTreeArgs = {
 };
 
 export function renderStoreTree(args: RenderStoreTreeArgs): React.ReactNode {
-  const tree = serializeToTree(args.nodes, args.rootId);
-  return renderNode(tree, args, false);
+  return renderNode(serializeToTree(args.nodes, args.rootId), args);
 }
 
 function renderNode(
-  node: BlockTreeNode,
+  node: NodeData,
   args: RenderStoreTreeArgs,
-  fromReference: boolean,
 ): React.ReactNode {
-  const childElements = node.children.map((child) => (
-    <React.Fragment key={child.blockId}>
-      {renderNode(child, args, fromReference)}
-    </React.Fragment>
+  const childElements = (node.slots?.[DEFAULT_SLOT] ?? []).map((child) => (
+    <React.Fragment key={child.id}>{renderNode(child, args)}</React.Fragment>
   ));
 
-  if (node.type === 'root') {
-    return <>{childElements}</>;
-  }
-
-  const { properties, unresolved } = resolveNodeProperties(
-    node.type,
-    node.properties,
-    args.schema,
-    args.resolve,
-    args.cache,
-  );
-
-  const refChildren: React.ReactNode[] = [];
-  for (const value of Object.values(properties)) {
-    if (isResolvedReference(value) && value.tree.children.length > 0) {
-      for (const child of value.tree.children) {
-        refChildren.push(
-          <React.Fragment key={child.blockId}>
-            {renderNode(child, args, true)}
-          </React.Fragment>,
-        );
-      }
-    }
-  }
-
-  const refGroup =
-    refChildren.length > 0 ? (
-      <div data-editor-readonly="" inert={true} style={{ display: 'contents' }}>
-        {refChildren}
-      </div>
-    ) : null;
+  if (node.type === 'root') return <>{childElements}</>;
 
   const Component = args.components[node.type];
-
   if (!Component) {
-    if (refGroup) return <>{refGroup}</>;
-    if (!fromReference && process.env.NODE_ENV !== 'production') {
+    if (process.env.NODE_ENV !== 'production') {
       console.warn(
         `Canvas.Root: no component mapped for block type "${node.type}"`,
       );
@@ -84,34 +46,27 @@ function renderNode(
     return null;
   }
 
-  const allChildren =
-    childElements.length > 0 || refGroup ? (
-      <>
-        {childElements}
-        {refGroup}
-      </>
-    ) : null;
-
-  const edit = fromReference
-    ? NO_EDIT
-    : args.edits.get(node.blockId, node.type, args.schema, unresolved);
-
-  const display = fromReference
-    ? properties
-    : withEmptyFieldPlaceholder(
-        properties,
-        propertiesOf(args.schema, node.type),
-      );
+  const { properties, unresolved } = resolveNodeProperties(
+    node.type,
+    node.props,
+    args.schema,
+    args.resolve,
+    args.cache,
+  );
 
   return (
     <Component
-      key={node.blockId}
-      properties={display}
-      blockId={node.blockId}
+      key={node.id}
+      id={node.id}
+      type={node.type}
+      props={withEmptyFieldPlaceholder(
+        properties,
+        fieldsOf(args.schema, node.type),
+      )}
       node={node}
-      edit={edit}
+      edit={args.edits.get(node.id, node.type, args.schema, unresolved)}
     >
-      {allChildren}
+      {childElements.length > 0 ? childElements : null}
     </Component>
   );
 }

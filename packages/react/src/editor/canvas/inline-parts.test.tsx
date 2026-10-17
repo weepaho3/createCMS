@@ -1,13 +1,17 @@
-// @vitest-environment happy-dom
-import type { BlockTreeNode, CollectionDefinition } from '@createcms/schema';
-
 import { act, cleanup, render } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
+// @vitest-environment happy-dom
+import type { EditorDocument } from '../core/document';
+
+import { defineEditorSchema } from '../core/schema';
+import { makeDoc, storeSchema } from '../core/store/fixtures';
 import { Editor } from '../index';
-import { makeTree, storeSchema } from '../store/fixtures';
 import { Canvas } from './index';
-import { EMPTY_FIELD_PLACEHOLDER } from './inline-text';
+import {
+  EMPTY_FIELD_PLACEHOLDER,
+  RICH_TEXT_INLINE_WARNING,
+} from './inline-text';
 import {
   canvasBlocks,
   nestedTextBlocks,
@@ -18,34 +22,37 @@ import { renderCanvas } from './test/harness';
 
 afterEach(cleanup);
 
-const badgeSchema = {
-  label: 'Pages',
-  root: { properties: {} },
-  blocks: {
+const badgeSchema = defineEditorSchema({
+  root: { label: 'Pages', fields: {}, slots: { children: {} } },
+  components: {
     heading: {
       label: 'Heading',
-      properties: {
-        text: { type: 'string', label: 'Text' },
+      fields: {
+        text: { type: 'text', label: 'Text' },
         level: { type: 'number', label: 'Level', defaultValue: 2 },
-        badge: { type: 'string', label: 'Badge' },
+        badge: { type: 'text', label: 'Badge' },
       },
     },
   },
-} satisfies CollectionDefinition;
+});
 
-function badgeTree(): BlockTreeNode {
+function badgeTree(): EditorDocument {
   return {
-    blockId: 'root_1',
-    type: 'root',
-    properties: {},
-    children: [
-      {
-        blockId: 'h1',
-        type: 'heading',
-        properties: { text: 'Hello', level: 1, badge: '' },
-        children: [],
+    schemaVersion: 1,
+    root: {
+      id: 'root_1',
+      type: 'root',
+      props: {},
+      slots: {
+        children: [
+          {
+            id: 'h1',
+            type: 'heading',
+            props: { text: 'Hello', level: 1, badge: '' },
+          },
+        ],
       },
-    ],
+    },
   };
 }
 
@@ -61,7 +68,7 @@ describe('Canvas.InlineText', () => {
   it('throws outside Canvas.Root', () => {
     expect(() =>
       render(
-        <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+        <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
           <Canvas.InlineText />
         </Editor.Root>,
       ),
@@ -132,7 +139,8 @@ describe('Canvas.InlineText', () => {
     expect(store.getState().selection.local?.editing?.blockId).toBe('inner1');
   });
 
-  it('paragraph with block and field on the same element starts a session', () => {
+  it('richText click selects the block and focuses the field without a session', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { host, store } = renderCanvas(inlineOverlay());
     const para = host.querySelector('[data-editor-block="p1"]');
     expect(para).not.toBeNull();
@@ -141,14 +149,17 @@ describe('Canvas.InlineText', () => {
         new MouseEvent('click', { bubbles: true, cancelable: true }),
       );
     });
-    expect(store.getState().selection.local?.editing).toEqual({
-      blockId: 'p1',
-      key: 'text',
-    });
+    const selection = store.getState().selection.local;
+    expect(selection?.editing).toBeNull();
+    expect(selection?.selected).toBe('p1');
+    expect(selection?.focus).toEqual({ blockId: 'p1', key: 'text' });
+    expect(host.querySelector('[data-editor-inline-text]')).toBeNull();
+    expect(warn).toHaveBeenCalledWith(RICH_TEXT_INLINE_WARNING);
+    warn.mockRestore();
   });
 
   it('two editors on one page keep lookup scoped', () => {
-    const tree = makeTree();
+    const tree = makeDoc();
     const utils = render(
       <div style={{ display: 'flex' }}>
         <Editor.Root schema={storeSchema} defaultValue={tree}>

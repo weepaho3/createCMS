@@ -1,6 +1,6 @@
-import type { BlockTreeNode } from '@createcms/schema';
-
 import * as React from 'react';
+
+import type { EditorDocument } from '../core/document';
 
 import { useRender } from '../../use-render';
 import { useEditorSelector } from '../binding';
@@ -14,20 +14,20 @@ export type EditorPreviewProps = Omit<
   React.ComponentPropsWithRef<'div'>,
   'children'
 > & {
-  /** Receives the raw store tree (`getTree()`). Required. */
-  render: (tree: BlockTreeNode) => React.ReactNode;
+  /** Receives the raw store document (`getDocument()`). Required. */
+  render: (doc: EditorDocument) => React.ReactNode;
   /**
-   * Delay before the displayed tree updates. Default `PREVIEW_DEBOUNCE_MS`.
+   * Delay before the displayed document updates. Default `PREVIEW_DEBOUNCE_MS`.
    * `0` still waits one animation frame.
    */
   debounceMs?: number;
 };
 
 /**
- * Preview passes the raw store tree; the consumer maps it.
+ * Preview passes the raw store document; the consumer maps it.
  */
 export function EditorPreview({
-  render: renderTree,
+  render: renderDocument,
   debounceMs,
   ...rest
 }: EditorPreviewProps) {
@@ -36,7 +36,7 @@ export function EditorPreview({
   const delay = Math.max(0, debounceMs ?? PREVIEW_DEBOUNCE_MS);
   const [displayed, setDisplayed] = React.useState(() => ({
     version,
-    tree: ctx.store.getTree(),
+    doc: ctx.store.getDocument(),
   }));
   const stale = displayed.version !== version;
 
@@ -45,7 +45,7 @@ export function EditorPreview({
     let frame = 0;
     const timer = setTimeout(() => {
       frame = requestAnimationFrame(() => {
-        setDisplayed({ version, tree: ctx.store.getTree() });
+        setDisplayed({ version, doc: ctx.store.getDocument() });
       });
     }, delay);
     return () => {
@@ -56,7 +56,7 @@ export function EditorPreview({
 
   return useRender<'div', PreviewState>({
     defaultTagName: 'div',
-    props: { ...rest, children: renderTree(displayed.tree) },
+    props: { ...rest, children: renderDocument(displayed.doc) },
     state: { stale },
   });
 }

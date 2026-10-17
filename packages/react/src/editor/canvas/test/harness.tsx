@@ -1,16 +1,16 @@
-import type { BlockTreeNode } from '@createcms/schema';
 import type { ReactNode } from 'react';
 
 import { render, type RenderResult } from '@testing-library/react';
 
-import type { AnyEditorSchema } from '../../schema';
-import type { EditorStore } from '../../store';
+import type { EditorDocument } from '../../core/document';
+import type { AnyEditorSchema } from '../../core/schema';
+import type { EditorStore } from '../../core/store';
 import type { CanvasInteractive } from '../components';
 import type { CanvasComponents } from '../map';
 import type { CanvasResolve } from '../resolve';
 
+import { makeDoc, storeSchema } from '../../core/store/fixtures';
 import { Editor, useEditorContext } from '../../index';
-import { makeTree, storeSchema } from '../../store/fixtures';
 import { Canvas } from '../index';
 import { canvasBlocks } from './fixtures';
 
@@ -45,7 +45,7 @@ export function rectClose(
 
 export type RenderCanvasOptions = {
   schema?: AnyEditorSchema;
-  tree?: BlockTreeNode;
+  tree?: EditorDocument;
   components?: CanvasComponents;
   interactive?: CanvasInteractive;
   resolve?: CanvasResolve;
@@ -67,7 +67,7 @@ export function renderCanvas(
   const utils = render(
     <Editor.Root
       schema={options?.schema ?? storeSchema}
-      defaultValue={options?.tree ?? makeTree()}
+      defaultValue={options?.tree ?? makeDoc()}
     >
       <StoreProbe probe={probe} />
       <Canvas.Root

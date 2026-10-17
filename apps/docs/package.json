@@ -10,7 +10,8 @@
     "postinstall": "fumadocs-mdx",
     "registry:build": "shadcn build --output public/r",
     "registry:check": "node scripts/check-registry.mjs",
-    "start": "next start"
+    "start": "next start",
+    "test": "vitest run"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -27,6 +28,7 @@
     "fumadocs-typescript": "^5.3.0",
     "fumadocs-ui": "^16.14.0",
     "geist": "^1.5.1",
+    "isomorphic-dompurify": "^4.4.0",
     "lucide-react": "^1.28.0",
     "next": "^16.2.11",
     "react": "^19.2.4",
@@ -43,6 +45,7 @@
     "postcss": "^8.5.25",
     "shadcn": "^4.18.0",
     "tailwindcss": "^4.3.3",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
   }
 }

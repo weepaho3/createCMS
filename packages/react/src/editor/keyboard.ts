@@ -1,6 +1,7 @@
 import * as React from 'react';
 
 import { useEditorContext } from './context';
+import { isNode } from './dom';
 
 const EDITABLE = 'input, textarea, select, [contenteditable="true"]';
 
@@ -37,10 +38,7 @@ export function useEditorKeyboard(
     const doc = el.ownerDocument;
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
-      if (
-        !(target instanceof Node) ||
-        (target !== el && !el.contains(target))
-      ) {
+      if (!isNode(target) || (target !== el && !el.contains(target))) {
         return;
       }
       if (event.defaultPrevented) return;

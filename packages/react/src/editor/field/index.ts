@@ -21,6 +21,7 @@ export {
   fromDatetimeLocal,
   toDatetimeLocal,
 } from './controls';
+export { formatFieldError } from './messages';
 export type {
   AnyFieldControlProps,
   FieldContextValue,
@@ -28,4 +29,6 @@ export type {
   FieldControls,
   ListElementControlProps,
   ListElementRender,
+  NestedFieldControlProps,
+  NestedFieldRender,
 } from './types';

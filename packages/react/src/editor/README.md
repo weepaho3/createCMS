@@ -5,32 +5,35 @@ styling happens in the consumer's wrapper components (registry).
 
 ## Usage
 
-`Editor.Root` holds the store; `Editor.Form` renders every declared property
-of one block as a complete field. Kinds without a built-in control
-(`image`, `reference`, `link`) come from the `fields` map:
+`Editor.Root` holds the store for one `EditorDocument`; `Editor.Form`
+renders every visible field of one block as a complete field. Kinds without
+a built-in control (`media`, `reference`, `link`, `custom`) come from the
+`fields` map; `custom` controls are registered per custom `kind`:
 
 ```tsx
-import type { AnyEditorSchema } from '@createcms/react/editor';
-import type { BlockTreeNode } from '@createcms/core';
+import type {
+  AnyEditorSchema,
+  EditorDocument,
+} from '@createcms/react/editor/core';
 
 import { Editor, useFields } from '@createcms/react/editor';
 
-import { MediaField } from './media-field'; // the consumer's image control
+import { MediaField } from './media-field'; // the consumer's media control
 
 function PageForm({
   schema,
-  tree,
+  doc,
 }: {
   schema: AnyEditorSchema;
-  tree: BlockTreeNode;
+  doc: EditorDocument;
 }) {
   return (
     <Editor.Root
       schema={schema}
-      defaultValue={tree}
-      fields={{ image: MediaField }}
+      defaultValue={doc}
+      fields={{ media: MediaField }}
     >
-      <Editor.Form blockId={tree.blockId} />
+      <Editor.Form blockId={doc.root.id} />
     </Editor.Root>
   );
 }
@@ -75,9 +78,9 @@ another document. `onChange`/`onSave` are read fresh on every call, so inline
 handlers are fine.
 
 `Editor.Preview` subscribes to the store `version` and passes the raw store
-tree (`getTree()`) to `render` after a delay (default 100 ms, then one
+document (`getDocument()`) to `render` after a delay (default 100 ms, then one
 animation frame; `debounceMs={0}` still waits one frame). The consumer maps
-that tree (for example a `BlocksRenderer` or a PDF viewer). `data-stale` is
+that document (for example a `BlocksRenderer` or a PDF viewer). `data-stale` is
 present while an update is pending. `render` is the tree callback, not a
 host swap: the host is always a `div`.
 
@@ -140,27 +143,35 @@ Accessibility wiring, per part:
 1. its `render` prop, a function receiving `AnyFieldControlProps`;
 2. `fields[spec.type]` from `Editor.Root`'s `fields` map (`FieldControls`,
    typed per kind: the `select` entry receives `FieldControlProps<'select'>`
-   with `spec.options`, the `list` entry `spec.of` and `renderElement`);
+   with `spec.options`, the `list` entry `spec.of` and `renderElement`, the
+   `object` entry `spec.fields` and `renderNested`), or `fields.custom[kind]`
+   for a `custom` field;
 3. the built-in default for the kind (`defaultFieldControls`).
 
-`image`, `reference` and `link` have no default: without a map entry the part
-renders nothing and warns once (dev only). The built-in defaults are unstyled
-native elements:
+`media`, `reference`, `link` and `custom` have no default: without a map
+entry the part renders nothing and warns once (dev only). Fields hidden by
+`hidden` or `when` are left out of `useFields` and `Editor.Form`; a
+`readOnly` field passes `readOnly: true` to its control and the field part
+carries `data-read-only`. The built-in defaults are unstyled native elements:
 
-| Kind       | Default element                                               | Value handling                                                                                                                                        |
-| ---------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `string`   | `<input type="text">`                                         | `placeholder`, `minLength`, `maxLength` from the spec.                                                                                                |
-| `richText` | `<textarea>`                                                  | plain text.                                                                                                                                           |
-| `number`   | `<input type="number">`                                       | `min`/`max` from the spec; an empty input clears the property.                                                                                        |
-| `boolean`  | `<input type="checkbox">`                                     | `checked` is the value (`false` when unset).                                                                                                          |
-| `date`     | `<input type="datetime-local">`                               | ISO-8601 UTC in the store, local minutes in the input (`toDatetimeLocal`/`fromDatetimeLocal`); an empty input clears the property.                    |
-| `select`   | `<select>`                                                    | a leading empty option (`placeholder` as its text) plus the spec's `options`; the empty option clears the property.                                   |
-| `list`     | `<div role="group">` with an `<ol>` of rows and an Add button | one row per element: the element control, then Move up / Move down / Remove; `min`/`max` disable Remove/Add; a new element is `emptyListElement(of)`. |
+| Kind       | Default element                                               | Value handling                                                                                                                                           |
+| ---------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `text`     | `<input type="text">`                                         | `placeholder`, `minLength`, `maxLength` from the field; `readOnly`.                                                                                      |
+| `textarea` | `<textarea>`                                                  | `placeholder`, `minLength`, `maxLength`; `readOnly`.                                                                                                     |
+| `richText` | `<textarea>`                                                  | the HTML source as plain text.                                                                                                                           |
+| `number`   | `<input type="number">`                                       | `min`/`max`/`step` from the field; an empty input clears the prop.                                                                                       |
+| `boolean`  | `<input type="checkbox">`                                     | `checked` is the value (`false` when unset).                                                                                                             |
+| `date`     | `<input type="datetime-local">`                               | ISO-8601 UTC in the store, local minutes in the input (`toDatetimeLocal`/`fromDatetimeLocal`); an empty input clears the prop.                           |
+| `color`    | `<input type="color">`                                        | the CSS color string.                                                                                                                                    |
+| `select`   | `<select>` (`multiple` for multiple selects)                  | a leading empty option (`placeholder` as its text) plus the `options`; the empty option clears the prop. With `multiple` the value is the selected list. |
+| `list`     | `<div role="group">` with an `<ol>` of rows and an Add button | one row per element: the element control, then Move up / Move down / Remove; `min`/`max` disable Remove/Add; a new element is `emptyListElement(of)`.    |
+| `object`   | `<div role="group">` with one nested control per field        | nested controls resolve through the same map; a change writes the whole object.                                                                          |
 
 Every control, built-in or custom, receives `FieldControlProps<K>`: `spec`,
 `value` (the kind's wide value or `undefined`), `onChange(next)`
-(`undefined` clears the property), `id`, `name`, `required`, `disabled`,
-`invalid`, `describedBy`, and for `list` also `renderElement`. A control sets
+(`undefined` clears the prop), `id`, `name`, `required`, `disabled`,
+`readOnly`, `invalid`, `describedBy`, for `list` also `renderElement` and
+for `object` also `renderNested`. A control sets
 `id` on its focusable element (that is what `FieldLabel` points at) and
 forwards `aria-describedby={describedBy}`,
 `aria-invalid={invalid || undefined}` and
@@ -284,9 +295,9 @@ the end state immediately.
 
 `createEditor({ schema })` binds `Editor.Root`, `Preview`, `FramePreview`
 and every hook above (including `useEditorKeyboard`) to one schema: `Root`
-has `schema` pre-set and `defaultValue` typed as `TreeOf<typeof schema>`;
-`Preview`'s `render` callback receives `TreeOf<typeof schema>`;
-`FramePreview`'s `render` callback receives `TreeOf<typeof schema>` plus
+has `schema` pre-set and `defaultValue` typed as `DocumentOf<typeof schema>`;
+`Preview`'s `render` callback receives `DocumentOf<typeof schema>`;
+`FramePreview`'s `render` callback receives `DocumentOf<typeof schema>` plus
 `{ signal }`; `useBlock`/`useField` narrow on the schema's
 declared block types; `useChildren` returns `ChildRefOf<S>[]` and
 `useBlockActions` returns `TypedBlockActions<S>`; `add` and `usePalette`
@@ -317,11 +328,12 @@ function Block({ id }: { id: string }) {
 
 | Type                     | Description                                                                              |
 | ------------------------ | ---------------------------------------------------------------------------------------- |
-| `TreeOf<S>`              | The tree of `S` as `getBlockTree` delivers it (raw mode).                                |
+| `DocumentOf<S>`          | A typed `EditorDocument` of `S`.                                                         |
+| `NodeOf<S>`              | One typed node of `S`, a union over its component types.                                 |
 | `BlockTypeOf<S>`         | The block type names of `S`; `never` for a block-less or dynamic schema.                 |
 | `BlockPropsOf<S, K>`     | The property values of block `K` (or `'root'`).                                          |
 | `RootPropsOf<S>`         | `BlockPropsOf<S, 'root'>`.                                                               |
-| `BlocksOf<S>`            | The statically known blocks of `S`; `{}` when none are declared.                         |
+| `ComponentsOf<S>`        | The statically known components of `S`; `{}` for an index-signature map.                 |
 | `PropsSpecOf<S, K>`      | The property specs of block `K` (or `'root'`).                                           |
 | `PropsOf<TSpec>`         | The raw property values of a spec record.                                                |
 | `PropValueOf<TSpec, P>`  | The value type of one property `P` in `TSpec`.                                           |
@@ -334,112 +346,14 @@ function Block({ id }: { id: string }) {
 | `TypedPaletteItems<S>`   | `PaletteItem[]` with `type` narrowed; `never` when `S` has no static blocks.             |
 | `ChildRefOf<S>`          | `ChildRef` with `type` narrowed to `S`'s block types.                                    |
 | `TypedBlockActions<S>`   | `BlockActions` with `add` and `allowedChildTypes` restricted to `S`'s block types.       |
-| `EditorTypes<S>`         | Phantom bag of the derived types (`typeof editor.types.tree`, …); `{}` at runtime.       |
+| `EditorTypes<S>`         | Phantom bag of the derived types (`typeof editor.types.document`, …); `{}` at runtime.   |
 | `EditorFactory<S>`       | What `createEditor` returns.                                                             |
 | `CreateEditorOptions<S>` | `createEditor`'s options: `{ schema: S }`.                                               |
 
-## Schema helpers (pure, no React)
+## Core
 
-Layer 1 of the editor primitive: pure functions over an `EditorSchema` (a
-`CollectionDefinition`). No React, no DOM — `placement.ts` and `defaults.ts`
-mirror `@createcms/core`'s `buildPlacementIndex`/`isPlacementAllowed` and
-`defaultPropertiesFor` byte-for-byte; `validation.ts` mirrors the constraint
-rules of core's zod builder without zod, and is stricter only where documented
-(the editor never allows something the server rejects, or rejects something
-the server accepts).
-
-| Function                             | Signature                                                 | Notes                                                                                                   |
-| ------------------------------------ | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `getPlacement`                       | `(schema) => PlacementIndex`                              | Same rules as core's `buildPlacementIndex`.                                                             |
-| `canPlace`                           | `(index, childType, parentType) => boolean`               | `'root'` for the top level; container gate, then `accepts`/`excludes`.                                  |
-| `allowedChildTypes`                  | `(index, parentType) => string[]`                         | Definition order; `[]` for a non-container.                                                             |
-| `defaultValuesFor`                   | `(def, { fillDefaults? }) => Record<string, unknown>`     | Declared `defaultValue`s only (core semantics); `fillDefaults` adds `false`/`0`/first option/`''`/`[]`. |
-| `propertiesOf`                       | `(schema, blockType) => Record<string, BlockProperty>`    | `'root'` → root fields; unknown → `{}`.                                                                 |
-| `groupFields`                        | `(properties) => FieldGroup[]`                            | Named groups first-appearance, `null` bucket last.                                                      |
-| `paletteItems` / `groupPaletteItems` | `(schema) => PaletteItem[]` / `(items) => PaletteGroup[]` | Insertable block types (+ grouping).                                                                    |
-| `isEmptyValue`                       | `(spec, value) => boolean`                                | Blank string, empty list, link without target = empty; `0`/`false` are values.                          |
-| `validateField`                      | `(spec, value) => FieldError[]`                           | Client pre-check mirroring core's constraints; server stays authoritative.                              |
-| `missingRequired`                    | `(schema, nodes) => MissingRequiredField[]`               | Save/Publish gate over blocks + root (`type === 'root'`).                                               |
-
-| Type                   | Description                                                                      |
-| ---------------------- | -------------------------------------------------------------------------------- |
-| `EditorSchema`         | The editor's schema — a `CollectionDefinition`, generic over props/blocks.       |
-| `AnyEditorSchema`      | The wide form every runtime helper accepts.                                      |
-| `FieldKind`            | Every kind a block/root property can have (`BlockPropertyType` plus `list`).     |
-| `FieldSpecOf<K>`       | The spec of one kind (e.g. `FieldSpecOf<'select'>` carries `options`).           |
-| `FieldValueOf<K>`      | The wide runtime value of one kind.                                              |
-| `FieldValueMap`        | Kind → wide runtime value, the closed map `FieldValueOf` indexes.                |
-| `SchemaField`          | One property of a block/root: its `key` and its `spec`.                          |
-| `PlacementIndex`       | Precomputed placement lookup for one schema (`rules`/`containers`/`blockTypes`). |
-| `PlacementRule`        | A resolved per-parent acceptance rule (`only` whitelist or `except` blacklist).  |
-| `DefaultValuesOptions` | Options for `defaultValuesFor` (`fillDefaults?`).                                |
-| `FieldGroup`           | Fields under one `group` label (or the `null` ungrouped bucket).                 |
-| `PaletteItem`          | A block type the palette can insert, derived from its definition.                |
-| `PaletteGroup`         | Palette items under one `group` label (or the `null` ungrouped bucket).          |
-| `FieldError`           | One `validateField` finding: `code`, `message`, optional list `index`.           |
-| `FieldErrorCode`       | The closed set of `validateField` error codes.                                   |
-| `MissingRequiredField` | A `required` property left empty on one node, from `missingRequired`.            |
-| `MissingRequiredNode`  | The minimum a node must carry for the `missingRequired` scan.                    |
-
-## Store (framework-free)
-
-Layer 2 of the editor primitive: a small `getState`/`subscribe` core with no
-React import, made to be wrapped with `useSyncExternalStore`. Every change is a small serialisable _op_ with
-an inverse, so undo/redo is a stack of op groups (`HistoryEntry`), rapid
-same-key updates coalesce into one undo step within `COALESCE_MS`, and
-`applyRemote` applies foreign ops without touching local history — the same
-op stream a later realtime layer can ship. Selection (`selected`/`hovered`/
-`focus`/`editing`) is tracked per user id. Dirty tracking is a structural hash
-of the tree (`stableHash`) compared against the hash at the last save/load, so
-changing a value back by hand counts as clean again. Structural changes call
-`onChange({ ops, version, getTree })` — never the tree itself; `load` and
-`applyRemote` do not call it.
-
-| Method                 | Signature                                               | Notes                                                                           |
-| ---------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `getState`             | `() => EditorStoreState`                                | Same object reference between changes.                                          |
-| `subscribe`            | `(listener: () => void) => () => void`                  | Returns an unsubscribe function.                                                |
-| `getTree`              | `() => BlockTreeNode`                                   | Serialises `nodes`/`rootId`; memoised per `version`.                            |
-| `isDirty`              | `() => boolean`                                         | Current hash vs. the hash at the last save/load.                                |
-| `load`                 | `(tree: BlockTreeNode) => void`                         | Replaces the tree; resets history and every user's selection; no `onChange`.    |
-| `add`                  | `(type: string, options: AddOptions) => string \| null` | Seeds declared defaults; `null` on an unknown parent or a disallowed placement. |
-| `update`               | `(id, patch, options?: UpdateOptions) => boolean`       | Merge-patch; `null` deletes a key; `false` for an unknown id.                   |
-| `move`                 | `(id, parentId, index) => boolean`                      | `false` on the root, an unknown id/target, a cycle, or a disallowed placement.  |
-| `remove`               | `(id) => boolean`                                       | Removes the subtree; `false` for the root or an unknown id.                     |
-| `duplicate`            | `(id) => string \| null`                                | Deep-copies the subtree with fresh ids right after the original.                |
-| `applyRemote`          | `(ops: readonly EditorOp[]) => ApplyRemoteResult`       | Applies ops one by one; no history, no `onChange`; rejects are skipped.         |
-| `undo` / `redo`        | `() => boolean`                                         | `false` when there is nothing to undo/redo; closes the coalesce window.         |
-| `select` / `hover`     | `(id: string \| null) => void`                          | Writes the local user's selection; `select` closes the coalesce window.         |
-| `focus` / `setEditing` | `(target: FieldRef \| null) => void`                    | Writes the local user's field ref; closes the coalesce window.                  |
-| `setUserSelection`     | `(userId, patch: Partial<UserSelection>) => void`       | Sets any user's selection fields (for a later presence layer).                  |
-| `markSaved`            | `() => void`                                            | Rebaselines the dirty hash to the current tree.                                 |
-| `save`                 | `(meta?: { message?: string }) => Promise<void>`        | No-op when clean or without `onSave`; awaits `onSave`, then `markSaved`.        |
-
-| Op       | Shape                                      | Inverse                                               |
-| -------- | ------------------------------------------ | ----------------------------------------------------- |
-| `add`    | `{ parentId, index, node: BlockTreeNode }` | `remove` of `node.blockId`.                           |
-| `remove` | `{ id }`                                   | `add` of the removed subtree at its old parent/index. |
-| `move`   | `{ id, parentId, index }`                  | `move` back to the old parent/index.                  |
-| `update` | `{ id, patch: Record<string, unknown> }`   | `update` with the previous values (`null` if unset).  |
-| `load`   | `{ tree: BlockTreeNode }`                  | `load` with the previous tree.                        |
-
-| Type                       | Description                                                                                             |
-| -------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `AddOptions`               | `add`'s options: `parentId`, optional `index`, optional `properties`.                                   |
-| `ApplyRemoteResult`        | `{ applied, rejected }` — the ops `applyRemote` accepted/skipped.                                       |
-| `ApplyResult`              | `applyOp`'s success shape: `{ nodes, rootId, inverse }`.                                                |
-| `CreateEditorStoreOptions` | Options for `createEditorStore`: `schema`, `initialTree`, `userId?`, `genId?`, `now?`, `getCallbacks?`. |
-| `EditorCallbacks`          | `{ onChange?, onSave? }` passed via `getCallbacks()`.                                                   |
-| `EditorChange`             | The `onChange` payload: `{ ops, version, getTree }`.                                                    |
-| `EditorNode`               | One flat tree node: `{ id, type, properties, parentId, childIds }`.                                     |
-| `EditorNodes`              | `Record<id, EditorNode>`.                                                                               |
-| `EditorOp`                 | The `add`/`remove`/`move`/`update`/`load` op union.                                                     |
-| `EditorStore`              | The store's public shape (method-shorthand signatures, bivariant).                                      |
-| `EditorStoreState`         | `{ rootId, nodes, selection, history, version, savedVersion, saving }`.                                 |
-| `FieldRef`                 | `{ blockId, key }` — what `focus`/`editing` point at.                                                   |
-| `HistoryEntry`             | One undo step: `{ ops, inverse, key, at }`.                                                             |
-| `UpdateOptions`            | `update`'s options: `{ coalesce? }`.                                                                    |
-| `UserSelection`            | One user's `{ selected, hovered, focus, editing }`.                                                     |
+Schema helpers and the store are the React-free subpath
+`@createcms/react/editor/core`; see [`core/README.md`](./core/README.md).
 
 ## Types
 
@@ -454,7 +368,7 @@ changing a value back by hand counts as clean again. Structural changes call
 | `EditorPreviewProps`          | Props of `Editor.Preview`: `render(tree)`, `debounceMs?`, div props.                                                                                                  |
 | `EditorFramePreviewProps`     | Props of `Editor.FramePreview`: `render(tree, { signal })`, `debounceMs?`, `selectable?`, `resolveAnchor?`, `onIssues?`, `onError?`, `sandbox?`, `title?`, div props. |
 | `FramePreviewIssue`           | One `onIssues` finding: `relative-url`, `missing-href`, or `preview-anchors`.                                                                                         |
-| `FramePreviewAnchor`          | `{ blockId, key? }` resolved from a click in a selectable frame.                                                                                                      |
+| `FramePreviewAnchor`          | `{ blockId, key?, slot? }` resolved from a click in a selectable frame.                                                                                               |
 | `FramePreviewKind`            | `'html'` or `'blob'`, the last successfully displayed compile kind.                                                                                                   |
 | `AnyBlockHandle`              | `useAnyBlock`'s return type: a block's data, specs and setters.                                                                                                       |
 | `AnyFieldHandle`              | `useAnyField`'s return type: one property's value, spec and setter.                                                                                                   |
@@ -500,43 +414,35 @@ changing a value back by hand counts as clean again. Structural changes call
 
 ## Tests
 
-| File                                     | Covers                                                                                                                                                                                              |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `editor.test.tsx`                        | Root provides context, store and user; parts outside Root throw; namespace keys; Canvas.Overlay throw; Canvas DnD namespace keys.                                                                   |
-| `editor.browser.test.tsx`                | Chromium mount + click on `Editor.Root`.                                                                                                                                                            |
-| `canvas/canvas.browser.test.tsx`         | Chromium canvas host box, anchor rects, layout wait, pointer coordinates, ring vs block gBCR (1 px), resize, scroll without remeasure, nested field key, same-id union.                             |
-| `canvas/dnd.test.ts`                     | Pure DnD helpers: `adjustMoveIndex`, `blockIdAtPoint`, store threshold, session vs target subscriptions.                                                                                            |
-| `canvas/dnd-parts.test.tsx`              | DragHandle / PaletteItem / DropIndicator / DragPreview throw outside Root; preview uses translate3d during drag; palette click insert; drag threshold; escape cancel.                               |
-| `canvas/dnd.browser.test.tsx`            | Chromium palette drop, sibling moves, escape cancel, auto-scroll, touch drag, forbidden placement, focus after drop, select mode without drag.                                                      |
-| `canvas/inline-text.test.ts`             | Pure inline helpers: `applyTextEdit`, placeholder injection, field kind.                                                                                                                            |
-| `canvas/inline-parts.test.tsx`           | InlineText throw outside Root; string vs number activation; nested key; same element; two editors; empty badge commit.                                                                              |
-| `canvas/inline-text.browser.test.tsx`    | Chromium inline glass activation, caret, typing, Enter/Escape, discardOnEscape, nested key, richText multiline, empty badge, suggest keyboard, two canvases, number field, undo during session.     |
-| `canvas/insert.test.ts`                  | Pure `resolveInsertAt` with stubbed rects (column, row, grid, empty box, walk-up, dragged id, nearest ancestor).                                                                                    |
-| `canvas/toolbar.test.tsx`                | BlockToolbar / InsertButton throws, selection gating, overlay chrome hover guard.                                                                                                                   |
-| `canvas/insert.browser.test.tsx`         | Chromium column / row / grid insert, empty box, toolbar placement, disabled gating, select mode toolbar without insert.                                                                             |
-| `canvas/rect.test.ts`                    | `unionRects`, readonly skip, nested field key own-block lookup.                                                                                                                                     |
-| `canvas/overlay.test.tsx`                | Overlay portal into host, `useBlockRect` callable, SelectionRing / FieldRing presence, HoverRing suppression.                                                                                       |
-| `canvas/renderer.test.tsx`               | Store-tree walk, edit anchors, resolve cache, unresolved omit, referenced readonly, intercept, Hero snapshot.                                                                                       |
-| `keyboard.test.tsx`                      | `useEditorKeyboard`: undo/redo (including inside inputs), `preventDefault`, optional Delete/Escape, throw outside Root.                                                                             |
-| `editor-ssr.test.tsx`                    | `renderToString` then `hydrateRoot` of `Editor.Root` + `Editor.Form`; no hydration mismatch.                                                                                                        |
-| `binding.test.tsx`                       | `shallowEqual`; `useEditorSelector` re-render/memoisation behaviour; prop-closure recomputation.                                                                                                    |
-| `hooks.test.tsx`                         | Every untyped hook including `useChildren` child refs and `useBlockActions`, Root callbacks, `key`-based reset, `scrollTo`.                                                                         |
-| `factory.test.tsx`                       | `createEditor`'s runtime shape (incl. `useBlockActions`, `useEditorKeyboard`, `Preview`, `FramePreview`), typed narrowing at runtime, the schema guard, nested factories.                           |
-| `factory.type-check.ts`                  | Compile-time: the derived types (`TreeOf`, `BlockHandleOf`, `ChildRefOf`, `TypedBlockActions`, factory `Preview`/`FramePreview` tree arg, `scrollTo`) against a representative schema.              |
-| `field/field.test.tsx`                   | Built-in controls, control resolution (render/map/default, warn-once), label/description/error wiring, focus sync, coalesced typing, `Editor.Form` grouping and `autoScroll`, `useMissingRequired`. |
-| `field/field.type-check.ts`              | Compile-time: per-kind `FieldControlProps`, the `FieldControls` map, `fields` on Root and context.                                                                                                  |
-| `preview/preview.test.tsx`               | Debounced raw-tree updates, collapse of rapid ops, no update on focus, throw outside Root, Field/store focus roundtrip, invoice form + PDFViewer placeholder.                                       |
-| `preview/frame-sandbox.test.ts`          | Sandbox token default, `selectable` `allow-same-origin`, forbidden tokens stripped, no duplicate `allow-same-origin`.                                                                               |
-| `preview/frame-issues.test.ts`           | Relative `src`/`href`, absolute forms, missing `href`, one `preview-anchors` finding.                                                                                                               |
-| `preview/frame-anchor.test.ts`           | Field inside its block, nested block does not steal the outer id, `resolveAnchor` win and fallthrough.                                                                                              |
-| `preview/frame-preview.browser.test.tsx` | Chromium: double buffer, sequence race, selectable click, reverse `data-editor-focused`, blob revoke, sandbox attributes, stacked form + FramePreview, invoice Blob.                                |
-| `structure/structure.test.tsx`           | `Editor.OutlineItem` keyboard/aria/selection, `Editor.AddBlock` insert-point rule, stacked-form acceptance.                                                                                         |
-| `structure/structure.type-check.ts`      | Compile-time: `onDelete` return, required `type` on `AddBlock`, factory `useChildren`/`TypedBlockActions`.                                                                                          |
-| `schema/placement.test.ts`               | `getPlacement`/`canPlace`/`allowedChildTypes`: placement semantics table, edge cases with ad-hoc schemas.                                                                                           |
-| `schema/defaults.test.ts`                | `defaultValuesFor`: declared-default-only semantics, `fillDefaults`, fresh-object-per-call.                                                                                                         |
-| `schema/fields.test.ts`                  | `propertiesOf`/`groupFields`/`paletteItems`/`groupPaletteItems`: ordering and grouping rules.                                                                                                       |
-| `schema/validation.test.ts`              | `isEmptyValue`/`validateField`/`missingRequired`: required gate, per-kind constraints, list elements.                                                                                               |
-| `store/hash.test.ts`                     | `stableHash`: key-order-insensitive, array-order-sensitive, `undefined` dropped, `null` kept.                                                                                                       |
-| `store/serde.test.ts`                    | `flattenTree`/`serializeToTree`: shape, root type kept, round-trip, subtree, dangling id, property copies.                                                                                          |
-| `store/ops.test.ts`                      | `applyOp`: every op kind, its guards, its inverse, roundtrips, JSON-serialisability.                                                                                                                |
-| `store/store.test.ts`                    | `createEditorStore`: actions, placement guards, undo/redo, coalescing, `applyRemote`, selection, save.                                                                                              |
+| File                                     | Covers                                                                                                                                                                                                 |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `editor.test.tsx`                        | Root provides context, store and user; parts outside Root throw; namespace keys; Canvas.Overlay throw; Canvas DnD namespace keys.                                                                      |
+| `editor.browser.test.tsx`                | Chromium mount + click on `Editor.Root`.                                                                                                                                                               |
+| `canvas/canvas.browser.test.tsx`         | Chromium canvas host box, anchor rects, layout wait, pointer coordinates, ring vs block gBCR (1 px), resize, scroll without remeasure, nested field key, same-id union.                                |
+| `canvas/dnd.test.ts`                     | Pure DnD helpers: `adjustMoveIndex`, `blockIdAtPoint`, store threshold, session vs target subscriptions.                                                                                               |
+| `canvas/dnd-parts.test.tsx`              | DragHandle / PaletteItem / DropIndicator / DragPreview throw outside Root; preview uses translate3d during drag; palette click insert; drag threshold; escape cancel.                                  |
+| `canvas/dnd.browser.test.tsx`            | Chromium palette drop, sibling moves, escape cancel, auto-scroll, touch drag, forbidden placement, focus after drop, select mode without drag.                                                         |
+| `canvas/inline-text.test.ts`             | Pure inline helpers: `applyTextEdit`, placeholder injection, field kind.                                                                                                                               |
+| `canvas/inline-parts.test.tsx`           | InlineText throw outside Root; string vs number activation; nested key; richText click without session; two editors; empty badge commit.                                                               |
+| `canvas/inline-text.browser.test.tsx`    | Chromium inline glass activation, caret, typing, Enter/Escape, discardOnEscape, nested key, richText click keeps HTML, empty badge, suggest keyboard, two canvases, number field, undo during session. |
+| `canvas/insert.test.ts`                  | Pure `resolveInsertAt` with stubbed rects (column, row, grid, empty box, walk-up, dragged id, nearest ancestor).                                                                                       |
+| `canvas/toolbar.test.tsx`                | BlockToolbar / InsertButton throws, selection gating, overlay chrome hover guard.                                                                                                                      |
+| `canvas/insert.browser.test.tsx`         | Chromium column / row / grid insert, empty box, toolbar placement, disabled gating, select mode toolbar without insert.                                                                                |
+| `canvas/rect.test.ts`                    | `unionRects`, readonly skip, nested field key own-block lookup.                                                                                                                                        |
+| `canvas/overlay.test.tsx`                | Overlay portal into host, `useBlockRect` callable, SelectionRing / FieldRing presence, HoverRing suppression.                                                                                          |
+| `canvas/renderer.test.tsx`               | Store-tree walk, edit anchors, resolve cache, unresolved omit, referenced readonly, intercept, Hero snapshot.                                                                                          |
+| `keyboard.test.tsx`                      | `useEditorKeyboard`: undo/redo (including inside inputs), `preventDefault`, optional Delete/Escape, throw outside Root.                                                                                |
+| `editor-ssr.test.tsx`                    | `renderToString` then `hydrateRoot` of `Editor.Root` + `Editor.Form`; no hydration mismatch.                                                                                                           |
+| `binding.test.tsx`                       | `shallowEqual`; `useEditorSelector` re-render/memoisation behaviour; prop-closure recomputation.                                                                                                       |
+| `hooks.test.tsx`                         | Every untyped hook including `useChildren` child refs and `useBlockActions`, Root callbacks, `key`-based reset, `scrollTo`.                                                                            |
+| `factory.test.tsx`                       | `createEditor`'s runtime shape (incl. `useBlockActions`, `useEditorKeyboard`, `Preview`, `FramePreview`), typed narrowing at runtime, the schema guard, nested factories.                              |
+| `factory.type-check.ts`                  | Compile-time: the derived types (`DocumentOf`, `BlockHandleOf`, `ChildRefOf`, `TypedBlockActions`, factory `Preview`/`FramePreview` tree arg, `scrollTo`) against a representative schema.             |
+| `field/field.test.tsx`                   | Built-in controls, control resolution (render/map/default, warn-once), label/description/error wiring, focus sync, coalesced typing, `Editor.Form` grouping and `autoScroll`, `useMissingRequired`.    |
+| `field/field.type-check.ts`              | Compile-time: per-kind `FieldControlProps`, the `FieldControls` map, `fields` on Root and context.                                                                                                     |
+| `preview/preview.test.tsx`               | Debounced raw-tree updates, collapse of rapid ops, no update on focus, throw outside Root, Field/store focus roundtrip, invoice form + PDFViewer placeholder.                                          |
+| `preview/frame-sandbox.test.ts`          | Sandbox token default, `selectable` `allow-same-origin`, forbidden tokens stripped, no duplicate `allow-same-origin`.                                                                                  |
+| `preview/frame-issues.test.ts`           | Relative `src`/`href`, absolute forms, missing `href`, one `preview-anchors` finding.                                                                                                                  |
+| `preview/frame-anchor.test.ts`           | Field inside its block, nested block does not steal the outer id, `resolveAnchor` win and fallthrough.                                                                                                 |
+| `preview/frame-preview.browser.test.tsx` | Chromium: double buffer, sequence race, selectable click, reverse `data-editor-focused`, blob revoke, sandbox attributes, stacked form + FramePreview, invoice Blob.                                   |
+| `structure/structure.test.tsx`           | `Editor.OutlineItem` keyboard/aria/selection, `Editor.AddBlock` insert-point rule, stacked-form acceptance.                                                                                            |
+| `structure/structure.type-check.ts`      | Compile-time: `onDelete` return, required `type` on `AddBlock`, factory `useChildren`/`TypedBlockActions`.                                                                                             |

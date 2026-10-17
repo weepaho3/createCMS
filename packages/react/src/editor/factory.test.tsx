@@ -4,24 +4,23 @@ import type * as React from 'react';
 import { act, cleanup, render, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import type { EditorFactory, TreeOf } from './factory';
+import type { EditorDocument } from './core/document';
+import type { DocumentOf, EditorFactory } from './factory';
 
+import { pages } from './core/schema/fixtures';
+import { counterGenId, makeDoc, storeSchema } from './core/store/fixtures';
 import { createEditor } from './factory';
 import { Editor } from './index';
-import { pages } from './schema/fixtures';
-import { counterGenId, makeTree, storeSchema } from './store/fixtures';
 
 afterEach(cleanup);
 
-/** `makeTree()` typed as `storeSchema` demands it: the union members are structurally comparable to `BlockTreeNode`. */
-const typedTree = (): TreeOf<typeof storeSchema> =>
-  makeTree() as TreeOf<typeof storeSchema>;
+/** `makeDoc()` typed as `storeSchema` demands it. */
+const typedTree = (): DocumentOf<typeof storeSchema> =>
+  makeDoc() as DocumentOf<typeof storeSchema>;
 
-const pagesTree = (): TreeOf<typeof pages> => ({
-  blockId: 'root_1',
-  type: 'root',
-  properties: { title: 'x' },
-  children: [],
+const pagesTree = (): EditorDocument => ({
+  schemaVersion: 1,
+  root: { id: 'root_1', type: 'root', props: { title: 'x' } },
 });
 
 function rootWrapper(factory: EditorFactory<typeof storeSchema>) {
@@ -243,7 +242,7 @@ describe('schema guard', () => {
       return <span data-testid="probe">{api.getState().rootId}</span>;
     }
     const { getByTestId } = render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <Probe />
       </Editor.Root>,
     );
@@ -282,7 +281,7 @@ describe('nesting two factories', () => {
     }
     render(
       <factoryA.Root defaultValue={typedTree()}>
-        <factoryB.Root defaultValue={pagesTree()}>
+        <factoryB.Root defaultValue={pagesTree() as DocumentOf<typeof pages>}>
           <InnerProbe />
         </factoryB.Root>
       </factoryA.Root>,

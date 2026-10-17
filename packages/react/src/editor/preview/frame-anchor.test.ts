@@ -69,4 +69,29 @@ describe('frameClickAnchor', () => {
       key: 'text',
     });
   });
+
+  it('returns the slot of the clicked block outside any field', () => {
+    const root = mount(
+      '<section data-editor-block="cols">' +
+        '<div data-editor-slot="left"><span id="gap">gap</span></div>' +
+        '</section>',
+    );
+    expect(frameClickAnchor(root.querySelector('#gap'))).toEqual({
+      blockId: 'cols',
+      slot: 'left',
+    });
+  });
+
+  it('does not report a slot that belongs to a nested block', () => {
+    const root = mount(
+      '<section data-editor-block="outer">' +
+        '<div data-editor-slot="children">' +
+        '<article data-editor-block="inner"><p id="x">x</p></article>' +
+        '</div>' +
+        '</section>',
+    );
+    expect(frameClickAnchor(root.querySelector('#x'))).toEqual({
+      blockId: 'inner',
+    });
+  });
 });

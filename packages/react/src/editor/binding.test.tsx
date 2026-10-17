@@ -5,15 +5,15 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { shallowEqual, useEditorSelector, useEditorStore } from './binding';
+import { counterGenId, makeDoc, storeSchema } from './core/store/fixtures';
 import { Editor } from './index';
-import { counterGenId, makeTree, storeSchema } from './store/fixtures';
 
 afterEach(cleanup);
 
 function makeWrapper() {
   const genId = counterGenId();
   return ({ children }: { children: React.ReactNode }) => (
-    <Editor.Root schema={storeSchema} defaultValue={makeTree()} genId={genId}>
+    <Editor.Root schema={storeSchema} defaultValue={makeDoc()} genId={genId}>
       {children}
     </Editor.Root>
   );

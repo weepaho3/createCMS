@@ -4,6 +4,7 @@ import { createBlocksMap } from '@createcms/core/react/blocks';
 import { Button, Heading, Img, Section, Text } from '@react-email/components';
 
 import { emails } from '@/app/demo/_lib/email-schema';
+import { sanitizeRichTextHtml } from '@/lib/sanitize-rich-text';
 
 function demoAssetUrl(id: string): string {
   const origin = process.env.NEXT_PUBLIC_DOCS_URL ?? 'http://localhost:4000';
@@ -23,7 +24,9 @@ function EmailParagraph({ properties, edit }: BlockComponentProps) {
     <Section {...edit.block}>
       <Text
         {...edit.field.text}
-        dangerouslySetInnerHTML={{ __html: properties.text as string }}
+        dangerouslySetInnerHTML={{
+          __html: sanitizeRichTextHtml(properties.text),
+        }}
       />
     </Section>
   );

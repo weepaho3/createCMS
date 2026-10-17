@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { EditorNodes } from '../store';
+import type { EditorNodes } from '../core/store';
 
 import {
   adjustMoveIndex,

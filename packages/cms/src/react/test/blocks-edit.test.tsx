@@ -74,7 +74,13 @@ const map = createBlocksMap(collection, {
       {children}
     </div>
   ),
-  section: ({ edit, children }) => <div {...edit.block}>{children}</div>,
+  section: ({ edit, children }) => (
+    <div {...edit.block}>
+      <div {...edit.slot?.children} data-testid="section-children">
+        {children}
+      </div>
+    </div>
+  ),
 });
 
 // root → hero (hero_1), section (sec_1) → paragraph (p_1), card (card_1)
@@ -152,7 +158,13 @@ const RenderPage = createContentRenderer(collection, {
       {children}
     </div>
   ),
-  section: ({ edit, children }) => <div {...edit.block}>{children}</div>,
+  section: ({ edit, children }) => (
+    <div {...edit.block}>
+      <div {...edit.slot?.children} data-testid="section-children">
+        {children}
+      </div>
+    </div>
+  ),
 });
 
 // A recursive walk that finds any function value reachable from an object —
@@ -175,6 +187,7 @@ describe('edit prop', () => {
     );
     expect(container.querySelectorAll('[data-editor-block]').length).toBe(0);
     expect(container.querySelectorAll('[data-editor-field]').length).toBe(0);
+    expect(container.querySelectorAll('[data-editor-slot]').length).toBe(0);
   });
 
   it('emits no anchors without the edit prop, on createContentRenderer', () => {
@@ -206,8 +219,18 @@ describe('edit prop', () => {
       container.querySelector('[data-editor-block="sec_1"]'),
     ).not.toBeNull();
     expect(
+      container
+        .querySelector('[data-testid="section-children"]')
+        ?.getAttribute('data-editor-slot'),
+    ).toBe('children');
+    expect(
       container.querySelector('[data-editor-block="card_1"]'),
     ).not.toBeNull();
+    expect(
+      container
+        .querySelector('[data-editor-block="hero_1"]')
+        ?.querySelector('[data-editor-slot]'),
+    ).toBeNull();
 
     const referencedParagraph = Array.from(
       container.querySelectorAll('p'),

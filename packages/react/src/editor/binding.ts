@@ -1,6 +1,6 @@
 import * as React from 'react';
 
-import type { EditorStore, EditorStoreState } from './store';
+import type { EditorStore, EditorStoreState } from './core/store';
 
 import { useEditorContext } from './context';
 

@@ -43,14 +43,17 @@ export function PageEditor({
       collection="pages"
       rootId={rootId}
       branchId={branchId}
-      schema={pages}
-      components={pageBlocks}
+      blocks={pageBlocks}
     />
   );
 }
 ```
 
 Copied files land in your shadcn components directory. Adjust the import if your aliases differ.
+
+`blocks` is your `createBlocksMap` result: `CmsEditor` derives the editor
+schema (`fromCollection`), the canvas components (`cmsCanvasComponents`) and
+the document mapping from it.
 
 What `CmsEditor` includes:
 

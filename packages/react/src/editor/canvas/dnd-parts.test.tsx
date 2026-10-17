@@ -2,8 +2,8 @@
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { makeDoc, storeSchema } from '../core/store/fixtures';
 import { Editor } from '../index';
-import { makeTree, storeSchema } from '../store/fixtures';
 import { Canvas } from './index';
 import { dispatchPointer, renderCanvas } from './test/harness';
 
@@ -13,7 +13,7 @@ describe('Canvas.DragHandle', () => {
   it('throws outside Canvas.Root', () => {
     expect(() =>
       render(
-        <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+        <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
           <Canvas.DragHandle blockId="h1" />
         </Editor.Root>,
       ),
@@ -93,7 +93,7 @@ describe('Canvas.PaletteItem', () => {
   it('throws outside Canvas.Root', () => {
     expect(() =>
       render(
-        <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+        <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
           <Canvas.PaletteItem type="paragraph" />
         </Editor.Root>,
       ),
@@ -165,7 +165,7 @@ describe('Canvas.DropIndicator', () => {
   it('throws outside Canvas.Root', () => {
     expect(() =>
       render(
-        <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+        <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
           <Canvas.DropIndicator />
         </Editor.Root>,
       ),
@@ -188,7 +188,7 @@ describe('Canvas.DragPreview', () => {
   it('throws outside Canvas.Root', () => {
     expect(() =>
       render(
-        <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+        <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
           <Canvas.DragPreview />
         </Editor.Root>,
       ),

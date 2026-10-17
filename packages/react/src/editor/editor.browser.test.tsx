@@ -2,8 +2,8 @@ import { cleanup, render } from '@testing-library/react';
 import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { makeDoc, storeSchema } from './core/store/fixtures';
 import { Editor, useEditor, useSelection } from './index';
-import { makeTree, storeSchema } from './store/fixtures';
 
 afterEach(cleanup);
 
@@ -24,7 +24,7 @@ function Probe() {
 describe('Editor.Root in a real browser', () => {
   it('mounts the store and renders through the hooks', () => {
     const { getByTestId } = render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <Probe />
       </Editor.Root>,
     );
@@ -34,7 +34,7 @@ describe('Editor.Root in a real browser', () => {
 
   it('reacts to a real click event', () => {
     const { getByTestId, getByRole } = render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <Probe />
       </Editor.Root>,
     );

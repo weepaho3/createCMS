@@ -1,15 +1,16 @@
-import type {
-  AnyBlockDefinition,
-  BlockProperty,
-  BlockTreeNode,
-  InferBlockProperties,
-  InferBlockTreeNode,
-  InferPartialBlockProperties,
-} from '@createcms/schema';
-
 import * as React from 'react';
 
 import type { EditorRootProps } from './components';
+import type { EditorDocument, JsonValue } from './core/document';
+import type {
+  AnyComponentDef,
+  AnyEditorSchema,
+  Field,
+  FieldValue,
+  InferProps,
+  PaletteItem,
+} from './core/schema';
+import type { UpdateOptions, UserSelection } from './core/store';
 import type {
   BlockActions,
   ChildRef,
@@ -18,8 +19,6 @@ import type {
   SaveApi,
 } from './hooks';
 import type { EditorFramePreviewProps, EditorPreviewProps } from './preview';
-import type { AnyEditorSchema, PaletteItem } from './schema';
-import type { UpdateOptions, UserSelection } from './store';
 
 import { EditorRoot } from './components';
 import { useEditorContext } from './context';
@@ -42,36 +41,27 @@ import { EditorFramePreview, EditorPreview } from './preview';
 // Type derivations from a schema
 // ---------------------------------------------------------------------------
 
-/** The statically known blocks of `S`: `{}` when `S` declares none or only an index signature. */
-export type BlocksOf<S extends AnyEditorSchema> = S extends { blocks?: infer B }
-  ? NonNullable<B> extends Record<string, AnyBlockDefinition>
-    ? string extends keyof NonNullable<B>
-      ? {}
-      : NonNullable<B>
-    : {}
-  : {};
+/** The statically known components of `S`: `{}` for an index-signature map. */
+export type ComponentsOf<S extends AnyEditorSchema> =
+  string extends keyof S['components'] ? {} : S['components'];
 
-/** Re-asserts the record constraint for generic positions (`T extends U ? T : never` carries `T & U`). */
-type AsBlocks<T> = T extends Record<string, AnyBlockDefinition> ? T : never;
+/** The component type names of `S`; `never` for component-less or dynamic schemas. */
+export type BlockTypeOf<S extends AnyEditorSchema> = keyof ComponentsOf<S> &
+  string;
 
-/** The block type names of `S`; `never` for block-less or dynamic schemas. */
-export type BlockTypeOf<S extends AnyEditorSchema> = keyof BlocksOf<S> & string;
-
-/** The property specs of block `K` (or of the root for `'root'`). */
+/** The fields of component `K` (or of the root for `'root'`). */
 export type PropsSpecOf<
   S extends AnyEditorSchema,
   K extends BlockTypeOf<S> | 'root',
 > = K extends 'root'
-  ? S['root']['properties']
-  : K extends keyof BlocksOf<S>
-    ? BlocksOf<S>[K] extends {
-        properties: infer P extends Record<string, BlockProperty>;
-      }
-      ? P
+  ? S['root']['fields']
+  : K extends keyof ComponentsOf<S>
+    ? ComponentsOf<S>[K] extends AnyComponentDef
+      ? ComponentsOf<S>[K]['fields']
       : never
     : never;
 
-/** The (raw) property values of block `K` (or the root). */
+/** The props of component `K` (or the root). */
 export type BlockPropsOf<
   S extends AnyEditorSchema,
   K extends BlockTypeOf<S> | 'root',
@@ -79,27 +69,39 @@ export type BlockPropsOf<
 
 export type RootPropsOf<S extends AnyEditorSchema> = BlockPropsOf<S, 'root'>;
 
-/** The tree of `S` as `getBlockTree` delivers it (raw mode). */
-export type TreeOf<S extends AnyEditorSchema> = InferBlockTreeNode<
-  AsBlocks<BlocksOf<S>>,
-  S['root']['properties']
->;
+/** One typed node of `S`: a union over its component types. */
+export type NodeOf<S extends AnyEditorSchema> = {
+  [K in BlockTypeOf<S>]: {
+    id: string;
+    type: K;
+    v?: number;
+    props: BlockPropsOf<S, K>;
+    slots?: Record<string, NodeOf<S>[]>;
+    meta?: Record<string, JsonValue>;
+  };
+}[BlockTypeOf<S>];
 
-/** The raw property values of a spec record (`NonNullable` because all-optional records infer `… | undefined`). */
-export type PropsOf<TSpec extends Record<string, BlockProperty>> = NonNullable<
-  InferBlockProperties<TSpec>
->;
+/** A typed document of `S`. */
+export type DocumentOf<S extends AnyEditorSchema> = {
+  schemaVersion: number;
+  root: {
+    id: string;
+    type: 'root';
+    v?: number;
+    props: RootPropsOf<S>;
+    slots?: Record<string, NodeOf<S>[]>;
+    meta?: Record<string, JsonValue>;
+  };
+};
 
-/**
- * The value type of property `P` in `TSpec`. `InferBlockProperties` remaps
- * keys through a conditional `as` clause, so a GENERIC `PropsOf<TSpec>[P]`
- * is not indexable (TS2536); the conditional narrows `P` to the record's
- * keys and resolves at instantiation.
- */
+/** The props of a field record. */
+export type PropsOf<TSpec extends Record<string, Field>> = InferProps<TSpec>;
+
+/** The value type of field `P` in `TSpec`. */
 export type PropValueOf<
-  TSpec extends Record<string, BlockProperty>,
+  TSpec extends Record<string, Field>,
   P extends keyof TSpec,
-> = P extends keyof PropsOf<TSpec> ? PropsOf<TSpec>[P] : never;
+> = FieldValue<TSpec[P]>;
 
 /** A typed field handle: value, spec and setter of one property. */
 export type FieldHandle<V, Spec> = {
@@ -114,7 +116,7 @@ export type FieldHandle<V, Spec> = {
 /** A typed block handle for block type `K` with property specs `TSpec`. */
 export type BlockHandle<
   K extends string,
-  TSpec extends Record<string, BlockProperty>,
+  TSpec extends Record<string, Field>,
 > = {
   readonly id: string;
   readonly type: K;
@@ -128,7 +130,7 @@ export type BlockHandle<
     options?: UpdateOptions,
   ): void;
   setProperties(
-    patch: InferPartialBlockProperties<TSpec>,
+    patch: { [P in keyof TSpec]?: PropValueOf<TSpec, P> | null },
     options?: UpdateOptions,
   ): void;
   field<P extends keyof TSpec & string>(
@@ -196,10 +198,11 @@ export type TypedBlockActions<S extends AnyEditorSchema> = Omit<
   ): string | null;
 };
 
-/** Phantom bag of the derived types (`typeof editor.types.tree`, …). `{}` at runtime. */
+/** Phantom bag of the derived types (`typeof editor.types.document`, …). `{}` at runtime. */
 export type EditorTypes<S extends AnyEditorSchema> = {
   readonly schema: S;
-  readonly tree: TreeOf<S>;
+  readonly document: DocumentOf<S>;
+  readonly node: NodeOf<S>;
   readonly blockType: BlockTypeOf<S>;
   readonly block: BlockHandleOf<S>;
   readonly rootProps: RootPropsOf<S>;
@@ -211,21 +214,21 @@ export type CreateEditorOptions<S extends AnyEditorSchema> = {
 
 export type EditorFactory<S extends AnyEditorSchema> = {
   readonly schema: S;
-  /** `Editor.Root` with `schema` bound and `defaultValue` typed as `TreeOf<S>`. */
+  /** `Editor.Root` with `schema` bound and `defaultValue` typed as `DocumentOf<S>`. */
   Root: (
     props: Omit<EditorRootProps, 'schema' | 'defaultValue'> & {
-      defaultValue: TreeOf<S>;
+      defaultValue: DocumentOf<S>;
     },
   ) => React.JSX.Element;
   Preview: (
     props: Omit<EditorPreviewProps, 'render'> & {
-      render: (tree: TreeOf<S>) => React.ReactNode;
+      render: (doc: DocumentOf<S>) => React.ReactNode;
     },
   ) => React.JSX.Element;
   FramePreview: (
     props: Omit<EditorFramePreviewProps, 'render'> & {
       render: (
-        tree: TreeOf<S>,
+        doc: DocumentOf<S>,
         ctx: { signal: AbortSignal },
       ) => Promise<string | Blob>;
     },
@@ -278,7 +281,7 @@ export function createEditor<const S extends AnyEditorSchema>(
 
   function Root(
     props: Omit<EditorRootProps, 'schema' | 'defaultValue'> & {
-      defaultValue: TreeOf<S>;
+      defaultValue: DocumentOf<S>;
     },
   ): React.JSX.Element {
     const { defaultValue, ...rest } = props;
@@ -286,14 +289,14 @@ export function createEditor<const S extends AnyEditorSchema>(
       <EditorRoot
         {...rest}
         schema={schema}
-        defaultValue={defaultValue as BlockTreeNode}
+        defaultValue={defaultValue as EditorDocument}
       />
     );
   }
 
   function Preview(
     props: Omit<EditorPreviewProps, 'render'> & {
-      render: (tree: TreeOf<S>) => React.ReactNode;
+      render: (doc: DocumentOf<S>) => React.ReactNode;
     },
   ): React.JSX.Element {
     useSchemaGuard('Preview');
@@ -301,7 +304,7 @@ export function createEditor<const S extends AnyEditorSchema>(
     return (
       <EditorPreview
         {...rest}
-        render={render as (tree: BlockTreeNode) => React.ReactNode}
+        render={render as (doc: EditorDocument) => React.ReactNode}
       />
     );
   }
@@ -309,7 +312,7 @@ export function createEditor<const S extends AnyEditorSchema>(
   function FramePreview(
     props: Omit<EditorFramePreviewProps, 'render'> & {
       render: (
-        tree: TreeOf<S>,
+        doc: DocumentOf<S>,
         ctx: { signal: AbortSignal },
       ) => Promise<string | Blob>;
     },
@@ -321,7 +324,7 @@ export function createEditor<const S extends AnyEditorSchema>(
         {...rest}
         render={
           render as (
-            tree: BlockTreeNode,
+            doc: EditorDocument,
             ctx: { signal: AbortSignal },
           ) => Promise<string | Blob>
         }

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EditorRootProps } from './components';
 import type { EditorApi } from './hooks';
 
+import { counterGenId, makeDoc, storeSchema } from './core/store/fixtures';
 import {
   useAnyBlock,
   useAnyField,
@@ -20,7 +21,6 @@ import {
   useSelection,
 } from './hooks';
 import { Editor } from './index';
-import { counterGenId, makeTree, storeSchema } from './store/fixtures';
 
 afterEach(cleanup);
 
@@ -31,7 +31,7 @@ function makeWrapper(
   return ({ children }: { children: React.ReactNode }) => (
     <Editor.Root
       schema={storeSchema}
-      defaultValue={makeTree()}
+      defaultValue={makeDoc()}
       genId={genId}
       onChange={overrides.onChange}
       onSave={overrides.onSave}
@@ -89,7 +89,7 @@ describe('useEditor().scrollTo', () => {
       return null;
     }
     const { getByTestId } = render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <Editor.Form blockId="root_1" data-testid="form" />
         <Probe />
       </Editor.Root>,
@@ -109,7 +109,7 @@ describe('useEditor().scrollTo', () => {
       return null;
     }
     render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <Editor.Form blockId="root_1" data-testid="form" />
         <Probe />
       </Editor.Root>,
@@ -129,7 +129,7 @@ describe('useEditor().scrollTo', () => {
       return null;
     }
     const { getByTestId } = render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <Editor.Form blockId="root_1" data-testid="form" />
         <div data-testid="container">
           <div data-block-id="h1" data-testid="h1-anchor" />
@@ -171,7 +171,7 @@ describe('useAnyBlock', () => {
     });
     expect(result.current?.type).toBe('heading');
     expect(result.current?.properties.text).toBe('Hello');
-    expect(result.current?.spec.text?.type).toBe('string');
+    expect(result.current?.spec.text?.type).toBe('text');
     expect(result.current?.childIds).toEqual([]);
     expect(result.current?.parentId).toBe('root_1');
   });
@@ -233,12 +233,12 @@ describe('useAnyBlock', () => {
 });
 
 describe('useAnyField', () => {
-  it("value 'Hello', spec.type 'string', set('Y') updates it", () => {
+  it("value 'Hello', spec.type 'text', set('Y') updates it", () => {
     const { result } = renderHook(() => useAnyField('h1', 'text'), {
       wrapper: makeWrapper(),
     });
     expect(result.current.value).toBe('Hello');
-    expect(result.current.spec?.type).toBe('string');
+    expect(result.current.spec?.type).toBe('text');
     act(() => {
       result.current.set('Y');
     });
@@ -611,12 +611,12 @@ describe('useSave / useDirty', () => {
       { wrapper: makeWrapper({ onSave }) },
     );
     let sawSavingDuringCall = false;
-    onSave.mockImplementation(async (tree, meta) => {
+    onSave.mockImplementation(async (doc, meta) => {
       // The store's own state (not the last React render, which has not
       // flushed yet at this synchronous point) reflects `saving` correctly.
       sawSavingDuringCall = result.current.api.getState().saving;
       expect(meta).toEqual({ message: 'm' });
-      expect(tree.blockId).toBe('root_1');
+      expect(doc.root.id).toBe('root_1');
     });
     act(() => {
       result.current.api.update('h1', { text: 'X' });
@@ -648,7 +648,7 @@ describe('usePalette', () => {
 });
 
 describe('Root callbacks', () => {
-  it('onChange receives { ops, version, getTree }', () => {
+  it('onChange receives { ops, version, getDocument }', () => {
     const onChange = vi.fn();
     const { result } = renderHook(() => useEditor(), {
       wrapper: makeWrapper({ onChange }),
@@ -659,8 +659,8 @@ describe('Root callbacks', () => {
     expect(onChange).toHaveBeenCalledTimes(1);
     const change = onChange.mock.calls[0]?.[0];
     expect(change.ops[0].op).toBe('add');
-    expect(typeof change.getTree).toBe('function');
-    expect(change.getTree().children).toHaveLength(3);
+    expect(typeof change.getDocument).toBe('function');
+    expect(change.getDocument().root.slots?.children).toHaveLength(3);
   });
 
   it('a new onChange prop passed on re-render is the one called by the next change', () => {
@@ -675,7 +675,7 @@ describe('Root callbacks', () => {
       return (
         <Editor.Root
           schema={storeSchema}
-          defaultValue={makeTree()}
+          defaultValue={makeDoc()}
           genId={counterGenId()}
           onChange={onChange}
         >
@@ -695,8 +695,11 @@ describe('Root callbacks', () => {
 
 describe('key reset', () => {
   it('a new key creates a fresh store from the new defaultValue', () => {
-    const treeA = makeTree();
-    const treeB = { ...makeTree(), blockId: 'root_2' };
+    const treeA = makeDoc();
+    const treeB = {
+      ...makeDoc(),
+      root: { ...makeDoc().root, id: 'root_2' },
+    };
     let api: EditorApi | undefined;
     function Probe() {
       api = useEditor();
@@ -733,8 +736,11 @@ describe('key reset', () => {
   });
 
   it('re-rendering with a different defaultValue but the same key keeps the old store', () => {
-    const treeA = makeTree();
-    const treeB = { ...makeTree(), blockId: 'root_2' };
+    const treeA = makeDoc();
+    const treeB = {
+      ...makeDoc(),
+      root: { ...makeDoc().root, id: 'root_2' },
+    };
     let api: EditorApi | undefined;
     function Probe() {
       api = useEditor();

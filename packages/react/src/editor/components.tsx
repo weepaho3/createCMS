@@ -1,27 +1,27 @@
-import type { BlockTreeNode } from '@createcms/schema';
-
 import * as React from 'react';
 
+import type { EditorDocument } from './core/document';
+import type { AnyEditorSchema } from './core/schema';
+import type { EditorCallbacks, EditorStore } from './core/store';
 import type { FieldControls } from './field/types';
-import type { AnyEditorSchema } from './schema';
 import type { EditorScrollToOptions } from './scroll';
-import type { EditorCallbacks, EditorStore } from './store';
 import type { EditorContextValue } from './types';
 
 import { EditorContext } from './context';
+import { createEditorStore } from './core/store';
+import { isHTMLElement } from './dom';
 import { scrollElementIntoView } from './scroll';
-import { createEditorStore } from './store';
 
 const EMPTY_FIELDS: FieldControls = {};
 
 export type EditorRootProps = {
-  /** The collection definition: required, a tree alone cannot name its collection. */
+  /** The editor schema: root, components, placement. */
   schema: AnyEditorSchema;
-  /** The initial tree (top node `type: 'root'`). Read once at mount; use `key` to load a different document. */
-  defaultValue: BlockTreeNode;
+  /** The initial document (`root.type === 'root'`). Read once at mount; use `key` to load a different document. */
+  defaultValue: EditorDocument;
   /** After every local structural change incl. undo/redo. */
   onChange?: EditorCallbacks['onChange'];
-  /** Called by `save()` with the full tree. */
+  /** Called by `save()` with the full document. */
   onSave?: EditorCallbacks['onSave'];
   /** Id generator for new blocks (default: `createBlockId`). Read once at mount. */
   genId?: () => string;
@@ -58,7 +58,7 @@ export function EditorRoot({
   if (storeRef.current === null) {
     const store: EditorStore = createEditorStore({
       schema,
-      initialTree: defaultValue,
+      initialValue: defaultValue,
       genId,
       userId,
       getCallbacks: () => callbacksRef.current,
@@ -81,7 +81,7 @@ export function EditorRoot({
         const found = opts.container.querySelector(
           '[data-block-id="' + CSS.escape(blockId) + '"]',
         );
-        if (!(found instanceof HTMLElement)) return false;
+        if (!isHTMLElement(found)) return false;
         scrollElementIntoView(found, opts);
         return true;
       }

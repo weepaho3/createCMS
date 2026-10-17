@@ -1,6 +1,6 @@
 import * as React from 'react';
 
-import type { EditorNodes } from '../store';
+import type { EditorNodes } from '../core/store';
 import type {
   AddBlockState,
   EditorAddBlockProps,
@@ -11,8 +11,8 @@ import type {
 import { useRender } from '../../use-render';
 import { useEditorSelector } from '../binding';
 import { useEditorContext } from '../context';
+import { canPlace } from '../core/schema';
 import { placementOf, useBlockActions } from '../hooks';
-import { canPlace } from '../schema';
 
 const TREE_ITEM = '[role="treeitem"]';
 
@@ -202,7 +202,7 @@ export function EditorAddBlock(props: EditorAddBlockProps) {
   });
   const disabled =
     target.parentType === null || !canPlace(placement, type, target.parentType);
-  const label = children ?? ctx.schema.blocks?.[type]?.label ?? type;
+  const label = children ?? ctx.schema.components[type]?.label ?? type;
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     onClick?.(event);
     if (event.defaultPrevented) return;

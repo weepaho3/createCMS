@@ -1,8 +1,9 @@
-import type { PlacementIndex } from '../schema/placement';
-import type { EditorNodes } from '../store';
+import type { PlacementIndex } from '../core/schema/placement';
+import type { EditorNodes } from '../core/store';
 import type { DragSession } from './dnd';
 import type { Measurer } from './measurer';
 
+import { isHTMLElement } from '../dom';
 import { blockElements } from './anchors';
 import { blockIdAtPoint } from './dnd';
 import { flowIsHorizontal, resolveInsertAt, type InsertTarget } from './insert';
@@ -38,7 +39,7 @@ export function createInsertAdapters(
     for (const childId of parent.childIds) {
       const els = blockElements(host, childId);
       const el = els[0];
-      if (el instanceof HTMLElement) return flowIsHorizontal(el);
+      if (isHTMLElement(el)) return flowIsHorizontal(el);
     }
     return false;
   };

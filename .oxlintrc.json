@@ -191,6 +191,82 @@
       }
     },
     {
+      // The media library is its own subpath; the editor never reaches into it.
+      // createcms types belong to the adapter in editor/cms only.
+      "files": ["packages/react/src/editor/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/media", "**/media/*", "@createcms/react/media"],
+                "message": "The editor does not import from the media library."
+              },
+              {
+                "group": ["@createcms/schema", "@createcms/schema/*"],
+                "message": "Only the createcms adapter (editor/cms) imports @createcms/schema."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      // The createcms adapter is the one editor folder that reads createcms types.
+      // Listed after the editor-wide entry: the later override replaces its options.
+      "files": ["packages/react/src/editor/cms/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/media", "**/media/*", "@createcms/react/media"],
+                "message": "The editor does not import from the media library."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      // The editor kernel is importable without React (servers, workers, RSC)
+      // and has no runtime dependencies. Listed after the editor-wide entry
+      // because the later override replaces the rule options for these files. Relative escapes out of
+      // src/editor/core are caught by the boundary test next to its barrel.
+      "files": ["packages/react/src/editor/core/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "react",
+                  "react/*",
+                  "react-dom",
+                  "react-dom/*",
+                  "@tiptap/*",
+                  "yjs",
+                  "y-*",
+                  "@createcms/react",
+                  "@createcms/react/*",
+                  "@createcms/schema",
+                  "@createcms/schema/*"
+                ],
+                "message": "@createcms/react/editor/core must stay React-free with no runtime dependencies."
+              },
+              {
+                "group": ["**/media", "**/media/*"],
+                "message": "The editor does not import from the media library."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       // node:test's `test()` returns the runner's promise; awaiting it is not
       // the caller's job.
       "files": ["scripts/**"],

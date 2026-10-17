@@ -2,8 +2,8 @@
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { makeDoc, storeSchema } from '../core/store/fixtures';
 import { Editor } from '../index';
-import { makeTree, storeSchema } from '../store/fixtures';
 import { Canvas, useBlockRect } from './index';
 import { canvasBlocks } from './test/fixtures';
 import { renderCanvas } from './test/harness';
@@ -31,7 +31,7 @@ describe('Canvas.Overlay', () => {
 
   it('lets useBlockRect read a mounted block', () => {
     const { getByTestId } = render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <Canvas.Root components={canvasBlocks}>
           <BlockRectProbe id="h1" />
         </Canvas.Root>

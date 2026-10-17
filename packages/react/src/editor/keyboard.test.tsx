@@ -11,13 +11,13 @@ import {
 import { useRef } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import type { EditorStore } from './core/store';
 import type { EditorKeyboardOptions } from './keyboard';
-import type { EditorStore } from './store';
 
 import { useEditorContext } from './context';
+import { counterGenId, makeDoc, storeSchema } from './core/store/fixtures';
 import { Editor } from './index';
 import { useEditorKeyboard } from './keyboard';
-import { counterGenId, makeTree, storeSchema } from './store/fixtures';
 
 afterEach(cleanup);
 
@@ -49,7 +49,7 @@ function mount(options?: EditorKeyboardOptions, children?: React.ReactNode) {
   const utils = render(
     <Editor.Root
       schema={storeSchema}
-      defaultValue={makeTree()}
+      defaultValue={makeDoc()}
       genId={counterGenId()}
     >
       <StoreProbe probe={probe} />
@@ -121,7 +121,7 @@ describe('useEditorKeyboard', () => {
     const { getByTestId } = render(
       <Editor.Root
         schema={storeSchema}
-        defaultValue={makeTree()}
+        defaultValue={makeDoc()}
         genId={counterGenId()}
       >
         <StoreProbe probe={probe} />

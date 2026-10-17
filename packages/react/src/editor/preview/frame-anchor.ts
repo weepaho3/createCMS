@@ -1,6 +1,9 @@
 export type FramePreviewAnchor = {
   blockId: string;
+  /** The field that was clicked, when the click landed inside one. */
   key?: string;
+  /** The slot that was clicked, when the click landed in a slot outside any field. */
+  slot?: string;
 };
 
 function isElement(target: EventTarget | null): target is Element {
@@ -28,6 +31,12 @@ export function frameClickAnchor(
   if (fieldEl && blockEl.contains(fieldEl)) {
     const key = fieldEl.getAttribute('data-editor-field');
     if (key) return { blockId, key };
+  }
+  // A slot counts only when it belongs to this block, not to a nested one.
+  const slotEl = target.closest('[data-editor-slot]');
+  if (slotEl && slotEl.closest('[data-editor-block]') === blockEl) {
+    const slot = slotEl.getAttribute('data-editor-slot');
+    if (slot) return { blockId, slot };
   }
   return { blockId };
 }

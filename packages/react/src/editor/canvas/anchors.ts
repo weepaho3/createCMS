@@ -31,6 +31,27 @@ export function fieldElements(
   return out;
 }
 
+/** The elements holding slot `slot` of block `id`, counted only inside that block. */
+export function slotElements(
+  canvas: Element,
+  id: string,
+  slot: string,
+): Element[] {
+  const out: Element[] = [];
+  for (const block of blockElements(canvas, id)) {
+    const slots = block.matches(`[data-editor-slot="${CSS.escape(slot)}"]`)
+      ? [block]
+      : [];
+    slots.push(
+      ...block.querySelectorAll(`[data-editor-slot="${CSS.escape(slot)}"]`),
+    );
+    for (const el of slots) {
+      if (el.closest('[data-editor-block]') === block) out.push(el);
+    }
+  }
+  return out;
+}
+
 export function measureBlock(
   canvas: HTMLElement,
   id: string,

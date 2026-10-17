@@ -5,8 +5,8 @@ import type { UseRenderComponentProps } from '../../use-render';
 import { useRender } from '../../use-render';
 import { useEditorSelector } from '../binding';
 import { useEditorContext } from '../context';
+import { canPlace } from '../core/schema';
 import { placementOf, useBlockActions } from '../hooks';
-import { canPlace } from '../schema';
 import { useCanvasContext } from './context';
 import {
   type InsertTarget,

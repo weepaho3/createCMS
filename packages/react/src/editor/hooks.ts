@@ -1,22 +1,21 @@
-import type { BlockProperty } from '@createcms/schema';
-
 import * as React from 'react';
 
 import type { EditorSelector } from './binding';
 import type {
   AnyEditorSchema,
+  Field,
   MissingRequiredField,
   PaletteItem,
   PlacementIndex,
   SchemaField,
-} from './schema';
-import type { EditorScrollToOptions } from './scroll';
+} from './core/schema';
 import type {
   EditorNode,
   EditorStore,
   UpdateOptions,
   UserSelection,
-} from './store';
+} from './core/store';
+import type { EditorScrollToOptions } from './scroll';
 
 import { useStoreSelector } from './binding';
 import { useEditorContext } from './context';
@@ -25,8 +24,11 @@ import {
   getPlacement,
   missingRequired,
   paletteItems,
-  propertiesOf,
-} from './schema';
+  componentOf,
+  createFieldResolver,
+  fieldContextFor,
+  fieldsOf,
+} from './core/schema';
 
 const EMPTY_SELECTION: UserSelection = {
   selected: null,
@@ -82,7 +84,7 @@ export type AnyFieldHandle = {
   readonly blockId: string;
   readonly key: string;
   /** The property spec from the schema, or `undefined` for an undeclared key. */
-  readonly spec: BlockProperty | undefined;
+  readonly spec: Field | undefined;
   readonly value: unknown;
   /** `null` deletes the key. */
   set(value: unknown, options?: UpdateOptions): void;
@@ -96,7 +98,7 @@ export type AnyBlockHandle = {
   readonly parentId: string | null;
   readonly childIds: readonly string[];
   /** Property specs of this block's type (`'root'` → the root's). */
-  readonly spec: Record<string, BlockProperty>;
+  readonly spec: Record<string, Field>;
   set(key: string, value: unknown, options?: UpdateOptions): void;
   setProperties(patch: Record<string, unknown>, options?: UpdateOptions): void;
   field(key: string): AnyFieldHandle;
@@ -143,7 +145,7 @@ function makeBlockHandle(
   schema: AnyEditorSchema,
   node: EditorNode,
 ): AnyBlockHandle {
-  const spec = propertiesOf(schema, node.type);
+  const spec = fieldsOf(schema, node.type);
   return {
     id: node.id,
     type: node.type,
@@ -195,9 +197,7 @@ export function useAnyField(blockId: string, key: string): AnyFieldHandle {
       blockId,
       key,
       spec:
-        slice.type === null
-          ? undefined
-          : propertiesOf(ctx.schema, slice.type)[key],
+        slice.type === null ? undefined : fieldsOf(ctx.schema, slice.type)[key],
       value: slice.value,
       set(value, options) {
         ctx.store.update(blockId, { [key]: value }, options);
@@ -207,22 +207,36 @@ export function useAnyField(blockId: string, key: string): AnyFieldHandle {
   );
 }
 
-/** The property specs of block `blockId`'s type, in schema order (`[]` for an unknown block). */
+/**
+ * The visible fields of block `blockId`, in schema order, after its
+ * component's `resolveFields` overrides. Fields hidden by `hidden` or `when`
+ * for the block's current props are left out. `[]` for an unknown block.
+ */
 export function useFields(blockId: string): SchemaField[] {
   const ctx = useEditorContext('useFields');
-  const type = useStoreSelector(
-    ctx.store,
-    (state) => state.nodes[blockId]?.type ?? null,
-  );
+  const resolverRef = React.useRef<ReturnType<
+    typeof createFieldResolver
+  > | null>(null);
+  resolverRef.current ??= createFieldResolver();
+  const resolver = resolverRef.current;
+  const fields = useStoreSelector(ctx.store, (state) => {
+    const node = state.nodes[blockId];
+    if (!node) return null;
+    const def = componentOf(ctx.schema, node.type);
+    if (!def) return null;
+    const fieldCtx = fieldContextFor(
+      ctx.schema,
+      (id) => state.nodes[id],
+      blockId,
+    );
+    return resolver(def, node.properties, fieldCtx);
+  });
   return React.useMemo(
     () =>
-      type === null
+      fields === null
         ? []
-        : Object.entries(propertiesOf(ctx.schema, type)).map(([key, spec]) => ({
-            key,
-            spec,
-          })),
-    [ctx, type],
+        : Object.entries(fields).map(([key, spec]) => ({ key, spec })),
+    [fields],
   );
 }
 

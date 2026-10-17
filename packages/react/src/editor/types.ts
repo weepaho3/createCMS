@@ -1,7 +1,7 @@
+import type { AnyEditorSchema } from './core/schema';
+import type { EditorStore } from './core/store';
 import type { FieldControls } from './field/types';
-import type { AnyEditorSchema } from './schema';
 import type { EditorScrollToOptions } from './scroll';
-import type { EditorStore } from './store';
 
 export type { EditorScrollToOptions } from './scroll';
 

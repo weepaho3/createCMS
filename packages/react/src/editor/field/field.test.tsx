@@ -1,5 +1,3 @@
-// @vitest-environment happy-dom
-import type { BlockTreeNode, CollectionDefinition } from '@createcms/schema';
 import type * as React from 'react';
 
 import {
@@ -11,7 +9,9 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { EditorStore } from '../store';
+// @vitest-environment happy-dom
+import type { EditorDocument } from '../core/document';
+import type { EditorStore } from '../core/store';
 import type {
   AnyFieldControlProps,
   FieldControlProps,
@@ -19,6 +19,7 @@ import type {
 } from './types';
 
 import { useEditorContext } from '../context';
+import { defineEditorSchema } from '../core/schema';
 import { useMissingRequired } from '../hooks';
 import { Editor } from '../index';
 import { useFieldContext } from './context';
@@ -32,19 +33,20 @@ afterEach(cleanup);
 
 // --- fixtures ---------------------------------------------------------------
 
-const formSchema = {
-  label: 'Form',
+const formSchema = defineEditorSchema({
   root: {
-    properties: {
-      title: { type: 'string', label: 'Title', required: true },
+    label: 'Form',
+    fields: {
+      title: { type: 'text', label: 'Title', required: true },
     },
+    slots: { children: {} },
   },
-  blocks: {
+  components: {
     demo: {
       label: 'Demo',
-      properties: {
+      fields: {
         text: {
-          type: 'string',
+          type: 'text',
           label: 'Text',
           placeholder: 'Type',
           maxLength: 10,
@@ -65,11 +67,11 @@ const formSchema = {
         tags: {
           type: 'list',
           label: 'Tags',
-          of: { type: 'string' },
+          of: { type: 'text' },
           min: 1,
           max: 3,
         },
-        cover: { type: 'image', label: 'Cover', group: 'Meta' },
+        cover: { type: 'media', label: 'Cover', group: 'Meta' },
         target: {
           type: 'reference',
           label: 'Target',
@@ -80,31 +82,35 @@ const formSchema = {
       },
     },
   },
-} satisfies CollectionDefinition;
+});
 
 const ROOT = 'root_1';
 const DEMO = 'd1';
 
-function makeTree(): BlockTreeNode {
+function makeDoc(): EditorDocument {
   return {
-    blockId: ROOT,
-    type: 'root',
-    properties: { title: 'Home' },
-    children: [
-      {
-        blockId: DEMO,
-        type: 'demo',
-        properties: {
-          text: 'Hi',
-          count: 2,
-          flag: true,
-          when: '2026-08-16T10:30:00.000Z',
-          pick: 'a',
-          tags: ['x', 'y'],
-        },
-        children: [],
+    schemaVersion: 1,
+    root: {
+      id: ROOT,
+      type: 'root',
+      props: { title: 'Home' },
+      slots: {
+        children: [
+          {
+            id: DEMO,
+            type: 'demo',
+            props: {
+              text: 'Hi',
+              count: 2,
+              flag: true,
+              when: '2026-08-16T10:30:00.000Z',
+              pick: 'a',
+              tags: ['x', 'y'],
+            },
+          },
+        ],
       },
-    ],
+    },
   };
 }
 
@@ -134,10 +140,10 @@ function Stub(props: {
   );
 }
 
-const stubs: FieldControls = { image: Stub, reference: Stub, link: Stub };
+const stubs: FieldControls = { media: Stub, reference: Stub, link: Stub };
 
-let lastCustomProps: FieldControlProps<'string'> | null = null;
-function Custom(props: FieldControlProps<'string'>) {
+let lastCustomProps: FieldControlProps<'text'> | null = null;
+function Custom(props: FieldControlProps<'text'>) {
   lastCustomProps = props;
   return (
     <input
@@ -168,7 +174,7 @@ function fieldTree(name: string, probe: Probe, options: FieldTreeOptions = {}) {
     controlRender,
   } = options;
   return (
-    <Editor.Root schema={formSchema} defaultValue={makeTree()} fields={fields}>
+    <Editor.Root schema={formSchema} defaultValue={makeDoc()} fields={fields}>
       <StoreProbe probe={probe} />
       <Editor.Field
         blockId={blockId}
@@ -345,8 +351,8 @@ describe('built-in controls', () => {
     const { getAllByTestId } = render(
       <Editor.Root
         schema={formSchema}
-        defaultValue={makeTree()}
-        fields={{ string: Custom }}
+        defaultValue={makeDoc()}
+        fields={{ text: Custom }}
       >
         <StoreProbe probe={probe} />
         <Editor.Field blockId={DEMO} name="tags">
@@ -383,8 +389,17 @@ describe('built-in controls', () => {
       }),
     ).toBe('first');
     expect(emptyListElement({ type: 'select', options: [] })).toBe('');
-    expect(emptyListElement({ type: 'string' })).toBe('');
-    expect(emptyListElement({ type: 'date' })).toBe('');
+    expect(emptyListElement({ type: 'text' })).toBe('');
+    expect(emptyListElement({ type: 'date' })).toBeNull();
+    expect(
+      emptyListElement({ type: 'select', options: [], multiple: true }),
+    ).toEqual([]);
+    expect(
+      emptyListElement({
+        type: 'object',
+        fields: { label: { type: 'text' }, size: { type: 'number' } },
+      }),
+    ).toEqual({ label: '', size: 0 });
   });
 });
 
@@ -394,13 +409,13 @@ describe('control resolution', () => {
   it('fields map: a scalar override receives the control props and writes the store', () => {
     lastCustomProps = null;
     const { getByTestId, props } = renderField('text', {
-      fields: { string: Custom },
+      fields: { text: Custom },
     });
     const custom = getByTestId('custom') as HTMLInputElement;
     expect(custom.value).toBe('Hi');
-    const received = lastCustomProps as FieldControlProps<'string'> | null;
+    const received = lastCustomProps as FieldControlProps<'text'> | null;
     expect(received).not.toBeNull();
-    expect(received?.spec.type).toBe('string');
+    expect(received?.spec.type).toBe('text');
     expect(received?.spec.label).toBe('Text');
     expect(received?.value).toBe('Hi');
     expect(received?.id).toBe(custom.getAttribute('id'));
@@ -417,7 +432,7 @@ describe('control resolution', () => {
     const { getByTestId, queryByTestId, container, props } = renderField(
       'text',
       {
-        fields: { string: Custom },
+        fields: { text: Custom },
         controlRender: (p) => (
           <input
             data-testid="r"
@@ -442,12 +457,12 @@ describe('control resolution', () => {
     expect(container.querySelector('label')).not.toBeNull();
     expect(container.querySelector('input, select, textarea')).toBeNull();
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0]?.[0])).toContain('"image"');
+    expect(String(warn.mock.calls[0]?.[0])).toContain('"media"');
     expect(String(warn.mock.calls[0]?.[0])).toContain('"cover"');
     rerender(fieldTree('cover', probe));
     expect(warn).toHaveBeenCalledTimes(1);
     cleanup();
-    const withMap = renderField('cover', { fields: { image: Stub } });
+    const withMap = renderField('cover', { fields: { media: Stub } });
     expect(withMap.getByTestId('stub-cover')).not.toBeNull();
     expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();
@@ -553,7 +568,7 @@ describe('Editor.FieldError', () => {
       blockId: ROOT,
     });
     const input = container.querySelector('input') as HTMLInputElement;
-    expect(field().getAttribute('data-kind')).toBe('string');
+    expect(field().getAttribute('data-kind')).toBe('text');
     expect(field().getAttribute('data-required')).toBe('');
     expect(field().hasAttribute('data-invalid')).toBe(false);
     fireEvent.change(input, { target: { value: '' } });
@@ -628,7 +643,7 @@ describe('Editor.Field', () => {
     const seen: { props: Record<string, unknown>; state: unknown }[] = [];
     const probe: Probe = { store: null };
     render(
-      <Editor.Root schema={formSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={formSchema} defaultValue={makeDoc()}>
         <StoreProbe probe={probe} />
         <Editor.Field
           blockId={DEMO}
@@ -650,12 +665,13 @@ describe('Editor.Field', () => {
       </Editor.Root>,
     );
     const first = seen[0];
-    expect(first?.props['data-kind']).toBe('string');
+    expect(first?.props['data-kind']).toBe('text');
     expect(first?.state).toEqual({
-      kind: 'string',
+      kind: 'text',
       required: false,
       invalid: false,
       disabled: false,
+      readOnly: false,
       focused: false,
     });
     const section = document.querySelector('[data-testid="section"]');
@@ -687,7 +703,7 @@ describe('Editor.Form', () => {
   function renderForm(blockId: string, disabled?: boolean) {
     const probe: Probe = { store: null };
     const utils = render(
-      <Editor.Root schema={formSchema} defaultValue={makeTree()} fields={stubs}>
+      <Editor.Root schema={formSchema} defaultValue={makeDoc()} fields={stubs}>
         <StoreProbe probe={probe} />
         <Editor.Form blockId={blockId} disabled={disabled} data-testid="form" />
       </Editor.Root>,
@@ -722,11 +738,11 @@ describe('Editor.Form', () => {
       Array.from(meta.querySelectorAll('[data-kind]')).map((el) =>
         el.getAttribute('data-kind'),
       ),
-    ).toEqual(['image', 'reference']);
+    ).toEqual(['media', 'reference']);
     const direct = Array.from(form.children);
     expect(direct[0]?.tagName).toBe('FIELDSET');
     expect(direct.slice(1).map((el) => el.getAttribute('data-kind'))).toEqual([
-      'string',
+      'text',
       'richText',
       'number',
       'boolean',
@@ -800,7 +816,7 @@ describe('Editor.Form autoScroll', () => {
   function renderAutoForm(autoScroll = true) {
     const probe: Probe = { store: null };
     const utils = render(
-      <Editor.Root schema={formSchema} defaultValue={makeTree()} fields={stubs}>
+      <Editor.Root schema={formSchema} defaultValue={makeDoc()} fields={stubs}>
         <StoreProbe probe={probe} />
         <Editor.Form
           blockId={DEMO}
@@ -870,7 +886,7 @@ describe('useMissingRequired', () => {
   it('lists empty required properties across the document and keeps identity while nodes are unchanged', () => {
     const probe: Probe = { store: null };
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <Editor.Root schema={formSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={formSchema} defaultValue={makeDoc()}>
         <StoreProbe probe={probe} />
         {children}
       </Editor.Root>
@@ -899,5 +915,171 @@ describe('useMissingRequired', () => {
     const second = result.current;
     rerender();
     expect(result.current).toBe(second);
+  });
+});
+
+// --- conditional, read-only and composite fields -----------------------------
+
+const conditionalSchema = defineEditorSchema({
+  root: { label: 'Root', fields: {}, slots: { children: {} } },
+  components: {
+    hero: {
+      label: 'Hero',
+      fields: {
+        variant: {
+          type: 'select',
+          label: 'Variant',
+          options: [
+            { label: 'Text', value: 'text' },
+            { label: 'Image', value: 'image' },
+          ],
+        },
+        caption: {
+          type: 'text',
+          label: 'Caption',
+          when: { field: 'variant', eq: 'image' },
+        },
+        note: {
+          type: 'text',
+          label: 'Note',
+          hidden: (props) => props.variant === 'text',
+        },
+        locked: { type: 'text', label: 'Locked', readOnly: true },
+        flags: {
+          type: 'select',
+          label: 'Flags',
+          multiple: true,
+          options: [
+            { label: 'New', value: 'new' },
+            { label: 'Hot', value: 'hot' },
+          ],
+        },
+        cta: {
+          type: 'object',
+          label: 'CTA',
+          fields: {
+            label: { type: 'text', label: 'Label' },
+            size: { type: 'number', label: 'Size' },
+          },
+        },
+        icon: { type: 'custom', kind: 'icon-picker', label: 'Icon' },
+      },
+    },
+  },
+});
+
+function conditionalDoc(): EditorDocument {
+  return {
+    schemaVersion: 1,
+    root: {
+      id: 'r',
+      type: 'root',
+      props: {},
+      slots: {
+        children: [
+          {
+            id: 'h',
+            type: 'hero',
+            props: {
+              variant: 'text',
+              locked: 'fixed',
+              flags: ['hot'],
+              cta: { label: 'Go', size: 2 },
+            },
+          },
+        ],
+      },
+    },
+  };
+}
+
+function IconPicker(props: FieldControlProps<'custom'>) {
+  return (
+    <span data-testid="icon-picker">
+      {typeof props.value === 'string' ? props.value : 'none'}
+    </span>
+  );
+}
+
+describe('Editor.Form with conditional and read-only fields', () => {
+  function renderForm() {
+    const probe: Probe = { store: null };
+    const utils = render(
+      <Editor.Root
+        schema={conditionalSchema}
+        defaultValue={conditionalDoc()}
+        fields={{ custom: { 'icon-picker': IconPicker } }}
+      >
+        <StoreProbe probe={probe} />
+        <Editor.Form blockId="h" data-testid="form" />
+      </Editor.Root>,
+    );
+    const keys = () =>
+      Array.from(
+        utils.getByTestId('form').querySelectorAll('[data-kind] label'),
+      ).map((label) => label.textContent);
+    return { ...utils, store: probe.store!, keys };
+  }
+
+  it('shows when-fields and hides predicate-hidden fields for the current props', () => {
+    const { store, keys } = renderForm();
+    expect(keys()).not.toContain('Caption');
+    expect(keys()).not.toContain('Note');
+    act(() => {
+      store.update('h', { variant: 'image' });
+    });
+    expect(keys()).toContain('Caption');
+    expect(keys()).toContain('Note');
+  });
+
+  it('renders a readOnly field as a read-only control with aria-readonly', () => {
+    const { container } = renderForm();
+    const input = container.querySelector(
+      'input[name="locked"]',
+    ) as HTMLInputElement;
+    expect(input.readOnly).toBe(true);
+    expect(input.getAttribute('aria-readonly')).toBe('true');
+    expect(input.value).toBe('fixed');
+    expect(
+      container
+        .querySelector('[data-kind="text"][data-read-only]')
+        ?.getAttribute('data-read-only'),
+    ).toBe('');
+  });
+
+  it('renders a multiple select with the stored options selected', () => {
+    const { container, store } = renderForm();
+    const select = container.querySelector(
+      'select[name="flags"]',
+    ) as HTMLSelectElement;
+    expect(select.multiple).toBe(true);
+    expect(
+      Array.from(select.selectedOptions, (option) => option.value),
+    ).toEqual(['hot']);
+    act(() => {
+      select.options[0]!.selected = true;
+      fireEvent.change(select);
+    });
+    expect(store.getState().nodes.h!.properties.flags).toEqual(['new', 'hot']);
+  });
+
+  it('renders one nested control per object field and writes the object', () => {
+    const { container, store } = renderForm();
+    const label = container.querySelector(
+      'input[name="cta.label"]',
+    ) as HTMLInputElement;
+    expect(label.value).toBe('Go');
+    act(() => {
+      fireEvent.change(label, { target: { value: 'Buy' } });
+    });
+    expect(store.getState().nodes.h!.properties.cta).toEqual({
+      label: 'Buy',
+      size: 2,
+    });
+  });
+
+  it('resolves a custom field through fields.custom[kind]', () => {
+    const { getByTestId } = renderForm();
+    expect(getByTestId('icon-picker').textContent).toBe('none');
   });
 });

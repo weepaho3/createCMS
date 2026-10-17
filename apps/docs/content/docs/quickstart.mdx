@@ -149,6 +149,7 @@ await cms.api.pages.publishBranch({
 Server-side, read the published page and render its block `tree` with `BlocksRenderer`. `getPublishedContent` returns one entry per published branch in `variants`; with no A/B test there is exactly one, so `variants[0]` is the page:
 
 ```tsx title="app/page.tsx"
+import DOMPurify from 'isomorphic-dompurify';
 import { cms } from '@/lib/cms';
 import { BlocksRenderer, createBlocksMap } from '@createcms/core/react/blocks';
 import { collections } from '@/lib/collections';
@@ -156,8 +157,10 @@ import { collections } from '@/lib/collections';
 const pageBlocks = createBlocksMap(collections.pages, {
   hero: ({ properties }) => <h1>{properties.headline}</h1>,
   richText: ({ properties }) => (
-    // `richText` stores markup; render it as HTML (sanitize if untrusted).
-    <div dangerouslySetInnerHTML={{ __html: properties.content }} />
+    // `richText` stores raw HTML: sanitize it before rendering.
+    <div
+      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(properties.content) }}
+    />
   ),
 });
 
@@ -168,6 +171,8 @@ export default async function Page() {
   return <BlocksRenderer blocks={pageBlocks} tree={variants[0].tree} />;
 }
 ```
+
+`richText` values are stored as raw HTML, so the block sanitizes them with [`isomorphic-dompurify`](https://github.com/kkomelin/isomorphic-dompurify) (add it with your package manager) before handing them to `dangerouslySetInnerHTML`. See [Render content](/docs/guides/rendering-content#sanitize-untrusted-html-before-rendering).
 
 ### 7. Use the type-safe client
 

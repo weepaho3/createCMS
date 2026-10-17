@@ -1,14 +1,25 @@
-import type { BlockProperty } from '@createcms/schema';
+import type { AnyEditorSchema, Field } from '../core/schema';
+import type { EditorNodes } from '../core/store';
 
-import type { AnyEditorSchema } from '../schema';
-import type { EditorNodes } from '../store';
-
-import { propertiesOf } from '../schema';
+import { fieldsOf } from '../core/schema';
 
 export const EMPTY_FIELD_PLACEHOLDER = '\u200B';
 
+export const RICH_TEXT_INLINE_WARNING =
+  '[editor:E001] richText is not inline editable until the rich text adapter is configured';
+
+/**
+ * Only single-line `text` fields get the inline glass. `richText` is
+ * excluded: the glass writes back `textContent`, which would drop the value's
+ * markup.
+ */
 export function isInlineEditableKind(kind: string): boolean {
-  return kind === 'string' || kind === 'richText';
+  return kind === 'text';
+}
+
+/** A field the inline glass may edit: an inline-editable kind that is not `readOnly`. */
+export function isInlineEditableField(field: Field): boolean {
+  return isInlineEditableKind(field.type) && field.readOnly !== true;
 }
 
 export function applyTextEdit(
@@ -29,11 +40,11 @@ export function stripPlaceholder(text: string): string {
 
 export function withEmptyFieldPlaceholder(
   properties: Record<string, unknown>,
-  specs: Record<string, BlockProperty>,
+  specs: Record<string, Field>,
 ): Record<string, unknown> {
   const out = { ...properties };
   for (const [key, spec] of Object.entries(specs)) {
-    if (!isInlineEditableKind(spec.type)) continue;
+    if (!isInlineEditableField(spec)) continue;
     const value = out[key];
     if (value === '' || value === null || value === undefined) {
       out[key] = EMPTY_FIELD_PLACEHOLDER;
@@ -122,14 +133,14 @@ export function placeCaret(el: HTMLElement, pos: number): void {
   sel.addRange(range);
 }
 
-export function fieldKindOf(
+/** The field `key` of node `blockId`, or `null` for an unknown node or key. */
+export function fieldOf(
   schema: AnyEditorSchema,
   nodes: EditorNodes,
   blockId: string,
   key: string,
-): string | null {
+): Field | null {
   const node = nodes[blockId];
   if (!node) return null;
-  const specs = propertiesOf(schema, node.type);
-  return specs[key]?.type ?? null;
+  return fieldsOf(schema, node.type)[key] ?? null;
 }

@@ -1,4 +1,4 @@
-import type { EditorNodes } from '../store';
+import type { EditorNodes } from '../core/store';
 import type { InsertTarget } from './insert';
 import type { CanvasRect } from './rect';
 

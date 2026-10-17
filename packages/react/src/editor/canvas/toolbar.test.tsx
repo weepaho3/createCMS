@@ -2,8 +2,8 @@
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { makeDoc, storeSchema } from '../core/store/fixtures';
 import { Editor } from '../index';
-import { makeTree, storeSchema } from '../store/fixtures';
 import { Canvas } from './index';
 import { dispatchPointer, renderCanvas } from './test/harness';
 import { useInsertTarget } from './toolbar';
@@ -19,7 +19,7 @@ describe('Canvas.BlockToolbar', () => {
   it('throws outside Canvas.Root', () => {
     expect(() =>
       render(
-        <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+        <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
           <Canvas.BlockToolbar />
         </Editor.Root>,
       ),
@@ -76,7 +76,7 @@ describe('Canvas.InsertButton', () => {
   it('throws outside Canvas.Root', () => {
     expect(() =>
       render(
-        <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+        <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
           <Canvas.InsertButton placement="between" />
         </Editor.Root>,
       ),

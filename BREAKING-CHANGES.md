@@ -1,7 +1,7 @@
 # Breaking changes
 
-Every consumer-visible break in `@createcms/core`, newest release first, with the
-migration for each one. This is the single place that answers **"what broke since
+Every consumer-visible break in `@createcms/core` and `@createcms/react`,
+newest release first, with the migration for each one. This is the single place that answers **"what broke since
 version X?"** without reading diffs.
 
 The complete release notes (features, fixes, internals) live in the
@@ -21,6 +21,106 @@ no compat shims, no aliases. Pin an exact version.
 > re-derived. The reconstructed sections are complete with respect to the shipped
 > changesets; a break that was never written down in a changeset would not appear
 > here.
+
+## `@createcms/react`
+
+Breaks in the editor and media subpaths of `@createcms/react`. Pre-1.0, a
+`minor` release of this package is the breaking channel; every break ships
+with a changeset and an entry here, with no deprecation window and no
+re-exports of the old form.
+
+### Unreleased
+
+- **The editor uses its own schema and documents.** `Editor.Root`'s
+  `schema` is an `EditorSchema` (`defineEditorSchema({ root, components })`)
+  and `defaultValue` an `EditorDocument` (`{ schemaVersion, root: NodeData }`)
+  instead of a createcms `CollectionDefinition` and `BlockTreeNode`. Field
+  kinds are renamed (`string` is `text`, `image` is `media` with the value
+  `{ assetId }`, `reference` values are `{ id }`), so `FieldControls` keys
+  follow (`text`, `media`, `custom: { [kind]: Control }`). The store's
+  `getTree()` / `load(tree)` / `initialTree` are `getDocument()` /
+  `load(doc)` / `initialValue`; `onChange` passes `getDocument`, `onSave`
+  the document; `EditorOp` carries `NodeData` (`add`) and `EditorDocument`
+  (`load`). `propertiesOf` is `fieldsOf`, `PaletteItem.group` is
+  `category` (`PaletteGroup.category`), `FieldError` is
+  `{ code, path, params? }` without `message` (use `formatFieldError`), and
+  the factory's `TreeOf` / `BlocksOf` are `DocumentOf` / `ComponentsOf`. A
+  root without a `children` slot holds no children.
+  → **Migration:** for a createcms collection, build the schema with
+  `fromCollection(collection)` and the document with
+  `toEditor(tree, collection)` from `@createcms/react/editor/cms`
+  (`fromEditor(doc, collection)` maps back), or use `useCmsDocument`, which
+  now takes `definition` and returns `doc`. Rename `fields` map keys and read
+  `media` / `reference` values as objects.
+
+- **`Canvas.Root` components and `resolve` are generic.** Components receive
+  `{ id, type, props, children, node, edit }` instead of `properties` /
+  `blockId` / a `BlockTreeNode`, and `components` no longer accepts a
+  `createBlocksMap` result. `resolve` maps field kinds to resolvers
+  `(value, field)` instead of `reference` / `link` / `string`; an unresolved
+  value renders as stored. Referenced trees are no longer rendered by the
+  canvas; wrap embedded trees in `Canvas.ReadonlySubtree`. `ResolveKind` is
+  gone; `useResolved` takes a field kind.
+  → **Migration:** pass `cmsCanvasComponents(blocksMap)` for createcms block
+  components (it maps props back and renders resolved references) and
+  `doc.resolve` from `useCmsDocument`.
+
+- **`EditProps` moved to `@createcms/react/editor/core`** and gained the
+  optional `slot` entry (`data-editor-slot`); `block.ref` is a callback ref.
+  → **Migration:** import `EditProps` / `NO_EDIT` from
+  `@createcms/react/editor/core`; spread `edit.slot?.children` where a
+  component renders its children.
+
+- **Schema helpers and the store moved to `@createcms/react/editor/core`.**
+  `@createcms/react/editor` no longer exports them: `createEditorStore`,
+  `applyOp`, `flattenTree`, `serializeToTree`, `stableHash`, `createBlockId`,
+  `COALESCE_MS`, the placement, defaults, field, palette and validation
+  helpers (`getPlacement`, `canPlace`, `allowedChildTypes`, `defaultValuesFor`,
+  `propertiesOf`, `groupFields`, `paletteItems`, `groupPaletteItems`,
+  `isEmptyValue`, `validateField`, `missingRequired`) and their types
+  (`EditorSchema`, `AnyEditorSchema`, `EditorStore`, `EditorNode`,
+  `EditorOp`, `FieldError`, ...). The new subpath has no directive and no
+  runtime dependency, so servers, workers and Server Components can import it
+  without React.
+  → **Migration:** import these names from `@createcms/react/editor/core`;
+  parts and hooks stay on `@createcms/react/editor`.
+
+- **`richText` fields are not inline editable.**
+  `Canvas.InlineText` only opens on `string` fields; a click on a `richText`
+  field selects the block and focuses its form control instead of starting a
+  glass session. `isInlineEditableKind('richText')` returns `false`, and the
+  canvas render no longer puts the zero-width placeholder into empty
+  `richText` fields.
+  → **Migration:** edit `richText` values through the form (`Editor.Field`
+  or the registry form); code that called `isInlineEditableKind` to decide on
+  `richText` gets `false` now.
+
+- **`Canvas.Root` requires `components` and renders the
+  store tree.** Pass a block map (the same object `createBlocksMap` returns
+  is accepted via `_components`). `children` are no longer the document;
+  they render after the tree (overlay). `surface="frame"` throws.
+  → **Migration:** `<Canvas.Root components={pageBlocks} />` under
+  `Editor.Root`; move previous children that were the page markup into the
+  map.
+
+- **`useChildren(parentId)` returns child refs instead of
+  ids.** Each entry is `{ id, type, index }` (the factory's `useChildren`
+  narrows `type` to the schema's block types), so a row can render its label
+  and position without a second hook. The array keeps its identity until ids
+  or types change.
+  → **Migration:** replace `useChildren(id).map((childId) => ...)` with
+  `useChildren(id).map((child) => ... child.id ...)`; nothing else changes.
+
+- **`CmsMediaUploadState` and `CmsMediaUploadFileState`
+  mirror the new core shape.** `isAborted` and `totalProgress` are gone,
+  `progress` is `CmsMediaUploadProgress`, `status` is `CmsMediaUploadStatus`
+  (`success` instead of `done`, plus `aborted`), `error` on an entry is
+  `{ code, message }`, and `upload` returns `Promise<CmsMediaUploadFileState[]>`.
+  → **Migration:** update fakes and idle states to
+  `{ isUploading, files: [], progress: { loaded: 0, total: 0, fraction: 0 }, error, upload: async () => [], abort, reset }`
+  and any UI that read `totalProgress` or `status === 'done'`.
+
+---
 
 ## At a glance
 
@@ -87,14 +187,6 @@ on, schema changes are picked up with `createcms generate` + a Drizzle migration
   release rows need a `tenant_slug` backfill before the NOT NULL constraint can
   be applied. Single-tenant deployments are unaffected — no predicate is added.
 
-- **`@createcms/react`: `Canvas.Root` requires `components` and renders the
-  store tree.** Pass a block map (the same object `createBlocksMap` returns
-  is accepted via `_components`). `children` are no longer the document;
-  they render after the tree (overlay). `surface="frame"` throws.
-  → **Migration:** `<Canvas.Root components={pageBlocks} />` under
-  `Editor.Root`; move previous children that were the page markup into the
-  map.
-
 - **`BlockComponentProps` gains a required `edit` prop and its `properties`
   is no longer `| undefined`.** Every block component the renderer calls now
   receives `edit` (`{ active, block, field }`, plain data — `NO_EDIT` outside
@@ -105,14 +197,6 @@ on, schema changes are picked up with `createcms generate` + a Drizzle migration
   stories, custom canvases) passes `edit={NO_EDIT}` (from
   `@createcms/core/react/blocks`); drop `properties?.` optional chaining if
   you like — it still compiles.
-
-- **`@createcms/react`: `useChildren(parentId)` returns child refs instead of
-  ids.** Each entry is `{ id, type, index }` (the factory's `useChildren`
-  narrows `type` to the schema's block types), so a row can render its label
-  and position without a second hook. The array keeps its identity until ids
-  or types change.
-  → **Migration:** replace `useChildren(id).map((childId) => ...)` with
-  `useChildren(id).map((child) => ... child.id ...)`; nothing else changes.
 
 - **`media.useUploadAssets()` is a byte-accurate ledger.** `totalProgress`
   (0 to 100) is replaced by `progress: { loaded, total, fraction }` with
@@ -131,15 +215,6 @@ on, schema changes are picked up with `createcms generate` + a Drizzle migration
   `status === 'aborted'` as cancelled rather than failed; read the new
   asset from the array `upload()` resolves with (or from `files` by `id`)
   and call `reset()` to clear finished rows.
-
-- **`@createcms/react`: `CmsMediaUploadState` and `CmsMediaUploadFileState`
-  mirror the new core shape.** `isAborted` and `totalProgress` are gone,
-  `progress` is `CmsMediaUploadProgress`, `status` is `CmsMediaUploadStatus`
-  (`success` instead of `done`, plus `aborted`), `error` on an entry is
-  `{ code, message }`, and `upload` returns `Promise<CmsMediaUploadFileState[]>`.
-  → **Migration:** update fakes and idle states to
-  `{ isUploading, files: [], progress: { loaded: 0, total: 0, fraction: 0 }, error, upload: async () => [], abort, reset }`
-  and any UI that read `totalProgress` or `status === 'done'`.
 
 ---
 

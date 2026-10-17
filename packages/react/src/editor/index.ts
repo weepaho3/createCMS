@@ -47,16 +47,19 @@ export type {
   FieldControls,
   ListElementControlProps,
   ListElementRender,
+  NestedFieldControlProps,
+  NestedFieldRender,
 } from './field';
 export {
   defaultFieldControls,
   emptyListElement,
+  formatFieldError,
   fromDatetimeLocal,
   toDatetimeLocal,
   useFieldContext,
 } from './field';
 
-// Preview: delayed raw-tree render and compiled iframe output.
+// Preview: delayed raw-document render and compiled iframe output.
 export type {
   EditorFramePreviewProps,
   EditorPreviewProps,
@@ -108,84 +111,23 @@ export type {
   BlockHandle,
   BlockHandleOf,
   BlockPropsOf,
-  BlocksOf,
   BlockTypeOf,
   ChildRefOf,
+  ComponentsOf,
   CreateEditorOptions,
+  DocumentOf,
   EditorFactory,
   EditorTypes,
   FieldHandle,
   FieldHandleOf,
+  NodeOf,
   PropsOf,
   PropsSpecOf,
   PropValueOf,
   RootPropsOf,
-  TreeOf,
   TypedAddOptions,
   TypedBlockActions,
   TypedEditorApi,
   TypedPaletteItems,
 } from './factory';
 export { createEditor } from './factory';
-
-// Layer 1: schema types and pure helpers (no React, no DOM).
-export type {
-  AnyEditorSchema,
-  DefaultValuesOptions,
-  EditorSchema,
-  FieldError,
-  FieldErrorCode,
-  FieldGroup,
-  FieldKind,
-  FieldSpecOf,
-  FieldValueMap,
-  FieldValueOf,
-  MissingRequiredField,
-  MissingRequiredNode,
-  PaletteGroup,
-  PaletteItem,
-  PlacementIndex,
-  PlacementRule,
-  SchemaField,
-} from './schema';
-export {
-  allowedChildTypes,
-  canPlace,
-  defaultValuesFor,
-  getPlacement,
-  groupFields,
-  groupPaletteItems,
-  isEmptyValue,
-  missingRequired,
-  paletteItems,
-  propertiesOf,
-  validateField,
-} from './schema';
-
-// Layer 2: framework-free store (ops, inverse ops, history, applyRemote).
-export type {
-  AddOptions,
-  ApplyRemoteResult,
-  ApplyResult,
-  CreateEditorStoreOptions,
-  EditorCallbacks,
-  EditorChange,
-  EditorNode,
-  EditorNodes,
-  EditorOp,
-  EditorStore,
-  EditorStoreState,
-  FieldRef,
-  HistoryEntry,
-  UpdateOptions,
-  UserSelection,
-} from './store';
-export {
-  COALESCE_MS,
-  applyOp,
-  createBlockId,
-  createEditorStore,
-  flattenTree,
-  serializeToTree,
-  stableHash,
-} from './store';

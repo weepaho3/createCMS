@@ -1,6 +1,7 @@
 import { cleanup } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { defineEditorSchema } from '../core/schema';
 import { Canvas } from './index';
 import {
   columnStackBlocks,
@@ -269,11 +270,10 @@ describe('Canvas pointer drag in a real browser', () => {
   it('auto-scrolls the host near the bottom edge during a drag', async () => {
     const tallTree = columnStackTree();
     for (let i = 4; i <= 20; i++) {
-      tallTree.children[0]!.children.push({
-        blockId: `c${i}`,
+      tallTree.root.slots!.children![0]!.slots!.children!.push({
+        id: `c${i}`,
         type: 'cell',
-        properties: { text: String(i) },
-        children: [],
+        props: { text: String(i) },
       });
     }
     const { host, store } = renderCanvas(
@@ -352,13 +352,13 @@ describe('Canvas pointer drag in a real browser', () => {
   });
 
   it('shows no drop indicator when placement is forbidden', async () => {
-    const closedRootSchema = {
+    const closedRootSchema = defineEditorSchema({
       ...insertStackSchema,
-      structure: {
-        stack: { accepts: ['cell'] as const },
-        root: { accepts: ['stack'] as const },
+      root: {
+        ...insertStackSchema.root,
+        slots: { children: { allow: ['stack'] } },
       },
-    };
+    });
     const { host, store } = renderCanvas(
       <Canvas.Overlay>
         <Canvas.PaletteItem type="heading">Heading</Canvas.PaletteItem>

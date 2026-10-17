@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
 
-import type { EditorNodes } from '../store';
+import type { EditorNodes } from '../core/store';
 
-import { getPlacement } from '../schema/placement';
-import { storeSchema } from '../store/fixtures';
+import { getPlacement } from '../core/schema/placement';
+import { storeSchema } from '../core/store/fixtures';
 import {
   INSERT_BOX_PAD,
   resolveInsertAt,

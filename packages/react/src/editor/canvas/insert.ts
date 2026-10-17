@@ -1,8 +1,8 @@
-import type { PlacementIndex } from '../schema/placement';
-import type { EditorNodes } from '../store';
+import type { PlacementIndex } from '../core/schema/placement';
+import type { EditorNodes } from '../core/store';
 import type { CanvasRect } from './rect';
 
-import { allowedChildTypes, canPlace } from '../schema/placement';
+import { allowedChildTypes, canPlace } from '../core/schema/placement';
 
 export type InsertOrientation = 'horizontal' | 'vertical';
 export type InsertVariant = 'line' | 'box';

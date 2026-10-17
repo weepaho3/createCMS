@@ -381,21 +381,26 @@ type RenderContext = {
   edit: RendererEditMode | undefined;
 };
 
-/** Anchors for one block in preview mode: the block id and one entry per
- *  DECLARED property key (from the definition, not from the stored values). */
+/** Anchors for one block in preview mode: the block id, one entry per
+ *  DECLARED property key (from the definition, not from the stored values)
+ *  and the `children` slot for a block with `allowChildren`. */
 function previewEdit(
   node: BlockTreeNode,
   blocks: Record<string, AnyBlockDefinition> | undefined,
 ): EditProps {
+  const def = blocks?.[node.type];
   const field: Record<string, EditAttrs> = {};
-  for (const key of Object.keys(blocks?.[node.type]?.properties ?? {})) {
+  for (const key of Object.keys(def?.properties ?? {})) {
     field[key] = { 'data-editor-field': key };
   }
-  return {
+  const edit: EditProps = {
     active: false,
     block: { 'data-editor-block': node.blockId },
     field,
   };
+  return def?.allowChildren === true
+    ? { ...edit, slot: { children: { 'data-editor-slot': 'children' } } }
+    : edit;
 }
 
 /**

@@ -2,7 +2,7 @@ import * as React from 'react';
 import { createPortal } from 'react-dom';
 
 import type { UseRenderComponentProps } from '../../use-render';
-import type { EditorNode } from '../store';
+import type { EditorNode } from '../core/store';
 import type { CanvasRect } from './rect';
 
 import { useRender } from '../../use-render';

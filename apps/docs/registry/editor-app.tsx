@@ -1,8 +1,7 @@
 'use client';
 
-import type { AnyEditorSchema } from '@createcms/react/editor';
-import type { CanvasComponents } from '@createcms/react/editor/canvas';
 import type {
+  CmsBlocksMap,
   CmsDocumentClient,
   CmsDocumentError,
   CmsTemplatesClient,
@@ -13,6 +12,8 @@ import type { MediaClient } from '@createcms/react/media';
 import { Editor } from '@createcms/react/editor';
 import { Canvas } from '@createcms/react/editor/canvas';
 import {
+  cmsCanvasComponents,
+  fromCollection,
   useCmsDocument,
   useCmsFieldSources,
 } from '@createcms/react/editor/cms';
@@ -70,8 +71,8 @@ export type CmsEditorProps = {
   collection: string;
   rootId: string;
   branchId: string;
-  schema: AnyEditorSchema;
-  components: CanvasComponents;
+  /** The `createBlocksMap` result: block components plus the collection definition. */
+  blocks: CmsBlocksMap;
   mode?: CmsEditorMode;
   className?: string;
   requireCommitMessage?: boolean;
@@ -275,16 +276,22 @@ function CmsEditor({
   collection,
   rootId,
   branchId,
-  schema,
-  components,
+  blocks,
   mode = 'canvas',
   className,
   requireCommitMessage = false,
   children,
 }: CmsEditorProps) {
   const documentClient = readDocumentClient(client, collection);
+  // The editor compares the schema by identity: derive it once per map.
+  const schema = React.useMemo(
+    () => fromCollection(blocks._collection),
+    [blocks],
+  );
+  const components = React.useMemo(() => cmsCanvasComponents(blocks), [blocks]);
   const doc = useCmsDocument({
     client: documentClient,
+    definition: blocks._collection,
     rootId,
     branchId,
     templates: templates ?? client.templates,
@@ -308,7 +315,7 @@ function CmsEditor({
     });
   };
 
-  if (!doc.tree) {
+  if (!doc.doc) {
     if (doc.status === 'error') {
       return (
         <EditorErrorState
@@ -342,7 +349,7 @@ function CmsEditor({
       <Editor.Root
         key={doc.key}
         schema={schema}
-        defaultValue={doc.tree}
+        defaultValue={doc.doc}
         onSave={doc.save}
         onChange={doc.onChange}
         fields={cmsFields}

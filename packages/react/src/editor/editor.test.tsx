@@ -4,14 +4,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { Canvas } from './canvas/index';
 import { canvasBlocks } from './canvas/test/fixtures';
+import { makeDoc, storeSchema } from './core/store/fixtures';
 import { Editor, useEditorContext } from './index';
-import { makeTree, storeSchema } from './store/fixtures';
 
 afterEach(cleanup);
 
 function Probe() {
   const { schema: fromContext } = useEditorContext('Probe');
-  return <span data-testid="probe">{fromContext.label}</span>;
+  return <span data-testid="probe">{fromContext.root.label}</span>;
 }
 
 function StoreProbe() {
@@ -26,11 +26,11 @@ function StoreProbe() {
 describe('Editor.Root', () => {
   it('provides the schema to parts below it', () => {
     const { getByTestId } = render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <Probe />
       </Editor.Root>,
     );
-    expect(getByTestId('probe').textContent).toBe('Pages');
+    expect(getByTestId('probe').textContent).toBe('Page');
   });
 
   it('throws a precise error when a part is used outside Editor.Root', () => {
@@ -41,7 +41,7 @@ describe('Editor.Root', () => {
 
   it('provides the store and the local user to parts below it', () => {
     const { getByTestId } = render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <StoreProbe />
       </Editor.Root>,
     );
@@ -52,7 +52,7 @@ describe('Editor.Root', () => {
 describe('Canvas.Root shares the editor context', () => {
   it('renders inside Editor.Root with the presence marker attribute', () => {
     const { getByTestId } = render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <Canvas.Root data-testid="c" components={canvasBlocks} />
       </Editor.Root>,
     );
@@ -84,7 +84,7 @@ describe('namespace shape', () => {
     ]);
   });
 
-  it('Canvas exposes exactly Provider, Root, Overlay, the rings, BlockToolbar and InsertButton', () => {
+  it('Canvas exposes exactly its parts', () => {
     expect(Object.keys(Canvas)).toEqual([
       'Provider',
       'Root',
@@ -99,6 +99,7 @@ describe('namespace shape', () => {
       'DropIndicator',
       'DragPreview',
       'InlineText',
+      'ReadonlySubtree',
     ]);
   });
 });

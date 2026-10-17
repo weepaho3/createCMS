@@ -7,6 +7,7 @@ import { BlocksRenderer, createBlocksMap } from '@createcms/core/react/blocks';
 import { cms } from '@/lib/cms';
 import { seeded } from '@/lib/cms-data';
 import { collections } from '@/lib/collections';
+import { sanitizeRichTextHtml } from '@/lib/sanitize-rich-text';
 
 // Read CMS data at request time, never at build time, so `next build` does not
 // touch the database. REQUIRED for every page that reads CMS content.
@@ -17,8 +18,12 @@ export const dynamic = 'force-dynamic';
 const pageBlocks = createBlocksMap(collections.pages, {
   hero: ({ properties }) => <h1>{properties.headline}</h1>,
   richText: ({ properties }) => (
-    // `richText` stores markup; render it as HTML (sanitize if untrusted).
-    <div dangerouslySetInnerHTML={{ __html: properties.content }} />
+    // `richText` stores raw HTML: sanitize it before rendering.
+    <div
+      dangerouslySetInnerHTML={{
+        __html: sanitizeRichTextHtml(properties.content),
+      }}
+    />
   ),
 });
 

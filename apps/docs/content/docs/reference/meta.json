@@ -31,6 +31,7 @@
     "---Framework & tooling---",
     "react",
     "react-editor",
+    "react-editor-core",
     "react-editor-canvas",
     "react-editor-cms",
     "react-media",

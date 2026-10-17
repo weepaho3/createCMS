@@ -1,14 +1,15 @@
 import * as React from 'react';
 
 import type { UseRenderComponentProps } from '../../use-render';
-import type { EditorStoreState } from '../store';
+import type { EditorStoreState } from '../core/store';
 import type { InsertTarget, InsertOrientation, InsertVariant } from './insert';
 
 import { composeRefs, useRender } from '../../use-render';
 import { useEditorSelector } from '../binding';
 import { useEditorContext } from '../context';
+import { canPlace } from '../core/schema';
+import { isHTMLElement } from '../dom';
 import { placementOf } from '../hooks';
-import { canPlace } from '../schema';
 import { blockElements, isInsideReadonly } from './anchors';
 import { CanvasContext, useCanvasContext } from './context';
 import {
@@ -31,7 +32,7 @@ const subscribeNoop = () => () => {};
 
 function focusBlock(host: HTMLElement, id: string): void {
   const el = blockElements(host, id)[0];
-  if (el instanceof HTMLElement) {
+  if (isHTMLElement(el)) {
     el.focus({ preventScroll: true });
   }
 }
@@ -692,7 +693,7 @@ export function CanvasDragPreview({
   React.useLayoutEffect(() => {
     if (canvas === null || session === null) return;
     const node = nodeRef.current;
-    if (!(node instanceof HTMLElement)) return;
+    if (!isHTMLElement(node)) return;
     node.style.willChange = 'transform';
     applyPreviewTransform(node, previewSnap(pointer, dnd, host));
     let raf = 0;
@@ -701,7 +702,7 @@ export function CanvasDragPreview({
       raf = requestAnimationFrame(() => {
         raf = 0;
         const current = nodeRef.current;
-        if (current instanceof HTMLElement) {
+        if (isHTMLElement(current)) {
           applyPreviewTransform(current, previewSnap(pointer, dnd, host));
         }
       });

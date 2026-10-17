@@ -1,7 +1,7 @@
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import type { EditorStore } from '../store';
+import type { EditorStore } from '../core/store';
 
 import { Editor, useEditorContext } from '../index';
 import { Canvas } from './index';

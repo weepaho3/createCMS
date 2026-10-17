@@ -2,15 +2,17 @@ import { describe, expect, it } from 'vitest';
 
 import {
   applyTextEdit,
+  isInlineEditableField,
   isInlineEditableKind,
   stripPlaceholder,
   withEmptyFieldPlaceholder,
 } from './inline-text';
 
 const specs = {
-  text: { type: 'richText' as const, label: 'Text' },
+  text: { type: 'text' as const, label: 'Text' },
+  body: { type: 'richText' as const, label: 'Body' },
   level: { type: 'number' as const, label: 'Level' },
-  image: { type: 'image' as const, label: 'Image' },
+  image: { type: 'media' as const, label: 'Image' },
 };
 
 describe('applyTextEdit', () => {
@@ -38,8 +40,11 @@ describe('stripPlaceholder', () => {
 
 describe('withEmptyFieldPlaceholder', () => {
   it('fills empty string fields and leaves other kinds', () => {
-    expect(withEmptyFieldPlaceholder({ text: '', level: 2 }, specs)).toEqual({
+    expect(
+      withEmptyFieldPlaceholder({ text: '', body: '', level: 2 }, specs),
+    ).toEqual({
       text: '\u200B',
+      body: '',
       level: 2,
     });
   });
@@ -56,8 +61,21 @@ describe('withEmptyFieldPlaceholder', () => {
 });
 
 describe('isInlineEditableKind', () => {
-  it('accepts string and richText only', () => {
-    expect(isInlineEditableKind('richText')).toBe(true);
-    expect(isInlineEditableKind('number')).toBe(false);
+  it.each([
+    ['text', true],
+    ['textarea', false],
+    ['richText', false],
+    ['number', false],
+    ['media', false],
+  ])('%s is inline editable: %s', (kind, expected) => {
+    expect(isInlineEditableKind(kind)).toBe(expected);
+  });
+});
+
+describe('isInlineEditableField', () => {
+  it('excludes readOnly text fields', () => {
+    expect(isInlineEditableField({ type: 'text' })).toBe(true);
+    expect(isInlineEditableField({ type: 'text', readOnly: true })).toBe(false);
+    expect(isInlineEditableField({ type: 'richText' })).toBe(false);
   });
 });

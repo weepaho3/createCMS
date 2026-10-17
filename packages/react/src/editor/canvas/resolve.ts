@@ -1,71 +1,36 @@
-import type {
-  BlockProperty,
-  LinkValue,
-  ResolvedLink,
-  ResolvedReference,
-} from '@createcms/schema';
+import type { AnyEditorSchema, Field, FieldKind } from '../core/schema';
 
-import type { AnyEditorSchema } from '../schema';
-
-import { propertiesOf } from '../schema';
+import { fieldsOf } from '../core/schema';
 import { useCanvasResolveContext } from './context';
 
-export type ResolveKind = 'reference' | 'link' | 'string';
+/**
+ * Turns a stored value into what the canvas renders: a referenced document,
+ * a link's current href, text with variables filled in. Returns the value,
+ * a promise of it, or `undefined` when there is nothing to show.
+ */
+export type FieldResolver = (value: unknown, field: Field) => unknown;
 
-export type CanvasResolve = {
-  reference?: (
-    rootId: string,
-    spec: BlockProperty,
-  ) => ResolvedReference | Promise<ResolvedReference> | undefined;
-  link?: (
-    value: LinkValue,
-    spec: BlockProperty,
-  ) => ResolvedLink | Promise<ResolvedLink> | undefined;
-  string?: (
-    value: string,
-    spec: BlockProperty,
-  ) => string | Promise<string> | undefined;
-};
+/** One resolver per field kind; kinds without one render their stored value. */
+export type CanvasResolve = Partial<Record<FieldKind, FieldResolver>>;
 
 export type CacheEntry =
   | { status: 'ready'; value: unknown }
   | { status: 'pending'; promise: Promise<unknown> }
   | { status: 'miss' };
 
-export type ResolveFn = (value: unknown, spec: BlockProperty) => unknown;
-
 export type ResolveCache = {
   lookup: (
-    kind: ResolveKind,
+    kind: FieldKind,
     raw: unknown,
-    spec: BlockProperty,
-    resolver: ResolveFn | undefined,
+    spec: Field,
+    resolver: FieldResolver | undefined,
   ) => CacheEntry;
 };
 
-function identityOf(kind: ResolveKind, value: unknown): string {
-  if (kind === 'link') return JSON.stringify(value);
-  return String(value);
-}
-
-export function cacheKey(kind: ResolveKind, value: unknown): string {
-  return kind + '\0' + identityOf(kind, value);
-}
-
-/**
- * This package does not import core; the guard keys on the published
- * reference shape.
- */
-export function isResolvedReference(
-  value: unknown,
-): value is ResolvedReference {
+/** Cache key of one stored value: its kind plus its JSON text. */
+export function cacheKey(kind: FieldKind, value: unknown): string {
   return (
-    typeof value === 'object' &&
-    value !== null &&
-    'rootId' in value &&
-    'collection' in value &&
-    'tree' in value &&
-    'properties' in value
+    kind + '\0' + (typeof value === 'string' ? value : JSON.stringify(value))
   );
 }
 
@@ -125,57 +90,18 @@ export function createResolveCache(options: {
   };
 }
 
-function isNonEmptyRaw(kind: ResolveKind, raw: unknown): boolean {
-  if (raw == null) return false;
-  if (kind === 'reference' || kind === 'string') {
-    return typeof raw === 'string' && raw.length > 0;
-  }
+function isNonEmptyRaw(raw: unknown): boolean {
+  if (raw === null || raw === undefined) return false;
+  if (typeof raw === 'string') return raw.length > 0;
   return true;
 }
 
-/** String and link values still render from the stored value; a reference has no tree. */
-function keepStoredOnMiss(kind: ResolveKind): boolean {
-  return kind === 'string' || kind === 'link';
-}
-
-function resolverOf(
-  kind: ResolveKind,
-  resolve: CanvasResolve | undefined,
-): ResolveFn | undefined {
-  if (!resolve) return undefined;
-  if (kind === 'reference') {
-    return resolve.reference as ResolveFn | undefined;
-  }
-  if (kind === 'link') {
-    return resolve.link as ResolveFn | undefined;
-  }
-  return resolve.string as ResolveFn | undefined;
-}
-
-type Route =
-  | { kind: ResolveKind; resolver: ResolveFn | undefined }
-  | { keep: true };
-
-export function routeProperty(
-  spec: BlockProperty,
-  raw: unknown,
-  resolve: CanvasResolve | undefined,
-): Route {
-  if (spec.type === 'reference' && typeof raw === 'string') {
-    return { kind: 'reference', resolver: resolverOf('reference', resolve) };
-  }
-  if (spec.type === 'link') {
-    return { kind: 'link', resolver: resolverOf('link', resolve) };
-  }
-  if (spec.type === 'string' || spec.type === 'richText') {
-    if (resolve?.string) {
-      return { kind: 'string', resolver: resolverOf('string', resolve) };
-    }
-    return { keep: true };
-  }
-  return { keep: true };
-}
-
+/**
+ * Resolves every prop of one node through `resolve`. A prop whose kind has
+ * no resolver, or whose value is empty, renders as stored. A pending or
+ * missing resolution keeps the stored value and marks the node
+ * `unresolved` (the canvas sets `data-unresolved` on its block anchor).
+ */
 export function resolveNodeProperties(
   type: string,
   rawProps: Record<string, unknown>,
@@ -183,65 +109,48 @@ export function resolveNodeProperties(
   resolve: CanvasResolve | undefined,
   cache: ResolveCache,
 ): { properties: Record<string, unknown>; unresolved: boolean } {
-  const specs = propertiesOf(schema, type);
+  const fields = fieldsOf(schema, type);
   const properties: Record<string, unknown> = {};
   let unresolved = false;
 
   for (const [key, raw] of Object.entries(rawProps)) {
-    const spec = specs[key];
-    if (!spec) {
+    const field = fields[key];
+    const resolver = field ? resolve?.[field.type] : undefined;
+    if (!field || !resolver || !isNonEmptyRaw(raw)) {
       properties[key] = raw;
       continue;
     }
-    const routed = routeProperty(spec, raw, resolve);
-    if ('keep' in routed) {
-      properties[key] = raw;
-      continue;
-    }
-    if (!routed.resolver) {
-      if (isNonEmptyRaw(routed.kind, raw)) {
-        unresolved = true;
-        if (keepStoredOnMiss(routed.kind)) {
-          properties[key] = raw;
-        }
-      } else {
-        properties[key] = raw;
-      }
-      continue;
-    }
-    const entry = cache.lookup(routed.kind, raw, spec, routed.resolver);
+    const entry = cache.lookup(field.type, raw, field, resolver);
     if (entry.status === 'ready') {
       properties[key] = entry.value;
     } else {
       unresolved = true;
-      if (keepStoredOnMiss(routed.kind)) {
-        properties[key] = raw;
-      }
+      properties[key] = raw;
     }
   }
 
   return { properties, unresolved };
 }
 
+/** The resolved value, or `undefined` while pending, missing, or without a resolver. */
 export function readResolved(
-  kind: ResolveKind,
+  kind: FieldKind,
   value: unknown,
-  spec: BlockProperty,
+  spec: Field,
   resolve: CanvasResolve | undefined,
   cache: ResolveCache,
 ): unknown {
-  if (kind === 'string' && !resolve?.string) return value;
-  const resolver = resolverOf(kind, resolve);
+  const resolver = resolve?.[kind];
   if (!resolver) return undefined;
   const entry = cache.lookup(kind, value, spec, resolver);
-  if (entry.status === 'ready') return entry.value;
-  return undefined;
+  return entry.status === 'ready' ? entry.value : undefined;
 }
 
+/** Reads one value through the enclosing canvas's `resolve`; re-renders when it settles. */
 export function useResolved<T = unknown>(
-  kind: ResolveKind,
+  kind: FieldKind,
   value: unknown,
-  spec: BlockProperty,
+  spec: Field,
 ): T | undefined {
   const ctx = useCanvasResolveContext('useResolved');
   return ctx.read(kind, value, spec) as T | undefined;

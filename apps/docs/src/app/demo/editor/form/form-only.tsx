@@ -5,7 +5,6 @@ import * as React from 'react';
 
 import { createDemoCmsClient } from '@/app/demo/_lib/demo-cms-client';
 import { pageBlocks } from '@/app/demo/_lib/pages-blocks';
-import { pages } from '@/app/demo/_lib/pages-schema';
 import { PAGES_TREE } from '@/app/demo/_lib/pages-tree';
 import { CmsEditor } from '@/components/editor-app';
 import {
@@ -16,8 +15,8 @@ import {
 
 function DocumentJson() {
   const version = useEditor((state) => state.version);
-  const { getTree } = useEditor();
-  const tree = getTree();
+  const { getDocument } = useEditor();
+  const doc = getDocument();
   void version;
 
   return (
@@ -30,7 +29,7 @@ function DocumentJson() {
       </CollapsibleTrigger>
       <CollapsibleContent>
         <pre className="max-h-48 overflow-auto p-4 text-xs leading-relaxed">
-          {JSON.stringify(tree, null, 2)}
+          {JSON.stringify(doc, null, 2)}
         </pre>
       </CollapsibleContent>
     </Collapsible>
@@ -46,8 +45,7 @@ export function FormOnlyEditor() {
       collection="pages"
       rootId={PAGES_TREE.blockId}
       branchId="demo"
-      schema={pages}
-      components={pageBlocks}
+      blocks={pageBlocks}
       mode="form"
     >
       <DocumentJson />

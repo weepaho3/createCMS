@@ -38,6 +38,10 @@
       "types": "./dist/editor/index.d.ts",
       "default": "./dist/editor/index.js"
     },
+    "./editor/core": {
+      "types": "./dist/editor/core/index.d.ts",
+      "default": "./dist/editor/core/index.js"
+    },
     "./editor/canvas": {
       "types": "./dist/editor/canvas/index.d.ts",
       "default": "./dist/editor/canvas/index.js"
@@ -76,7 +80,9 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "typescript": "^5.7.2",
-    "vitest": "^4.1.10"
+    "valibot": "^1.5.0",
+    "vitest": "^4.1.10",
+    "zod": "^4.4.3"
   },
   "peerDependencies": {
     "react": ">=19",

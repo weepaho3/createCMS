@@ -1,18 +1,13 @@
-import type { BlockProperty } from '@createcms/schema';
-
 import * as React from 'react';
 
+import type { Field, FieldKind } from '../core/schema';
 import type { CanvasInteractive } from './components';
 import type { DndStore } from './dnd';
 import type { Measurer } from './measurer';
 import type { PointerStore } from './pointer';
 
 export type CanvasResolveContextValue = {
-  read: (
-    kind: 'reference' | 'link' | 'string',
-    value: unknown,
-    spec: BlockProperty,
-  ) => unknown;
+  read: (kind: FieldKind, value: unknown, spec: Field) => unknown;
 };
 
 export type InlineCaretPoint = { x: number; y: number };

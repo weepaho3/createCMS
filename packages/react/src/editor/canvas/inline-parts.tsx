@@ -6,6 +6,7 @@ import type { CanvasRect } from './rect';
 import { useRender } from '../../use-render';
 import { useEditorSelector } from '../binding';
 import { useEditorContext } from '../context';
+import { isHTMLElement } from '../dom';
 import { frameClickAnchor } from '../preview/frame-anchor';
 import { fieldElements, blockElements, isInsideReadonly } from './anchors';
 import { useCanvasContext } from './context';
@@ -13,13 +14,22 @@ import {
   applyTextEdit,
   caretOffsetWithin,
   caretRangeAtPoint,
-  fieldKindOf,
-  isInlineEditableKind,
+  fieldOf,
+  isInlineEditableField,
   placeCaret,
+  RICH_TEXT_INLINE_WARNING,
   stripPlaceholder,
 } from './inline-text';
 import { canvasRectOf } from './rect';
 import { useFieldRect } from './rects';
+
+let richTextInlineWarned = false;
+
+function warnRichTextInlineOnce(): void {
+  if (process.env.NODE_ENV === 'production' || richTextInlineWarned) return;
+  richTextInlineWarned = true;
+  console.warn(RICH_TEXT_INLINE_WARNING);
+}
 
 export type InlineSuggestItem = {
   insertText: string;
@@ -109,7 +119,7 @@ function placeCaretFromPointer(
     return;
   }
   const origin = fieldOrigin(host, blockId, key);
-  if (!(origin instanceof HTMLElement)) {
+  if (!isHTMLElement(origin)) {
     placeCaret(glass, glass.textContent?.length ?? 0);
     return;
   }
@@ -129,9 +139,10 @@ type SuggestState = {
 };
 
 /**
- * Overlays a contentEditable glass on string and richText fields. During a
- * session the origin element is hidden, and an empty string/richText property
- * carries a zero-width placeholder in the canvas render (never stored).
+ * Overlays a contentEditable glass on string fields. During a session the
+ * origin element is hidden, and an empty string property carries a zero-width
+ * placeholder in the canvas render (never stored). A click on a richText field
+ * selects the block and focuses its form field instead of opening the glass.
  */
 export function CanvasInlineText({
   suggest,
@@ -142,9 +153,12 @@ export function CanvasInlineText({
 }: CanvasInlineTextProps) {
   const canvas = useCanvasContext('Canvas.InlineText');
   const ctx = useEditorContext('Canvas.InlineText');
-  const editing = useEditorSelector(
-    (s) => s.selection[ctx.userId]?.editing ?? null,
-  );
+  const editing = useEditorSelector((s) => {
+    const current = s.selection[ctx.userId]?.editing ?? null;
+    if (current === null) return null;
+    const field = fieldOf(ctx.schema, s.nodes, current.blockId, current.key);
+    return field !== null && isInlineEditableField(field) ? current : null;
+  });
   const nodes = useEditorSelector((s) => s.nodes);
   const storeVersion = useEditorSelector((s) => s.version);
   const glassRef = React.useRef<HTMLDivElement | null>(null);
@@ -188,11 +202,6 @@ export function CanvasInlineText({
   const storeRaw =
     editing === null ? '' : nodes[editing.blockId]?.properties[editing.key];
   const storeValue = typeof storeRaw === 'string' ? storeRaw : '';
-
-  const fieldKind =
-    editing === null
-      ? null
-      : fieldKindOf(ctx.schema, nodes, editing.blockId, editing.key);
 
   const refreshSuggest = React.useCallback(() => {
     const el = glassRef.current;
@@ -263,7 +272,7 @@ export function CanvasInlineText({
       }
 
       const inlineGlass = target.closest('[data-editor-inline-text]');
-      if (inlineGlass instanceof HTMLElement && insideHost(host, inlineGlass)) {
+      if (isHTMLElement(inlineGlass) && insideHost(host, inlineGlass)) {
         const active =
           ctx.store.getState().selection[ctx.userId]?.editing ?? null;
         if (active) {
@@ -282,19 +291,29 @@ export function CanvasInlineText({
       const anchor = frameClickAnchor(event.target);
       if (!anchor?.key) return;
 
-      const kind = fieldKindOf(
+      const field = fieldOf(
         ctx.schema,
         ctx.store.getState().nodes,
         anchor.blockId,
         anchor.key,
       );
-      if (!kind || !isInlineEditableKind(kind)) return;
+      if (!field) return;
+      if (!isInlineEditableField(field)) {
+        // A richText or readOnly field: select the block and focus its form
+        // control instead of opening the glass.
+        if (field.type === 'richText') warnRichTextInlineOnce();
+        if (field.type === 'richText' || field.readOnly === true) {
+          ctx.store.select(anchor.blockId);
+          ctx.store.focus({ blockId: anchor.blockId, key: anchor.key });
+        }
+        return;
+      }
 
       const current =
         ctx.store.getState().selection[ctx.userId]?.editing ?? null;
       if (current?.blockId === anchor.blockId && current?.key === anchor.key) {
         const glass = host.querySelector('[data-editor-inline-text]');
-        if (glass instanceof HTMLElement) {
+        if (isHTMLElement(glass)) {
           placeCaretFromPointer(
             glass,
             host,
@@ -339,7 +358,7 @@ export function CanvasInlineText({
     const host = canvas.host;
     if (!host) return;
     const origin = fieldOrigin(host, editing.blockId, editing.key);
-    if (!(origin instanceof HTMLElement)) return;
+    if (!isHTMLElement(origin)) return;
     const prev = origin.style.visibility;
     origin.style.visibility = 'hidden';
     return () => {
@@ -397,7 +416,7 @@ export function CanvasInlineText({
     if (!host || !el || editing === null || fieldRect === null) return;
 
     const origin = fieldOrigin(host, editing.blockId, editing.key);
-    if (!(origin instanceof HTMLElement)) return;
+    if (!isHTMLElement(origin)) return;
     const computed = host.ownerDocument.defaultView?.getComputedStyle(origin);
     if (!computed) return;
 
@@ -571,7 +590,7 @@ export function CanvasInlineText({
       ref: glassRef,
       role: 'textbox',
       'aria-label': rest['aria-label'] ?? 'Edit text',
-      'aria-multiline': fieldKind === 'richText' ? 'true' : 'false',
+      'aria-multiline': 'false',
       contentEditable: 'plaintext-only',
       suppressContentEditableWarning: true,
       onBlur,

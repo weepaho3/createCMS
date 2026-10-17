@@ -4,12 +4,12 @@ import type * as React from 'react';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import type { EditorStore } from '../store';
+import type { EditorStore } from '../core/store';
 
 import { useEditorContext } from '../context';
+import { counterGenId, makeDoc, storeSchema } from '../core/store/fixtures';
 import { useBlockActions, useChildren } from '../hooks';
 import { Editor } from '../index';
-import { counterGenId, makeTree, storeSchema } from '../store/fixtures';
 
 afterEach(cleanup);
 
@@ -76,7 +76,7 @@ function mount(ui?: React.ReactNode) {
   const utils = render(
     <Editor.Root
       schema={storeSchema}
-      defaultValue={makeTree()}
+      defaultValue={makeDoc()}
       genId={counterGenId()}
     >
       <StoreProbe probe={probe} />
@@ -210,7 +210,7 @@ describe('Editor.OutlineItem', () => {
   it('onDelete returning false keeps the block and the selection', () => {
     const probe: Probe = { store: null };
     const { container } = render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <StoreProbe probe={probe} />
         <Outline onDelete={() => false} />
       </Editor.Root>,
@@ -226,7 +226,7 @@ describe('Editor.OutlineItem', () => {
   it('onDelete returning undefined removes the block', () => {
     const probe: Probe = { store: null };
     const { container } = render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <StoreProbe probe={probe} />
         <Outline onDelete={() => undefined} />
       </Editor.Root>,
@@ -256,7 +256,7 @@ describe('Editor.OutlineItem', () => {
   it('consumer onKeyDown preventDefault disables the built-in key handling', () => {
     const probe: Probe = { store: null };
     const { container } = render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <StoreProbe probe={probe} />
         <Outline onKeyDown={(event) => event.preventDefault()} />
       </Editor.Root>,
@@ -269,7 +269,7 @@ describe('Editor.OutlineItem', () => {
     const probe: Probe = { store: null };
     let selectedDuringClick: string | null | undefined;
     const { container } = render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <StoreProbe probe={probe} />
         <Outline
           onClick={() => {
@@ -293,7 +293,7 @@ describe('Editor.OutlineItem', () => {
   it('a keydown inside an input rendered within a row is ignored', () => {
     const probe: Probe = { store: null };
     const { container, getByTestId } = render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <StoreProbe probe={probe} />
         <div role="tree">
           <Editor.OutlineItem blockId="h1">
@@ -311,7 +311,7 @@ describe('Editor.OutlineItem', () => {
 
   it('render={<li />} yields an li with role and data attributes', () => {
     const { container } = render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <Editor.OutlineItem blockId="h1" render={<li />} />
       </Editor.Root>,
     );
@@ -324,7 +324,7 @@ describe('Editor.OutlineItem', () => {
 
   it('unknown blockId renders nothing', () => {
     const { container } = render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <Editor.OutlineItem blockId="nope" />
       </Editor.Root>,
     );
@@ -449,7 +449,7 @@ describe('stacked form', () => {
       );
     }
     const { container } = render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <StoreProbe probe={probe} />
         <Actions />
         <Stack blockId="root_1" />

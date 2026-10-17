@@ -1,8 +1,7 @@
-import type { BlockProperty } from '@createcms/schema';
-
 import * as React from 'react';
 
 import type { UseRenderComponentProps } from '../../use-render';
+import type { Field, FieldKind } from '../core/schema';
 import type { CanvasContextValue, InlineCaretPoint } from './context';
 import type { CanvasComponents } from './map';
 import type { Measurer } from './measurer';
@@ -15,7 +14,6 @@ import { type DndStore } from './dnd';
 import { CanvasDndEffects } from './dnd-parts';
 import { createEditCache, type EditCache } from './edit';
 import { handleCanvasClick, handleCanvasPointerOver } from './interact';
-import { resolveComponentMap } from './map';
 import { createMeasurer } from './measurer';
 import { type PointerStore } from './pointer';
 import {
@@ -26,7 +24,6 @@ import {
 import { renderStoreTree } from './renderer';
 import {
   type CanvasResolve,
-  type ResolveKind,
   createResolveCache,
   readResolved,
   type ResolveCache,
@@ -250,7 +247,7 @@ export function CanvasRoot({
   React.useLayoutEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    const map = resolveComponentMap(componentsRef.current);
+    const map = componentsRef.current;
     for (const [id, node] of Object.entries(nodes)) {
       if (node.type === 'root') continue;
       if (!map[node.type]) continue;
@@ -271,12 +268,11 @@ export function CanvasRoot({
 
   void version;
 
-  const map = resolveComponentMap(components);
   const tree = renderStoreTree({
     nodes,
     rootId,
     schema: ctx.schema,
-    components: map,
+    components,
     resolve,
     cache: cacheRef.current,
     edits: editsRef.current,
@@ -284,7 +280,7 @@ export function CanvasRoot({
 
   const read = React.useMemo(() => {
     const cache = cacheRef.current!;
-    return (kind: ResolveKind, value: unknown, spec: BlockProperty) =>
+    return (kind: FieldKind, value: unknown, spec: Field) =>
       readResolved(kind, value, spec, resolveRef.current, cache);
   }, []);
 

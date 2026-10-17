@@ -1,11 +1,13 @@
-import type { BlockTreeNode, CollectionDefinition } from '@createcms/schema';
 import type { ReactNode } from 'react';
 
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import type { EditorDocument } from '../core/document';
+
+import { defineEditorSchema } from '../core/schema';
+import { makeDoc, storeSchema } from '../core/store/fixtures';
 import { Editor } from '../index';
-import { makeTree, storeSchema } from '../store/fixtures';
 import { Canvas } from './index';
 import { caretOffsetWithin, EMPTY_FIELD_PLACEHOLDER } from './inline-text';
 import {
@@ -18,50 +20,57 @@ import { rectClose, rectOf, renderCanvas, waitForLayout } from './test/harness';
 
 afterEach(cleanup);
 
-const badgeSchema = {
-  label: 'Pages',
-  root: { properties: {} },
-  blocks: {
+const badgeSchema = defineEditorSchema({
+  root: { label: 'Pages', fields: {}, slots: { children: {} } },
+  components: {
     heading: {
       label: 'Heading',
-      properties: {
-        text: { type: 'string', label: 'Text' },
+      fields: {
+        text: { type: 'text', label: 'Text' },
         level: { type: 'number', label: 'Level', defaultValue: 2 },
-        badge: { type: 'string', label: 'Badge' },
+        badge: { type: 'text', label: 'Badge' },
       },
     },
   },
-} satisfies CollectionDefinition;
+});
 
-function badgeTree(): BlockTreeNode {
+function badgeTree(): EditorDocument {
   return {
-    blockId: 'root_1',
-    type: 'root',
-    properties: {},
-    children: [
-      {
-        blockId: 'h1',
-        type: 'heading',
-        properties: { text: 'Hello', level: 1, badge: '' },
-        children: [],
+    schemaVersion: 1,
+    root: {
+      id: 'root_1',
+      type: 'root',
+      props: {},
+      slots: {
+        children: [
+          {
+            id: 'h1',
+            type: 'heading',
+            props: { text: 'Hello', level: 1, badge: '' },
+          },
+        ],
       },
-    ],
+    },
   };
 }
 
-function longHeadingTree(): BlockTreeNode {
+function longHeadingTree(): EditorDocument {
   return {
-    blockId: 'root_1',
-    type: 'root',
-    properties: {},
-    children: [
-      {
-        blockId: 'h1',
-        type: 'heading',
-        properties: { text: 'HelloWorld', level: 1 },
-        children: [],
+    schemaVersion: 1,
+    root: {
+      id: 'root_1',
+      type: 'root',
+      props: {},
+      slots: {
+        children: [
+          {
+            id: 'h1',
+            type: 'heading',
+            props: { text: 'HelloWorld', level: 1 },
+          },
+        ],
       },
-    ],
+    },
   };
 }
 
@@ -277,26 +286,23 @@ describe('Canvas inline text in a real browser', () => {
     expect(store.getState().selection.local?.editing?.blockId).toBe('inner1');
   });
 
-  it('paragraph block and field on the same element starts richText session', async () => {
-    const { host, store } = renderCanvas(inlineOverlay());
-    const para = host.querySelector('[data-editor-block="p1"]');
-    expect(para).not.toBeNull();
-    await waitForLayout(para!);
-    clickCenter(para!);
+  it('richText click does not start a session and keeps the HTML value', async () => {
+    const html = '<p>World <strong>bold</strong> <a href="/x">link</a></p>';
+    const tree = makeDoc();
+    const para = tree.root.slots!.children![1]!.slots!.children![0]!;
+    para.props = { text: html };
+    const { host, store } = renderCanvas(inlineOverlay(), { tree });
+    const el = host.querySelector('[data-editor-block="p1"]');
+    expect(el).not.toBeNull();
+    await waitForLayout(el!);
+    clickCenter(el!);
     await waitForLayout(host);
-    await waitForLayout(para!);
-    expect(store.getState().selection.local?.editing).toEqual({
-      blockId: 'p1',
-      key: 'text',
-    });
-    let glass: Element | null = null;
-    for (let i = 0; i < 10; i += 1) {
-      await waitForLayout(para!);
-      glass = host.querySelector('[data-editor-inline-text]');
-      if (glass) break;
-    }
-    expect(glass).not.toBeNull();
-    expect(glass?.getAttribute('aria-multiline')).toBe('true');
+    await waitForLayout(el!);
+    const selection = store.getState().selection.local;
+    expect(selection?.editing).toBeNull();
+    expect(selection?.focus).toEqual({ blockId: 'p1', key: 'text' });
+    expect(host.querySelector('[data-editor-inline-text]')).toBeNull();
+    expect(store.getState().nodes.p1!.properties.text).toBe(html);
   });
 
   it('empty badge field can be edited without storing the placeholder', async () => {
@@ -408,7 +414,7 @@ describe('Canvas inline text in a real browser', () => {
   });
 
   it('two canvases on one page keep lookup scoped', async () => {
-    const tree = makeTree();
+    const tree = makeDoc();
     const utils = render(
       <div style={{ display: 'flex' }}>
         <Editor.Root schema={storeSchema} defaultValue={tree}>
