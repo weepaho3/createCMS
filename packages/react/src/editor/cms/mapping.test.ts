@@ -2,7 +2,9 @@ import type { BlockTreeNode, CollectionDefinition } from '@createcms/schema';
 
 import { describe, expect, it } from 'vitest';
 
-import { EditorAdapterError, getPlacement, canPlace } from '../core';
+import type { PlacementNode } from '../core';
+
+import { EditorAdapterError, canPlaceIn } from '../core';
 import {
   CMS_SCHEMA_VERSION,
   fromCollection,
@@ -120,12 +122,17 @@ describe('fromCollection', () => {
     expect(schema.components.box.slots).toEqual({
       children: { allow: ['all'] },
     });
-    const index = getPlacement(schema);
-    expect(canPlace(index, 'all', 'box')).toBe(true);
-    expect(canPlace(index, 'box', 'box')).toBe(false);
-    expect(canPlace(index, 'all', 'shut')).toBe(false);
-    expect(canPlace(index, 'shut', 'root')).toBe(false);
-    expect(canPlace(index, 'box', 'all')).toBe(false);
+    const can = (child: string, parentType: string): boolean => {
+      const nodes: Record<string, PlacementNode> = {
+        p: { type: parentType, parent: null, slots: {} },
+      };
+      return canPlaceIn(schema, nodes, child, { id: 'p', slot: 'children' }).ok;
+    };
+    expect(can('all', 'box')).toBe(true);
+    expect(can('box', 'box')).toBe(false);
+    expect(can('all', 'shut')).toBe(false);
+    expect(can('shut', 'root')).toBe(false);
+    expect(can('box', 'all')).toBe(false);
   });
 
   it('throws a validation error for an unknown property type', () => {

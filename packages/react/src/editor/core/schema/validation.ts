@@ -10,6 +10,7 @@ import type {
 } from './types';
 
 import { componentOf, fieldsOf } from './fields';
+import { slotAccepts } from './placement';
 import { isLocalizedValue, isResponsiveValue } from './responsive';
 import { isFieldVisible, resolveFields } from './visibility';
 
@@ -492,33 +493,6 @@ function slotIssues(
   return issues;
 }
 
-/** Whether `childType` may sit in `slot` of `parent` by the slot rules and `canPlace`. */
-export function slotAccepts(
-  schema: AnyEditorSchema,
-  parent: { id: string; type: string },
-  slot: string,
-  spec: SlotSpec,
-  childType: string,
-): boolean {
-  if (spec.allow) {
-    if (!spec.allow.includes(childType)) return false;
-  } else if (spec.disallow?.includes(childType)) {
-    return false;
-  }
-  if (
-    spec.accept &&
-    !spec.accept({
-      childType,
-      parentId: parent.id,
-      parentType: parent.type,
-      slot,
-    })
-  ) {
-    return false;
-  }
-  return schema.canPlace ? schema.canPlace(childType, parent.type, slot) : true;
-}
-
 async function standardIssues(
   node: NodeData,
   component: AnyComponentDef,
@@ -577,7 +551,7 @@ export type MissingRequiredField = {
 export type MissingRequiredNode = {
   readonly id: string;
   readonly type: string;
-  readonly properties: Readonly<Record<string, unknown>>;
+  readonly props: Readonly<Record<string, unknown>>;
 };
 
 /**
@@ -592,10 +566,7 @@ export function missingRequired(
   const missing: MissingRequiredField[] = [];
   for (const node of nodes) {
     for (const [key, field] of Object.entries(fieldsOf(schema, node.type))) {
-      if (
-        field.required === true &&
-        isEmptyValue(field, node.properties[key])
-      ) {
+      if (field.required === true && isEmptyValue(field, node.props[key])) {
         missing.push({
           blockId: node.id,
           blockType: node.type,

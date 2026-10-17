@@ -7,8 +7,8 @@ import type { EditCache } from './edit';
 import type { CanvasComponent } from './map';
 import type { CanvasResolve, ResolveCache } from './resolve';
 
-import { DEFAULT_SLOT, fieldsOf } from '../core/schema';
-import { serializeToTree } from '../core/store';
+import { DEFAULT_SLOT, fieldsOf, slotsOf } from '../core/schema';
+import { serializeSubtree } from '../core/store';
 import { withEmptyFieldPlaceholder } from './inline-text';
 import { resolveNodeProperties } from './resolve';
 
@@ -23,16 +23,30 @@ export type RenderStoreTreeArgs = {
 };
 
 export function renderStoreTree(args: RenderStoreTreeArgs): React.ReactNode {
-  return renderNode(serializeToTree(args.nodes, args.rootId), args);
+  return renderNode(
+    serializeSubtree(args.nodes, args.rootId, (type) =>
+      Object.keys(slotsOf(args.schema, type)),
+    ),
+    args,
+  );
 }
 
 function renderNode(
   node: NodeData,
   args: RenderStoreTreeArgs,
 ): React.ReactNode {
-  const childElements = (node.slots?.[DEFAULT_SLOT] ?? []).map((child) => (
-    <React.Fragment key={child.id}>{renderNode(child, args)}</React.Fragment>
-  ));
+  const slots: Record<string, React.ReactNode> = {};
+  for (const [name, children] of Object.entries(node.slots ?? {})) {
+    slots[name] =
+      children.length > 0
+        ? children.map((child) => (
+            <React.Fragment key={child.id}>
+              {renderNode(child, args)}
+            </React.Fragment>
+          ))
+        : null;
+  }
+  const childElements = slots[DEFAULT_SLOT] ?? null;
 
   if (node.type === 'root') return <>{childElements}</>;
 
@@ -65,8 +79,9 @@ function renderNode(
       )}
       node={node}
       edit={args.edits.get(node.id, node.type, args.schema, unresolved)}
+      slots={slots}
     >
-      {childElements.length > 0 ? childElements : null}
+      {childElements}
     </Component>
   );
 }

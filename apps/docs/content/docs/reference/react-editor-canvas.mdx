@@ -163,10 +163,10 @@ session itself and provides it to its children.
 | `CanvasReadonlySubtreeProps` | Props of `Canvas.ReadonlySubtree`.                                                                |
 | `CanvasInteractive`          | `'edit' \| 'select' \| 'none'`. Default `'edit'`.                                                 |
 | `CanvasSurface`              | `'inline' \| 'frame'`. Default `'inline'`. `'frame'` throws.                                      |
-| `InsertTarget`               | Resolved insert: `parentId`, `index`, `orientation`, `variant`, `rect`, `allowedTypes`, `nested`. |
+| `InsertTarget`               | Resolved insert: `parent` (`{ id, slot }`), `index`, `orientation`, `variant`, `rect`, `allowedTypes`, `nested`. |
 | `InsertOrientation`          | `'horizontal'` \| `'vertical'`.                                                                   |
 | `InsertVariant`              | `'line'` \| `'box'`.                                                                              |
-| `ResolveInsertAtOptions`     | Injected rects and row-flow stub for `resolveInsertAt`.                                           |
+| `ResolveInsertAtOptions`     | Injected block rects, slot rects (`getSlotRect(id, slot)`, the element carrying `edit.slot.<name>`) and the row-flow stub for `resolveInsertAt`. |
 | `CanvasBlockToolbarProps`    | Props of `Canvas.BlockToolbar`.                                                                   |
 | `CanvasInsertButtonProps`    | Props of `Canvas.InsertButton`.                                                                   |
 | `CanvasDragHandleProps`      | Props of `Canvas.DragHandle`.                                                                     |
@@ -185,10 +185,10 @@ session itself and provides it to its children.
 
 | Export                   | Description                                                                 |
 | ------------------------ | --------------------------------------------------------------------------- |
-| `resolveInsertAt`        | Pure insert geometry from pointer position and block rects.                 |
+| `resolveInsertAt`        | Pure insert geometry: `(schema, nodes, rootId, startBlockId, x, y, options)`; walks the ancestors and every declared slot that admits the dragged type. |
 | `INSERT_BOX_PAD`         | Padding around an empty container insert box.                                 |
 | `INSERT_LINE_THICKNESS`  | Hit thickness for line insert targets.                                      |
-| `adjustMoveIndex`        | Index adjustment when moving a block within the same parent.                |
+| `adjustMoveIndex`        | `(nodes, id, parent: SlotRef, index)`: index adjustment when moving a block within the same slot. |
 | `blockIdAtPoint`         | Block id under a client point from measured rects.                          |
 | `DND_THRESHOLD_PX`       | Pointer distance before a drag session starts.                              |
 | `applyTextEdit`          | Apply a DOM text edit to a string value.                                    |

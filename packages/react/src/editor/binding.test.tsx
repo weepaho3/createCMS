@@ -62,7 +62,7 @@ describe('useEditorSelector', () => {
       () => {
         renders++;
         store = useEditorStore();
-        return useEditorSelector((s) => s.nodes.h1?.properties.text);
+        return useEditorSelector((s) => s.nodes.h1?.props.text);
       },
       { wrapper: makeWrapper() },
     );
@@ -89,7 +89,7 @@ describe('useEditorSelector', () => {
         renders++;
         store = useEditorStore();
         return useEditorSelector((s) => ({
-          n: s.nodes.root_1?.childIds.length,
+          n: s.nodes.root_1?.slots.children.length,
         }));
       },
       { wrapper: makeWrapper() },
@@ -110,7 +110,7 @@ describe('useEditorSelector', () => {
         renders++;
         const store = useEditorStore();
         const slice = useEditorSelector((s) => ({
-          n: s.nodes.root_1?.childIds.length,
+          n: s.nodes.root_1?.slots.children.length,
         }));
         return { store, slice };
       },
@@ -118,7 +118,7 @@ describe('useEditorSelector', () => {
     );
     expect(renders).toBe(1);
     act(() => {
-      result.current.store.add('heading', { parentId: 'root_1' });
+      result.current.store.add('heading', { parent: { id: 'root_1' } });
     });
     expect(renders).toBe(2);
     expect(result.current.slice).toEqual({ n: 3 });

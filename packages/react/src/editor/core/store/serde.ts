@@ -1,79 +1,118 @@
-import type { EditorDocument, JsonValue, NodeData } from '../document';
-import type { EditorNode, EditorNodes } from './types';
+import type {
+  EditorDocument,
+  FlatNode,
+  NodeData,
+  NormalizedDoc,
+  SlotRef,
+} from '../document';
 
-import { DEFAULT_SLOT } from '../schema/placement';
+/** Slot names of a node type in the order they should serialise. */
+export type SlotOrder = (type: string) => readonly string[];
+
+/** Flat nodes keyed by id. */
+export type EditorNodes = Readonly<Record<string, FlatNode>>;
 
 /**
- * Nested node → flat node table + root id. Every node's `type` is kept
- * verbatim (the root stays `'root'`). The store holds one slot per node, the
- * default `children` slot; a node with another slot name throws.
+ * Adds a nested node and its subtree to `out`. `parent` is where the node
+ * sits (`null` for the root). Every slot of the node, empty ones included,
+ * becomes a list of child ids.
  */
-export function flattenTree(tree: NodeData): {
-  nodes: EditorNodes;
-  rootId: string;
-} {
-  const nodes: Record<string, EditorNode> = {};
-  const walk = (node: NodeData, parentId: string | null): void => {
-    const children = childrenOf(node);
-    const flat: {
-      -readonly [K in keyof EditorNode]: EditorNode[K];
-    } = {
-      id: node.id,
-      type: node.type,
-      properties: node.props,
-      parentId,
-      childIds: children.map((child) => child.id),
-    };
-    if (node.v !== undefined) flat.v = node.v;
-    if (node.meta !== undefined) flat.meta = node.meta;
-    nodes[node.id] = flat;
-    for (const child of children) walk(child, node.id);
-  };
-  walk(tree, null);
-  return { nodes, rootId: tree.id };
-}
-
-function childrenOf(node: NodeData): NodeData[] {
-  if (!node.slots) return [];
-  for (const slot of Object.keys(node.slots)) {
-    if (slot !== DEFAULT_SLOT) {
-      throw new Error(
-        `flattenTree: node "${node.id}" uses slot "${slot}"; the store holds the "${DEFAULT_SLOT}" slot only`,
-      );
-    }
+function flatten(
+  node: NodeData,
+  parent: SlotRef | null,
+  out: Record<string, FlatNode>,
+): void {
+  const slots: Record<string, string[]> = {};
+  for (const [slot, children] of Object.entries(node.slots ?? {})) {
+    slots[slot] = children.map((child) => child.id);
   }
-  return node.slots[DEFAULT_SLOT] ?? [];
+  const flat: FlatNode = {
+    id: node.id,
+    type: node.type,
+    props: node.props,
+    parent,
+    slots,
+  };
+  if (node.v !== undefined) flat.v = node.v;
+  if (node.meta !== undefined) flat.meta = node.meta;
+  out[node.id] = flat;
+  for (const [slot, children] of Object.entries(node.slots ?? {})) {
+    for (const child of children) flatten(child, { id: node.id, slot }, out);
+  }
+}
+
+/** A nested subtree as flat nodes; the subtree root gets `parent`. */
+export function flattenSubtree(
+  node: NodeData,
+  parent: SlotRef | null,
+): Record<string, FlatNode> {
+  const out: Record<string, FlatNode> = {};
+  flatten(node, parent, out);
+  return out;
+}
+
+/** A nested document in flat form: every node keyed by id. */
+export function normalize(doc: EditorDocument): NormalizedDoc {
+  return { rootId: doc.root.id, nodes: flattenSubtree(doc.root, null) };
 }
 
 /**
- * Flat node table → nested node, starting at `rootId` (or any subtree root).
- * A node without children carries no `slots`. Throws on a dangling child id:
- * the table is corrupt, not the caller.
+ * Slot names in a stable order: the type's declared slots first (in
+ * `slotOrder`), then every other slot alphabetically.
  */
-export function serializeToTree(nodes: EditorNodes, rootId: string): NodeData {
-  const build = (id: string): NodeData => {
-    const node = nodes[id];
-    if (!node) throw new Error(`serializeToTree: dangling child id "${id}"`);
+function orderedSlots(
+  node: FlatNode,
+  slotOrder: SlotOrder | undefined,
+): string[] {
+  const names = Object.keys(node.slots);
+  const declared = slotOrder ? slotOrder(node.type) : [];
+  const known = declared.filter((name) => names.includes(name));
+  const rest = names.filter((name) => !known.includes(name)).sort();
+  return [...known, ...rest];
+}
+
+/**
+ * The nested form of the subtree at `id`. Slots keep their child order and
+ * appear in `slotOrder` order (declared slots, then the rest
+ * alphabetically); a node without slots carries no `slots`. Throws on a
+ * dangling child id: the table is corrupt, not the caller.
+ */
+export function serializeSubtree(
+  nodes: EditorNodes,
+  id: string,
+  slotOrder?: SlotOrder,
+): NodeData {
+  const build = (nodeId: string): NodeData => {
+    const node = nodes[nodeId];
+    if (!node) {
+      throw new Error(`serializeSubtree: dangling child id "${nodeId}"`);
+    }
     const out: NodeData = {
       id: node.id,
       type: node.type,
-      props: { ...(node.properties as Record<string, JsonValue>) },
+      props: { ...node.props },
     };
     if (node.v !== undefined) out.v = node.v;
-    if (node.childIds.length > 0) {
-      out.slots = { [DEFAULT_SLOT]: node.childIds.map(build) };
+    const names = orderedSlots(node, slotOrder);
+    if (names.length > 0) {
+      const slots: Record<string, NodeData[]> = {};
+      for (const name of names)
+        slots[name] = (node.slots[name] ?? []).map(build);
+      out.slots = slots;
     }
     if (node.meta !== undefined) out.meta = node.meta;
     return out;
   };
-  return build(rootId);
+  return build(id);
 }
 
-/** Flat node table → a whole document. */
-export function serializeDocument(
-  nodes: EditorNodes,
-  rootId: string,
-  schemaVersion: number,
+/** A flat document back in nested form, the inverse of {@link normalize}. */
+export function denormalize(
+  nd: NormalizedDoc,
+  options: { schemaVersion?: number; slotOrder?: SlotOrder } = {},
 ): EditorDocument {
-  return { schemaVersion, root: serializeToTree(nodes, rootId) };
+  return {
+    schemaVersion: options.schemaVersion ?? 0,
+    root: serializeSubtree(nd.nodes, nd.rootId, options.slotOrder),
+  };
 }

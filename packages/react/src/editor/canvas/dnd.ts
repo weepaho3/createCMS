@@ -1,3 +1,4 @@
+import type { SlotRef } from '../core/document';
 import type { EditorNodes } from '../core/store';
 import type { InsertTarget } from './insert';
 import type { CanvasRect } from './rect';
@@ -30,7 +31,8 @@ function sameTarget(a: InsertTarget, b: InsertTarget): boolean {
   const ar = a.rect;
   const br = b.rect;
   return (
-    a.parentId === b.parentId &&
+    a.parent.id === b.parent.id &&
+    a.parent.slot === b.parent.slot &&
     a.index === b.index &&
     a.orientation === b.orientation &&
     a.variant === b.variant &&
@@ -41,15 +43,26 @@ function sameTarget(a: InsertTarget, b: InsertTarget): boolean {
   );
 }
 
+/**
+ * A drop index computed with the moved node still in place, as the store's
+ * `move` index (the position after the node left): one less when the node
+ * moves later within the same slot.
+ */
 export function adjustMoveIndex(
   nodes: EditorNodes,
   id: string,
-  parentId: string,
+  parent: SlotRef,
   index: number,
 ): number {
   const node = nodes[id];
-  if (!node || node.parentId !== parentId) return index;
-  const oldIndex = nodes[parentId]?.childIds.indexOf(id) ?? -1;
+  if (
+    !node ||
+    node.parent?.id !== parent.id ||
+    node.parent.slot !== parent.slot
+  ) {
+    return index;
+  }
+  const oldIndex = nodes[parent.id]?.slots[parent.slot]?.indexOf(id) ?? -1;
   if (oldIndex >= 0 && oldIndex < index) return index - 1;
   return index;
 }

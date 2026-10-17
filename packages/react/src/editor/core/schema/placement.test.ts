@@ -1,103 +1,83 @@
 import { describe, expect, it } from 'vitest';
 
+import type { PlacementNode } from './placement';
+
 import { pages } from './fixtures';
-import { allowedChildTypes, canPlace, getPlacement } from './placement';
+import { allowedChildTypes, canPlaceIn, slotsOf } from './placement';
 import { defineEditorSchema } from './types';
 
-describe('getPlacement', () => {
-  it('blockTypes is every component type, in definition order', () => {
-    const index = getPlacement(pages);
-    expect([...index.blockTypes]).toEqual([
-      'heading',
-      'paragraph',
-      'image',
-      'cta',
-      'card',
-      'section',
-      'freeContainer',
-      'sealed',
-      'noSlot',
-      'hidden',
-    ]);
-  });
+/** A one-node table: a parent of `type` with id `p` and the given slots. */
+function parentOf(
+  type: string,
+  slots: Record<string, string[]> = {},
+): Record<string, PlacementNode> {
+  return { p: { type, parent: null, slots } };
+}
 
-  it('containers are the root and every component with a children slot', () => {
-    const index = getPlacement(pages);
-    expect([...index.containers].sort()).toEqual(
-      ['root', 'section', 'freeContainer', 'sealed'].sort(),
-    );
-  });
+const IN = { id: 'p', slot: 'children' };
 
-  it('allow becomes an only rule, disallow an except rule', () => {
-    const index = getPlacement(pages);
-    expect(index.rules.get('section')).toEqual({
-      mode: 'only',
-      set: new Set(['heading', 'paragraph']),
-    });
-    expect(index.rules.get('root')).toEqual({
-      mode: 'except',
-      set: new Set(['heading']),
-    });
-    expect(index.rules.get('sealed')).toEqual({ mode: 'only', set: new Set() });
-  });
-
-  it('an open slot has no rule', () => {
-    expect(getPlacement(pages).rules.has('freeContainer')).toBe(false);
-  });
-
-  it('allow wins over disallow', () => {
-    const index = getPlacement(
-      defineEditorSchema({
-        root: {
-          label: 'Root',
-          fields: {},
-          slots: { children: { allow: ['a'], disallow: ['a'] } },
-        },
-        components: { a: { label: 'A', fields: {} } },
-      }),
-    );
-    expect(canPlace(index, 'a', 'root')).toBe(true);
+describe('slotsOf', () => {
+  it('returns the declared slots, root included', () => {
+    expect(Object.keys(slotsOf(pages, 'root'))).toEqual(['children']);
+    expect(slotsOf(pages, 'heading')).toEqual({});
+    expect(slotsOf(pages, 'nope')).toEqual({});
   });
 });
 
-describe('canPlace', () => {
-  const index = getPlacement(pages);
+describe('canPlaceIn', () => {
+  const place = (child: string, parentType: string) =>
+    canPlaceIn(pages, parentOf(parentType), child, IN).ok;
 
   it('root accepts paragraph and rejects heading', () => {
-    expect(canPlace(index, 'paragraph', 'root')).toBe(true);
-    expect(canPlace(index, 'heading', 'root')).toBe(false);
+    expect(place('paragraph', 'root')).toBe(true);
+    expect(canPlaceIn(pages, parentOf('root'), 'heading', IN)).toEqual({
+      ok: false,
+      code: 'not-allowed',
+    });
   });
 
   it('section accepts heading and rejects image', () => {
-    expect(canPlace(index, 'heading', 'section')).toBe(true);
-    expect(canPlace(index, 'image', 'section')).toBe(false);
+    expect(place('heading', 'section')).toBe(true);
+    expect(place('image', 'section')).toBe(false);
   });
 
   it('an open slot accepts anything, incl. an unknown type', () => {
-    expect(canPlace(index, 'ghost', 'freeContainer')).toBe(true);
+    expect(place('ghost', 'freeContainer')).toBe(true);
   });
 
   it('an empty allow list rejects everything', () => {
-    expect(canPlace(index, 'heading', 'sealed')).toBe(false);
+    expect(place('heading', 'sealed')).toBe(false);
   });
 
-  it('a component without a children slot rejects', () => {
-    expect(canPlace(index, 'heading', 'noSlot')).toBe(false);
-    expect(canPlace(index, 'paragraph', 'heading')).toBe(false);
-  });
-
-  it('an unknown parent rejects', () => {
-    expect(canPlace(index, 'heading', 'nope')).toBe(false);
-  });
-
-  it('a root without a children slot holds nothing', () => {
-    const closed = getPlacement(
-      defineEditorSchema({
-        root: { label: 'Root', fields: {} },
-        components: { a: { label: 'A', fields: {} } },
+  it('a slot the parent type does not declare is unknown-slot', () => {
+    expect(canPlaceIn(pages, parentOf('noSlot'), 'heading', IN)).toEqual({
+      ok: false,
+      code: 'unknown-slot',
+    });
+    expect(
+      canPlaceIn(pages, parentOf('section'), 'heading', {
+        id: 'p',
+        slot: 'aside',
       }),
-    );
-    expect(canPlace(closed, 'a', 'root')).toBe(false);
+    ).toEqual({ ok: false, code: 'unknown-slot' });
+  });
+
+  it('an unknown parent id is unknown-slot', () => {
+    expect(
+      canPlaceIn(pages, {}, 'heading', { id: 'ghost', slot: 'children' }),
+    ).toEqual({ ok: false, code: 'unknown-slot' });
+  });
+
+  it('allow wins over disallow', () => {
+    const schema = defineEditorSchema({
+      root: {
+        label: 'Root',
+        fields: {},
+        slots: { children: { allow: ['a'], disallow: ['a'] } },
+      },
+      components: { a: { label: 'A', fields: {} } },
+    });
+    expect(canPlaceIn(schema, parentOf('root'), 'a', IN).ok).toBe(true);
   });
 
   it('the global canPlace runs after the slot rule with the slot name', () => {
@@ -113,18 +93,80 @@ describe('canPlace', () => {
         return child !== 'b';
       },
     });
-    const global = getPlacement(schema);
-    expect(canPlace(global, 'a', 'root')).toBe(true);
-    expect(canPlace(global, 'b', 'root')).toBe(false);
+    expect(canPlaceIn(schema, parentOf('root'), 'a', IN).ok).toBe(true);
+    expect(canPlaceIn(schema, parentOf('root'), 'b', IN).ok).toBe(false);
     expect(calls).toEqual(['a>root.children', 'b>root.children']);
+  });
+
+  describe('named slots', () => {
+    const schema = defineEditorSchema({
+      root: { label: 'Root', fields: {}, slots: { children: {} } },
+      components: {
+        columns: {
+          label: 'Columns',
+          fields: {},
+          slots: {
+            left: { allow: ['text'] },
+            right: { max: 1 },
+          },
+        },
+        text: { label: 'Text', fields: {} },
+        image: { label: 'Image', fields: {} },
+      },
+    });
+    const nodes: Record<string, PlacementNode> = {
+      r: { type: 'root', parent: null, slots: { children: ['cols'] } },
+      cols: {
+        type: 'columns',
+        parent: { id: 'r', slot: 'children' },
+        slots: { left: ['t'], right: ['i'] },
+      },
+      t: { type: 'text', parent: { id: 'cols', slot: 'left' }, slots: {} },
+      i: { type: 'image', parent: { id: 'cols', slot: 'right' }, slots: {} },
+    };
+    const left = { id: 'cols', slot: 'left' };
+    const right = { id: 'cols', slot: 'right' };
+
+    it('applies each slot its own rules', () => {
+      expect(canPlaceIn(schema, nodes, 'text', left).ok).toBe(true);
+      expect(canPlaceIn(schema, nodes, 'image', left)).toEqual({
+        ok: false,
+        code: 'not-allowed',
+      });
+    });
+
+    it('a slot at max is slot-full', () => {
+      expect(canPlaceIn(schema, nodes, 'text', right)).toEqual({
+        ok: false,
+        code: 'slot-full',
+      });
+    });
+
+    it('a node moved within a full slot does not count twice', () => {
+      expect(
+        canPlaceIn(schema, nodes, 'image', right, { movingId: 'i' }).ok,
+      ).toBe(true);
+    });
+
+    it('a move into the own subtree is self-nesting', () => {
+      expect(
+        canPlaceIn(schema, nodes, 'columns', left, { movingId: 'cols' }),
+      ).toEqual({ ok: false, code: 'self-nesting' });
+    });
+
+    it('allowedChildTypes is per slot and empty for a full slot', () => {
+      expect(allowedChildTypes(schema, nodes, left)).toEqual(['text']);
+      expect(allowedChildTypes(schema, nodes, right)).toEqual([]);
+      expect(
+        allowedChildTypes(schema, nodes, right, { movingId: 'i' }),
+      ).toEqual(['columns', 'text', 'image']);
+    });
   });
 });
 
 describe('allowedChildTypes', () => {
-  const index = getPlacement(pages);
-
-  it('root → every type but heading, in definition order', () => {
-    expect(allowedChildTypes(index, 'root')).toEqual([
+  it('root: every type but heading, in definition order', () => {
+    expect(allowedChildTypes(pages, parentOf('root'), IN)).toEqual([
       'paragraph',
       'image',
       'cta',
@@ -137,14 +179,14 @@ describe('allowedChildTypes', () => {
     ]);
   });
 
-  it('section → its allow list, in definition order', () => {
-    expect(allowedChildTypes(index, 'section')).toEqual([
+  it('section: its allow list, in definition order', () => {
+    expect(allowedChildTypes(pages, parentOf('section'), IN)).toEqual([
       'heading',
       'paragraph',
     ]);
   });
 
-  it('a leaf → []', () => {
-    expect(allowedChildTypes(index, 'heading')).toEqual([]);
+  it('a leaf: []', () => {
+    expect(allowedChildTypes(pages, parentOf('heading'), IN)).toEqual([]);
   });
 });

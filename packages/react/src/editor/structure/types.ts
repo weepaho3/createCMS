@@ -39,9 +39,23 @@ export type EditorAddBlockProps = Omit<
    * docs).
    */
   parentId?: string;
+  /** Target slot of `parentId`; default `children`. */
+  slot?: string;
   /**
-   * Position among the target's children; default: append (or right after
-   * the selected sibling).
+   * Position in the target slot; default: append (or right after the
+   * selected sibling).
    */
   index?: number;
+};
+
+export type OutlineGroupState = { slot: string; blockId: string };
+
+export type EditorOutlineGroupProps = UseRenderComponentProps<
+  'div',
+  OutlineGroupState
+> & {
+  /** The block whose slot this group holds. */
+  blockId: string;
+  /** The slot name. */
+  slot: string;
 };

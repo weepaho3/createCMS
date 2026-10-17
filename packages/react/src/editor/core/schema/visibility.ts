@@ -11,8 +11,8 @@ import { componentOf } from './fields';
 /** What `fieldContextFor` needs to know about a node. */
 export type ContextNode = {
   readonly type: string;
-  readonly parentId: string | null;
-  readonly properties: Readonly<Record<string, unknown>>;
+  readonly parent: { readonly id: string } | null;
+  readonly props: Readonly<Record<string, unknown>>;
 };
 
 /**
@@ -94,7 +94,7 @@ export function fieldContextFor(
   const type = node?.type ?? '';
   const uses = node ? componentOf(schema, node.type)?.usesContext : undefined;
   const context: Record<string, unknown> = {};
-  let parentId = node?.parentId ?? null;
+  let parentId = node?.parent?.id ?? null;
   while (parentId !== null) {
     const parent = getNode(parentId);
     if (!parent) break;
@@ -103,10 +103,10 @@ export function fieldContextFor(
       for (const [name, key] of Object.entries(provides)) {
         if (name in context) continue;
         if (uses && !uses.includes(name)) continue;
-        context[name] = parent.properties[key];
+        context[name] = parent.props[key];
       }
     }
-    parentId = parent.parentId;
+    parentId = parent.parent?.id ?? null;
   }
   return {
     nodeId,

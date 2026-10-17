@@ -80,6 +80,7 @@ describe('namespace shape', () => {
       'Preview',
       'FramePreview',
       'OutlineItem',
+      'OutlineGroup',
       'AddBlock',
     ]);
   });

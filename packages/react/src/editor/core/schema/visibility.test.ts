@@ -118,14 +118,14 @@ describe('fieldContextFor', () => {
     metadata: { locale: 'de' },
   });
   const nodes: Record<string, ContextNode> = {
-    root: { type: 'root', parentId: null, properties: { theme: 'dark' } },
+    root: { type: 'root', parent: null, props: { theme: 'dark' } },
     s1: {
       type: 'section',
-      parentId: 'root',
-      properties: { tone: 'loud', theme: 'light' },
+      parent: { id: 'root' },
+      props: { tone: 'loud', theme: 'light' },
     },
-    t1: { type: 'text', parentId: 's1', properties: {} },
-    a1: { type: 'any', parentId: 's1', properties: {} },
+    t1: { type: 'text', parent: { id: 's1' }, props: {} },
+    a1: { type: 'any', parent: { id: 's1' }, props: {} },
   };
   const get = (id: string) => nodes[id];
 

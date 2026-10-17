@@ -111,10 +111,10 @@ describe('Canvas.PaletteItem', () => {
     act(() => {
       store.select('h1');
     });
-    const before = store.getState().nodes.root_1!.childIds.length;
+    const before = store.getState().nodes.root_1!.slots.children.length;
     const button = host.querySelector('[data-editor-palette-item]')!;
     fireEvent.click(button);
-    const after = store.getState().nodes.root_1!.childIds;
+    const after = store.getState().nodes.root_1!.slots.children;
     expect(after.length).toBe(before + 1);
     expect(after.indexOf('h1')).toBe(0);
     expect(after[1]).not.toBe('h1');
@@ -134,9 +134,9 @@ describe('Canvas.PaletteItem', () => {
       '[data-editor-palette-item]',
     ) as HTMLButtonElement;
     expect(button.disabled).toBe(false);
-    const before = store.getState().nodes.root_1!.childIds.length;
+    const before = store.getState().nodes.root_1!.slots.children.length;
     fireEvent.click(button);
-    expect(store.getState().nodes.root_1!.childIds.length).toBe(before);
+    expect(store.getState().nodes.root_1!.slots.children.length).toBe(before);
   });
 
   it('does not insert a second block when click follows a palette drag', () => {
@@ -145,7 +145,7 @@ describe('Canvas.PaletteItem', () => {
         <Canvas.PaletteItem type="paragraph">Add</Canvas.PaletteItem>
       </Canvas.Overlay>,
     );
-    const before = store.getState().nodes.root_1!.childIds.length;
+    const before = store.getState().nodes.root_1!.slots.children.length;
     const button = host.querySelector('[data-editor-palette-item]')!;
     const rect = button.getBoundingClientRect();
     const from = { x: rect.x + 4, y: rect.y + 4 };
@@ -156,7 +156,7 @@ describe('Canvas.PaletteItem', () => {
       fireEvent.click(button);
     });
     expect(
-      store.getState().nodes.root_1!.childIds.length - before,
+      store.getState().nodes.root_1!.slots.children.length - before,
     ).toBeLessThanOrEqual(1);
   });
 });
@@ -230,7 +230,7 @@ describe('canvas drag escape', () => {
         <Canvas.DropIndicator />
       </Canvas.Overlay>,
     );
-    const before = [...store.getState().nodes.root_1!.childIds];
+    const before = [...store.getState().nodes.root_1!.slots.children];
     const handle = host.querySelector('[data-editor-drag-handle]')!;
     const rect = handle.getBoundingClientRect();
     const from = { x: rect.x + 4, y: rect.y + 4 };
@@ -250,7 +250,7 @@ describe('canvas drag escape', () => {
     });
     expect(host.hasAttribute('data-dragging')).toBe(false);
     expect(host.querySelector('[data-editor-drop-indicator]')).toBeNull();
-    expect(store.getState().nodes.root_1!.childIds).toEqual(before);
+    expect(store.getState().nodes.root_1!.slots.children).toEqual(before);
   });
 
   it('ends a drag when pointerup happens off the handle', () => {

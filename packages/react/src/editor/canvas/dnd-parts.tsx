@@ -1,15 +1,13 @@
 import * as React from 'react';
 
 import type { UseRenderComponentProps } from '../../use-render';
-import type { EditorStoreState } from '../core/store';
 import type { InsertTarget, InsertOrientation, InsertVariant } from './insert';
 
 import { composeRefs, useRender } from '../../use-render';
 import { useEditorSelector } from '../binding';
 import { useEditorContext } from '../context';
-import { canPlace } from '../core/schema';
 import { isHTMLElement } from '../dom';
-import { placementOf } from '../hooks';
+import { insertPointFor } from '../structure/insert-point';
 import { blockElements, isInsideReadonly } from './anchors';
 import { CanvasContext, useCanvasContext } from './context';
 import {
@@ -80,37 +78,6 @@ function isPrimaryPointer(event: React.PointerEvent | PointerEvent): boolean {
   return event.button === 0;
 }
 
-function computePaletteInsertTarget(
-  state: EditorStoreState,
-  userId: string,
-  type: string,
-  placement: ReturnType<typeof placementOf>,
-): {
-  parentId: string;
-  parentType: string | null;
-  index: number | undefined;
-} {
-  const selectedId = state.selection[userId]?.selected ?? null;
-  const selected = selectedId === null ? null : state.nodes[selectedId];
-  if (selected && canPlace(placement, type, selected.type)) {
-    return {
-      parentId: selected.id,
-      parentType: selected.type,
-      index: undefined,
-    };
-  }
-  if (selected && selected.parentId !== null) {
-    const parent = state.nodes[selected.parentId];
-    const at = parent ? parent.childIds.indexOf(selected.id) + 1 : undefined;
-    return {
-      parentId: selected.parentId,
-      parentType: parent?.type ?? null,
-      index: at,
-    };
-  }
-  return { parentId: state.rootId, parentType: 'root', index: undefined };
-}
-
 function useDropTargetSnapshot(): InsertTarget | null {
   const { dnd } = useCanvasSession('useDropTargetSnapshot');
   return React.useSyncExternalStore(
@@ -136,7 +103,6 @@ export function useDndDropResolution(): void {
   const nodes = useEditorSelector((s) => s.nodes);
   const dragging = canvas.dragging;
   const { dnd, host, measurer, interactive } = canvas;
-  const placement = placementOf(ctx.schema);
   const nodesRef = React.useRef(nodes);
   nodesRef.current = nodes;
 
@@ -170,8 +136,8 @@ export function useDndDropResolution(): void {
           );
           dnd.setDropTarget(
             resolveDropTarget(
+              ctx.schema,
               nodesRef.current,
-              placement,
               rootId,
               session,
               point.x,
@@ -194,7 +160,7 @@ export function useDndDropResolution(): void {
     measurer,
     interactive,
     rootId,
-    placement,
+    ctx.schema,
     canvas.pointer,
   ]);
 }
@@ -211,7 +177,6 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
   const rootId = useEditorSelector((s) => s.rootId);
   const nodes = useEditorSelector((s) => s.nodes);
   const { dnd, pointer } = canvasSession;
-  const placement = placementOf(ctx.schema);
   const capturedRef = React.useRef(false);
   const nodesRef = React.useRef(nodes);
   nodesRef.current = nodes;
@@ -240,8 +205,8 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
       );
       dnd.setDropTarget(
         resolveDropTarget(
+          ctx.schema,
           nodesRef.current,
-          placement,
           rootId,
           session,
           point.x,
@@ -251,7 +216,7 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
       );
       lastSurfaceRef.current = surface;
     },
-    [canvasSession, dnd, rootId, placement, pointer, session],
+    [canvasSession, ctx.schema, dnd, rootId, pointer, session],
   );
 
   const commitDrop = React.useCallback(() => {
@@ -264,27 +229,33 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
     const dropHost = lastSurfaceRef.current?.host ?? null;
     if (active.kind === 'new') {
       const id = ctx.store.add(active.type, {
-        parentId: target.parentId,
+        parent: target.parent,
         index: target.index,
-        properties: active.properties,
+        props: active.properties,
       });
       if (id) {
         ctx.store.select(id);
         if (dropHost) focusBlock(dropHost, id);
       }
     } else {
-      const fromParent = nodesRef.current[active.id]?.parentId;
-      const fromIndex = fromParent
-        ? (nodesRef.current[fromParent]?.childIds.indexOf(active.id) ?? -1)
+      const from = nodesRef.current[active.id]?.parent ?? null;
+      const fromIndex = from
+        ? (nodesRef.current[from.id]?.slots[from.slot]?.indexOf(active.id) ??
+          -1)
         : -1;
       const adjusted = adjustMoveIndex(
         nodesRef.current,
         active.id,
-        target.parentId,
+        target.parent,
         target.index,
       );
-      if (!(fromParent === target.parentId && fromIndex === adjusted)) {
-        ctx.store.move(active.id, target.parentId, adjusted);
+      const samePlace =
+        from !== null &&
+        from.id === target.parent.id &&
+        from.slot === target.parent.slot &&
+        fromIndex === adjusted;
+      if (!samePlace) {
+        ctx.store.move(active.id, { parent: target.parent, index: adjusted });
         ctx.store.select(active.id);
         if (dropHost) focusBlock(dropHost, active.id);
       }
@@ -525,12 +496,22 @@ export function CanvasPaletteItem({
 }: CanvasPaletteItemProps) {
   const canvasSession = useCanvasSession('Canvas.PaletteItem');
   const ctx = useEditorContext('Canvas.PaletteItem');
-  const placement = placementOf(ctx.schema);
-  const target = useEditorSelector((state) =>
-    computePaletteInsertTarget(state, ctx.userId, type, placement),
+  const target = useEditorSelector(
+    (state) =>
+      insertPointFor(
+        ctx.schema,
+        state.nodes,
+        state.rootId,
+        state.selection[ctx.userId]?.selected ?? null,
+        type,
+      ),
+    (a, b) =>
+      a.parent.id === b.parent.id &&
+      a.parent.slot === b.parent.slot &&
+      a.index === b.index &&
+      a.allowed === b.allowed,
   );
-  const clickInsertBlocked =
-    target.parentType === null || !canPlace(placement, type, target.parentType);
+  const clickInsertBlocked = !target.allowed;
   const skipClickRef = React.useRef(false);
   const onGestureEnd = React.useCallback((dragged: boolean) => {
     skipClickRef.current = dragged;
@@ -553,9 +534,9 @@ export function CanvasPaletteItem({
     }
     if (canvasSession.dnd.getSession()) return;
     const id = ctx.store.add(type, {
-      parentId: target.parentId,
+      parent: target.parent,
       index: target.index,
-      properties,
+      props: properties,
     });
     if (id) {
       focusBlockInSurfaces(canvasSession.getSurfaces(), id);

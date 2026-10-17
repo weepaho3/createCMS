@@ -1,7 +1,7 @@
 import * as React from 'react';
 
 import type { EditorRootProps } from './components';
-import type { EditorDocument, JsonValue } from './core/document';
+import type { EditorDocument, JsonValue, SlotRef } from './core/document';
 import type {
   AnyComponentDef,
   AnyEditorSchema,
@@ -10,7 +10,7 @@ import type {
   InferProps,
   PaletteItem,
 } from './core/schema';
-import type { UpdateOptions, UserSelection } from './core/store';
+import type { SlotTarget, UpdateOptions, UserSelection } from './core/store';
 import type {
   BlockActions,
   ChildRef,
@@ -120,16 +120,16 @@ export type BlockHandle<
 > = {
   readonly id: string;
   readonly type: K;
-  readonly properties: PropsOf<TSpec>;
-  readonly parentId: string | null;
-  readonly childIds: readonly string[];
+  readonly props: PropsOf<TSpec>;
+  readonly parent: SlotRef | null;
+  readonly slots: Readonly<Record<string, readonly string[]>>;
   readonly spec: TSpec;
   set<P extends keyof TSpec & string>(
     key: P,
     value: PropValueOf<TSpec, P> | null,
     options?: UpdateOptions,
   ): void;
-  setProperties(
+  setProps(
     patch: { [P in keyof TSpec]?: PropValueOf<TSpec, P> | null },
     options?: UpdateOptions,
   ): void;
@@ -155,9 +155,9 @@ export type TypedAddOptions<
   S extends AnyEditorSchema,
   K extends BlockTypeOf<S>,
 > = {
-  parentId: string;
+  parent: SlotTarget;
   index?: number;
-  properties?: Partial<BlockPropsOf<S, K>>;
+  props?: Partial<BlockPropsOf<S, K>>;
 };
 
 /** `useEditor()` with `add` restricted to the schema's block types. */
@@ -194,7 +194,11 @@ export type TypedBlockActions<S extends AnyEditorSchema> = Omit<
   readonly allowedChildTypes: readonly BlockTypeOf<S>[];
   add<K extends BlockTypeOf<S>>(
     type: K,
-    options?: { index?: number; properties?: Partial<BlockPropsOf<S, K>> },
+    options?: {
+      slot?: string;
+      index?: number;
+      props?: Partial<BlockPropsOf<S, K>>;
+    },
   ): string | null;
 };
 

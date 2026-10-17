@@ -161,23 +161,23 @@ void settingsDoc;
 
 // --- typed add --------------------------------------------------------------
 declare const api: TypedEditorApi<Pages>;
-api.add('hero', { parentId: 'root_1', properties: { headline: 'x' } });
-api.add('section', { parentId: 'root_1', index: 0 });
+api.add('hero', { parent: { id: 'root_1' }, props: { headline: 'x' } });
+api.add('section', { parent: { id: 'root_1' }, index: 0 });
 // @ts-expect-error - unknown block type
-api.add('paragraph', { parentId: 'root_1' });
+api.add('paragraph', { parent: { id: 'root_1' } });
 // @ts-expect-error - wrong property type
-api.add('hero', { parentId: 'root_1', properties: { headline: 1 } });
+api.add('hero', { parent: { id: 'root_1' }, props: { headline: 1 } });
 // @ts-expect-error - unknown property
-api.add('hero', { parentId: 'root_1', properties: { nope: 'x' } });
+api.add('hero', { parent: { id: 'root_1' }, props: { nope: 'x' } });
 
 declare const settingsApi: TypedEditorApi<Settings>;
 // @ts-expect-error - a block-less schema cannot add blocks (type is never)
-settingsApi.add('anything', { parentId: 'root_1' });
+settingsApi.add('anything', { parent: { id: 'root_1' } });
 
 // --- typed block handle -----------------------------------------------------
 declare const block: NonNullable<BlockHandleOf<Pages>>;
 if (block.type === 'hero') {
-  const headline: string = block.properties.headline;
+  const headline: string = block.props.headline;
   void headline;
   block.set('headline', 'Neu');
   block.set('badge', null);
@@ -192,7 +192,7 @@ if (block.type === 'hero') {
   block.field('nope');
 }
 if (block.type === 'root') {
-  const title: string = block.properties.title;
+  const title: string = block.props.title;
   void title;
   block.set('subtitle', 'x');
 }
@@ -210,7 +210,7 @@ export type _paletteType = Expect<
 >;
 type ChildType = ReturnType<typeof factory.useChildren>[number]['type'];
 export type _childType = Expect<Equal<ChildType, 'hero' | 'section'>>;
-factory.useBlockActions('x').add('hero', { properties: {} });
+factory.useBlockActions('x').add('hero', { props: {} });
 // @ts-expect-error - unknown block type
 factory.useBlockActions('x').add('nope');
 export type _allowedChildTypes = Expect<

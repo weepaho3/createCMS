@@ -58,19 +58,20 @@ function BlockFields({ blockId }: { blockId: string }) {
 
 ## Parts
 
-| Part                      | Default element                                 | Props                                                                                                                                  | Data attributes                                                                                  |
-| ------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `Editor.Root`             | none (provider)                                 | `schema` (required), `defaultValue` (required), `onChange`, `onSave`, `genId`, `userId`, `fields`, `children`                          | none                                                                                             |
-| `Editor.Field`            | `div`                                           | `blockId` (required), `name` (required), `disabled`, `render`, div props                                                               | `data-kind`, `data-required`, `data-invalid`, `data-disabled`, `data-focused`                    |
-| `Editor.FieldLabel`       | `label`                                         | `render`, label props (`children` replaces the spec's `label`)                                                                         | `data-required`, `data-invalid`, `data-disabled`                                                 |
-| `Editor.FieldControl`     | the resolved control (see below)                | `render`                                                                                                                               | none                                                                                             |
-| `Editor.FieldDescription` | `p`                                             | `render`, p props (`children` replaces the spec's `description`)                                                                       | none                                                                                             |
-| `Editor.FieldError`       | `p` with `role="alert"`, rendered while invalid | `render`, p props (`children` replaces the joined messages)                                                                            | `data-invalid`                                                                                   |
-| `Editor.Form`             | `div`                                           | `blockId` (required), `disabled`, `autoScroll`, `render`, div props                                                                    | `data-block-type`, `data-block-id`; each named group is a `fieldset[data-group]` with a `legend` |
-| `Editor.Preview`          | `div`                                           | `render` (required, tree callback), `debounceMs`, div props                                                                            | `data-stale` while a version change is pending                                                   |
-| `Editor.FramePreview`     | `div` wrapping two iframes                      | `render` (required, async compiler), `debounceMs`, `selectable`, `resolveAnchor`, `onIssues`, `onError`, `sandbox`, `title`, div props | `data-loading`, `data-stale`, `data-error`, `data-kind` (`html` or `blob`)                       |
-| `Editor.OutlineItem`      | `div` with `role="treeitem"`                    | `blockId` (required), `onDelete`, `render`, div props                                                                                  | `data-selected`, `data-depth`, `data-has-children`, `data-block-id`, `data-block-type`           |
-| `Editor.AddBlock`         | `button`                                        | `type` (required), `parentId`, `index`, `render`, button props (`children` replaces the palette label)                                 | `data-block-type`                                                                                |
+| Part                      | Default element                                 | Props                                                                                                                                                          | Data attributes                                                                                  |
+| ------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `Editor.Root`             | none (provider)                                 | `schema` (required), `defaultValue` (required), `onChange`, `onSave`, `genId`, `userId`, `fields`, `children`                                                  | none                                                                                             |
+| `Editor.Field`            | `div`                                           | `blockId` (required), `name` (required), `disabled`, `render`, div props                                                                                       | `data-kind`, `data-required`, `data-invalid`, `data-disabled`, `data-focused`                    |
+| `Editor.FieldLabel`       | `label`                                         | `render`, label props (`children` replaces the spec's `label`)                                                                                                 | `data-required`, `data-invalid`, `data-disabled`                                                 |
+| `Editor.FieldControl`     | the resolved control (see below)                | `render`                                                                                                                                                       | none                                                                                             |
+| `Editor.FieldDescription` | `p`                                             | `render`, p props (`children` replaces the spec's `description`)                                                                                               | none                                                                                             |
+| `Editor.FieldError`       | `p` with `role="alert"`, rendered while invalid | `render`, p props (`children` replaces the joined messages)                                                                                                    | `data-invalid`                                                                                   |
+| `Editor.Form`             | `div`                                           | `blockId` (required), `disabled`, `autoScroll`, `render`, div props                                                                                            | `data-block-type`, `data-block-id`; each named group is a `fieldset[data-group]` with a `legend` |
+| `Editor.Preview`          | `div`                                           | `render` (required, tree callback), `debounceMs`, div props                                                                                                    | `data-stale` while a version change is pending                                                   |
+| `Editor.FramePreview`     | `div` wrapping two iframes                      | `render` (required, async compiler), `debounceMs`, `selectable`, `resolveAnchor`, `onIssues`, `onError`, `sandbox`, `title`, div props                         | `data-loading`, `data-stale`, `data-error`, `data-kind` (`html` or `blob`)                       |
+| `Editor.OutlineItem`      | `div` with `role="treeitem"`                    | `blockId` (required), `onDelete`, `render`, div props                                                                                                          | `data-selected`, `data-depth`, `data-has-children`, `data-block-id`, `data-block-type`           |
+| `Editor.OutlineGroup`     | `div` with `role="group"`                       | `blockId` and `slot` (required), `render`, div props. Wraps one slot's rows; `aria-label` is the slot's `label`, else its name                                 |                                                                                                  |
+| `Editor.AddBlock`         | `button`                                        | `type` (required), `parentId`, `slot`, `index`, `render`, button props (`children` replaces the palette label). Disabled while `canPlaceIn` refuses the target | `data-block-type`                                                                                |
 
 Uncontrolled (`key` resets): `schema`, `defaultValue`, `genId`, `userId` and
 `fields` are read once at mount; render with a different `key` to load
@@ -206,10 +207,17 @@ nothing is selected and this is the first child of the root; otherwise `-1`.
 children are 1), `aria-expanded="true"` when the block has children (there is
 no collapse state; a consumer overrides the attribute through props).
 
+`Editor.OutlineGroup` wraps the rows of one slot when a block holds more
+than the `children` slot: a `role="group"` labelled with the slot's `label`
+(else its name). Render one group per name from `useSlots(blockId)` and the
+rows from `useSlot(blockId, slot)`.
+
 `Editor.AddBlock` inserts a palette type at the selection point and selects
-the new id. When `parentId` is omitted: the selected block if it accepts
-`type` (append), else after the selected block in its parent, else the root
-(append). The button is disabled when the target parent cannot take `type`.
+the new id. With `parentId`, it goes into that block's `slot` (default
+`children`). When `parentId` is omitted: the selected block if it accepts
+`type` (append), else after the selected block in its slot, else the root
+(append); see `insertPointFor`. The button is disabled when `canPlaceIn`
+refuses the target (wrong type, full slot).
 There is no drag and drop.
 
 ## Keyboard
@@ -280,7 +288,9 @@ the end state immediately.
 | `useAnyBlock`        | `AnyBlockHandle \| null`                       | `null` for an unknown or `null` id; the handle is stable while the node is unchanged.                                                                                                                                                                                                                                      |
 | `useAnyField`        | `AnyFieldHandle`                               | Re-renders only when that property's value or the node's type changes.                                                                                                                                                                                                                                                     |
 | `useFields`          | `SchemaField[]`                                | The block's property specs in schema order; `[]` for an unknown block; stable array identity.                                                                                                                                                                                                                              |
-| `useChildren`        | `readonly ChildRef[]`                          | `{ id, type, index }` in order; same array reference until ids or types change.                                                                                                                                                                                                                                            |
+| `useChildren`        | `readonly ChildRef[]`                          | The `children` slot: `{ id, type, index }` in order; same array reference until ids or types change.                                                                                                                                                                                                                       |
+| `useSlot`            | `readonly ChildRef[]`                          | `useSlot(parentId, slot)`: the children of one slot, like `useChildren`; re-renders only when that slot's ids or types change.                                                                                                                                                                                             |
+| `useSlots`           | `readonly string[]`                            | `useSlots(parentId)`: the slot names a block holds, declared slots first, then the rest alphabetically.                                                                                                                                                                                                                    |
 | `useBlockActions`    | `BlockActions`                                 | Placement-gated `add`/`remove`/`duplicate`/`moveUp`/`moveDown` plus `canMoveUp`, `canMoveDown`, `canHaveChildren`, `allowedChildTypes`.                                                                                                                                                                                    |
 | `useSelection`       | `UserSelection`                                | Defaults to the enclosing editor's user.                                                                                                                                                                                                                                                                                   |
 | `useHistory`         | `HistoryApi`                                   | `{ canUndo, canRedo, undo, redo }`.                                                                                                                                                                                                                                                                                        |
@@ -314,7 +324,11 @@ const pageEditor = createEditor({ schema: pages });
 
 function Toolbar({ parentId }: { parentId: string }) {
   const { add } = pageEditor.useEditor();
-  return <button onClick={() => add('hero', { parentId })}>Add hero</button>;
+  return (
+    <button onClick={() => add('hero', { parent: { id: parentId } })}>
+      Add hero
+    </button>
+  );
 }
 
 function Block({ id }: { id: string }) {
@@ -326,29 +340,29 @@ function Block({ id }: { id: string }) {
 }
 ```
 
-| Type                     | Description                                                                              |
-| ------------------------ | ---------------------------------------------------------------------------------------- |
-| `DocumentOf<S>`          | A typed `EditorDocument` of `S`.                                                         |
-| `NodeOf<S>`              | One typed node of `S`, a union over its component types.                                 |
-| `BlockTypeOf<S>`         | The block type names of `S`; `never` for a block-less or dynamic schema.                 |
-| `BlockPropsOf<S, K>`     | The property values of block `K` (or `'root'`).                                          |
-| `RootPropsOf<S>`         | `BlockPropsOf<S, 'root'>`.                                                               |
-| `ComponentsOf<S>`        | The statically known components of `S`; `{}` for an index-signature map.                 |
-| `PropsSpecOf<S, K>`      | The property specs of block `K` (or `'root'`).                                           |
-| `PropsOf<TSpec>`         | The raw property values of a spec record.                                                |
-| `PropValueOf<TSpec, P>`  | The value type of one property `P` in `TSpec`.                                           |
-| `BlockHandle<K, TSpec>`  | A typed block handle for block type `K` with property specs `TSpec`.                     |
-| `BlockHandleOf<S>`       | The discriminated union over every block handle of `S`, plus the root handle.            |
-| `FieldHandle<V, Spec>`   | A typed field handle: value, spec and setter of one property.                            |
-| `FieldHandleOf<S, K, P>` | `FieldHandle` for property `P` of block type `K` (or `'root'`) in `S`.                   |
-| `TypedEditorApi<S>`      | `useEditor()`'s return type, with `add` restricted to `S`'s block types.                 |
-| `TypedAddOptions<S, K>`  | `add`'s options for block type `K`: `parentId`, optional `index`, optional `properties`. |
-| `TypedPaletteItems<S>`   | `PaletteItem[]` with `type` narrowed; `never` when `S` has no static blocks.             |
-| `ChildRefOf<S>`          | `ChildRef` with `type` narrowed to `S`'s block types.                                    |
-| `TypedBlockActions<S>`   | `BlockActions` with `add` and `allowedChildTypes` restricted to `S`'s block types.       |
-| `EditorTypes<S>`         | Phantom bag of the derived types (`typeof editor.types.document`, …); `{}` at runtime.   |
-| `EditorFactory<S>`       | What `createEditor` returns.                                                             |
-| `CreateEditorOptions<S>` | `createEditor`'s options: `{ schema: S }`.                                               |
+| Type                     | Description                                                                                   |
+| ------------------------ | --------------------------------------------------------------------------------------------- |
+| `DocumentOf<S>`          | A typed `EditorDocument` of `S`.                                                              |
+| `NodeOf<S>`              | One typed node of `S`, a union over its component types.                                      |
+| `BlockTypeOf<S>`         | The block type names of `S`; `never` for a block-less or dynamic schema.                      |
+| `BlockPropsOf<S, K>`     | The property values of block `K` (or `'root'`).                                               |
+| `RootPropsOf<S>`         | `BlockPropsOf<S, 'root'>`.                                                                    |
+| `ComponentsOf<S>`        | The statically known components of `S`; `{}` for an index-signature map.                      |
+| `PropsSpecOf<S, K>`      | The property specs of block `K` (or `'root'`).                                                |
+| `PropsOf<TSpec>`         | The raw property values of a spec record.                                                     |
+| `PropValueOf<TSpec, P>`  | The value type of one property `P` in `TSpec`.                                                |
+| `BlockHandle<K, TSpec>`  | A typed block handle for block type `K` with property specs `TSpec`.                          |
+| `BlockHandleOf<S>`       | The discriminated union over every block handle of `S`, plus the root handle.                 |
+| `FieldHandle<V, Spec>`   | A typed field handle: value, spec and setter of one property.                                 |
+| `FieldHandleOf<S, K, P>` | `FieldHandle` for property `P` of block type `K` (or `'root'`) in `S`.                        |
+| `TypedEditorApi<S>`      | `useEditor()`'s return type, with `add` restricted to `S`'s block types.                      |
+| `TypedAddOptions<S, K>`  | `add`'s options for block type `K`: `parent: SlotTarget`, optional `index`, optional `props`. |
+| `TypedPaletteItems<S>`   | `PaletteItem[]` with `type` narrowed; `never` when `S` has no static blocks.                  |
+| `ChildRefOf<S>`          | `ChildRef` with `type` narrowed to `S`'s block types.                                         |
+| `TypedBlockActions<S>`   | `BlockActions` with `add` and `allowedChildTypes` restricted to `S`'s block types.            |
+| `EditorTypes<S>`         | Phantom bag of the derived types (`typeof editor.types.document`, …); `{}` at runtime.        |
+| `EditorFactory<S>`       | What `createEditor` returns.                                                                  |
+| `CreateEditorOptions<S>` | `createEditor`'s options: `{ schema: S }`.                                                    |
 
 ## Core
 
@@ -389,7 +403,10 @@ Schema helpers and the store are the React-free subpath
 | `ChildRef`                    | One child of a block: `{ id, type, index }`.                                                                                                                          |
 | `BlockActions`                | Structural actions of one block (`add`/`remove`/`duplicate`/`moveUp`/`moveDown`).                                                                                     |
 | `EditorOutlineItemProps`      | Props of `Editor.OutlineItem`: `blockId`, `onDelete?`, `render?`, div props.                                                                                          |
-| `EditorAddBlockProps`         | Props of `Editor.AddBlock`: `type`, `parentId?`, `index?`, `render?`, button props.                                                                                   |
+| `EditorAddBlockProps`         | Props of `Editor.AddBlock`: `type`, `parentId?`, `slot?`, `index?`, `render?`, button props.                                                                          |
+| `EditorOutlineGroupProps`     | Props of `Editor.OutlineGroup`: `blockId`, `slot`, `render?`, div props.                                                                                              |
+| `InsertPoint`                 | `insertPointFor`'s result: `{ parent: SlotRef, index, allowed }`.                                                                                                     |
+| `OutlineGroupState`           | `useRender` state of `Editor.OutlineGroup` (`{ slot, blockId }`).                                                                                                     |
 | `OutlineItemState`            | `useRender` state of `Editor.OutlineItem`.                                                                                                                            |
 | `AddBlockState`               | `useRender` state of `Editor.AddBlock` (`{ blockType }`).                                                                                                             |
 

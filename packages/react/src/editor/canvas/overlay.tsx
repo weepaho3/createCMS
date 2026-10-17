@@ -2,7 +2,7 @@ import * as React from 'react';
 import { createPortal } from 'react-dom';
 
 import type { UseRenderComponentProps } from '../../use-render';
-import type { EditorNode } from '../core/store';
+import type { FlatNode } from '../core/document';
 import type { CanvasRect } from './rect';
 
 import { useRender } from '../../use-render';
@@ -65,10 +65,10 @@ function ringStyle(rect: CanvasRect): React.CSSProperties {
 
 function ringFlags(
   host: HTMLElement | null,
-  node: EditorNode | null,
+  node: FlatNode | null,
   id: string | null,
 ): CanvasRingState {
-  const notRoot = node !== null && node.parentId !== null;
+  const notRoot = node !== null && node.parent !== null;
   return {
     blockType: node?.type ?? null,
     canMove: notRoot,

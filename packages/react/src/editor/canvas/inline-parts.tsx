@@ -200,7 +200,7 @@ export function CanvasInlineText({
   const fieldRect = syncedFieldRect ?? fallbackRect;
 
   const storeRaw =
-    editing === null ? '' : nodes[editing.blockId]?.properties[editing.key];
+    editing === null ? '' : nodes[editing.blockId]?.props[editing.key];
   const storeValue = typeof storeRaw === 'string' ? storeRaw : '';
 
   const refreshSuggest = React.useCallback(() => {

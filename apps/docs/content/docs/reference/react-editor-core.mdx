@@ -145,7 +145,7 @@ overrides per field key, merged over the declared fields.
 | `createFieldResolver` | `() => (def, props, ctx) => Record<string, Field>` | Visible, resolved fields, memoised per props object while the context values stay equal. |
 | `fieldContextFor`     | `(schema, getNode, nodeId) => FieldContext`      | Collects ancestors' `providesContext` values (nearest wins, filtered by `usesContext`).   |
 
-`ContextNode` is what `getNode` returns: `{ type, parentId, properties }`.
+`ContextNode` is what `getNode` returns: `{ type, parent: { id } | null, props }`.
 
 ## Responsive and localized values
 
@@ -167,17 +167,41 @@ responsive values to style and layout fields; content and order stay global.
 
 ## Placement
 
-| Function            | Signature                                   | Notes                                                                                     |
-| ------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `getPlacement`      | `(schema) => PlacementIndex`                | Containers are the types with a `children` slot, including the root.                      |
-| `canPlace`          | `(index, childType, parentType) => boolean` | Container gate, then `allow`/`disallow`, then the schema's `canPlace`.                    |
-| `allowedChildTypes` | `(index, parentType) => string[]`           | Definition order; `[]` for a non-container.                                               |
-| `slotAccepts`       | `(schema, parent, slot, spec, childType) => boolean` | One slot's rules plus `accept` and the schema's `canPlace`, for any slot name.  |
+Placement is checked per slot: a node goes into `{ id, slot }` of a parent,
+and each slot carries its own `allow`/`disallow`, `accept`, `min` and `max`.
+The store, the palette, the inserter and drag and drop all use `canPlaceIn`.
 
-| Type             | Description                                                                 |
-| ---------------- | --------------------------------------------------------------------------- |
-| `PlacementIndex` | `{ rules, containers, blockTypes, global? }` for one schema.                |
-| `PlacementRule`  | A resolved slot rule: `only` (from `allow`) or `except` (from `disallow`).  |
+| Function             | Signature                                                     | Notes                                                                                     |
+| -------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `canPlaceIn`         | `(schema, nodes, childType, parent: SlotRef, { movingId? }?) => PlaceResult` | In order: `unknown-slot`, `self-nesting` (with `movingId`), `not-allowed`, `slot-full`. A node moved within a full slot does not count twice. |
+| `allowedChildTypes`  | `(schema, nodes, parent: SlotRef, { movingId? }?) => string[]` | The types `canPlaceIn` admits, in definition order; `[]` for a full slot.                |
+| `slotAccepts`        | `(schema, parent, slot, spec, childType) => boolean`          | One slot's `allow` (wins over `disallow`), `disallow`, `accept` and the schema's `canPlace`; no capacity check. |
+| `slotsOf`            | `(schema, type) => Record<string, SlotSpec>`                  | The slots a type declares (`'root'` for the root); `{}` when none.                        |
+| `isSelfOrDescendant` | `(nodes, id, candidate) => boolean`                           | `candidate` is `id` or lives below it, in any slot.                                       |
+| `DEFAULT_SLOT`       | `'children'`                                                  | The slot createcms trees use and the default for every `slot?` option.                   |
+
+`min` is a validation rule, not a placement rule: an empty slot below its
+`min` is reported by `validateDocument`, never refused by the store.
+
+| Type             | Description                                                                         |
+| ---------------- | ----------------------------------------------------------------------------------- |
+| `PlaceResult`    | `{ ok: true }` or `{ ok: false, code: PlaceErrorCode }`.                            |
+| `PlaceErrorCode` | `'unknown-slot' \| 'self-nesting' \| 'not-allowed' \| 'slot-full'`.                |
+| `PlacementNode`  | What placement reads from a node: `{ type, parent, slots }`; a `FlatNode` fits.    |
+
+## Copying subtrees
+
+`remapIds(subtree, genId, options?)` returns `{ node, map }`: a copy with a
+fresh id for every node in every slot and the old-to-new id map. With a
+`schema`, ids inside props that point into the copied subtree are rewritten
+too: a `link` field's `fragment` by default (recursing through `list` and
+`object`), any field through its own `rewriteRefs(value, map)`. References to
+nodes outside the subtree stay as they are. `duplicate` uses it.
+
+| Name              | Description                                                                         |
+| ----------------- | ----------------------------------------------------------------------------------- |
+| `RemapIdsOptions` | `{ schema?, rewriteRefs? }`; `rewriteRefs` replaces the per-field rewrite for every field. |
+| `RewriteRefs`     | `(value, map, field) => JsonValue`: return the value unchanged when it holds no ids. |
 
 ## Validation
 
@@ -271,14 +295,18 @@ A small `getState`/`subscribe` store over one `EditorDocument`. Rapid
 same-key updates coalesce into one undo step within `COALESCE_MS`. Dirty
 tracking compares `stableHash` of the serialised document with its hash at
 the last load or save, so a document that only differs in representation
-(key order, empty slots) loads clean. The store holds the `children` slot;
-a document with another slot name throws on load.
+(key order) loads clean. Nodes keep every slot they hold, named slots
+included; a node added through `add` holds every slot its type declares,
+filled from the slot's `defaultValue` with fresh ids.
 
 Use `createEditorStore` to construct a store. Pure helpers: `applyOp` applies
 one op and returns `{ nodes, rootId, inverse, schemaVersion }`;
-`createBlockId` mints ids; `flattenTree` and `serializeToTree` convert between
-flat nodes and a `NodeData` tree, and `serializeDocument` adds the schema
-version; `stableHash` hashes a value for dirty detection.
+`createBlockId` mints ids; `stableHash` hashes a value for dirty detection.
+`normalize` and `denormalize` convert a whole document between nested and
+flat form; `flattenSubtree(node, parent)` and `serializeSubtree(nodes, id,
+slotOrder?)` do the same for one subtree. Serialised slots come in
+`slotOrder` order (declared slots first, then the rest alphabetically), and
+empty slots are kept.
 
 | Method                 | Signature                                               | Notes                                                                           |
 | ---------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------- |
@@ -287,12 +315,12 @@ version; `stableHash` hashes a value for dirty detection.
 | `getDocument`          | `() => EditorDocument`                                  | Serialises `nodes`/`rootId`; memoised per `version`.                            |
 | `isDirty`              | `() => boolean`                                         | Current hash vs. the hash at the last save/load.                                |
 | `load`                 | `(doc: EditorDocument) => void`                         | Replaces the document; resets history and every user's selection; no `onChange`. |
-| `add`                  | `(type: string, options: AddOptions) => string \| null` | Seeds declared defaults; `null` on an unknown parent or a disallowed placement. |
+| `add`                  | `(type: string, options: AddOptions) => string \| null` | Seeds declared defaults and slot defaults; `null` when `canPlaceIn` refuses.    |
 | `update`               | `(id, patch, options?: UpdateOptions) => boolean`       | Merge-patch; `null` deletes a key; `false` for an unknown id.                   |
-| `move`                 | `(id, parentId, index) => boolean`                      | `false` on the root, an unknown id/target, a cycle, or a disallowed placement.  |
+| `move`                 | `(id, target: MoveTarget) => boolean`                   | `false` on the root, an unknown id, or when `canPlaceIn` refuses the target.    |
 | `remove`               | `(id) => boolean`                                       | Removes the subtree; `false` for the root or an unknown id.                     |
-| `duplicate`            | `(id) => string \| null`                                | Deep-copies the subtree with fresh ids right after the original.                |
-| `applyRemote`          | `(ops: readonly EditorOp[]) => ApplyRemoteResult`       | Applies ops one by one; no history, no `onChange`; rejects are skipped.         |
+| `duplicate`            | `(id) => string \| null`                                | Copies the subtree through `remapIds` right after the original; `null` when the slot is full. |
+| `applyRemote`          | `(ops: readonly Op[]) => ApplyRemoteResult`             | Applies ops one by one; no history, no `onChange`; rejects are skipped.         |
 | `undo` / `redo`        | `() => boolean`                                         | `false` when there is nothing to undo/redo; closes the coalesce window.         |
 | `select` / `hover`     | `(id: string \| null) => void`                          | Writes the local user's selection; `select` closes the coalesce window.         |
 | `focus` / `setEditing` | `(target: FieldRef \| null) => void`                    | Writes the local user's field ref; closes the coalesce window.                  |
@@ -302,18 +330,19 @@ version; `stableHash` hashes a value for dirty detection.
 
 | Type                       | Description                                                                                               |
 | -------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `AddOptions`               | `add`'s options: `parentId`, optional `index`, optional `properties`.                                     |
+| `AddOptions`               | `add`'s options: `parent: SlotTarget`, optional `index`, optional `props`.                                |
 | `ApplyRemoteResult`        | `{ applied, rejected }`, the ops `applyRemote` accepted/skipped.                                         |
 | `ApplyResult`              | `applyOp`'s success shape: `{ nodes, rootId, inverse, schemaVersion }`.                                   |
 | `CreateEditorStoreOptions` | Options for `createEditorStore`: `schema`, `initialValue`, `userId?`, `genId?`, `now?`, `getCallbacks?`. |
 | `EditorCallbacks`          | `{ onChange?, onSave? }` passed via `getCallbacks()`; `onSave(doc, meta)`.                                |
 | `EditorChange`             | The `onChange` payload: `{ ops, version, getDocument }`.                                                  |
-| `EditorNode`               | One flat node: `{ id, type, properties, parentId, childIds, v?, meta? }`.                                 |
-| `EditorNodes`              | `Record<id, EditorNode>`.                                                                                 |
-| `EditorOp`                 | `add` (a `NodeData` subtree) / `remove` / `move` / `update` / `load` (an `EditorDocument`).               |
+| `EditorNodes`              | `Record<id, FlatNode>`, the store's node table.                                                           |
 | `EditorStore`              | The store's public shape (method-shorthand signatures, bivariant).                                        |
 | `EditorStoreState`         | `{ rootId, nodes, selection, history, version, savedVersion, saving }`.                                   |
 | `FieldRef`                 | `{ blockId, key }`, what `focus`/`editing` point at.                                                     |
+| `MoveTarget`               | `move`'s target: `{ parent: SlotTarget, index }`; the index counts after the node left its old place.     |
+| `SlotOrder`                | `(type) => readonly string[]`: the slot order serialisation uses for a type.                              |
+| `SlotTarget`               | `{ id, slot? }`: a parent and one of its slots; `slot` defaults to `children`.                            |
 | `HistoryEntry`             | One undo step: `{ ops, inverse, key, at }`.                                                               |
 | `UpdateOptions`            | `update`'s options: `{ coalesce? }`.                                                                      |
 | `UserSelection`            | One user's `{ selected, hovered, focus, editing }`.                                                       |

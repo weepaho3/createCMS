@@ -1,21 +1,28 @@
-import type { PlacementIndex } from '../core/schema/placement';
+import type { SlotRef } from '../core/document';
+import type { AnyEditorSchema } from '../core/schema';
 import type { EditorNodes } from '../core/store';
 import type { CanvasRect } from './rect';
 
-import { allowedChildTypes, canPlace } from '../core/schema/placement';
+import {
+  allowedChildTypes,
+  canPlaceIn,
+  isSelfOrDescendant,
+  slotsOf,
+} from '../core/schema';
 
 export type InsertOrientation = 'horizontal' | 'vertical';
 export type InsertVariant = 'line' | 'box';
 
 export type InsertTarget = {
-  parentId: string;
+  /** The parent node and slot the new or moved node goes into. */
+  parent: SlotRef;
   index: number;
   orientation: InsertOrientation;
   variant: InsertVariant;
   rect: CanvasRect;
-  /** Schema types the parent accepts, in definition order. */
+  /** Schema types the slot accepts right now, in definition order. */
   allowedTypes: string[];
-  /** True when `parentId` is not the document root. */
+  /** True when the parent is not the document root. */
   nested: boolean;
 };
 
@@ -24,11 +31,16 @@ export type ResolveInsertAtOptions = {
   draggedId?: string;
   getRect: (id: string) => CanvasRect | null;
   /**
+   * The rect of the element holding a slot (`edit.slot.<name>`); an empty
+   * slot shows its box there. Falls back to the parent's rect when absent.
+   */
+  getSlotRect?: (parentId: string, slot: string) => CanvasRect | null;
+  /**
    * True when a single child's layout parent flows as a row (flex row
    * or multi-column grid). Ignored when two or more children have rects;
    * those infer row vs column from geometry. Unit tests stub this.
    */
-  isRowFlow: (parentId: string) => boolean;
+  isRowFlow: (parent: SlotRef) => boolean;
 };
 
 export const INSERT_LINE_THICKNESS = 2;
@@ -43,36 +55,23 @@ export function parentTypeOf(
   return nodes[parentId]?.type ?? null;
 }
 
+/**
+ * Whether `parent.slot` takes the dragged node (with `draggedType`), or
+ * anything at all when nothing is dragged.
+ */
 export function accepts(
-  placement: PlacementIndex,
+  schema: AnyEditorSchema,
   nodes: EditorNodes,
-  rootId: string,
-  parentId: string,
+  parent: SlotRef,
   draggedType?: string,
+  draggedId?: string,
 ): boolean {
-  const node = nodes[parentId];
-  if (!node) return false;
-  const pType = parentTypeOf(nodes, rootId, parentId);
-  if (pType === null) return false;
-  if (pType !== 'root' && !placement.containers.has(pType)) return false;
   if (draggedType !== undefined) {
-    return canPlace(placement, draggedType, pType);
+    return canPlaceIn(schema, nodes, draggedType, parent, {
+      movingId: draggedId,
+    }).ok;
   }
-  return allowedChildTypes(placement, pType).length > 0;
-}
-
-export function isSelfOrDescendant(
-  nodes: EditorNodes,
-  id: string,
-  ancestorId: string,
-): boolean {
-  if (id === ancestorId) return true;
-  let cur: string | null = id;
-  while (cur) {
-    if (cur === ancestorId) return true;
-    cur = nodes[cur]?.parentId ?? null;
-  }
-  return false;
+  return allowedChildTypes(schema, nodes, parent).length > 0;
 }
 
 export function distToSeg(
@@ -141,42 +140,61 @@ function clampToRect(
 }
 
 function buildTarget(
-  placement: PlacementIndex,
+  schema: AnyEditorSchema,
   nodes: EditorNodes,
   rootId: string,
-  parentId: string,
+  parent: SlotRef,
   index: number,
   orientation: InsertOrientation,
   variant: InsertVariant,
   rect: CanvasRect,
+  draggedId: string | undefined,
 ): InsertTarget {
-  const pType = parentTypeOf(nodes, rootId, parentId)!;
   return {
-    parentId,
+    parent,
     index,
     orientation,
     variant,
     rect,
-    allowedTypes: allowedChildTypes(placement, pType),
-    nested: parentId !== rootId,
+    allowedTypes: allowedChildTypes(schema, nodes, parent, {
+      movingId: draggedId,
+    }),
+    nested: parent.id !== rootId,
   };
 }
 
 function nearestIn(
+  schema: AnyEditorSchema,
   nodes: EditorNodes,
-  placement: PlacementIndex,
   rootId: string,
-  parentId: string,
+  slotRef: SlotRef,
   x: number,
   y: number,
   options: ResolveInsertAtOptions,
 ): { d: number; target: InsertTarget } | null {
   const { draggedId, getRect } = options;
-  const parent = nodes[parentId];
+  const parent = nodes[slotRef.id];
   if (!parent) return null;
+  const target = (
+    index: number,
+    orientation: InsertOrientation,
+    variant: InsertVariant,
+    rect: CanvasRect,
+  ): InsertTarget =>
+    buildTarget(
+      schema,
+      nodes,
+      rootId,
+      slotRef,
+      index,
+      orientation,
+      variant,
+      rect,
+      draggedId,
+    );
 
   const items: Array<{ index: number; rect: CanvasRect }> = [];
-  parent.childIds.forEach((id, index) => {
+  (parent.slots[slotRef.slot] ?? []).forEach((id, index) => {
     if (id === draggedId) return;
     const rect = getRect(id);
     if (rect) items.push({ index, rect });
@@ -184,17 +202,13 @@ function nearestIn(
 
   if (items.length === 0) {
     const parentRect =
-      getRect(parentId) ?? (parentId === rootId ? getRect(rootId) : null);
+      options.getSlotRect?.(slotRef.id, slotRef.slot) ?? getRect(slotRef.id);
     if (!parentRect) return null;
     const clamped = clampToRect(x, y, parentRect);
     const d = Math.hypot(x - clamped.x, y - clamped.y);
     return {
       d,
-      target: buildTarget(
-        placement,
-        nodes,
-        rootId,
-        parentId,
+      target: target(
         0,
         'horizontal',
         'box',
@@ -217,7 +231,7 @@ function nearestIn(
 
   const rowFlow =
     items.length === 1
-      ? options.isRowFlow(parentId)
+      ? options.isRowFlow(slotRef)
       : (rows.length === 1 && items.length > 1) ||
         (rows.length > 1 && rows.some((n) => n > 1));
 
@@ -307,16 +321,7 @@ function nearestIn(
     };
     return {
       d: best.d,
-      target: buildTarget(
-        placement,
-        nodes,
-        rootId,
-        parentId,
-        insertIndex,
-        'vertical',
-        'line',
-        lineRect,
-      ),
+      target: target(insertIndex, 'vertical', 'line', lineRect),
     };
   }
 
@@ -358,22 +363,19 @@ function nearestIn(
   };
   return {
     d: best.d,
-    target: buildTarget(
-      placement,
-      nodes,
-      rootId,
-      parentId,
-      insertIndex,
-      'horizontal',
-      'line',
-      lineRect,
-    ),
+    target: target(insertIndex, 'horizontal', 'line', lineRect),
   };
 }
 
+/**
+ * The insert target nearest to `(x, y)`: walks from `startBlockId` (or the
+ * root) up through its ancestors and, for each, through every slot its
+ * component declares that takes the dragged node, and returns the closest
+ * gap (a line between children) or empty slot (a box).
+ */
 export function resolveInsertAt(
+  schema: AnyEditorSchema,
   nodes: EditorNodes,
-  placement: PlacementIndex,
   rootId: string,
   startBlockId: string | null,
   x: number,
@@ -386,12 +388,17 @@ export function resolveInsertAt(
   for (
     let cur: string | null = startBlockId ?? rootId;
     cur;
-    cur = nodes[cur]?.parentId ?? null
+    cur = nodes[cur]?.parent?.id ?? null
   ) {
-    if (!accepts(placement, nodes, rootId, cur, draggedType)) continue;
-    if (draggedId && isSelfOrDescendant(nodes, cur, draggedId)) continue;
-    const res = nearestIn(nodes, placement, rootId, cur, x, y, options);
-    if (res && (!winner || res.d < winner.d)) winner = res;
+    const node = nodes[cur];
+    if (!node) continue;
+    if (draggedId && isSelfOrDescendant(nodes, draggedId, cur)) continue;
+    for (const slot of Object.keys(slotsOf(schema, node.type))) {
+      const slotRef = { id: cur, slot };
+      if (!accepts(schema, nodes, slotRef, draggedType, draggedId)) continue;
+      const res = nearestIn(schema, nodes, rootId, slotRef, x, y, options);
+      if (res && (!winner || res.d < winner.d)) winner = res;
+    }
   }
 
   return winner?.target ?? null;

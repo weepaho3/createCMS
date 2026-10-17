@@ -86,6 +86,11 @@ export type FieldBase<V> = {
   when?: { field: string; eq: JsonValue };
   /** Extra validation through any Standard Schema library. */
   validate?: StandardSchemaV1;
+  /**
+   * Rewrites node ids inside this field's value when a subtree is copied
+   * (duplicate, paste, template insert); `map` holds old id to new id.
+   */
+  rewriteRefs?(value: V, map: ReadonlyMap<string, string>): V;
 };
 
 /** Length and pattern rules for text-like values. */

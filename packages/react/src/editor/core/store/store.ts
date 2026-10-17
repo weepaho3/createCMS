@@ -1,25 +1,34 @@
-import type { EditorDocument, JsonValue, NodeData } from '../document';
+import type {
+  EditorDocument,
+  JsonValue,
+  NodeData,
+  Op,
+  SlotRef,
+} from '../document';
+import type { AnyEditorSchema, NodeInput } from '../schema';
 import type {
   CreateEditorStoreOptions,
   EditorCallbacks,
   EditorNodes,
-  EditorOp,
   EditorStore,
   EditorStoreState,
   FieldRef,
+  SlotTarget,
   UserSelection,
 } from './types';
 
 import {
-  canPlace,
+  canPlaceIn,
   componentOf,
+  DEFAULT_SLOT,
   defaultValuesFor,
-  getPlacement,
+  remapIds,
+  slotsOf,
 } from '../schema';
 import { stableHash } from './hash';
 import { createBlockId } from './id';
 import { applyOp } from './ops';
-import { flattenTree, serializeDocument, serializeToTree } from './serde';
+import { denormalize, normalize, serializeSubtree } from './serde';
 
 /** Window in which repeated updates of the same keys collapse into one undo step. */
 export const COALESCE_MS = 400;
@@ -36,25 +45,63 @@ const NO_CALLBACKS: EditorCallbacks = {};
 /** `undefined` never enters an op: it means "delete", like `null`. */
 function normalizePatch(
   patch: Record<string, unknown>,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
+): Record<string, JsonValue | null> {
+  const out: Record<string, JsonValue | null> = {};
   for (const [key, value] of Object.entries(patch)) {
-    out[key] = value === undefined ? null : value;
+    out[key] = value === undefined ? null : (value as JsonValue);
   }
   return out;
 }
 
-/** Deep copy of a subtree with fresh ids (props copied shallowly). */
-function cloneSubtree(tree: NodeData, genId: () => string): NodeData {
-  const copy: NodeData = { ...tree, id: genId(), props: { ...tree.props } };
-  if (tree.slots) {
-    const slots: Record<string, NodeData[]> = {};
-    for (const [slot, children] of Object.entries(tree.slots)) {
-      slots[slot] = children.map((child) => cloneSubtree(child, genId));
-    }
-    copy.slots = slots;
+/** `target` with the slot filled in (`children` when omitted). */
+function slotRef(target: SlotTarget): SlotRef {
+  return { id: target.id, slot: target.slot ?? DEFAULT_SLOT };
+}
+
+/**
+ * A new node of `type`: declared defaults under `props`, and every declared
+ * slot present (filled from its `defaultValue` with fresh nodes built the
+ * same way, else empty), so the document always lists the type's slots.
+ */
+function buildNode(
+  schema: AnyEditorSchema,
+  type: string,
+  props: Record<string, unknown>,
+  genId: () => string,
+): NodeData {
+  const def = componentOf(schema, type);
+  const node: NodeData = {
+    id: genId(),
+    type,
+    props: normalizePatchToProperties({
+      ...defaultValuesFor(def ?? { fields: {} }),
+      ...props,
+    }),
+  };
+  const slots: Record<string, NodeData[]> = {};
+  for (const [name, spec] of Object.entries(def?.slots ?? {})) {
+    slots[name] = (spec.defaultValue ?? []).map((input) =>
+      fromInput(schema, input, genId),
+    );
   }
-  return copy;
+  if (Object.keys(slots).length > 0) node.slots = slots;
+  return node;
+}
+
+function fromInput(
+  schema: AnyEditorSchema,
+  input: NodeInput,
+  genId: () => string,
+): NodeData {
+  const node = buildNode(schema, input.type, input.props ?? {}, genId);
+  if (input.slots) {
+    const slots: Record<string, NodeData[]> = { ...node.slots };
+    for (const [name, children] of Object.entries(input.slots)) {
+      slots[name] = children.map((child) => fromInput(schema, child, genId));
+    }
+    node.slots = slots;
+  }
+  return node;
 }
 
 /** Drops selection references to ids that no longer exist. */
@@ -88,8 +135,9 @@ export function createEditorStore(
     now = Date.now,
     getCallbacks = () => NO_CALLBACKS,
   } = options;
-  const placement = getPlacement(schema);
-  const initial = flattenTree(initialValue.root);
+  const slotOrder = (type: string): readonly string[] =>
+    Object.keys(slotsOf(schema, type));
+  const initial = normalize(initialValue);
   let schemaVersion = initialValue.schemaVersion;
 
   let state: EditorStoreState = {
@@ -116,7 +164,10 @@ export function createEditorStore(
     if (!docMemo || docMemo.version !== state.version) {
       docMemo = {
         version: state.version,
-        doc: serializeDocument(state.nodes, state.rootId, schemaVersion),
+        doc: denormalize(
+          { rootId: state.rootId, nodes: state.nodes },
+          { schemaVersion, slotOrder },
+        ),
       };
     }
     return docMemo.doc;
@@ -134,17 +185,17 @@ export function createEditorStore(
 
   /** Applies ops all-or-nothing; returns the new table + inverses in undo order, or null. */
   const run = (
-    ops: readonly EditorOp[],
+    ops: readonly Op[],
   ): {
     nodes: EditorNodes;
     rootId: string;
-    inverse: EditorOp[];
+    inverse: Op[];
     schemaVersion: number;
   } | null => {
     let nodes = state.nodes;
     let rootId = state.rootId;
     let version = schemaVersion;
-    const inverse: EditorOp[] = [];
+    const inverse: Op[] = [];
     for (const op of ops) {
       const result = applyOp(nodes, rootId, op, version);
       if (!result) return null;
@@ -158,7 +209,7 @@ export function createEditorStore(
 
   /** Applies LOCAL ops: history (with coalescing), version, listeners, onChange. */
   const commit = (
-    ops: readonly EditorOp[],
+    ops: readonly Op[],
     key: string | null,
     extra: Partial<EditorStoreState> = {},
   ): boolean => {
@@ -217,7 +268,7 @@ export function createEditorStore(
     isDirty: () => currentHash() !== savedHash,
 
     load(doc) {
-      const { nodes, rootId } = flattenTree(doc.root);
+      const { nodes, rootId } = normalize(doc);
       schemaVersion = doc.schemaVersion;
       coalesceOpen = false;
       const version = state.version + 1;
@@ -236,27 +287,19 @@ export function createEditorStore(
       savedHash = currentHash();
     },
 
-    add(type, { parentId, index, properties = {} }) {
-      const parent = state.nodes[parentId];
-      if (!parent) return null;
-      const parentType = parentId === state.rootId ? 'root' : parent.type;
-      if (!canPlace(placement, type, parentType)) return null;
-      const id = genId();
-      const seeded = {
-        ...defaultValuesFor(componentOf(schema, type) ?? { fields: {} }),
-        ...properties,
-      };
-      const node: NodeData = {
-        id,
-        type,
-        props: normalizePatchToProperties(seeded),
-      };
+    add(type, { parent, index, props = {} }) {
+      const target = slotRef(parent);
+      const parentNode = state.nodes[target.id];
+      if (!parentNode) return null;
+      if (!canPlaceIn(schema, state.nodes, type, target).ok) return null;
+      const node = buildNode(schema, type, props, genId);
+      const length = parentNode.slots[target.slot]?.length ?? 0;
       const ok = commit(
-        [{ op: 'add', parentId, index: index ?? parent.childIds.length, node }],
+        [{ op: 'insert', parent: target, index: index ?? length, node }],
         null,
-        { selection: withLocal({ selected: id }) },
+        { selection: withLocal({ selected: node.id }) },
       );
-      return ok ? id : null;
+      return ok ? node.id : null;
     },
 
     update(id, patch, options) {
@@ -268,13 +311,16 @@ export function createEditorStore(
       return commit([{ op: 'update', id, patch: normalized }], key);
     },
 
-    move(id, parentId, index) {
+    move(id, { parent, index }) {
       const node = state.nodes[id];
-      const target = state.nodes[parentId];
-      if (!node || !target || node.parentId === null) return false;
-      const parentType = parentId === state.rootId ? 'root' : target.type;
-      if (!canPlace(placement, node.type, parentType)) return false;
-      return commit([{ op: 'move', id, parentId, index }], null);
+      if (!node || node.parent === null) return false;
+      const target = slotRef(parent);
+      if (
+        !canPlaceIn(schema, state.nodes, node.type, target, { movingId: id }).ok
+      ) {
+        return false;
+      }
+      return commit([{ op: 'move', id, parent: target, index }], null);
     },
 
     remove(id) {
@@ -283,16 +329,24 @@ export function createEditorStore(
 
     duplicate(id) {
       const node = state.nodes[id];
-      if (!node || node.parentId === null) return null;
-      const parent = state.nodes[node.parentId];
-      if (!parent) return null;
-      const copy = cloneSubtree(serializeToTree(state.nodes, id), genId);
+      if (!node || node.parent === null) return null;
+      const parentNode = state.nodes[node.parent.id];
+      if (!parentNode) return null;
+      if (!canPlaceIn(schema, state.nodes, node.type, node.parent).ok) {
+        return null;
+      }
+      const { node: copy } = remapIds(
+        serializeSubtree(state.nodes, id, slotOrder),
+        genId,
+        { schema },
+      );
+      const siblings = parentNode.slots[node.parent.slot] ?? [];
       const ok = commit(
         [
           {
-            op: 'add',
-            parentId: parent.id,
-            index: parent.childIds.indexOf(id) + 1,
+            op: 'insert',
+            parent: node.parent,
+            index: siblings.indexOf(id) + 1,
             node: copy,
           },
         ],
@@ -303,8 +357,8 @@ export function createEditorStore(
     },
 
     applyRemote(ops) {
-      const applied: EditorOp[] = [];
-      const rejected: EditorOp[] = [];
+      const applied: Op[] = [];
+      const rejected: Op[] = [];
       let nodes = state.nodes;
       let rootId = state.rootId;
       for (const op of ops) {

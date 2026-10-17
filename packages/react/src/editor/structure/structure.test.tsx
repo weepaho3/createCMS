@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { EditorStore } from '../core/store';
 
 import { useEditorContext } from '../context';
+import { defineEditorSchema } from '../core/schema';
 import { counterGenId, makeDoc, storeSchema } from '../core/store/fixtures';
 import { useBlockActions, useChildren } from '../hooks';
 import { Editor } from '../index';
@@ -171,12 +172,12 @@ describe('Editor.OutlineItem', () => {
     const h1 = item(container, 'h1');
     h1.focus();
     fireEvent.keyDown(h1, { key: 'ArrowUp', altKey: true });
-    expect(probe.store?.getState().nodes.root_1?.childIds).toEqual([
+    expect(probe.store?.getState().nodes.root_1?.slots.children).toEqual([
       'h1',
       'sec1',
     ]);
     fireEvent.keyDown(h1, { key: 'ArrowDown', altKey: true });
-    expect(probe.store?.getState().nodes.root_1?.childIds).toEqual([
+    expect(probe.store?.getState().nodes.root_1?.slots.children).toEqual([
       'sec1',
       'h1',
     ]);
@@ -336,7 +337,7 @@ describe('Editor.AddBlock', () => {
   it('with nothing selected inserts at the end of the root and selects it', () => {
     const { getByRole, probe } = mount(<Editor.AddBlock type="heading" />);
     fireEvent.click(getByRole('button', { name: 'Heading' }));
-    expect(probe.store?.getState().nodes.root_1?.childIds).toEqual([
+    expect(probe.store?.getState().nodes.root_1?.slots.children).toEqual([
       'h1',
       'sec1',
       'n1',
@@ -350,7 +351,10 @@ describe('Editor.AddBlock', () => {
       probe.store?.select('sec1');
     });
     fireEvent.click(getByRole('button', { name: 'Heading' }));
-    expect(probe.store?.getState().nodes.sec1?.childIds).toEqual(['p1', 'n1']);
+    expect(probe.store?.getState().nodes.sec1?.slots.children).toEqual([
+      'p1',
+      'n1',
+    ]);
   });
 
   it('with h1 selected inserts after h1 in the root', () => {
@@ -359,7 +363,7 @@ describe('Editor.AddBlock', () => {
       probe.store?.select('h1');
     });
     fireEvent.click(getByRole('button', { name: 'Heading' }));
-    expect(probe.store?.getState().nodes.root_1?.childIds).toEqual([
+    expect(probe.store?.getState().nodes.root_1?.slots.children).toEqual([
       'h1',
       'n1',
       'sec1',
@@ -371,7 +375,10 @@ describe('Editor.AddBlock', () => {
       <Editor.AddBlock type="heading" parentId="sec1" index={0} />,
     );
     fireEvent.click(getByRole('button', { name: 'Heading' }));
-    expect(probe.store?.getState().nodes.sec1?.childIds).toEqual(['n1', 'p1']);
+    expect(probe.store?.getState().nodes.sec1?.slots.children).toEqual([
+      'n1',
+      'p1',
+    ]);
   });
 
   it('type=image with sec1 selected inserts after sec1 in the root', () => {
@@ -382,7 +389,7 @@ describe('Editor.AddBlock', () => {
     const button = getByRole('button', { name: 'Image' });
     expect(button).toHaveProperty('disabled', false);
     fireEvent.click(button);
-    expect(probe.store?.getState().nodes.root_1?.childIds).toEqual([
+    expect(probe.store?.getState().nodes.root_1?.slots.children).toEqual([
       'h1',
       'sec1',
       'n1',
@@ -467,5 +474,85 @@ describe('stacked form', () => {
       add?.('paragraph');
     });
     expect(container.querySelectorAll('[data-block-type]')).toHaveLength(5);
+  });
+});
+
+describe('named slots', () => {
+  const slotSchema = defineEditorSchema({
+    root: { label: 'Root', fields: {}, slots: { children: {} } },
+    components: {
+      columns: {
+        label: 'Columns',
+        fields: {},
+        slots: {
+          left: { label: 'Left column', allow: ['text'] },
+          right: { max: 1 },
+        },
+      },
+      text: { label: 'Text', fields: {} },
+    },
+  });
+
+  function mountSlots(ui: React.ReactNode) {
+    const probe: Probe = { store: null };
+    const utils = render(
+      <Editor.Root
+        schema={slotSchema}
+        defaultValue={{
+          schemaVersion: 1,
+          root: {
+            id: 'r',
+            type: 'root',
+            props: {},
+            slots: {
+              children: [
+                {
+                  id: 'cols',
+                  type: 'columns',
+                  props: {},
+                  slots: { left: [], right: [] },
+                },
+              ],
+            },
+          },
+        }}
+        genId={counterGenId()}
+      >
+        <StoreProbe probe={probe} />
+        {ui}
+      </Editor.Root>,
+    );
+    return { ...utils, probe };
+  }
+
+  it('OutlineGroup is a labelled group, the slot name as fallback', () => {
+    const { getByRole } = mountSlots(
+      <>
+        <Editor.OutlineGroup blockId="cols" slot="left" />
+        <Editor.OutlineGroup blockId="cols" slot="right" />
+      </>,
+    );
+    expect(getByRole('group', { name: 'Left column' })).toBeTruthy();
+    expect(getByRole('group', { name: 'right' })).toBeTruthy();
+  });
+
+  it('AddBlock with a slot inserts there and disables when the slot is full', () => {
+    const { getByRole, probe } = mountSlots(
+      <Editor.AddBlock type="text" parentId="cols" slot="right" />,
+    );
+    const button = getByRole('button', { name: 'Text' });
+    fireEvent.click(button);
+    expect(probe.store?.getState().nodes.cols?.slots.right).toEqual(['n1']);
+    expect(button.hasAttribute('disabled')).toBe(true);
+  });
+
+  it('AddBlock refuses a type the slot does not allow', () => {
+    const { getByRole, probe } = mountSlots(
+      <Editor.AddBlock type="columns" parentId="cols" slot="left" />,
+    );
+    const button = getByRole('button', { name: 'Columns' });
+    expect(button.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(button);
+    expect(probe.store?.getState().nodes.cols?.slots.left).toEqual([]);
   });
 });

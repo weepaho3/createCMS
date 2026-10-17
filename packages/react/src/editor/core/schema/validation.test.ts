@@ -423,9 +423,9 @@ describe('missingRequired', () => {
     });
     expect(
       missingRequired(schema, [
-        { id: 'root', type: 'root', properties: {} },
-        { id: 'i1', type: 'image', properties: { url: { assetId: '' } } },
-        { id: 'i2', type: 'image', properties: { url: { assetId: 'a' } } },
+        { id: 'root', type: 'root', props: {} },
+        { id: 'i1', type: 'image', props: { url: { assetId: '' } } },
+        { id: 'i2', type: 'image', props: { url: { assetId: 'a' } } },
       ]),
     ).toEqual([
       { blockId: 'root', blockType: 'root', key: 'title', label: 'title' },
@@ -435,7 +435,7 @@ describe('missingRequired', () => {
 
   it('accepts the shared fixture schema', () => {
     expect(
-      missingRequired(pages, [{ id: 'r', type: 'root', properties: {} }]),
+      missingRequired(pages, [{ id: 'r', type: 'root', props: {} }]),
     ).toEqual([
       { blockId: 'r', blockType: 'root', key: 'title', label: 'Title' },
     ]);

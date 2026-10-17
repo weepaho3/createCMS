@@ -12,6 +12,8 @@ export type CanvasComponentProps = {
   props: Record<string, unknown>;
   /** The rendered `children` slot. */
   children: React.ReactNode;
+  /** Every slot of the node rendered, keyed by slot name (`children` included). */
+  slots: Readonly<Record<string, React.ReactNode>>;
   /** The raw node as stored. */
   node: NodeData;
   edit: EditProps;

@@ -126,7 +126,7 @@ function CanvasIconButton({
 function DefaultBlockToolbarActions() {
   const selected = useSelection().selected;
   const actions = useBlockActions(selected ?? '');
-  if (!selected || actions.parentId === null) return null;
+  if (!selected || actions.parent === null) return null;
 
   return (
     <>

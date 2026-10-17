@@ -1,4 +1,5 @@
-import type { EditorDocument } from '../document';
+import type { EditorDocument, FlatNode } from '../document';
+import type { EditorNodes } from './serde';
 
 import { defineEditorSchema } from '../schema';
 
@@ -85,4 +86,28 @@ export function fakeClock(start = 1_000): {
       t += ms;
     },
   };
+}
+
+/**
+ * A node table from a compact outline: `parentId` and `childIds` refer to the
+ * `children` slot. Props are empty.
+ */
+export function flatNodes(
+  entries: Record<
+    string,
+    { type: string; parentId: string | null; childIds: string[] }
+  >,
+): EditorNodes {
+  const out: Record<string, FlatNode> = {};
+  for (const [id, node] of Object.entries(entries)) {
+    out[id] = {
+      id,
+      type: node.type,
+      props: {},
+      parent:
+        node.parentId === null ? null : { id: node.parentId, slot: 'children' },
+      slots: { children: [...node.childIds] },
+    };
+  }
+  return out;
 }

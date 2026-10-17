@@ -70,3 +70,13 @@ export function measureField(
     fieldElements(canvas, id, key).map((el) => canvasRectOf(el, canvas)),
   );
 }
+
+export function measureSlot(
+  canvas: HTMLElement,
+  id: string,
+  slot: string,
+): CanvasRect | null {
+  return unionRects(
+    slotElements(canvas, id, slot).map((el) => canvasRectOf(el, canvas)),
+  );
+}

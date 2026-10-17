@@ -95,7 +95,8 @@ handlers are fine.
 | `Editor.Preview`          | `div`                                           | `render` (required, document callback), `debounceMs`, div props                                                                            | `data-stale` while a version change is pending                                                   |
 | `Editor.FramePreview`     | `div` wrapping two iframes                      | `render` (required, async compiler), `debounceMs`, `selectable`, `resolveAnchor`, `onIssues`, `onError`, `sandbox`, `title`, div props | `data-loading`, `data-stale`, `data-error`, `data-kind` (`html` or `blob`)                       |
 | `Editor.OutlineItem`      | `div` with `role="treeitem"`                    | `blockId` (required), `onDelete`, `render`, div props                                                                                  | `data-selected`, `data-depth`, `data-has-children`, `data-block-id`, `data-block-type`           |
-| `Editor.AddBlock`         | `button`                                        | `type` (required), `parentId`, `index`, `render`, button props (`children` replaces the palette label)                                 | `data-block-type`                                                                                |
+| `Editor.OutlineGroup`     | `div` with `role="group"`                       | `blockId` and `slot` (required), `render`, div props. Wraps one slot's rows; `aria-label` is the slot's `label`, else its name          |                                                                                                  |
+| `Editor.AddBlock`         | `button`                                        | `type` (required), `parentId`, `slot`, `index`, `render`, button props (`children` replaces the palette label). Disabled while `canPlaceIn` refuses the target | `data-block-type`                                                                                |
 
 `Editor.Preview` subscribes to the store `version` and passes the raw store
 document (`getDocument()`) to `render` after a delay (default `PREVIEW_DEBOUNCE_MS`,
@@ -112,7 +113,9 @@ document (`getDocument()`) to `render` after a delay (default `PREVIEW_DEBOUNCE_
 | `useAnyBlock`        | `AnyBlockHandle \| null`                       | `null` for an unknown or `null` id; the handle is stable while the node is unchanged.                                                                                                                                                                                                                                      |
 | `useAnyField`        | `AnyFieldHandle`                               | Re-renders only when that property's value or the node's type changes.                                                                                                                                                                                                                                                     |
 | `useFields`          | `SchemaField[]`                                | The block's property specs in schema order; `[]` for an unknown block; stable array identity.                                                                                                                                                                                                                              |
-| `useChildren`        | `readonly ChildRef[]`                          | `{ id, type, index }` in order; same array reference until ids or types change.                                                                                                                                                                                                                                            |
+| `useChildren`        | `readonly ChildRef[]`                          | The `children` slot: `{ id, type, index }` in order; same array reference until ids or types change.                                                                                                                                                                                                                                            |
+| `useSlot`            | `readonly ChildRef[]`                          | `useSlot(parentId, slot)`: the children of one slot, like `useChildren`; re-renders only when that slot's ids or types change.                                                                                                                                                                                             |
+| `useSlots`           | `readonly string[]`                            | `useSlots(parentId)`: the slot names a block holds, declared slots first, then the rest alphabetically.                                                                                                                                                                                                                    |
 | `useBlockActions`    | `BlockActions`                                 | Placement-gated `add`/`remove`/`duplicate`/`moveUp`/`moveDown` plus `canMoveUp`, `canMoveDown`, `canHaveChildren`, `allowedChildTypes`.                                                                                                                                                                                  |
 | `useSelection`       | `UserSelection`                                | Defaults to the enclosing editor's user.                                                                                                                                                                                                                                                                                   |
 | `useHistory`         | `HistoryApi`                                   | `{ canUndo, canRedo, undo, redo }`.                                                                                                                                                                                                                                                                                        |
@@ -153,7 +156,7 @@ schema object (`===`) and throws otherwise.
 | `FieldHandle<V, Spec>`   | A typed field handle: value, spec and setter of one property.                            |
 | `FieldHandleOf<S, K, P>` | `FieldHandle` for property `P` of block type `K` (or `'root'`) in `S`.                   |
 | `TypedEditorApi<S>`      | `useEditor()`'s return type, with `add` restricted to `S`'s block types.                 |
-| `TypedAddOptions<S, K>`  | `add`'s options for block type `K`: `parentId`, optional `index`, optional `properties`. |
+| `TypedAddOptions<S, K>`  | `add`'s options for block type `K`: `parent: SlotTarget`, optional `index`, optional `props`. |
 | `TypedPaletteItems<S>`   | `PaletteItem[]` with `type` narrowed; `never` when `S` has no static blocks.             |
 | `ChildRefOf<S>`          | `ChildRef` with `type` narrowed to `S`'s block types.                                    |
 | `TypedBlockActions<S>`   | `BlockActions` with `add` and `allowedChildTypes` restricted to `S`'s block types.       |
@@ -165,6 +168,12 @@ schema object (`===`) and throws otherwise.
 
 The schema helpers and the store live in the React-free subpath
 `@createcms/react/editor/core`; see [Editor core](/docs/reference/react-editor-core).
+
+`insertPointFor(schema, nodes, rootId, selectedId, type)` returns the
+`InsertPoint` (`{ parent, index, allowed }`) an add without an explicit
+parent uses: into the selected block's `children` slot when it accepts the
+type, else right after the selected block in its slot, else the end of the
+root.
 
 Field helpers: `formatFieldError`, `defaultFieldControls`, `emptyListElement`, `toDatetimeLocal`,
 `fromDatetimeLocal`.
@@ -205,7 +214,10 @@ Field helpers: `formatFieldError`, `defaultFieldControls`, `emptyListElement`, `
 | `ChildRef`                    | One child of a block: `{ id, type, index }`.                                                                                                                          |
 | `BlockActions`                | Structural actions of one block (`add`/`remove`/`duplicate`/`moveUp`/`moveDown`).                                                                                     |
 | `EditorOutlineItemProps`      | Props of `Editor.OutlineItem`: `blockId`, `onDelete?`, `render?`, div props.                                                                                          |
-| `EditorAddBlockProps`         | Props of `Editor.AddBlock`: `type`, `parentId?`, `index?`, `render?`, button props.                                                                                   |
+| `EditorAddBlockProps`         | Props of `Editor.AddBlock`: `type`, `parentId?`, `slot?`, `index?`, `render?`, button props.                                                                          |
+| `EditorOutlineGroupProps`     | Props of `Editor.OutlineGroup`: `blockId`, `slot`, `render?`, div props.                                                                                              |
+| `InsertPoint`                 | `insertPointFor`'s result: `{ parent: SlotRef, index, allowed }`.                                                                                                     |
+| `OutlineGroupState`           | `useRender` state of `Editor.OutlineGroup` (`{ slot, blockId }`).                                                                                                     |
 | `OutlineItemState`            | `useRender` state of `Editor.OutlineItem`.                                                                                                                            |
 | `AddBlockState`               | `useRender` state of `Editor.AddBlock` (`{ blockType }`).                                                                                                             |
 
@@ -226,7 +238,7 @@ Field helpers: `formatFieldError`, `defaultFieldControls`, `emptyListElement`, `
 | `data-group`        | `fieldset` inside `Editor.Form`                          | The group label of the fields inside.                                                                            |
 | `data-selected`     | `Editor.OutlineItem`                                     | Present while this row is the local user's selected block.                                                       |
 | `data-depth`        | `Editor.OutlineItem`                                     | Hops from the root (root children are `1`).                                                                      |
-| `data-has-children` | `Editor.OutlineItem`                                     | Present when the block has at least one child.                                                                   |
+| `data-has-children` | `Editor.OutlineItem`                                     | Present when the block has a child in any slot.                                                                  |
 
 ## Keyboard
 

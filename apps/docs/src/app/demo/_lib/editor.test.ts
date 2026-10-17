@@ -3,7 +3,7 @@ import {
   fromEditor,
   toEditor,
 } from '@createcms/react/editor/cms';
-import { canPlace, getPlacement } from '@createcms/react/editor/core';
+import { canPlaceIn, slotsOf } from '@createcms/react/editor/core';
 import { describe, expect, it } from 'vitest';
 
 import { emails } from './email-schema';
@@ -24,11 +24,16 @@ describe('demo collections through the createcms adapter', () => {
   });
 
   it('keeps the pages placement rules', () => {
-    const index = getPlacement(fromCollection(pages));
+    const schema = fromCollection(pages);
     for (const [type, block] of Object.entries(pages.blocks ?? {})) {
-      expect(index.containers.has(type)).toBe(block.allowChildren === true);
+      expect('children' in slotsOf(schema, type)).toBe(
+        block.allowChildren === true,
+      );
     }
-    expect(canPlace(index, 'hero', 'root')).toBe(true);
+    const root = { type: 'root', parent: null, slots: {} };
+    expect(
+      canPlaceIn(schema, { root }, 'hero', { id: 'root', slot: 'children' }).ok,
+    ).toBe(true);
   });
 
   it.each([

@@ -1,21 +1,8 @@
-import type { EditorDocument, JsonValue, NodeData } from '../document';
+import type { EditorDocument, Op } from '../document';
 import type { AnyEditorSchema } from '../schema';
+import type { EditorNodes } from './serde';
 
-/** One node of the flat editor tree. `parentId === null` only for the root. */
-export type EditorNode = {
-  readonly id: string;
-  readonly type: string;
-  readonly properties: Readonly<Record<string, unknown>>;
-  readonly parentId: string | null;
-  /** Sibling order: the single source of truth for child ordering. */
-  readonly childIds: readonly string[];
-  /** Component version, carried through unchanged. */
-  readonly v?: number;
-  /** Adapter-owned data, carried through unchanged. */
-  readonly meta?: Record<string, JsonValue>;
-};
-
-export type EditorNodes = Readonly<Record<string, EditorNode>>;
+export type { EditorNodes } from './serde';
 
 /** A field on a block: what focus and inline editing point at. */
 export type FieldRef = { readonly blockId: string; readonly key: string };
@@ -28,23 +15,10 @@ export type UserSelection = {
   readonly editing: FieldRef | null;
 };
 
-/**
- * One serialisable change to the tree. Every op has an inverse (see `applyOp`);
- * `add` inserts a whole subtree so `remove` and `duplicate` stay single ops.
- * A merge-patch value of `null` deletes the key; `undefined` never appears in
- * an op (the action layer normalises it to `null`).
- */
-export type EditorOp =
-  | { op: 'add'; parentId: string; index: number; node: NodeData }
-  | { op: 'remove'; id: string }
-  | { op: 'move'; id: string; parentId: string; index: number }
-  | { op: 'update'; id: string; patch: Record<string, unknown> }
-  | { op: 'load'; doc: EditorDocument };
-
 /** One undo step: the ops applied and, in the order to apply them, their inverses. */
 export type HistoryEntry = {
-  readonly ops: readonly EditorOp[];
-  readonly inverse: readonly EditorOp[];
+  readonly ops: readonly Op[];
+  readonly inverse: readonly Op[];
   /** Coalescing key (`null` = never coalesces). */
   readonly key: string | null;
   /** Timestamp of the last op merged into this entry (`options.now`). */
@@ -68,7 +42,7 @@ export type EditorStoreState = {
 };
 
 export type EditorChange = {
-  readonly ops: readonly EditorOp[];
+  readonly ops: readonly Op[];
   readonly version: number;
   /** Serialises the current document on demand (memoised per version). */
   readonly getDocument: () => EditorDocument;
@@ -98,12 +72,21 @@ export type CreateEditorStoreOptions = {
   getCallbacks?: () => EditorCallbacks;
 };
 
+/** A parent node and one of its slots; the slot defaults to `children`. */
+export type SlotTarget = { readonly id: string; readonly slot?: string };
+
 export type AddOptions = {
-  parentId: string;
-  /** Insert position among the parent's children; default: append. */
+  parent: SlotTarget;
+  /** Insert position in the slot; default: append. */
   index?: number;
   /** Initial props on top of the schema's declared `defaultValue`s. */
-  properties?: Record<string, unknown>;
+  props?: Record<string, unknown>;
+};
+
+export type MoveTarget = {
+  parent: SlotTarget;
+  /** Position in the target slot after the node left its old place. */
+  index: number;
 };
 
 export type UpdateOptions = {
@@ -112,8 +95,8 @@ export type UpdateOptions = {
 };
 
 export type ApplyRemoteResult = {
-  readonly applied: readonly EditorOp[];
-  readonly rejected: readonly EditorOp[];
+  readonly applied: readonly Op[];
+  readonly rejected: readonly Op[];
 };
 
 /**
@@ -128,22 +111,29 @@ export type EditorStore = {
   isDirty(): boolean;
 
   load(doc: EditorDocument): void;
-  /** Returns the new block's id, or `null` when the parent is unknown or the placement is not allowed. */
+  /**
+   * Inserts a new node with its declared defaults and slot defaults. Returns
+   * its id, or `null` when the parent or slot is unknown or the placement is
+   * not allowed.
+   */
   add(type: string, options: AddOptions): string | null;
-  /** Merge-patch a block's properties. Returns `false` for an unknown id. */
+  /** Merge-patch a node's props. Returns `false` for an unknown id. */
   update(
     id: string,
     patch: Record<string, unknown>,
     options?: UpdateOptions,
   ): boolean;
-  /** Returns `false` when rejected (root, unknown ids, cycle, placement). */
-  move(id: string, parentId: string, index: number): boolean;
-  /** Removes a block and its subtree. Returns `false` for the root or an unknown id. */
+  /** Returns `false` when rejected (root, unknown ids, unknown slot, cycle, placement). */
+  move(id: string, target: MoveTarget): boolean;
+  /** Removes a node and its subtree. Returns `false` for the root or an unknown id. */
   remove(id: string): boolean;
-  /** Deep-copies a block + subtree with fresh ids right after the original. Returns the copy's id. */
+  /**
+   * Copies a node and its subtree with fresh ids right after the original;
+   * references inside the copy point at the copies. Returns the copy's id.
+   */
   duplicate(id: string): string | null;
   /** Applies ops from elsewhere without touching the local history. */
-  applyRemote(ops: readonly EditorOp[]): ApplyRemoteResult;
+  applyRemote(ops: readonly Op[]): ApplyRemoteResult;
   undo(): boolean;
   redo(): boolean;
 

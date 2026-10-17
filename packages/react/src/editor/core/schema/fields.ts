@@ -5,7 +5,8 @@ import type {
   SchemaField,
 } from './types';
 
-import { DEFAULT_SLOT } from './placement';
+/** The slot every container holds its children in. */
+export const DEFAULT_SLOT = 'children';
 
 /**
  * The component definition of a node type: the root for the literal

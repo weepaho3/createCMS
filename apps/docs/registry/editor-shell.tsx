@@ -15,6 +15,8 @@ import {
   usePalette,
   useSave,
   useSelection,
+  useSlot,
+  useSlots,
 } from '@createcms/react/editor';
 import { Canvas } from '@createcms/react/editor/canvas';
 import { groupPaletteItems } from '@createcms/react/editor/core';
@@ -332,7 +334,7 @@ function EditorAddBlockDialog() {
                     disabled={!allowed}
                     onSelect={() => {
                       const id = editor.add(item.type, {
-                        parentId: addParent,
+                        parent: { id: addParent },
                       });
                       if (id) editor.select(id);
                       setAddOpen(false);
@@ -577,13 +579,43 @@ function EditorPalette({ className, ...props }: React.ComponentProps<'div'>) {
   );
 }
 
+function OutlineSlot({
+  blockId,
+  slot,
+  labelled,
+}: {
+  blockId: string;
+  slot: string;
+  labelled: boolean;
+}) {
+  const children = useSlot(blockId, slot);
+  const nodes = children.map((child) => (
+    <OutlineNode key={child.id} blockId={child.id} />
+  ));
+  if (!labelled) return nodes;
+  return (
+    <Editor.OutlineGroup blockId={blockId} slot={slot}>
+      <span
+        aria-hidden
+        className="text-muted-foreground block px-2 pt-1 text-xs"
+      >
+        {slot}
+      </span>
+      {nodes}
+    </Editor.OutlineGroup>
+  );
+}
+
 function OutlineNode({ blockId }: { blockId: string }) {
-  const children = useChildren(blockId);
+  const slots = useSlots(blockId);
   const block = useAnyBlock(blockId);
   const selected = useSelection().selected === blockId;
   const palette = usePalette();
   const [open, setOpen] = React.useState(true);
-  const hasChildren = children.length > 0;
+  const hasChildren = Object.values(block?.slots ?? {}).some(
+    (ids) => ids.length > 0,
+  );
+  const labelled = slots.length > 1 || (slots[0] ?? 'children') !== 'children';
   const label =
     palette.find((item) => item.type === block?.type)?.label ??
     block?.type ??
@@ -631,8 +663,13 @@ function OutlineNode({ blockId }: { blockId: string }) {
           {hasChildren ? (
             <CollapsibleContent className="w-full">
               <SidebarMenuSub className="mx-0 mr-0 border-l-0 px-0 pr-0">
-                {children.map((child) => (
-                  <OutlineNode key={child.id} blockId={child.id} />
+                {slots.map((slot) => (
+                  <OutlineSlot
+                    key={slot}
+                    blockId={blockId}
+                    slot={slot}
+                    labelled={labelled}
+                  />
                 ))}
               </SidebarMenuSub>
             </CollapsibleContent>
@@ -688,7 +725,7 @@ function EditorInspector({ className, ...props }: React.ComponentProps<'div'>) {
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">
                   {label}
                 </span>
-                {actions.parentId !== null ? (
+                {actions.parent !== null ? (
                   <div className="flex items-center gap-1">
                     <ToolbarHintButton
                       label="Duplicate"

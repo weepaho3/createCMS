@@ -1,4 +1,9 @@
-import { isInsideReadonly, measureBlock, measureField } from './anchors';
+import {
+  isInsideReadonly,
+  measureBlock,
+  measureField,
+  measureSlot,
+} from './anchors';
 import { adoptRect, type CanvasRect } from './rect';
 
 export type Measurer = {
@@ -6,6 +11,8 @@ export type Measurer = {
   getVersion: () => number;
   getBlockRect: (id: string) => CanvasRect | null;
   getFieldRect: (id: string, key: string) => CanvasRect | null;
+  /** The rect of the element holding slot `slot` of block `id` (`edit.slot.<name>`). */
+  getSlotRect: (id: string, slot: string) => CanvasRect | null;
   destroy: () => void;
 };
 
@@ -31,6 +38,7 @@ export function createMeasurer(canvasEl: HTMLElement): Measurer {
   let version = 0;
   let blockRects = new Map<string, CanvasRect>();
   let fieldRects = new Map<string, CanvasRect>();
+  let slotRects = new Map<string, CanvasRect>();
   let raf = 0;
   let destroyed = false;
   let fontsSettled = false;
@@ -59,6 +67,10 @@ export function createMeasurer(canvasEl: HTMLElement): Measurer {
 
   function getFieldRect(id: string, key: string): CanvasRect | null {
     return fieldRects.get(fieldKey(id, key)) ?? null;
+  }
+
+  function getSlotRect(id: string, slot: string): CanvasRect | null {
+    return slotRects.get(fieldKey(id, slot)) ?? null;
   }
 
   function notify(): void {
@@ -90,6 +102,9 @@ export function createMeasurer(canvasEl: HTMLElement): Measurer {
     const ids = new Set<string>();
     const fieldPairs: Array<{ id: string; key: string }> = [];
     const seenField = new Set<string>();
+    const nextSlots = new Map<string, CanvasRect>();
+    const slotPairs: Array<{ id: string; slot: string }> = [];
+    const seenSlot = new Set<string>();
 
     const nodes = canvasEl.querySelectorAll('[data-editor-block]');
     for (const el of nodes) {
@@ -107,6 +122,18 @@ export function createMeasurer(canvasEl: HTMLElement): Measurer {
         seenField.add(fk);
         fieldPairs.push({ id, key });
       }
+      const slotEls = el.hasAttribute('data-editor-slot')
+        ? [el, ...el.querySelectorAll('[data-editor-slot]')]
+        : [...el.querySelectorAll('[data-editor-slot]')];
+      for (const slotEl of slotEls) {
+        if (slotEl.closest('[data-editor-block]') !== el) continue;
+        const slot = slotEl.getAttribute('data-editor-slot');
+        if (!slot) continue;
+        const sk = fieldKey(id, slot);
+        if (seenSlot.has(sk)) continue;
+        seenSlot.add(sk);
+        slotPairs.push({ id, slot });
+      }
     }
 
     for (const id of ids) {
@@ -121,13 +148,22 @@ export function createMeasurer(canvasEl: HTMLElement): Measurer {
       nextFields.set(fk, adoptRect(fieldRects.get(fk), rect));
     }
 
+    for (const { id, slot } of slotPairs) {
+      const rect = measureSlot(canvasEl, id, slot);
+      if (!rect) continue;
+      const sk = fieldKey(id, slot);
+      nextSlots.set(sk, adoptRect(slotRects.get(sk), rect));
+    }
+
     refreshObserved(blockEls);
 
     const changed =
       mapsChanged(blockRects, nextBlocks) ||
-      mapsChanged(fieldRects, nextFields);
+      mapsChanged(fieldRects, nextFields) ||
+      mapsChanged(slotRects, nextSlots);
     blockRects = nextBlocks;
     fieldRects = nextFields;
+    slotRects = nextSlots;
     if (!changed) return;
     version += 1;
     notify();
@@ -215,6 +251,7 @@ export function createMeasurer(canvasEl: HTMLElement): Measurer {
     getVersion,
     getBlockRect,
     getFieldRect,
+    getSlotRect,
     destroy,
   };
 }

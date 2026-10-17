@@ -224,7 +224,7 @@ describe('Canvas.InlineText', () => {
       glass.dispatchEvent(new Event('input', { bubbles: true }));
       glass.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
     });
-    expect(store.getState().nodes.h1!.properties.badge).toBe('');
-    expect(store.getState().nodes.h1!.properties.badge).not.toContain('\u200B');
+    expect(store.getState().nodes.h1!.props.badge).toBe('');
+    expect(store.getState().nodes.h1!.props.badge).not.toContain('\u200B');
   });
 });

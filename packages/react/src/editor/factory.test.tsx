@@ -75,10 +75,10 @@ describe('factory.Root', () => {
     });
     let id: string | null = null;
     act(() => {
-      id = result.current.add('heading', { parentId: 'root_1' });
+      id = result.current.add('heading', { parent: { id: 'root_1' } });
     });
     expect(id).toBe('n1');
-    expect(result.current.getState().nodes.n1?.properties.level).toBe(2);
+    expect(result.current.getState().nodes.n1?.props.level).toBe(2);
   });
 });
 
@@ -90,7 +90,7 @@ describe('factory.useBlock', () => {
     });
     expect(result.current?.type).toBe('heading');
     if (result.current?.type === 'heading') {
-      expect(result.current.properties.text).toBe('Hello');
+      expect(result.current.props.text).toBe('Hello');
     }
   });
 
@@ -106,7 +106,7 @@ describe('factory.useBlock', () => {
     });
     expect(
       result.current?.type === 'heading'
-        ? result.current.properties.text
+        ? result.current.props.text
         : undefined,
     ).toBe('Z');
   });
@@ -172,7 +172,7 @@ describe('the remaining factory hooks mirror the untyped ones', () => {
     );
     expect(result.current.history.canUndo).toBe(false);
     act(() => {
-      result.current.api.add('heading', { parentId: 'root_1' });
+      result.current.api.add('heading', { parent: { id: 'root_1' } });
     });
     expect(result.current.history.canUndo).toBe(true);
   });

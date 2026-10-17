@@ -462,3 +462,61 @@ export const emptyStackBlocks = {
   cell: InsertCell,
   heading: InsertCell,
 } as unknown as CanvasComponents;
+
+export const twoSlotSchema = defineEditorSchema({
+  root: { label: 'Slots', fields: {}, slots: { children: {} } },
+  components: {
+    columns: {
+      label: 'Columns',
+      fields: {},
+      slots: { left: { allow: ['cell'] }, right: { allow: ['cell'] } },
+    },
+    cell: { label: 'Cell', fields: { text: { type: 'text', label: 'Text' } } },
+  },
+});
+
+function TwoColumns({
+  edit,
+  slots,
+}: {
+  edit: EditProps;
+  slots: Readonly<Record<string, ReactNode>>;
+}) {
+  const column = { boxSizing: 'border-box', width: 160, height: 120 } as const;
+  return (
+    <div {...edit.block} style={{ display: 'flex', width: 320 }}>
+      <div {...edit.slot?.left} style={column}>
+        {slots.left}
+      </div>
+      <div {...edit.slot?.right} style={column}>
+        {slots.right}
+      </div>
+    </div>
+  );
+}
+
+export function twoSlotTree(): EditorDocument {
+  return {
+    schemaVersion: 1,
+    root: {
+      id: 'root_1',
+      type: 'root',
+      props: {},
+      slots: {
+        children: [
+          {
+            id: 'cols',
+            type: 'columns',
+            props: {},
+            slots: { left: [cell('c1', 'Left')], right: [] },
+          },
+        ],
+      },
+    },
+  };
+}
+
+export const twoSlotBlocks = {
+  columns: TwoColumns,
+  cell: InsertCell,
+} as unknown as CanvasComponents;

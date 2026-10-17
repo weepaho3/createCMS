@@ -278,6 +278,6 @@ describe('Canvas.Root renderer', () => {
     });
     const badge = host.querySelector('[data-editor-field="badge"]');
     expect(badge?.textContent).toBe(EMPTY_FIELD_PLACEHOLDER);
-    expect(store.getState().nodes.h1!.properties.badge).toBe('');
+    expect(store.getState().nodes.h1!.props.badge).toBe('');
   });
 });

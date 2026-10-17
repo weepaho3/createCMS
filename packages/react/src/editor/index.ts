@@ -13,7 +13,11 @@ import {
   EditorForm,
 } from './field';
 import { EditorFramePreview, EditorPreview } from './preview';
-import { EditorAddBlock, EditorOutlineItem } from './structure';
+import {
+  EditorAddBlock,
+  EditorOutlineGroup,
+  EditorOutlineItem,
+} from './structure';
 
 export type { EditorRootProps } from './components';
 export type { EditorContextValue, EditorScrollToOptions } from './types';
@@ -30,6 +34,7 @@ export const Editor = {
   Preview: EditorPreview,
   FramePreview: EditorFramePreview,
   OutlineItem: EditorOutlineItem,
+  OutlineGroup: EditorOutlineGroup,
   AddBlock: EditorAddBlock,
 };
 
@@ -73,9 +78,13 @@ export { PREVIEW_DEBOUNCE_MS } from './preview';
 export type {
   AddBlockState,
   EditorAddBlockProps,
+  EditorOutlineGroupProps,
   EditorOutlineItemProps,
+  InsertPoint,
+  OutlineGroupState,
   OutlineItemState,
 } from './structure';
+export { insertPointFor } from './structure';
 
 // React binding and untyped hooks.
 export type { EditorSelector } from './binding';
@@ -102,6 +111,8 @@ export {
   usePalette,
   useSave,
   useSelection,
+  useSlot,
+  useSlots,
 } from './hooks';
 export type { EditorKeyboardOptions } from './keyboard';
 export { useEditorKeyboard } from './keyboard';

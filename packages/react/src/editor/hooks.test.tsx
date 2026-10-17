@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EditorRootProps } from './components';
 import type { EditorApi } from './hooks';
 
+import { defineEditorSchema } from './core/schema';
 import { counterGenId, makeDoc, storeSchema } from './core/store/fixtures';
 import {
   useAnyBlock,
@@ -19,6 +20,8 @@ import {
   usePalette,
   useSave,
   useSelection,
+  useSlot,
+  useSlots,
 } from './hooks';
 import { Editor } from './index';
 
@@ -60,7 +63,7 @@ describe('useEditor', () => {
     expect(typeof result.current.store.getState).toBe('function');
     let id: string | null = null;
     act(() => {
-      id = result.current.add('heading', { parentId: 'root_1' });
+      id = result.current.add('heading', { parent: { id: 'root_1' } });
     });
     expect(id).toBe('n1');
     expect(result.current.getState().nodes.n1).toBeDefined();
@@ -152,7 +155,7 @@ describe('useEditor(selector)', () => {
     const { result } = renderHook(
       () => ({
         api: useEditor(),
-        slice: useEditor((s) => s.nodes.h1?.properties.text),
+        slice: useEditor((s) => s.nodes.h1?.props.text),
       }),
       { wrapper: makeWrapper() },
     );
@@ -170,10 +173,13 @@ describe('useAnyBlock', () => {
       wrapper: makeWrapper(),
     });
     expect(result.current?.type).toBe('heading');
-    expect(result.current?.properties.text).toBe('Hello');
+    expect(result.current?.props.text).toBe('Hello');
     expect(result.current?.spec.text?.type).toBe('text');
-    expect(result.current?.childIds).toEqual([]);
-    expect(result.current?.parentId).toBe('root_1');
+    expect(result.current?.slots).toEqual({});
+    expect(result.current?.parent).toEqual({
+      id: 'root_1',
+      slot: 'children',
+    });
   });
 
   it("set('text', 'X') updates the block and the hook re-renders with a new handle", () => {
@@ -185,7 +191,7 @@ describe('useAnyBlock', () => {
     act(() => {
       before?.set('text', 'X');
     });
-    expect(result.current.block?.properties.text).toBe('X');
+    expect(result.current.block?.props.text).toBe('X');
     expect(result.current.block).not.toBe(before);
   });
 
@@ -318,7 +324,7 @@ describe('useChildren', () => {
       { wrapper: makeWrapper() },
     );
     act(() => {
-      result.current.api.add('heading', { parentId: 'root_1' });
+      result.current.api.add('heading', { parent: { id: 'root_1' } });
     });
     expect(result.current.children).toEqual([
       { id: 'h1', type: 'heading', index: 0 },
@@ -399,7 +405,7 @@ describe('useBlockActions', () => {
       moved = result.current.actions.moveDown();
     });
     expect(moved).toBe(true);
-    expect(result.current.api.getState().nodes.root_1?.childIds).toEqual([
+    expect(result.current.api.getState().nodes.root_1?.slots.children).toEqual([
       'sec1',
       'h1',
     ]);
@@ -440,7 +446,7 @@ describe('useBlockActions', () => {
       id = result.current.actions.duplicate();
     });
     expect(id).toBe('n1');
-    expect(result.current.api.getState().nodes.root_1?.childIds).toEqual([
+    expect(result.current.api.getState().nodes.root_1?.slots.children).toEqual([
       'h1',
       'n1',
       'sec1',
@@ -469,7 +475,7 @@ describe('useBlockActions', () => {
       wrapper: makeWrapper(),
     });
     expect(result.current.type).toBeNull();
-    expect(result.current.parentId).toBeNull();
+    expect(result.current.parent).toBeNull();
     expect(result.current.index).toBe(-1);
     expect(result.current.canMoveUp).toBe(false);
     expect(result.current.canMoveDown).toBe(false);
@@ -564,7 +570,7 @@ describe('useHistory', () => {
       { wrapper: makeWrapper() },
     );
     act(() => {
-      result.current.api.add('heading', { parentId: 'root_1' });
+      result.current.api.add('heading', { parent: { id: 'root_1' } });
     });
     expect(result.current.history.canUndo).toBe(true);
   });
@@ -575,7 +581,7 @@ describe('useHistory', () => {
       { wrapper: makeWrapper() },
     );
     act(() => {
-      result.current.api.add('heading', { parentId: 'root_1' });
+      result.current.api.add('heading', { parent: { id: 'root_1' } });
     });
     act(() => {
       result.current.history.undo();
@@ -654,11 +660,11 @@ describe('Root callbacks', () => {
       wrapper: makeWrapper({ onChange }),
     });
     act(() => {
-      result.current.add('heading', { parentId: 'root_1' });
+      result.current.add('heading', { parent: { id: 'root_1' } });
     });
     expect(onChange).toHaveBeenCalledTimes(1);
     const change = onChange.mock.calls[0]?.[0];
-    expect(change.ops[0].op).toBe('add');
+    expect(change.ops[0].op).toBe('insert');
     expect(typeof change.getDocument).toBe('function');
     expect(change.getDocument().root.slots?.children).toHaveLength(3);
   });
@@ -686,7 +692,7 @@ describe('Root callbacks', () => {
     const { rerender } = render(<Harness onChange={onChangeA} />);
     rerender(<Harness onChange={onChangeB} />);
     act(() => {
-      api?.add('heading', { parentId: 'root_1' });
+      api?.add('heading', { parent: { id: 'root_1' } });
     });
     expect(onChangeA).not.toHaveBeenCalled();
     expect(onChangeB).toHaveBeenCalledTimes(1);
@@ -770,5 +776,85 @@ describe('key reset', () => {
     );
     expect(api?.store).toBe(store);
     expect(api?.getState().rootId).toBe('root_1');
+  });
+});
+
+describe('useSlot / useSlots', () => {
+  const slotSchema = defineEditorSchema({
+    root: { label: 'Root', fields: {}, slots: { children: {} } },
+    components: {
+      columns: {
+        label: 'Columns',
+        fields: {},
+        slots: { left: {}, right: {} },
+      },
+      text: { label: 'Text', fields: { body: { type: 'text' } } },
+    },
+  });
+
+  function slotWrapper({ children }: { children: React.ReactNode }) {
+    return (
+      <Editor.Root
+        schema={slotSchema}
+        defaultValue={{
+          schemaVersion: 1,
+          root: {
+            id: 'r',
+            type: 'root',
+            props: {},
+            slots: {
+              children: [
+                {
+                  id: 'cols',
+                  type: 'columns',
+                  props: {},
+                  slots: {
+                    extra: [],
+                    left: [{ id: 'a', type: 'text', props: {} }],
+                    right: [],
+                  },
+                },
+              ],
+            },
+          },
+        }}
+        genId={counterGenId()}
+      >
+        {children}
+      </Editor.Root>
+    );
+  }
+
+  it('lists declared slots first, then the rest alphabetically', () => {
+    const { result } = renderHook(() => useSlots('cols'), {
+      wrapper: slotWrapper,
+    });
+    expect(result.current).toEqual(['left', 'right', 'extra']);
+  });
+
+  it('keeps its reference while other slots and props change', () => {
+    const { result } = renderHook(
+      () => {
+        return {
+          api: useEditor(),
+          left: useSlot('cols', 'left'),
+          right: useSlot('cols', 'right'),
+        };
+      },
+      { wrapper: slotWrapper },
+    );
+    const left = result.current.left;
+    expect(left).toEqual([{ id: 'a', type: 'text', index: 0 }]);
+    act(() => {
+      result.current.api.add('text', { parent: { id: 'cols', slot: 'right' } });
+    });
+    expect(result.current.right).toEqual([
+      { id: 'n1', type: 'text', index: 0 },
+    ]);
+    expect(result.current.left).toBe(left);
+    act(() => {
+      result.current.api.update('a', { body: 'x' });
+    });
+    expect(result.current.left).toBe(left);
   });
 });

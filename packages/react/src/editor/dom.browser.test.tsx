@@ -32,23 +32,23 @@ const singleCellRow: EditorNodes = {
   root: {
     id: 'root',
     type: 'root',
-    properties: {},
-    parentId: null,
-    childIds: ['stack1'],
+    props: {},
+    parent: null,
+    slots: { children: ['stack1'] },
   },
   stack1: {
     id: 'stack1',
     type: 'stack',
-    properties: {},
-    parentId: 'root',
-    childIds: ['c1'],
+    props: {},
+    parent: { id: 'root', slot: 'children' },
+    slots: { children: ['c1'] },
   },
   c1: {
     id: 'c1',
     type: 'cell',
-    properties: {},
-    parentId: 'stack1',
-    childIds: [],
+    props: {},
+    parent: { id: 'stack1', slot: 'children' },
+    slots: {},
   },
 };
 
@@ -78,6 +78,6 @@ describe('realm-safe dom guards in a same-origin iframe', () => {
       singleCellRow,
       'root',
     );
-    expect(adapters.isRowFlow('stack1')).toBe(true);
+    expect(adapters.isRowFlow({ id: 'stack1', slot: 'children' })).toBe(true);
   });
 });

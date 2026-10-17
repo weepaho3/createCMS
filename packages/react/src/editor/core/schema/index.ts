@@ -46,18 +46,22 @@ export type {
 } from './types';
 export { defineComponent, defineEditorSchema } from './types';
 export type { StandardSchemaV1 } from './standard-schema';
-export type { PlacementIndex, PlacementRule } from './placement';
+export type { PlaceErrorCode, PlacementNode, PlaceResult } from './placement';
 export {
   allowedChildTypes,
-  canPlace,
-  DEFAULT_SLOT,
-  getPlacement,
+  canPlaceIn,
+  isSelfOrDescendant,
+  slotAccepts,
+  slotsOf,
 } from './placement';
+export type { RemapIdsOptions, RewriteRefs } from './remap';
+export { remapIds } from './remap';
 export type { DefaultValuesOptions } from './defaults';
 export { defaultValuesFor } from './defaults';
 export type { FieldGroup, PaletteGroup, PaletteItem } from './fields';
 export {
   componentOf,
+  DEFAULT_SLOT,
   fieldsOf,
   groupFields,
   groupPaletteItems,
@@ -78,7 +82,6 @@ export type {
 export {
   isEmptyValue,
   missingRequired,
-  slotAccepts,
   validateDocument,
   validateField,
   validateNode,

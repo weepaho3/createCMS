@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { EditorNodes } from '../core/store';
-
+import { flatNodes as nodesOf } from '../core/store/fixtures';
 import {
   adjustMoveIndex,
   blockIdAtPoint,
@@ -10,38 +9,6 @@ import {
 } from './dnd';
 
 const rootId = 'root_1';
-
-function nodesOf(
-  entries: Record<
-    string,
-    {
-      type: string;
-      parentId: string | null;
-      childIds: string[];
-    }
-  >,
-): EditorNodes {
-  const out: Record<
-    string,
-    {
-      id: string;
-      type: string;
-      parentId: string | null;
-      childIds: string[];
-      properties: Record<string, unknown>;
-    }
-  > = {};
-  for (const [id, node] of Object.entries(entries)) {
-    out[id] = {
-      id,
-      type: node.type,
-      parentId: node.parentId,
-      childIds: [...node.childIds],
-      properties: {},
-    };
-  }
-  return out as EditorNodes;
-}
 
 function rect(x: number, y: number, width: number, height: number) {
   return { x, y, width, height };
@@ -55,8 +22,12 @@ describe('adjustMoveIndex same parent earlier to later', () => {
       b: { type: 'cell', parentId: rootId, childIds: [] },
       c: { type: 'cell', parentId: rootId, childIds: [] },
     });
-    expect(adjustMoveIndex(nodes, 'a', rootId, 2)).toBe(1);
-    expect(adjustMoveIndex(nodes, 'a', rootId, 3)).toBe(2);
+    expect(
+      adjustMoveIndex(nodes, 'a', { id: rootId, slot: 'children' }, 2),
+    ).toBe(1);
+    expect(
+      adjustMoveIndex(nodes, 'a', { id: rootId, slot: 'children' }, 3),
+    ).toBe(2);
   });
 });
 
@@ -68,8 +39,12 @@ describe('adjustMoveIndex same parent later to earlier', () => {
       b: { type: 'cell', parentId: rootId, childIds: [] },
       c: { type: 'cell', parentId: rootId, childIds: [] },
     });
-    expect(adjustMoveIndex(nodes, 'c', rootId, 0)).toBe(0);
-    expect(adjustMoveIndex(nodes, 'c', rootId, 1)).toBe(1);
+    expect(
+      adjustMoveIndex(nodes, 'c', { id: rootId, slot: 'children' }, 0),
+    ).toBe(0);
+    expect(
+      adjustMoveIndex(nodes, 'c', { id: rootId, slot: 'children' }, 1),
+    ).toBe(1);
   });
 });
 
@@ -82,7 +57,9 @@ describe('adjustMoveIndex cross parent', () => {
       x: { type: 'cell', parentId: 'sec', childIds: [] },
       y: { type: 'cell', parentId: 'sec', childIds: [] },
     });
-    expect(adjustMoveIndex(nodes, 'a', 'sec', 2)).toBe(2);
+    expect(
+      adjustMoveIndex(nodes, 'a', { id: 'sec', slot: 'children' }, 2),
+    ).toBe(2);
   });
 });
 
@@ -145,7 +122,7 @@ describe('subscribeSession does not fire on setDropTarget', () => {
     dnd.moveGesture({ x: 8, y: 0 }, { kind: 'move', id: 'a' });
     const afterStart = sessionListener.mock.calls.length;
     dnd.setDropTarget({
-      parentId: rootId,
+      parent: { id: rootId, slot: 'children' },
       index: 0,
       orientation: 'horizontal',
       variant: 'box',

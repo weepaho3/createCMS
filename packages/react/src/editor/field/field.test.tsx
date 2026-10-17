@@ -200,7 +200,7 @@ function renderField(name: string, options: FieldTreeOptions = {}) {
   return {
     ...utils,
     store,
-    props: () => store.getState().nodes[blockId]?.properties ?? {},
+    props: () => store.getState().nodes[blockId]?.props ?? {},
     field: () => utils.getByTestId('field'),
   };
 }
@@ -373,10 +373,7 @@ describe('built-in controls', () => {
     fireEvent.change(customs[0] as HTMLInputElement, {
       target: { value: 'X' },
     });
-    expect(probe.store?.getState().nodes[DEMO]?.properties.tags).toEqual([
-      'X',
-      'y',
-    ]);
+    expect(probe.store?.getState().nodes[DEMO]?.props.tags).toEqual(['X', 'y']);
   });
 
   it('emptyListElement: number 0, boolean false, select first option, string empty', () => {
@@ -1060,7 +1057,7 @@ describe('Editor.Form with conditional and read-only fields', () => {
       select.options[0]!.selected = true;
       fireEvent.change(select);
     });
-    expect(store.getState().nodes.h!.properties.flags).toEqual(['new', 'hot']);
+    expect(store.getState().nodes.h!.props.flags).toEqual(['new', 'hot']);
   });
 
   it('renders one nested control per object field and writes the object', () => {
@@ -1072,7 +1069,7 @@ describe('Editor.Form with conditional and read-only fields', () => {
     act(() => {
       fireEvent.change(label, { target: { value: 'Buy' } });
     });
-    expect(store.getState().nodes.h!.properties.cta).toEqual({
+    expect(store.getState().nodes.h!.props.cta).toEqual({
       label: 'Buy',
       size: 2,
     });

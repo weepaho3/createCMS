@@ -113,31 +113,31 @@ creates the session itself and provides it to its children.
 
 ## Types
 
-| Type                         | Description                                                                                       |
-| ---------------------------- | ------------------------------------------------------------------------------------------------- |
-| `CanvasProviderProps`        | Props of `Canvas.Provider`.                                                                       |
-| `CanvasRootProps`            | Props of `Canvas.Root`.                                                                           |
-| `CanvasOverlayProps`         | Props of `Canvas.Overlay`.                                                                        |
-| `CanvasSelectionRingProps`   | Props of `Canvas.SelectionRing`.                                                                  |
-| `CanvasHoverRingProps`       | Props of `Canvas.HoverRing`.                                                                      |
-| `CanvasFieldRingProps`       | Props of `Canvas.FieldRing`.                                                                      |
-| `CanvasRingState`            | `blockType`, `canMove`, `canDelete`, `unresolved` on every ring.                                  |
-| `CanvasRect`                 | `{ x, y, width, height }` in canvas content coordinates.                                          |
-| `CanvasComponents`           | Component type to `CanvasComponent` (props: `id`, `type`, `props`, `children`, `node`, `edit`).   |
-| `CanvasResolve`              | Field kind to `FieldResolver` `(value, field)`; results are cached per kind and value.            |
-| `CanvasInteractive`          | `'edit' \| 'select' \| 'none'`. Default `'edit'`.                                                 |
-| `CanvasSurface`              | `'inline' \| 'frame'`. Default `'inline'`. `'frame'` throws.                                      |
-| `InsertTarget`               | Resolved insert: `parentId`, `index`, `orientation`, `variant`, `rect`, `allowedTypes`, `nested`. |
-| `InsertOrientation`          | `'horizontal'` \| `'vertical'`.                                                                   |
-| `InsertVariant`              | `'line'` \| `'box'`.                                                                              |
-| `ResolveInsertAtOptions`     | Injected rects and row-flow stub for `resolveInsertAt`.                                           |
-| `CanvasBlockToolbarProps`    | Props of `Canvas.BlockToolbar`.                                                                   |
-| `CanvasInsertButtonProps`    | Props of `Canvas.InsertButton`.                                                                   |
-| `PointerStore`               | External pointer snapshot store on the canvas context.                                            |
-| `CanvasInlineTextProps`      | Props of `Canvas.InlineText`.                                                                     |
-| `InlineSuggest`              | Optional `$`-anchored suggest config: `pattern`, `getItems`, `render`.                            |
-| `InlineSuggestItem`          | Suggest row: `insertText` plus consumer fields for `render`.                                      |
-| `InlineSuggestRenderContext` | Suggest UI context: items, highlight, query, anchor rect, `accept`.                               |
+| Type                         | Description                                                                                                                                      |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `CanvasProviderProps`        | Props of `Canvas.Provider`.                                                                                                                      |
+| `CanvasRootProps`            | Props of `Canvas.Root`.                                                                                                                          |
+| `CanvasOverlayProps`         | Props of `Canvas.Overlay`.                                                                                                                       |
+| `CanvasSelectionRingProps`   | Props of `Canvas.SelectionRing`.                                                                                                                 |
+| `CanvasHoverRingProps`       | Props of `Canvas.HoverRing`.                                                                                                                     |
+| `CanvasFieldRingProps`       | Props of `Canvas.FieldRing`.                                                                                                                     |
+| `CanvasRingState`            | `blockType`, `canMove`, `canDelete`, `unresolved` on every ring.                                                                                 |
+| `CanvasRect`                 | `{ x, y, width, height }` in canvas content coordinates.                                                                                         |
+| `CanvasComponents`           | Component type to `CanvasComponent` (props: `id`, `type`, `props`, `children`, `node`, `edit`).                                                  |
+| `CanvasResolve`              | Field kind to `FieldResolver` `(value, field)`; results are cached per kind and value.                                                           |
+| `CanvasInteractive`          | `'edit' \| 'select' \| 'none'`. Default `'edit'`.                                                                                                |
+| `CanvasSurface`              | `'inline' \| 'frame'`. Default `'inline'`. `'frame'` throws.                                                                                     |
+| `InsertTarget`               | Resolved insert: `parent` (`{ id, slot }`), `index`, `orientation`, `variant`, `rect`, `allowedTypes`, `nested`.                                 |
+| `InsertOrientation`          | `'horizontal'` \| `'vertical'`.                                                                                                                  |
+| `InsertVariant`              | `'line'` \| `'box'`.                                                                                                                             |
+| `ResolveInsertAtOptions`     | Injected block rects, slot rects (`getSlotRect(id, slot)`, the element carrying `edit.slot.<name>`) and the row-flow stub for `resolveInsertAt`. |
+| `CanvasBlockToolbarProps`    | Props of `Canvas.BlockToolbar`.                                                                                                                  |
+| `CanvasInsertButtonProps`    | Props of `Canvas.InsertButton`.                                                                                                                  |
+| `PointerStore`               | External pointer snapshot store on the canvas context.                                                                                           |
+| `CanvasInlineTextProps`      | Props of `Canvas.InlineText`.                                                                                                                    |
+| `InlineSuggest`              | Optional `$`-anchored suggest config: `pattern`, `getItems`, `render`.                                                                           |
+| `InlineSuggestItem`          | Suggest row: `insertText` plus consumer fields for `render`.                                                                                     |
+| `InlineSuggestRenderContext` | Suggest UI context: items, highlight, query, anchor rect, `accept`.                                                                              |
 
 ## Data attributes
 
@@ -215,7 +215,7 @@ test files).
 | `anchors.test.ts`              | `slotElements` own-block scoping, a block that is its own slot, readonly skip.                                                                                                                                                                                                                                                    |
 | `rect.test.ts`                 | `unionRects`, visible intersection / overlay clip helpers, readonly skip, nested field key own-block lookup.                                                                                                                                                                                                                      |
 | `overlay.test.tsx`             | Overlay portal into host, `useBlockRect` callable, SelectionRing / FieldRing presence, HoverRing suppression.                                                                                                                                                                                                                     |
-| `insert.test.ts`               | Pure `resolveInsertAt`: column, row, grid wrap, empty box, walk-up `canPlace`, `draggedId` exclusion, globally nearest ancestor.                                                                                                                                                                                                  |
+| `insert.test.ts`               | Pure `resolveInsertAt`: column, row, grid wrap, empty box, walk-up `canPlaceIn`, `draggedId` exclusion, globally nearest ancestor, named slots with slot rects.                                                                                                                                                                   |
 | `toolbar.test.tsx`             | BlockToolbar / InsertButton throw outside Root, selection and `interactive="none"` gating, overlay chrome keeps hover.                                                                                                                                                                                                            |
 | `dnd.test.ts`                  | Pure DnD helpers: `adjustMoveIndex`, `blockIdAtPoint`, store threshold, session vs target subscriptions.                                                                                                                                                                                                                          |
 | `dnd-parts.test.tsx`           | DragHandle / PaletteItem / DropIndicator / DragPreview throw outside Root; preview uses translate3d during drag; overlay handle insets with pointer-events; palette click insert; click no-op when placement fails; click after drag; drag threshold; inline-edit does not block the handle; escape cancel; pointerup off handle. |

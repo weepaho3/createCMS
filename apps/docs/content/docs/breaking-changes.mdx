@@ -88,6 +88,30 @@ re-exports of the old form.
   → **Migration:** import these names from `@createcms/react/editor/core`;
   parts and hooks stay on `@createcms/react/editor`.
 
+- **The store, placement and handles work on named slots.** A node's
+  position is `parent: { id, slot }` and its children live in `slots`
+  (`Record<slot, id[]>`); `EditorNode` / `EditorOp` are replaced by
+  `FlatNode` / `Op` (`insert` instead of `add`, `replace` instead of
+  `load`), and `EditorNodes` is `Record<id, FlatNode>`. `store.add(type,
+  &#123; parentId, properties })` is `add(type, &#123; parent: &#123; id, slot? }, props })`
+  and `store.move(id, parentId, index)` is `move(id, &#123; parent: &#123; id, slot? },
+  index })`. `getPlacement` / `canPlace` / `PlacementIndex` are replaced by
+  `canPlaceIn(schema, nodes, childType, { id, slot })`, which returns
+  `{ ok }` or `{ ok: false, code }`; `allowedChildTypes` takes
+  `(schema, nodes, { id, slot })`. `flattenTree` / `serializeToTree` /
+  `serializeDocument` are `normalize` / `flattenSubtree` / `serializeSubtree`
+  / `denormalize`. Block handles expose `props`, `parent`, `slots` and
+  `setProps` instead of `properties`, `parentId` and `childIds`;
+  `BlockActions.parentId` is `parent`, and the factory's `add` options take
+  `props`. `ContextNode` is `{ type, parent: { id } | null, props }`.
+  `InsertTarget.parentId` is `parent` (a `SlotRef`), and
+  `resolveInsertAt`, `resolveDropTarget` and `adjustMoveIndex` take the
+  schema or a `SlotRef` instead of a placement index or a parent id.
+  → **Migration:** wrap parent ids as `{ id }` (the slot defaults to
+  `children`), rename `properties` to `props`, read `parent?.id` and
+  `slots.children`, and replace `canPlace(index, child, parentType)` with
+  `canPlaceIn(schema, nodes, child, { id, slot: 'children' }).ok`.
+
 - **`richText` fields are not inline editable.**
   `Canvas.InlineText` only opens on `string` fields; a click on a `richText`
   field selects the block and focuses its form control instead of starting a

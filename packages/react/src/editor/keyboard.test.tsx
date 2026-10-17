@@ -63,7 +63,7 @@ describe('useEditorKeyboard', () => {
   it('Ctrl+Z undoes an add and Ctrl+Shift+Z redoes it', () => {
     const { getByTestId, probe } = mount();
     act(() => {
-      probe.store?.add('heading', { parentId: 'root_1' });
+      probe.store?.add('heading', { parent: { id: 'root_1' } });
     });
     expect(probe.store?.getState().nodes.n1).toBeDefined();
     fireEvent.keyDown(getByTestId('scope'), { key: 'z', ctrlKey: true });
@@ -79,7 +79,7 @@ describe('useEditorKeyboard', () => {
   it('Meta+Z undoes like Ctrl+Z', () => {
     const { getByTestId, probe } = mount();
     act(() => {
-      probe.store?.add('heading', { parentId: 'root_1' });
+      probe.store?.add('heading', { parent: { id: 'root_1' } });
     });
     fireEvent.keyDown(getByTestId('scope'), { key: 'z', metaKey: true });
     expect(probe.store?.getState().nodes.n1).toBeUndefined();
@@ -88,7 +88,7 @@ describe('useEditorKeyboard', () => {
   it('Ctrl+Y redoes after an undo', () => {
     const { getByTestId, probe } = mount();
     act(() => {
-      probe.store?.add('heading', { parentId: 'root_1' });
+      probe.store?.add('heading', { parent: { id: 'root_1' } });
     });
     fireEvent.keyDown(getByTestId('scope'), { key: 'z', ctrlKey: true });
     expect(probe.store?.getState().nodes.n1).toBeUndefined();
@@ -99,7 +99,7 @@ describe('useEditorKeyboard', () => {
   it('undo still runs when focus is inside an input', () => {
     const { getByTestId, probe } = mount(undefined, <input data-testid="in" />);
     act(() => {
-      probe.store?.add('heading', { parentId: 'root_1' });
+      probe.store?.add('heading', { parent: { id: 'root_1' } });
     });
     fireEvent.keyDown(getByTestId('in'), { key: 'z', ctrlKey: true });
     expect(probe.store?.getState().nodes.n1).toBeUndefined();
@@ -129,7 +129,7 @@ describe('useEditorKeyboard', () => {
       </Editor.Root>,
     );
     act(() => {
-      probe.store?.add('heading', { parentId: 'root_1' });
+      probe.store?.add('heading', { parent: { id: 'root_1' } });
     });
     fireEvent.keyDown(getByTestId('scope'), { key: 'z', ctrlKey: true });
     expect(probe.store?.getState().nodes.n1).toBeDefined();

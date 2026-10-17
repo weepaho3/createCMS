@@ -1,94 +1,138 @@
-import type { AnyEditorSchema } from './types';
+import type { SlotRef } from '../document';
+import type { AnyEditorSchema, SlotSpec } from './types';
 
-/** The slot every container holds its children in. */
-export const DEFAULT_SLOT = 'children';
+import { componentOf } from './fields';
 
-/**
- * A resolved per-parent acceptance rule for the default slot: `only` from the
- * slot's `allow` list, `except` from its `disallow` list. An open parent has
- * no rule at all.
- */
-export type PlacementRule =
-  | { mode: 'only'; set: Set<string> }
-  | { mode: 'except'; set: Set<string> };
+/** Why a placement is refused. */
+export type PlaceErrorCode =
+  | 'unknown-slot'
+  | 'self-nesting'
+  | 'not-allowed'
+  | 'slot-full';
 
-/**
- * Precomputed placement lookup for one schema.
- *
- * - `rules`: parent type (or `'root'`) → rule; a parent absent here is open.
- * - `containers`: types (including `'root'`) that declare a `children` slot.
- * - `blockTypes`: every component type of the schema, in definition order
- *   (the universe `allowedChildTypes` filters).
- * - `global`: the schema's `canPlace`, checked after the slot rule.
- */
-export type PlacementIndex = {
-  rules: Map<string, PlacementRule>;
-  containers: Set<string>;
-  blockTypes: Set<string>;
-  global?: (childType: string, parentType: string, slot: string) => boolean;
+export type PlaceResult = { ok: true } | { ok: false; code: PlaceErrorCode };
+
+/** What placement reads from a node: its type, where it sits, its slots. */
+export type PlacementNode = {
+  readonly type: string;
+  readonly parent: SlotRef | null;
+  readonly slots: Readonly<Record<string, readonly string[]>>;
 };
 
-/** Builds the {@link PlacementIndex} from a schema's components and slots. */
-export function getPlacement(schema: AnyEditorSchema): PlacementIndex {
-  const rules = new Map<string, PlacementRule>();
-  const containers = new Set<string>();
-  const blockTypes = new Set<string>();
-  const entries: [string, AnyEditorSchema['root']][] = [
-    ['root', schema.root],
-    ...Object.entries(schema.components),
-  ];
-  for (const [type, def] of entries) {
-    if (type !== 'root') blockTypes.add(type);
-    const slot = def.slots?.[DEFAULT_SLOT];
-    if (!slot) continue;
-    containers.add(type);
-    if (slot.allow) {
-      // `allow` wins: a sibling `disallow` is ignored.
-      rules.set(type, { mode: 'only', set: new Set(slot.allow) });
-    } else if (slot.disallow && slot.disallow.length > 0) {
-      rules.set(type, { mode: 'except', set: new Set(slot.disallow) });
-    }
-  }
-  const global = schema.canPlace?.bind(schema);
-  return global
-    ? { rules, containers, blockTypes, global }
-    : { rules, containers, blockTypes };
+/** The slots a component type declares (`'root'` for the root); `{}` when none. */
+export function slotsOf(
+  schema: AnyEditorSchema,
+  type: string,
+): Readonly<Record<string, SlotSpec>> {
+  return componentOf(schema, type)?.slots ?? {};
 }
 
 /**
- * Whether a `childType` node may be placed directly under `parentType`
- * (`'root'` for the top level): the parent must declare a `children` slot,
- * its `allow`/`disallow` rule must admit the child, and the schema's global
- * `canPlace` (when set) must agree.
+ * Whether `childType` passes one slot's rules: `allow` (wins over
+ * `disallow`), `disallow`, the slot's `accept` and the schema's global
+ * `canPlace`. Capacity (`max`) is not checked here.
  */
-export function canPlace(
-  index: PlacementIndex,
+export function slotAccepts(
+  schema: AnyEditorSchema,
+  parent: { id: string; type: string },
+  slot: string,
+  spec: SlotSpec,
   childType: string,
-  parentType: string,
 ): boolean {
-  if (!index.containers.has(parentType)) return false;
-
-  const rule = index.rules.get(parentType);
-  if (rule) {
-    const listed = rule.set.has(childType);
-    if (rule.mode === 'only' ? !listed : listed) return false;
+  if (spec.allow) {
+    if (!spec.allow.includes(childType)) return false;
+  } else if (spec.disallow?.includes(childType)) {
+    return false;
   }
-  return index.global
-    ? index.global(childType, parentType, DEFAULT_SLOT)
-    : true;
+  if (
+    spec.accept &&
+    !spec.accept({
+      childType,
+      parentId: parent.id,
+      parentType: parent.type,
+      slot,
+    })
+  ) {
+    return false;
+  }
+  return schema.canPlace ? schema.canPlace(childType, parent.type, slot) : true;
+}
+
+/** True when `candidate` is `id` itself or lives below it, in any slot. */
+export function isSelfOrDescendant(
+  nodes: Readonly<Record<string, PlacementNode>>,
+  id: string,
+  candidate: string,
+): boolean {
+  for (
+    let p: string | null = candidate;
+    p !== null;
+    p = nodes[p]?.parent?.id ?? null
+  ) {
+    if (p === id) return true;
+  }
+  return false;
 }
 
 /**
- * The component types `parentType` (or `'root'`) accepts as children, in
- * schema definition order (the palette filter). `[]` for a non-container.
+ * Whether a `childType` node may go into `parent.slot`. Checked in order: the
+ * parent exists and declares the slot (`unknown-slot`), a moved node does not
+ * go into its own subtree (`self-nesting`, pass `movingId`), the slot rules
+ * admit the type (`not-allowed`), and the slot has room below its `max`
+ * (`slot-full`; a node moved within the same slot does not count twice).
+ * `min` is a validation rule, not a placement rule.
+ */
+export function canPlaceIn(
+  schema: AnyEditorSchema,
+  nodes: Readonly<Record<string, PlacementNode>>,
+  childType: string,
+  parent: SlotRef,
+  options: { movingId?: string } = {},
+): PlaceResult {
+  const parentNode = nodes[parent.id];
+  if (!parentNode) return { ok: false, code: 'unknown-slot' };
+  const spec = slotsOf(schema, parentNode.type)[parent.slot];
+  if (!spec) return { ok: false, code: 'unknown-slot' };
+  if (
+    options.movingId !== undefined &&
+    isSelfOrDescendant(nodes, options.movingId, parent.id)
+  ) {
+    return { ok: false, code: 'self-nesting' };
+  }
+  if (
+    !slotAccepts(
+      schema,
+      { id: parent.id, type: parentNode.type },
+      parent.slot,
+      spec,
+      childType,
+    )
+  ) {
+    return { ok: false, code: 'not-allowed' };
+  }
+  if (typeof spec.max === 'number') {
+    const list = parentNode.slots[parent.slot] ?? [];
+    const count =
+      options.movingId !== undefined && list.includes(options.movingId)
+        ? list.length - 1
+        : list.length;
+    if (count >= spec.max) return { ok: false, code: 'slot-full' };
+  }
+  return { ok: true };
+}
+
+/**
+ * The component types `parent.slot` accepts right now, in schema definition
+ * order (the palette, inserter and keyboard drag filter). A full slot
+ * accepts nothing.
  */
 export function allowedChildTypes(
-  index: PlacementIndex,
-  parentType: string,
+  schema: AnyEditorSchema,
+  nodes: Readonly<Record<string, PlacementNode>>,
+  parent: SlotRef,
+  options: { movingId?: string } = {},
 ): string[] {
-  const out: string[] = [];
-  for (const childType of index.blockTypes) {
-    if (canPlace(index, childType, parentType)) out.push(childType);
-  }
-  return out;
+  return Object.keys(schema.components).filter(
+    (type) => canPlaceIn(schema, nodes, type, parent, options).ok,
+  );
 }

@@ -5,12 +5,10 @@ import type { UseRenderComponentProps } from '../../use-render';
 import { useRender } from '../../use-render';
 import { useEditorSelector } from '../binding';
 import { useEditorContext } from '../context';
-import { canPlace } from '../core/schema';
-import { placementOf, useBlockActions } from '../hooks';
+import { canPlaceIn } from '../core/schema';
 import { useCanvasContext } from './context';
 import {
   type InsertTarget,
-  parentTypeOf,
   resolveInsertAt,
   type InsertOrientation,
 } from './insert';
@@ -28,7 +26,8 @@ function sameTarget(a: InsertTarget, b: InsertTarget): boolean {
   const ar = a.rect;
   const br = b.rect;
   return (
-    a.parentId === b.parentId &&
+    a.parent.id === b.parent.id &&
+    a.parent.slot === b.parent.slot &&
     a.index === b.index &&
     ar.x === br.x &&
     ar.y === br.y &&
@@ -49,7 +48,6 @@ export function useInsertTarget(options?: {
     (s) => s.selection[userId]?.hovered ?? null,
   );
 
-  const placement = placementOf(schema);
   const { measurer, host, pointer, interactive, dragging, editing } = canvas;
   const pointerSnap = React.useSyncExternalStore(
     pointer ? pointer.subscribe : subscribeNoop,
@@ -75,8 +73,8 @@ export function useInsertTarget(options?: {
   const adapters = createInsertAdapters(host, measurer, nodes, rootId);
 
   const next = resolveInsertAt(
+    schema,
     nodes,
-    placement,
     rootId,
     hovered,
     pointerSnap.x,
@@ -85,6 +83,7 @@ export function useInsertTarget(options?: {
       draggedType: options?.type,
       draggedId: options?.draggedId,
       getRect: adapters.getRect,
+      getSlotRect: adapters.getSlotRect,
       isRowFlow: adapters.isRowFlow,
     },
   );
@@ -237,10 +236,7 @@ export function CanvasInsertButton({
   useCanvasContext('Canvas.InsertButton');
   const ctx = useEditorContext('Canvas.InsertButton');
   const target = useInsertTarget();
-  const rootId = useEditorSelector((s) => s.rootId);
   const nodes = useEditorSelector((s) => s.nodes);
-  const actions = useBlockActions(target?.parentId ?? '');
-  const placementIndex = placementOf(ctx.schema);
 
   const active =
     target !== null &&
@@ -248,13 +244,10 @@ export function CanvasInsertButton({
       ? target.variant === 'line'
       : target.variant === 'box');
 
-  const pType = target ? parentTypeOf(nodes, rootId, target.parentId) : null;
   const disabled =
     target !== null &&
     type !== undefined &&
-    (pType === null ||
-      !canPlace(placementIndex, type, pType) ||
-      nodes[target.parentId] === undefined);
+    !canPlaceIn(ctx.schema, nodes, type, target.parent).ok;
 
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (target === null) return;
@@ -262,7 +255,7 @@ export function CanvasInsertButton({
     if (event.defaultPrevented) return;
     if (type) {
       ctx.store.add(type, {
-        parentId: target.parentId,
+        parent: target.parent,
         index: target.index,
       });
     } else {
@@ -270,7 +263,7 @@ export function CanvasInsertButton({
     }
   };
 
-  const allowedTypes = [...actions.allowedChildTypes];
+  const allowedTypes = target ? [...target.allowedTypes] : [];
 
   const element = useRender<'button', InsertButtonState>({
     defaultTagName: 'button',

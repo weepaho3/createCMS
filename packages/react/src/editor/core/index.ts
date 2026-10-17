@@ -30,7 +30,7 @@ export type { EditAttrs, EditProps, EditRef } from './edit';
 export { NO_EDIT } from './edit';
 
 // Schema: fields, components, placement, defaults, validation, visibility,
-// responsive and localized values, JSON Schema export.
+// responsive and localized values, remapping, JSON Schema export.
 export type {
   AnyComponentDef,
   AnyEditorSchema,
@@ -79,18 +79,26 @@ export type {
 } from './schema/types';
 export { defineComponent, defineEditorSchema } from './schema/types';
 export type { StandardSchemaV1 } from './schema/standard-schema';
-export type { PlacementIndex, PlacementRule } from './schema/placement';
+export type {
+  PlaceErrorCode,
+  PlacementNode,
+  PlaceResult,
+} from './schema/placement';
 export {
   allowedChildTypes,
-  canPlace,
-  DEFAULT_SLOT,
-  getPlacement,
+  canPlaceIn,
+  isSelfOrDescendant,
+  slotAccepts,
+  slotsOf,
 } from './schema/placement';
+export type { RemapIdsOptions, RewriteRefs } from './schema/remap';
+export { remapIds } from './schema/remap';
 export type { DefaultValuesOptions } from './schema/defaults';
 export { defaultValuesFor } from './schema/defaults';
 export type { FieldGroup, PaletteGroup, PaletteItem } from './schema/fields';
 export {
   componentOf,
+  DEFAULT_SLOT,
   fieldsOf,
   groupFields,
   groupPaletteItems,
@@ -111,7 +119,6 @@ export type {
 export {
   isEmptyValue,
   missingRequired,
-  slotAccepts,
   validateDocument,
   validateField,
   validateNode,
@@ -136,31 +143,32 @@ export type {
 } from './schema/json-schema';
 export { exportJsonSchema } from './schema/json-schema';
 
-// Store: ops, inverse ops, history, applyRemote.
+// Store: ops, inverse ops, history, applyRemote, serde.
 export type {
   AddOptions,
   ApplyRemoteResult,
-  ApplyResult,
   CreateEditorStoreOptions,
   EditorCallbacks,
   EditorChange,
-  EditorNode,
   EditorNodes,
-  EditorOp,
   EditorStore,
   EditorStoreState,
   FieldRef,
   HistoryEntry,
+  MoveTarget,
+  SlotTarget,
   UpdateOptions,
   UserSelection,
-} from './store';
+} from './store/types';
+export type { ApplyResult } from './store/ops';
+export { applyOp } from './store/ops';
+export { COALESCE_MS, createEditorStore } from './store/store';
+export type { SlotOrder } from './store/serde';
 export {
-  COALESCE_MS,
-  applyOp,
-  createBlockId,
-  createEditorStore,
-  flattenTree,
-  serializeDocument,
-  serializeToTree,
-  stableHash,
-} from './store';
+  denormalize,
+  flattenSubtree,
+  normalize,
+  serializeSubtree,
+} from './store/serde';
+export { stableHash } from './store/hash';
+export { createBlockId } from './store/id';

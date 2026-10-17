@@ -1,28 +1,24 @@
 import * as React from 'react';
 
 import type { EditorSelector } from './binding';
+import type { FlatNode, SlotRef } from './core/document';
 import type {
   AnyEditorSchema,
   Field,
   MissingRequiredField,
   PaletteItem,
-  PlacementIndex,
   SchemaField,
 } from './core/schema';
-import type {
-  EditorNode,
-  EditorStore,
-  UpdateOptions,
-  UserSelection,
-} from './core/store';
+import type { EditorStore, UpdateOptions, UserSelection } from './core/store';
 import type { EditorScrollToOptions } from './scroll';
 
 import { useStoreSelector } from './binding';
 import { useEditorContext } from './context';
 import {
   allowedChildTypes,
-  getPlacement,
+  DEFAULT_SLOT,
   missingRequired,
+  slotsOf,
   paletteItems,
   componentOf,
   createFieldResolver,
@@ -90,17 +86,19 @@ export type AnyFieldHandle = {
   set(value: unknown, options?: UpdateOptions): void;
 };
 
-/** A block with its data, its property specs and setters. */
+/** A block with its data, its field definitions and setters. */
 export type AnyBlockHandle = {
   readonly id: string;
   readonly type: string;
-  readonly properties: Readonly<Record<string, unknown>>;
-  readonly parentId: string | null;
-  readonly childIds: readonly string[];
-  /** Property specs of this block's type (`'root'` → the root's). */
+  readonly props: Readonly<Record<string, unknown>>;
+  /** Where the block sits; `null` for the root. */
+  readonly parent: SlotRef | null;
+  /** Child ids per slot, in order. */
+  readonly slots: Readonly<Record<string, readonly string[]>>;
+  /** Field definitions of this block's type (`'root'` → the root's). */
   readonly spec: Record<string, Field>;
   set(key: string, value: unknown, options?: UpdateOptions): void;
-  setProperties(patch: Record<string, unknown>, options?: UpdateOptions): void;
+  setProps(patch: Record<string, unknown>, options?: UpdateOptions): void;
   field(key: string): AnyFieldHandle;
 };
 
@@ -120,19 +118,24 @@ export type ChildRef = {
 export type BlockActions = {
   readonly id: string;
   readonly type: string | null;
-  readonly parentId: string | null;
-  /** Position among the siblings; `-1` for the root or an unknown id. */
+  /** Where the block sits; `null` for the root or an unknown id. */
+  readonly parent: SlotRef | null;
+  /** Position in its slot; `-1` for the root or an unknown id. */
   readonly index: number;
   readonly canMoveUp: boolean;
   readonly canMoveDown: boolean;
-  /** Whether the block may hold children at all (root: always). */
+  /** Whether the block has a `children` slot. */
   readonly canHaveChildren: boolean;
-  /** Block types this block accepts as children, in definition order. */
+  /** Types the block's `children` slot accepts right now, in definition order. */
   readonly allowedChildTypes: readonly string[];
-  /** Inserts a child of `type` under this block (append by default). */
+  /** Inserts a child of `type` into `slot` (default `children`), appended by default. */
   add(
     type: string,
-    options?: { index?: number; properties?: Record<string, unknown> },
+    options?: {
+      slot?: string;
+      index?: number;
+      props?: Record<string, unknown>;
+    },
   ): string | null;
   remove(): boolean;
   duplicate(): string | null;
@@ -143,20 +146,20 @@ export type BlockActions = {
 function makeBlockHandle(
   store: EditorStore,
   schema: AnyEditorSchema,
-  node: EditorNode,
+  node: FlatNode,
 ): AnyBlockHandle {
   const spec = fieldsOf(schema, node.type);
   return {
     id: node.id,
     type: node.type,
-    properties: node.properties,
-    parentId: node.parentId,
-    childIds: node.childIds,
+    props: node.props,
+    parent: node.parent,
+    slots: node.slots,
     spec,
     set(key, value, options) {
       store.update(node.id, { [key]: value }, options);
     },
-    setProperties(patch, options) {
+    setProps(patch, options) {
       store.update(node.id, patch, options);
     },
     field(key) {
@@ -164,7 +167,7 @@ function makeBlockHandle(
         blockId: node.id,
         key,
         spec: spec[key],
-        value: node.properties[key],
+        value: node.props[key],
         set(value, options) {
           store.update(node.id, { [key]: value }, options);
         },
@@ -190,7 +193,7 @@ export function useAnyField(blockId: string, key: string): AnyFieldHandle {
   const ctx = useEditorContext('useAnyField');
   const slice = useStoreSelector(ctx.store, (state) => {
     const node = state.nodes[blockId];
-    return { type: node?.type ?? null, value: node?.properties[key] };
+    return { type: node?.type ?? null, value: node?.props[key] };
   });
   return React.useMemo<AnyFieldHandle>(
     () => ({
@@ -229,7 +232,7 @@ export function useFields(blockId: string): SchemaField[] {
       (id) => state.nodes[id],
       blockId,
     );
-    return resolver(def, node.properties, fieldCtx);
+    return resolver(def, node.props, fieldCtx);
   });
   return React.useMemo(
     () =>
@@ -255,15 +258,15 @@ function sameChildren(a: readonly ChildRef[], b: readonly ChildRef[]): boolean {
 }
 
 /**
- * The children of `parentId` in order as `{ id, type, index }`; the same
- * array reference until ids or types change.
+ * The children in slot `slot` of `parentId` in order as `{ id, type, index }`;
+ * the same array reference until ids or types in that slot change.
  */
-export function useChildren(parentId: string): readonly ChildRef[] {
-  const ctx = useEditorContext('useChildren');
+export function useSlot(parentId: string, slot: string): readonly ChildRef[] {
+  const ctx = useEditorContext('useSlot');
   return useStoreSelector(
     ctx.store,
     (state) => {
-      const ids = state.nodes[parentId]?.childIds;
+      const ids = state.nodes[parentId]?.slots[slot];
       if (!ids || ids.length === 0) return EMPTY_CHILDREN;
       return ids.map((id, index) => ({
         id,
@@ -275,63 +278,101 @@ export function useChildren(parentId: string): readonly ChildRef[] {
   );
 }
 
-const placementCache = new WeakMap<AnyEditorSchema, PlacementIndex>();
+/** The children of `parentId`'s default slot (`children`); see {@link useSlot}. */
+export function useChildren(parentId: string): readonly ChildRef[] {
+  return useSlot(parentId, DEFAULT_SLOT);
+}
 
-/** `getPlacement(schema)`, built once per schema object. */
-export function placementOf(schema: AnyEditorSchema): PlacementIndex {
-  let index = placementCache.get(schema);
-  if (!index) {
-    index = getPlacement(schema);
-    placementCache.set(schema, index);
-  }
-  return index;
+const EMPTY_NAMES: readonly string[] = [];
+
+function sameNames(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((name, i) => name === b[i]);
+}
+
+/**
+ * The slot names of block `parentId`: the slots its component declares in
+ * declaration order, then any other slot the node holds, alphabetically.
+ */
+export function useSlots(parentId: string): readonly string[] {
+  const ctx = useEditorContext('useSlots');
+  return useStoreSelector(
+    ctx.store,
+    (state) => {
+      const node = state.nodes[parentId];
+      if (!node) return EMPTY_NAMES;
+      const declared = Object.keys(slotsOf(ctx.schema, node.type));
+      const extra = Object.keys(node.slots)
+        .filter((name) => !declared.includes(name))
+        .sort();
+      const names = [...declared, ...extra];
+      return names.length === 0 ? EMPTY_NAMES : names;
+    },
+    sameNames,
+  );
 }
 
 /**
  * The structural actions of block `id` (see {@link BlockActions});
- * re-renders when its type, parent or sibling position changes.
+ * re-renders when its type, parent, position or allowed child types change.
  */
 export function useBlockActions(id: string): BlockActions {
   const ctx = useEditorContext('useBlockActions');
-  const slice = useStoreSelector(ctx.store, (state) => {
-    const node = state.nodes[id];
-    if (!node) return { type: null, parentId: null, index: -1, siblings: 0 };
-    const parent = node.parentId === null ? null : state.nodes[node.parentId];
-    return {
-      type: node.type,
-      parentId: node.parentId,
-      index: parent ? parent.childIds.indexOf(id) : -1,
-      siblings: parent ? parent.childIds.length : 0,
-    };
-  });
-  const placement = placementOf(ctx.schema);
+  const slice = useStoreSelector(
+    ctx.store,
+    (state) => {
+      const node = state.nodes[id];
+      if (!node) {
+        return {
+          type: null,
+          parent: null,
+          index: -1,
+          siblings: 0,
+          allowed: EMPTY_NAMES,
+        };
+      }
+      const parent = node.parent;
+      const siblings = parent
+        ? (state.nodes[parent.id]?.slots[parent.slot] ?? [])
+        : [];
+      return {
+        type: node.type,
+        parent,
+        index: parent ? siblings.indexOf(id) : -1,
+        siblings: siblings.length,
+        allowed: allowedChildTypes(ctx.schema, state.nodes, {
+          id,
+          slot: DEFAULT_SLOT,
+        }),
+      };
+    },
+    (a, b) =>
+      a.type === b.type &&
+      a.parent === b.parent &&
+      a.index === b.index &&
+      a.siblings === b.siblings &&
+      sameNames(a.allowed, b.allowed),
+  );
   return React.useMemo<BlockActions>(() => {
-    const { type, parentId, index, siblings } = slice;
+    const { type, parent, index, siblings, allowed } = slice;
     const store = ctx.store;
-    const isRoot = type !== null && parentId === null;
-    const placementType = isRoot ? 'root' : type;
-    const canHaveChildren =
-      placementType !== null &&
-      (placementType === 'root' || placement.containers.has(placementType));
+    const isRoot = type !== null && parent === null;
     return {
       id,
       type,
-      parentId,
+      parent,
       index,
       canMoveUp: type !== null && !isRoot && index > 0,
       canMoveDown:
         type !== null && !isRoot && index >= 0 && index < siblings - 1,
-      canHaveChildren,
-      allowedChildTypes:
-        placementType === null
-          ? []
-          : allowedChildTypes(placement, placementType),
+      canHaveChildren:
+        type !== null && DEFAULT_SLOT in slotsOf(ctx.schema, type),
+      allowedChildTypes: allowed,
       add(childType, options) {
         if (type === null) return null;
         return store.add(childType, {
-          parentId: id,
+          parent: { id, slot: options?.slot },
           index: options?.index,
-          properties: options?.properties,
+          props: options?.props,
         });
       },
       remove() {
@@ -341,25 +382,16 @@ export function useBlockActions(id: string): BlockActions {
         return type === null || isRoot ? null : store.duplicate(id);
       },
       moveUp() {
-        if (type === null || isRoot || parentId === null || index <= 0) {
-          return false;
-        }
-        return store.move(id, parentId, index - 1);
+        if (type === null || parent === null || index <= 0) return false;
+        return store.move(id, { parent, index: index - 1 });
       },
       moveDown() {
-        if (
-          type === null ||
-          isRoot ||
-          parentId === null ||
-          index < 0 ||
-          index >= siblings - 1
-        ) {
-          return false;
-        }
-        return store.move(id, parentId, index + 1);
+        if (type === null || parent === null || index < 0) return false;
+        if (index >= siblings - 1) return false;
+        return store.move(id, { parent, index: index + 1 });
       },
     };
-  }, [ctx.store, id, slice, placement]);
+  }, [ctx.store, ctx.schema, id, slice]);
 }
 
 /** The selection of `userId` (default: this editor's user). */

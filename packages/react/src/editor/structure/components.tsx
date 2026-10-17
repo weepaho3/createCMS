@@ -4,15 +4,18 @@ import type { EditorNodes } from '../core/store';
 import type {
   AddBlockState,
   EditorAddBlockProps,
+  EditorOutlineGroupProps,
   EditorOutlineItemProps,
+  OutlineGroupState,
   OutlineItemState,
 } from './types';
 
 import { useRender } from '../../use-render';
 import { useEditorSelector } from '../binding';
 import { useEditorContext } from '../context';
-import { canPlace } from '../core/schema';
-import { placementOf, useBlockActions } from '../hooks';
+import { canPlaceIn, DEFAULT_SLOT, slotsOf } from '../core/schema';
+import { useBlockActions } from '../hooks';
+import { insertPointFor } from './insert-point';
 
 const TREE_ITEM = '[role="treeitem"]';
 
@@ -44,9 +47,9 @@ function neighbourOf(el: HTMLElement): HTMLElement | null {
 function depthOf(nodes: EditorNodes, id: string): number {
   let depth = 0;
   let current = nodes[id];
-  while (current && current.parentId !== null) {
+  while (current && current.parent !== null) {
     depth += 1;
-    current = nodes[current.parentId];
+    current = nodes[current.parent.id];
   }
   return depth;
 }
@@ -58,10 +61,12 @@ export function EditorOutlineItem(props: EditorOutlineItemProps) {
   const slice = useEditorSelector((state) => {
     const node = state.nodes[blockId];
     const selection = state.selection[ctx.userId];
-    const rootChildren = state.nodes[state.rootId]?.childIds ?? [];
+    const rootChildren = state.nodes[state.rootId]?.slots[DEFAULT_SLOT] ?? [];
     return {
       type: node?.type ?? null,
-      hasChildren: (node?.childIds.length ?? 0) > 0,
+      hasChildren: node
+        ? Object.values(node.slots).some((ids) => ids.length > 0)
+        : false,
       depth: node ? depthOf(state.nodes, blockId) : 0,
       selected: selection?.selected === blockId,
       nothingSelected: !selection || selection.selected === null,
@@ -172,42 +177,40 @@ export function EditorOutlineItem(props: EditorOutlineItemProps) {
 }
 
 export function EditorAddBlock(props: EditorAddBlockProps) {
-  const { type, parentId, index, render, onClick, children, ...rest } = props;
+  const { type, parentId, slot, index, render, onClick, children, ...rest } =
+    props;
   const ctx = useEditorContext('Editor.AddBlock');
-  const placement = placementOf(ctx.schema);
-  const target = useEditorSelector((state) => {
-    if (parentId !== undefined) {
-      const parent = state.nodes[parentId];
-      return { parentId, parentType: parent?.type ?? null, index };
-    }
-    const selectedId = state.selection[ctx.userId]?.selected ?? null;
-    const selected = selectedId === null ? null : state.nodes[selectedId];
-    if (selected && canPlace(placement, type, selected.type)) {
-      return {
-        parentId: selected.id,
-        parentType: selected.type,
-        index,
-      };
-    }
-    if (selected && selected.parentId !== null) {
-      const parent = state.nodes[selected.parentId];
-      const at = parent ? parent.childIds.indexOf(selected.id) + 1 : undefined;
-      return {
-        parentId: selected.parentId,
-        parentType: parent?.type ?? null,
-        index: index ?? at,
-      };
-    }
-    return { parentId: state.rootId, parentType: 'root', index };
-  });
-  const disabled =
-    target.parentType === null || !canPlace(placement, type, target.parentType);
+  const target = useEditorSelector(
+    (state) => {
+      if (parentId !== undefined) {
+        const parent = { id: parentId, slot: slot ?? DEFAULT_SLOT };
+        return {
+          parent,
+          index,
+          allowed: canPlaceIn(ctx.schema, state.nodes, type, parent).ok,
+        };
+      }
+      const point = insertPointFor(
+        ctx.schema,
+        state.nodes,
+        state.rootId,
+        state.selection[ctx.userId]?.selected ?? null,
+        type,
+      );
+      return { ...point, index: index ?? point.index };
+    },
+    (a, b) =>
+      a.parent.id === b.parent.id &&
+      a.parent.slot === b.parent.slot &&
+      a.index === b.index &&
+      a.allowed === b.allowed,
+  );
   const label = children ?? ctx.schema.components[type]?.label ?? type;
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     onClick?.(event);
     if (event.defaultPrevented) return;
     const id = ctx.store.add(type, {
-      parentId: target.parentId,
+      parent: target.parent,
       index: target.index,
     });
     if (id) ctx.store.select(id);
@@ -216,12 +219,33 @@ export function EditorAddBlock(props: EditorAddBlockProps) {
     defaultTagName: 'button',
     props: {
       type: 'button',
-      disabled,
+      disabled: !target.allowed,
       onClick: handleClick,
       children: label,
       ...rest,
     },
     render,
     state: { blockType: type },
+  });
+}
+
+/**
+ * Groups the outline rows of one slot of a block: `role="group"` labelled
+ * by the slot's `label` (or its name). Render it per slot when a block has
+ * more than one.
+ */
+export function EditorOutlineGroup(props: EditorOutlineGroupProps) {
+  const { blockId, slot, render, ...rest } = props;
+  const ctx = useEditorContext('Editor.OutlineGroup');
+  const label = useEditorSelector((state) => {
+    const node = state.nodes[blockId];
+    if (!node) return slot;
+    return slotsOf(ctx.schema, node.type)[slot]?.label ?? slot;
+  });
+  return useRender<'div', OutlineGroupState>({
+    defaultTagName: 'div',
+    props: { role: 'group', 'aria-label': label, ...rest },
+    render,
+    state: { slot, blockId },
   });
 }
