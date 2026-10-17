@@ -6,8 +6,11 @@ import type { FlatNode } from '../core/document';
 import type { CanvasRect } from './rect';
 
 import { useRender } from '../../use-render';
-import { useEditorSelector } from '../binding';
-import { useEditorContext } from '../context';
+import {
+  useDocSelector,
+  useSessionSelector,
+  useEphemeralSelector,
+} from '../binding';
 import { blockElements } from './anchors';
 import { useCanvasContext } from './context';
 import { useBlockRect, useFieldRect } from './rects';
@@ -156,11 +159,8 @@ export function CanvasSelectionRing({
   ...rest
 }: CanvasSelectionRingProps) {
   const canvas = useCanvasContext('Canvas.SelectionRing');
-  const { userId } = useEditorContext('Canvas.SelectionRing');
-  const selected = useEditorSelector(
-    (s) => s.selection[userId]?.selected ?? null,
-  );
-  const node = useEditorSelector((s) =>
+  const selected = useSessionSelector((s) => s.selection[0] ?? null);
+  const node = useDocSelector((s) =>
     selected ? (s.nodes[selected] ?? null) : null,
   );
   const rect = useBlockRect(selected ?? '');
@@ -185,14 +185,9 @@ export function CanvasHoverRing({
   ...rest
 }: CanvasHoverRingProps) {
   const canvas = useCanvasContext('Canvas.HoverRing');
-  const { userId } = useEditorContext('Canvas.HoverRing');
-  const hovered = useEditorSelector(
-    (s) => s.selection[userId]?.hovered ?? null,
-  );
-  const selected = useEditorSelector(
-    (s) => s.selection[userId]?.selected ?? null,
-  );
-  const node = useEditorSelector((s) =>
+  const hovered = useEphemeralSelector((s) => s.hoverId);
+  const selected = useSessionSelector((s) => s.selection[0] ?? null);
+  const node = useDocSelector((s) =>
     hovered ? (s.nodes[hovered] ?? null) : null,
   );
   const rect = useBlockRect(hovered ?? '');
@@ -219,9 +214,8 @@ export function CanvasFieldRing({
   ...rest
 }: CanvasFieldRingProps) {
   const canvas = useCanvasContext('Canvas.FieldRing');
-  const { userId } = useEditorContext('Canvas.FieldRing');
-  const focus = useEditorSelector((s) => s.selection[userId]?.focus ?? null);
-  const node = useEditorSelector((s) =>
+  const focus = useSessionSelector((s) => s.focusedField);
+  const node = useDocSelector((s) =>
     focus ? (s.nodes[focus.blockId] ?? null) : null,
   );
   const rect = useFieldRect(focus?.blockId ?? '', focus?.key ?? '');

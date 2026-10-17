@@ -111,10 +111,6 @@ const badOpts: UseCmsDocumentOptions = {
 void badOpts;
 
 declare const doc: import('./types').UseCmsDocumentResult;
-// `doc.save` is assignable to Editor.Root's `onSave`.
-declare const onSave: (
-  doc: import('../core').EditorDocument,
-  meta?: { message?: string },
-) => void | Promise<void>;
-const savePin: typeof onSave = doc.save;
-void savePin;
+// `doc.persistence` is what Editor.Root's `persistence` takes.
+const persistencePin: import('../core').PersistenceOptions = doc.persistence;
+void persistencePin;

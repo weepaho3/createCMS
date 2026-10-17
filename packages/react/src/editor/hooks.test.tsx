@@ -4,7 +4,8 @@ import type * as React from 'react';
 import { act, cleanup, render, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { EditorRootProps } from './components';
+import type { EditorRootOwnStoreProps } from './components';
+import type { PersistenceOptions } from './core/store';
 import type { EditorApi } from './hooks';
 
 import { defineEditorSchema } from './core/schema';
@@ -19,6 +20,7 @@ import {
   useHistory,
   usePalette,
   useSave,
+  useHovered,
   useSelection,
   useSlot,
   useSlots,
@@ -28,7 +30,9 @@ import { Editor } from './index';
 afterEach(cleanup);
 
 function makeWrapper(
-  overrides: Partial<Pick<EditorRootProps, 'onChange' | 'onSave'>> = {},
+  overrides: Partial<
+    Pick<EditorRootOwnStoreProps, 'onChange' | 'persistence'>
+  > = {},
 ) {
   const genId = counterGenId();
   return ({ children }: { children: React.ReactNode }) => (
@@ -37,7 +41,7 @@ function makeWrapper(
       defaultValue={makeDoc()}
       genId={genId}
       onChange={overrides.onChange}
-      onSave={overrides.onSave}
+      persistence={overrides.persistence}
     >
       {children}
     </Editor.Root>
@@ -54,19 +58,18 @@ describe('useEditor', () => {
     expect(result.current).toBe(first);
   });
 
-  it("exposes schema, userId: 'local', store, and working actions", () => {
+  it('exposes schema, store, and working actions', () => {
     const { result } = renderHook(() => useEditor(), {
       wrapper: makeWrapper(),
     });
     expect(result.current.schema).toBe(storeSchema);
-    expect(result.current.userId).toBe('local');
-    expect(typeof result.current.store.getState).toBe('function');
+    expect(typeof result.current.store.getDoc).toBe('function');
     let id: string | null = null;
     act(() => {
       id = result.current.add('heading', { parent: { id: 'root_1' } });
     });
     expect(id).toBe('n1');
-    expect(result.current.getState().nodes.n1).toBeDefined();
+    expect(result.current.getDoc().nodes.n1).toBeDefined();
   });
 });
 
@@ -405,7 +408,7 @@ describe('useBlockActions', () => {
       moved = result.current.actions.moveDown();
     });
     expect(moved).toBe(true);
-    expect(result.current.api.getState().nodes.root_1?.slots.children).toEqual([
+    expect(result.current.api.getDoc().nodes.root_1?.slots.children).toEqual([
       'sec1',
       'h1',
     ]);
@@ -433,7 +436,7 @@ describe('useBlockActions', () => {
       removed = result.current.actions.remove();
     });
     expect(removed).toBe(true);
-    expect(result.current.api.getState().nodes.p1).toBeUndefined();
+    expect(result.current.api.getDoc().nodes.p1).toBeUndefined();
   });
 
   it('duplicate() on h1 returns a new id right after h1', () => {
@@ -446,7 +449,7 @@ describe('useBlockActions', () => {
       id = result.current.actions.duplicate();
     });
     expect(id).toBe('n1');
-    expect(result.current.api.getState().nodes.root_1?.slots.children).toEqual([
+    expect(result.current.api.getDoc().nodes.root_1?.slots.children).toEqual([
       'h1',
       'n1',
       'sec1',
@@ -522,7 +525,7 @@ describe('useSelection', () => {
     });
     expect(result.current).toEqual({
       selected: null,
-      hovered: null,
+      selection: [],
       focus: null,
       editing: null,
     });
@@ -539,20 +542,26 @@ describe('useSelection', () => {
     expect(result.current.selection.selected).toBe('h1');
   });
 
-  it("setUserSelection('u2', …) updates useSelection('u2') and leaves the local selection unchanged", () => {
+  it('useHovered follows hover without re-rendering useSelection readers', () => {
+    let selectionRenders = 0;
     const { result } = renderHook(
       () => ({
         api: useEditor(),
-        local: useSelection(),
-        u2: useSelection('u2'),
+        hovered: useHovered(),
+        selection: (() => {
+          selectionRenders++;
+          return useSelection();
+        })(),
       }),
       { wrapper: makeWrapper() },
     );
+    const before = result.current.selection;
     act(() => {
-      result.current.api.setUserSelection('u2', { selected: 'p1' });
+      result.current.api.hover('h1');
     });
-    expect(result.current.u2.selected).toBe('p1');
-    expect(result.current.local.selected).toBeNull();
+    expect(result.current.hovered).toBe('h1');
+    expect(result.current.selection).toBe(before);
+    expect(selectionRenders).toBeGreaterThan(0);
   });
 });
 
@@ -586,7 +595,7 @@ describe('useHistory', () => {
     act(() => {
       result.current.history.undo();
     });
-    expect(result.current.api.getState().nodes.n1).toBeUndefined();
+    expect(result.current.api.getDoc().nodes.n1).toBeUndefined();
     expect(result.current.history.canRedo).toBe(true);
   });
 });
@@ -610,29 +619,34 @@ describe('useSave / useDirty', () => {
     expect(result.current.save.dirty).toBe(true);
   });
 
-  it("save({ message: 'm' }) calls the Root's onSave with (tree, { message: 'm' }), is saving during the call, then clears dirty", async () => {
-    const onSave = vi.fn();
+  it('save() goes through persistence with the ops and base version, then clears dirty', async () => {
+    const save = vi.fn<PersistenceOptions['save']>(async () => ({
+      version: 'v2',
+    }));
     const { result } = renderHook(
       () => ({ api: useEditor(), save: useSave() }),
-      { wrapper: makeWrapper({ onSave }) },
+      {
+        wrapper: makeWrapper({
+          persistence: { save, baseVersion: 'v1', autosave: false },
+        }),
+      },
     );
-    let sawSavingDuringCall = false;
-    onSave.mockImplementation(async (doc, meta) => {
-      // The store's own state (not the last React render, which has not
-      // flushed yet at this synchronous point) reflects `saving` correctly.
-      sawSavingDuringCall = result.current.api.getState().saving;
-      expect(meta).toEqual({ message: 'm' });
-      expect(doc.root.id).toBe('root_1');
-    });
     act(() => {
       result.current.api.update('h1', { text: 'X' });
     });
     await act(async () => {
       await result.current.save.save({ message: 'm' });
     });
-    expect(onSave).toHaveBeenCalledTimes(1);
-    expect(sawSavingDuringCall).toBe(true);
-    expect(result.current.save.dirty).toBe(false);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save.mock.calls[0]?.[1]).toMatchObject({
+      baseVersion: 'v1',
+      message: 'm',
+    });
+    expect(result.current.save).toMatchObject({
+      dirty: false,
+      status: 'idle',
+      saving: false,
+    });
   });
 });
 
@@ -677,7 +691,11 @@ describe('Root callbacks', () => {
       api = useEditor();
       return null;
     }
-    function Harness({ onChange }: { onChange: EditorRootProps['onChange'] }) {
+    function Harness({
+      onChange,
+    }: {
+      onChange: EditorRootOwnStoreProps['onChange'];
+    }) {
       return (
         <Editor.Root
           schema={storeSchema}
@@ -736,9 +754,9 @@ describe('key reset', () => {
         <Probe />
       </Editor.Root>,
     );
-    expect(api?.getState().rootId).toBe('root_2');
+    expect(api?.getDoc().rootId).toBe('root_2');
     expect(api?.isDirty()).toBe(false);
-    expect(api?.getState().history.past).toEqual([]);
+    expect(api?.docStore.getHistory().past).toEqual([]);
   });
 
   it('re-rendering with a different defaultValue but the same key keeps the old store', () => {
@@ -775,7 +793,7 @@ describe('key reset', () => {
       </Editor.Root>,
     );
     expect(api?.store).toBe(store);
-    expect(api?.getState().rootId).toBe('root_1');
+    expect(api?.getDoc().rootId).toBe('root_1');
   });
 });
 

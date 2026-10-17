@@ -8,7 +8,7 @@ import type {
 
 import * as React from 'react';
 
-import type { EditorDocument, Field } from '../core';
+import type { EditorDocument, Field, PersistenceOptions } from '../core';
 import type {
   CmsDocumentResolve,
   CmsDocumentStatus,
@@ -17,7 +17,7 @@ import type {
 } from './types';
 
 import { createCmsAdapter } from './adapter';
-import { HEAD_MISMATCH, readCmsError } from './errors';
+import { readCmsError } from './errors';
 import { cmsValueToEditor, fromEditor } from './mapping';
 
 /** The createcms error behind an adapter error (its `cause`), for `readCmsError`. */
@@ -46,16 +46,6 @@ type PendingResolve =
       spec: Field;
       resolve: (value: string | undefined) => void;
     };
-
-function isForceArg(value: unknown): value is { force: true } {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'force' in value &&
-    (value as { force: unknown }).force === true &&
-    !('blockId' in value)
-  );
-}
 
 function readReferenceCollection(spec: Field): string {
   return spec.type === 'reference' ? spec.collection : '';
@@ -237,7 +227,6 @@ export function useCmsDocument(
   >(null);
 
   const lastTreeRef = React.useRef<BlockTreeNode | null>(null);
-  const pendingForceDocRef = React.useRef<EditorDocument | null>(null);
   const generationRef = React.useRef(0);
 
   const sidecarRef = React.useRef(new Map<string, BlockTreeNode>());
@@ -365,7 +354,6 @@ export function useCmsDocument(
       setHeadCommitId(head);
       setKey(`${rootId}:${branchId}:${head}`);
       lastTreeRef.current = snapshot.tree;
-      pendingForceDocRef.current = null;
 
       sidecarRef.current = new Map(Object.entries(snapshot.references));
       setStatus('idle');
@@ -393,64 +381,38 @@ export function useCmsDocument(
     };
   }, []);
 
-  const saveImpl = React.useCallback(
-    async (
-      docOrForce: EditorDocument | { force: true },
-      meta?: { message?: string; force?: boolean },
-    ): Promise<void> => {
-      let doc: EditorDocument;
-      let force: boolean;
-      if (isForceArg(docOrForce)) {
-        const pending = pendingForceDocRef.current;
-        if (!pending) {
-          throw new Error('useCmsDocument: no document to force-save');
-        }
-        doc = pending;
-        force = true;
-      } else {
-        doc = docOrForce;
-        force = meta?.force === true;
-      }
-
-      const fromMessage = message?.();
-      const msg = meta?.message ?? fromMessage;
-      const bodyMessage = msg !== undefined && msg !== '' ? msg : undefined;
-
-      setStatus('saving');
-      try {
-        const adapter = createCmsAdapter({
+  const autosave = options.autosave ?? false;
+  const persistence = React.useMemo<PersistenceOptions>(
+    () => ({
+      async save(saveDoc, ctx) {
+        const fromMessage = message?.();
+        const msg = ctx.message ?? fromMessage;
+        const result = await createCmsAdapter({
           client: clientRef.current,
           definition: definitionRef.current,
           branchId,
+          includeReferencePreviews,
+        }).save(rootId, saveDoc, {
+          ops: ctx.ops,
+          baseVersion: ctx.baseVersion,
+          message: msg === '' ? undefined : msg,
         });
-        const result = await adapter.save(rootId, doc, {
-          ops: [],
-          baseVersion:
-            force || headCommitId === null ? undefined : headCommitId,
-          message: bodyMessage,
-        });
-        setHeadCommitId(result.version);
-        lastTreeRef.current = fromEditor(doc, definitionRef.current);
-        pendingForceDocRef.current = null;
-        setStatus('idle');
-        setError(null);
-      } catch (err) {
-        const cmsError = readCmsError(causeOf(err));
-        if (cmsError.code === HEAD_MISMATCH) {
-          setStatus('conflict');
-          setError(cmsError);
-          pendingForceDocRef.current = doc;
-          throw err;
-        }
-        setStatus('error');
-        setError(cmsError);
-        throw err;
-      }
-    },
-    [rootId, branchId, message, headCommitId],
+        lastTreeRef.current = fromEditor(saveDoc, definitionRef.current);
+        return result;
+      },
+      baseVersion: headCommitId ?? undefined,
+      autosave,
+    }),
+    // A new head means a new document key: the editor remounts with it.
+    [
+      rootId,
+      branchId,
+      message,
+      includeReferencePreviews,
+      headCommitId,
+      autosave,
+    ],
   );
-
-  const save = saveImpl as UseCmsDocumentResult['save'];
 
   const onChange = React.useCallback(
     (change: { getDocument: () => EditorDocument }) => {
@@ -486,7 +448,7 @@ export function useCmsDocument(
     resolve: resolveObjRef.current,
     status,
     error,
-    save,
+    persistence,
     reload,
     onChange,
     onAdd,

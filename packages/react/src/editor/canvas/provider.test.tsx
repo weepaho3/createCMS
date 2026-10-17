@@ -41,11 +41,9 @@ describe('Canvas.Provider', () => {
     expect(button).not.toBeNull();
     expect(button.disabled).toBe(false);
     expect(host.contains(button)).toBe(false);
-    const before = store.getState().nodes.root_1!.slots.children.length;
+    const before = store.getDoc().nodes.root_1!.slots.children.length;
     fireEvent.click(button);
-    expect(store.getState().nodes.root_1!.slots.children.length).toBe(
-      before + 1,
-    );
+    expect(store.getDoc().nodes.root_1!.slots.children.length).toBe(before + 1);
   });
 
   it('palette item renders under Canvas.Provider without any Canvas.Root', () => {
@@ -81,11 +79,9 @@ describe('Canvas.Provider', () => {
         <Canvas.PaletteItem type="paragraph">Add</Canvas.PaletteItem>
       </Canvas.Overlay>,
     );
-    const before = store.getState().nodes.root_1!.slots.children.length;
+    const before = store.getDoc().nodes.root_1!.slots.children.length;
     const button = host.querySelector('[data-editor-palette-item]')!;
     fireEvent.click(button);
-    expect(store.getState().nodes.root_1!.slots.children.length).toBe(
-      before + 1,
-    );
+    expect(store.getDoc().nodes.root_1!.slots.children.length).toBe(before + 1);
   });
 });

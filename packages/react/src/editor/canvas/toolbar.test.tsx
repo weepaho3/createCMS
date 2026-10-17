@@ -139,6 +139,6 @@ describe('overlay chrome hover guard', () => {
     insert!.dispatchEvent(
       new Event('pointerover', { bubbles: true, cancelable: true }),
     );
-    expect(store.getState().selection.local?.hovered).toBe('h1');
+    expect(store.getEphemeral().hoverId).toBe('h1');
   });
 });

@@ -6,17 +6,13 @@ import type {
 } from '@createcms/schema';
 import type { ReactNode } from 'react';
 
-import type { EditorDocument, Field } from '../core';
+import type { EditorDocument, Field, PersistenceOptions } from '../core';
 import type { CmsDocumentError } from './errors';
 
 export type { CmsDocumentError, CmsFieldError } from './errors';
 
-export type CmsDocumentStatus =
-  | 'loading'
-  | 'idle'
-  | 'saving'
-  | 'conflict'
-  | 'error';
+/** Load state of `useCmsDocument`; save state lives in the editor store (`useSave`). */
+export type CmsDocumentStatus = 'loading' | 'idle' | 'error';
 
 export type CmsDocumentClient = {
   getBlockTree(args: {
@@ -93,7 +89,10 @@ export type UseCmsDocumentOptions = {
   definition: AnyCollectionDefinition;
   rootId: string;
   branchId: string;
+  /** The commit message of each save (a save's own `message` wins). */
   message?: () => string | undefined;
+  /** Saves on their own after edits (each save is a commit). Default `false`. */
+  autosave?: PersistenceOptions['autosave'];
   includeReferencePreviews?: boolean;
   templates?: CmsTemplatesClient;
   /** Collection name for `templates.getTemplateDefaults`. */
@@ -107,14 +106,10 @@ export type UseCmsDocumentResult = {
   headCommitId: string | null;
   resolve: CmsDocumentResolve;
   status: CmsDocumentStatus;
+  /** The last load failure. */
   error: CmsDocumentError | null;
-  save: {
-    (
-      doc: EditorDocument,
-      meta?: { message?: string; force?: boolean },
-    ): Promise<void>;
-    (force: { force: true }): Promise<void>;
-  };
+  /** Pass to `Editor.Root`: saves through `updateBlocks` with the loaded head as base. */
+  persistence: PersistenceOptions;
   reload: () => Promise<void>;
   onChange: (change: { getDocument: () => EditorDocument }) => void;
   /** Template defaults for a new block of `blockType`, in editor shape. */

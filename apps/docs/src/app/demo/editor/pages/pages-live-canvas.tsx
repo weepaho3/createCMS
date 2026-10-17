@@ -55,7 +55,7 @@ function DocumentJson() {
 
 export function PagesLiveCanvas() {
   const sources = useDemoFieldSources();
-  const { onChange, onSave } = useLocalDocument(PAGES_DOC);
+  const { onChange, persistence } = useLocalDocument(PAGES_DOC);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -63,7 +63,7 @@ export function PagesLiveCanvas() {
         schema={pagesSchema}
         defaultValue={PAGES_DOC}
         onChange={onChange}
-        onSave={onSave}
+        persistence={persistence}
         fields={cmsFields}
       >
         <CmsSourcesProvider sources={sources}>

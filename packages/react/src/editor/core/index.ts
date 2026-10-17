@@ -143,26 +143,88 @@ export type {
 } from './schema/json-schema';
 export { exportJsonSchema } from './schema/json-schema';
 
-// Store: ops, inverse ops, history, applyRemote, serde.
+// Store: document store, commands, history, session, saving, serde.
 export type {
   AddOptions,
   ApplyRemoteResult,
+  BeforeCommandHandler,
+  Change,
+  Command,
+  CommandContext,
+  CommandHandler,
+  CommandMeta,
   CreateEditorStoreOptions,
-  EditorCallbacks,
+  CreateJsonDocStoreOptions,
+  DispatchResult,
+  DocState,
+  DocStore,
   EditorChange,
+  EditorCommand,
+  EditorError,
+  EditorErrorKind,
+  EditorEventName,
+  EditorEvents,
+  EditorMode,
   EditorNodes,
   EditorStore,
-  EditorStoreState,
+  EphemeralState,
   FieldRef,
+  HandlerContext,
   HistoryEntry,
+  HistoryStep,
+  MarkId,
+  Middleware,
   MoveTarget,
+  PersistenceOptions,
+  SaveConflict,
+  SaveState,
+  SaveStatus,
+  SessionState,
   SlotTarget,
+  Timers,
+  Tx,
+  TxMeta,
+  TxResult,
   UpdateOptions,
-  UserSelection,
 } from './store/types';
 export type { ApplyResult } from './store/ops';
 export { applyOp } from './store/ops';
-export { COALESCE_MS, createEditorStore } from './store/store';
+export type {
+  BuiltinCommandPayloads,
+  DuplicatePayload,
+  InsertNodePayload,
+  InsertPayload,
+  MovePayload,
+  RemovePayload,
+  ReplacePayload,
+  UpdatePayload,
+  WrapPayload,
+} from './store/commands';
+export {
+  BUILTIN_COMMANDS,
+  checkPlacement,
+  PlacementError,
+  placementMiddleware,
+} from './store/commands';
+export {
+  createJsonDocStore,
+  MAX_HISTORY,
+  MERGE_MS,
+  TxRejectedError,
+} from './store/doc-store';
+export type { MergeResult } from './store/merge';
+export { mergeByNode } from './store/merge';
+export {
+  SAVE_DEBOUNCE_MS,
+  SAVE_MAX_WAIT_MS,
+  SAVE_RETRY_BASE_MS,
+  SAVE_RETRY_MAX_MS,
+} from './store/save';
+export {
+  createEditorStore,
+  DEFAULT_SHORTCUTS,
+  PLACEMENT_PRIORITY,
+} from './store/store';
 export type { SlotOrder } from './store/serde';
 export {
   denormalize,
@@ -170,5 +232,20 @@ export {
   normalize,
   serializeSubtree,
 } from './store/serde';
-export { stableHash } from './store/hash';
 export { createBlockId } from './store/id';
+
+// Plugins.
+export type {
+  EditorPlugin,
+  PluginCommand,
+  PluginEventHandlers,
+  PluginFieldKind,
+} from './plugin';
+export {
+  applyPlugins,
+  defineEditorPlugin,
+  normalizeCombo,
+  pluginCommands,
+  pluginShortcuts,
+  sortPlugins,
+} from './plugin';

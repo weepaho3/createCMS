@@ -4,7 +4,7 @@ import type { UseRenderComponentProps } from '../../use-render';
 import type { InsertTarget, InsertOrientation, InsertVariant } from './insert';
 
 import { composeRefs, useRender } from '../../use-render';
-import { useEditorSelector } from '../binding';
+import { useDocSelector, useSessionSelector } from '../binding';
 import { useEditorContext } from '../context';
 import { isHTMLElement } from '../dom';
 import { insertPointFor } from '../structure/insert-point';
@@ -99,12 +99,18 @@ function useDragSessionSnapshot(): DragSession | null {
 export function useDndDropResolution(): void {
   const canvas = useCanvasContext('useDndDropResolution');
   const ctx = useEditorContext('useDndDropResolution');
-  const rootId = useEditorSelector((s) => s.rootId);
-  const nodes = useEditorSelector((s) => s.nodes);
+  const rootId = useDocSelector((s) => s.rootId);
+  const nodes = useDocSelector((s) => s.nodes);
   const dragging = canvas.dragging;
   const { dnd, host, measurer, interactive } = canvas;
   const nodesRef = React.useRef(nodes);
   nodesRef.current = nodes;
+
+  // A remote change can remove the block being dragged: end the drag.
+  React.useEffect(() => {
+    const session = dnd?.getSession();
+    if (session?.kind === 'move' && !(session.id in nodes)) dnd?.end();
+  }, [dnd, nodes]);
 
   React.useEffect(() => {
     if (!dragging || !dnd || !host || !measurer || interactive !== 'edit') {
@@ -174,8 +180,8 @@ type GestureOptions = {
 function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
   const canvasSession = useCanvasSession('usePointerGesture');
   const ctx = useEditorContext('usePointerGesture');
-  const rootId = useEditorSelector((s) => s.rootId);
-  const nodes = useEditorSelector((s) => s.nodes);
+  const rootId = useDocSelector((s) => s.rootId);
+  const nodes = useDocSelector((s) => s.nodes);
   const { dnd, pointer } = canvasSession;
   const capturedRef = React.useRef(false);
   const nodesRef = React.useRef(nodes);
@@ -496,15 +502,10 @@ export function CanvasPaletteItem({
 }: CanvasPaletteItemProps) {
   const canvasSession = useCanvasSession('Canvas.PaletteItem');
   const ctx = useEditorContext('Canvas.PaletteItem');
-  const target = useEditorSelector(
+  const selected = useSessionSelector((s) => s.selection[0] ?? null);
+  const target = useDocSelector(
     (state) =>
-      insertPointFor(
-        ctx.schema,
-        state.nodes,
-        state.rootId,
-        state.selection[ctx.userId]?.selected ?? null,
-        type,
-      ),
+      insertPointFor(ctx.schema, state.nodes, state.rootId, selected, type),
     (a, b) =>
       a.parent.id === b.parent.id &&
       a.parent.slot === b.parent.slot &&

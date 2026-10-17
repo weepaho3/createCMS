@@ -5,7 +5,7 @@ import type { FramePreviewAnchor } from './frame-anchor';
 import type { FramePreviewIssue } from './frame-issues';
 
 import { useRender } from '../../use-render';
-import { useEditorSelector } from '../binding';
+import { useDocSelector, useSessionSelector } from '../binding';
 import { useEditorContext } from '../context';
 import { scrollElementIntoView } from '../scroll';
 import { PREVIEW_DEBOUNCE_MS } from './components';
@@ -85,11 +85,10 @@ export function EditorFramePreview({
   ...rest
 }: EditorFramePreviewProps) {
   const ctx = useEditorContext('Editor.FramePreview');
-  const version = useEditorSelector((s) => s.version);
-  const highlightId = useEditorSelector((s) => {
-    const local = s.selection[ctx.userId];
-    return local?.focus?.blockId ?? local?.selected ?? null;
-  });
+  const version = useDocSelector((s) => s.version);
+  const highlightId = useSessionSelector(
+    (s) => s.focusedField?.blockId ?? s.selection[0] ?? null,
+  );
   const delay = Math.max(0, debounceMs ?? PREVIEW_DEBOUNCE_MS);
   const sandboxAttr = frameSandboxAttribute(selectable, sandbox);
 

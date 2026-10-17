@@ -124,7 +124,7 @@ describe('Editor.OutlineItem', () => {
   it('click selects the row and sets aria-selected and data-selected', () => {
     const { container, probe } = mount();
     fireEvent.click(item(container, 'h1'));
-    expect(probe.store?.getState().selection.local.selected).toBe('h1');
+    expect(probe.store?.getSession().selection[0] ?? null).toBe('h1');
     const h1 = item(container, 'h1');
     const sec1 = item(container, 'sec1');
     expect(h1.getAttribute('aria-selected')).toBe('true');
@@ -152,19 +152,19 @@ describe('Editor.OutlineItem', () => {
     h1.focus();
     expect(document.activeElement).toBe(h1);
     fireEvent.keyDown(h1, { key: 'ArrowDown' });
-    expect(probe.store?.getState().selection.local.selected).toBe('sec1');
+    expect(probe.store?.getSession().selection[0] ?? null).toBe('sec1');
     expect(document.activeElement).toBe(item(container, 'sec1'));
     fireEvent.keyDown(item(container, 'sec1'), { key: 'ArrowDown' });
-    expect(probe.store?.getState().selection.local.selected).toBe('p1');
+    expect(probe.store?.getSession().selection[0] ?? null).toBe('p1');
     expect(document.activeElement).toBe(item(container, 'p1'));
     fireEvent.keyDown(item(container, 'p1'), { key: 'ArrowUp' });
-    expect(probe.store?.getState().selection.local.selected).toBe('sec1');
+    expect(probe.store?.getSession().selection[0] ?? null).toBe('sec1');
     act(() => {
       probe.store?.select('h1');
     });
     item(container, 'h1').focus();
     fireEvent.keyDown(item(container, 'h1'), { key: 'ArrowUp' });
-    expect(probe.store?.getState().selection.local.selected).toBe('h1');
+    expect(probe.store?.getSession().selection[0] ?? null).toBe('h1');
   });
 
   it('Alt+ArrowDown on h1 reorders and keeps focus; Alt+ArrowUp on the first item is a no-op', () => {
@@ -172,12 +172,12 @@ describe('Editor.OutlineItem', () => {
     const h1 = item(container, 'h1');
     h1.focus();
     fireEvent.keyDown(h1, { key: 'ArrowUp', altKey: true });
-    expect(probe.store?.getState().nodes.root_1?.slots.children).toEqual([
+    expect(probe.store?.getDoc().nodes.root_1?.slots.children).toEqual([
       'h1',
       'sec1',
     ]);
     fireEvent.keyDown(h1, { key: 'ArrowDown', altKey: true });
-    expect(probe.store?.getState().nodes.root_1?.slots.children).toEqual([
+    expect(probe.store?.getDoc().nodes.root_1?.slots.children).toEqual([
       'sec1',
       'h1',
     ]);
@@ -189,8 +189,8 @@ describe('Editor.OutlineItem', () => {
     const h1 = item(container, 'h1');
     h1.focus();
     fireEvent.keyDown(h1, { key: 'Delete' });
-    expect(probe.store?.getState().nodes.h1).toBeUndefined();
-    expect(probe.store?.getState().selection.local.selected).toBe('sec1');
+    expect(probe.store?.getDoc().nodes.h1).toBeUndefined();
+    expect(probe.store?.getSession().selection[0] ?? null).toBe('sec1');
     expect(document.activeElement).toBe(item(container, 'sec1'));
   });
 
@@ -198,14 +198,14 @@ describe('Editor.OutlineItem', () => {
     const { container, probe } = mount();
     fireEvent.keyDown(item(container, 'h1'), { key: 'Delete' });
     fireEvent.keyDown(item(container, 'sec1'), { key: 'Delete' });
-    expect(probe.store?.getState().nodes.sec1).toBeUndefined();
-    expect(probe.store?.getState().selection.local.selected).toBeNull();
+    expect(probe.store?.getDoc().nodes.sec1).toBeUndefined();
+    expect(probe.store?.getSession().selection[0] ?? null).toBeNull();
   });
 
   it('Backspace removes like Delete', () => {
     const { container, probe } = mount();
     fireEvent.keyDown(item(container, 'h1'), { key: 'Backspace' });
-    expect(probe.store?.getState().nodes.h1).toBeUndefined();
+    expect(probe.store?.getDoc().nodes.h1).toBeUndefined();
   });
 
   it('onDelete returning false keeps the block and the selection', () => {
@@ -220,8 +220,8 @@ describe('Editor.OutlineItem', () => {
       probe.store?.select('h1');
     });
     fireEvent.keyDown(item(container, 'h1'), { key: 'Delete' });
-    expect(probe.store?.getState().nodes.h1).toBeDefined();
-    expect(probe.store?.getState().selection.local.selected).toBe('h1');
+    expect(probe.store?.getDoc().nodes.h1).toBeDefined();
+    expect(probe.store?.getSession().selection[0] ?? null).toBe('h1');
   });
 
   it('onDelete returning undefined removes the block', () => {
@@ -233,15 +233,15 @@ describe('Editor.OutlineItem', () => {
       </Editor.Root>,
     );
     fireEvent.keyDown(item(container, 'h1'), { key: 'Delete' });
-    expect(probe.store?.getState().nodes.h1).toBeUndefined();
+    expect(probe.store?.getDoc().nodes.h1).toBeUndefined();
   });
 
   it('Delete on sec1 lands on h1, not on its descendant p1', () => {
     const { container, probe } = mount();
     fireEvent.keyDown(item(container, 'sec1'), { key: 'Delete' });
-    expect(probe.store?.getState().nodes.sec1).toBeUndefined();
-    expect(probe.store?.getState().nodes.p1).toBeUndefined();
-    expect(probe.store?.getState().selection.local.selected).toBe('h1');
+    expect(probe.store?.getDoc().nodes.sec1).toBeUndefined();
+    expect(probe.store?.getDoc().nodes.p1).toBeUndefined();
+    expect(probe.store?.getSession().selection[0] ?? null).toBe('h1');
     expect(document.activeElement).toBe(item(container, 'h1'));
   });
 
@@ -251,7 +251,7 @@ describe('Editor.OutlineItem', () => {
       probe.store?.select('h1');
     });
     fireEvent.keyDown(item(container, 'h1'), { key: 'Escape' });
-    expect(probe.store?.getState().selection.local.selected).toBeNull();
+    expect(probe.store?.getSession().selection[0] ?? null).toBeNull();
   });
 
   it('consumer onKeyDown preventDefault disables the built-in key handling', () => {
@@ -263,7 +263,7 @@ describe('Editor.OutlineItem', () => {
       </Editor.Root>,
     );
     fireEvent.keyDown(item(container, 'h1'), { key: 'ArrowDown' });
-    expect(probe.store?.getState().selection.local.selected).toBeNull();
+    expect(probe.store?.getSession().selection[0] ?? null).toBeNull();
   });
 
   it('consumer onClick runs before selecting', () => {
@@ -275,20 +275,20 @@ describe('Editor.OutlineItem', () => {
         <Outline
           onClick={() => {
             selectedDuringClick =
-              probe.store?.getState().selection.local.selected;
+              probe.store?.getSession().selection[0] ?? null;
           }}
         />
       </Editor.Root>,
     );
     fireEvent.click(item(container, 'h1'));
     expect(selectedDuringClick).toBeNull();
-    expect(probe.store?.getState().selection.local.selected).toBe('h1');
+    expect(probe.store?.getSession().selection[0] ?? null).toBe('h1');
   });
 
   it('a click on the nested p1 row selects p1, not sec1', () => {
     const { container, probe } = mount();
     fireEvent.click(item(container, 'p1'));
-    expect(probe.store?.getState().selection.local.selected).toBe('p1');
+    expect(probe.store?.getSession().selection[0] ?? null).toBe('p1');
   });
 
   it('a keydown inside an input rendered within a row is ignored', () => {
@@ -306,7 +306,7 @@ describe('Editor.OutlineItem', () => {
     const input = getByTestId('inner');
     input.focus();
     fireEvent.keyDown(input, { key: 'Delete' });
-    expect(probe.store?.getState().nodes.h1).toBeDefined();
+    expect(probe.store?.getDoc().nodes.h1).toBeDefined();
     expect(container.querySelector('[data-block-id="h1"]')).not.toBeNull();
   });
 
@@ -337,12 +337,12 @@ describe('Editor.AddBlock', () => {
   it('with nothing selected inserts at the end of the root and selects it', () => {
     const { getByRole, probe } = mount(<Editor.AddBlock type="heading" />);
     fireEvent.click(getByRole('button', { name: 'Heading' }));
-    expect(probe.store?.getState().nodes.root_1?.slots.children).toEqual([
+    expect(probe.store?.getDoc().nodes.root_1?.slots.children).toEqual([
       'h1',
       'sec1',
       'n1',
     ]);
-    expect(probe.store?.getState().selection.local.selected).toBe('n1');
+    expect(probe.store?.getSession().selection[0] ?? null).toBe('n1');
   });
 
   it('with sec1 selected inserts inside sec1', () => {
@@ -351,7 +351,7 @@ describe('Editor.AddBlock', () => {
       probe.store?.select('sec1');
     });
     fireEvent.click(getByRole('button', { name: 'Heading' }));
-    expect(probe.store?.getState().nodes.sec1?.slots.children).toEqual([
+    expect(probe.store?.getDoc().nodes.sec1?.slots.children).toEqual([
       'p1',
       'n1',
     ]);
@@ -363,7 +363,7 @@ describe('Editor.AddBlock', () => {
       probe.store?.select('h1');
     });
     fireEvent.click(getByRole('button', { name: 'Heading' }));
-    expect(probe.store?.getState().nodes.root_1?.slots.children).toEqual([
+    expect(probe.store?.getDoc().nodes.root_1?.slots.children).toEqual([
       'h1',
       'n1',
       'sec1',
@@ -375,7 +375,7 @@ describe('Editor.AddBlock', () => {
       <Editor.AddBlock type="heading" parentId="sec1" index={0} />,
     );
     fireEvent.click(getByRole('button', { name: 'Heading' }));
-    expect(probe.store?.getState().nodes.sec1?.slots.children).toEqual([
+    expect(probe.store?.getDoc().nodes.sec1?.slots.children).toEqual([
       'n1',
       'p1',
     ]);
@@ -389,7 +389,7 @@ describe('Editor.AddBlock', () => {
     const button = getByRole('button', { name: 'Image' });
     expect(button).toHaveProperty('disabled', false);
     fireEvent.click(button);
-    expect(probe.store?.getState().nodes.root_1?.slots.children).toEqual([
+    expect(probe.store?.getDoc().nodes.root_1?.slots.children).toEqual([
       'h1',
       'sec1',
       'n1',
@@ -542,7 +542,7 @@ describe('named slots', () => {
     );
     const button = getByRole('button', { name: 'Text' });
     fireEvent.click(button);
-    expect(probe.store?.getState().nodes.cols?.slots.right).toEqual(['n1']);
+    expect(probe.store?.getDoc().nodes.cols?.slots.right).toEqual(['n1']);
     expect(button.hasAttribute('disabled')).toBe(true);
   });
 
@@ -553,6 +553,6 @@ describe('named slots', () => {
     const button = getByRole('button', { name: 'Columns' });
     expect(button.hasAttribute('disabled')).toBe(true);
     fireEvent.click(button);
-    expect(probe.store?.getState().nodes.cols?.slots.left).toEqual([]);
+    expect(probe.store?.getDoc().nodes.cols?.slots.left).toEqual([]);
   });
 });

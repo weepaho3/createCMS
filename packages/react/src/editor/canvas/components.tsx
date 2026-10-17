@@ -7,7 +7,7 @@ import type { CanvasComponents } from './map';
 import type { Measurer } from './measurer';
 
 import { composeRefs, useRender } from '../../use-render';
-import { useEditorSelector } from '../binding';
+import { useDocSelector, useSessionSelector } from '../binding';
 import { useEditorContext } from '../context';
 import { CanvasContext } from './context';
 import { type DndStore } from './dnd';
@@ -72,13 +72,10 @@ export function CanvasRoot({
   ...rest
 }: CanvasRootProps) {
   const ctx = useEditorContext('Canvas.Root');
-  const version = useEditorSelector((s) => s.version);
-  const rootId = useEditorSelector((s) => s.rootId);
-  const nodes = useEditorSelector((s) => s.nodes);
-  const editing = useEditorSelector((s) => {
-    const local = s.selection[ctx.userId];
-    return local?.editing != null;
-  });
+  const version = useDocSelector((s) => s.version);
+  const rootId = useDocSelector((s) => s.rootId);
+  const nodes = useDocSelector((s) => s.nodes);
+  const editing = useSessionSelector((s) => s.editing !== null);
 
   const componentsRef = React.useRef(components);
   const resolveRef = React.useRef(resolve);

@@ -144,7 +144,11 @@ describe('Editor.FramePreview in a real browser', () => {
     if (!heading) throw new Error('missing heading');
     heading.click();
     await waitFor(() => {
-      const local = store.getState().selection.local;
+      const local = {
+        selected: store.getSession().selection[0] ?? null,
+        focus: store.getSession().focusedField,
+        editing: store.getSession().editing,
+      };
       expect(local?.selected).toBe('h1');
       expect(local?.focus).toEqual({ blockId: 'h1', key: 'text' });
     });
@@ -170,7 +174,11 @@ describe('Editor.FramePreview in a real browser', () => {
     if (!gap) throw new Error('missing slot child');
     (gap as HTMLElement).click();
     await waitFor(() => {
-      const local = store.getState().selection.local;
+      const local = {
+        selected: store.getSession().selection[0] ?? null,
+        focus: store.getSession().focusedField,
+        editing: store.getSession().editing,
+      };
       expect(local?.selected).toBe('sec1');
       expect(local?.focus).toBeNull();
     });

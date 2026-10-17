@@ -3,7 +3,11 @@ import * as React from 'react';
 import type { UseRenderComponentProps } from '../../use-render';
 
 import { useRender } from '../../use-render';
-import { useEditorSelector } from '../binding';
+import {
+  useDocSelector,
+  useSessionSelector,
+  useEphemeralSelector,
+} from '../binding';
 import { useEditorContext } from '../context';
 import { canPlaceIn } from '../core/schema';
 import { useCanvasContext } from './context';
@@ -41,12 +45,10 @@ export function useInsertTarget(options?: {
   draggedId?: string;
 }): InsertTarget | null {
   const canvas = useCanvasContext('useInsertTarget');
-  const { schema, userId } = useEditorContext('useInsertTarget');
-  const rootId = useEditorSelector((s) => s.rootId);
-  const nodes = useEditorSelector((s) => s.nodes);
-  const hovered = useEditorSelector(
-    (s) => s.selection[userId]?.hovered ?? null,
-  );
+  const { schema } = useEditorContext('useInsertTarget');
+  const rootId = useDocSelector((s) => s.rootId);
+  const nodes = useDocSelector((s) => s.nodes);
+  const hovered = useEphemeralSelector((s) => s.hoverId);
 
   const { measurer, host, pointer, interactive, dragging, editing } = canvas;
   const pointerSnap = React.useSyncExternalStore(
@@ -125,11 +127,8 @@ export function CanvasBlockToolbar({
   ...rest
 }: CanvasBlockToolbarProps) {
   const canvas = useCanvasContext('Canvas.BlockToolbar');
-  const { userId } = useEditorContext('Canvas.BlockToolbar');
-  const selected = useEditorSelector(
-    (s) => s.selection[userId]?.selected ?? null,
-  );
-  const node = useEditorSelector((s) =>
+  const selected = useSessionSelector((s) => s.selection[0] ?? null);
+  const node = useDocSelector((s) =>
     selected ? (s.nodes[selected] ?? null) : null,
   );
   const rect = useBlockRect(selected ?? '');
@@ -236,7 +235,7 @@ export function CanvasInsertButton({
   useCanvasContext('Canvas.InsertButton');
   const ctx = useEditorContext('Canvas.InsertButton');
   const target = useInsertTarget();
-  const nodes = useEditorSelector((s) => s.nodes);
+  const nodes = useDocSelector((s) => s.nodes);
 
   const active =
     target !== null &&

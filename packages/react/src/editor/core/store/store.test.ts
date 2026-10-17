@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { EditorDocument, Op } from '../document';
-import type { CreateEditorStoreOptions, EditorCallbacks } from './types';
+import type { CreateEditorStoreOptions, EditorChange } from './types';
 
 import { defineEditorSchema } from '../schema';
 import { counterGenId, fakeClock, makeDoc, storeSchema } from './fixtures';
@@ -10,35 +10,36 @@ import { createEditorStore } from './store';
 
 function makeStore(overrides: Partial<CreateEditorStoreOptions> = {}) {
   const clock = fakeClock();
-  const callbacks: EditorCallbacks = {};
+  const callbacks: { onChange?: (change: EditorChange) => void } = {};
   const store = createEditorStore({
     schema: storeSchema,
     initialValue: makeDoc(),
     genId: counterGenId(),
     now: clock.now,
-    getCallbacks: () => callbacks,
     ...overrides,
   });
+  store.on('change', (change) => callbacks.onChange?.(change));
   return { store, clock, callbacks };
 }
 
 describe('initial state', () => {
   it('starts from the initial tree with clean history', () => {
     const { store } = makeStore();
-    const state = store.getState();
+    const state = store.getDoc();
     expect(state.rootId).toBe('root_1');
     expect(Object.keys(state.nodes)).toHaveLength(4);
     expect(store.isDirty()).toBe(false);
     expect(store.getDocument()).toEqual(makeDoc());
     expect(state.version).toBe(0);
-    expect(state.savedVersion).toBe(0);
-    expect(state.selection.local).toEqual({
-      selected: null,
-      hovered: null,
-      focus: null,
+    expect(store.getSession()).toMatchObject({
+      selection: [],
+      focusedField: null,
       editing: null,
+      mode: 'visual',
+      history: { canUndo: false, canRedo: false },
+      save: { status: 'idle', dirty: false },
     });
-    expect(state.history).toEqual({ past: [], future: [] });
+    expect(store.getEphemeral()).toEqual({ hoverId: null });
   });
 });
 
@@ -47,22 +48,22 @@ describe('add', () => {
     const { store } = makeStore();
     const id = store.add('heading', { parent: { id: 'root_1' } });
     expect(id).toBe('n1');
-    expect(store.getState().nodes.root_1?.slots.children).toEqual([
+    expect(store.getDoc().nodes.root_1?.slots.children).toEqual([
       'h1',
       'sec1',
       'n1',
     ]);
-    expect(store.getState().selection.local?.selected).toBe('n1');
+    expect(store.getSession().selection[0] ?? null).toBe('n1');
     expect(store.isDirty()).toBe(true);
-    expect(store.getState().version).toBe(1);
-    expect(store.getState().history.past).toHaveLength(1);
-    expect(store.getState().history.future).toHaveLength(0);
+    expect(store.getDoc().version).toBe(1);
+    expect(store.docStore.getHistory().past).toHaveLength(1);
+    expect(store.docStore.getHistory().future).toHaveLength(0);
   });
 
   it('inserts at an explicit index', () => {
     const { store } = makeStore();
     store.add('heading', { parent: { id: 'root_1' }, index: 0 });
-    expect(store.getState().nodes.root_1?.slots.children).toEqual([
+    expect(store.getDoc().nodes.root_1?.slots.children).toEqual([
       'n1',
       'h1',
       'sec1',
@@ -72,18 +73,18 @@ describe('add', () => {
   it('seeds declared defaults; caller-supplied properties win', () => {
     const { store } = makeStore();
     const id1 = store.add('heading', { parent: { id: 'root_1' } });
-    expect(store.getState().nodes[id1 ?? '']?.props).toEqual({ level: 2 });
+    expect(store.getDoc().nodes[id1 ?? '']?.props).toEqual({ level: 2 });
     const id2 = store.add('heading', {
       parent: { id: 'root_1' },
       props: { level: 5 },
     });
-    expect(store.getState().nodes[id2 ?? '']?.props).toEqual({ level: 5 });
+    expect(store.getDoc().nodes[id2 ?? '']?.props).toEqual({ level: 5 });
   });
 
   it('seeds only declared defaults for image (alt), never url', () => {
     const { store } = makeStore();
     const id = store.add('image', { parent: { id: 'root_1' } });
-    expect(store.getState().nodes[id ?? '']?.props).toEqual({ alt: '' });
+    expect(store.getDoc().nodes[id ?? '']?.props).toEqual({ alt: '' });
   });
 
   it('drops undefined caller properties', () => {
@@ -92,15 +93,15 @@ describe('add', () => {
       parent: { id: 'root_1' },
       props: { text: undefined, level: 3 },
     });
-    expect(store.getState().nodes[id ?? '']?.props).toEqual({ level: 3 });
+    expect(store.getDoc().nodes[id ?? '']?.props).toEqual({ level: 3 });
   });
 
   it('rejects an unknown parent and changes nothing', () => {
     const { store } = makeStore();
     const result = store.add('heading', { parent: { id: 'ghost' } });
     expect(result).toBeNull();
-    expect(store.getState().version).toBe(0);
-    expect(Object.keys(store.getState().nodes)).toHaveLength(4);
+    expect(store.getDoc().version).toBe(0);
+    expect(Object.keys(store.getDoc().nodes)).toHaveLength(4);
   });
 
   it('respects the section whitelist: image rejected, heading allowed', () => {
@@ -108,7 +109,7 @@ describe('add', () => {
     expect(store.add('image', { parent: { id: 'sec1' } })).toBeNull();
     const id = store.add('heading', { parent: { id: 'sec1' } });
     expect(id).not.toBeNull();
-    expect(store.getState().nodes.sec1?.slots.children).toContain(id);
+    expect(store.getDoc().nodes.sec1?.slots.children).toContain(id);
   });
 
   it('rejects placement into a non-container leaf', () => {
@@ -133,7 +134,7 @@ describe('update', () => {
   it('merges values and deletes null keys', () => {
     const { store } = makeStore();
     store.update('h1', { text: 'Changed', level: null });
-    expect(store.getState().nodes.h1?.props).toEqual({ text: 'Changed' });
+    expect(store.getDoc().nodes.h1?.props).toEqual({ text: 'Changed' });
   });
 
   it('normalises undefined to null before emitting the op', () => {
@@ -141,7 +142,7 @@ describe('update', () => {
     const onChange = vi.fn();
     callbacks.onChange = onChange;
     store.update('h1', { level: undefined });
-    expect(store.getState().nodes.h1?.props).toEqual({ text: 'Hello' });
+    expect(store.getDoc().nodes.h1?.props).toEqual({ text: 'Hello' });
     const change = onChange.mock.calls[0]?.[0];
     expect(change.ops[0]).toEqual({
       op: 'update',
@@ -164,12 +165,11 @@ describe('update', () => {
     });
   });
 
-  it('is clean again after changing a value back by hand', () => {
+  it('stays dirty after changing a value back by hand (unsaved edits, not a diff)', () => {
     const { store } = makeStore();
     store.update('h1', { text: 'Changed' });
-    expect(store.isDirty()).toBe(true);
     store.update('h1', { text: 'Hello' });
-    expect(store.isDirty()).toBe(false);
+    expect(store.isDirty()).toBe(true);
   });
 
   it('never serialises a null property after a delete', () => {
@@ -185,26 +185,23 @@ describe('move', () => {
   it('reparents a block', () => {
     const { store } = makeStore();
     expect(store.move('h1', { parent: { id: 'sec1' }, index: 0 })).toBe(true);
-    expect(store.getState().nodes.root_1?.slots.children).toEqual(['sec1']);
-    expect(store.getState().nodes.sec1?.slots.children).toEqual(['h1', 'p1']);
+    expect(store.getDoc().nodes.root_1?.slots.children).toEqual(['sec1']);
+    expect(store.getDoc().nodes.sec1?.slots.children).toEqual(['h1', 'p1']);
   });
 
   it('reorders within the same parent', () => {
     const { store } = makeStore();
     store.move('h1', { parent: { id: 'root_1' }, index: 1 });
-    expect(store.getState().nodes.root_1?.slots.children).toEqual([
-      'sec1',
-      'h1',
-    ]);
+    expect(store.getDoc().nodes.root_1?.slots.children).toEqual(['sec1', 'h1']);
   });
 
   it('rejects a cyclical move and changes nothing', () => {
     const { store } = makeStore();
-    const before = store.getState();
+    const before = store.getDoc();
     expect(store.move('sec1', { parent: { id: 'sec1' }, index: 0 })).toBe(
       false,
     );
-    expect(store.getState()).toBe(before);
+    expect(store.getDoc()).toBe(before);
   });
 
   it('rejects moving the root', () => {
@@ -233,9 +230,9 @@ describe('remove', () => {
   it('cascades: removes the block and its subtree', () => {
     const { store } = makeStore();
     store.remove('sec1');
-    expect(store.getState().nodes.sec1).toBeUndefined();
-    expect(store.getState().nodes.p1).toBeUndefined();
-    expect(store.getState().nodes.root_1?.slots.children).toEqual(['h1']);
+    expect(store.getDoc().nodes.sec1).toBeUndefined();
+    expect(store.getDoc().nodes.p1).toBeUndefined();
+    expect(store.getDoc().nodes.root_1?.slots.children).toEqual(['h1']);
   });
 
   it('clears selection fields that pointed into the removed subtree', () => {
@@ -245,12 +242,12 @@ describe('remove', () => {
     store.focus({ blockId: 'p1', key: 'text' });
     store.setEditing({ blockId: 'p1', key: 'text' });
     store.remove('sec1');
-    expect(store.getState().selection.local).toEqual({
-      selected: null,
-      hovered: null,
-      focus: null,
+    expect(store.getSession()).toMatchObject({
+      selection: [],
+      focusedField: null,
       editing: null,
     });
+    expect(store.getEphemeral().hoverId).toBeNull();
   });
 
   it('rejects removing the root', () => {
@@ -269,32 +266,32 @@ describe('duplicate', () => {
     const { store } = makeStore();
     const id = store.duplicate('h1');
     expect(id).toBe('n1');
-    expect(store.getState().nodes.root_1?.slots.children).toEqual([
+    expect(store.getDoc().nodes.root_1?.slots.children).toEqual([
       'h1',
       'n1',
       'sec1',
     ]);
-    expect(store.getState().nodes.n1?.props).toEqual({
+    expect(store.getDoc().nodes.n1?.props).toEqual({
       text: 'Hello',
       level: 1,
     });
-    expect(store.getState().selection.local?.selected).toBe('n1');
+    expect(store.getSession().selection[0] ?? null).toBe('n1');
     expect(store.isDirty()).toBe(true);
   });
 
   it('deep-copies a subtree with fresh ids and rewires the parent links', () => {
     const { store } = makeStore();
     store.duplicate('sec1');
-    expect(store.getState().nodes.n1?.type).toBe('section');
-    expect(store.getState().nodes.n2?.type).toBe('paragraph');
-    expect(store.getState().nodes.n2?.parent?.id).toBe('n1');
+    expect(store.getDoc().nodes.n1?.type).toBe('section');
+    expect(store.getDoc().nodes.n2?.type).toBe('paragraph');
+    expect(store.getDoc().nodes.n2?.parent?.id).toBe('n1');
   });
 
   it('the copy is independent of the original', () => {
     const { store } = makeStore();
     const id = store.duplicate('h1');
     store.update(id ?? '', { text: 'Copy text' });
-    expect(store.getState().nodes.h1?.props.text).toBe('Hello');
+    expect(store.getDoc().nodes.h1?.props.text).toBe('Hello');
   });
 
   it('rejects duplicating the root', () => {
@@ -320,8 +317,9 @@ describe('undo/redo', () => {
     store.add('heading', { parent: { id: 'root_1' } });
     expect(store.undo()).toBe(true);
     expect(store.getDocument()).toEqual(makeDoc());
-    expect(store.isDirty()).toBe(false);
-    expect(store.getState().history.future).toHaveLength(1);
+    // An undo is a change the next save carries.
+    expect(store.isDirty()).toBe(true);
+    expect(store.docStore.getHistory().future).toHaveLength(1);
   });
 
   it('redoes back to the changed tree', () => {
@@ -336,7 +334,7 @@ describe('undo/redo', () => {
     const { store } = makeStore();
     expect(store.undo()).toBe(false);
     expect(store.redo()).toBe(false);
-    expect(store.getState().version).toBe(0);
+    expect(store.getDoc().version).toBe(0);
   });
 
   describe('roundtrip per action', () => {
@@ -391,13 +389,14 @@ describe('undo/redo', () => {
     });
   });
 
-  it('undo/redo call onChange with the inverse/forward ops respectively', () => {
+  it('undo/redo emit a history change with the inverse/forward ops respectively', () => {
     const { store, callbacks } = makeStore();
     store.add('heading', { parent: { id: 'root_1' } });
     const onChange = vi.fn();
     callbacks.onChange = onChange;
     store.undo();
     expect(onChange.mock.calls[0]?.[0].ops[0].op).toBe('remove');
+    expect(onChange.mock.calls[0]?.[0].origin).toBe('history');
     store.redo();
     expect(onChange.mock.calls[1]?.[0].ops[0].op).toBe('insert');
   });
@@ -405,9 +404,9 @@ describe('undo/redo', () => {
   it('undo of an add clears local.selected when the block disappears', () => {
     const { store } = makeStore();
     store.add('heading', { parent: { id: 'root_1' } });
-    expect(store.getState().selection.local?.selected).toBe('n1');
+    expect(store.getSession().selection[0] ?? null).toBe('n1');
     store.undo();
-    expect(store.getState().selection.local?.selected).toBeNull();
+    expect(store.getSession().selection[0] ?? null).toBeNull();
   });
 });
 
@@ -418,9 +417,9 @@ describe('coalescing', () => {
       store.update('h1', { text: v }, { coalesce: true });
       clock.advance(50);
     }
-    expect(store.getState().history.past).toHaveLength(1);
+    expect(store.docStore.getHistory().past).toHaveLength(1);
     store.undo();
-    expect(store.getState().nodes.h1?.props.text).toBe('Hello');
+    expect(store.getDoc().nodes.h1?.props.text).toBe('Hello');
   });
 
   it('the merged entry keeps every op; inverse[0] undoes the LAST update first', () => {
@@ -429,7 +428,7 @@ describe('coalescing', () => {
       store.update('h1', { text: v }, { coalesce: true });
       clock.advance(50);
     }
-    const entry = store.getState().history.past[0];
+    const entry = store.docStore.getHistory().past[0];
     expect(entry?.ops).toHaveLength(3);
     expect(entry?.inverse[0]).toEqual({
       op: 'update',
@@ -443,21 +442,21 @@ describe('coalescing', () => {
     store.update('h1', { text: 'A' }, { coalesce: true });
     clock.advance(401);
     store.update('h1', { text: 'B' }, { coalesce: true });
-    expect(store.getState().history.past).toHaveLength(2);
+    expect(store.docStore.getHistory().past).toHaveLength(2);
   });
 
   it('a non-coalesced update always starts a new entry', () => {
     const { store } = makeStore();
     store.update('h1', { text: 'A' }, { coalesce: true });
     store.update('h1', { text: 'B' });
-    expect(store.getState().history.past).toHaveLength(2);
+    expect(store.docStore.getHistory().past).toHaveLength(2);
   });
 
   it('different coalesce keys start separate entries', () => {
     const { store } = makeStore();
     store.update('h1', { text: 'A' }, { coalesce: true });
     store.update('h1', { level: 3 }, { coalesce: true });
-    expect(store.getState().history.past).toHaveLength(2);
+    expect(store.docStore.getHistory().past).toHaveLength(2);
   });
 
   it('select() breaks the coalescing window', () => {
@@ -465,7 +464,7 @@ describe('coalescing', () => {
     store.update('h1', { text: 'A' }, { coalesce: true });
     store.select('p1');
     store.update('h1', { text: 'B' }, { coalesce: true });
-    expect(store.getState().history.past).toHaveLength(2);
+    expect(store.docStore.getHistory().past).toHaveLength(2);
   });
 
   it('focus()/setEditing() break the coalescing window', () => {
@@ -473,13 +472,13 @@ describe('coalescing', () => {
     storeA.update('h1', { text: 'A' }, { coalesce: true });
     storeA.focus({ blockId: 'h1', key: 'text' });
     storeA.update('h1', { text: 'B' }, { coalesce: true });
-    expect(storeA.getState().history.past).toHaveLength(2);
+    expect(storeA.docStore.getHistory().past).toHaveLength(2);
 
     const { store: storeB } = makeStore();
     storeB.update('h1', { text: 'A' }, { coalesce: true });
     storeB.setEditing({ blockId: 'h1', key: 'text' });
     storeB.update('h1', { text: 'B' }, { coalesce: true });
-    expect(storeB.getState().history.past).toHaveLength(2);
+    expect(storeB.docStore.getHistory().past).toHaveLength(2);
   });
 
   it('hover() does NOT break the coalescing window', () => {
@@ -487,7 +486,7 @@ describe('coalescing', () => {
     store.update('h1', { text: 'A' }, { coalesce: true });
     store.hover('p1');
     store.update('h1', { text: 'B' }, { coalesce: true });
-    expect(store.getState().history.past).toHaveLength(1);
+    expect(store.docStore.getHistory().past).toHaveLength(1);
   });
 
   it('a coalesced update after undo() starts its own new entry', () => {
@@ -495,45 +494,50 @@ describe('coalescing', () => {
     store.update('h1', { text: 'A' }, { coalesce: true });
     store.undo();
     store.update('h1', { text: 'B' }, { coalesce: true });
-    expect(store.getState().history.past).toHaveLength(1);
-    expect(store.getState().history.past[0]?.ops).toHaveLength(1);
+    expect(store.docStore.getHistory().past).toHaveLength(1);
+    expect(store.docStore.getHistory().past[0]?.ops).toHaveLength(1);
   });
 });
 
 describe('applyRemote', () => {
-  it('applies a remote update: bumps version, notifies, leaves history empty, no onChange, dirty becomes true', () => {
+  it('applies a remote update: bumps version, notifies, no history, not dirty, change with origin remote', () => {
     const { store, callbacks } = makeStore();
     const onChange = vi.fn();
     callbacks.onChange = onChange;
     const listener = vi.fn();
-    store.subscribe(listener);
+    store.subscribeDoc(listener);
     const result = store.applyRemote([
       { op: 'update', id: 'h1', patch: { text: 'Remote' } },
     ]);
     expect(result.applied).toHaveLength(1);
-    expect(store.getState().nodes.h1?.props.text).toBe('Remote');
-    expect(store.getState().version).toBe(1);
+    expect(store.getDoc().nodes.h1?.props.text).toBe('Remote');
+    expect(store.getDoc().version).toBe(1);
     expect(listener).toHaveBeenCalled();
-    expect(store.getState().history.past).toHaveLength(0);
-    expect(onChange).not.toHaveBeenCalled();
-    expect(store.isDirty()).toBe(true);
+    expect(store.docStore.getHistory().past).toHaveLength(0);
+    expect(onChange.mock.calls[0]?.[0].origin).toBe('remote');
+    expect(store.isDirty()).toBe(false);
   });
 
   it('skips a rejected op (unknown id) while the others apply', () => {
     const { store } = makeStore();
     const unknownOp: Op = { op: 'update', id: 'ghost', patch: { a: 1 } };
     const knownOp: Op = { op: 'update', id: 'h1', patch: { text: 'X' } };
+    const rejected = vi.fn();
+    store.on('opRejected', rejected);
     const result = store.applyRemote([unknownOp, knownOp]);
     expect(result.rejected).toEqual([unknownOp]);
     expect(result.applied).toEqual([knownOp]);
-    expect(store.getState().nodes.h1?.props.text).toBe('X');
+    expect(store.getDoc().nodes.h1?.props.text).toBe('X');
+    expect(rejected).toHaveBeenCalledWith(
+      expect.objectContaining({ origin: 'remote', op: unknownOp }),
+    );
   });
 
   it('a remote remove of the locally selected block clears the selection', () => {
     const { store } = makeStore();
     store.select('h1');
     store.applyRemote([{ op: 'remove', id: 'h1' }]);
-    expect(store.getState().selection.local?.selected).toBeNull();
+    expect(store.getSession().selection).toEqual([]);
   });
 
   it('ops captured from one store apply cleanly to another store on the same tree (also for undo ops)', () => {
@@ -552,86 +556,169 @@ describe('applyRemote', () => {
     storeB.applyRemote(lastOps);
     expect(storeB.getDocument()).toEqual(storeA.getDocument());
   });
+
+  it('accept-and-warn applies a misplaced remote op with a diagnostic', () => {
+    const { store } = makeStore();
+    const diagnostic = vi.fn();
+    store.on('diagnostic', diagnostic);
+    const op: Op = {
+      op: 'insert',
+      parent: { id: 'sec1', slot: 'children' },
+      index: 0,
+      node: { id: 'img', type: 'image', props: {} },
+    };
+    expect(store.applyRemote([op]).applied).toEqual([op]);
+    expect(diagnostic).toHaveBeenCalledWith({
+      kind: 'placement',
+      op,
+      code: 'not-allowed',
+    });
+  });
+
+  it('reject refuses a misplaced remote op', () => {
+    const { store } = makeStore({ remotePlacement: 'reject' });
+    const op: Op = {
+      op: 'insert',
+      parent: { id: 'sec1', slot: 'children' },
+      index: 0,
+      node: { id: 'img', type: 'image', props: {} },
+    };
+    expect(store.applyRemote([op]).rejected).toEqual([op]);
+    expect(store.getDoc().nodes.img).toBeUndefined();
+  });
+
+  it('drops local undo steps a remote change touches, keeps the others', () => {
+    const { store } = makeStore();
+    const invalidated = vi.fn();
+    store.on('historyInvalidated', invalidated);
+    store.update('h1', { text: 'Mine' });
+    store.update('p1', { text: 'Mine too' });
+    store.applyRemote([{ op: 'update', id: 'h1', patch: { text: 'Theirs' } }]);
+    expect(invalidated).toHaveBeenCalledWith({ count: 1 });
+    expect(store.docStore.getHistory().past).toHaveLength(1);
+    expect(store.undo()).toBe(true);
+    expect(store.getDoc().nodes.p1?.props.text).toBe('World');
+    expect(store.getDoc().nodes.h1?.props.text).toBe('Theirs');
+    expect(store.undo()).toBe(false);
+  });
+
+  it('keeps an undo step when the remote change writes another prop of the same node', () => {
+    const { store } = makeStore();
+    store.update('h1', { text: 'Mine' });
+    store.applyRemote([{ op: 'update', id: 'h1', patch: { level: 4 } }]);
+    expect(store.undo()).toBe(true);
+    expect(store.getDoc().nodes.h1?.props).toEqual({ text: 'Hello', level: 4 });
+  });
+
+  it('a remote remove drops undo steps that wrote props of the removed node', () => {
+    const { store } = makeStore();
+    store.update('p1', { text: 'Mine' });
+    store.applyRemote([{ op: 'remove', id: 'sec1' }]);
+    expect(store.getSession().history.canUndo).toBe(false);
+  });
 });
 
-describe('selection per user', () => {
-  it('select/hover/focus/setEditing write selection.local', () => {
+describe('session and ephemeral scopes', () => {
+  it('select/focus/setEditing write the session, hover the ephemeral scope', () => {
     const { store } = makeStore();
     store.select('h1');
     store.hover('sec1');
     store.focus({ blockId: 'h1', key: 'text' });
     store.setEditing({ blockId: 'h1', key: 'text' });
-    expect(store.getState().selection.local).toEqual({
-      selected: 'h1',
-      hovered: 'sec1',
-      focus: { blockId: 'h1', key: 'text' },
+    expect(store.getSession()).toMatchObject({
+      selection: ['h1'],
+      focusedField: { blockId: 'h1', key: 'text' },
       editing: { blockId: 'h1', key: 'text' },
     });
+    expect(store.getEphemeral().hoverId).toBe('sec1');
   });
 
-  it("setUserSelection('u2', ...) creates that user", () => {
+  it('hover wakes neither document nor session listeners', () => {
     const { store } = makeStore();
-    store.setUserSelection('u2', { selected: 'h1' });
-    expect(store.getState().selection.u2?.selected).toBe('h1');
+    const docListener = vi.fn();
+    const sessionListener = vi.fn();
+    const hoverListener = vi.fn();
+    store.subscribeDoc(docListener);
+    store.subscribeSession(sessionListener);
+    store.subscribeEphemeral(hoverListener);
+    store.hover('h1');
+    store.hover('sec1');
+    expect(hoverListener).toHaveBeenCalledTimes(2);
+    expect(docListener).not.toHaveBeenCalled();
+    expect(sessionListener).not.toHaveBeenCalled();
   });
 
-  it("remove('h1') prunes u2's selection too", () => {
-    const { store } = makeStore();
-    store.setUserSelection('u2', { selected: 'h1' });
-    store.remove('h1');
-    expect(store.getState().selection.u2?.selected).toBeNull();
-  });
-
-  it('a subscriber is notified on selection changes', () => {
-    const { store } = makeStore();
-    const listener = vi.fn();
-    store.subscribe(listener);
-    store.select('h1');
-    expect(listener).toHaveBeenCalledTimes(1);
-  });
-
-  it('selection changes do NOT bump version and do NOT call onChange', () => {
+  it('a selection change does not wake document listeners or bump the version', () => {
     const { store, callbacks } = makeStore();
     const onChange = vi.fn();
     callbacks.onChange = onChange;
+    const docListener = vi.fn();
+    store.subscribeDoc(docListener);
     store.select('h1');
-    store.hover('sec1');
-    expect(store.getState().version).toBe(0);
+    expect(docListener).not.toHaveBeenCalled();
+    expect(store.getDoc().version).toBe(0);
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('the same selection keeps its reference and does not notify', () => {
+    const { store } = makeStore();
+    store.select('h1');
+    const before = store.getSession();
+    const listener = vi.fn();
+    store.subscribeSession(listener);
+    store.select('h1');
+    store.setSelection(['h1']);
+    expect(listener).not.toHaveBeenCalled();
+    expect(store.getSession()).toBe(before);
+  });
+
+  it('setSelection keeps several ids, the first is primary; unknown ids are dropped', () => {
+    const { store } = makeStore();
+    store.setSelection(['sec1', 'ghost', 'h1']);
+    expect(store.getSession().selection).toEqual(['sec1', 'h1']);
+  });
+
+  it('a document change does not wake session listeners when nothing session-side changed', () => {
+    const { store } = makeStore();
+    const listener = vi.fn();
+    store.subscribeSession(listener);
+    store.update('h1', { text: 'x' });
+    // canUndo flips once: the first edit.
+    expect(listener).toHaveBeenCalledTimes(2);
+    store.update('h1', { text: 'y' });
+    expect(listener).toHaveBeenCalledTimes(2);
+  });
+
+  it('setMode writes the session', () => {
+    const { store } = makeStore();
+    store.setMode('form');
+    expect(store.getSession().mode).toBe('form');
   });
 });
 
 describe('load', () => {
-  it('replaces the tree, resets history/selection, is clean, notifies, does not call onChange', () => {
+  it('replaces the tree, resets history and selection, is clean, emits a system change', () => {
     const { store, callbacks } = makeStore();
     store.add('heading', { parent: { id: 'root_1' } });
-    store.setUserSelection('u2', { selected: 'h1' });
     const onChange = vi.fn();
     callbacks.onChange = onChange;
     const listener = vi.fn();
-    store.subscribe(listener);
+    store.subscribeDoc(listener);
     const newTree = makeDoc();
 
     store.load(newTree);
 
     expect(store.getDocument()).toEqual(newTree);
-    expect(store.getState().history).toEqual({ past: [], future: [] });
-    expect(store.getState().selection.local).toEqual({
-      selected: null,
-      hovered: null,
-      focus: null,
+    expect(store.docStore.getHistory()).toEqual({ past: [], future: [] });
+    expect(store.getSession()).toMatchObject({
+      selection: [],
+      focusedField: null,
       editing: null,
-    });
-    expect(store.getState().selection.u2).toEqual({
-      selected: null,
-      hovered: null,
-      focus: null,
-      editing: null,
+      history: { canUndo: false, canRedo: false },
     });
     expect(store.isDirty()).toBe(false);
-    expect(store.getState().savedVersion).toBe(store.getState().version);
     expect(listener).toHaveBeenCalled();
-    expect(onChange).not.toHaveBeenCalled();
+    expect(onChange.mock.calls[0]?.[0].origin).toBe('system');
   });
 
   it("the new tree's undeclared root keys survive", () => {
@@ -646,85 +733,6 @@ describe('load', () => {
     };
     store.load(newDoc);
     expect(store.getDocument().root.props.__lang).toBe('de');
-  });
-});
-
-describe('markSaved / save', () => {
-  it('markSaved after an edit marks clean with savedVersion === version', () => {
-    const { store } = makeStore();
-    store.update('h1', { text: 'Changed' });
-    store.markSaved();
-    expect(store.isDirty()).toBe(false);
-    expect(store.getState().savedVersion).toBe(store.getState().version);
-  });
-
-  it('save() when clean does not call onSave', async () => {
-    const { store, callbacks } = makeStore();
-    const onSave = vi.fn();
-    callbacks.onSave = onSave;
-    await store.save();
-    expect(onSave).not.toHaveBeenCalled();
-  });
-
-  it('save({ message }) when dirty calls onSave once, tracks saving, then goes clean', async () => {
-    const { store, callbacks } = makeStore();
-    store.update('h1', { text: 'Changed' });
-    let sawSavingDuringCall = false;
-    const onSave = vi.fn(
-      async (doc: EditorDocument, meta: { message?: string }) => {
-        sawSavingDuringCall = store.getState().saving;
-        expect(meta).toEqual({ message: 'm' });
-        expect(doc).toEqual(store.getDocument());
-      },
-    );
-    callbacks.onSave = onSave;
-
-    await store.save({ message: 'm' });
-
-    expect(onSave).toHaveBeenCalledTimes(1);
-    expect(sawSavingDuringCall).toBe(true);
-    expect(store.getState().saving).toBe(false);
-    expect(store.isDirty()).toBe(false);
-  });
-
-  it('a rejecting onSave resets saving and leaves the store dirty', async () => {
-    const { store, callbacks } = makeStore();
-    store.update('h1', { text: 'Changed' });
-    callbacks.onSave = vi.fn(async () => {
-      throw new Error('boom');
-    });
-
-    await expect(store.save()).rejects.toThrow();
-
-    expect(store.getState().saving).toBe(false);
-    expect(store.isDirty()).toBe(true);
-  });
-
-  it('without onSave, save() is a no-op', async () => {
-    const { store } = makeStore();
-    store.update('h1', { text: 'Changed' });
-    await expect(store.save()).resolves.toBeUndefined();
-    expect(store.isDirty()).toBe(true);
-  });
-});
-
-describe('subscribe', () => {
-  it('unsubscribing stops notifications', () => {
-    const { store } = makeStore();
-    const listener = vi.fn();
-    const unsubscribe = store.subscribe(listener);
-    store.select('h1');
-    unsubscribe();
-    store.select('sec1');
-    expect(listener).toHaveBeenCalledTimes(1);
-  });
-
-  it('getState() returns a new object after a change and the same object between changes', () => {
-    const { store } = makeStore();
-    const before = store.getState();
-    expect(store.getState()).toBe(before);
-    store.select('h1');
-    expect(store.getState()).not.toBe(before);
   });
 });
 
@@ -776,7 +784,7 @@ describe('named slots', () => {
     const store = slotStore();
     const id = store.add('columns', { parent: { id: 'r' } });
     expect(id).toBe('n1');
-    const { nodes } = store.getState();
+    const { nodes } = store.getDoc();
     expect(nodes.n1?.slots.left).toEqual(['n2']);
     expect(nodes.n2).toMatchObject({
       type: 'text',
@@ -792,7 +800,7 @@ describe('named slots', () => {
       store.add('columns', { parent: { id: 'n1', slot: 'left' } }),
     ).toBeNull();
     const id = store.add('text', { parent: { id: 'n1', slot: 'right' } });
-    expect(store.getState().nodes.n1?.slots.right).toEqual([id]);
+    expect(store.getDoc().nodes.n1?.slots.right).toEqual([id]);
     expect(
       store.add('text', { parent: { id: 'n1', slot: 'right' } }),
     ).toBeNull();
@@ -808,7 +816,7 @@ describe('named slots', () => {
     expect(
       store.move('n2', { parent: { id: 'n1', slot: 'right' }, index: 0 }),
     ).toBe(true);
-    expect(store.getState().nodes.n2?.parent).toEqual({
+    expect(store.getDoc().nodes.n2?.parent).toEqual({
       id: 'n1',
       slot: 'right',
     });
@@ -835,7 +843,7 @@ describe('named slots', () => {
       },
     });
     const copy = store.duplicate('n1');
-    const { nodes } = store.getState();
+    const { nodes } = store.getDoc();
     const [copied] = nodes[copy ?? '']?.slots.left ?? [];
     expect(copied).toBeDefined();
     expect(copied).not.toBe('n2');

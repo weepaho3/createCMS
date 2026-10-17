@@ -200,7 +200,7 @@ function renderField(name: string, options: FieldTreeOptions = {}) {
   return {
     ...utils,
     store,
-    props: () => store.getState().nodes[blockId]?.props ?? {},
+    props: () => store.getDoc().nodes[blockId]?.props ?? {},
     field: () => utils.getByTestId('field'),
   };
 }
@@ -373,7 +373,7 @@ describe('built-in controls', () => {
     fireEvent.change(customs[0] as HTMLInputElement, {
       target: { value: 'X' },
     });
-    expect(probe.store?.getState().nodes[DEMO]?.props.tags).toEqual(['X', 'y']);
+    expect(probe.store?.getDoc().nodes[DEMO]?.props.tags).toEqual(['X', 'y']);
   });
 
   it('emptyListElement: number 0, boolean false, select first option, string empty', () => {
@@ -588,7 +588,7 @@ describe('Editor.Field', () => {
     const focus = vi.spyOn(store, 'focus');
     expect(field().hasAttribute('data-focused')).toBe(false);
     fireEvent.focus(input);
-    expect(store.getState().selection.local?.focus).toEqual({
+    expect(store.getSession().focusedField).toEqual({
       blockId: DEMO,
       key: 'text',
     });
@@ -685,7 +685,7 @@ describe('Editor.Field', () => {
     fireEvent.change(input, { target: { value: 'He' } });
     fireEvent.change(input, { target: { value: 'Hey' } });
     expect(props().text).toBe('Hey');
-    expect(store.getState().history.past.length).toBe(1);
+    expect(store.docStore.getHistory().past.length).toBe(1);
     act(() => {
       store.undo();
     });
@@ -1057,7 +1057,7 @@ describe('Editor.Form with conditional and read-only fields', () => {
       select.options[0]!.selected = true;
       fireEvent.change(select);
     });
-    expect(store.getState().nodes.h!.props.flags).toEqual(['new', 'hot']);
+    expect(store.getDoc().nodes.h!.props.flags).toEqual(['new', 'hot']);
   });
 
   it('renders one nested control per object field and writes the object', () => {
@@ -1069,7 +1069,7 @@ describe('Editor.Form with conditional and read-only fields', () => {
     act(() => {
       fireEvent.change(label, { target: { value: 'Buy' } });
     });
-    expect(store.getState().nodes.h!.props.cta).toEqual({
+    expect(store.getDoc().nodes.h!.props.cta).toEqual({
       label: 'Buy',
       size: 2,
     });

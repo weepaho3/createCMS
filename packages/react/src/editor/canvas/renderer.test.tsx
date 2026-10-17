@@ -206,7 +206,7 @@ describe('Canvas.Root renderer', () => {
     inner!.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }),
     );
-    expect(store.getState().selection.local?.selected).not.toBe('embedded');
+    expect(store.getSession().selection[0] ?? null).not.toBe('embedded');
   });
 
   it('intercepts a[href] clicks with preventDefault', () => {
@@ -278,6 +278,6 @@ describe('Canvas.Root renderer', () => {
     });
     const badge = host.querySelector('[data-editor-field="badge"]');
     expect(badge?.textContent).toBe(EMPTY_FIELD_PLACEHOLDER);
-    expect(store.getState().nodes.h1!.props.badge).toBe('');
+    expect(store.getDoc().nodes.h1!.props.badge).toBe('');
   });
 });

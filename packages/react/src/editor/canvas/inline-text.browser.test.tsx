@@ -176,7 +176,7 @@ describe('Canvas inline text in a real browser', () => {
     ) as HTMLElement;
     glass.textContent = 'Hi';
     glass.dispatchEvent(new InputEvent('input', { bubbles: true }));
-    expect(store.getState().nodes.h1!.props.text).toBe('Hi');
+    expect(store.getDoc().nodes.h1!.props.text).toBe('Hi');
     expect((field as HTMLElement).style.visibility).toBe('hidden');
   });
 
@@ -199,9 +199,9 @@ describe('Canvas inline text in a real browser', () => {
       }),
     );
     await waitForLayout(host);
-    expect(store.getState().selection.local?.editing).toBeNull();
+    expect(store.getSession().editing).toBeNull();
     expect((field as HTMLElement).style.visibility).not.toBe('hidden');
-    expect(store.getState().nodes.h1!.props.text).toBe('Done');
+    expect(store.getDoc().nodes.h1!.props.text).toBe('Done');
 
     clickCenter(field!);
     await waitForLayout(host);
@@ -216,7 +216,7 @@ describe('Canvas inline text in a real browser', () => {
         cancelable: true,
       }),
     );
-    expect(store.getState().selection.local?.editing).not.toBeNull();
+    expect(store.getSession().editing).not.toBeNull();
   });
 
   it('Escape ends the session and commits by default', async () => {
@@ -238,8 +238,8 @@ describe('Canvas inline text in a real browser', () => {
       }),
     );
     await waitForLayout(host);
-    expect(store.getState().selection.local?.editing).toBeNull();
-    expect(store.getState().nodes.h1!.props.text).toBe('Kept');
+    expect(store.getSession().editing).toBeNull();
+    expect(store.getDoc().nodes.h1!.props.text).toBe('Kept');
   });
 
   it('discardOnEscape restores the pre-session value', async () => {
@@ -265,7 +265,7 @@ describe('Canvas inline text in a real browser', () => {
       }),
     );
     await waitForLayout(host);
-    expect(store.getState().nodes.h1!.props.text).toBe('Hello');
+    expect(store.getDoc().nodes.h1!.props.text).toBe('Hello');
   });
 
   it('nested same-key click targets the inner block', async () => {
@@ -283,7 +283,7 @@ describe('Canvas inline text in a real browser', () => {
     await waitForLayout(host);
     const glass = host.querySelector('[data-editor-inline-text]');
     expect(glass?.getAttribute('data-field')).toBe('text');
-    expect(store.getState().selection.local?.editing?.blockId).toBe('inner1');
+    expect(store.getSession().editing?.blockId).toBe('inner1');
   });
 
   it('richText click does not start a session and keeps the HTML value', async () => {
@@ -298,11 +298,15 @@ describe('Canvas inline text in a real browser', () => {
     clickCenter(el!);
     await waitForLayout(host);
     await waitForLayout(el!);
-    const selection = store.getState().selection.local;
+    const selection = {
+      selected: store.getSession().selection[0] ?? null,
+      focus: store.getSession().focusedField,
+      editing: store.getSession().editing,
+    };
     expect(selection?.editing).toBeNull();
     expect(selection?.focus).toEqual({ blockId: 'p1', key: 'text' });
     expect(host.querySelector('[data-editor-inline-text]')).toBeNull();
-    expect(store.getState().nodes.p1!.props.text).toBe(html);
+    expect(store.getDoc().nodes.p1!.props.text).toBe(html);
   });
 
   it('empty badge field can be edited without storing the placeholder', async () => {
@@ -323,8 +327,8 @@ describe('Canvas inline text in a real browser', () => {
     glass.dispatchEvent(new InputEvent('input', { bubbles: true }));
     glass.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
     await waitForLayout(host);
-    expect(store.getState().nodes.h1!.props.badge).toBe('ok');
-    expect(store.getState().nodes.h1!.props.badge).not.toContain('\u200B');
+    expect(store.getDoc().nodes.h1!.props.badge).toBe('ok');
+    expect(store.getDoc().nodes.h1!.props.badge).not.toContain('\u200B');
   });
 
   it('suggest keyboard accepts an item and Escape closes the list', async () => {
@@ -383,7 +387,7 @@ describe('Canvas inline text in a real browser', () => {
     );
     await waitForLayout(host);
     expect(host.querySelector('[data-testid="suggest"]')).toBeNull();
-    expect(store.getState().selection.local?.editing).not.toBeNull();
+    expect(store.getSession().editing).not.toBeNull();
 
     glass.textContent = '{{n';
     range.selectNodeContents(glass);
@@ -409,7 +413,7 @@ describe('Canvas inline text in a real browser', () => {
       }),
     );
     await waitForLayout(host);
-    expect(store.getState().nodes.h1!.props.text).toBe('{{name}}');
+    expect(store.getDoc().nodes.h1!.props.text).toBe('{{name}}');
     expect(host.querySelector('[data-testid="suggest"]')).toBeNull();
   });
 
@@ -460,7 +464,7 @@ describe('Canvas inline text in a real browser', () => {
     await waitForLayout(level!);
     clickCenter(level!);
     await waitForLayout(host);
-    expect(store.getState().selection.local?.focus).toEqual({
+    expect(store.getSession().focusedField).toEqual({
       blockId: 'h1',
       key: 'level',
     });
@@ -488,8 +492,8 @@ describe('Canvas inline text in a real browser', () => {
       }),
     );
     await waitForLayout(host);
-    expect(store.getState().nodes.h1!.props.text).toBe('Hello');
+    expect(store.getDoc().nodes.h1!.props.text).toBe('Hello');
     expect(glass.textContent).toBe('Hello');
-    expect(store.getState().selection.local?.editing).not.toBeNull();
+    expect(store.getSession().editing).not.toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 import * as React from 'react';
 
-import type { EditorRootProps } from './components';
+import type { EditorRootOwnStoreProps } from './components';
 import type { EditorDocument, JsonValue, SlotRef } from './core/document';
 import type {
   AnyComponentDef,
@@ -10,13 +10,14 @@ import type {
   InferProps,
   PaletteItem,
 } from './core/schema';
-import type { SlotTarget, UpdateOptions, UserSelection } from './core/store';
+import type { SlotTarget, UpdateOptions } from './core/store';
 import type {
   BlockActions,
   ChildRef,
   EditorApi,
   HistoryApi,
   SaveApi,
+  SelectionState,
 } from './hooks';
 import type { EditorFramePreviewProps, EditorPreviewProps } from './preview';
 
@@ -220,7 +221,7 @@ export type EditorFactory<S extends AnyEditorSchema> = {
   readonly schema: S;
   /** `Editor.Root` with `schema` bound and `defaultValue` typed as `DocumentOf<S>`. */
   Root: (
-    props: Omit<EditorRootProps, 'schema' | 'defaultValue'> & {
+    props: Omit<EditorRootOwnStoreProps, 'schema' | 'defaultValue'> & {
       defaultValue: DocumentOf<S>;
     },
   ) => React.JSX.Element;
@@ -248,7 +249,7 @@ export type EditorFactory<S extends AnyEditorSchema> = {
   ): FieldHandleOf<S, K, P>;
   useChildren(parentId: string): readonly ChildRefOf<S>[];
   useBlockActions(id: string): TypedBlockActions<S>;
-  useSelection(userId?: string): UserSelection;
+  useSelection(): SelectionState;
   useHistory(): HistoryApi;
   useEditorKeyboard: typeof useEditorKeyboard;
   useSave(): SaveApi;
@@ -274,7 +275,7 @@ export function createEditor<const S extends AnyEditorSchema>(
 
   function useSchemaGuard(hookName: string): void {
     const ctx = useEditorContext(hookName);
-    if (ctx.schema !== schema) {
+    if (ctx.store.sourceSchema !== schema) {
       throw new Error(
         `${hookName}: the enclosing Editor.Root uses a different schema than ` +
           "this createEditor() instance: render it under the factory's Root " +
@@ -284,7 +285,7 @@ export function createEditor<const S extends AnyEditorSchema>(
   }
 
   function Root(
-    props: Omit<EditorRootProps, 'schema' | 'defaultValue'> & {
+    props: Omit<EditorRootOwnStoreProps, 'schema' | 'defaultValue'> & {
       defaultValue: DocumentOf<S>;
     },
   ): React.JSX.Element {
@@ -365,9 +366,9 @@ export function createEditor<const S extends AnyEditorSchema>(
       useSchemaGuard('useBlockActions');
       return useBlockActions(id) as TypedBlockActions<S>;
     },
-    useSelection(userId) {
+    useSelection() {
       useSchemaGuard('useSelection');
-      return useSelection(userId);
+      return useSelection();
     },
     useHistory() {
       useSchemaGuard('useHistory');

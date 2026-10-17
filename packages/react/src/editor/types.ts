@@ -10,10 +10,9 @@ export type { EditorScrollToOptions } from './scroll';
  * the whole package: created once and shared by every entry.
  */
 export type EditorContextValue = {
+  /** The store's schema (with plugin blocks and field kinds applied). */
   readonly schema: AnyEditorSchema;
   readonly store: EditorStore;
-  /** The user this editor edits as: the store's local user. */
-  readonly userId: string;
   /** Per-kind control components from `Editor.Root`'s `fields` prop (`{}` when none). */
   readonly fields: FieldControls;
   registerScrollTarget(blockId: string, el: HTMLElement): () => void;

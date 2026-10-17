@@ -62,11 +62,11 @@ describe('Canvas insert geometry in a real browser', () => {
     const button = host.querySelector('[data-editor-insert-button]');
     expect(button).not.toBeNull();
     expect(button?.getAttribute('data-orientation')).toBe('horizontal');
-    const before = [...(store.getState().nodes.stack1!.slots.children ?? [])];
+    const before = [...(store.getDoc().nodes.stack1!.slots.children ?? [])];
     button!.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }),
     );
-    const after = store.getState().nodes.stack1!.slots.children;
+    const after = store.getDoc().nodes.stack1!.slots.children;
     expect(after.length).toBe(before.length + 1);
     expect(after[0]).not.toBe('c1');
     expect(after[1]).toBe('c1');
@@ -94,11 +94,11 @@ describe('Canvas insert geometry in a real browser', () => {
     const button = host.querySelector('[data-editor-insert-button]');
     expect(button).not.toBeNull();
     expect(button?.getAttribute('data-orientation')).toBe('vertical');
-    const before = [...(store.getState().nodes.stack1!.slots.children ?? [])];
+    const before = [...(store.getDoc().nodes.stack1!.slots.children ?? [])];
     button!.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }),
     );
-    const after = store.getState().nodes.stack1!.slots.children;
+    const after = store.getDoc().nodes.stack1!.slots.children;
     expect(after.length).toBe(before.length + 1);
     expect(after[0]).not.toBe('c1');
   });
@@ -128,11 +128,11 @@ describe('Canvas insert geometry in a real browser', () => {
     const button = host.querySelector('[data-editor-insert-button]');
     expect(button).not.toBeNull();
     expect(button?.getAttribute('data-orientation')).toBe('vertical');
-    const before = [...(store.getState().nodes.stack1!.slots.children ?? [])];
+    const before = [...(store.getDoc().nodes.stack1!.slots.children ?? [])];
     button!.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }),
     );
-    const after = store.getState().nodes.stack1!.slots.children;
+    const after = store.getDoc().nodes.stack1!.slots.children;
     expect(after.length).toBe(before.length + 1);
     expect(after[1]).not.toBe('c2');
     expect(after[2]).toBe('c2');
@@ -170,16 +170,14 @@ describe('Canvas insert geometry in a real browser', () => {
       '[data-editor-insert-button]:not([data-empty-container])',
     );
     expect(line).toBeNull();
-    const before = [...(store.getState().nodes.stack1!.slots.children ?? [])];
+    const before = [...(store.getDoc().nodes.stack1!.slots.children ?? [])];
     container!.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }),
     );
-    expect(store.getState().nodes.stack1!.slots.children?.length).toBe(
+    expect(store.getDoc().nodes.stack1!.slots.children?.length).toBe(
       before.length + 1,
     );
-    expect(
-      store.getState().nodes.stack1!.slots.children[0],
-    ).not.toBeUndefined();
+    expect(store.getDoc().nodes.stack1!.slots.children[0]).not.toBeUndefined();
   });
 
   it('BlockToolbar follows selection with side bottom', async () => {
@@ -286,11 +284,11 @@ describe('Canvas insert geometry in a real browser', () => {
     const headingBtn = buttons[1] as HTMLButtonElement;
     expect(cellBtn.disabled).toBe(false);
     expect(headingBtn.disabled).toBe(true);
-    const before = [...(store.getState().nodes.stack1!.slots.children ?? [])];
+    const before = [...(store.getDoc().nodes.stack1!.slots.children ?? [])];
     headingBtn.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }),
     );
-    expect(store.getState().nodes.stack1!.slots.children ?? []).toEqual(before);
+    expect(store.getDoc().nodes.stack1!.slots.children ?? []).toEqual(before);
   });
 
   it('select mode hides InsertButton but keeps BlockToolbar', async () => {
@@ -347,11 +345,11 @@ describe('Canvas insert into named slots in a real browser', () => {
     container!.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }),
     );
-    const cols = store.getState().nodes.cols!;
+    const cols = store.getDoc().nodes.cols!;
     expect(cols.slots.left).toEqual(['c1']);
     expect(cols.slots.right).toHaveLength(1);
     const added = cols.slots.right![0]!;
-    expect(store.getState().nodes[added]?.parent).toEqual({
+    expect(store.getDoc().nodes[added]?.parent).toEqual({
       id: 'cols',
       slot: 'right',
     });

@@ -3,7 +3,7 @@ import * as React from 'react';
 import type { EditorDocument } from '../core/document';
 
 import { useRender } from '../../use-render';
-import { useEditorSelector } from '../binding';
+import { useDocSelector } from '../binding';
 import { useEditorContext } from '../context';
 
 export const PREVIEW_DEBOUNCE_MS = 100;
@@ -32,7 +32,7 @@ export function EditorPreview({
   ...rest
 }: EditorPreviewProps) {
   const ctx = useEditorContext('Editor.Preview');
-  const version = useEditorSelector((s) => s.version);
+  const version = useDocSelector((s) => s.version);
   const delay = Math.max(0, debounceMs ?? PREVIEW_DEBOUNCE_MS);
   const [displayed, setDisplayed] = React.useState(() => ({
     version,

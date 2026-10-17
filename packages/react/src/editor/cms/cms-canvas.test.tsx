@@ -93,7 +93,7 @@ describe('cmsCanvasComponents', () => {
     inner!.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }),
     );
-    expect(store.getState().selection.local?.selected).toBeNull();
+    expect(store.getSession().selection[0] ?? null).toBeNull();
   });
 
   it('leaves an unresolved reference out of the properties', () => {

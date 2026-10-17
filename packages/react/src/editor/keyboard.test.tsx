@@ -65,15 +65,15 @@ describe('useEditorKeyboard', () => {
     act(() => {
       probe.store?.add('heading', { parent: { id: 'root_1' } });
     });
-    expect(probe.store?.getState().nodes.n1).toBeDefined();
+    expect(probe.store?.getDoc().nodes.n1).toBeDefined();
     fireEvent.keyDown(getByTestId('scope'), { key: 'z', ctrlKey: true });
-    expect(probe.store?.getState().nodes.n1).toBeUndefined();
+    expect(probe.store?.getDoc().nodes.n1).toBeUndefined();
     fireEvent.keyDown(getByTestId('scope'), {
       key: 'z',
       ctrlKey: true,
       shiftKey: true,
     });
-    expect(probe.store?.getState().nodes.n1).toBeDefined();
+    expect(probe.store?.getDoc().nodes.n1).toBeDefined();
   });
 
   it('Meta+Z undoes like Ctrl+Z', () => {
@@ -82,7 +82,7 @@ describe('useEditorKeyboard', () => {
       probe.store?.add('heading', { parent: { id: 'root_1' } });
     });
     fireEvent.keyDown(getByTestId('scope'), { key: 'z', metaKey: true });
-    expect(probe.store?.getState().nodes.n1).toBeUndefined();
+    expect(probe.store?.getDoc().nodes.n1).toBeUndefined();
   });
 
   it('Ctrl+Y redoes after an undo', () => {
@@ -91,9 +91,9 @@ describe('useEditorKeyboard', () => {
       probe.store?.add('heading', { parent: { id: 'root_1' } });
     });
     fireEvent.keyDown(getByTestId('scope'), { key: 'z', ctrlKey: true });
-    expect(probe.store?.getState().nodes.n1).toBeUndefined();
+    expect(probe.store?.getDoc().nodes.n1).toBeUndefined();
     fireEvent.keyDown(getByTestId('scope'), { key: 'y', ctrlKey: true });
-    expect(probe.store?.getState().nodes.n1).toBeDefined();
+    expect(probe.store?.getDoc().nodes.n1).toBeDefined();
   });
 
   it('undo still runs when focus is inside an input', () => {
@@ -102,7 +102,7 @@ describe('useEditorKeyboard', () => {
       probe.store?.add('heading', { parent: { id: 'root_1' } });
     });
     fireEvent.keyDown(getByTestId('in'), { key: 'z', ctrlKey: true });
-    expect(probe.store?.getState().nodes.n1).toBeUndefined();
+    expect(probe.store?.getDoc().nodes.n1).toBeUndefined();
   });
 
   it('a consumer onKeyDown that preventDefault leaves the add in place on Ctrl+Z', () => {
@@ -132,7 +132,7 @@ describe('useEditorKeyboard', () => {
       probe.store?.add('heading', { parent: { id: 'root_1' } });
     });
     fireEvent.keyDown(getByTestId('scope'), { key: 'z', ctrlKey: true });
-    expect(probe.store?.getState().nodes.n1).toBeDefined();
+    expect(probe.store?.getDoc().nodes.n1).toBeDefined();
   });
 
   it('without options, Delete on the scope with h1 selected does not remove h1', () => {
@@ -141,7 +141,7 @@ describe('useEditorKeyboard', () => {
       probe.store?.select('h1');
     });
     fireEvent.keyDown(getByTestId('scope'), { key: 'Delete' });
-    expect(probe.store?.getState().nodes.h1).toBeDefined();
+    expect(probe.store?.getDoc().nodes.h1).toBeDefined();
   });
 
   it('with delete: true, Delete removes h1 unless the target is an input', () => {
@@ -153,9 +153,9 @@ describe('useEditorKeyboard', () => {
       probe.store?.select('h1');
     });
     fireEvent.keyDown(getByTestId('in'), { key: 'Delete' });
-    expect(probe.store?.getState().nodes.h1).toBeDefined();
+    expect(probe.store?.getDoc().nodes.h1).toBeDefined();
     fireEvent.keyDown(getByTestId('scope'), { key: 'Delete' });
-    expect(probe.store?.getState().nodes.h1).toBeUndefined();
+    expect(probe.store?.getDoc().nodes.h1).toBeUndefined();
   });
 
   it('with escape: true, Escape clears the selection unless the target is an input', () => {
@@ -167,9 +167,9 @@ describe('useEditorKeyboard', () => {
       probe.store?.select('h1');
     });
     fireEvent.keyDown(getByTestId('in'), { key: 'Escape' });
-    expect(probe.store?.getState().selection.local.selected).toBe('h1');
+    expect(probe.store?.getSession().selection[0] ?? null).toBe('h1');
     fireEvent.keyDown(getByTestId('scope'), { key: 'Escape' });
-    expect(probe.store?.getState().selection.local.selected).toBeNull();
+    expect(probe.store?.getSession().selection[0] ?? null).toBeNull();
   });
 
   it('throws outside Editor.Root', () => {

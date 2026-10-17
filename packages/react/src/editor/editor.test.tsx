@@ -15,12 +15,8 @@ function Probe() {
 }
 
 function StoreProbe() {
-  const { store, userId } = useEditorContext('StoreProbe');
-  return (
-    <span data-testid="store-probe">
-      {store.getState().rootId}/{userId}
-    </span>
-  );
+  const { store } = useEditorContext('StoreProbe');
+  return <span data-testid="store-probe">{store.getDoc().rootId}</span>;
 }
 
 describe('Editor.Root', () => {
@@ -45,7 +41,7 @@ describe('Editor.Root', () => {
         <StoreProbe />
       </Editor.Root>,
     );
-    expect(getByTestId('store-probe').textContent).toBe('root_1/local');
+    expect(getByTestId('store-probe').textContent).toBe('root_1');
   });
 });
 
@@ -82,6 +78,7 @@ describe('namespace shape', () => {
       'OutlineItem',
       'OutlineGroup',
       'AddBlock',
+      'Slot',
     ]);
   });
 

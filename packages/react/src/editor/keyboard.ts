@@ -18,10 +18,27 @@ function isEditableTarget(event: KeyboardEvent): boolean {
 }
 
 /**
- * Binds undo/redo (and optionally Delete/Escape) for keys whose target is
- * inside `scopeRef`. Must run under `Editor.Root`. The listener is bubbling
- * on the document, so a consumer React `onKeyDown` that `preventDefault`s
- * wins.
+ * The combos `event` matches, most specific first: `mod` stands for Cmd or
+ * Ctrl; with Ctrl alone the `ctrl` spelling is tried too.
+ */
+export function combosOf(event: KeyboardEvent): string[] {
+  const key = event.key.toLowerCase();
+  const tail = [event.altKey ? 'alt' : null, event.shiftKey ? 'shift' : null];
+  const combo = (head: string | null) =>
+    [head, ...tail, key].filter((part) => part !== null).join('+');
+  const out: string[] = [];
+  if (event.metaKey || event.ctrlKey) out.push(combo('mod'));
+  if (event.ctrlKey && !event.metaKey) out.push(combo('ctrl'));
+  if (!event.metaKey && !event.ctrlKey) out.push(combo(null));
+  return out;
+}
+
+/**
+ * Binds the editor's shortcuts (undo/redo and every plugin combo, see
+ * `store.commands.shortcuts()`) and optionally Delete/Escape for keys whose
+ * target is inside `scopeRef`. Must run under `Editor.Root`. The listener
+ * is bubbling on the document, so a consumer React `onKeyDown` that
+ * `preventDefault`s wins.
  */
 export function useEditorKeyboard(
   scopeRef: React.RefObject<HTMLElement | null>,
@@ -31,32 +48,22 @@ export function useEditorKeyboard(
   const allowDelete = options?.delete === true;
   const allowEscape = options?.escape === true;
   const store = ctx.store;
-  const userId = ctx.userId;
   React.useEffect(() => {
     const el = scopeRef.current;
     if (!el) return;
     const doc = el.ownerDocument;
+    const shortcuts = store.commands.shortcuts();
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
       if (!isNode(target) || (target !== el && !el.contains(target))) {
         return;
       }
       if (event.defaultPrevented) return;
-      const key = event.key.toLowerCase();
-      const mod = event.metaKey || event.ctrlKey;
-      if (mod && key === 'z' && !event.shiftKey) {
+      for (const combo of combosOf(event)) {
+        const id = shortcuts[combo];
+        if (id === undefined) continue;
         event.preventDefault();
-        store.undo();
-        return;
-      }
-      if (mod && key === 'z' && event.shiftKey) {
-        event.preventDefault();
-        store.redo();
-        return;
-      }
-      if (event.ctrlKey && !event.metaKey && key === 'y') {
-        event.preventDefault();
-        store.redo();
+        store.commands.execute(id);
         return;
       }
       if (
@@ -64,8 +71,8 @@ export function useEditorKeyboard(
         (event.key === 'Delete' || event.key === 'Backspace')
       ) {
         if (isEditableTarget(event)) return;
-        const selected = store.getState().selection[userId]?.selected ?? null;
-        if (selected === null) return;
+        const selected = store.getSession().selection[0];
+        if (selected === undefined) return;
         event.preventDefault();
         store.remove(selected);
         return;
@@ -78,5 +85,5 @@ export function useEditorKeyboard(
     };
     doc.addEventListener('keydown', onKeyDown);
     return () => doc.removeEventListener('keydown', onKeyDown);
-  }, [scopeRef, store, userId, allowDelete, allowEscape]);
+  }, [scopeRef, store, allowDelete, allowEscape]);
 }

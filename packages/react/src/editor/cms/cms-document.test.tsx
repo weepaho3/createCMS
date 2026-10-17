@@ -20,7 +20,7 @@ import {
   PROTECTED_BRANCH,
   TYPE_MISMATCH,
 } from './errors';
-import { fromCollection, fromEditor } from './mapping';
+import { fromCollection } from './mapping';
 import { cmsSchema, makeCmsTree } from './test/cms-fixtures';
 import { CMS_RESOLVE_DEBOUNCE_MS, useCmsDocument } from './use-cms-document';
 
@@ -168,20 +168,39 @@ describe('useCmsDocument client ref', () => {
   });
 });
 
-describe('useCmsDocument save', () => {
-  it('roundtrips save with expectedHeadCommitId and keeps key', async () => {
+describe('useCmsDocument persistence', () => {
+  async function saveOnce(
+    result: { current: ReturnType<typeof useCmsDocument> },
+    ctx: { baseVersion?: string; message?: string } = {},
+  ) {
+    let caught: unknown;
+    let version: string | undefined;
+    await act(async () => {
+      try {
+        const saved = await result.current.persistence.save(
+          result.current.doc!,
+          { ops: [], ...ctx },
+        );
+        version = saved.version;
+      } catch (err) {
+        caught = err;
+      }
+    });
+    return { caught, version };
+  }
+
+  it('starts from the loaded head, saves with expectedHeadCommitId and keeps the key', async () => {
     const client = makeClient();
     const { result } = renderDoc({ client });
-
     await waitFor(() => {
       expect(result.current.status).toBe('idle');
     });
+    expect(result.current.persistence.baseVersion).toBe('c1');
+    expect(result.current.persistence.autosave).toBe(false);
 
-    const tree = result.current.doc!;
-    await act(async () => {
-      await result.current.save(tree);
-    });
+    const { version } = await saveOnce(result, { baseVersion: 'c1' });
 
+    expect(version).toBe('c2');
     expect(client.updateBlocks).toHaveBeenCalledWith({
       body: expect.objectContaining({
         expectedHeadCommitId: 'c1',
@@ -191,13 +210,12 @@ describe('useCmsDocument save', () => {
         }),
       }),
     });
-    expect(result.current.headCommitId).toBe('c2');
     expect(result.current.key).toBe('root_1:br_1:c1');
   });
 
-  it('sends message from the hook option or meta override', async () => {
+  it('sends the message from the hook option unless the save brings its own', async () => {
     const client = makeClient();
-    const { result: withHookMessage } = renderHook(() =>
+    const { result } = renderHook(() =>
       useCmsDocument({
         client,
         definition: cmsSchema,
@@ -206,76 +224,45 @@ describe('useCmsDocument save', () => {
         message: () => 'edited',
       }),
     );
-
     await waitFor(() => {
-      expect(withHookMessage.current.status).toBe('idle');
+      expect(result.current.status).toBe('idle');
     });
 
-    await act(async () => {
-      await withHookMessage.current.save(withHookMessage.current.doc!);
-    });
+    await saveOnce(result);
     expect(client.updateBlocks).toHaveBeenLastCalledWith({
       body: expect.objectContaining({ message: 'edited' }),
     });
-
-    await act(async () => {
-      await withHookMessage.current.save(withHookMessage.current.doc!, {
-        message: 'x',
-      });
-    });
+    await saveOnce(result, { message: 'x' });
     expect(client.updateBlocks).toHaveBeenLastCalledWith({
       body: expect.objectContaining({ message: 'x' }),
     });
   });
 
-  it('enters conflict on HEAD_MISMATCH then force-saves without head', async () => {
+  it('turns HEAD_MISMATCH into a conflict carrying the server document and head', async () => {
     const client = makeClient({
-      updateBlocks: vi
-        .fn()
-        .mockRejectedValueOnce({
-          code: 'HEAD_MISMATCH',
-          message: 'The branch has advanced',
-        })
-        .mockResolvedValueOnce({
-          commit: { id: 'c3' },
-          changed: true,
-        }),
+      updateBlocks: vi.fn().mockRejectedValueOnce({
+        code: 'HEAD_MISMATCH',
+        message: 'The branch has advanced',
+      }),
     });
     const { result } = renderDoc({ client });
-
     await waitFor(() => {
       expect(result.current.status).toBe('idle');
     });
 
-    const tree = result.current.doc!;
-    let caught: unknown;
-    await act(async () => {
-      try {
-        await result.current.save(tree);
-      } catch (err) {
-        caught = err;
-      }
-    });
+    const { caught } = await saveOnce(result, { baseVersion: 'c1' });
+
     expect(caught).toMatchObject({
       kind: 'conflict',
-      details: { code: 'HEAD_MISMATCH' },
+      details: {
+        code: 'HEAD_MISMATCH',
+        serverVersion: 'c1',
+        serverDoc: expect.objectContaining({ schemaVersion: 1 }),
+      },
     });
-
-    await waitFor(() => {
-      expect(result.current.status).toBe('conflict');
-    });
-    expect(result.current.headCommitId).toBe('c1');
-
-    await act(async () => {
-      await result.current.save({ force: true });
-    });
-
-    const lastCall = vi.mocked(client.updateBlocks).mock.calls.at(-1);
-    expect(lastCall?.[0].body.expectedHeadCommitId).toBeUndefined();
-    expect(lastCall?.[0].body.tree).toEqual(fromEditor(tree, cmsSchema));
   });
 
-  it('maps TYPE_MISMATCH issues to error.fields', async () => {
+  it('maps TYPE_MISMATCH issues to validation details with fields', async () => {
     const client = makeClient({
       updateBlocks: vi.fn().mockRejectedValue({
         code: TYPE_MISMATCH,
@@ -287,25 +274,18 @@ describe('useCmsDocument save', () => {
       }),
     });
     const { result } = renderDoc({ client });
-
     await waitFor(() => {
       expect(result.current.status).toBe('idle');
     });
 
-    await act(async () => {
-      try {
-        await result.current.save(result.current.doc!);
-      } catch {
-        // the mock rejects by design; the assertion below checks the surfaced error
-      }
-    });
+    const { caught } = await saveOnce(result);
 
-    await waitFor(() => {
-      expect(result.current.status).toBe('error');
+    expect(caught).toMatchObject({
+      kind: 'validation',
+      details: {
+        fields: [{ blockId: 'h1', key: 'text', message: 'Required' }],
+      },
     });
-    expect(result.current.error?.fields).toEqual([
-      { blockId: 'h1', key: 'text', message: 'Required' },
-    ]);
   });
 
   it.each([
@@ -320,22 +300,13 @@ describe('useCmsDocument save', () => {
       }),
     });
     const { result } = renderDoc({ client });
-
     await waitFor(() => {
       expect(result.current.status).toBe('idle');
     });
 
-    await act(async () => {
-      try {
-        await result.current.save(result.current.doc!);
-      } catch {
-        // the mock rejects by design; the assertion below checks the surfaced error
-      }
-    });
+    const { caught } = await saveOnce(result);
 
-    await waitFor(() => {
-      expect(result.current.error?.code).toBe(code);
-    });
+    expect(caught).toMatchObject({ details: { code } });
   });
 });
 
@@ -528,7 +499,7 @@ describe('useCmsDocument reload and onAdd', () => {
 });
 
 describe('useCmsDocument Editor.Root integration', () => {
-  it('clears dirty after store save through onSave', async () => {
+  it('saves through persistence and clears dirty', async () => {
     const client = makeClient();
     const probe: {
       api: EditorApi | null;
@@ -554,7 +525,7 @@ describe('useCmsDocument Editor.Root integration', () => {
           schema={editorSchema}
           defaultValue={doc.doc}
           genId={counterGenId()}
-          onSave={doc.save}
+          persistence={doc.persistence}
           onChange={doc.onChange}
         >
           <Probe />

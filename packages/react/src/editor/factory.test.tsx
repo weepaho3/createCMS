@@ -58,7 +58,7 @@ describe('factory.Root', () => {
     const factory = createEditor({ schema: storeSchema });
     function Probe() {
       const api = factory.useEditor();
-      return <span data-testid="probe">{api.getState().rootId}</span>;
+      return <span data-testid="probe">{api.getDoc().rootId}</span>;
     }
     const { getByTestId } = render(
       <factory.Root defaultValue={typedTree()} genId={counterGenId()}>
@@ -78,7 +78,7 @@ describe('factory.Root', () => {
       id = result.current.add('heading', { parent: { id: 'root_1' } });
     });
     expect(id).toBe('n1');
-    expect(result.current.getState().nodes.n1?.props.level).toBe(2);
+    expect(result.current.getDoc().nodes.n1?.props.level).toBe(2);
   });
 });
 
@@ -239,7 +239,7 @@ describe('schema guard', () => {
     const factory = createEditor({ schema: storeSchema });
     function Probe() {
       const api = factory.useEditor();
-      return <span data-testid="probe">{api.getState().rootId}</span>;
+      return <span data-testid="probe">{api.getDoc().rootId}</span>;
     }
     const { getByTestId } = render(
       <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
@@ -253,7 +253,7 @@ describe('schema guard', () => {
     const factory = createEditor({ schema: storeSchema });
     function Probe() {
       const api = factory.useEditor();
-      return <span data-testid="probe">{api.getState().rootId}</span>;
+      return <span data-testid="probe">{api.getDoc().rootId}</span>;
     }
     const { getByTestId } = render(
       <factory.Root defaultValue={typedTree()}>
@@ -271,7 +271,7 @@ describe('nesting two factories', () => {
     let innerBRootId: string | undefined;
     let innerAThrewMessage: string | undefined;
     function InnerProbe() {
-      innerBRootId = factoryB.useEditor().getState().rootId;
+      innerBRootId = factoryB.useEditor().getDoc().rootId;
       try {
         factoryA.useEditor();
       } catch (err) {

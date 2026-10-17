@@ -1,7 +1,7 @@
 import * as React from 'react';
 
-import type { EditorSelector } from './binding';
-import type { FlatNode, SlotRef } from './core/document';
+import type { DocSelector } from './binding';
+import type { EditorDocument, FlatNode, SlotRef } from './core/document';
 import type {
   AnyEditorSchema,
   Field,
@@ -9,10 +9,21 @@ import type {
   PaletteItem,
   SchemaField,
 } from './core/schema';
-import type { EditorStore, UpdateOptions, UserSelection } from './core/store';
+import type {
+  EditorCommand,
+  EditorStore,
+  FieldRef,
+  SaveConflict,
+  SaveStatus,
+  UpdateOptions,
+} from './core/store';
 import type { EditorScrollToOptions } from './scroll';
 
-import { useStoreSelector } from './binding';
+import {
+  useStoreDocSelector,
+  useStoreEphemeralSelector,
+  useStoreSessionSelector,
+} from './binding';
 import { useEditorContext } from './context';
 import {
   allowedChildTypes,
@@ -26,50 +37,40 @@ import {
   fieldsOf,
 } from './core/schema';
 
-const EMPTY_SELECTION: UserSelection = {
-  selected: null,
-  hovered: null,
-  focus: null,
-  editing: null,
-};
-const NO_SLICE: EditorSelector<null> = () => null;
+const NO_SLICE: DocSelector<null> = () => null;
 
-/** Everything a part needs from the editor: the store's methods plus `schema`, `userId`, `store` and `scrollTo`. */
+/** Everything a part needs from the editor: the store's methods plus `schema`, `store` and `scrollTo`. */
 export type EditorApi = EditorStore & {
-  readonly schema: AnyEditorSchema;
-  readonly userId: string;
   readonly store: EditorStore;
   scrollTo(blockId: string, opts?: EditorScrollToOptions): boolean;
 };
 
 /**
- * `useEditor()` → a stable API object (actions + `schema` + `userId` +
- * `store` + `scrollTo`); `useEditor(selector)` → a reactive slice of the
- * store state.
+ * `useEditor()` → a stable API object (actions + `schema` + `store` +
+ * `scrollTo`); `useEditor(selector)` → a reactive slice of the document
+ * scope.
  */
 export function useEditor(): EditorApi;
 export function useEditor<T>(
-  selector: EditorSelector<T>,
+  selector: DocSelector<T>,
   isEqual?: (a: T, b: T) => boolean,
 ): T;
 export function useEditor<T>(
-  selector?: EditorSelector<T>,
+  selector?: DocSelector<T>,
   isEqual?: (a: T, b: T) => boolean,
 ): T | EditorApi {
   const ctx = useEditorContext('useEditor');
   const api = React.useMemo<EditorApi>(
     () => ({
       ...ctx.store,
-      schema: ctx.schema,
-      userId: ctx.userId,
       store: ctx.store,
       scrollTo: ctx.scrollTo,
     }),
     [ctx],
   );
-  const slice = useStoreSelector(
+  const slice = useStoreDocSelector(
     ctx.store,
-    (selector ?? NO_SLICE) as EditorSelector<T | null>,
+    (selector ?? NO_SLICE) as DocSelector<T | null>,
     isEqual as ((a: T | null, b: T | null) => boolean) | undefined,
   );
   return selector ? (slice as T) : api;
@@ -179,7 +180,7 @@ function makeBlockHandle(
 /** The block `id` (or `null`), re-rendering only when that node changes. */
 export function useAnyBlock(id: string | null): AnyBlockHandle | null {
   const ctx = useEditorContext('useAnyBlock');
-  const node = useStoreSelector(ctx.store, (state) =>
+  const node = useStoreDocSelector(ctx.store, (state) =>
     id === null ? null : (state.nodes[id] ?? null),
   );
   return React.useMemo(
@@ -191,7 +192,7 @@ export function useAnyBlock(id: string | null): AnyBlockHandle | null {
 /** One property of block `blockId`, re-rendering only when that value (or the node's type) changes. */
 export function useAnyField(blockId: string, key: string): AnyFieldHandle {
   const ctx = useEditorContext('useAnyField');
-  const slice = useStoreSelector(ctx.store, (state) => {
+  const slice = useStoreDocSelector(ctx.store, (state) => {
     const node = state.nodes[blockId];
     return { type: node?.type ?? null, value: node?.props[key] };
   });
@@ -222,7 +223,7 @@ export function useFields(blockId: string): SchemaField[] {
   > | null>(null);
   resolverRef.current ??= createFieldResolver();
   const resolver = resolverRef.current;
-  const fields = useStoreSelector(ctx.store, (state) => {
+  const fields = useStoreDocSelector(ctx.store, (state) => {
     const node = state.nodes[blockId];
     if (!node) return null;
     const def = componentOf(ctx.schema, node.type);
@@ -263,7 +264,7 @@ function sameChildren(a: readonly ChildRef[], b: readonly ChildRef[]): boolean {
  */
 export function useSlot(parentId: string, slot: string): readonly ChildRef[] {
   const ctx = useEditorContext('useSlot');
-  return useStoreSelector(
+  return useStoreDocSelector(
     ctx.store,
     (state) => {
       const ids = state.nodes[parentId]?.slots[slot];
@@ -295,7 +296,7 @@ function sameNames(a: readonly string[], b: readonly string[]): boolean {
  */
 export function useSlots(parentId: string): readonly string[] {
   const ctx = useEditorContext('useSlots');
-  return useStoreSelector(
+  return useStoreDocSelector(
     ctx.store,
     (state) => {
       const node = state.nodes[parentId];
@@ -317,7 +318,7 @@ export function useSlots(parentId: string): readonly string[] {
  */
 export function useBlockActions(id: string): BlockActions {
   const ctx = useEditorContext('useBlockActions');
-  const slice = useStoreSelector(
+  const slice = useStoreDocSelector(
     ctx.store,
     (state) => {
       const node = state.nodes[id];
@@ -394,14 +395,30 @@ export function useBlockActions(id: string): BlockActions {
   }, [ctx.store, ctx.schema, id, slice]);
 }
 
-/** The selection of `userId` (default: this editor's user). */
-export function useSelection(userId?: string): UserSelection {
+/** The local selection and field focus. */
+export type SelectionState = {
+  /** The primary selected block (the first of `selection`), or `null`. */
+  readonly selected: string | null;
+  readonly selection: readonly string[];
+  readonly focus: FieldRef | null;
+  readonly editing: FieldRef | null;
+};
+
+/** The local selection; re-renders only on selection, focus or editing changes. */
+export function useSelection(): SelectionState {
   const ctx = useEditorContext('useSelection');
-  const user = userId ?? ctx.userId;
-  return useStoreSelector(
-    ctx.store,
-    (state) => state.selection[user] ?? EMPTY_SELECTION,
-  );
+  return useStoreSessionSelector(ctx.store, (state) => ({
+    selected: state.selection[0] ?? null,
+    selection: state.selection,
+    focus: state.focusedField,
+    editing: state.editing,
+  }));
+}
+
+/** The hovered block; re-renders only on hover changes. */
+export function useHovered(): string | null {
+  const ctx = useEditorContext('useHovered');
+  return useStoreEphemeralSelector(ctx.store, (state) => state.hoverId);
 }
 
 export type HistoryApi = {
@@ -413,10 +430,7 @@ export type HistoryApi = {
 
 export function useHistory(): HistoryApi {
   const ctx = useEditorContext('useHistory');
-  const flags = useStoreSelector(ctx.store, (state) => ({
-    canUndo: state.history.past.length > 0,
-    canRedo: state.history.future.length > 0,
-  }));
+  const flags = useStoreSessionSelector(ctx.store, (state) => state.history);
   return React.useMemo(
     () => ({ ...flags, undo: ctx.store.undo, redo: ctx.store.redo }),
     [ctx, flags],
@@ -424,28 +438,120 @@ export function useHistory(): HistoryApi {
 }
 
 export type SaveApi = {
+  readonly status: SaveStatus;
   readonly dirty: boolean;
+  /** `status === 'saving'`. */
   readonly saving: boolean;
-  save(meta?: { message?: string }): Promise<void>;
-  markSaved(): void;
+  readonly error: Error | null;
+  readonly conflict: SaveConflict | null;
+  save(options?: { message?: string; force?: boolean }): Promise<void>;
 };
 
+/** Save state and the save action; re-renders when the save state changes. */
 export function useSave(): SaveApi {
   const ctx = useEditorContext('useSave');
-  const flags = useStoreSelector(ctx.store, (state, store) => ({
-    dirty: store.isDirty(),
-    saving: state.saving,
-  }));
+  const save = useStoreSessionSelector(ctx.store, (state) => state.save);
   return React.useMemo(
-    () => ({ ...flags, save: ctx.store.save, markSaved: ctx.store.markSaved }),
-    [ctx, flags],
+    () => ({
+      status: save.status,
+      dirty: save.dirty,
+      saving: save.status === 'saving',
+      error: save.error,
+      conflict: save.conflict,
+      save: ctx.store.save,
+    }),
+    [ctx, save],
   );
 }
 
-/** Whether the tree differs from the last saved/loaded tree. */
+/** Whether there are local changes the last save did not include. */
 export function useDirty(): boolean {
   const ctx = useEditorContext('useDirty');
-  return useStoreSelector(ctx.store, (_state, store) => store.isDirty());
+  return useStoreSessionSelector(ctx.store, (state) => state.save.dirty);
+}
+
+export type SaveConflictApi = {
+  /** The server's document, when the adapter sent it. */
+  readonly serverDoc: EditorDocument | null;
+  /** The local document. */
+  readonly localDoc: EditorDocument;
+  /** Loads the server's document; local changes are dropped. */
+  reload(): boolean;
+  /** Saves the local document over the server's. */
+  overwrite(): Promise<void>;
+  /** Writes the local document as JSON to the clipboard. */
+  copyMine(): Promise<void>;
+};
+
+/** The current save conflict with its three ways out, or `null` without a conflict. */
+export function useSaveConflict(): SaveConflictApi | null {
+  const ctx = useEditorContext('useSaveConflict');
+  const conflict = useStoreSessionSelector(
+    ctx.store,
+    (state) => state.save.conflict,
+  );
+  return React.useMemo(() => {
+    if (!conflict) return null;
+    const store = ctx.store;
+    return {
+      serverDoc: conflict.serverDoc,
+      localDoc: store.getDocument(),
+      reload: () => store.reloadFromServer(),
+      overwrite: () => store.save({ force: true }),
+      async copyMine() {
+        const json = JSON.stringify(store.getDocument(), null, 2);
+        await globalThis.navigator.clipboard.writeText(json);
+      },
+    };
+  }, [ctx, conflict]);
+}
+
+/** A UI command with its availability; re-renders when the session or document changes. */
+export type CommandApi = {
+  readonly id: string;
+  readonly label: string | undefined;
+  readonly canExecute: boolean;
+  /** The bound key combo, if any. */
+  readonly shortcut: string | undefined;
+  run(args?: unknown): unknown;
+};
+
+function shortcutFor(store: EditorStore, id: string): string | undefined {
+  for (const [combo, target] of Object.entries(store.commands.shortcuts())) {
+    if (target === id) return combo;
+  }
+  return undefined;
+}
+
+/** The UI command `id` (built-in or from a plugin), or `null` when unknown. */
+export function useCommand(id: string): CommandApi | null {
+  const ctx = useEditorContext('useCommand');
+  const store = ctx.store;
+  const command = store.commands.get(id);
+  // Availability can depend on the selection and on the document: re-render
+  // on both, then recompute it.
+  useStoreSessionSelector(store, (state) => state);
+  useStoreDocSelector(store, (state) => state.version);
+  const canExecute = command ? store.commands.canExecute(id) : false;
+  return React.useMemo(
+    () =>
+      command
+        ? {
+            id,
+            label: command.label,
+            canExecute,
+            shortcut: shortcutFor(store, id),
+            run: (args?: unknown) => store.commands.execute(id, args),
+          }
+        : null,
+    [store, id, command, canExecute],
+  );
+}
+
+/** Every UI command of the editor (built-ins, then plugins). */
+export function useCommands(): readonly EditorCommand[] {
+  const ctx = useEditorContext('useCommands');
+  return React.useMemo(() => ctx.store.commands.list(), [ctx]);
 }
 
 /** Every insertable block type of the schema, in definition order (memoised per schema). */
@@ -457,7 +563,7 @@ export function usePalette(): PaletteItem[] {
 /** Every `required` property left empty across the whole document (blocks and root), for the Save/Publish gate. */
 export function useMissingRequired(): MissingRequiredField[] {
   const ctx = useEditorContext('useMissingRequired');
-  const nodes = useStoreSelector(ctx.store, (state) => state.nodes);
+  const nodes = useStoreDocSelector(ctx.store, (state) => state.nodes);
   return React.useMemo(
     () => missingRequired(ctx.schema, Object.values(nodes)),
     [ctx.schema, nodes],

@@ -12,7 +12,7 @@ function Probe() {
   const selection = useSelection();
   return (
     <div>
-      <span data-testid="root">{editor.getState().rootId}</span>
+      <span data-testid="root">{editor.getDoc().rootId}</span>
       <span data-testid="selected">{selection.selected ?? 'none'}</span>
       <button type="button" onClick={() => editor.select('h1')}>
         select

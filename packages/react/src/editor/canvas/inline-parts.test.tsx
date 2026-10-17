@@ -84,7 +84,7 @@ describe('Canvas.InlineText', () => {
         new MouseEvent('click', { bubbles: true, cancelable: true }),
       );
     });
-    expect(store.getState().selection.local?.editing).toEqual({
+    expect(store.getSession().editing).toEqual({
       blockId: 'h1',
       key: 'text',
     });
@@ -100,11 +100,11 @@ describe('Canvas.InlineText', () => {
         new MouseEvent('click', { bubbles: true, cancelable: true }),
       );
     });
-    expect(store.getState().selection.local?.focus).toEqual({
+    expect(store.getSession().focusedField).toEqual({
       blockId: 'h1',
       key: 'level',
     });
-    expect(store.getState().selection.local?.editing).toBeNull();
+    expect(store.getSession().editing).toBeNull();
     expect(host.querySelector('[data-editor-inline-text]')).toBeNull();
   });
 
@@ -118,7 +118,7 @@ describe('Canvas.InlineText', () => {
         new MouseEvent('click', { bubbles: true, cancelable: true }),
       );
     });
-    expect(store.getState().selection.local?.editing).toBeNull();
+    expect(store.getSession().editing).toBeNull();
   });
 
   it('nested same-key click targets the inner block', () => {
@@ -136,7 +136,7 @@ describe('Canvas.InlineText', () => {
         new MouseEvent('click', { bubbles: true, cancelable: true }),
       );
     });
-    expect(store.getState().selection.local?.editing?.blockId).toBe('inner1');
+    expect(store.getSession().editing?.blockId).toBe('inner1');
   });
 
   it('richText click selects the block and focuses the field without a session', () => {
@@ -149,7 +149,11 @@ describe('Canvas.InlineText', () => {
         new MouseEvent('click', { bubbles: true, cancelable: true }),
       );
     });
-    const selection = store.getState().selection.local;
+    const selection = {
+      selected: store.getSession().selection[0] ?? null,
+      focus: store.getSession().focusedField,
+      editing: store.getSession().editing,
+    };
     expect(selection?.editing).toBeNull();
     expect(selection?.selected).toBe('p1');
     expect(selection?.focus).toEqual({ blockId: 'p1', key: 'text' });
@@ -224,7 +228,7 @@ describe('Canvas.InlineText', () => {
       glass.dispatchEvent(new Event('input', { bubbles: true }));
       glass.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
     });
-    expect(store.getState().nodes.h1!.props.badge).toBe('');
-    expect(store.getState().nodes.h1!.props.badge).not.toContain('\u200B');
+    expect(store.getDoc().nodes.h1!.props.badge).toBe('');
+    expect(store.getDoc().nodes.h1!.props.badge).not.toContain('\u200B');
   });
 });

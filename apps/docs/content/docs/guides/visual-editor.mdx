@@ -207,7 +207,7 @@ function DocumentJson() {
 
 export function PagesLiveCanvas() {
   const sources = useDemoFieldSources();
-  const { onChange, onSave } = useLocalDocument(PAGES_DOC);
+  const { onChange, persistence } = useLocalDocument(PAGES_DOC);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -215,7 +215,7 @@ export function PagesLiveCanvas() {
         schema={pagesSchema}
         defaultValue={PAGES_DOC}
         onChange={onChange}
-        onSave={onSave}
+        persistence={persistence}
         fields={cmsFields}
       >
         <CmsSourcesProvider sources={sources}>
@@ -249,7 +249,7 @@ export function PagesLiveCanvas() {
   `editor-app` from [Editor UI](/docs/guides/editor-ui) and pass the client
   plus your `createBlocksMap` result as `blocks`. `CmsEditor` already wires `useCmsDocument` as on
   the [Editor cms adapter](/docs/reference/react-editor-cms) reference page
-  (`key={doc.key}`, `onChange={doc.onChange}`, `onSave={doc.save}`, and
+  (`key={doc.key}`, `onChange={doc.onChange}`, `persistence={doc.persistence}`, and
   `resolve={doc.resolve}` on `Canvas.Root`).
 </Callout>
 
@@ -277,7 +277,7 @@ import { CmsSourcesProvider, cmsFields, Form } from '@/components/editor-form';
 
 export function FormPreviewEditor() {
   const sources = useDemoFieldSources();
-  const { saved, onChange, onSave } = useLocalDocument(PAGES_DOC);
+  const { saved, onChange, persistence } = useLocalDocument(PAGES_DOC);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -285,7 +285,7 @@ export function FormPreviewEditor() {
         schema={pagesSchema}
         defaultValue={PAGES_DOC}
         onChange={onChange}
-        onSave={onSave}
+        persistence={persistence}
         fields={cmsFields}
       >
         <CmsSourcesProvider sources={sources}>
@@ -332,7 +332,7 @@ import { CmsSourcesProvider, cmsFields } from '@/components/editor-form';
 
 export function EmailSplitEditor() {
   const sources = useDemoFieldSources();
-  const { saved, onChange, onSave } = useLocalDocument(EMAIL_DOC);
+  const { saved, onChange, persistence } = useLocalDocument(EMAIL_DOC);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -340,7 +340,7 @@ export function EmailSplitEditor() {
         schema={emailsSchema}
         defaultValue={EMAIL_DOC}
         onChange={onChange}
-        onSave={onSave}
+        persistence={persistence}
         fields={cmsFields}
       >
         <CmsSourcesProvider sources={sources}>

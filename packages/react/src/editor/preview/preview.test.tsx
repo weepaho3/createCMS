@@ -135,7 +135,7 @@ describe('focus roundtrip Field and store', () => {
       'input',
     ) as HTMLInputElement;
     fireEvent.focus(textInput);
-    expect(probe.store.getState().selection.local?.focus).toEqual({
+    expect(probe.store.getSession().focusedField).toEqual({
       blockId: 'h1',
       key: 'text',
     });

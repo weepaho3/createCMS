@@ -290,61 +290,219 @@ A backend plugs in through `EditorAdapter`. Failures throw
 
 ## Store
 
-A small `getState`/`subscribe` store over one `EditorDocument`. Rapid
-same-key updates coalesce into one undo step within `COALESCE_MS`. Dirty
-tracking compares `stableHash` of the serialised document with its hash at
-the last load or save, so a document that only differs in representation
-(key order) loads clean. Nodes keep every slot they hold, named slots
-included; a node added through `add` holds every slot its type declares,
-filled from the slot's `defaultValue` with fresh ids.
+`createEditorStore(options)` builds the editor store over a `DocStore`. State
+lives in three scopes with their own listener channels, so hover never wakes
+a component that reads the document:
 
-Use `createEditorStore` to construct a store. Pure helpers: `applyOp` applies
-one op and returns `{ nodes, rootId, inverse, schemaVersion }`;
-`createBlockId` mints ids; `stableHash` hashes a value for dirty detection.
-`normalize` and `denormalize` convert a whole document between nested and
-flat form; `flattenSubtree(node, parent)` and `serializeSubtree(nodes, id,
-slotOrder?)` do the same for one subtree. Serialised slots come in
-`slotOrder` order (declared slots first, then the rest alphabetically), and
-empty slots are kept.
+| Scope     | Getter / subscribe                      | Holds                                                                                                                  |
+| --------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Document  | `getDoc()` / `subscribeDoc`             | `DocState`: `{ rootId, nodes, version, schemaVersion }`. Undoable and persisted.                                       |
+| Session   | `getSession()` / `subscribeSession`     | `SessionState`: `selection` (ids, first is primary), `focusedField`, `editing`, `mode`, `history` flags, `save` state. |
+| Ephemeral | `getEphemeral()` / `subscribeEphemeral` | `EphemeralState`: `hoverId`.                                                                                           |
 
-| Method                 | Signature                                               | Notes                                                                                         |
-| ---------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `getState`             | `() => EditorStoreState`                                | Same object reference between changes.                                                        |
-| `subscribe`            | `(listener: () => void) => () => void`                  | Returns an unsubscribe function.                                                              |
-| `getDocument`          | `() => EditorDocument`                                  | Serialises `nodes`/`rootId`; memoised per `version`.                                          |
-| `isDirty`              | `() => boolean`                                         | Current hash vs. the hash at the last save/load.                                              |
-| `load`                 | `(doc: EditorDocument) => void`                         | Replaces the document; resets history and every user's selection; no `onChange`.              |
-| `add`                  | `(type: string, options: AddOptions) => string \| null` | Seeds declared defaults and slot defaults; `null` when `canPlaceIn` refuses.                  |
-| `update`               | `(id, patch, options?: UpdateOptions) => boolean`       | Merge-patch; `null` deletes a key; `false` for an unknown id.                                 |
-| `move`                 | `(id, target: MoveTarget) => boolean`                   | `false` on the root, an unknown id, or when `canPlaceIn` refuses the target.                  |
-| `remove`               | `(id) => boolean`                                       | Removes the subtree; `false` for the root or an unknown id.                                   |
-| `duplicate`            | `(id) => string \| null`                                | Copies the subtree through `remapIds` right after the original; `null` when the slot is full. |
-| `applyRemote`          | `(ops: readonly Op[]) => ApplyRemoteResult`             | Applies ops one by one; no history, no `onChange`; rejects are skipped.                       |
-| `undo` / `redo`        | `() => boolean`                                         | `false` when there is nothing to undo/redo; closes the coalesce window.                       |
-| `select` / `hover`     | `(id: string \| null) => void`                          | Writes the local user's selection; `select` closes the coalesce window.                       |
-| `focus` / `setEditing` | `(target: FieldRef \| null) => void`                    | Writes the local user's field ref; closes the coalesce window.                                |
-| `setUserSelection`     | `(userId, patch: Partial<UserSelection>) => void`       | Sets any user's selection fields.                                                             |
-| `markSaved`            | `() => void`                                            | Rebaselines the dirty hash to the current document.                                           |
-| `save`                 | `(meta?: { message?: string }) => Promise<void>`        | No-op when clean or without `onSave`; awaits `onSave`, then `markSaved`.                      |
+Every getter returns the same object until its scope changes. Nodes keep
+every slot they hold; a node added through `add` holds every slot its type
+declares, filled from the slot's `defaultValue` with fresh ids.
 
-| Type                       | Description                                                                                              |
-| -------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `AddOptions`               | `add`'s options: `parent: SlotTarget`, optional `index`, optional `props`.                               |
-| `ApplyRemoteResult`        | `{ applied, rejected }`, the ops `applyRemote` accepted/skipped.                                         |
-| `ApplyResult`              | `applyOp`'s success shape: `{ nodes, rootId, inverse, schemaVersion }`.                                  |
-| `CreateEditorStoreOptions` | Options for `createEditorStore`: `schema`, `initialValue`, `userId?`, `genId?`, `now?`, `getCallbacks?`. |
-| `EditorCallbacks`          | `{ onChange?, onSave? }` passed via `getCallbacks()`; `onSave(doc, meta)`.                               |
-| `EditorChange`             | The `onChange` payload: `{ ops, version, getDocument }`.                                                 |
-| `EditorNodes`              | `Record<id, FlatNode>`, the store's node table.                                                          |
-| `EditorStore`              | The store's public shape (method-shorthand signatures, bivariant).                                       |
-| `EditorStoreState`         | `{ rootId, nodes, selection, history, version, savedVersion, saving }`.                                  |
-| `FieldRef`                 | `{ blockId, key }`, what `focus`/`editing` point at.                                                     |
-| `MoveTarget`               | `move`'s target: `{ parent: SlotTarget, index }`; the index counts after the node left its old place.    |
-| `SlotOrder`                | `(type) => readonly string[]`: the slot order serialisation uses for a type.                             |
-| `SlotTarget`               | `{ id, slot? }`: a parent and one of its slots; `slot` defaults to `children`.                           |
-| `HistoryEntry`             | One undo step: `{ ops, inverse, key, at }`.                                                              |
-| `UpdateOptions`            | `update`'s options: `{ coalesce? }`.                                                                     |
-| `UserSelection`            | One user's `{ selected, hovered, focus, editing }`.                                                      |
+| Option            | Notes                                                                                                                 |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `schema`          | The editor schema; plugins add blocks and field kinds (`store.schema` is the result, `store.sourceSchema` the input). |
+| `initialValue`    | The document, unless `docStore` is given.                                                                             |
+| `docStore`        | A document store to write through (default: `createJsonDocStore`).                                                    |
+| `genId`           | Id generator for new blocks (default `createBlockId`: `blk_` + 20 chars).                                             |
+| `now`             | Clock for history merging (default `Date.now`).                                                                       |
+| `maxHistory`      | Undo steps kept (default `MAX_HISTORY`, 200).                                                                         |
+| `remotePlacement` | `accept-and-warn` (default: apply, emit `diagnostic`) or `reject` for remote ops that break placement.                |
+| `persistence`     | `PersistenceOptions`: how and when to save.                                                                           |
+| `plugins`         | `EditorPlugin[]`.                                                                                                     |
+| `timers`          | `Timers` (`setTimeout`/`clearTimeout`), injectable for tests.                                                         |
+
+| Method                                               | Notes                                                                                                   |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `getDocument()`                                      | The nested document, memoised per version.                                                              |
+| `isDirty()`                                          | Local changes the last save did not include (an undo counts as a change).                               |
+| `dispatch(cmd)`                                      | Runs a command through the pipeline; `DispatchResult` is `{ ok: true, ops }` or `{ ok: false, error }`. |
+| `transact(fn, { label }?)`                           | Every command `fn` dispatches becomes one undo step; a throw reverts them all.                          |
+| `use(middleware, { priority }?)`                     | Adds a middleware; returns a remove function.                                                           |
+| `handle(type, handler)`                              | Registers a command handler; returns an unregister function.                                            |
+| `on(event, handler)` / `onBeforeCommand`             | Event subscription (`EditorEvents`) and the cancel/replace hook; both return an unsubscribe function.   |
+| `load(doc, { baseVersion }?)`                        | Replaces the document; clears history and selection, marks it saved.                                    |
+| `add(type, { parent, index?, props? })`              | `node.insert`; returns the new id or `null`.                                                            |
+| `update(id, patch, { coalesce }?)`                   | `node.update` (merge patch, `null` deletes); `coalesce` merges a typing run into one undo step.         |
+| `move(id, { parent, index })`                        | `node.move`; `false` on the root or when refused.                                                       |
+| `remove(id)` / `duplicate(id)`                       | `node.remove` / `node.duplicate` (`remapIds`, right after the original).                                |
+| `wrap(id, type, { slot?, props? }?)`                 | `node.wrap`: the node moves into a new `type` node at its place.                                        |
+| `applyRemote(ops)`                                   | Ops from elsewhere: no undo step, no autosave; returns `ApplyRemoteResult` `{ applied, rejected }`.     |
+| `undo()` / `redo()`                                  | Restores the selection of the step; `false` when there is nothing to undo or redo.                      |
+| `mark()` / `squash(mark, { label }?)` / `bail(mark)` | Live writes: collect from `mark`, fold into one step or revert without one.                             |
+| `select(id)` / `setSelection(ids)`                   | Session selection; a change ends the typing merge.                                                      |
+| `hover(id)`                                          | Ephemeral; never wakes document or session readers.                                                     |
+| `focus(ref)` / `setEditing(ref)` / `setMode(mode)`   | Session state; focus and editing end the typing merge.                                                  |
+| `save({ message?, force? }?)`                        | Saves now when dirty (or forced); resolves when that save settled.                                      |
+| `reloadFromServer()`                                 | Loads the server document of the current conflict; `false` without one.                                 |
+| `commands`                                           | UI commands: `get`, `list`, `execute`, `canExecute`, `shortcuts()` (combo to command id).               |
+| `destroy()`                                          | Stops timers and drops every listener.                                                                  |
+
+`createBlockId` mints ids. `applyOp` applies one op purely and returns
+`ApplyResult` `{ nodes, rootId, inverse, schemaVersion }`. `normalize` and
+`denormalize` convert a whole document between nested and flat form;
+`flattenSubtree(node, parent)` and `serializeSubtree(nodes, id, slotOrder?)`
+do the same for one subtree. Serialised slots come in `slotOrder` order
+(declared slots first, then the rest alphabetically), and empty slots are
+kept.
+
+## Commands and middleware
+
+Every document write is a `Command` `{ type, payload, meta? }`. `dispatch`
+runs it as: `onBeforeCommand` handlers (`false` cancels, a command replaces
+it), then middlewares by descending priority, then the type's handler, which
+turns the payload into ops. The placement middleware (`placementMiddleware`,
+priority `PLACEMENT_PRIORITY`) runs innermost and refuses local ops that
+`canPlaceIn` rejects. The doc store applies the ops all or nothing. Any throw
+leaves every scope unchanged and reports an `EditorError` through
+`opRejected` and `error`.
+
+`CommandMeta`: `history` (`record`, `ignore`, `merge`), `mergeKey`, `origin`
+(`local` by default), `label`.
+
+| Built-in (`BUILTIN_COMMANDS`) | Payload                                                    |
+| ----------------------------- | ---------------------------------------------------------- |
+| `node.insert`                 | `InsertPayload`: `{ type, parent, index?, props? }`        |
+| `node.insertNode`             | `InsertNodePayload`: `{ parent, index?, node }` (ids kept) |
+| `node.remove`                 | `RemovePayload`: `{ id }`                                  |
+| `node.move`                   | `MovePayload`: `{ id, parent, index }`                     |
+| `node.update`                 | `UpdatePayload`: `{ id, patch }`                           |
+| `node.duplicate`              | `DuplicatePayload`: `{ id }`                               |
+| `node.wrap`                   | `WrapPayload`: `{ id, type, slot?, props? }`               |
+| `doc.replace`                 | `ReplacePayload`: `{ doc }`                                |
+
+`BuiltinCommandPayloads` maps each type to its payload. `checkPlacement(schema,
+state, ops)` is the placement check over a list of ops; `PlacementError`
+carries its `code`.
+
+| Type                   | Description                                                                                                                            |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `Middleware`           | `(ctx: CommandContext, next) => Op[]`: call `next` to continue, throw to refuse.                                                       |
+| `CommandContext`       | `{ cmd, getState, schema }`.                                                                                                           |
+| `CommandHandler`       | `(payload, ctx: HandlerContext) => Op[]`.                                                                                              |
+| `HandlerContext`       | `{ getState, schema, genId, select(ids) }`; `select` sets the selection after commit.                                                  |
+| `BeforeCommandHandler` | `(cmd) => Command \| false \| void`.                                                                                                   |
+| `EditorError`          | `{ kind: EditorErrorKind, message, code?, cmd?, cause? }`.                                                                             |
+| `EditorErrorKind`      | `'command' \| 'unknown-command' \| 'placement' \| 'rejected' \| 'cancelled'`.                                                          |
+| `EditorEvents`         | `change`, `afterCommand`, `opRejected`, `historyInvalidated`, `diagnostic`, `select`, `beforeSave`, `afterSave`, `saveError`, `error`. |
+| `EditorEventName`      | A key of `EditorEvents`.                                                                                                               |
+| `EditorChange`         | The `change` payload: `{ ops, origin, version, getDocument }`.                                                                         |
+| `EditorCommand`        | A UI command: `{ id, label?, run(store, args?), canExecute? }`.                                                                        |
+
+Built-in UI commands: `history.undo`, `history.redo`, `block.remove` and
+`block.duplicate` (both act on the primary selection). `DEFAULT_SHORTCUTS`
+binds `Mod+z`, `Mod+Shift+z` and `Ctrl+y`.
+
+## Document store and history
+
+`DocStore` is what the editor writes through: `getSnapshot`, `subscribe`
+(`Change[]` and the `Origin`), `transact(fn, meta?)` with a `Tx` (`insertNode`,
+`removeNode`, `moveNode`, `setProp(id, path, value)`, `replaceDocument`,
+`apply(op)`), and the history methods `undo`, `redo`, `canUndo`, `canRedo`,
+`mark`, `squash`, `bail`, `breakMerge`, `clearHistory`, `getHistory`. A
+transaction that fails throws `TxRejectedError` and changes nothing.
+`createJsonDocStore(options)` is the single-user implementation
+(`CreateJsonDocStoreOptions`: `initialValue`, `now?`, `mergeMs?`,
+`maxEntries?`); a collaborative store implements the same interface.
+
+History rules of `JsonDocStore`:
+
+- Steps with the same `mergeKey` within `MERGE_MS` (400 ms, sliding) become
+  one; another key, `breakMerge` (selection, focus) or an unkeyed step ends
+  the merge.
+- At most `MAX_HISTORY` (200) steps; the oldest goes first.
+- `undo` applies the inverses with origin `history` and returns the
+  `HistoryStep` (`ops`, `label?`, `selection` to restore); `redo` likewise.
+- `mark` collects every local change (recorded or `history: 'ignore'`);
+  `squash` folds them into one step, `bail` reverts them without one.
+- A remote change drops the undo steps it conflicts with (same node
+  structurally, same slot order, same prop, or a removed node whose props a
+  step writes), so an undo never fails silently. Writes to different props of
+  one node do not conflict.
+
+| Type           | Description                                                                 |
+| -------------- | --------------------------------------------------------------------------- |
+| `DocState`     | `{ rootId, nodes, version, schemaVersion }`.                                |
+| `Tx`           | The writes of one transaction.                                              |
+| `TxMeta`       | `{ origin?, history?, mergeKey?, label?, selection? }`.                     |
+| `TxResult`     | `{ ops, inverse, invalidated }`.                                            |
+| `Change`       | `{ kind: 'node' \| 'props' \| 'placement', id, keys? }`.                    |
+| `HistoryEntry` | `{ ops, inverse, mergeKey?, at, selectionBefore, selectionAfter, label? }`. |
+| `HistoryStep`  | What `undo`/`redo` applied.                                                 |
+| `MarkId`       | Opaque handle of a mark.                                                    |
+
+## Saving
+
+With `persistence`, the store saves through `persistence.save(doc, { ops,
+baseVersion?, force?, message? })`, which resolves `{ version }`. Autosave
+(on unless `autosave: false`) waits `SAVE_DEBOUNCE_MS` (1500) after the last
+change and saves at least every `SAVE_MAX_WAIT_MS` (10000). Never two saves at
+once: a save requested during one runs right after it. `ops` are the local ops
+since the last successful save; `baseVersion` is the version that save
+returned (first `persistence.baseVersion`). Remote ops are never saved.
+
+Failures: an `EditorAdapterError` of kind `conflict` sets status `conflict`
+with `SaveConflict` `{ serverDoc, serverVersion }` from the error's
+`details`, and autosave pauses until `reloadFromServer()` or
+`save({ force: true })`; kind `network` retries after `SAVE_RETRY_BASE_MS`,
+doubling up to `SAVE_RETRY_MAX_MS`; anything else sets `error` without a
+retry. Local changes are never lost.
+
+`mergeByNode(base, local, server, { slotOrder }?)` merges three documents per
+node id: a node changed on one side takes that side, the same change on both
+is fine, different changes on both are conflicts. It returns `MergeResult`:
+`{ ok: true, doc }` or `{ ok: false, conflicts }`.
+
+| Type                 | Description                                                |
+| -------------------- | ---------------------------------------------------------- |
+| `PersistenceOptions` | `{ save, baseVersion?, autosave? }`.                       |
+| `SaveState`          | `{ status: SaveStatus, dirty, error, conflict, version }`. |
+| `SaveStatus`         | `'idle' \| 'saving' \| 'error' \| 'conflict'`.             |
+| `SaveConflict`       | `{ serverDoc, serverVersion }`.                            |
+| `Timers`             | `{ setTimeout, clearTimeout }`.                            |
+
+## Plugins
+
+`defineEditorPlugin(plugin)` declares an `EditorPlugin`: `name` (unique),
+`fields` (`PluginFieldKind` per `custom` kind: `validate` for fields without a
+`schema`, `control` for the form), `blocks` (added to the schema, schema
+components win), `commands` (`PluginCommand`: `label?`, `run`,
+`canExecute?`), `shortcuts` (combo to command id), `on`
+(`PluginEventHandlers`: any `EditorEvents` handler plus `beforeCommand`),
+`slots` (UI outlets, rendered by `Editor.Slot`), `priority` (higher first).
+Pass plugins to `createEditorStore` or `Editor.Root`.
+
+| Function                                     | Notes                                                                                      |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `sortPlugins(plugins)`                       | Apply order (descending `priority`, stable); throws on a duplicate name (`[editor:E002]`). |
+| `applyPlugins(schema, plugins)`              | The schema with plugin blocks and field kind validators; `schema` itself when none apply.  |
+| `pluginCommands(plugins)`                    | The plugins' commands by id (an earlier plugin wins).                                      |
+| `pluginShortcuts(plugins, base, onConflict)` | Combo to command id; the store reports conflicts as `[editor:E003]` warnings.              |
+| `normalizeCombo(combo)`                      | Lower case, `mod` for Cmd/Meta, modifiers in a fixed order.                                |
+
+## Types
+
+| Type                       | Description                                                                                           |
+| -------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `AddOptions`               | `add`'s options: `parent: SlotTarget`, optional `index`, optional `props`.                            |
+| `ApplyRemoteResult`        | `{ applied, rejected }`.                                                                              |
+| `ApplyResult`              | `applyOp`'s success shape: `{ nodes, rootId, inverse, schemaVersion }`.                               |
+| `CreateEditorStoreOptions` | The options above.                                                                                    |
+| `EditorMode`               | `'form' \| 'visual'`.                                                                                 |
+| `EditorNodes`              | `Record<id, FlatNode>`, the node table.                                                               |
+| `EditorStore`              | The store's public shape (method-shorthand signatures, bivariant).                                    |
+| `EphemeralState`           | `{ hoverId }`.                                                                                        |
+| `FieldRef`                 | `{ blockId, key }`, what `focus`/`editing` point at.                                                  |
+| `MoveTarget`               | `move`'s target: `{ parent: SlotTarget, index }`; the index counts after the node left its old place. |
+| `SessionState`             | The session scope.                                                                                    |
+| `SlotOrder`                | `(type) => readonly string[]`: the slot order serialisation uses for a type.                          |
+| `SlotTarget`               | `{ id, slot? }`: a parent and one of its slots; `slot` defaults to `children`.                        |
+| `UpdateOptions`            | `update`'s options: `{ coalesce? }`.                                                                  |
 
 ## Tests
 

@@ -75,7 +75,9 @@ export function toAdapterError(err: unknown): EditorAdapterError {
  * raw tree and the branch head, `save` writes with `expectedHeadCommitId`
  * set to `baseVersion` (omit it to overwrite) and returns the new commit id
  * as `version`. Trees are mapped with `toEditor`/`fromEditor`. Failures
- * throw `EditorAdapterError`; `HEAD_MISMATCH` is kind `conflict`.
+ * throw `EditorAdapterError`; `HEAD_MISMATCH` is kind `conflict` and carries
+ * the server's document and head as `details.serverDoc` and
+ * `details.serverVersion` when they could be loaded.
  */
 export function createCmsAdapter(options: CreateCmsAdapterOptions): CmsAdapter {
   const { client, definition, branchId } = options;
@@ -118,7 +120,22 @@ export function createCmsAdapter(options: CreateCmsAdapterOptions): CmsAdapter {
         });
         return { version: result.commit.id };
       } catch (err) {
-        throw toAdapterError(err);
+        const error = toAdapterError(err);
+        if (error.kind !== 'conflict') throw error;
+        // The editor offers "load the server's version": hand it along.
+        const server = await loadSnapshot(rootId).catch(() => null);
+        throw new EditorAdapterError(
+          'conflict',
+          error.message,
+          server
+            ? {
+                ...error.details,
+                serverDoc: server.doc,
+                serverVersion: server.headCommitId,
+              }
+            : error.details,
+          { cause: err },
+        );
       }
     },
   };

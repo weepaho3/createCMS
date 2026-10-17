@@ -11,7 +11,7 @@ import type {
 } from './types';
 
 import { useRender } from '../../use-render';
-import { useEditorSelector } from '../binding';
+import { useDocSelector, useSessionSelector } from '../binding';
 import { useEditorContext } from '../context';
 import { canPlaceIn, DEFAULT_SLOT, slotsOf } from '../core/schema';
 import { useBlockActions } from '../hooks';
@@ -58,9 +58,9 @@ export function EditorOutlineItem(props: EditorOutlineItemProps) {
   const { blockId, onDelete, render, onClick, onKeyDown, ...rest } = props;
   const ctx = useEditorContext('Editor.OutlineItem');
   const actions = useBlockActions(blockId);
-  const slice = useEditorSelector((state) => {
+  const selected = useSessionSelector((state) => state.selection[0] ?? null);
+  const slice = useDocSelector((state) => {
     const node = state.nodes[blockId];
-    const selection = state.selection[ctx.userId];
     const rootChildren = state.nodes[state.rootId]?.slots[DEFAULT_SLOT] ?? [];
     return {
       type: node?.type ?? null,
@@ -68,8 +68,8 @@ export function EditorOutlineItem(props: EditorOutlineItemProps) {
         ? Object.values(node.slots).some((ids) => ids.length > 0)
         : false,
       depth: node ? depthOf(state.nodes, blockId) : 0,
-      selected: selection?.selected === blockId,
-      nothingSelected: !selection || selection.selected === null,
+      selected: selected === blockId,
+      nothingSelected: selected === null,
       firstOfRoot: rootChildren[0] === blockId,
     };
   });
@@ -180,7 +180,8 @@ export function EditorAddBlock(props: EditorAddBlockProps) {
   const { type, parentId, slot, index, render, onClick, children, ...rest } =
     props;
   const ctx = useEditorContext('Editor.AddBlock');
-  const target = useEditorSelector(
+  const selected = useSessionSelector((state) => state.selection[0] ?? null);
+  const target = useDocSelector(
     (state) => {
       if (parentId !== undefined) {
         const parent = { id: parentId, slot: slot ?? DEFAULT_SLOT };
@@ -194,7 +195,7 @@ export function EditorAddBlock(props: EditorAddBlockProps) {
         ctx.schema,
         state.nodes,
         state.rootId,
-        state.selection[ctx.userId]?.selected ?? null,
+        selected,
         type,
       );
       return { ...point, index: index ?? point.index };
@@ -237,7 +238,7 @@ export function EditorAddBlock(props: EditorAddBlockProps) {
 export function EditorOutlineGroup(props: EditorOutlineGroupProps) {
   const { blockId, slot, render, ...rest } = props;
   const ctx = useEditorContext('Editor.OutlineGroup');
-  const label = useEditorSelector((state) => {
+  const label = useDocSelector((state) => {
     const node = state.nodes[blockId];
     if (!node) return slot;
     return slotsOf(ctx.schema, node.type)[slot]?.label ?? slot;

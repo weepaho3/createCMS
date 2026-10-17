@@ -10,7 +10,7 @@ import type {
 } from './types';
 
 import { composeRefs, useRender } from '../../use-render';
-import { useEditorSelector } from '../binding';
+import { useDocSelector, useSessionSelector } from '../binding';
 import { useEditorContext } from '../context';
 import { groupFields, validateField } from '../core/schema';
 import { useAnyField, useFields } from '../hooks';
@@ -60,14 +60,9 @@ export function EditorField(props: EditorFieldProps) {
   const { blockId, name, disabled = false, render, onFocus, ...rest } = props;
   const ctx = useEditorContext('Editor.Field');
   const field = useAnyField(blockId, name);
-  const focused = useEditorSelector((state) => {
-    const target = state.selection[ctx.userId]?.focus;
-    return (
-      target !== null &&
-      target !== undefined &&
-      target.blockId === blockId &&
-      target.key === name
-    );
+  const focused = useSessionSelector((state) => {
+    const target = state.focusedField;
+    return target !== null && target.blockId === blockId && target.key === name;
   });
   const reactId = React.useId();
   const id = `${reactId}-control`;
@@ -402,7 +397,7 @@ export function EditorForm({
 }: EditorFormProps) {
   const ctx = useEditorContext('Editor.Form');
   const elRef = React.useRef<HTMLDivElement | null>(null);
-  const blockType = useEditorSelector(
+  const blockType = useDocSelector(
     (state) => state.nodes[blockId]?.type ?? null,
   );
   const fields = useFields(blockId);
@@ -446,8 +441,8 @@ export function EditorForm({
     if (!el) return;
     return ctx.registerScrollTarget(blockId, el);
   }, [ctx, blockId, blockType]);
-  const focusSig = useEditorSelector((state) => {
-    const focus = state.selection[ctx.userId]?.focus;
+  const focusSig = useSessionSelector((state) => {
+    const focus = state.focusedField;
     return focus && focus.blockId === blockId
       ? `${focus.blockId}:${focus.key}`
       : null;

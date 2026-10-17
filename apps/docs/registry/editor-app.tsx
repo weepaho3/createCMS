@@ -9,7 +9,7 @@ import type {
 } from '@createcms/react/editor/cms';
 import type { MediaClient } from '@createcms/react/media';
 
-import { Editor } from '@createcms/react/editor';
+import { Editor, useSave, useSaveConflict } from '@createcms/react/editor';
 import { Canvas } from '@createcms/react/editor/canvas';
 import {
   cmsCanvasComponents,
@@ -201,29 +201,55 @@ function EditorErrorState({
   );
 }
 
+/** A save failure as the alert shows it: the server code, message and field findings. */
+function saveErrorOf(error: Error | null): CmsDocumentError | null {
+  if (!error) return null;
+  const details =
+    (error as { details?: Record<string, unknown> }).details ?? {};
+  const code = typeof details.code === 'string' ? details.code : 'UNKNOWN';
+  const fields = Array.isArray(details.fields)
+    ? (details.fields as CmsDocumentError['fields'])
+    : undefined;
+  return { code, message: error.message, fields };
+}
+
+function SaveErrorBanner() {
+  const { status, error, save } = useSave();
+  if (status !== 'error' || !error) return null;
+  return (
+    <div data-slot="editor-app-error-banner">
+      <EditorErrorAlert
+        error={saveErrorOf(error)}
+        onRetry={() => void save()}
+        className="rounded-none border-x-0 border-t-0"
+      />
+    </div>
+  );
+}
+
 function ConflictDialog({
-  open,
-  error,
-  onReload,
-  onForce,
+  onReloadDocument,
 }: {
-  open: boolean;
-  error: CmsDocumentError | null;
-  onReload: () => void;
-  onForce: () => void;
+  onReloadDocument: () => void;
 }) {
-  const forcingRef = React.useRef(false);
+  const conflict = useSaveConflict();
+  const { error } = useSave();
+  const [copied, setCopied] = React.useState(false);
 
   React.useEffect(() => {
-    if (!open) forcingRef.current = false;
-  }, [open]);
+    if (!conflict) setCopied(false);
+  }, [conflict]);
+
+  const reload = () => {
+    // Without the server's document, reload the whole editor from the server.
+    if (!conflict?.reload()) onReloadDocument();
+  };
 
   return (
     <AlertDialog
-      open={open}
+      open={conflict !== null}
       onOpenChange={(nextOpen) => {
-        if (nextOpen || forcingRef.current) return;
-        onReload();
+        if (!nextOpen) reload();
       }}
     >
       <AlertDialogContent data-slot="editor-app-conflict">
@@ -231,17 +257,27 @@ function ConflictDialog({
           <AlertDialogTitle>Document conflict</AlertDialogTitle>
           <AlertDialogDescription>
             {error?.message ??
-              'This document changed on the server since you loaded it. Reload the latest version or overwrite it.'}
+              'This document changed on the server since you loaded it. Load the server version, overwrite it with yours, or copy yours first.'}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel type="button">Reload</AlertDialogCancel>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              void conflict?.copyMine().then(() => setCopied(true));
+            }}
+          >
+            {copied ? 'Copied' : 'Copy mine'}
+          </Button>
+          <AlertDialogCancel type="button">
+            Load server version
+          </AlertDialogCancel>
           <AlertDialogAction
             type="button"
             variant="destructive"
             onClick={() => {
-              forcingRef.current = true;
-              onForce();
+              void conflict?.overwrite();
             }}
           >
             Overwrite
@@ -309,12 +345,6 @@ function CmsEditor({
     void doc.reload();
   };
 
-  const forceSave = () => {
-    void doc.save({ force: true }).catch(() => {
-      // useCmsDocument already set status/error; EditorErrorAlert renders it.
-    });
-  };
-
   if (!doc.doc) {
     if (doc.status === 'error') {
       return (
@@ -350,11 +380,12 @@ function CmsEditor({
         key={doc.key}
         schema={schema}
         defaultValue={doc.doc}
-        onSave={doc.save}
+        persistence={doc.persistence}
         onChange={doc.onChange}
         fields={cmsFields}
       >
         <CmsSourcesProvider sources={sources} media={media}>
+          <SaveErrorBanner />
           <EditorShell mode={mode} requireCommitMessage={requireCommitMessage}>
             {mode === 'form' ? (
               <FormSurface>{children}</FormSurface>
@@ -370,13 +401,8 @@ function CmsEditor({
           </EditorShell>
           {mode === 'form' ? null : children}
         </CmsSourcesProvider>
+        <ConflictDialog onReloadDocument={retry} />
       </Editor.Root>
-      <ConflictDialog
-        open={doc.status === 'conflict'}
-        error={doc.error}
-        onReload={retry}
-        onForce={forceSave}
-      />
     </div>
   );
 }

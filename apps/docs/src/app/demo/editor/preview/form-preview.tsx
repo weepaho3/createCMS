@@ -13,7 +13,7 @@ import { CmsSourcesProvider, cmsFields, Form } from '@/components/editor-form';
 
 export function FormPreviewEditor() {
   const sources = useDemoFieldSources();
-  const { saved, onChange, onSave } = useLocalDocument(PAGES_DOC);
+  const { saved, onChange, persistence } = useLocalDocument(PAGES_DOC);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -21,7 +21,7 @@ export function FormPreviewEditor() {
         schema={pagesSchema}
         defaultValue={PAGES_DOC}
         onChange={onChange}
-        onSave={onSave}
+        persistence={persistence}
         fields={cmsFields}
       >
         <CmsSourcesProvider sources={sources}>

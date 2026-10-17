@@ -4,7 +4,7 @@ import type { UseRenderComponentProps } from '../../use-render';
 import type { CanvasRect } from './rect';
 
 import { useRender } from '../../use-render';
-import { useEditorSelector } from '../binding';
+import { useDocSelector, useSessionSelector } from '../binding';
 import { useEditorContext } from '../context';
 import { isHTMLElement } from '../dom';
 import { frameClickAnchor } from '../preview/frame-anchor';
@@ -153,14 +153,14 @@ export function CanvasInlineText({
 }: CanvasInlineTextProps) {
   const canvas = useCanvasContext('Canvas.InlineText');
   const ctx = useEditorContext('Canvas.InlineText');
-  const editing = useEditorSelector((s) => {
-    const current = s.selection[ctx.userId]?.editing ?? null;
+  const nodes = useDocSelector((s) => s.nodes);
+  const current = useSessionSelector((s) => s.editing);
+  const editing = React.useMemo(() => {
     if (current === null) return null;
-    const field = fieldOf(ctx.schema, s.nodes, current.blockId, current.key);
+    const field = fieldOf(ctx.schema, nodes, current.blockId, current.key);
     return field !== null && isInlineEditableField(field) ? current : null;
-  });
-  const nodes = useEditorSelector((s) => s.nodes);
-  const storeVersion = useEditorSelector((s) => s.version);
+  }, [ctx.schema, nodes, current]);
+  const storeVersion = useDocSelector((s) => s.version);
   const glassRef = React.useRef<HTMLDivElement | null>(null);
   const seededFor = React.useRef<string | null>(null);
   const sessionStart = React.useRef<string>('');
@@ -273,8 +273,7 @@ export function CanvasInlineText({
 
       const inlineGlass = target.closest('[data-editor-inline-text]');
       if (isHTMLElement(inlineGlass) && insideHost(host, inlineGlass)) {
-        const active =
-          ctx.store.getState().selection[ctx.userId]?.editing ?? null;
+        const active = ctx.store.getSession().editing;
         if (active) {
           placeCaretFromPointer(
             inlineGlass,
@@ -293,7 +292,7 @@ export function CanvasInlineText({
 
       const field = fieldOf(
         ctx.schema,
-        ctx.store.getState().nodes,
+        ctx.store.getDoc().nodes,
         anchor.blockId,
         anchor.key,
       );
@@ -309,8 +308,7 @@ export function CanvasInlineText({
         return;
       }
 
-      const current =
-        ctx.store.getState().selection[ctx.userId]?.editing ?? null;
+      const current = ctx.store.getSession().editing;
       if (current?.blockId === anchor.blockId && current?.key === anchor.key) {
         const glass = host.querySelector('[data-editor-inline-text]');
         if (isHTMLElement(glass)) {
@@ -346,7 +344,6 @@ export function CanvasInlineText({
     canvas.inlineCaret,
     ctx.schema,
     ctx.store,
-    ctx.userId,
   ]);
 
   React.useLayoutEffect(() => {
@@ -488,11 +485,11 @@ export function CanvasInlineText({
       commit(false);
     }
     skipBlurCommit.current = false;
-    const current = ctx.store.getState().selection[ctx.userId]?.editing ?? null;
+    const current = ctx.store.getSession().editing;
     if (current?.blockId === editing.blockId && current?.key === editing.key) {
       ctx.store.setEditing(null);
     }
-  }, [commit, editing, ctx.store, ctx.userId]);
+  }, [commit, editing, ctx.store]);
 
   const onKeyDown = React.useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {

@@ -13,7 +13,7 @@ import { CmsSourcesProvider, cmsFields } from '@/components/editor-form';
 
 export function EmailSplitEditor() {
   const sources = useDemoFieldSources();
-  const { saved, onChange, onSave } = useLocalDocument(EMAIL_DOC);
+  const { saved, onChange, persistence } = useLocalDocument(EMAIL_DOC);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -21,7 +21,7 @@ export function EmailSplitEditor() {
         schema={emailsSchema}
         defaultValue={EMAIL_DOC}
         onChange={onChange}
-        onSave={onSave}
+        persistence={persistence}
         fields={cmsFields}
       >
         <CmsSourcesProvider sources={sources}>

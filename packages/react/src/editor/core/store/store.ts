@@ -1,495 +1,773 @@
+import type { EditorDocument, Op, Origin } from '../document';
+import type { EditorPlugin } from '../plugin';
 import type {
-  EditorDocument,
-  JsonValue,
-  NodeData,
-  Op,
-  SlotRef,
-} from '../document';
-import type { AnyEditorSchema, NodeInput } from '../schema';
-import type {
+  BeforeCommandHandler,
+  Command,
+  CommandHandler,
   CreateEditorStoreOptions,
-  EditorCallbacks,
-  EditorNodes,
+  DispatchResult,
+  DocState,
+  EditorCommand,
+  EditorError,
+  EditorEventName,
+  EditorEvents,
   EditorStore,
-  EditorStoreState,
-  FieldRef,
-  SlotTarget,
-  UserSelection,
+  EphemeralState,
+  HandlerContext,
+  Middleware,
+  SaveState,
+  SessionState,
+  Timers,
 } from './types';
 
 import {
-  canPlaceIn,
-  componentOf,
-  DEFAULT_SLOT,
-  defaultValuesFor,
-  remapIds,
-  slotsOf,
-} from '../schema';
-import { stableHash } from './hash';
+  applyPlugins,
+  pluginCommands,
+  pluginShortcuts,
+  sortPlugins,
+} from '../plugin';
+import { slotsOf } from '../schema';
+import {
+  BUILTIN_COMMANDS,
+  checkPlacement,
+  PlacementError,
+  placementMiddleware,
+} from './commands';
+import { createJsonDocStore, TxRejectedError } from './doc-store';
 import { createBlockId } from './id';
 import { applyOp } from './ops';
-import { denormalize, normalize, serializeSubtree } from './serde';
+import { createSaveScheduler, INITIAL_SAVE_STATE } from './save';
+import { denormalize } from './serde';
 
-/** Window in which repeated updates of the same keys collapse into one undo step. */
-export const COALESCE_MS = 400;
+/** Priority of the built-in placement middleware: it runs innermost, right on the handler's ops. */
+export const PLACEMENT_PRIORITY = -1000;
 
-const EMPTY_SELECTION: UserSelection = {
-  selected: null,
-  hovered: null,
-  focus: null,
-  editing: null,
+const NO_SELECTION: readonly string[] = [];
+
+const GLOBAL_TIMERS: Timers = {
+  setTimeout: (fn, ms) => globalThis.setTimeout(fn, ms),
+  clearTimeout: (handle) => {
+    globalThis.clearTimeout(handle as ReturnType<typeof setTimeout>);
+  },
 };
 
-const NO_CALLBACKS: EditorCallbacks = {};
+/** Default key bindings of the built-in UI commands. */
+export const DEFAULT_SHORTCUTS: Readonly<Record<string, string>> = {
+  'Mod+z': 'history.undo',
+  'Mod+Shift+z': 'history.redo',
+  'Ctrl+y': 'history.redo',
+};
 
-/** `undefined` never enters an op: it means "delete", like `null`. */
-function normalizePatch(
-  patch: Record<string, unknown>,
-): Record<string, JsonValue | null> {
-  const out: Record<string, JsonValue | null> = {};
-  for (const [key, value] of Object.entries(patch)) {
-    out[key] = value === undefined ? null : (value as JsonValue);
-  }
-  return out;
-}
+type Channel<T> = {
+  get(): T;
+  set(patch: Partial<T>): void;
+  subscribe(listener: () => void): () => void;
+  clear(): void;
+};
 
-/** `target` with the slot filled in (`children` when omitted). */
-function slotRef(target: SlotTarget): SlotRef {
-  return { id: target.id, slot: target.slot ?? DEFAULT_SLOT };
-}
-
-/**
- * A new node of `type`: declared defaults under `props`, and every declared
- * slot present (filled from its `defaultValue` with fresh nodes built the
- * same way, else empty), so the document always lists the type's slots.
- */
-function buildNode(
-  schema: AnyEditorSchema,
-  type: string,
-  props: Record<string, unknown>,
-  genId: () => string,
-): NodeData {
-  const def = componentOf(schema, type);
-  const node: NodeData = {
-    id: genId(),
-    type,
-    props: normalizePatchToProperties({
-      ...defaultValuesFor(def ?? { fields: {} }),
-      ...props,
-    }),
-  };
-  const slots: Record<string, NodeData[]> = {};
-  for (const [name, spec] of Object.entries(def?.slots ?? {})) {
-    slots[name] = (spec.defaultValue ?? []).map((input) =>
-      fromInput(schema, input, genId),
-    );
-  }
-  if (Object.keys(slots).length > 0) node.slots = slots;
-  return node;
-}
-
-function fromInput(
-  schema: AnyEditorSchema,
-  input: NodeInput,
-  genId: () => string,
-): NodeData {
-  const node = buildNode(schema, input.type, input.props ?? {}, genId);
-  if (input.slots) {
-    const slots: Record<string, NodeData[]> = { ...node.slots };
-    for (const [name, children] of Object.entries(input.slots)) {
-      slots[name] = children.map((child) => fromInput(schema, child, genId));
-    }
-    node.slots = slots;
-  }
-  return node;
-}
-
-/** Drops selection references to ids that no longer exist. */
-function pruneSelection(
-  selection: Readonly<Record<string, UserSelection>>,
-  nodes: EditorNodes,
-): Readonly<Record<string, UserSelection>> {
-  const has = (id: string | null): boolean => id !== null && id in nodes;
-  const ref = (target: FieldRef | null): FieldRef | null =>
-    target && has(target.blockId) ? target : null;
-  const out: Record<string, UserSelection> = {};
-  for (const [userId, sel] of Object.entries(selection)) {
-    out[userId] = {
-      selected: has(sel.selected) ? sel.selected : null,
-      hovered: has(sel.hovered) ? sel.hovered : null,
-      focus: ref(sel.focus),
-      editing: ref(sel.editing),
-    };
-  }
-  return out;
-}
-
-export function createEditorStore(
-  options: CreateEditorStoreOptions,
-): EditorStore {
-  const {
-    schema,
-    initialValue,
-    userId = 'local',
-    genId = createBlockId,
-    now = Date.now,
-    getCallbacks = () => NO_CALLBACKS,
-  } = options;
-  const slotOrder = (type: string): readonly string[] =>
-    Object.keys(slotsOf(schema, type));
-  const initial = normalize(initialValue);
-  let schemaVersion = initialValue.schemaVersion;
-
-  let state: EditorStoreState = {
-    rootId: initial.rootId,
-    nodes: initial.nodes,
-    selection: { [userId]: EMPTY_SELECTION },
-    history: { past: [], future: [] },
-    version: 0,
-    savedVersion: 0,
-    saving: false,
-  };
-  let docMemo: { version: number; doc: EditorDocument } | null = null;
-  let hashMemo: { version: number; hash: string } | null = null;
-  /** Whether the last past entry may still absorb same-key updates. */
-  let coalesceOpen = false;
+/** A tiny observable: `set` notifies only when a field actually changed. */
+function createChannel<T extends object>(initial: T): Channel<T> {
+  let state = initial;
   const listeners = new Set<() => void>();
-
-  const setState = (patch: Partial<EditorStoreState>): void => {
-    state = { ...state, ...patch };
-    for (const listener of listeners) listener();
-  };
-
-  const getDocument = (): EditorDocument => {
-    if (!docMemo || docMemo.version !== state.version) {
-      docMemo = {
-        version: state.version,
-        doc: denormalize(
-          { rootId: state.rootId, nodes: state.nodes },
-          { schemaVersion, slotOrder },
-        ),
-      };
-    }
-    return docMemo.doc;
-  };
-
-  const currentHash = (): string => {
-    if (!hashMemo || hashMemo.version !== state.version) {
-      hashMemo = { version: state.version, hash: stableHash(getDocument()) };
-    }
-    return hashMemo.hash;
-  };
-  // Hash of the serialised form, so a loaded document that differs from it
-  // only in representation (empty slots, key order) starts clean.
-  let savedHash = currentHash();
-
-  /** Applies ops all-or-nothing; returns the new table + inverses in undo order, or null. */
-  const run = (
-    ops: readonly Op[],
-  ): {
-    nodes: EditorNodes;
-    rootId: string;
-    inverse: Op[];
-    schemaVersion: number;
-  } | null => {
-    let nodes = state.nodes;
-    let rootId = state.rootId;
-    let version = schemaVersion;
-    const inverse: Op[] = [];
-    for (const op of ops) {
-      const result = applyOp(nodes, rootId, op, version);
-      if (!result) return null;
-      nodes = result.nodes;
-      rootId = result.rootId;
-      version = result.schemaVersion;
-      inverse.unshift(result.inverse);
-    }
-    return { nodes, rootId, inverse, schemaVersion: version };
-  };
-
-  /** Applies LOCAL ops: history (with coalescing), version, listeners, onChange. */
-  const commit = (
-    ops: readonly Op[],
-    key: string | null,
-    extra: Partial<EditorStoreState> = {},
-  ): boolean => {
-    const result = run(ops);
-    if (!result) return false;
-    schemaVersion = result.schemaVersion;
-    const at = now();
-    const past = [...state.history.past];
-    const last = past[past.length - 1];
-    if (
-      key !== null &&
-      coalesceOpen &&
-      last &&
-      last.key === key &&
-      at - last.at < COALESCE_MS
-    ) {
-      past[past.length - 1] = {
-        ...last,
-        ops: [...last.ops, ...ops],
-        inverse: [...result.inverse, ...last.inverse],
-        at,
-      };
-    } else {
-      past.push({ ops: [...ops], inverse: result.inverse, key, at });
-    }
-    coalesceOpen = key !== null;
-    const version = state.version + 1;
-    setState({
-      ...extra,
-      nodes: result.nodes,
-      rootId: result.rootId,
-      selection: pruneSelection(
-        extra.selection ?? state.selection,
-        result.nodes,
-      ),
-      history: { past, future: [] },
-      version,
-    });
-    getCallbacks().onChange?.({ ops, version, getDocument });
-    return true;
-  };
-
-  const setLocalSelection = (patch: Partial<UserSelection>): void => {
-    store.setUserSelection(userId, patch);
-  };
-
-  const store: EditorStore = {
-    getState: () => state,
+  return {
+    get: () => state,
+    set(patch) {
+      let changed = false;
+      for (const key of Object.keys(patch) as (keyof T)[]) {
+        if (!Object.is(state[key], patch[key])) {
+          changed = true;
+          break;
+        }
+      }
+      if (!changed) return;
+      state = { ...state, ...patch };
+      for (const listener of listeners) listener();
+    },
     subscribe(listener) {
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
       };
     },
+    clear() {
+      listeners.clear();
+    },
+  };
+}
+
+function sameIds(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((id, i) => id === b[i]);
+}
+
+function errorOf(cmd: Command, error: unknown): EditorError {
+  if (error instanceof PlacementError) {
+    return {
+      kind: 'placement',
+      message: error.message,
+      code: error.code,
+      cmd,
+      cause: error,
+    };
+  }
+  if (error instanceof TxRejectedError) {
+    return { kind: 'rejected', message: error.message, cmd, cause: error };
+  }
+  return {
+    kind: 'command',
+    message: error instanceof Error ? error.message : String(error),
+    cmd,
+    cause: error,
+  };
+}
+
+/**
+ * The editor store. Every document write is a command: `beforeCommand`
+ * handlers, then middlewares by descending priority (placement innermost),
+ * then the command's handler turns it into ops, which the doc store applies
+ * all or nothing. A throwing step leaves the document unchanged and reports
+ * an `EditorError`. Document, session and ephemeral state notify on their
+ * own channels, so hover never wakes document readers.
+ */
+export function createEditorStore(
+  options: CreateEditorStoreOptions,
+): EditorStore {
+  const plugins = sortPlugins(options.plugins ?? []);
+  const schema = applyPlugins(options.schema, plugins);
+  const genId = options.genId ?? createBlockId;
+  const remotePlacement = options.remotePlacement ?? 'accept-and-warn';
+  let docStore = options.docStore;
+  if (!docStore) {
+    if (!options.initialValue) {
+      throw new Error('createEditorStore needs `initialValue` or `docStore`');
+    }
+    docStore = createJsonDocStore({
+      initialValue: options.initialValue,
+      now: options.now,
+      maxEntries: options.maxHistory,
+    });
+  }
+  const doc = docStore;
+  const slotOrder = (type: string): readonly string[] =>
+    Object.keys(slotsOf(schema, type));
+
+  const session = createChannel<SessionState>({
+    selection: NO_SELECTION,
+    focusedField: null,
+    editing: null,
+    mode: 'visual',
+    history: { canUndo: doc.canUndo(), canRedo: doc.canRedo() },
+    save: INITIAL_SAVE_STATE,
+  });
+  const ephemeral = createChannel<EphemeralState>({ hoverId: null });
+
+  const docListeners = new Set<() => void>();
+  const unsubscribeDoc = doc.subscribe(() => {
+    for (const listener of docListeners) listener();
+  });
+
+  const handlers = new Map<string, CommandHandler>(
+    Object.entries(BUILTIN_COMMANDS),
+  );
+  let middlewares: { fn: Middleware; priority: number; order: number }[] = [
+    { fn: placementMiddleware, priority: PLACEMENT_PRIORITY, order: 0 },
+  ];
+  let middlewareOrder = 1;
+  const beforeCommand: BeforeCommandHandler[] = [];
+  const listeners = new Map<EditorEventName, Set<(payload: never) => void>>();
+
+  const emit = <E extends EditorEventName>(
+    event: E,
+    payload: EditorEvents[E],
+  ): void => {
+    const set = listeners.get(event);
+    if (!set) return;
+    for (const handler of set) {
+      (handler as (payload: EditorEvents[E]) => void)(payload);
+    }
+  };
+
+  let docMemo: { version: number; doc: EditorDocument } | null = null;
+  const getDocument = (): EditorDocument => {
+    const state = doc.getSnapshot();
+    if (!docMemo || docMemo.version !== state.version) {
+      docMemo = {
+        version: state.version,
+        doc: denormalize(state, {
+          schemaVersion: state.schemaVersion,
+          slotOrder,
+        }),
+      };
+    }
+    return docMemo.doc;
+  };
+
+  const saveScheduler = createSaveScheduler({
+    persistence: options.persistence,
+    timers: options.timers ?? GLOBAL_TIMERS,
     getDocument,
-    isDirty: () => currentHash() !== savedHash,
-
-    load(doc) {
-      const { nodes, rootId } = normalize(doc);
-      schemaVersion = doc.schemaVersion;
-      coalesceOpen = false;
-      const version = state.version + 1;
-      const selection: Record<string, UserSelection> = {};
-      for (const id of Object.keys(state.selection))
-        selection[id] = EMPTY_SELECTION;
-      setState({
-        nodes,
-        rootId,
-        selection,
-        history: { past: [], future: [] },
-        version,
-        savedVersion: version,
-        saving: false,
-      });
-      savedHash = currentHash();
+    getState: () => session.get().save,
+    setState: (patch: Partial<SaveState>) => {
+      session.set({ save: { ...session.get().save, ...patch } });
     },
+    onBeforeSave: (document, ops) => emit('beforeSave', { doc: document, ops }),
+    onAfterSave: (version) => emit('afterSave', { version }),
+    onError: (error) => emit('saveError', { error }),
+  });
 
-    add(type, { parent, index, props = {} }) {
-      const target = slotRef(parent);
-      const parentNode = state.nodes[target.id];
-      if (!parentNode) return null;
-      if (!canPlaceIn(schema, state.nodes, type, target).ok) return null;
-      const node = buildNode(schema, type, props, genId);
-      const length = parentNode.slots[target.slot]?.length ?? 0;
-      const ok = commit(
-        [{ op: 'insert', parent: target, index: index ?? length, node }],
-        null,
-        { selection: withLocal({ selected: node.id }) },
-      );
-      return ok ? node.id : null;
-    },
+  /** Selection without ids that no longer exist (same reference when unchanged). */
+  const pruned = (ids: readonly string[]): readonly string[] => {
+    const nodes = doc.getSnapshot().nodes;
+    if (ids.every((id) => id in nodes)) return ids;
+    const kept = ids.filter((id) => id in nodes);
+    return kept.length === 0 ? NO_SELECTION : kept;
+  };
 
-    update(id, patch, options) {
-      if (!(id in state.nodes)) return false;
-      const normalized = normalizePatch(patch);
-      const key = options?.coalesce
-        ? `${id}:${Object.keys(normalized).sort().join(',')}`
+  const setSelection = (ids: readonly string[]): void => {
+    const current = session.get().selection;
+    const next = pruned(ids);
+    if (sameIds(current, next)) return;
+    doc.breakMerge();
+    session.set({ selection: next.length === 0 ? NO_SELECTION : next });
+    emit('select', { selection: session.get().selection });
+  };
+
+  /** Session and events after the document changed. */
+  const afterChange = (
+    ops: readonly Op[],
+    origin: Origin,
+    selection: readonly string[] | null,
+  ): void => {
+    const state = session.get();
+    const nextSelection = pruned(selection ?? state.selection);
+    const focusedField =
+      state.focusedField &&
+      state.focusedField.blockId in doc.getSnapshot().nodes
+        ? state.focusedField
         : null;
-      return commit([{ op: 'update', id, patch: normalized }], key);
-    },
+    const editing =
+      state.editing && state.editing.blockId in doc.getSnapshot().nodes
+        ? state.editing
+        : null;
+    const history = { canUndo: doc.canUndo(), canRedo: doc.canRedo() };
+    session.set({
+      selection: sameIds(state.selection, nextSelection)
+        ? state.selection
+        : nextSelection,
+      focusedField,
+      editing,
+      history:
+        history.canUndo === state.history.canUndo &&
+        history.canRedo === state.history.canRedo
+          ? state.history
+          : history,
+    });
+    const hoverId = ephemeral.get().hoverId;
+    if (hoverId !== null && !(hoverId in doc.getSnapshot().nodes)) {
+      ephemeral.set({ hoverId: null });
+    }
+    if (origin !== 'remote' && origin !== 'system' && ops.length > 0) {
+      saveScheduler.noteChange(ops);
+    }
+    emit('change', {
+      ops,
+      origin,
+      version: doc.getSnapshot().version,
+      getDocument,
+    });
+  };
 
-    move(id, { parent, index }) {
-      const node = state.nodes[id];
-      if (!node || node.parent === null) return false;
-      const target = slotRef(parent);
-      if (
-        !canPlaceIn(schema, state.nodes, node.type, target, { movingId: id }).ok
-      ) {
-        return false;
-      }
-      return commit([{ op: 'move', id, parent: target, index }], null);
-    },
+  let transactDepth = 0;
+  let transactOps: Op[] = [];
+  let remoteRejected: Op[] = [];
 
-    remove(id) {
-      return commit([{ op: 'remove', id }], null);
-    },
-
-    duplicate(id) {
-      const node = state.nodes[id];
-      if (!node || node.parent === null) return null;
-      const parentNode = state.nodes[node.parent.id];
-      if (!parentNode) return null;
-      if (!canPlaceIn(schema, state.nodes, node.type, node.parent).ok) {
-        return null;
-      }
-      const { node: copy } = remapIds(
-        serializeSubtree(state.nodes, id, slotOrder),
-        genId,
-        { schema },
-      );
-      const siblings = parentNode.slots[node.parent.slot] ?? [];
-      const ok = commit(
-        [
-          {
-            op: 'insert',
-            parent: node.parent,
-            index: siblings.indexOf(id) + 1,
-            node: copy,
+  handlers.set('doc.applyRemote', ((payload: { ops: readonly Op[] }) => {
+    // Op by op against a draft: an op that does not apply is rejected; one
+    // that breaks placement follows the remote policy.
+    const accepted: Op[] = [];
+    let draft: DocState = doc.getSnapshot();
+    for (const op of payload.ops) {
+      const refused = checkPlacement(schema, draft, [op]);
+      if (refused && remotePlacement === 'reject') {
+        remoteRejected.push(op);
+        emit('opRejected', {
+          origin: 'remote',
+          op,
+          error: {
+            kind: 'placement',
+            message: `placement refused: ${refused.code}`,
+            code: refused.code,
           },
-        ],
-        null,
-        { selection: withLocal({ selected: copy.id }) },
+        });
+        continue;
+      }
+      const result = applyOp(
+        draft.nodes,
+        draft.rootId,
+        op,
+        draft.schemaVersion,
       );
-      return ok ? copy.id : null;
+      if (!result) {
+        remoteRejected.push(op);
+        emit('opRejected', {
+          origin: 'remote',
+          op,
+          error: { kind: 'rejected', message: `op "${op.op}" does not apply` },
+        });
+        continue;
+      }
+      if (refused) {
+        emit('diagnostic', { kind: 'placement', op, code: refused.code });
+      }
+      draft = {
+        nodes: result.nodes,
+        rootId: result.rootId,
+        schemaVersion: result.schemaVersion,
+        version: draft.version,
+      };
+      accepted.push(op);
+    }
+    return accepted;
+  }) as CommandHandler);
+
+  const fail = (error: EditorError, origin: Origin): DispatchResult => {
+    emit('opRejected', { origin, error });
+    emit('error', error);
+    return { ok: false, error };
+  };
+
+  const dispatch = (input: Command): DispatchResult => {
+    let cmd = input;
+    for (const handler of beforeCommand) {
+      const result = handler(cmd);
+      if (result === false) {
+        return fail(
+          { kind: 'cancelled', message: `"${cmd.type}" was cancelled`, cmd },
+          cmd.meta?.origin ?? 'local',
+        );
+      }
+      if (result) cmd = result;
+    }
+    const origin = cmd.meta?.origin ?? 'local';
+    const handler = handlers.get(cmd.type);
+    if (!handler) {
+      return fail(
+        {
+          kind: 'unknown-command',
+          message: `no handler for "${cmd.type}"`,
+          cmd,
+        },
+        origin,
+      );
+    }
+    let requested: readonly string[] | null = null;
+    const ctx: HandlerContext = {
+      getState: () => doc.getSnapshot(),
+      schema,
+      genId,
+      select(ids) {
+        requested = ids;
+      },
+    };
+    const sorted = [...middlewares].sort(
+      (a, b) => b.priority - a.priority || a.order - b.order,
+    );
+    const chain = sorted.reduceRight<(c: Command) => readonly Op[]>(
+      (next, entry) => (c) =>
+        entry.fn({ cmd: c, getState: () => doc.getSnapshot(), schema }, next),
+      (c) => (handlers.get(c.type) ?? handler)(c.payload as never, ctx),
+    );
+    let ops: readonly Op[];
+    try {
+      ops = chain(cmd);
+    } catch (error) {
+      return fail(errorOf(cmd, error), origin);
+    }
+    if (ops.length === 0) return { ok: true, ops };
+    const before = session.get().selection;
+    const after = requested ?? before;
+    const history = cmd.meta?.history;
+    let invalidated: number;
+    try {
+      const result = doc.transact(
+        (tx) => {
+          for (const op of ops) tx.apply(op);
+        },
+        {
+          origin,
+          history: history === 'ignore' ? 'ignore' : 'record',
+          mergeKey: cmd.meta?.mergeKey,
+          label: cmd.meta?.label,
+          selection: { before, after },
+        },
+      );
+      invalidated = result.invalidated;
+    } catch (error) {
+      return fail(errorOf(cmd, error), origin);
+    }
+    if (transactDepth > 0) transactOps.push(...ops);
+    afterChange(ops, origin, requested);
+    if (invalidated > 0) emit('historyInvalidated', { count: invalidated });
+    emit('afterCommand', { cmd, ops });
+    return { ok: true, ops };
+  };
+
+  const builtinCommands = new Map<string, EditorCommand>([
+    [
+      'history.undo',
+      {
+        id: 'history.undo',
+        label: 'Undo',
+        run: (s) => s.undo(),
+        canExecute: (s) => s.getSession().history.canUndo,
+      },
+    ],
+    [
+      'history.redo',
+      {
+        id: 'history.redo',
+        label: 'Redo',
+        run: (s) => s.redo(),
+        canExecute: (s) => s.getSession().history.canRedo,
+      },
+    ],
+    [
+      'block.remove',
+      {
+        id: 'block.remove',
+        label: 'Delete',
+        run: (s) => {
+          const [id] = s.getSession().selection;
+          return id === undefined ? false : s.remove(id);
+        },
+        canExecute: (s) => {
+          const [id] = s.getSession().selection;
+          return id !== undefined && s.getDoc().nodes[id]?.parent != null;
+        },
+      },
+    ],
+    [
+      'block.duplicate',
+      {
+        id: 'block.duplicate',
+        label: 'Duplicate',
+        run: (s) => {
+          const [id] = s.getSession().selection;
+          return id === undefined ? null : s.duplicate(id);
+        },
+        canExecute: (s) => {
+          const [id] = s.getSession().selection;
+          return id !== undefined && s.getDoc().nodes[id]?.parent != null;
+        },
+      },
+    ],
+  ]);
+  const commandMap = new Map(builtinCommands);
+  for (const [id, command] of pluginCommands(plugins)) {
+    if (!commandMap.has(id)) commandMap.set(id, command);
+  }
+  const shortcutMap = pluginShortcuts(
+    plugins,
+    DEFAULT_SHORTCUTS,
+    (combo, kept, dropped) => {
+      console.warn(
+        `[editor:E003] shortcut "${combo}" is bound to "${kept}"; "${dropped}" is ignored`,
+      );
+    },
+  );
+
+  const store: EditorStore = {
+    schema,
+    sourceSchema: options.schema,
+    docStore: doc,
+    plugins,
+
+    getDoc: () => doc.getSnapshot(),
+    subscribeDoc(listener) {
+      docListeners.add(listener);
+      return () => {
+        docListeners.delete(listener);
+      };
+    },
+    getSession: session.get,
+    subscribeSession: session.subscribe,
+    getEphemeral: ephemeral.get,
+    subscribeEphemeral: ephemeral.subscribe,
+
+    getDocument,
+    isDirty: () => session.get().save.dirty,
+
+    dispatch,
+    transact(fn, txOptions = {}) {
+      if (transactDepth > 0) {
+        transactDepth += 1;
+        try {
+          fn();
+        } finally {
+          transactDepth -= 1;
+        }
+        return { ok: true, ops: [] };
+      }
+      transactDepth = 1;
+      transactOps = [];
+      const mark = doc.mark();
+      try {
+        fn();
+      } catch (error) {
+        transactDepth = 0;
+        afterChange(doc.bail(mark), 'history', null);
+        const err: EditorError = {
+          kind: 'command',
+          message: error instanceof Error ? error.message : String(error),
+          cause: error,
+        };
+        emit('error', err);
+        return { ok: false, error: err };
+      }
+      transactDepth = 0;
+      doc.squash(
+        mark,
+        txOptions.label === undefined ? {} : { label: txOptions.label },
+      );
+      session.set({
+        history: { canUndo: doc.canUndo(), canRedo: doc.canRedo() },
+      });
+      return { ok: true, ops: transactOps };
+    },
+    use(middleware, useOptions = {}) {
+      const entry = {
+        fn: middleware,
+        priority: useOptions.priority ?? 0,
+        order: middlewareOrder++,
+      };
+      middlewares = [...middlewares, entry];
+      return () => {
+        middlewares = middlewares.filter((m) => m !== entry);
+      };
+    },
+    handle(type, handler) {
+      const previous = handlers.get(type);
+      handlers.set(type, handler as CommandHandler);
+      return () => {
+        if (handlers.get(type) !== handler) return;
+        if (previous) handlers.set(type, previous);
+        else handlers.delete(type);
+      };
+    },
+    on(event, handler) {
+      let set = listeners.get(event);
+      if (!set) {
+        set = new Set();
+        listeners.set(event, set);
+      }
+      const entry = handler as (payload: never) => void;
+      set.add(entry);
+      return () => {
+        set.delete(entry);
+      };
+    },
+    onBeforeCommand(handler) {
+      beforeCommand.push(handler);
+      return () => {
+        const index = beforeCommand.indexOf(handler);
+        if (index >= 0) beforeCommand.splice(index, 1);
+      };
     },
 
+    load(next, loadOptions = {}) {
+      doc.transact((tx) => tx.replaceDocument(next), {
+        origin: 'system',
+        history: 'ignore',
+      });
+      doc.clearHistory();
+      session.set({
+        selection: NO_SELECTION,
+        focusedField: null,
+        editing: null,
+        history: { canUndo: false, canRedo: false },
+      });
+      saveScheduler.reset(loadOptions.baseVersion ?? null);
+      emit('change', {
+        ops: [{ op: 'replace', doc: next }],
+        origin: 'system',
+        version: doc.getSnapshot().version,
+        getDocument,
+      });
+    },
+
+    add(type, { parent, index, props }) {
+      const result = dispatch({
+        type: 'node.insert',
+        payload: { type, parent, index, props },
+      });
+      if (!result.ok) return null;
+      const op = result.ops[0];
+      return op?.op === 'insert' ? op.node.id : null;
+    },
+    update(id, patch, updateOptions) {
+      const keys = Object.keys(patch).sort().join(',');
+      return dispatch({
+        type: 'node.update',
+        payload: { id, patch },
+        meta: updateOptions?.coalesce
+          ? { history: 'merge', mergeKey: `prop:${id}:${keys}` }
+          : undefined,
+      }).ok;
+    },
+    move(id, { parent, index }) {
+      if (doc.getSnapshot().nodes[id]?.parent == null) return false;
+      return dispatch({ type: 'node.move', payload: { id, parent, index } }).ok;
+    },
+    remove(id) {
+      if (doc.getSnapshot().nodes[id]?.parent == null) return false;
+      return dispatch({ type: 'node.remove', payload: { id } }).ok;
+    },
+    duplicate(id) {
+      const result = dispatch({ type: 'node.duplicate', payload: { id } });
+      if (!result.ok) return null;
+      const op = result.ops[0];
+      return op?.op === 'insert' ? op.node.id : null;
+    },
+    wrap(id, type, wrapOptions = {}) {
+      const result = dispatch({
+        type: 'node.wrap',
+        payload: { id, type, ...wrapOptions },
+      });
+      if (!result.ok) return null;
+      const op = result.ops[0];
+      return op?.op === 'insert' ? op.node.id : null;
+    },
     applyRemote(ops) {
-      const applied: Op[] = [];
-      const rejected: Op[] = [];
-      let nodes = state.nodes;
-      let rootId = state.rootId;
-      for (const op of ops) {
-        const result = applyOp(nodes, rootId, op, schemaVersion);
-        if (result) {
-          nodes = result.nodes;
-          rootId = result.rootId;
-          schemaVersion = result.schemaVersion;
-          applied.push(op);
-        } else {
-          rejected.push(op);
-        }
-      }
-      if (applied.length > 0) {
-        setState({
-          nodes,
-          rootId,
-          selection: pruneSelection(state.selection, nodes),
-          version: state.version + 1,
-        });
-      }
-      return { applied, rejected };
+      remoteRejected = [];
+      const result = dispatch({
+        type: 'doc.applyRemote',
+        payload: { ops },
+        meta: { origin: 'remote' },
+      });
+      const rejected = remoteRejected;
+      remoteRejected = [];
+      if (!result.ok) return { applied: [], rejected: [...ops] };
+      return { applied: result.ops, rejected };
     },
 
     undo() {
-      const entry = state.history.past[state.history.past.length - 1];
-      if (!entry) return false;
-      const result = run(entry.inverse);
-      if (!result) return false;
-      schemaVersion = result.schemaVersion;
-      coalesceOpen = false;
-      const version = state.version + 1;
-      setState({
-        nodes: result.nodes,
-        rootId: result.rootId,
-        selection: pruneSelection(state.selection, result.nodes),
-        history: {
-          past: state.history.past.slice(0, -1),
-          future: [entry, ...state.history.future],
-        },
-        version,
-      });
-      getCallbacks().onChange?.({
-        ops: entry.inverse,
-        version,
-        getDocument,
-      });
+      const step = doc.undo();
+      if (!step) {
+        session.set({
+          history: { canUndo: doc.canUndo(), canRedo: doc.canRedo() },
+        });
+        return false;
+      }
+      afterChange(step.ops, 'history', step.selection);
       return true;
     },
-
     redo() {
-      const entry = state.history.future[0];
-      if (!entry) return false;
-      const result = run(entry.ops);
-      if (!result) return false;
-      schemaVersion = result.schemaVersion;
-      coalesceOpen = false;
-      const version = state.version + 1;
-      setState({
-        nodes: result.nodes,
-        rootId: result.rootId,
-        selection: pruneSelection(state.selection, result.nodes),
-        history: {
-          past: [...state.history.past, entry],
-          future: state.history.future.slice(1),
-        },
-        version,
-      });
-      getCallbacks().onChange?.({ ops: entry.ops, version, getDocument });
+      const step = doc.redo();
+      if (!step) {
+        session.set({
+          history: { canUndo: doc.canUndo(), canRedo: doc.canRedo() },
+        });
+        return false;
+      }
+      afterChange(step.ops, 'history', step.selection);
       return true;
+    },
+    mark: () => doc.mark(),
+    squash(mark, meta) {
+      doc.squash(mark, meta);
+      session.set({
+        history: { canUndo: doc.canUndo(), canRedo: doc.canRedo() },
+      });
+    },
+    bail(mark) {
+      const reverted = doc.bail(mark);
+      if (reverted.length > 0) {
+        afterChange(reverted, 'history', null);
+      } else {
+        session.set({
+          history: { canUndo: doc.canUndo(), canRedo: doc.canRedo() },
+        });
+      }
     },
 
     select(id) {
-      coalesceOpen = false;
-      setLocalSelection({ selected: id });
+      setSelection(id === null ? NO_SELECTION : [id]);
     },
+    setSelection,
     hover(id) {
-      setLocalSelection({ hovered: id });
+      ephemeral.set({ hoverId: id });
     },
     focus(target) {
-      coalesceOpen = false;
-      setLocalSelection({ focus: target });
+      doc.breakMerge();
+      session.set({ focusedField: target });
     },
     setEditing(target) {
-      coalesceOpen = false;
-      setLocalSelection({ editing: target });
+      doc.breakMerge();
+      session.set({ editing: target });
     },
-    setUserSelection(user, patch) {
-      const current = state.selection[user] ?? EMPTY_SELECTION;
-      setState({
-        selection: { ...state.selection, [user]: { ...current, ...patch } },
-      });
+    setMode(mode) {
+      session.set({ mode });
     },
 
-    markSaved() {
-      savedHash = currentHash();
-      setState({ savedVersion: state.version });
+    save: (saveOptions) => saveScheduler.save(saveOptions),
+    reloadFromServer() {
+      const conflict = session.get().save.conflict;
+      if (!conflict?.serverDoc) return false;
+      store.load(
+        conflict.serverDoc,
+        conflict.serverVersion === null
+          ? {}
+          : { baseVersion: conflict.serverVersion },
+      );
+      return true;
     },
 
-    async save(meta = {}) {
-      if (!store.isDirty()) return;
-      const onSave = getCallbacks().onSave;
-      if (!onSave) return;
-      setState({ saving: true });
-      try {
-        await onSave(getDocument(), meta);
-        store.markSaved();
-      } finally {
-        setState({ saving: false });
-      }
+    commands: {
+      get: (id) => commandMap.get(id),
+      list: () => [...commandMap.values()],
+      execute(id, args) {
+        const command = commandMap.get(id);
+        if (!command) throw new Error(`[editor:E004] unknown command "${id}"`);
+        if (command.canExecute && !command.canExecute(store, args))
+          return undefined;
+        return command.run(store, args);
+      },
+      canExecute(id, args) {
+        const command = commandMap.get(id);
+        if (!command) return false;
+        return command.canExecute ? command.canExecute(store, args) : true;
+      },
+      shortcuts: () => shortcutMap,
+    },
+
+    destroy() {
+      saveScheduler.destroy();
+      unsubscribeDoc();
+      docListeners.clear();
+      session.clear();
+      ephemeral.clear();
+      listeners.clear();
     },
   };
 
-  /** Local user's selection with `patch` applied, for `commit`'s `extra`. */
-  function withLocal(
-    patch: Partial<UserSelection>,
-  ): Record<string, UserSelection> {
-    const current = state.selection[userId] ?? EMPTY_SELECTION;
-    return { ...state.selection, [userId]: { ...current, ...patch } };
-  }
-
+  for (const plugin of plugins) registerPluginHandlers(store, plugin);
   return store;
 }
 
-/** Initial props never carry `undefined` (an op must stay JSON). */
-function normalizePatchToProperties(
-  properties: Record<string, unknown>,
-): Record<string, JsonValue> {
-  const out: Record<string, JsonValue> = {};
-  for (const [key, value] of Object.entries(properties)) {
-    if (value !== undefined) out[key] = value as JsonValue;
+function registerPluginHandlers(
+  store: EditorStore,
+  plugin: EditorPlugin,
+): void {
+  for (const [event, handler] of Object.entries(plugin.on ?? {})) {
+    if (!handler) continue;
+    if (event === 'beforeCommand') {
+      store.onBeforeCommand(handler as BeforeCommandHandler);
+    } else {
+      // The handler map is keyed by event, so each handler matches its event.
+      const on = store.on as (
+        name: EditorEventName,
+        fn: (payload: unknown) => void,
+      ) => () => void;
+      on(event as EditorEventName, handler as (payload: unknown) => void);
+    }
   }
-  return out;
 }

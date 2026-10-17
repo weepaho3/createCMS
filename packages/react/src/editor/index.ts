@@ -12,6 +12,7 @@ import {
   EditorFieldLabel,
   EditorForm,
 } from './field';
+import { EditorSlot } from './plugin-slot';
 import { EditorFramePreview, EditorPreview } from './preview';
 import {
   EditorAddBlock,
@@ -19,9 +20,14 @@ import {
   EditorOutlineItem,
 } from './structure';
 
-export type { EditorRootProps } from './components';
+export type {
+  EditorRootOwnStoreProps,
+  EditorRootProps,
+  EditorRootStoreProps,
+} from './components';
 export type { EditorContextValue, EditorScrollToOptions } from './types';
 export { useEditorContext } from './context';
+export type { EditorSlotProps } from './plugin-slot';
 
 export const Editor = {
   Root: EditorRoot,
@@ -36,6 +42,7 @@ export const Editor = {
   OutlineItem: EditorOutlineItem,
   OutlineGroup: EditorOutlineGroup,
   AddBlock: EditorAddBlock,
+  Slot: EditorSlot,
 };
 
 // Field parts: context, built-in controls and their prop types.
@@ -87,35 +94,52 @@ export type {
 export { insertPointFor } from './structure';
 
 // React binding and untyped hooks.
-export type { EditorSelector } from './binding';
-export { shallowEqual, useEditorSelector, useEditorStore } from './binding';
+export type {
+  DocSelector,
+  EphemeralSelector,
+  SessionSelector,
+} from './binding';
+export {
+  shallowEqual,
+  useDocSelector,
+  useEditorStore,
+  useEphemeralSelector,
+  useSessionSelector,
+} from './binding';
 export type {
   AnyBlockHandle,
   AnyFieldHandle,
   BlockActions,
   ChildRef,
+  CommandApi,
   EditorApi,
   HistoryApi,
   SaveApi,
+  SaveConflictApi,
+  SelectionState,
 } from './hooks';
 export {
   useAnyBlock,
   useAnyField,
   useBlockActions,
   useChildren,
+  useCommand,
+  useCommands,
   useDirty,
   useEditor,
   useFields,
   useHistory,
+  useHovered,
   useMissingRequired,
   usePalette,
   useSave,
+  useSaveConflict,
   useSelection,
   useSlot,
   useSlots,
 } from './hooks';
 export type { EditorKeyboardOptions } from './keyboard';
-export { useEditorKeyboard } from './keyboard';
+export { combosOf, useEditorKeyboard } from './keyboard';
 
 // Typed factory.
 export type {

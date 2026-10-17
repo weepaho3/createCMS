@@ -96,7 +96,11 @@ describe('Canvas in a real browser', () => {
     field!.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }),
     );
-    const local = store.getState().selection.local;
+    const local = {
+      selected: store.getSession().selection[0] ?? null,
+      focus: store.getSession().focusedField,
+      editing: store.getSession().editing,
+    };
     expect(local?.selected).toBe('h1');
     expect(local?.focus).toEqual({ blockId: 'h1', key: 'text' });
   });
@@ -108,7 +112,7 @@ describe('Canvas in a real browser', () => {
     field!.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }),
     );
-    expect(store.getState().selection.local?.selected).toBe('h1');
+    expect(store.getSession().selection[0] ?? null).toBe('h1');
     expect(host.hasAttribute('data-dragging')).toBe(false);
     const rect = rectOf(field!);
     dispatchPointer(field!, 'pointerdown', { x: rect.x + 5, y: rect.y + 5 });
@@ -125,7 +129,7 @@ describe('Canvas in a real browser', () => {
     field!.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }),
     );
-    expect(store.getState().selection.local?.selected).toBeNull();
+    expect(store.getSession().selection[0] ?? null).toBeNull();
     const link = host.querySelector('a');
     expect(link).not.toBeNull();
     const event = new MouseEvent('click', { bubbles: true, cancelable: true });

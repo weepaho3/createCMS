@@ -85,6 +85,37 @@ re-exports of the old form.
   → **Migration:** import these names from `@createcms/react/editor/core`;
   parts and hooks stay on `@createcms/react/editor`.
 
+- **The editor store splits its state and saves through `persistence`.**
+  `store.getState()` / `subscribe` are gone: read `getDoc()` (`rootId`,
+  `nodes`, `version`), `getSession()` (`selection` as an id array,
+  `focusedField`, `editing`, `mode`, `history`, `save`) and `getEphemeral()`
+  (`hoverId`) with `subscribeDoc` / `subscribeSession` /
+  `subscribeEphemeral`. Per-user selection is gone (`userId` on
+  `Editor.Root`, `createEditorStore`, the context and `useEditor`,
+  `setUserSelection`, `useSelection(userId)`); `useSelection()` returns
+  `{ selected, selection, focus, editing }` and hover comes from
+  `useHovered()`. `useEditorSelector` / `EditorSelector` are
+  `useDocSelector` / `useSessionSelector` / `useEphemeralSelector`.
+  `Editor.Root`'s `onSave(doc, meta)` and the store's `onSave` callback,
+  `getCallbacks`, `markSaved`, `COALESCE_MS`, `stableHash`,
+  `EditorStoreState`, `UserSelection` and `EditorCallbacks` are removed:
+  pass `persistence={{ save: (doc, { ops, baseVersion, message }) =>
+Promise<{ version }>, baseVersion, autosave }}`; autosave is on unless
+  `autosave: false`. `isDirty()` now means unsaved local changes (an edit
+  reverted by hand or by undo still counts). `useSave()` is `{ status,
+dirty, saving, error, conflict, save }`. `onChange` fires for every
+  applied change with an `origin` (`local`, `history`, `remote`,
+  `system`). `HistoryEntry.key` is `mergeKey`, with `selectionBefore`,
+  `selectionAfter` and `label`. `useCmsDocument` returns `persistence`
+  instead of `save`; its `status` is the load state only (`loading`,
+  `idle`, `error`), save state and conflicts live in the editor store.
+  → **Migration:** replace `onSave={fn}` with
+  `persistence={{ save: async (doc, ctx) => { await fn(doc, ctx); return
+{ version } }, autosave: false }}` (or `persistence={doc.persistence}` for
+  `useCmsDocument`), read selection with `useSelection().selected` and hover
+  with `useHovered()`, swap `useEditorSelector` for the scope selector that
+  matches the data, and show conflicts with `useSaveConflict()`.
+
 - **The store, placement and handles work on named slots.** A node's
   position is `parent: { id, slot }` and its children live in `slots`
   (`Record<slot, id[]>`); `EditorNode` / `EditorOp` are replaced by

@@ -38,7 +38,7 @@ const doc = useCmsDocument({
 <pageEditor.Root
   key={doc.key}
   defaultValue={doc.doc}
-  onSave={doc.save}
+  persistence={doc.persistence}
   onChange={doc.onChange}
 >
   <Canvas.Root components={components} resolve={doc.resolve} />
@@ -50,6 +50,11 @@ Create the schema and the canvas components once (module scope or
 
 Wire `onChange={doc.onChange}` so `resolveTree` sees unsaved edits. Pass
 `key={doc.key}` on `Editor.Root` so a reload resets the uncontrolled store.
+`doc.persistence` saves through `updateBlocks` with the loaded head as
+`baseVersion`, so the editor store owns the save state (`useSave`,
+`useSaveConflict`). Each save is a commit: autosave is off unless
+`useCmsDocument({ autosave })` turns it on; `message` supplies the commit
+message when a save brings none.
 
 ## Client shape
 
@@ -98,7 +103,16 @@ head, `save(rootId, doc, { baseVersion, message })` writes with
 and the reference sidecar. Failures throw `EditorAdapterError`
 (`toAdapterError` wraps a client error): `HEAD_MISMATCH` is `conflict`,
 `TYPE_MISMATCH` and the placement and message codes are `validation`,
-`PROTECTED_BRANCH` is `permission`; `details.code` keeps the server code.
+`PROTECTED_BRANCH` is `permission`; `details.code` keeps the server code and
+`details.fields` the field findings. A conflict also carries the server's
+document and head as `details.serverDoc` and `details.serverVersion` (loaded
+right after the refusal), which the editor offers as "load the server
+version".
+
+The adapter writes whole trees through `updateBlocks`. The per-block
+endpoints (`createBlock`, `moveBlock`, `updateBlock`) each write their own
+commit in their own transaction, so a list of ops cannot go through them
+atomically; op-level saving needs a batch endpoint on the server first.
 `useCmsDocument` loads and saves through this adapter.
 
 ## Canvas components
@@ -112,22 +126,34 @@ resolved references after its children inside `Canvas.ReadonlySubtree`.
 
 ## Status
 
-| Status     | Meaning                              |
-| ---------- | ------------------------------------ |
-| `loading`  | Initial load or `reload()` in flight |
-| `idle`     | Tree ready                           |
-| `saving`   | `updateBlocks` in flight             |
-| `conflict` | `HEAD_MISMATCH` (branch advanced)    |
-| `error`    | Other save or load failure           |
+`status` is the load state; the save state lives in the editor store.
 
-On conflict, call `reload()` to fetch the latest head or
-`save({ force: true })` to overwrite without a head check.
+| Status    | Meaning                              |
+| --------- | ------------------------------------ |
+| `loading` | Initial load or `reload()` in flight |
+| `idle`    | Document ready                       |
+| `error`   | The load failed (`error`)            |
+
+`reload()` fetches the latest head and a new `key`, which remounts the
+editor. Save failures surface through `useSave()` (`status`, `error`) and
+conflicts through `useSaveConflict()`.
 
 ## Errors
 
-`error.fields` is `{ blockId, key, message }[]` for server-side
-`TYPE_MISMATCH` issues. Render it in editor chrome. `Editor.FieldError`
+A failed save's `details.fields` is `{ blockId, key, message }[]` for
+server-side `TYPE_MISMATCH` issues. Render it in editor chrome. `Editor.FieldError`
 still shows client-side `validateField` findings only.
+
+Known error codes on `CmsDocumentError.code`:
+
+| Code                          | Meaning                                          |
+| ----------------------------- | ------------------------------------------------ |
+| `HEAD_MISMATCH`               | Branch head advanced since the last load         |
+| `TYPE_MISMATCH`               | Server rejected property values (`error.fields`) |
+| `BLOCK_NOT_ALLOWED_IN_PARENT` | Block type not allowed under its parent          |
+| `PROTECTED_BRANCH`            | Branch is protected from direct edits            |
+| `COMMIT_MESSAGE_REQUIRED`     | Save requires a commit message                   |
+| `UNKNOWN`                     | Unrecognised or malformed wire error             |
 
 ## Templates
 
