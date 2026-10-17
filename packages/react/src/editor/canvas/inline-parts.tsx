@@ -6,6 +6,8 @@ import type { CanvasRect } from './rect';
 import { useRender } from '../../use-render';
 import { useDocSelector, useSessionSelector } from '../binding';
 import { useEditorContext } from '../context';
+import { warnOnce } from '../core/codes';
+import { fieldsOf } from '../core/schema';
 import { isHTMLElement } from '../dom';
 import { frameClickAnchor } from '../preview/frame-anchor';
 import { fieldElements, blockElements, isInsideReadonly } from './anchors';
@@ -23,12 +25,10 @@ import {
 import { canvasRectOf } from './rect';
 import { useFieldRect } from './rects';
 
-let richTextInlineWarned = false;
-
 function warnRichTextInlineOnce(): void {
-  if (process.env.NODE_ENV === 'production' || richTextInlineWarned) return;
-  richTextInlineWarned = true;
-  console.warn(RICH_TEXT_INLINE_WARNING);
+  if (process.env.NODE_ENV !== 'production') {
+    warnOnce('E001', RICH_TEXT_INLINE_WARNING);
+  }
 }
 
 export type InlineSuggestItem = {
@@ -153,14 +153,16 @@ export function CanvasInlineText({
 }: CanvasInlineTextProps) {
   const canvas = useCanvasContext('Canvas.InlineText');
   const ctx = useEditorContext('Canvas.InlineText');
-  const nodes = useDocSelector((s) => s.nodes);
   const current = useSessionSelector((s) => s.editing);
+  // Only the node being edited: other blocks never re-render the glass.
+  const editedNode = useDocSelector((s) =>
+    current === null ? null : (s.nodes[current.blockId] ?? null),
+  );
   const editing = React.useMemo(() => {
-    if (current === null) return null;
-    const field = fieldOf(ctx.schema, nodes, current.blockId, current.key);
-    return field !== null && isInlineEditableField(field) ? current : null;
-  }, [ctx.schema, nodes, current]);
-  const storeVersion = useDocSelector((s) => s.version);
+    if (current === null || editedNode === null) return null;
+    const field = fieldsOf(ctx.schema, editedNode.type)[current.key];
+    return field !== undefined && isInlineEditableField(field) ? current : null;
+  }, [ctx.schema, editedNode, current]);
   const glassRef = React.useRef<HTMLDivElement | null>(null);
   const seededFor = React.useRef<string | null>(null);
   const sessionStart = React.useRef<string>('');
@@ -195,12 +197,11 @@ export function CanvasInlineText({
     setFallbackRect(
       measureOriginField(canvas.host, editing.blockId, editing.key),
     );
-  }, [canvas.host, editing, syncedFieldRect, storeVersion]);
+  }, [canvas.host, editing, syncedFieldRect, editedNode]);
 
   const fieldRect = syncedFieldRect ?? fallbackRect;
 
-  const storeRaw =
-    editing === null ? '' : nodes[editing.blockId]?.props[editing.key];
+  const storeRaw = editing === null ? '' : editedNode?.props[editing.key];
   const storeValue = typeof storeRaw === 'string' ? storeRaw : '';
 
   const refreshSuggest = React.useCallback(() => {
@@ -405,7 +406,7 @@ export function CanvasInlineText({
       el.textContent = storeValue;
       placeCaret(el, storeValue.length);
     }
-  }, [canvas.host, canvas.inlineCaret, editing, storeValue, storeVersion]);
+  }, [canvas.host, canvas.inlineCaret, editing, storeValue, editedNode]);
 
   React.useLayoutEffect(() => {
     const host = canvas.host;
@@ -577,7 +578,7 @@ export function CanvasInlineText({
     ],
   );
 
-  const node = editing ? nodes[editing.blockId] : null;
+  const node = editing ? editedNode : null;
 
   const glass = useRender<'div', InlineTextState>({
     defaultTagName: 'div',

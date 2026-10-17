@@ -387,9 +387,12 @@ function CmsEditor({
         <CmsSourcesProvider sources={sources} media={media}>
           <SaveErrorBanner />
           <EditorShell mode={mode} requireCommitMessage={requireCommitMessage}>
-            {mode === 'form' ? (
-              <FormSurface>{children}</FormSurface>
-            ) : (
+            {/* Both surfaces stay mounted: switching modes keeps scroll and
+                state, and the hidden one renders at low priority. */}
+            <React.Activity mode={mode === 'form' ? 'visible' : 'hidden'}>
+              <FormSurface>{mode === 'form' ? children : null}</FormSurface>
+            </React.Activity>
+            <React.Activity mode={mode === 'form' ? 'hidden' : 'visible'}>
               <Canvas.Root
                 components={components}
                 resolve={doc.resolve}
@@ -397,7 +400,7 @@ function CmsEditor({
               >
                 <CanvasOverlays />
               </Canvas.Root>
-            )}
+            </React.Activity>
           </EditorShell>
           {mode === 'form' ? null : children}
         </CmsSourcesProvider>

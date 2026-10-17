@@ -235,7 +235,12 @@ export function CanvasInsertButton({
   useCanvasContext('Canvas.InsertButton');
   const ctx = useEditorContext('Canvas.InsertButton');
   const target = useInsertTarget();
-  const nodes = useDocSelector((s) => s.nodes);
+  const refused = useDocSelector(
+    (s) =>
+      target !== null &&
+      type !== undefined &&
+      !canPlaceIn(ctx.schema, s.nodes, type, target.parent).ok,
+  );
 
   const active =
     target !== null &&
@@ -243,10 +248,7 @@ export function CanvasInsertButton({
       ? target.variant === 'line'
       : target.variant === 'box');
 
-  const disabled =
-    target !== null &&
-    type !== undefined &&
-    !canPlaceIn(ctx.schema, nodes, type, target.parent).ok;
+  const disabled = refused;
 
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (target === null) return;

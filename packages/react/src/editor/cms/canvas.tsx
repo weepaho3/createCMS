@@ -16,7 +16,7 @@ import type { EditProps } from '../core';
 
 import { Canvas } from '../canvas';
 import { NO_EDIT } from '../core';
-import { editorValueToCms, nodeToCms } from './mapping';
+import { editorValueToCms } from './mapping';
 
 /** A createcms block component: what `createBlocksMap` holds per block type. */
 type CmsBlockComponent = (props: {
@@ -103,6 +103,8 @@ function renderReadonlyTree(
 /**
  * Canvas components for a `createBlocksMap` result: each wraps the createcms
  * block component, hands it `properties`/`blockId`/`node` in createcms shape
+ * (in the canvas `node.children` is empty: children arrive as React
+ * children, rendered per node)
  * and appends the blocks of resolved references after its children, inside
  * `Canvas.ReadonlySubtree` (shown, never edited or selected).
  */
@@ -131,7 +133,7 @@ export function cmsCanvasComponents(map: CmsBlocksMap): CanvasComponents {
         <Block
           properties={properties}
           blockId={props.id}
-          node={nodeToCms(props.node, def)}
+          node={{ blockId: props.id, type, properties, children: [] }}
           edit={props.edit}
         >
           {props.children === null && embedded === null ? null : (

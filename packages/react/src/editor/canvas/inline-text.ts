@@ -6,7 +6,7 @@ import { fieldsOf } from '../core/schema';
 export const EMPTY_FIELD_PLACEHOLDER = '\u200B';
 
 export const RICH_TEXT_INLINE_WARNING =
-  '[editor:E001] richText is not inline editable until the rich text adapter is configured';
+  'richText is not inline editable until the rich text adapter is configured';
 
 /**
  * Only single-line `text` fields get the inline glass. `richText` is

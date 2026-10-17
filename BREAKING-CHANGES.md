@@ -85,6 +85,21 @@ re-exports of the old form.
   → **Migration:** import these names from `@createcms/react/editor/core`;
   parts and hooks stay on `@createcms/react/editor`.
 
+- **Canvas components no longer receive `node`, and documents load through
+  a pipeline.** `CanvasComponentProps` is `{ id, type, props, children,
+slots, edit }`: the canvas renders per node, so a component never gets the
+  stored subtree (`cmsCanvasComponents` hands createcms blocks a `node` with
+  empty `children`; children arrive as React children). A block type without
+  a component now renders `Canvas.UnknownBlock` instead of nothing.
+  `createEditorStore` and `store.load` run `loadDocument`: component
+  `migrations` and `aliases` apply, duplicate ids get fresh ids and props of
+  the wrong type fall back to their defaults, each reported as a diagnostic.
+  Editor warnings now read `[editor:E001] ...` with a docs link
+  (`RICH_TEXT_INLINE_WARNING` holds the text without the code).
+  → **Migration:** read ids and props from the component props instead of
+  `node`; pass `renderUnknownBlock={() => null}` to keep hiding unknown
+  types; pass `onDiagnostics` to see what loading changed.
+
 - **The editor store splits its state and saves through `persistence`.**
   `store.getState()` / `subscribe` are gone: read `getDoc()` (`rootId`,
   `nodes`, `version`), `getSession()` (`selection` as an id array,

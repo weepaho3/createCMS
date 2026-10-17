@@ -15,8 +15,19 @@ import { Canvas } from '@createcms/react/editor/canvas';
 
 `Canvas.Root` renders the store document through a `components` map, one
 component per type. Each receives `CanvasComponentProps`: `id`, `type`,
-`props` (resolved, see `resolve`), `children` (the rendered `children` slot),
-`node` (the stored `NodeData`) and `edit`. `components` is required. For a
+`props` (resolved, see `resolve`, with `resolveData` results on top),
+`children` (the rendered `children` slot), `slots` (every slot rendered) and
+`edit`. `components` is required. Rendering is per node: a block re-renders
+only when its own type or props change, never when other blocks change or
+when the order inside its slots changes, and each block sits in its own error
+boundary. A block that throws shows `Canvas.BlockError` (or
+`renderBlockError`) and reports a `render` error to `Editor.Root`'s
+`onError`; new props or an undo render it again. A type without a component
+shows `Canvas.UnknownBlock` (or `renderUnknownBlock`), selectable, with its
+data kept as stored. `chunkSize` groups the root's blocks into wrappers with
+`content-visibility: auto` for long documents (off by default; during a drag
+every chunk renders fully). With `interactive="none"` the canvas is a
+read-only per-node preview that renders updates deferred. For a
 createcms `createBlocksMap` result, pass `cmsCanvasComponents(blocksMap)` from
 [`@createcms/react/editor/cms`](/docs/reference/react-editor-cms). Consumer
 `children` are the overlay slot, rendered after the tree inside the host.
@@ -120,7 +131,7 @@ session itself and provides it to its children.
 | Part                   | Default element | Props                                                                                                                          | Data attributes                                                                                           |
 | ---------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
 | `Canvas.Provider`      | none            | `children`. Renders no element; owns the drag session shared by every part and `Canvas.Root` below it. Optional.               | none                                                                                                      |
-| `Canvas.Root`          | `div`           | `components` (required), `surface`, `interactive`, `resolve`, `children` (overlay), `render`, div props                        | `data-editor-canvas`, `data-interactive`, `data-dragging`, `data-editing`                                 |
+| `Canvas.Root`          | `div`           | `components` (required), `surface`, `interactive`, `resolve`, `chunkSize`, `renderBlockError`, `renderUnknownBlock`, `children` (overlay), `render`, div props | `data-editor-canvas`, `data-interactive`, `data-dragging`, `data-editing`                                 |
 | `Canvas.Overlay`       | `div`           | `render`, div props. Portals into the canvas host.                                                                             | `data-editor-overlay`                                                                                     |
 | `Canvas.SelectionRing` | `div`           | `render`, div props. Sized from the selected block rect.                                                                       | `data-editor-selection-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`    |
 | `Canvas.HoverRing`     | `div`           | `render`, div props. Hidden while dragging, editing, or when hovered equals selected.                                          | `data-editor-hover-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
@@ -133,6 +144,8 @@ session itself and provides it to its children.
 | `Canvas.DragPreview`   | `div`           | `render`, div props, optional children. Follows the pointer during a session. Presentational.                                  | `data-editor-drag-preview`, `data-kind` (`new` \| `move`)                                                 |
 | `Canvas.InlineText`    | `div`           | `suggest`, `discardOnEscape`, `render`, div props. Overlays a contentEditable glass on `text` fields in `edit`; not on `readOnly` fields. | `data-editor-inline-text`, `data-editing`, `data-block-type`, `data-field`                                |
 | `Canvas.ReadonlySubtree` | `div`         | `render`, div props. `inert`, `display: contents`; wraps embedded trees that are shown but not edited.                         | `data-editor-readonly`                                                                                    |
+| `Canvas.BlockError`    | `div`           | `blockId`, `blockType`, `error` (all set by the canvas), `render`, div props; `role="alert"`, carries the block anchor so the block stays selectable and deletable | `data-editor-block`, `data-block-error`, `data-block-id`, `data-block-type`                               |
+| `Canvas.UnknownBlock`  | `div`           | `blockId`, `blockType`, `props`, `slots` (set by the canvas), `render`, div props; renders every slot below its label          | `data-editor-block`, `data-unknown-block`, `data-block-id`, `data-block-type`                             |
 
 ## Hooks
 
@@ -157,7 +170,12 @@ session itself and provides it to its children.
 | `CanvasRect`                 | `{ x, y, width, height }` in canvas content coordinates.                                          |
 | `CanvasComponents`           | Component type to `CanvasComponent`.                                                              |
 | `CanvasComponent`            | One component in a `CanvasComponents` map.                                                        |
-| `CanvasComponentProps`       | What a canvas component receives: `id`, `type`, `props`, `children`, `node`, `edit`.             |
+| `CanvasComponentProps`       | What a canvas component receives: `id`, `type`, `props`, `children`, `slots`, `edit`.            |
+| `BlockErrorInfo`             | What `renderBlockError` receives: `{ blockId, blockType, error }`.                                |
+| `UnknownBlockInfo`           | What `renderUnknownBlock` receives: `{ blockId, blockType, props, slots }`.                       |
+| `CanvasBlockErrorProps`      | Props of `Canvas.BlockError`.                                                                     |
+| `CanvasUnknownBlockProps`    | Props of `Canvas.UnknownBlock`.                                                                   |
+| `BlockErrorBoundaryProps`    | Props of `BlockErrorBoundary`: `resetKey`, `fallback(error)`, `onError?`, `onReset?`.             |
 | `CanvasResolve`              | Field kind to `FieldResolver`.                                                                    |
 | `FieldResolver`              | `(value, field) => resolved \| Promise<resolved> \| undefined`.                                   |
 | `CanvasReadonlySubtreeProps` | Props of `Canvas.ReadonlySubtree`.                                                                |
@@ -182,6 +200,13 @@ session itself and provides it to its children.
 | `InlineSuggestRenderContext` | Suggest UI context: items, highlight, query, anchor rect, `accept`.                               |
 
 ## Helpers
+
+`BlockErrorBoundary` is the class boundary every canvas block sits in: it
+shows `fallback(error)` after its children threw and renders them again when
+`resetKey` changes (`onReset({ reason: 'keys' })`). Use it around blocks
+rendered with `renderDocument` from
+[`@createcms/react/editor/render`](/docs/reference/react-editor-render) in a
+client component.
 
 | Export                   | Description                                                                 |
 | ------------------------ | --------------------------------------------------------------------------- |

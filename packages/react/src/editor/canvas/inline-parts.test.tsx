@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // @vitest-environment happy-dom
 import type { EditorDocument } from '../core/document';
 
+import { resetWarnings } from '../core/codes';
 import { defineEditorSchema } from '../core/schema';
 import { makeDoc, storeSchema } from '../core/store/fixtures';
 import { Editor } from '../index';
@@ -140,6 +141,7 @@ describe('Canvas.InlineText', () => {
   });
 
   it('richText click selects the block and focuses the field without a session', () => {
+    resetWarnings();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { host, store } = renderCanvas(inlineOverlay());
     const para = host.querySelector('[data-editor-block="p1"]');
@@ -158,7 +160,9 @@ describe('Canvas.InlineText', () => {
     expect(selection?.selected).toBe('p1');
     expect(selection?.focus).toEqual({ blockId: 'p1', key: 'text' });
     expect(host.querySelector('[data-editor-inline-text]')).toBeNull();
-    expect(warn).toHaveBeenCalledWith(RICH_TEXT_INLINE_WARNING);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(`[editor:E001] ${RICH_TEXT_INLINE_WARNING}`),
+    );
     warn.mockRestore();
   });
 

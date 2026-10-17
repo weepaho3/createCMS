@@ -61,6 +61,7 @@ export type {
   MediaFocalPoint,
   MediaValue,
   Migration,
+  ResolveDataContext,
   NodeInput,
   NumberField,
   ObjectField,
@@ -175,6 +176,7 @@ export type {
   MarkId,
   Middleware,
   MoveTarget,
+  NodeStatus,
   PersistenceOptions,
   SaveConflict,
   SaveState,
@@ -249,3 +251,25 @@ export {
   pluginShortcuts,
   sortPlugins,
 } from './plugin';
+
+// Codes of editor warnings and errors.
+export type { EditorCode } from './codes';
+export {
+  EDITOR_CODES,
+  EDITOR_CODES_URL,
+  formatEditorMessage,
+  resetWarnings,
+  warnOnce,
+} from './codes';
+
+// Load pipeline: migrations, repairs, diagnostics.
+export type { Diagnostic, DiagnosticCode, LoadResult } from './load';
+export { DocumentLoadError, loadDocument } from './load';
+
+// Whole-document tasks off the main thread.
+export type { WorkerPort, WorkerTasks } from './worker';
+export {
+  createWorkerTasks,
+  serveWorkerTasks,
+  WORKER_THRESHOLD,
+} from './worker';

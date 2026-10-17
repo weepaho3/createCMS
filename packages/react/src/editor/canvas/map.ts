@@ -1,6 +1,5 @@
 import type * as React from 'react';
 
-import type { NodeData } from '../core/document';
 import type { EditProps } from '../core/edit';
 
 /** What `Canvas.Root` hands each component of its map. */
@@ -14,8 +13,6 @@ export type CanvasComponentProps = {
   children: React.ReactNode;
   /** Every slot of the node rendered, keyed by slot name (`children` included). */
   slots: Readonly<Record<string, React.ReactNode>>;
-  /** The raw node as stored. */
-  node: NodeData;
   edit: EditProps;
 };
 

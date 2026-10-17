@@ -6,11 +6,23 @@ Unstyled; styling happens in the consumer's wrapper components (registry).
 ## Usage
 
 `Canvas.Root` renders the store document through a `components` map, one
-component per type. Each receives `id`, `type`, `props` (resolved),
-`children` (the rendered `children` slot), `node` and `edit`. For a
-createcms `createBlocksMap` result pass `cmsCanvasComponents(blocksMap)` from
-`@createcms/react/editor/cms`. `components` is required. Consumer `children`
-are the overlay slot, rendered after the tree inside the host.
+component per type. Each receives `CanvasComponentProps`: `id`, `type`,
+`props` (resolved, see `resolve`, with `resolveData` results on top),
+`children` (the rendered `children` slot), `slots` (every slot rendered) and
+`edit`. `components` is required. Rendering is per node: a block re-renders
+only when its own type or props change, never when other blocks change or
+when the order inside its slots changes, and each block sits in its own error
+boundary. A block that throws shows `Canvas.BlockError` (or
+`renderBlockError`) and reports a `render` error to `Editor.Root`'s
+`onError`; new props or an undo render it again. A type without a component
+shows `Canvas.UnknownBlock` (or `renderUnknownBlock`), selectable, with its
+data kept as stored. `chunkSize` groups the root's blocks into wrappers with
+`content-visibility: auto` for long documents (off by default; during a drag
+every chunk renders fully). With `interactive="none"` the canvas is a
+read-only per-node preview that renders updates deferred. For a
+createcms `createBlocksMap` result, pass `cmsCanvasComponents(blocksMap)` from
+[`@createcms/react/editor/cms`](/docs/reference/react-editor-cms). Consumer
+`children` are the overlay slot, rendered after the tree inside the host.
 
 ```tsx
 import { Editor } from '@createcms/react/editor';
@@ -88,7 +100,7 @@ creates the session itself and provides it to its children.
 | Part                     | Default element | Props                                                                                                                                                                                                                                                                    | Data attributes                                                                                           |
 | ------------------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
 | `Canvas.Provider`        | none            | `children`. Renders no element; owns the drag session shared by every part and `Canvas.Root` below it. Optional.                                                                                                                                                         | none                                                                                                      |
-| `Canvas.Root`            | `div`           | `components` (required), `surface`, `interactive`, `resolve`, `children` (overlay), `render`, div props                                                                                                                                                                  | `data-editor-canvas`, `data-interactive`, `data-dragging`, `data-editing`                                 |
+| `Canvas.Root`            | `div`           | `components` (required), `surface`, `interactive`, `resolve`, `chunkSize`, `renderBlockError`, `renderUnknownBlock`, `children` (overlay), `render`, div props                                                                                                           | `data-editor-canvas`, `data-interactive`, `data-dragging`, `data-editing`                                 |
 | `Canvas.Overlay`         | `div`           | `render`, div props. Portals into the canvas host.                                                                                                                                                                                                                       | `data-editor-overlay`                                                                                     |
 | `Canvas.SelectionRing`   | `div`           | `render`, div props. Sized from the selected block rect.                                                                                                                                                                                                                 | `data-editor-selection-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`    |
 | `Canvas.HoverRing`       | `div`           | `render`, div props. Hidden while dragging, editing, or when hovered equals selected.                                                                                                                                                                                    | `data-editor-hover-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
@@ -100,7 +112,9 @@ creates the session itself and provides it to its children.
 | `Canvas.DropIndicator`   | `div`           | `render`, div props. Line or box from the active drop target. Presentational.                                                                                                                                                                                            | `data-editor-drop-indicator`, `data-orientation`, `data-variant`, `data-kind` (`new` \| `move`)           |
 | `Canvas.DragPreview`     | `div`           | `render`, div props, optional children. Follows the pointer during a session. Presentational.                                                                                                                                                                            | `data-editor-drag-preview`, `data-kind` (`new` \| `move`)                                                 |
 | `Canvas.InlineText`      | `div`           | `suggest`, `discardOnEscape`, `render`, div props. Overlays a contentEditable glass on `text` fields in `edit` (not `readOnly` ones); a richText or readOnly click selects the block and focuses its form control.                                                       | `data-editor-inline-text`, `data-editing`, `data-block-type`, `data-field`                                |
-| `Canvas.ReadonlySubtree` | `div`           | `render`, div props. `inert`, `display: contents`; wraps embedded trees that are shown but not edited (skipped by measurement, selection, rings, drops).                                                                                                                 | `data-editor-readonly`                                                                                    |
+| `Canvas.ReadonlySubtree` | `div`           | `render`, div props. `inert`, `display: contents`; wraps embedded trees that are shown but not edited.                                                                                                                                                                   | `data-editor-readonly`                                                                                    |
+| `Canvas.BlockError`      | `div`           | `blockId`, `blockType`, `error` (all set by the canvas), `render`, div props; `role="alert"`, carries the block anchor so the block stays selectable and deletable                                                                                                       | `data-editor-block`, `data-block-error`, `data-block-id`, `data-block-type`                               |
+| `Canvas.UnknownBlock`    | `div`           | `blockId`, `blockType`, `props`, `slots` (set by the canvas), `render`, div props; renders every slot below its label                                                                                                                                                    | `data-editor-block`, `data-unknown-block`, `data-block-id`, `data-block-type`                             |
 
 ## Hooks
 

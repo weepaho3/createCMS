@@ -100,17 +100,20 @@ export function useDndDropResolution(): void {
   const canvas = useCanvasContext('useDndDropResolution');
   const ctx = useEditorContext('useDndDropResolution');
   const rootId = useDocSelector((s) => s.rootId);
-  const nodes = useDocSelector((s) => s.nodes);
   const dragging = canvas.dragging;
   const { dnd, host, measurer, interactive } = canvas;
-  const nodesRef = React.useRef(nodes);
-  nodesRef.current = nodes;
+  const store = ctx.store;
 
   // A remote change can remove the block being dragged: end the drag.
   React.useEffect(() => {
-    const session = dnd?.getSession();
-    if (session?.kind === 'move' && !(session.id in nodes)) dnd?.end();
-  }, [dnd, nodes]);
+    if (!dnd) return;
+    return store.subscribeDoc(() => {
+      const session = dnd.getSession();
+      if (session?.kind === 'move' && !(session.id in store.getDoc().nodes)) {
+        dnd.end();
+      }
+    });
+  }, [dnd, store]);
 
   React.useEffect(() => {
     if (!dragging || !dnd || !host || !measurer || interactive !== 'edit') {
@@ -126,12 +129,8 @@ export function useDndDropResolution(): void {
         const scroller = findScrollParent(host) ?? host;
         const scrolled = autoScrollAtClient(scroller, client);
         if (scrolled) {
-          const adapters = createInsertAdapters(
-            host,
-            measurer,
-            nodesRef.current,
-            rootId,
-          );
+          const nodes = store.getDoc().nodes;
+          const adapters = createInsertAdapters(host, measurer, nodes, rootId);
           const point = contentPointFromClient(host, client);
           canvas.pointer?.setFromEvent(
             {
@@ -143,7 +142,7 @@ export function useDndDropResolution(): void {
           dnd.setDropTarget(
             resolveDropTarget(
               ctx.schema,
-              nodesRef.current,
+              nodes,
               rootId,
               session,
               point.x,
@@ -168,6 +167,7 @@ export function useDndDropResolution(): void {
     rootId,
     ctx.schema,
     canvas.pointer,
+    store,
   ]);
 }
 
@@ -180,12 +180,8 @@ type GestureOptions = {
 function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
   const canvasSession = useCanvasSession('usePointerGesture');
   const ctx = useEditorContext('usePointerGesture');
-  const rootId = useDocSelector((s) => s.rootId);
-  const nodes = useDocSelector((s) => s.nodes);
   const { dnd, pointer } = canvasSession;
   const capturedRef = React.useRef(false);
-  const nodesRef = React.useRef(nodes);
-  nodesRef.current = nodes;
   // Surface that produced the current drop target; the drop commits and
   // focuses against that surface's host.
   const lastSurfaceRef = React.useRef<CanvasSurfaceHandle | null>(null);
@@ -198,12 +194,9 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
         return;
       }
       const { host, measurer } = surface;
-      const adapters = createInsertAdapters(
-        host,
-        measurer,
-        nodesRef.current,
-        rootId,
-      );
+      // Read at event time: the gesture never subscribes to the node table.
+      const { nodes, rootId } = ctx.store.getDoc();
+      const adapters = createInsertAdapters(host, measurer, nodes, rootId);
       const point = contentPointFromClient(host, client);
       pointer.setFromEvent(
         { clientX: client.x, clientY: client.y } as PointerEvent,
@@ -212,7 +205,7 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
       dnd.setDropTarget(
         resolveDropTarget(
           ctx.schema,
-          nodesRef.current,
+          nodes,
           rootId,
           session,
           point.x,
@@ -222,7 +215,7 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
       );
       lastSurfaceRef.current = surface;
     },
-    [canvasSession, ctx.schema, dnd, rootId, pointer, session],
+    [canvasSession, ctx.schema, ctx.store, dnd, pointer, session],
   );
 
   const commitDrop = React.useCallback(() => {
@@ -244,13 +237,13 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
         if (dropHost) focusBlock(dropHost, id);
       }
     } else {
-      const from = nodesRef.current[active.id]?.parent ?? null;
+      const nodes = ctx.store.getDoc().nodes;
+      const from = nodes[active.id]?.parent ?? null;
       const fromIndex = from
-        ? (nodesRef.current[from.id]?.slots[from.slot]?.indexOf(active.id) ??
-          -1)
+        ? (nodes[from.id]?.slots[from.slot]?.indexOf(active.id) ?? -1)
         : -1;
       const adjusted = adjustMoveIndex(
-        nodesRef.current,
+        nodes,
         active.id,
         target.parent,
         target.index,
@@ -288,13 +281,14 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
         return false;
       }
       if (session.kind === 'move') {
-        if (!blockId || blockId === rootId || !nodesRef.current[blockId]) {
+        const { nodes, rootId } = ctx.store.getDoc();
+        if (!blockId || blockId === rootId || !nodes[blockId]) {
           return false;
         }
       }
       return true;
     },
-    [canvasSession, session.kind, blockId, rootId],
+    [canvasSession, ctx.store, session.kind, blockId],
   );
 
   const onPointerDown = React.useCallback(

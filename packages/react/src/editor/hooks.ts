@@ -1,7 +1,12 @@
 import * as React from 'react';
 
 import type { DocSelector } from './binding';
-import type { EditorDocument, FlatNode, SlotRef } from './core/document';
+import type {
+  EditorDocument,
+  FlatNode,
+  JsonValue,
+  SlotRef,
+} from './core/document';
 import type {
   AnyEditorSchema,
   Field,
@@ -13,6 +18,7 @@ import type {
   EditorCommand,
   EditorStore,
   FieldRef,
+  NodeStatus,
   SaveConflict,
   SaveStatus,
   UpdateOptions,
@@ -554,6 +560,27 @@ export function useCommands(): readonly EditorCommand[] {
   return React.useMemo(() => ctx.store.commands.list(), [ctx]);
 }
 
+const NO_COMPUTED: Readonly<Record<string, JsonValue>> = Object.freeze({});
+const IDLE_STATUS: NodeStatus = Object.freeze({ loading: false, error: null });
+
+/** The block's `resolveData` state: `{ loading, error }` (both off when idle). */
+export function useNodeStatus(id: string): NodeStatus {
+  const ctx = useEditorContext('useNodeStatus');
+  return useStoreSessionSelector(
+    ctx.store,
+    (state) => state.nodeStatus[id] ?? IDLE_STATUS,
+  );
+}
+
+/** The block's `resolveData` result (`{}` before the first one). */
+export function useComputed(id: string): Readonly<Record<string, JsonValue>> {
+  const ctx = useEditorContext('useComputed');
+  return useStoreSessionSelector(
+    ctx.store,
+    (state) => state.computed[id] ?? NO_COMPUTED,
+  );
+}
+
 /** Every insertable block type of the schema, in definition order (memoised per schema). */
 export function usePalette(): PaletteItem[] {
   const ctx = useEditorContext('usePalette');
@@ -564,8 +591,27 @@ export function usePalette(): PaletteItem[] {
 export function useMissingRequired(): MissingRequiredField[] {
   const ctx = useEditorContext('useMissingRequired');
   const nodes = useStoreDocSelector(ctx.store, (state) => state.nodes);
-  return React.useMemo(
-    () => missingRequired(ctx.schema, Object.values(nodes)),
-    [ctx.schema, nodes],
+  // Per node, keyed by node identity: an edit recomputes only the edited
+  // node (unchanged nodes keep their object in the store).
+  const cacheRef = React.useRef(
+    new WeakMap<object, readonly MissingRequiredField[]>(),
   );
+  const schemaRef = React.useRef(ctx.schema);
+  if (schemaRef.current !== ctx.schema) {
+    schemaRef.current = ctx.schema;
+    cacheRef.current = new WeakMap();
+  }
+  return React.useMemo(() => {
+    const cache = cacheRef.current;
+    const out: MissingRequiredField[] = [];
+    for (const node of Object.values(nodes)) {
+      let found = cache.get(node);
+      if (!found) {
+        found = missingRequired(ctx.schema, [node]);
+        cache.set(node, found);
+      }
+      out.push(...found);
+    }
+    return out;
+  }, [ctx.schema, nodes]);
 }

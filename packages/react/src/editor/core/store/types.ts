@@ -7,6 +7,7 @@ import type {
   Origin,
   SlotRef,
 } from '../document';
+import type { Diagnostic } from '../load';
 import type { EditorPlugin } from '../plugin';
 import type { AnyEditorSchema } from '../schema';
 import type { EditorNodes } from './serde';
@@ -55,6 +56,18 @@ export type SessionState = {
   readonly mode: EditorMode;
   readonly history: { readonly canUndo: boolean; readonly canRedo: boolean };
   readonly save: SaveState;
+  /** `resolveData` results per node id: shown, never saved. */
+  readonly computed: Readonly<
+    Record<string, Readonly<Record<string, JsonValue>>>
+  >;
+  /** Nodes whose `resolveData` is loading or failed. */
+  readonly nodeStatus: Readonly<Record<string, NodeStatus>>;
+};
+
+/** Load state of one node's `resolveData`. */
+export type NodeStatus = {
+  readonly loading: boolean;
+  readonly error: Error | null;
 };
 
 export type EditorMode = 'form' | 'visual';
@@ -236,9 +249,10 @@ export type EditorErrorKind =
   | 'unknown-command'
   | 'placement'
   | 'rejected'
-  | 'cancelled';
+  | 'cancelled'
+  | 'render';
 
-/** Why a command did not apply. */
+/** Why a command did not apply, or a block failed to render (`render`). */
 export type EditorError = {
   readonly kind: EditorErrorKind;
   readonly message: string;
@@ -246,6 +260,10 @@ export type EditorError = {
   readonly code?: string;
   readonly cmd?: Command;
   readonly cause?: unknown;
+  /** The block that failed (`render`). */
+  readonly nodeId?: string;
+  readonly type?: string;
+  readonly componentStack?: string;
 };
 
 export type DispatchResult =
@@ -285,6 +303,8 @@ export type EditorEvents = {
   afterSave: { readonly version: string };
   saveError: { readonly error: Error };
   error: EditorError;
+  /** What the load pipeline migrated or repaired on `load`. */
+  diagnostics: { readonly diagnostics: readonly Diagnostic[] };
 };
 
 export type EditorEventName = keyof EditorEvents;
@@ -335,6 +355,8 @@ export type CreateEditorStoreOptions = {
   persistence?: PersistenceOptions;
   plugins?: readonly EditorPlugin[];
   timers?: Timers;
+  /** What the load pipeline migrated or repaired in `initialValue` and every `load`. */
+  onDiagnostics?: (diagnostics: readonly Diagnostic[]) => void;
 };
 
 /** A parent node and one of its slots; the slot defaults to `children`. */
@@ -405,6 +427,8 @@ export type EditorStore = {
     handler: (payload: EditorEvents[E]) => void,
   ): () => void;
   onBeforeCommand(handler: BeforeCommandHandler): () => void;
+  /** Reports an error that happened outside a command (a block that threw while rendering). */
+  reportError(error: EditorError): void;
 
   /** Replaces the document; clears history and selection, marks it saved. */
   load(doc: EditorDocument, options?: { baseVersion?: string }): void;
@@ -443,6 +467,8 @@ export type EditorStore = {
   save(options?: { message?: string; force?: boolean }): Promise<void>;
   /** Loads the server's document from the current conflict. */
   reloadFromServer(): boolean;
+  /** Runs the node's `resolveData` again (`trigger: 'force'`). */
+  resolveData(id: string): void;
 
   readonly commands: {
     get(id: string): EditorCommand | undefined;

@@ -1,0 +1,66 @@
+---
+title: Editor codes
+description: Every warning and error code the editor prints, what it means and how to fix it.
+---
+
+Editor messages start with a code, `[editor:E005]`, and end with a link to the
+matching entry below. Warnings print once per message and only in development
+builds; errors throw in every build.
+
+## E001
+
+**Warning.** A `richText` field cannot be edited inline. A click on it selects
+the block and focuses its form control instead. Edit rich text through
+`Editor.Field`.
+
+## E002
+
+**Error.** Two plugins passed to one editor share a `name`. Give every plugin a
+unique name.
+
+## E003
+
+**Warning.** A key combo is bound to two commands. The first binding wins
+(built-ins, then plugins by priority). Bind the second command to another
+combo.
+
+## E004
+
+**Error.** `store.commands.execute(id)` names a command no built-in or plugin
+registers. Check the id, or register the command in a plugin.
+
+## E005
+
+**Warning.** A canvas block rendered no `data-editor-block` anchor, so it
+cannot be selected, hovered or dropped on. Spread `edit.block` on the block's
+root element; a `display: contents` wrapper works when the component has no
+single root.
+
+## E006
+
+**Warning.** `Canvas.Root` has no component for a block type. The block shows
+as `Canvas.UnknownBlock` and its data stays as stored. Add the type to
+`components`.
+
+## E007
+
+**Warning.** `Editor.Field` names a property the block type does not declare;
+the field renders nothing. Check `name` against the component's `fields`.
+
+## E008
+
+**Warning.** No form control is registered for a field kind (or a `custom`
+kind). Pass one through `Editor.Root`'s `fields`, or through a plugin's
+`fields[kind].control`.
+
+## E009
+
+**Warning.** A block threw while rendering. It shows `Canvas.BlockError`;
+`Editor.Root`'s `onError` receives the error with `kind: 'render'`, the
+block's id, type and component stack.
+
+## E010
+
+**Warning.** The loaded document needed migrations or repairs. Pass
+`onDiagnostics` to `Editor.Root` (or `createEditorStore`) to see each one with
+its code and path; see [Loading documents](/docs/reference/react-editor-core#loading-documents).

@@ -50,6 +50,10 @@
       "types": "./dist/editor/cms/index.d.ts",
       "default": "./dist/editor/cms/index.js"
     },
+    "./editor/render": {
+      "types": "./dist/editor/render/index.d.ts",
+      "default": "./dist/editor/render/index.js"
+    },
     "./media": {
       "types": "./dist/media/index.d.ts",
       "default": "./dist/media/index.js"

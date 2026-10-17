@@ -1,5 +1,6 @@
 'use client';
 
+import { CanvasBlockError, CanvasUnknownBlock } from './boundary';
 // @createcms/react/editor/canvas: live surface, overlay and interaction
 // layer. The only entry that needs react-dom (portals); the peer is optional
 // so form-only consumers never install it.
@@ -33,6 +34,13 @@ export type {
   CanvasComponents,
 } from './map';
 export type { CanvasReadonlySubtreeProps } from './readonly';
+export type {
+  BlockErrorBoundaryProps,
+  CanvasBlockErrorProps,
+  CanvasUnknownBlockProps,
+} from './boundary';
+export { BlockErrorBoundary } from './boundary';
+export type { BlockErrorInfo, UnknownBlockInfo } from './renderer';
 export type {
   InsertOrientation,
   InsertTarget,
@@ -96,4 +104,6 @@ export const Canvas = {
   DragPreview: CanvasDragPreview,
   InlineText: CanvasInlineText,
   ReadonlySubtree: CanvasReadonlySubtree,
+  BlockError: CanvasBlockError,
+  UnknownBlock: CanvasUnknownBlock,
 };

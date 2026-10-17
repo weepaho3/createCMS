@@ -477,4 +477,37 @@ describe('Canvas pointer drag in a real browser', () => {
     dispatchPointer(handle, 'pointerup', { x: from.x + 8, y: from.y + 8 });
     expect(store.getDoc().nodes.stack1!.slots.children).toEqual(before);
   });
+
+  it('moves a block across content-visibility chunks', async () => {
+    const { host, store } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.DropIndicator />
+        <Canvas.BlockToolbar>
+          <Canvas.DragHandle blockId="h1" />
+        </Canvas.BlockToolbar>
+      </Canvas.Overlay>,
+      { chunkSize: 1 },
+    );
+    expect(host.querySelectorAll('[data-editor-chunk]')).toHaveLength(2);
+    const sec1 = host.querySelector('[data-editor-block="sec1"]');
+    expect(sec1).not.toBeNull();
+    await waitForLayout(sec1!);
+    store.select('h1');
+    await waitForLayout(host);
+    const handle = host.querySelector('[data-editor-drag-handle]')!;
+    const handleRect = handle.getBoundingClientRect();
+    const secRect = rectOf(sec1!);
+    dragPastThreshold(
+      handle,
+      {
+        x: handleRect.x + handleRect.width / 2,
+        y: handleRect.y + handleRect.height / 2,
+      },
+      { x: secRect.x + secRect.width / 2, y: secRect.y + secRect.height - 2 },
+    );
+    // The section in the second chunk accepts headings: the drop lands
+    // inside it, past the chunk boundary.
+    expect(store.getDoc().nodes.root_1!.slots.children).toEqual(['sec1']);
+    expect(store.getDoc().nodes.sec1!.slots.children).toContain('h1');
+  });
 });

@@ -50,6 +50,7 @@ export type RenderCanvasOptions = {
   interactive?: CanvasInteractive;
   resolve?: CanvasResolve;
   style?: React.CSSProperties;
+  chunkSize?: number;
 };
 
 type StoreProbeBag = { store: EditorStore | null };
@@ -75,6 +76,7 @@ export function renderCanvas(
         components={options?.components ?? canvasBlocks}
         interactive={options?.interactive}
         resolve={options?.resolve}
+        chunkSize={options?.chunkSize}
         style={{
           position: 'relative',
           boxSizing: 'border-box',

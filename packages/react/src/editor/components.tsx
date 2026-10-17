@@ -1,6 +1,7 @@
 import * as React from 'react';
 
 import type { EditorDocument } from './core/document';
+import type { Diagnostic } from './core/load';
 import type { EditorPlugin } from './core/plugin';
 import type { AnyEditorSchema } from './core/schema';
 import type {
@@ -49,6 +50,8 @@ export type EditorRootOwnStoreProps = EditorRootCommonProps & {
   plugins?: readonly EditorPlugin[];
   /** Policy for remote ops that break placement. Read once at mount. */
   remotePlacement?: 'reject' | 'accept-and-warn';
+  /** What the load pipeline migrated or repaired in `defaultValue` and every `load`. */
+  onDiagnostics?: (diagnostics: readonly Diagnostic[]) => void;
   store?: undefined;
 };
 
@@ -62,6 +65,7 @@ export type EditorRootStoreProps = EditorRootCommonProps & {
   persistence?: undefined;
   plugins?: undefined;
   remotePlacement?: undefined;
+  onDiagnostics?: undefined;
 };
 
 export type EditorRootProps = EditorRootOwnStoreProps | EditorRootStoreProps;
@@ -97,9 +101,10 @@ function withPluginControls(
  */
 export function EditorRoot(props: EditorRootProps) {
   const { onChange, onError, fields = EMPTY_FIELDS, children } = props;
-  const callbacksRef = React.useRef({ onChange, onError });
+  const onDiagnostics = props.onDiagnostics;
+  const callbacksRef = React.useRef({ onChange, onError, onDiagnostics });
   React.useLayoutEffect(() => {
-    callbacksRef.current = { onChange, onError };
+    callbacksRef.current = { onChange, onError, onDiagnostics };
   });
 
   const ctxRef = React.useRef<EditorContextValue | null>(null);
@@ -113,6 +118,8 @@ export function EditorRoot(props: EditorRootProps) {
         persistence: props.persistence,
         plugins: props.plugins,
         remotePlacement: props.remotePlacement,
+        onDiagnostics: (diagnostics) =>
+          callbacksRef.current.onDiagnostics?.(diagnostics),
       });
     const targets = new Map<string, HTMLElement>();
     const registerScrollTarget = (

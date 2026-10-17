@@ -29,6 +29,7 @@ export type {
   MarkId,
   Middleware,
   MoveTarget,
+  NodeStatus,
   PersistenceOptions,
   SaveConflict,
   SaveState,

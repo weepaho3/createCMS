@@ -98,6 +98,8 @@ describe('namespace shape', () => {
       'DragPreview',
       'InlineText',
       'ReadonlySubtree',
+      'BlockError',
+      'UnknownBlock',
     ]);
   });
 });

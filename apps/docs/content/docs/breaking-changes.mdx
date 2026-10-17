@@ -88,6 +88,21 @@ re-exports of the old form.
   → **Migration:** import these names from `@createcms/react/editor/core`;
   parts and hooks stay on `@createcms/react/editor`.
 
+- **Canvas components no longer receive `node`, and documents load through
+  a pipeline.** `CanvasComponentProps` is `&#123; id, type, props, children,
+  slots, edit }`: the canvas renders per node, so a component never gets the
+  stored subtree (`cmsCanvasComponents` hands createcms blocks a `node` with
+  empty `children`; children arrive as React children). A block type without
+  a component now renders `Canvas.UnknownBlock` instead of nothing.
+  `createEditorStore` and `store.load` run `loadDocument`: component
+  `migrations` and `aliases` apply, duplicate ids get fresh ids and props of
+  the wrong type fall back to their defaults, each reported as a diagnostic.
+  Editor warnings now read `[editor:E001] ...` with a docs link
+  (`RICH_TEXT_INLINE_WARNING` holds the text without the code).
+  → **Migration:** read ids and props from the component props instead of
+  `node`; pass `renderUnknownBlock={() => null}` to keep hiding unknown
+  types; pass `onDiagnostics` to see what loading changed.
+
 - **The editor store splits its state and saves through `persistence`.**
   `store.getState()` / `subscribe` are gone: read `getDoc()` (`rootId`,
   `nodes`, `version`), `getSession()` (`selection` as an id array,
@@ -103,10 +118,10 @@ re-exports of the old form.
   `getCallbacks`, `markSaved`, `COALESCE_MS`, `stableHash`,
   `EditorStoreState`, `UserSelection` and `EditorCallbacks` are removed:
   pass `persistence=&#123;&#123; save: (doc, &#123; ops, baseVersion, message }) =>
-  Promise&lt;&#123; version }>, baseVersion, autosave }}`; autosave is on unless
+Promise&lt;&#123; version }>, baseVersion, autosave }}`; autosave is on unless
   `autosave: false`. `isDirty()` now means unsaved local changes (an edit
   reverted by hand or by undo still counts). `useSave()` is `&#123; status,
-  dirty, saving, error, conflict, save }`. `onChange` fires for every
+dirty, saving, error, conflict, save }`. `onChange` fires for every
   applied change with an `origin` (`local`, `history`, `remote`,
   `system`). `HistoryEntry.key` is `mergeKey`, with `selectionBefore`,
   `selectionAfter` and `label`. `useCmsDocument` returns `persistence`
@@ -114,7 +129,7 @@ re-exports of the old form.
   `idle`, `error`), save state and conflicts live in the editor store.
   → **Migration:** replace `onSave={fn}` with
   `persistence=&#123;&#123; save: async (doc, ctx) => &#123; await fn(doc, ctx); return
-  &#123; version } }, autosave: false }}` (or `persistence=&#123;doc.persistence}` for
+&#123; version } }, autosave: false }}` (or `persistence=&#123;doc.persistence}` for
   `useCmsDocument`), read selection with `useSelection().selected` and hover
   with `useHovered()`, swap `useEditorSelector` for the scope selector that
   matches the data, and show conflicts with `useSaveConflict()`.

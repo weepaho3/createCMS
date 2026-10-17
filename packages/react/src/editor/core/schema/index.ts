@@ -28,6 +28,7 @@ export type {
   MediaFocalPoint,
   MediaValue,
   Migration,
+  ResolveDataContext,
   NodeInput,
   NumberField,
   ObjectField,

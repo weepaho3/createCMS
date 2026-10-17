@@ -1,0 +1,39 @@
+---
+title: Editor render
+description: renderDocument renders stored editor documents with production components, in React Server Components too.
+---
+
+`@createcms/react/editor/render` renders a stored `EditorDocument` for the
+published page. It has no directive and imports only React and the editor
+core, so React Server Components can call it.
+
+```tsx
+import { renderDocument } from '@createcms/react/editor/render';
+
+export default async function Page() {
+  const doc = await loadPage();
+  return <main>{renderDocument(doc, components, { schema })}</main>;
+}
+```
+
+## renderDocument
+
+`renderDocument(doc, components, options?)` returns the rendered tree. Each
+component receives `RenderBlockProps`: `id`, `type`, `props`, `children` (the
+`children` slot), `slots` (every slot) and `edit` (inactive anchors, so canvas
+components render unchanged).
+
+| Option      | Notes                                                                                                   |
+| ----------- | ------------------------------------------------------------------------------------------------------- |
+| `schema`    | Orders each node's slots by the component's declared slots.                                             |
+| `wrapBlock` | `(element, { id, type }) => ReactNode`: wrap every block, e.g. in a client `BlockErrorBoundary`.        |
+| `unknown`   | `({ id, type, props }) => ReactNode` for a type without a component (default: nothing).                 |
+
+## Types
+
+| Type                    | Description                                                     |
+| ----------------------- | --------------------------------------------------------------- |
+| `RenderBlockProps`      | What a production component receives.                           |
+| `RenderComponent`       | `(props: RenderBlockProps) => ReactNode`.                       |
+| `RenderComponents`      | Component type to component.                                    |
+| `RenderDocumentOptions` | `{ schema?, wrapBlock?, unknown? }`.                             |

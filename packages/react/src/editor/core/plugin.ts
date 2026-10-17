@@ -12,6 +12,8 @@ import type {
   EditorStore,
 } from './store/types';
 
+import { formatEditorMessage } from './codes';
+
 /** What a plugin contributes for one `custom` field kind. */
 export type PluginFieldKind = {
   /** Validates values of `custom` fields of this kind that declare no `schema`. */
@@ -70,7 +72,9 @@ export function sortPlugins(
   const seen = new Set<string>();
   for (const plugin of plugins) {
     if (seen.has(plugin.name)) {
-      throw new Error(`[editor:E002] duplicate plugin name "${plugin.name}"`);
+      throw new Error(
+        formatEditorMessage('E002', `duplicate plugin name "${plugin.name}"`),
+      );
     }
     seen.add(plugin.name);
   }

@@ -1,4 +1,5 @@
 import type { EditorDocument, Op, Origin } from '../document';
+import type { Diagnostic } from '../load';
 import type { EditorPlugin } from '../plugin';
 import type {
   BeforeCommandHandler,
@@ -20,6 +21,8 @@ import type {
   Timers,
 } from './types';
 
+import { formatEditorMessage, warnOnce } from '../codes';
+import { loadDocument } from '../load';
 import {
   applyPlugins,
   pluginCommands,
@@ -36,6 +39,7 @@ import {
 import { createJsonDocStore, TxRejectedError } from './doc-store';
 import { createBlockId } from './id';
 import { applyOp } from './ops';
+import { createDataResolver } from './resolve-data';
 import { createSaveScheduler, INITIAL_SAVE_STATE } from './save';
 import { denormalize } from './serde';
 
@@ -135,13 +139,25 @@ export function createEditorStore(
   const schema = applyPlugins(options.schema, plugins);
   const genId = options.genId ?? createBlockId;
   const remotePlacement = options.remotePlacement ?? 'accept-and-warn';
+  const reportDiagnostics = (diagnostics: readonly Diagnostic[]): void => {
+    if (diagnostics.length === 0) return;
+    if (process.env.NODE_ENV !== 'production') {
+      warnOnce(
+        'E010',
+        `the document needed ${diagnostics.length} migration(s) or repair(s); pass onDiagnostics to see them`,
+      );
+    }
+    options.onDiagnostics?.(diagnostics);
+  };
   let docStore = options.docStore;
   if (!docStore) {
     if (!options.initialValue) {
       throw new Error('createEditorStore needs `initialValue` or `docStore`');
     }
+    const loaded = loadDocument(options.initialValue, schema, { genId });
+    reportDiagnostics(loaded.diagnostics);
     docStore = createJsonDocStore({
-      initialValue: options.initialValue,
+      initialValue: loaded.doc,
       now: options.now,
       maxEntries: options.maxHistory,
     });
@@ -157,8 +173,18 @@ export function createEditorStore(
     mode: 'visual',
     history: { canUndo: doc.canUndo(), canRedo: doc.canRedo() },
     save: INITIAL_SAVE_STATE,
+    computed: {},
+    nodeStatus: {},
   });
   const ephemeral = createChannel<EphemeralState>({ hoverId: null });
+
+  const dataResolver = createDataResolver({
+    schema,
+    getDoc: () => doc.getSnapshot(),
+    getComputed: () => session.get().computed,
+    getStatus: () => session.get().nodeStatus,
+    set: (patch) => session.set(patch),
+  });
 
   const docListeners = new Set<() => void>();
   const unsubscribeDoc = doc.subscribe(() => {
@@ -265,6 +291,7 @@ export function createEditorStore(
     if (hoverId !== null && !(hoverId in doc.getSnapshot().nodes)) {
       ephemeral.set({ hoverId: null });
     }
+    dataResolver.afterOps(ops);
     if (origin !== 'remote' && origin !== 'system' && ops.length > 0) {
       saveScheduler.noteChange(ops);
     }
@@ -469,9 +496,12 @@ export function createEditorStore(
     plugins,
     DEFAULT_SHORTCUTS,
     (combo, kept, dropped) => {
-      console.warn(
-        `[editor:E003] shortcut "${combo}" is bound to "${kept}"; "${dropped}" is ignored`,
-      );
+      if (process.env.NODE_ENV !== 'production') {
+        warnOnce(
+          'E003',
+          `shortcut "${combo}" is bound to "${kept}"; "${dropped}" is ignored`,
+        );
+      }
     },
   );
 
@@ -565,6 +595,9 @@ export function createEditorStore(
         set.delete(entry);
       };
     },
+    reportError(error) {
+      emit('error', error);
+    },
     onBeforeCommand(handler) {
       beforeCommand.push(handler);
       return () => {
@@ -573,7 +606,12 @@ export function createEditorStore(
       };
     },
 
-    load(next, loadOptions = {}) {
+    load(input, loadOptions = {}) {
+      const { doc: next, diagnostics } = loadDocument(input, schema, {
+        genId,
+      });
+      reportDiagnostics(diagnostics);
+      if (diagnostics.length > 0) emit('diagnostics', { diagnostics });
       doc.transact((tx) => tx.replaceDocument(next), {
         origin: 'system',
         history: 'ignore',
@@ -586,6 +624,7 @@ export function createEditorStore(
         history: { canUndo: false, canRedo: false },
       });
       saveScheduler.reset(loadOptions.baseVersion ?? null);
+      dataResolver.runAll('load');
       emit('change', {
         ops: [{ op: 'replace', doc: next }],
         origin: 'system',
@@ -721,12 +760,20 @@ export function createEditorStore(
       return true;
     },
 
+    resolveData(id) {
+      dataResolver.run(id, 'force');
+    },
+
     commands: {
       get: (id) => commandMap.get(id),
       list: () => [...commandMap.values()],
       execute(id, args) {
         const command = commandMap.get(id);
-        if (!command) throw new Error(`[editor:E004] unknown command "${id}"`);
+        if (!command) {
+          throw new Error(
+            formatEditorMessage('E004', `unknown command "${id}"`),
+          );
+        }
         if (command.canExecute && !command.canExecute(store, args))
           return undefined;
         return command.run(store, args);
@@ -740,6 +787,7 @@ export function createEditorStore(
     },
 
     destroy() {
+      dataResolver.destroy();
       saveScheduler.destroy();
       unsubscribeDoc();
       docListeners.clear();
@@ -750,6 +798,7 @@ export function createEditorStore(
   };
 
   for (const plugin of plugins) registerPluginHandlers(store, plugin);
+  dataResolver.runAll('load');
   return store;
 }
 

@@ -9,6 +9,7 @@ import type { Measurer } from './measurer';
 import { composeRefs, useRender } from '../../use-render';
 import { useDocSelector, useSessionSelector } from '../binding';
 import { useEditorContext } from '../context';
+import { warnOnce } from '../core/codes';
 import { CanvasContext } from './context';
 import { type DndStore } from './dnd';
 import { CanvasDndEffects } from './dnd-parts';
@@ -21,7 +22,14 @@ import {
   createCanvasSession,
   type CanvasSessionContextValue,
 } from './provider';
-import { renderStoreTree } from './renderer';
+import {
+  type BlockErrorInfo,
+  BlockView,
+  CanvasRenderContext,
+  type CanvasRenderDeps,
+  createResolveTick,
+  type UnknownBlockInfo,
+} from './renderer';
 import {
   type CanvasResolve,
   createResolveCache,
@@ -30,15 +38,6 @@ import {
 } from './resolve';
 
 const subscribeNoop = () => () => {};
-
-const warned = new Set<string>();
-
-function warnOnce(message: string): void {
-  if (process.env.NODE_ENV === 'production') return;
-  if (warned.has(message)) return;
-  warned.add(message);
-  console.warn(message);
-}
 
 export type CanvasInteractive = 'edit' | 'select' | 'none';
 export type CanvasSurface = 'inline' | 'frame';
@@ -58,6 +57,16 @@ export type CanvasRootProps = Omit<
   surface?: CanvasSurface;
   interactive?: CanvasInteractive;
   resolve?: CanvasResolve;
+  /**
+   * Groups the root's blocks into wrappers of this many blocks with
+   * `content-visibility: auto` (20 to 50 works well for long documents).
+   * Off by default: the wrappers sit between the root and its blocks.
+   */
+  chunkSize?: number;
+  /** Replaces `Canvas.BlockError` for a block that threw while rendering. */
+  renderBlockError?: (info: BlockErrorInfo) => React.ReactNode;
+  /** Replaces `Canvas.UnknownBlock` for a block type without a component. */
+  renderUnknownBlock?: (info: UnknownBlockInfo) => React.ReactNode;
   children?: React.ReactNode;
   render?: UseRenderComponentProps<'div', CanvasRootState>['render'];
 };
@@ -67,14 +76,15 @@ export function CanvasRoot({
   surface = 'inline',
   interactive = 'edit',
   resolve,
+  chunkSize,
+  renderBlockError,
+  renderUnknownBlock,
   children,
   render,
   ...rest
 }: CanvasRootProps) {
   const ctx = useEditorContext('Canvas.Root');
-  const version = useDocSelector((s) => s.version);
   const rootId = useDocSelector((s) => s.rootId);
-  const nodes = useDocSelector((s) => s.nodes);
   const editing = useSessionSelector((s) => s.editing !== null);
 
   const componentsRef = React.useRef(components);
@@ -96,11 +106,15 @@ export function CanvasRoot({
     };
   }, []);
 
-  const [, setTick] = React.useState(0);
+  const tickRef = React.useRef<ReturnType<typeof createResolveTick> | null>(
+    null,
+  );
+  tickRef.current ??= createResolveTick();
   const cacheRef = React.useRef<ResolveCache | null>(null);
   if (cacheRef.current === null) {
+    const tick = tickRef.current;
     cacheRef.current = createResolveCache({
-      onTick: () => setTick((n) => n + 1),
+      onTick: () => tick.bump(),
       isMounted: () => mountedRef.current,
     });
   }
@@ -182,7 +196,7 @@ export function CanvasRoot({
       host.removeEventListener('pointermove', onPointerMove);
       host.removeEventListener('pointerleave', onPointerLeave);
     };
-  }, [version]);
+  }, []);
 
   const dragging = React.useSyncExternalStore(
     dnd ? dnd.subscribeSession : subscribeNoop,
@@ -205,7 +219,7 @@ export function CanvasRoot({
     return () => {
       doc.removeEventListener('keydown', onKeyDown, true);
     };
-  }, [version]);
+  }, []);
 
   const surfaceHandleRef = React.useRef<{
     host: HTMLElement;
@@ -241,39 +255,58 @@ export function CanvasRoot({
     handle.editing = editing;
   });
 
-  React.useLayoutEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
-    const map = componentsRef.current;
-    for (const [id, node] of Object.entries(nodes)) {
-      if (node.type === 'root') continue;
-      if (!map[node.type]) continue;
-      const found = host.querySelector(
-        `[data-editor-block="${CSS.escape(id)}"]`,
-      );
-      if (!found) {
-        warnOnce(
-          `Canvas.Root: block "${id}" (type "${node.type}") rendered no [data-editor-block] attribute. Spread edit.block on the block's root element. A display: contents wrapper is the documented escape when the component has no single root.`,
-        );
-      }
-    }
-  }, [version, nodes]);
-
   if (surface === 'frame') {
     throw new Error('Canvas.Root: surface "frame" is not implemented');
   }
 
-  void version;
-
-  const tree = renderStoreTree({
-    nodes,
-    rootId,
-    schema: ctx.schema,
+  const renderDeps = React.useMemo((): CanvasRenderDeps => {
+    const cache = cacheRef.current!;
+    const edits = editsRef.current!;
+    const tick = tickRef.current!;
+    return {
+      store: ctx.store,
+      schema: ctx.schema,
+      components,
+      resolve,
+      cache,
+      edits,
+      tick,
+      renderBlockError,
+      renderUnknownBlock,
+      chunkSize,
+      deferUpdates: interactive === 'none',
+      isDragging: () => sessionRef.current.dnd.getSession() !== null,
+      subscribeDragging: (listener) =>
+        sessionRef.current.dnd.subscribeSession(listener),
+      onBlockRendered(id, type) {
+        if (!components[type]) return;
+        // Block layout effects run before the host ref attaches: check
+        // once the commit finished.
+        queueMicrotask(() => {
+          const host = hostRef.current;
+          if (!host) return;
+          const found = host.querySelector(
+            `[data-editor-block="${CSS.escape(id)}"]`,
+          );
+          if (!found && process.env.NODE_ENV !== 'production') {
+            warnOnce(
+              'E005',
+              `Canvas.Root: block "${id}" (type "${type}") rendered no [data-editor-block] attribute. Spread edit.block on the block's root element. A display: contents wrapper is the documented escape when the component has no single root.`,
+            );
+          }
+        });
+      },
+    };
+  }, [
+    ctx.store,
+    ctx.schema,
     components,
     resolve,
-    cache: cacheRef.current,
-    edits: editsRef.current,
-  });
+    renderBlockError,
+    renderUnknownBlock,
+    chunkSize,
+    interactive,
+  ]);
 
   const read = React.useMemo(() => {
     const cache = cacheRef.current!;
@@ -303,7 +336,9 @@ export function CanvasRoot({
       ref: composeRefs(rest.ref, hostRef),
       children: (
         <>
-          {tree}
+          <CanvasRenderContext.Provider value={renderDeps}>
+            <BlockView id={rootId} />
+          </CanvasRenderContext.Provider>
           <CanvasDndEffects />
           {children}
         </>

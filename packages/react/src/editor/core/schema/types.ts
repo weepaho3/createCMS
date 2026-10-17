@@ -384,6 +384,15 @@ export type ComponentPermission =
   | 'edit'
   | 'insert';
 
+/** Why `resolveData` runs and what changed. */
+export type ResolveDataContext = {
+  readonly trigger: 'load' | 'insert' | 'change' | 'force';
+  /** For `change`: the prop keys the edit wrote. */
+  readonly changed: Readonly<Record<string, true>>;
+  readonly signal: AbortSignal;
+  readonly metadata: Readonly<Record<string, JsonValue>>;
+};
+
 /** One step of a component's migration chain, run before validation. */
 export type Migration = {
   /** The component version this step produces; ids start at 1. */
@@ -428,6 +437,15 @@ export type ComponentDef<
     data: { props: InferProps<F> },
     ctx: FieldContext,
   ): { [K in keyof F]?: Partial<Field> };
+  /**
+   * Computes display values from the props (a fetched title, a price). The
+   * result lives in the session (`computed`), never in the document; a newer
+   * call aborts an older one through `ctx.signal`.
+   */
+  resolveData?(
+    data: { id: string; props: InferProps<F> },
+    ctx: ResolveDataContext,
+  ): Record<string, JsonValue> | Promise<Record<string, JsonValue>>;
   migrations?: readonly Migration[];
   /** Extra validation of the whole props object through any Standard Schema library. */
   validate?: StandardSchemaV1;

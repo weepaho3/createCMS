@@ -461,9 +461,13 @@ jobs:
 
       # The built `@createcms/react/editor/core` entry has no runtime
       # dependency and no directive, and loads in Node with every bare import
-      # refused (servers, workers and RSC import it without React).
+      # refused (servers, workers and RSC import it without React). The
+      # `/editor/render` entry imports only `react` and has no directive.
       - name: Check React-free editor core
         run: node packages/react/scripts/check-core-dist.mjs
+      # Production bundles of the editor entries keep no dev warning text.
+      - name: Check editor dev warnings are stripped
+        run: bun packages/react/scripts/check-dev-warnings.mjs
 
   # The one status check branch protection should require. Green only when
   # every needed job succeeded; red on any failure, skip, or cancellation —

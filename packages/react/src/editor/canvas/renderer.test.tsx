@@ -8,6 +8,7 @@ import type { EditorDocument } from '../core/document';
 import type { EditProps } from '../core/edit';
 import type { CanvasComponent, CanvasComponentProps } from './map';
 
+import { resetWarnings } from '../core/codes';
 import { defineEditorSchema } from '../core/schema';
 import { makeDoc, storeSchema } from '../core/store/fixtures';
 import { Editor } from '../index';
@@ -66,7 +67,7 @@ describe('Canvas.Root renderer', () => {
     ).toEqual(['h1', 'sec1']);
   });
 
-  it('passes id, type, props, the stored node and edit anchors', () => {
+  it('passes id, type, props and edit anchors', () => {
     let seen: CanvasComponentProps | undefined;
     const HeadingProbe: CanvasComponent = (props) => {
       seen = props;
@@ -83,11 +84,6 @@ describe('Canvas.Root renderer', () => {
     expect(seen?.id).toBe('h1');
     expect(seen?.type).toBe('heading');
     expect(seen?.props).toEqual({ text: 'Hello', level: 1 });
-    expect(seen?.node).toEqual({
-      id: 'h1',
-      type: 'heading',
-      props: { text: 'Hello', level: 1 },
-    });
     expect(seen?.edit.active).toBe(true);
     expect(seen?.edit.block).toEqual({ 'data-editor-block': 'h1' });
     expect(seen?.edit.field).toEqual({
@@ -111,7 +107,8 @@ describe('Canvas.Root renderer', () => {
     });
   });
 
-  it('warns and renders null for an unknown type', () => {
+  it('shows an unknown type as a selectable Canvas.UnknownBlock and keeps its data', () => {
+    resetWarnings();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const tree: EditorDocument = {
       schemaVersion: 1,
@@ -122,11 +119,12 @@ describe('Canvas.Root renderer', () => {
         slots: { children: [{ id: 'w1', type: 'widget', props: {} }] },
       },
     };
-    const { host } = renderCanvas(undefined, { tree });
-    expect(host.querySelector('[data-editor-block]')).toBeNull();
-    expect(warn).toHaveBeenCalledWith(
-      'Canvas.Root: no component mapped for block type "widget"',
-    );
+    const { host, store } = renderCanvas(undefined, { tree });
+    const unknown = host.querySelector('[data-unknown-block]');
+    expect(unknown?.getAttribute('data-editor-block')).toBe('w1');
+    expect(unknown?.textContent).toContain('widget');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('[editor:E006]'));
+    expect(store.getDocument()).toEqual(tree);
     warn.mockRestore();
   });
 
@@ -217,7 +215,8 @@ describe('Canvas.Root renderer', () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
-  it('warns when a mapped block renders no data-editor-block', () => {
+  it('warns when a mapped block renders no data-editor-block', async () => {
+    resetWarnings();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const Broken = (): React.ReactNode => <span />;
     renderCanvas(undefined, {
@@ -236,8 +235,11 @@ describe('Canvas.Root renderer', () => {
       },
       components: { heading: Broken },
     });
+    await Promise.resolve();
     expect(warn).toHaveBeenCalledWith(
-      'Canvas.Root: block "h1" (type "heading") rendered no [data-editor-block] attribute. Spread edit.block on the block\'s root element. A display: contents wrapper is the documented escape when the component has no single root.',
+      expect.stringContaining(
+        '[editor:E005] Canvas.Root: block "h1" (type "heading") rendered no [data-editor-block] attribute.',
+      ),
     );
     warn.mockRestore();
   });

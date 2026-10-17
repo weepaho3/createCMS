@@ -71,7 +71,7 @@ const schema = defineEditorSchema({
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `EditorSchema`        | `{ root, components, canPlace?, aliases?, metadata? }`. `canPlace(child, parent, slot)` runs after the slot rules.        |
 | `AnyEditorSchema`     | The wide form every runtime helper accepts.                                                                               |
-| `ComponentDef`        | `label`, `description?`, `category?`, `icon?`, `previewImageUrl?`, `version?`, `fields`, `slots?`, `render?`, `resolveFields?`, `migrations?`, `validate?`, `permissions?`, `providesContext?`, `usesContext?`. |
+| `ComponentDef`        | `label`, `description?`, `category?`, `icon?`, `previewImageUrl?`, `version?`, `fields`, `slots?`, `render?`, `resolveFields?`, `resolveData?`, `migrations?`, `validate?`, `permissions?`, `providesContext?`, `usesContext?`. |
 | `AnyComponentDef`     | The wide component form.                                                                                                  |
 | `ComponentPermission` | `'drag' \| 'duplicate' \| 'delete' \| 'edit' \| 'insert'`; `false` switches the action off for the component.            |
 | `SlotSpec`            | `label?`, `allow?` (wins over `disallow`), `disallow?`, `min?`, `max?`, `defaultValue?`, `accept?(ctx)`.                  |
@@ -289,6 +289,61 @@ A backend plugs in through `EditorAdapter`. Failures throw
 | `EditorAdapterError`     | `Error` with `kind` and `details`.                                                                                |
 | `EditorAdapterErrorKind` | `'validation' \| 'conflict' \| 'network' \| 'permission' \| 'not-found' \| 'unknown'`.                            |
 
+## Loading documents
+
+`loadDocument(input, schema, { genId })` is the load pipeline the store runs
+on `initialValue` and every `load`. It returns `LoadResult` `{ doc,
+diagnostics }`:
+
+- renamed types go through `schema.aliases` (`alias`),
+- each node runs its component's `migrations` step by step until `v`
+  reaches `version` (`migrated`; `migration-missing` or `migration-failed`
+  stop at the last good step). A step returns the new props, or
+  `{ props, slots?, type? }`,
+- duplicate ids get fresh ones (`duplicate-id`),
+- props of the wrong type fall back to their default (`invalid-prop`, the old
+  value is kept in the diagnostic),
+- nodes without an id or type are left out (`invalid-node`),
+- unknown types are reported (`unknown-type`) and kept as stored.
+
+Nothing changes silently: every change is a `Diagnostic` `{ code, severity,
+path, message, value? }` (`DiagnosticCode`). The store reports them through
+`createEditorStore({ onDiagnostics })` and the `diagnostics` event. An input
+without a root throws `DocumentLoadError`.
+
+## Computed data
+
+A component's `resolveData({ id, props }, ctx)` computes display values (a
+fetched title, a price). It runs on load, on insert, on a change of the
+node's props (`ctx.changed` lists the keys) and on `store.resolveData(id)`
+(`force`); `ResolveDataContext` is `{ trigger, changed, signal, metadata }`.
+Results live in `session.computed[id]` and render on top of the stored props;
+they never enter the document. While a promise runs,
+`session.nodeStatus[id]` is `NodeStatus` `{ loading: true, error: null }`; a
+failure keeps `error`. A newer run aborts the older one through
+`ctx.signal`, and only the newest result lands.
+
+## Editor codes
+
+Warnings and errors carry a code, `[editor:E005] ...`, with a link to
+[Editor codes](/docs/reference/editor-errors). `EDITOR_CODES` lists them
+(`EditorCode`), `EDITOR_CODES_URL` is that page, `formatEditorMessage(code,
+message)` builds the text. `warnOnce(code, message)` prints a warning once;
+call it behind `process.env.NODE_ENV !== 'production'` so production builds
+drop the text. `resetWarnings()` forgets printed warnings (tests).
+
+## Worker tasks
+
+`createWorkerTasks({ schema, worker?, threshold? })` returns `WorkerTasks`:
+`validateDocument(doc, options?)`, `mergeByNode(base, local, server)` and
+`dispose()`. With a `worker` (any `WorkerPort`: a `Worker`, a `MessagePort`),
+documents of at least `threshold` nodes (default `WORKER_THRESHOLD`, 500) are
+validated and merged on the worker; smaller ones, and every call without a
+worker, run on the main thread. The worker script calls
+`serveWorkerTasks(self, { schema })` with the same schema, because schemas
+carry functions and cannot be posted. The store itself stays on the main
+thread.
+
 ## Store
 
 `createEditorStore(options)` builds the editor store over a `DocStore`. State
@@ -298,7 +353,7 @@ a component that reads the document:
 | Scope     | Getter / subscribe                      | Holds                                                                                         |
 | --------- | --------------------------------------- | --------------------------------------------------------------------------------------------- |
 | Document  | `getDoc()` / `subscribeDoc`             | `DocState`: `{ rootId, nodes, version, schemaVersion }`. Undoable and persisted.               |
-| Session   | `getSession()` / `subscribeSession`     | `SessionState`: `selection` (ids, first is primary), `focusedField`, `editing`, `mode`, `history` flags, `save` state. |
+| Session   | `getSession()` / `subscribeSession`     | `SessionState`: `selection` (ids, first is primary), `focusedField`, `editing`, `mode`, `history` flags, `save` state, `computed` and `nodeStatus` (`resolveData`). |
 | Ephemeral | `getEphemeral()` / `subscribeEphemeral` | `EphemeralState`: `hoverId`.                                                                  |
 
 Every getter returns the same object until its scope changes. Nodes keep
@@ -501,6 +556,7 @@ Pass plugins to `createEditorStore` or `Editor.Root`.
 | `FieldRef`                 | `{ blockId, key }`, what `focus`/`editing` point at.                                          |
 | `MoveTarget`               | `move`'s target: `{ parent: SlotTarget, index }`; the index counts after the node left its old place. |
 | `SessionState`             | The session scope.                                                                            |
+| `NodeStatus`               | `{ loading, error }`: one node's `resolveData` state.                                         |
 | `SlotOrder`                | `(type) => readonly string[]`: the slot order serialisation uses for a type.                  |
 | `SlotTarget`               | `{ id, slot? }`: a parent and one of its slots; `slot` defaults to `children`.                |
 | `UpdateOptions`            | `update`'s options: `{ coalesce? }`.                                                          |

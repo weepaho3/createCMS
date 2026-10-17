@@ -1,12 +1,14 @@
 import { cleanup } from '@testing-library/react';
 import * as React from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import type { CanvasComponents } from './map';
 import type { Measurer } from './measurer';
 
 import { useCanvasContext } from './context';
 import { Canvas } from './index';
 import {
+  canvasBlocks,
   nestedTextBlocks,
   nestedTextSchema,
   nestedTextTree,
@@ -247,5 +249,21 @@ describe('Canvas overlay rings', () => {
     const ring = host.querySelector('[data-editor-selection-ring]');
     expect(ring).not.toBeNull();
     expect(rectClose(rectOf(ring!), union)).toBe(true);
+  });
+
+  it('a block that throws shows Canvas.BlockError and the canvas stays mounted', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const Boom = (): React.ReactNode => {
+      throw new Error('boom');
+    };
+    const { host } = renderCanvas(undefined, {
+      components: { ...canvasBlocks, paragraph: Boom } as CanvasComponents,
+    });
+    const fallback = host.querySelector('[data-block-error]');
+    expect(fallback?.getAttribute('data-editor-block')).toBe('p1');
+    expect(host.querySelector('[data-editor-block="h1"]')).not.toBeNull();
+    await waitForLayout(fallback!);
+    vi.restoreAllMocks();
   });
 });
