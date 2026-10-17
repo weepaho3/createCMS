@@ -311,6 +311,8 @@ export async function loadCMSConfig(configPath: string) {
         // `notifications: false` drops the notification table + enum from the
         // generated schema (see collectSchemaSources). Default: enabled.
         $notifications?: boolean;
+        // The `media` block of the definition, for `createcms storage check`.
+        media?: unknown;
       };
 
       // jiti applies the base `@createcms/core` -> shim alias as a prefix, so

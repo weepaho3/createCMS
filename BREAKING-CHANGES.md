@@ -219,6 +219,54 @@ cms.assets (slug);`). Code that derived an object key from a slug reads
   `defaultMediaMessages` for the keys) instead of editing `MEDIA_LABELS`;
   pass `children` to `Media.Crumb` to keep a custom root label.
 
+- **Objects live under `pub/` or `prv/` and move with the asset status.**
+  The new `media.visibility` defaults to `'prefix'`: new objects are keyed
+  `{t/<tenant>/}{pub|prv}/<id>/<slug>`, and a status change (publish,
+  unpublish, `updateAssetsStatus`) copies the object and its variants to the
+  other prefix, updates `objectKey` and deletes the old object. No ACL header
+  is sent, so the bucket must grant public reads on `pub/*` through a bucket
+  policy or CDN. `createCMS` throws when the storage lacks the `copy`
+  capability. Existing objects keep their keys until their next status
+  change.
+  → **Migration:** add a bucket policy for `pub/*` (see Media: Bucket setup)
+  and run `createcms storage check`, or set `media.visibility: 'legacy'` to
+  keep the previous key layout.
+
+- **`media.acl` defaults to `false`.** `x-amz-acl: public-read` is sent only
+  with `acl: 'public-read'`, `visibility: 'legacy'` and a storage that
+  reports `objectAcl`; otherwise the setting is ignored with a warning.
+  → **Migration:** buckets that relied on per-object ACLs set
+  `visibility: 'legacy'` and `acl: 'public-read'`, or move to a bucket
+  policy.
+
+- **Asset `url` is `null` for private assets; `deliveryUrl` is new.**
+  `listAssets`, `getAssets`, the upload and replace responses return the
+  direct object URL only for public assets and add `deliveryUrl`, the gate
+  path. The gate serves private assets to callers the auth middleware
+  accepts for `media` / `read` (signed GET, at most 300 s,
+  `Cache-Control: private, no-store`); with a scoping plugin, ids outside the
+  caller's scope answer `ASSET_NOT_FOUND`. The gate now carries
+  `permissionResource: 'media'`, and the middleware runs for private assets
+  and, under a scoping plugin, for every gate request.
+  → **Migration:** render `deliveryUrl` instead of `url`. Make sure the auth
+  middleware does not throw for anonymous image requests unless private
+  assets should stay unreachable for them.
+
+- **`StorageCapabilities` follows the provider capability model.**
+  `signedUpload` is now `signedPut` and `signedUrl` is `signedGet`; new
+  required flags are `signedPost`, `copy`, `list`, `deleteMany`,
+  `multipart`, `objectAcl`, `conditionalPut`, `checksum`,
+  `corsConfigurable` and `lifecycle`. `head` may return `cacheControl`;
+  `put`, `signPut` and `signGet` take more options; `copy`, `deleteMany` and
+  `list` are optional methods.
+  → **Migration:** custom adapters spread `providerCapabilities.generic` and
+  override what differs, and implement `copy` for `visibility: 'prefix'`.
+
+- **`@createcms/react`: `CmsAssetListItem.url` is `string | null` and
+  `deliveryUrl` is required.** `Media.Thumbnail` defaults to `deliveryUrl`.
+  → **Migration:** fakes add `deliveryUrl`; code reading `asset.url` handles
+  `null`.
+
 ---
 
 ## 0.6.0 — 2026-08-14

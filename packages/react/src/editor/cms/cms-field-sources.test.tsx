@@ -28,6 +28,7 @@ function makeAsset(
     size: 100,
     objectKey: 'assets/hero.png',
     url: 'https://cdn.test/assets/hero.png',
+    deliveryUrl: '/api/cms/media/asset/ast_1',
     status: 'public',
     folderId: null,
     variantOf: null,

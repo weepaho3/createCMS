@@ -211,6 +211,7 @@ export async function runScheduledPass(
           outcome.commitId,
           row.rootId,
           scope,
+          cmsCtx.media,
         ).catch((err) =>
           console.error('[cms] scheduled publish asset sync failed:', err),
         );
@@ -236,6 +237,7 @@ export async function runScheduledPass(
           row.rootId,
           row.branchId,
           scope,
+          cmsCtx.media,
         ).catch((err) =>
           console.error('[cms] scheduled unpublish asset sync failed:', err),
         );

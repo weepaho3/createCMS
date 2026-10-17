@@ -1,15 +1,46 @@
 import type { MediaConfig, S3Client } from '../../types/s3';
-import type { StorageAdapter } from '../adapter';
+import type { StorageAdapter, StorageCapabilities } from '../adapter';
 
 import { createS3Client } from './client';
 import {
+  mergeCapabilities,
+  providerCapabilities,
+  type StoragePreset,
+} from './presets';
+import {
+  copyObject,
   deleteObject,
+  deleteObjects,
   getObjectRange,
   headObject,
+  listObjects,
   putObject,
   signGetObject,
   signPutObject,
 } from './utils';
+
+function presetFor(config: MediaConfig): StoragePreset {
+  switch (config.provider) {
+    case 'aws':
+      return 'aws';
+    case 'cloudflare':
+      return 'r2';
+    case 'digitalOcean':
+      return 'doSpaces';
+    case 'custom':
+      return config.preset ?? 'generic';
+  }
+}
+
+/** The provider preset for `config` with `config.capabilities` applied. */
+export function resolveS3Capabilities(
+  config: MediaConfig,
+): StorageCapabilities {
+  return mergeCapabilities(
+    providerCapabilities[presetFor(config)],
+    config.capabilities,
+  );
+}
 
 /**
  * Wraps the S3 helpers as a `StorageAdapter`. The `S3Client` is created on
@@ -23,11 +54,7 @@ export function createS3StorageAdapter(config: MediaConfig): StorageAdapter {
 
   return {
     name: `s3:${config.provider}`,
-    capabilities: {
-      signedUpload: { supported: true, contentType: true, contentLength: true },
-      signedUrl: { supported: true, disposition: true, maxExpiresIn: 604800 },
-      rangeRead: true,
-    },
+    capabilities: resolveS3Capabilities(config),
     async put(key, body, opts) {
       await putObject(s3(), {
         bucket,
@@ -37,6 +64,8 @@ export function createS3StorageAdapter(config: MediaConfig): StorageAdapter {
         contentType: opts.contentType,
         contentLength: opts.contentLength,
         acl: opts.acl,
+        cacheControl: opts.cacheControl,
+        ifNoneMatch: opts.ifNoneMatch,
       });
     },
     async delete(key) {
@@ -56,11 +85,15 @@ export function createS3StorageAdapter(config: MediaConfig): StorageAdapter {
         contentLength: opts.contentLength,
         expiresIn: opts.expiresIn,
         acl: opts.acl,
+        cacheControl: opts.cacheControl,
+        sha256: opts.sha256,
       });
       const headers: Record<string, string> = {
         'Content-Type': opts.contentType,
       };
       if (opts.acl) headers['x-amz-acl'] = opts.acl;
+      if (opts.cacheControl) headers['Cache-Control'] = opts.cacheControl;
+      if (opts.sha256) headers['x-amz-checksum-sha256'] = opts.sha256;
       return { url, headers };
     },
     async signGet(key, opts) {
@@ -69,6 +102,21 @@ export function createS3StorageAdapter(config: MediaConfig): StorageAdapter {
         key,
         expiresIn: opts.expiresIn,
         responseContentDisposition: opts.responseContentDisposition,
+        responseContentType: opts.responseContentType,
+      });
+    },
+    async copy(sourceKey, destinationKey, metadata) {
+      await copyObject(s3(), { bucket, sourceKey, destinationKey, metadata });
+    },
+    async deleteMany(keys) {
+      await deleteObjects(s3(), { bucket, keys });
+    },
+    async list(prefix, opts) {
+      return listObjects(s3(), {
+        bucket,
+        prefix,
+        cursor: opts?.cursor,
+        limit: opts?.limit,
       });
     },
   };

@@ -1,5 +1,5 @@
 import { eq, inArray, sql } from 'drizzle-orm';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { setupMultiTenantTestCMS } from '../../../plugins/multi-tenant/test/utils/cms';
 import { assetFolders, assets } from '../../../schema';
@@ -901,8 +901,9 @@ describe('media.createSignedUpload', () => {
     expect(result.uploads).toHaveLength(1);
     const [upload] = result.uploads;
     expect(upload.id).toMatch(/^ast_/);
-    expect(upload.objectKey).toBe(`${upload.id}/photo.jpg`);
-    expect(upload.url).toBe(`${s3.config.publicUrl}/${upload.objectKey}`);
+    expect(upload.objectKey).toBe(`prv/${upload.id}/photo.jpg`);
+    expect(upload.url).toBeNull();
+    expect(upload.deliveryUrl).toBe(`/api/cms/media/asset/${upload.id}`);
     expect(upload.signedUrl).toContain('X-Amz-');
     expect(upload.headers['Content-Type']).toBe('image/jpeg');
     expect(upload.token.split('.')).toHaveLength(2);
@@ -910,17 +911,65 @@ describe('media.createSignedUpload', () => {
     expect(result.expiresAt.getTime()).toBeGreaterThan(Date.now());
   });
 
-  it('signs x-amz-acl public-read by default', async () => {
+  it('sends no ACL by default', async () => {
     const { cms, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
 
     const { uploads } = await cms.api.media.createSignedUpload({
       body: { files: [{ name: 'a.jpg', size: 10, type: 'image/jpeg' }] },
     });
-    expect(uploads[0].headers['x-amz-acl']).toBe('public-read');
+    expect(uploads[0].headers).not.toHaveProperty('x-amz-acl');
     expect(
       new URL(uploads[0].signedUrl).searchParams.get('X-Amz-SignedHeaders'),
-    ).toContain('x-amz-acl');
+    ).not.toContain('x-amz-acl');
+  });
+
+  it("signs x-amz-acl with acl 'public-read', legacy keys and objectAcl", async () => {
+    const { cms, s3 } = await setupTestCMS({
+      withS3: true,
+      media: {
+        acl: 'public-read',
+        visibility: 'legacy',
+        capabilities: { objectAcl: true },
+      },
+    });
+    cleanup = s3.cleanup;
+
+    const { uploads } = await cms.api.media.createSignedUpload({
+      body: { files: [{ name: 'a.jpg', size: 10, type: 'image/jpeg' }] },
+    });
+    expect(uploads[0].headers['x-amz-acl']).toBe('public-read');
+    expect(uploads[0].objectKey).toMatch(/^ast_[0-9a-z]{20}\/a\.jpg$/);
+  });
+
+  it("ignores acl 'public-read' without the objectAcl capability", async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { cms, s3 } = await setupTestCMS({
+      withS3: true,
+      media: { acl: 'public-read', visibility: 'legacy' },
+    });
+    cleanup = s3.cleanup;
+
+    const { uploads } = await cms.api.media.createSignedUpload({
+      body: { files: [{ name: 'a.jpg', size: 10, type: 'image/jpeg' }] },
+    });
+    expect(uploads[0].headers).not.toHaveProperty('x-amz-acl');
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('does not report the objectAcl capability'),
+    );
+    warn.mockRestore();
+  });
+
+  it('signs Cache-Control for private uploads', async () => {
+    const { cms, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+
+    const { uploads } = await cms.api.media.createSignedUpload({
+      body: { files: [{ name: 'a.jpg', size: 10, type: 'image/jpeg' }] },
+    });
+    expect(uploads[0].headers['Cache-Control']).toBe(
+      'private, max-age=31536000, immutable',
+    );
   });
 
   it('sends no ACL with acl: false', async () => {
@@ -985,8 +1034,9 @@ describe('media.createSignedUpload', () => {
     expect(completed).toHaveLength(1);
     expect(completed[0].id).toBe(id);
     expect(completed[0].slug).toBe('pixel.png');
-    expect(completed[0].objectKey).toBe(`${id}/pixel.png`);
-    expect(completed[0].url).toBe(`${s3.config.publicUrl}/${id}/pixel.png`);
+    expect(completed[0].objectKey).toBe(`prv/${id}/pixel.png`);
+    expect(completed[0].url).toBeNull();
+    expect(completed[0].deliveryUrl).toBe(`/api/cms/media/asset/${id}`);
     expect(completed[0].status).toBe('private');
     expect(completed[0].createdAt).toBeInstanceOf(Date);
 
@@ -997,7 +1047,7 @@ describe('media.createSignedUpload', () => {
       slug: 'pixel.png',
       mimeType: 'image/png',
       size: 8,
-      objectKey: `${id}/pixel.png`,
+      objectKey: `prv/${id}/pixel.png`,
       status: 'private',
     });
   });
@@ -1023,7 +1073,7 @@ describe('media.createSignedUpload', () => {
 
     expect(asset.folderId).toBe(folder.folder.id);
     // The object key is `<id>/<slug>`; the folder is not part of the path.
-    expect(asset.objectKey).toBe(`${signed.uploads[0].id}/photo.jpg`);
+    expect(asset.objectKey).toBe(`prv/${signed.uploads[0].id}/photo.jpg`);
   });
 
   it('reports UPLOAD_NOT_FOUND when nothing was PUT and writes no row', async () => {
@@ -1121,7 +1171,11 @@ describe('media.createSignedUpload', () => {
     expect(completed.assets).toEqual([]);
     expect(completed.errors[0].code).toBe('VALIDATION_ERROR');
     expect(completed.errors[0].message).toMatch(/does not match/);
-    expect(await objectExists(signed.uploads[0].url)).toBe(false);
+    expect(
+      await objectExists(
+        `${s3.config.publicUrl}/${signed.uploads[0].objectKey}`,
+      ),
+    ).toBe(false);
     expect(await db.select().from(assets)).toHaveLength(0);
   });
 
@@ -1144,7 +1198,11 @@ describe('media.createSignedUpload', () => {
 
     expect(completed.assets).toEqual([]);
     expect(completed.errors[0].code).toBe('INVALID_FILE_TYPE');
-    expect(await objectExists(signed.uploads[0].url)).toBe(false);
+    expect(
+      await objectExists(
+        `${s3.config.publicUrl}/${signed.uploads[0].objectKey}`,
+      ),
+    ).toBe(false);
     expect(await db.select().from(assets)).toHaveLength(0);
   });
 
@@ -1659,7 +1717,7 @@ describe('upload validation', () => {
 
     expect(asset.folderId).toBe(folder.folder.id);
     // Object key is just the slug in flat S3 structure (no folder in path)
-    expect(asset.objectKey).toMatch(/^ast_[0-9a-z]{20}\/placed\.png$/);
+    expect(asset.objectKey).toMatch(/^prv\/ast_[0-9a-z]{20}\/placed\.png$/);
   });
 
   it('uploadAssets rejects upload to non-existent folder', async () => {
@@ -2613,7 +2671,7 @@ describe('media.replaceAsset', () => {
     expect(result.asset.id).toBe(orig.id); // id unchanged — the whole point
     expect(result.asset.slug).not.toBe('acme-logo.png'); // new slug → cache bust
     expect(result.asset.slug).toContain('globex-logo');
-    expect(result.asset.objectKey).toMatch(/^ast_[0-9a-z]{20}\//);
+    expect(result.asset.objectKey).toMatch(/^pub\/ast_[0-9a-z]{20}\//);
     expect(result.asset.objectKey.endsWith(`/${result.asset.slug}`)).toBe(true);
 
     const [row] = await db.select().from(assets).where(eq(assets.id, orig.id));
@@ -2780,7 +2838,7 @@ describe('media.createSignedReplace', () => {
     expect(result.assetId).toBe(orig.id);
     expect(result.slug).not.toBe('logo.png');
     expect(result.slug).toContain('logo-v2');
-    expect(result.objectKey).toMatch(/^ast_[a-z0-9]+\//);
+    expect(result.objectKey).toMatch(/^pub\/ast_[a-z0-9]+\//);
     expect(result.objectKey.endsWith(`/${result.slug}`)).toBe(true);
     expect(result.signedUrl).toContain('X-Amz-');
     expect(result.token.split('.')).toHaveLength(2);
@@ -3045,7 +3103,9 @@ describe('media.commitReplace', () => {
       cms.api.media.commitReplace({ body: { token: signed.token } }),
     ).rejects.toThrow(/does not match the uploaded object/i);
 
-    expect(await objectExists(signed.url)).toBe(false);
+    expect(
+      await objectExists(`${s3.config.publicUrl}/${signed.objectKey}`),
+    ).toBe(false);
     const [row] = await db.select().from(assets).where(eq(assets.id, orig.id));
     expect(row.objectKey).toBe('logo.png');
   });
@@ -3084,7 +3144,9 @@ describe('media.commitReplace', () => {
       cms.api.media.commitReplace({ body: { token: signed.token } }),
     ).rejects.toThrow(/disallowed MIME type/i);
 
-    expect(await objectExists(signed.url)).toBe(false);
+    expect(
+      await objectExists(`${s3.config.publicUrl}/${signed.objectKey}`),
+    ).toBe(false);
     const [row] = await db.select().from(assets).where(eq(assets.id, orig.id));
     expect(row.objectKey).toBe('logo.png');
   });
@@ -3406,6 +3468,8 @@ describe('custom storage adapter', () => {
     expect(await storage.head(result.assets[0].objectKey)).toEqual({
       contentLength: PNG_BYTES.byteLength,
       contentType: 'image/png',
+      // The dummy config uses legacy keys, so objects are publicly cacheable.
+      cacheControl: 'public, max-age=31536000, immutable',
     });
   });
 
@@ -3425,7 +3489,7 @@ describe('custom storage adapter', () => {
 
   it('signed uploads without range reads: image presign fails, non-image presign succeeds', async () => {
     const storage = createMemoryStorage({
-      signedUpload: { supported: true, contentType: true, contentLength: true },
+      signedPut: { supported: true, contentType: true, contentLength: true },
       rangeRead: false,
     });
     const { cms, db } = await setupTestCMS({ media: { storage } });
@@ -3488,7 +3552,7 @@ describe('custom storage adapter', () => {
 
   it('gate: signed GET expiry is clamped to the declared maxExpiresIn', async () => {
     const storage = createMemoryStorage({
-      signedUrl: { supported: true, disposition: true, maxExpiresIn: 60 },
+      signedGet: { supported: true, disposition: true, maxExpiresIn: 60 },
     });
     const seen: number[] = [];
     const signGet = storage.signGet.bind(storage);

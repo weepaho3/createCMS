@@ -13,7 +13,7 @@ Each upload creates a row in `assets`:
 | --- | --- |
 | `id` | Stable primary key (`ast_…`). What content stores and what the gate resolves. Never changes, even when the bytes are replaced. |
 | `slug` | Unique, URL-friendly name derived from the filename. Regenerated on `replaceAsset`. |
-| `objectKey` | The key in your bucket: `<id>/<slug>`, where the id is fresh per upload or replace. |
+| `objectKey` | The key in your bucket: `{tenant}/{pub or prv}/<id>/<slug>` (see [Private vs public](#private-vs-public)), where the id is fresh per upload, replace and move. |
 | `status` | `'private'` (default) or `'public'`. |
 | `folderId` | The folder it lives in, if any. |
 | `variantOf` | If set, this asset is a variant (a resized or reformatted copy) of another. |
@@ -24,17 +24,26 @@ Three of these are identifiers, and keeping them straight is the key to the whol
 
 Folders are a nested tree (`asset_folders`, each with a `parentId`). They organize the media library and nothing more: a folder does not affect an asset's URL, its status, or how it is served. [`listFolders`](/docs/reference/media#listfolders) reads one level at a time (the children of a parent, or the root-level folders when no `parentFolderId` is given); [`createFolder`](/docs/reference/media#createfolder), [`moveFolder`](/docs/reference/media#movefolder), and [`deleteFolder`](/docs/reference/media#deletefolder) manage them. A folder that still holds assets or subfolders cannot be deleted (it throws `FOLDER_HAS_CONTENT`), and moving an asset carries its variants along, so an original and its variants are never split across folders.
 
-## Private vs public
+## Private vs public [#private-vs-public]
 
-`status` is a **visibility flag**. An asset is created `private`, and a private asset is not served by the public gate: [`GET /media/asset/{id}`](/docs/reference/media#asset) returns `ASSET_ACCESS_DENIED`. To expose one, flip it to `public` with [`updateAssetsStatus`](/docs/reference/media#updateassetsstatus). You rarely call that by hand: publishing content that references an asset flips it to `public` automatically, and unpublishing reverts it to `private` unless another published page still references it. Status tracks what your live content needs, so it mostly manages itself.
+`status` decides who can read an asset's bytes. An asset is created `private`. Publishing content that references it flips it to `public`, and unpublishing reverts it to `private` unless another published page still references it; [`updateAssetsStatus`](/docs/reference/media#updateassetsstatus) sets it by hand.
 
-The gate is enforced by the CMS endpoints, not by the object store. Uploaded objects are `public-read`, so `status` is not a hard-privacy boundary. Treat it as "should this be shown," not "is this secret."
+With the default `media.visibility: 'prefix'`, the status is also where the object lives:
+
+- `pub/<id>/<slug>` for public assets, `prv/<id>/<slug>` for private ones. Under the multi-tenant plugin the tenant comes first: `t/<tenant>/pub/...`.
+- The bucket itself is private. A bucket policy grants anonymous reads on `pub/*` only, so public bytes stay CDN-cacheable without a signature per request, while private bytes are reachable through the gate alone.
+- A status change moves the object (and its variants) by **copy plus delete**: copy to the new prefix, update the row's status and `objectKey` in one transaction, then delete the old object. If the copy fails, status and keys stay unchanged. `media.onPurge` receives the gate paths to purge from your CDN afterwards. Moving a large video costs a copy of its bytes.
+- No `x-amz-acl` header is ever sent.
+
+The storage must support `copy`; `createCMS` throws at construction otherwise. Objects uploaded before you switched to `prefix` keep their keys until their next status change moves them.
+
+`media.visibility: 'legacy'` keeps keys without a visibility segment and never moves objects. There `private` only stops the gate from serving an asset; anyone who knows the key can read it from the bucket unless you lock the bucket down yourself. With `legacy`, `media.acl: 'public-read'` sends `x-amz-acl: public-read` on providers that support object ACLs.
 
 <Callout type="warn">
-`private` is not an access boundary. It decides whether the gate serves an asset; anyone who knows an object's key can still read it from the bucket. Do not upload files that must stay secret.
+With `visibility: 'legacy'`, `private` is not an access boundary. Use `prefix` for files that must stay private.
 </Callout>
 
-By default every upload is sent with `x-amz-acl: public-read`. New AWS buckets enforce bucket-owner object ownership and reject that header with `AccessControlListNotSupported`; set [`acl: false`](/docs/reference/configuration#media) for them and grant public reads with a bucket policy or a CDN instead. As defense in depth, serve assets from a **cross-origin** host (a `publicUrl` that is not your app's origin) so an uploaded file cannot run as same-origin, and note that the default `allowedMimeTypes` excludes SVG for the same reason. See [Security → Media privacy](/docs/resources/security#media-privacy).
+As defense in depth, serve assets from a **cross-origin** host (a `publicUrl` that is not your app's origin) so an uploaded file cannot run as same-origin, and note that the default `allowedMimeTypes` excludes SVG for the same reason. See [Security: Media privacy](/docs/resources/security#media-privacy).
 
 ## Uploading: signed URL vs server
 
@@ -105,13 +114,15 @@ Create the variants you need ahead of time. The [media optimize plugin](/docs/pl
 
 `?download=true` redirects to a short-lived **signed** object URL (valid for one hour) that carries `response-content-disposition=attachment` bound into the signature, so the bucket answers with a `Content-Disposition` header and the browser downloads the file under its slug; a `Content-Disposition` header on the `302` itself would be ignored by browsers. Types outside the raster-image (PNG, JPEG, GIF, WebP, AVIF), video, audio and PDF set are always served that way, so an allowed SVG or HTML asset never renders inline from the gate even if `allowedMimeTypes` admits it.
 
-The redirect itself is **short-cached** (`max-age=300`, not immutable). Because it is keyed by the stable id, swapping the bytes behind that id (keeping the id) re-resolves and propagates to already-rendered pages within minutes, while the object bytes stay long-cached at the CDN, since each version has its own object key.
+The redirect for a public asset is **short-cached** (`public, max-age=300`, not immutable). Because it is keyed by the stable id, swapping the bytes behind that id re-resolves and propagates to already-rendered pages within minutes, while the object bytes stay long-cached at the CDN, since each version has its own object key.
+
+A **private** asset is served only to a caller your `authMiddleware` accepts for the `media` resource with `read`, inside its scope: the gate redirects to a signed GET valid for at most 300 seconds, with `Cache-Control: private, no-store` on the redirect. Anonymous callers get `ASSET_ACCESS_DENIED`. With a scoping plugin, a caller whose middleware resolves a tenant only reaches that tenant's assets; other ids answer `ASSET_NOT_FOUND`.
 
 <Callout type="warn">
-  Deployment note: a CDN in front of the gate must include the **query string** in its cache key. The redirect target differs per `?format`, `?w`, and `?download`, and only the query string distinguishes those cache entries. If the CDN strips it (a common default), the variant, download, and original redirects collapse into one and get cross-served.
+  Deployment note: a CDN in front of the gate must include the **query string** in its cache key (`w`, `format` and `download` at least). The redirect target differs per `?format`, `?w`, and `?download`, and only the query string distinguishes those cache entries. If the CDN strips it (for example a Cloudflare "ignore query string" cache rule), the variant, download, and original redirects collapse into one and get cross-served.
 </Callout>
 
-Each asset also has a **direct** object URL, `${publicUrl}/${objectKey}`, returned as `url` by [`listAssets`](/docs/reference/media#listassets) and the upload responses. It bypasses the gate (no status check, no transforms), so it is meant for **internal tooling** such as a media-library admin UI rendering thumbnails of assets you already manage. Do not bake it into content or public pages; serve those through the gate.
+Every asset returned by [`listAssets`](/docs/reference/media#listassets) and the upload responses carries `deliveryUrl`, the gate path (`{basePath}/media/asset/{id}`); render that. `url`, the direct object URL `${publicUrl}/${objectKey}`, is set only for public assets and is `null` for private ones. It bypasses the gate (no status check, no transforms), so do not bake it into content.
 
 ## Images in content
 
@@ -134,7 +145,103 @@ Replacing an asset (either path above) mints a *new* object for the new bytes bu
 
 ## Storage adapters [#storage-adapters]
 
-Objects are stored in an S3-compatible bucket by default (`provider` picks AWS, DigitalOcean Spaces, Cloudflare R2 or a custom endpoint). Set `media.storage` to a `StorageAdapter` to use another backend; every `put`, `delete`, `head`, range read and signed URL then goes through it, while public URLs still come from `media.publicUrl`. An adapter declares its `capabilities`, and those decide what the media routes do: `signedUpload.supported` gates `createSignedUpload` / `createSignedReplace`, `rangeRead` is required to verify an uploaded image's bytes in `completeUpload` / `commitReplace` (so presigning an `image/*` file also requires it, and nothing is minted that could never be completed), the gate's download redirect signs for at most `min(3600, signedUrl.maxExpiresIn)` seconds, and `signedUrl.supported` plus `signedUrl.disposition` are required for the gate's download redirect. An operation the adapter does not declare fails with `STORAGE_UNSUPPORTED` instead of degrading to a weaker check. `createS3StorageAdapter(mediaConfig)` builds the default adapter, and backend failures thrown as `StorageError` map to a 500.
+Objects are stored in an S3-compatible bucket by default (`provider` picks AWS, DigitalOcean Spaces, Cloudflare R2 or a custom endpoint). Set `media.storage` to a `StorageAdapter` to use another backend; every storage operation then goes through it, while public URLs still come from `media.publicUrl`.
+
+An adapter declares its `capabilities`, and the media routes check them before any I/O; an operation the adapter does not declare fails with `STORAGE_UNSUPPORTED` naming the capability. `signedPut.supported` gates `createSignedUpload` / `createSignedReplace`, `rangeRead` is required to verify an uploaded image's bytes, `signedGet` (with `disposition` for downloads) backs the gate's signed redirects, and `copy` is required for `visibility: 'prefix'`. `list` and `deleteMany` are optional. `createS3StorageAdapter(mediaConfig)` builds the default adapter, and backend failures thrown as `StorageError` map to a 500.
+
+The S3 adapter takes its capabilities from a preset per provider (`providerCapabilities`); a custom endpoint picks one with `preset`, and `media.capabilities` overrides single flags:
+
+| Preset | Notes |
+| --- | --- |
+| `aws` | Everything, including POST policies and object ACLs (on buckets that still allow ACLs). |
+| `r2` | No POST, no object ACLs; lifecycle rules; presigning only on the S3 API domain, 1 second to 7 days. |
+| `b2` | No POST, no object ACLs. |
+| `doSpaces` | Canned ACLs; lifecycle for incomplete multipart uploads. |
+| `hetzner` | Object ACLs, lifecycle; 5 GB per single PUT, 750 requests/s per bucket and IP. |
+| `bunny` | CORS fixed to `*`, no lifecycle; 500 requests/s. |
+| `supabase` | No CORS configuration through S3, no Content-MD5. |
+| `generic` | The S3 core (default for `provider: 'custom'`). |
+
+```ts
+media: {
+  provider: 'custom',
+  preset: 'hetzner',
+  hostname: 'fsn1.your-objectstorage.com',
+  region: 'fsn1',
+  capabilities: { signedGet: { maxExpiresIn: 3600 } },
+  // ...
+}
+```
+
+## Bucket setup [#bucket-setup]
+
+Run `createcms storage check --origin https://admin.example.com` after configuring a bucket. It checks the capabilities, the lifecycle rule, the CORS preflight from your admin origin, an upload without ACL headers and, with `visibility: 'prefix'`, that `publicUrl` serves `pub/` but not `prv/`. Each failed check prints a configuration to paste.
+
+**Bucket policy.** Grant anonymous reads on `pub/*` only (AWS; R2 exposes a public bucket through a custom domain, so point that domain's access at `pub/` or put the CDN in front of `pub/` only):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PublicReadPub",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::my-bucket/pub/*"
+    }
+  ]
+}
+```
+
+**CORS.** Browser uploads PUT from your admin origin with `content-type` and `cache-control` (add `x-amz-checksum-sha256` if you sign checksums); ZIP downloads GET from the same origin. `x-amz-acl` is not needed. AWS and Hetzner (`aws s3api put-bucket-cors`):
+
+```json
+{
+  "CORSRules": [
+    {
+      "AllowedOrigins": ["https://admin.example.com"],
+      "AllowedMethods": ["PUT", "GET"],
+      "AllowedHeaders": ["content-type", "cache-control"],
+      "MaxAgeSeconds": 3600
+    }
+  ]
+}
+```
+
+Cloudflare R2 (bucket settings, CORS policy):
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://admin.example.com"],
+    "AllowedMethods": ["PUT", "GET"],
+    "AllowedHeaders": ["content-type", "cache-control"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+Send `Vary: Origin` on GET responses from your CDN when the admin origin downloads through it.
+
+**Cache-Control.** Every object is written with `Cache-Control: public, max-age=31536000, immutable` (private objects under `prefix`: `private, max-age=31536000, immutable`). Object keys are unique per upload, replace and move, so no object ever changes.
+
+**nosniff.** S3 cannot set `X-Content-Type-Options` per object. Add `X-Content-Type-Options: nosniff` as a response header at your CDN: a CloudFront response headers policy, a Cloudflare Transform Rule (modify response header), or a Bunny Edge Rule.
+
+**Lifecycle.** Where the provider has a lifecycle API, add a rule that aborts incomplete multipart uploads after 1 to 7 days (R2 defaults to 7 days):
+
+```json
+{
+  "Rules": [
+    {
+      "ID": "abort-incomplete-multipart-uploads",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "" },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 7 }
+    }
+  ]
+}
+```
 
 ## Limitations
 

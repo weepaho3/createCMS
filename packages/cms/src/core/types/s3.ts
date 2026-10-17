@@ -1,6 +1,10 @@
 import type { AwsClient } from 'aws4fetch';
 
 import type { StorageAdapter } from '../storage/adapter';
+import type {
+  StorageCapabilitiesOverride,
+  StoragePreset,
+} from '../storage/s3/presets';
 
 export type S3Client = {
   s3: AwsClient;
@@ -126,15 +130,37 @@ type BaseMediaConfig = {
   allowedMimeTypes?: string[];
 
   /**
-   * Object ACL sent with every upload. `false` sends no `x-amz-acl` header:
-   * required for AWS buckets with Object Ownership "Bucket owner enforced"
-   * (the default for new buckets), which reject ACL headers with
-   * `AccessControlListNotSupported`. Public delivery then needs a bucket
-   * policy or a CDN in front of the bucket. An asset's `public`/`private`
-   * status controls delivery through the asset endpoint, not object access
-   * in the bucket. @default 'public-read'
+   * Object ACL sent with uploads. `x-amz-acl: public-read` is sent only when
+   * this is `'public-read'` and the storage reports `objectAcl` (AWS buckets
+   * with ACLs enabled, DigitalOcean Spaces, Hetzner); otherwise no ACL header
+   * is sent. Grant public reads with a bucket policy on the `pub/` prefix
+   * instead (see `visibility`). @default false
    */
   acl?: 'public-read' | false;
+
+  /**
+   * Where objects live. `'prefix'`: keys start with `pub/` or `prv/` by
+   * asset status, objects move by copy plus delete when the status changes,
+   * and a bucket policy grants public reads on `pub/*` only, so private bytes
+   * are reachable through the asset endpoint alone. Needs the `copy`
+   * capability. `'legacy'`: keys carry no visibility segment and status
+   * changes never move objects. Objects uploaded before switching keep
+   * their keys until their next status change. @default 'prefix'
+   */
+  visibility?: 'prefix' | 'legacy';
+
+  /**
+   * Called after an asset's object moved (status change, replace) with the
+   * asset endpoint paths whose CDN cache should be purged, e.g.
+   * `/media/asset/ast_...`. Errors are logged, never thrown.
+   */
+  onPurge?: (paths: string[]) => void | Promise<void>;
+
+  /**
+   * Overrides single capability flags of the provider preset (see
+   * `providerCapabilities`). Ignored when `storage` is set.
+   */
+  capabilities?: StorageCapabilitiesOverride;
 
   /**
    * Treat an asset id that appears inside a longer string of any block
@@ -197,6 +223,8 @@ export type CloudflareMediaConfig = BaseMediaConfig & {
 /** Custom S3-compatible provider */
 export type CustomMediaConfig = BaseMediaConfig & {
   provider: 'custom';
+  /** Capability preset of the S3-compatible service. @default 'generic' */
+  preset?: StoragePreset;
   /** Custom S3-compatible endpoint hostname (e.g., 'minio.example.com') */
   hostname: string;
   /** Region for signing */

@@ -8,6 +8,6 @@ export async function GET(
 ) {
   const { id } = await params;
   const asset = DEMO_ASSETS.find((item) => item.id === id);
-  if (!asset) notFound();
+  if (!asset?.url) notFound();
   redirect(asset.url);
 }

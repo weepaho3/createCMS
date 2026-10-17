@@ -19,8 +19,18 @@ import type { ResolvedScope } from '../types/definitions';
 
 import { newId } from '../../utils/nanoid';
 import { assetFolders, assets } from '../db/schema.generated';
-import { cmsMeta, createCMSEndpoint } from '../endpoint';
+import {
+  cmsMeta,
+  createCMSEndpoint,
+  type PublicEndpointContext,
+} from '../endpoint';
 import { CMSError, errorMessages } from '../errors';
+import {
+  assetObjectKey,
+  cacheControlFor,
+  setAssetsVisibility,
+  uploadAcl,
+} from '../media/placement';
 import {
   deriveUploadKey,
   mintUploadToken,
@@ -48,11 +58,7 @@ import {
   StorageError,
 } from '../storage/adapter';
 import { getStorage } from '../storage/get-storage';
-import {
-  buildPublicObjectUrl,
-  buildUploadObjectKey,
-  buildVariantSlug,
-} from '../storage/s3/utils';
+import { buildPublicObjectUrl, buildVariantSlug } from '../storage/s3/utils';
 import { MEDIA_DEFAULTS } from '../types/s3';
 import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
 
@@ -64,6 +70,9 @@ import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
  */
 const INLINE_SAFE =
   /^(image\/(png|jpeg|gif|webp|avif)|video\/|audio\/|application\/pdf$)/;
+
+/** Lifetime of the signed GET a private asset redirects to. */
+const PRIVATE_SIGNED_GET_SECONDS = 300;
 
 const MEDIA_META = {
   scope: 'system' as const,
@@ -222,20 +231,41 @@ type AssetRow = typeof assets.$inferSelect;
  * object `url` for internal/admin display (see listAssets for why this URL is
  * NOT for embedding in content).
  */
-function toAssetListItem(asset: AssetRow, publicUrl: string) {
+function toAssetListItem(asset: AssetRow, urls: AssetUrls) {
   return {
     id: asset.id,
     slug: asset.slug,
     mimeType: asset.mimeType,
     size: asset.size,
     objectKey: asset.objectKey,
-    url: buildPublicObjectUrl(publicUrl, asset.objectKey),
+    url: urls.object(asset.status, asset.objectKey),
+    deliveryUrl: urls.delivery(asset.id),
     status: asset.status,
     folderId: asset.folderId ?? null,
     variantOf: asset.variantOf ?? null,
     uploadedBy: asset.uploadedBy ?? null,
     createdAt: asset.createdAt,
     updatedAt: asset.updatedAt,
+  };
+}
+
+/**
+ * `object`: the direct bucket URL, only for public assets (`null` for
+ * private ones, whose bytes are reachable through the gate alone).
+ * `delivery`: the gate path `{basePath}/media/asset/{id}`, valid for every
+ * asset and the URL to render.
+ */
+type AssetUrls = {
+  object: (status: 'public' | 'private', objectKey: string) => string | null;
+  delivery: (id: string) => string;
+};
+
+function assetUrls(publicUrl: string, basePath: string): AssetUrls {
+  const base = basePath.replace(/\/+$/, '');
+  return {
+    object: (status, objectKey) =>
+      status === 'public' ? buildPublicObjectUrl(publicUrl, objectKey) : null,
+    delivery: (id) => `${base}/media/asset/${encodeURIComponent(id)}`,
   };
 }
 
@@ -312,8 +342,10 @@ function decodeAssetCursor(cursor: string): CursorPosition {
 export function createMediaEndpoints(
   cmsCtx: CMSProcedureContext,
   mediaConfig: MediaConfig,
+  basePath = '/api/cms',
 ) {
   const { db } = cmsCtx;
+  const urls = assetUrls(mediaConfig.publicUrl, basePath);
 
   const maxFileSize = mediaConfig.maxFileSize ?? MEDIA_DEFAULTS.maxFileSize;
   const maxFiles = mediaConfig.maxFiles ?? MEDIA_DEFAULTS.maxFiles;
@@ -322,10 +354,12 @@ export function createMediaEndpoints(
   ];
   const signedUrlExpiresIn =
     mediaConfig.signedUrlExpiresIn ?? MEDIA_DEFAULTS.signedUrlExpiresIn;
-  // `undefined` sends no `x-amz-acl` header, which buckets with ACLs
-  // disabled ("Bucket owner enforced") require.
-  const objectAcl =
-    mediaConfig.acl === false ? undefined : (mediaConfig.acl ?? 'public-read');
+  const objectAcl = uploadAcl(mediaConfig, getStorage(mediaConfig));
+  // New rows are `private`; replaces keep the asset's status.
+  const newObjectKey =
+    (scope: ResolvedScope, visibility: 'public' | 'private') =>
+    (id: string, fileName: string) =>
+      assetObjectKey(mediaConfig, { id, fileName, visibility, scope });
 
   /**
    * Throws STORAGE_UNSUPPORTED unless the adapter signs uploads and, when any
@@ -339,7 +373,7 @@ export function createMediaEndpoints(
     const hasImage = types.some((t) => t.startsWith('image/'));
     requireCapability(
       storage,
-      (c) => c.signedUpload.supported && (c.rangeRead || !hasImage),
+      (c) => c.signedPut.supported && (c.rangeRead || !hasImage),
       hasImage
         ? 'signed uploads with range reads, which verifying an uploaded image requires'
         : 'signed uploads',
@@ -993,9 +1027,7 @@ export function createMediaEndpoints(
         const lastRow = assetRows[assetRows.length - 1];
 
         return {
-          assets: assetRows.map((asset) =>
-            toAssetListItem(asset, mediaConfig.publicUrl),
-          ),
+          assets: assetRows.map((asset) => toAssetListItem(asset, urls)),
           total: count,
           // Cursor mode reports liveness from the over-fetch; offset mode keeps
           // the historical offset/total comparison.
@@ -1056,31 +1088,32 @@ export function createMediaEndpoints(
           .where(and(...conditions));
 
         return {
-          assets: rows.map((asset) =>
-            toAssetListItem(asset, mediaConfig.publicUrl),
-          ),
+          assets: rows.map((asset) => toAssetListItem(asset, urls)),
         };
       },
     ),
 
     /**
-     * Public asset redirect. Marked `public: true` so toCMSEndpoints skips the
-     * auth/scope/hook chain — it serves <img>-style requests and does its own
-     * access control (rejects assets whose status is `private`).
+     * The asset gate, addressed by the stable asset id. Marked `public: true`,
+     * so it runs outside the auth chain and does its own access control.
      *
-     * Inline-safe types (raster images, video, audio, PDF) redirect to the
-     * public object URL. `?download=true` and every other type redirect to a
-     * signed GET URL, valid for one hour, whose `response-content-disposition`
-     * is `attachment`, so the bucket answers with a download. A
-     * `Content-Disposition` header on the `302` itself would be ignored by
-     * browsers, which apply the header of the final response only.
+     * Public assets: inline-safe types (raster images, video, audio, PDF)
+     * redirect to the public object URL with `public, max-age=300`;
+     * `?download=true` and every other type redirect to a signed GET whose
+     * `response-content-disposition` is `attachment` (a `Content-Disposition`
+     * on the `302` itself would be ignored by browsers).
+     *
+     * Private assets: only for a caller the auth middleware accepts (with the
+     * `media` resource and `read`), inside its scope. The redirect goes to a
+     * signed GET valid for at most 300 s and carries
+     * `Cache-Control: private, no-store`. Anonymous callers get
+     * `ASSET_ACCESS_DENIED`.
+     *
+     * With a scoping plugin (multi-tenant), a caller whose identity resolves
+     * only sees assets in its scope; other ids answer `ASSET_NOT_FOUND`.
      */
     asset: createEndpoint(
-      // Addressed by the STABLE asset id, not the slug: content stores the id,
-      // so an `<img src="/media/asset/{id}">` survives a `replaceAsset` (which
-      // mints a new slug/objectKey) without touching content or re-rendering —
-      // the gate just re-resolves the id to the current object. (rou3 needs
-      // `:param`, not OpenAPI `{param}` braces, or the route never matches.)
+      // rou3 needs `:param`, not OpenAPI `{param}` braces.
       '/media/asset/:assetId',
       {
         method: 'GET',
@@ -1091,38 +1124,53 @@ export function createMediaEndpoints(
         }),
         metadata: cmsMeta(
           {},
-          { public: true, operation: 'read', scope: 'system' },
+          { public: true, operation: 'read', ...MEDIA_META },
         ),
       },
       async (ctx) => {
         const params = ctx.params as { assetId: string };
         const assetId = params.assetId;
+        const gate = ctx.context as Partial<PublicEndpointContext>;
 
-        const [asset] = await db
-          .select({
-            id: assets.id,
-            objectKey: assets.objectKey,
-            status: assets.status,
-            mimeType: assets.mimeType,
-            slug: assets.slug,
-          })
-          .from(assets)
-          .where(and(eq(assets.id, assetId), isNull(assets.archivedAt)));
-
-        if (!asset) {
-          throw new CMSError('ASSET_NOT_FOUND', {
+        const lookup = async (scopeWhere?: SQL) => {
+          const conditions: SQL[] = [
+            eq(assets.id, assetId),
+            isNull(assets.archivedAt),
+          ];
+          if (scopeWhere) conditions.push(scopeWhere);
+          const [row] = await db
+            .select({
+              id: assets.id,
+              objectKey: assets.objectKey,
+              status: assets.status,
+              mimeType: assets.mimeType,
+              slug: assets.slug,
+            })
+            .from(assets)
+            .where(and(...conditions));
+          return row;
+        };
+        const notFound = () =>
+          new CMSError('ASSET_NOT_FOUND', {
             message: errorMessages.assetNotFound(assetId),
           });
-        }
 
-        if (asset.status === 'private') {
-          throw new CMSError('ASSET_ACCESS_DENIED');
+        const asset = await lookup();
+        if (!asset) throw notFound();
+
+        const isPrivate = asset.status === 'private';
+        if (isPrivate || gate.hasScopeConditions) {
+          const identity = (await gate.resolveIdentity?.()) ?? null;
+          if (identity) {
+            const scopeWhere = identity.scope.assets?.where;
+            if (scopeWhere && !(await lookup(scopeWhere))) throw notFound();
+          } else if (isPrivate) {
+            throw new CMSError('ASSET_ACCESS_DENIED');
+          }
         }
 
         let targetKey = asset.objectKey;
-        const hasVariantParams = !!(ctx.query?.format || ctx.query?.w);
-
-        if (hasVariantParams) {
+        if (ctx.query?.format || ctx.query?.w) {
           const variantSlug = buildVariantSlug(
             asset.slug,
             ctx.query?.format,
@@ -1138,49 +1186,44 @@ export function createMediaEndpoints(
                 isNull(assets.archivedAt),
               ),
             );
-
-          if (variant) {
-            targetKey = variant.objectKey;
-          }
+          if (variant) targetKey = variant.objectKey;
         }
 
-        // Redirect (302) so a real `<img src>` / browser request follows
-        // `location` to the public object URL. better-call applies response
-        // headers from `ctx.responseHeaders` (and the status from `ctx.redirect`),
-        // NOT from a returned `{ headers, body }` object — that shape is only
-        // visible to the server-side caller, never on the HTTP response, so the
-        // router would otherwise answer 200 with an empty body (a broken image).
-        //
-        // The redirect is SHORT-cached (NOT immutable) because the id->object
-        // mapping changes on `replaceAsset`: a brief TTL lets a swapped image
-        // propagate to already-rendered pages within minutes, while the bytes
-        // themselves stay long-cached at the CDN (each object key is unique per
-        // version). The 302 is bodyless, so re-resolving it is cheap.
-        //
-        // The signed URL expires after at most 3600 s (less when the adapter
-        // declares a lower `signedUrl.maxExpiresIn`).
-        ctx.responseHeaders.set('cache-control', 'public, max-age=300');
+        // better-call applies headers from `ctx.responseHeaders` and the
+        // status from `ctx.redirect`; a returned `{ headers }` object would
+        // never reach the HTTP response. The public redirect is short-cached
+        // because `replaceAsset` repoints the id to a new object.
+        ctx.responseHeaders.set(
+          'cache-control',
+          isPrivate ? 'private, no-store' : 'public, max-age=300',
+        );
         const wantsDownload = wireBooleanIsTrue(ctx.query?.download);
         const inlineSafe = INLINE_SAFE.test(asset.mimeType);
-        if (!wantsDownload && inlineSafe) {
+        if (!isPrivate && !wantsDownload && inlineSafe) {
           return ctx.redirect(
             buildPublicObjectUrl(mediaConfig.publicUrl, targetKey),
           );
         }
-        const safeName = asset.slug.replace(/["\\\r\n]/g, '_');
-        const disposition = `attachment;filename="${safeName}";filename*=UTF-8''${encodeURIComponent(asset.slug)}`;
+
         const storage = getStorage(mediaConfig);
+        const attachment = wantsDownload || !inlineSafe;
         requireCapability(
           storage,
-          (c) => c.signedUrl.supported && c.signedUrl.disposition,
-          'signed URLs with a bound content disposition',
+          (c) =>
+            c.signedGet.supported && (!attachment || c.signedGet.disposition),
+          attachment
+            ? 'signed URLs with a bound content disposition'
+            : 'signed URLs',
         );
+        const safeName = asset.slug.replace(/["\\\r\n]/g, '_');
         const signed = await storage.signGet(targetKey, {
           expiresIn: Math.min(
-            3600,
-            storage.capabilities.signedUrl.maxExpiresIn,
+            isPrivate ? PRIVATE_SIGNED_GET_SECONDS : 3600,
+            storage.capabilities.signedGet.maxExpiresIn,
           ),
-          responseContentDisposition: disposition,
+          responseContentDisposition: attachment
+            ? `attachment;filename="${safeName}";filename*=UTF-8''${encodeURIComponent(asset.slug)}`
+            : undefined,
         });
         return ctx.redirect(signed);
       },
@@ -1234,18 +1277,18 @@ export function createMediaEndpoints(
         }
 
         const existingIds = existing.map((a) => a.id);
-        const updateConditions: SQL[] = [inArray(assets.id, existingIds)];
-        if (scope.assets?.where) updateConditions.push(scope.assets.where);
+        const { changed } = await setAssetsVisibility(
+          db,
+          mediaConfig,
+          existingIds,
+          status,
+          scope,
+        );
 
-        await db
-          .update(assets)
-          .set({ status, updatedAt: new Date() })
-          .where(and(...updateConditions));
-
-        const skipped = assetIds.filter((id) => !existingIds.includes(id));
+        const skipped = assetIds.filter((id) => !changed.includes(id));
         return {
-          updated: existingIds.length,
-          updatedIds: existingIds,
+          updated: changed.length,
+          updatedIds: changed,
           skipped,
         };
       },
@@ -1560,6 +1603,7 @@ export function createMediaEndpoints(
           maxFileSize,
           allowedMimeTypes,
           scope,
+          objectKeyFor: newObjectKey(scope, 'private'),
         });
 
         const storage = getStorage(mediaConfig);
@@ -1579,6 +1623,7 @@ export function createMediaEndpoints(
               contentLength: p.file.size,
               expiresIn: signedUrlExpiresIn,
               acl: objectAcl,
+              cacheControl: cacheControlFor(mediaConfig, 'private'),
             });
             const token = await mintUploadToken(key, {
               kind: 'upload',
@@ -1596,11 +1641,9 @@ export function createMediaEndpoints(
             return {
               id: p.id,
               objectKey: p.objectKey,
-              // Direct object URL the asset will have once the PUT and
-              // completeUpload succeed — for INTERNAL/admin display like a
-              // media library, not for embedding in content (which references
-              // the asset id and serves through `/media/asset/{id}`).
-              url: buildPublicObjectUrl(mediaConfig.publicUrl, p.objectKey),
+              // New assets are private, so there is no direct object URL.
+              url: urls.object('private', p.objectKey),
+              deliveryUrl: urls.delivery(p.id),
               signedUrl: signed.url,
               headers: signed.headers,
               token,
@@ -1679,7 +1722,7 @@ export function createMediaEndpoints(
               continue;
             }
             const row = await insertCompletedUpload(payload, scope);
-            completed.push(toAssetListItem(row, mediaConfig.publicUrl));
+            completed.push(toAssetListItem(row, urls));
           } catch (err) {
             if (err instanceof APIError) {
               fail(i, err);
@@ -1753,7 +1796,11 @@ export function createMediaEndpoints(
         if (scope.assets?.where) loadConditions.push(scope.assets.where);
 
         const [target] = await db
-          .select({ id: assets.id, variantOf: assets.variantOf })
+          .select({
+            id: assets.id,
+            variantOf: assets.variantOf,
+            status: assets.status,
+          })
           .from(assets)
           .where(and(...loadConditions));
 
@@ -1785,7 +1832,10 @@ export function createMediaEndpoints(
         if (!slug) {
           throw new CMSError('SLUG_GENERATION_FAILED');
         }
-        const objectKey = buildUploadObjectKey(newId('asset'), slug);
+        const objectKey = newObjectKey(scope, target.status)(
+          newId('asset'),
+          slug,
+        );
 
         const storage = getStorage(mediaConfig);
         requireSignedUploadCapability(storage, [file.type]);
@@ -1796,6 +1846,7 @@ export function createMediaEndpoints(
           contentLength: file.size,
           expiresIn: signedUrlExpiresIn,
           acl: objectAcl,
+          cacheControl: cacheControlFor(mediaConfig, target.status),
         });
         const token = await mintUploadToken(
           await deriveUploadKey(mediaConfig),
@@ -1816,10 +1867,10 @@ export function createMediaEndpoints(
           assetId,
           slug,
           objectKey,
-          // Direct object URL the asset will have once the PUT below succeeds
-          // AND commitReplace repoints the row — for INTERNAL/admin display
-          // only (see createSignedUpload).
-          url: buildPublicObjectUrl(mediaConfig.publicUrl, objectKey),
+          // The direct object URL once commitReplace repoints the row; `null`
+          // for a private asset.
+          url: urls.object(target.status, objectKey),
+          deliveryUrl: urls.delivery(assetId),
           signedUrl: signed.url,
           headers: signed.headers,
           expiresAt,
@@ -2035,10 +2086,8 @@ export function createMediaEndpoints(
               mimeType: repointedRow.mimeType,
               size: repointedRow.size,
               objectKey: repointedRow.objectKey,
-              url: buildPublicObjectUrl(
-                mediaConfig.publicUrl,
-                repointedRow.objectKey,
-              ),
+              url: urls.object(repointedRow.status, repointedRow.objectKey),
+              deliveryUrl: urls.delivery(repointedRow.id),
               status: repointedRow.status,
               folderId: repointedRow.folderId ?? null,
               variantOf: repointedRow.variantOf ?? null,
@@ -2139,6 +2188,7 @@ export function createMediaEndpoints(
           maxFileSize,
           allowedMimeTypes,
           scope,
+          objectKeyFor: newObjectKey(scope, 'private'),
         });
 
         // We hold the bytes here: verify each declared image type against the
@@ -2182,6 +2232,7 @@ export function createMediaEndpoints(
               contentType: file.type,
               contentLength: file.size,
               acl: objectAcl,
+              cacheControl: cacheControlFor(mediaConfig, 'private'),
             });
           } catch (err) {
             // The raw S3 error must not reach the client. This log is the only
@@ -2204,9 +2255,8 @@ export function createMediaEndpoints(
               mimeType: p.file.type,
               size: p.file.size,
               objectKey: p.objectKey,
-              // Direct object URL for INTERNAL/admin display (see createSignedUpload) —
-              // not for content, which references the asset id and serves via the gate.
-              url: buildPublicObjectUrl(mediaConfig.publicUrl, p.objectKey),
+              url: urls.object('private', p.objectKey),
+              deliveryUrl: urls.delivery(p.id),
               status: 'private' as const,
               folderId: folderId ?? null,
               variantOf: p.file.variantOf ?? null,
@@ -2290,7 +2340,11 @@ export function createMediaEndpoints(
         if (scope.assets?.where) loadConditions.push(scope.assets.where);
 
         const [target] = await db
-          .select({ id: assets.id, variantOf: assets.variantOf })
+          .select({
+            id: assets.id,
+            variantOf: assets.variantOf,
+            status: assets.status,
+          })
           .from(assets)
           .where(and(...loadConditions));
 
@@ -2320,7 +2374,10 @@ export function createMediaEndpoints(
         if (!slug) {
           throw new CMSError('SLUG_GENERATION_FAILED');
         }
-        const objectKey = buildUploadObjectKey(newId('asset'), slug);
+        const objectKey = newObjectKey(scope, target.status)(
+          newId('asset'),
+          slug,
+        );
 
         // 5. PUT the new object FIRST — on failure the row is untouched, so the
         //    asset keeps serving its existing (still-present) object.
@@ -2329,6 +2386,7 @@ export function createMediaEndpoints(
             contentType: file.type,
             contentLength: measuredSize,
             acl: objectAcl,
+            cacheControl: cacheControlFor(mediaConfig, target.status),
           });
         } catch (err) {
           // The raw S3 error must not reach the client; this log is the only
@@ -2486,12 +2544,8 @@ export function createMediaEndpoints(
               mimeType: repointedRow.mimeType,
               size: repointedRow.size,
               objectKey: repointedRow.objectKey,
-              // Direct object URL for INTERNAL/admin display only (see the
-              // gate for serving in content).
-              url: buildPublicObjectUrl(
-                mediaConfig.publicUrl,
-                repointedRow.objectKey,
-              ),
+              url: urls.object(repointedRow.status, repointedRow.objectKey),
+              deliveryUrl: urls.delivery(repointedRow.id),
               status: repointedRow.status,
               folderId: repointedRow.folderId ?? null,
               variantOf: repointedRow.variantOf ?? null,

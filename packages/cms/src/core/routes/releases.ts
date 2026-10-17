@@ -524,6 +524,7 @@ export function createReleaseEndpoints(
             s.commitId,
             s.rootId,
             ctx.context.scope,
+            cmsCtx.media,
           ).catch((err) =>
             console.error('[cms] release publish asset sync failed:', err),
           );

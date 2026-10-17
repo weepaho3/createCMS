@@ -12,6 +12,8 @@ export const DUMMY_MEDIA_CONFIG: CustomMediaConfig = {
   publicUrl: 'https://cdn.test.local',
   secure: false,
   forcePathStyle: true,
+  // No server answers this host, so status changes must not move objects.
+  visibility: 'legacy',
 };
 
 const hero = defineBlock({

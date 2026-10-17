@@ -9,7 +9,7 @@ import { createMediaFormatters, defaultMediaMessages } from './messages';
 export type MediaContextValue = {
   store: MediaStore;
   selection: MediaSelectionMode;
-  /** Resolves the `src` of `Media.Thumbnail`; defaults to `asset.url`. */
+  /** Resolves the `src` of `Media.Thumbnail`; defaults to `asset.deliveryUrl`. */
   assetUrl: (asset: MediaAsset) => string;
 };
 

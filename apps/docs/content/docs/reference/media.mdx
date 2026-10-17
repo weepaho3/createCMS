@@ -5,7 +5,7 @@ description: Upload, serve, and manage assets via cms.api.media.
 
 Media methods live under `cms.api.media` and are mirrored on the client as `client.media.<method>` with identical types. For the model behind them, see the [Media concept](/docs/concepts/media).
 
-Every method requires a session except the public [`asset`](#public-delivery) delivery redirect. Uploaded assets are created `private`; flip them to `public` with `updateAssetsStatus` before serving. Each asset row carries a direct object `url` (`${publicUrl}/${objectKey}`) for internal/admin display such as a media library; serve assets in content through the [public delivery](#public-delivery) gate instead.
+Every method requires a session except the [`asset`](#public-delivery) delivery gate. Uploaded assets are created `private`; publishing referencing content or `updateAssetsStatus` makes them `public`. Each asset row carries `deliveryUrl`, the gate path to render, and `url`, the direct object URL (`${publicUrl}/${objectKey}`), which is `null` for private assets.
 
 ## Folders
 
@@ -125,7 +125,7 @@ List the assets in your media library, with optional filtering (by folder, statu
   },
 }`}
   returns={{
-    assets: { type: 'AssetListItem[]', description: 'The assets on this page. Each carries `id`, `slug`, `mimeType`, `size`, `objectKey`, direct `url`, `status`, `folderId`, `variantOf`, `uploadedBy`, `createdAt`, `updatedAt`.' },
+    assets: { type: 'AssetListItem[]', description: 'The assets on this page. Each carries `id`, `slug`, `mimeType`, `size`, `objectKey`, `url` (direct, `null` when private), `deliveryUrl` (gate path), `status`, `folderId`, `variantOf`, `uploadedBy`, `createdAt`, `updatedAt`.' },
     total: { type: 'number', description: 'Total assets across all pages for the current filter (ignores paging).' },
     hasMore: { type: 'boolean', description: 'Whether more assets exist after this page.' },
     nextCursor: { type: 'string | null', description: 'Opaque cursor for the next page; `null` at the end of the list. Pass it back as `cursor` to continue.' },
@@ -143,7 +143,7 @@ List the assets in your media library, with optional filtering (by folder, statu
   }}
 />
 
-Each asset includes the direct `url` (`${publicUrl}/${objectKey}`) for internal/admin display; `nextCursor` is `null` at the end of the list.
+Each asset includes `deliveryUrl` and, for public assets, the direct `url`; `nextCursor` is `null` at the end of the list.
 
 ### Get Assets by Id [#getassets]
 
@@ -218,7 +218,7 @@ Hand the browser presigned PUT URLs so it can upload files straight to your buck
   }}
 />
 
-Returns `{ uploads: { id, objectKey, url, signedUrl, headers, token }[], expiresAt }`. PUT each file to its `signedUrl` with the returned `headers` (`Content-Type`, `x-amz-acl: public-read`); `expiresAt` is when the signed URLs expire. The token stays valid for one hour past `expiresAt`, so a PUT that started before expiry can still be completed. Throws `TOO_MANY_FILES`, `FILE_TOO_LARGE`, `INVALID_FILE_TYPE`, `FOLDER_NOT_FOUND`, or `ASSET_NOT_FOUND` (unknown `variantOf`).
+Returns `{ uploads: { id, objectKey, url, deliveryUrl, signedUrl, headers, token }[], expiresAt }`. `url` is `null` (new assets are private); `deliveryUrl` is the gate path. PUT each file to its `signedUrl` with the returned `headers` (`Content-Type`, `Cache-Control`); `expiresAt` is when the signed URLs expire. The token stays valid for one hour past `expiresAt`, so a PUT that started before expiry can still be completed. Throws `TOO_MANY_FILES`, `FILE_TOO_LARGE`, `INVALID_FILE_TYPE`, `FOLDER_NOT_FOUND`, or `ASSET_NOT_FOUND` (unknown `variantOf`).
 
 ### Complete an Upload [#completeupload]
 
@@ -346,9 +346,10 @@ The browser-callable half of a replace: validates the target asset (live, in sco
     assetId: { type: 'string', description: 'Echoes the requested asset id.' },
     slug: { type: 'string', description: 'The freshly minted slug (cache-bust) the row will carry after `commitReplace`.' },
     objectKey: { type: 'string', description: 'The freshly minted object key (`<fresh id>/<slug>`).' },
-    url: { type: 'string', description: "The object's public URL once the PUT below succeeds AND `commitReplace` repoints the row. For internal/admin display only." },
+    url: { type: 'string | null', description: "The object's direct URL once `commitReplace` repoints the row; `null` for a private asset." },
+    deliveryUrl: { type: 'string', description: 'The gate path of the asset.' },
     signedUrl: { type: 'string', description: 'Presigned PUT URL — upload the new bytes here.' },
-    headers: { type: 'Record<string, string>', description: 'Headers to send with the PUT (`Content-Type`, `x-amz-acl: public-read`).' },
+    headers: { type: 'Record<string, string>', description: 'Headers to send with the PUT (`Content-Type`, `Cache-Control`).' },
     expiresAt: { type: 'Date', description: 'When the signed URL expires.' },
     token: { type: 'string', description: 'Signed token binding the asset, object key, slug, type, size, user and scope. Pass it to `commitReplace`.' },
   }}
@@ -492,7 +493,7 @@ Soft-delete a batch of assets (and their variants) so a later garbage-collection
 
 ### Serve an Asset [#asset]
 
-Serve an asset on a public page by addressing it by **asset id** (what content stores) — this `302`s to the asset's current object URL. It's what you put behind an `<img src>`, and it survives a `replaceAsset` untouched: the gate just re-resolves the id to the current object. Private assets are rejected with `ASSET_ACCESS_DENIED`, and the redirect is short-cached (`max-age=300`, not immutable), so swapping the object behind the same id propagates automatically.
+Address an asset by its **id** (what content stores); the gate `302`s to the asset's current object. It's what you put behind an `<img src>`, and it survives a `replaceAsset` untouched: the gate re-resolves the id to the current object. A public asset redirects to its object URL, short-cached (`max-age=300`, not immutable), so swapping the object behind the same id propagates automatically. A private asset redirects to a signed GET valid for at most 300 seconds with `Cache-Control: private, no-store`, and only for a caller your `authMiddleware` accepts for `media` / `read`; anonymous callers get `ASSET_ACCESS_DENIED`. With a scoping plugin, ids outside the caller's scope answer `ASSET_NOT_FOUND`.
 
 <APIMethod
   method="GET"

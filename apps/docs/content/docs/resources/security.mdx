@@ -48,9 +48,9 @@ export const cms = createCMS({
 
 ## Media privacy
 
-Uploaded objects are stored **`public-read`** in your bucket. The `status: 'private'` flag is enforced by the CMS gate (`GET /media/asset/{id}` returns `ASSET_ACCESS_DENIED` for a private asset) — **not** by the object store. Anyone who knows or guesses the direct `${publicUrl}/${objectKey}` URL can fetch a "private" object straight from the bucket, bypassing the gate.
+With the default `media.visibility: 'prefix'`, private assets live under `prv/` in a bucket that only allows anonymous reads on `pub/*`. Their bytes are reachable only through the gate, which serves them to callers your `authMiddleware` accepts, inside their scope, via a signed GET valid for at most 300 seconds and marked `private, no-store`. `listAssets` returns `url: null` for them. Set up the bucket policy as described in [Media: Bucket setup](/docs/concepts/media#bucket-setup) and verify it with `createcms storage check`.
 
-So `private` is a **"should this be shown"** flag, not a hard-privacy boundary. Do not put secrets or regulated data behind it; if bytes must be truly access-controlled, keep them out of public object storage entirely. See [Media → Private vs public](/docs/concepts/media#private-vs-public).
+With `media.visibility: 'legacy'`, the gate still refuses private assets, but the bucket does not: anyone who knows the direct `${publicUrl}/${objectKey}` URL can fetch the bytes. There `private` is a **"should this be shown"** flag, not an access boundary. See [Media: Private vs public](/docs/concepts/media#private-vs-public).
 
 **Serve assets from a cross-origin host.** Point `publicUrl` at a domain that is *not* your app's origin (a dedicated asset/CDN host), so an uploaded file can never execute as same-origin against your app — it can't read your app's cookies or ride a logged-in session. This is defense in depth: even a malicious upload that slips past validation runs in an origin with nothing to steal.
 

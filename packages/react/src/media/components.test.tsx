@@ -276,6 +276,24 @@ describe('Media.Grid / Media.Item', () => {
   });
 });
 
+describe('Media.Thumbnail default src', () => {
+  it('uses the gate path, never the bucket URL, for a private asset', async () => {
+    const client = makeClient({
+      listAssets: vi.fn(async () => ({
+        assets: [makeAsset({ id: 'secret', status: 'private', url: null })],
+        total: 1,
+        hasMore: false,
+        nextCursor: null,
+      })),
+    });
+    const { getByRole } = render(<Library client={client} />);
+    await waitFor(() => expect(getByRole('img')).toBeTruthy());
+    expect(getByRole('img').getAttribute('src')).toBe(
+      '/api/cms/media/asset/secret',
+    );
+  });
+});
+
 describe('Media.Breadcrumbs / Media.Crumb / Media.Folder', () => {
   it('navigates into folders and truncates the path on a crumb click', async () => {
     const a = makeFolder({ id: 'fld_a', name: 'A' });

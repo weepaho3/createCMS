@@ -38,6 +38,7 @@ import {
 } from './context';
 import { toCMSEndpoints } from './endpoint';
 import { createHookRunner } from './hooks';
+import { assertVisibilitySupported } from './media/placement';
 import { makeNotificationPublishHandler } from './notifications/realtime';
 import { createNotificationService } from './notifications/service';
 import { createRealtimeRouteHandler } from './realtime/sse';
@@ -679,6 +680,8 @@ export const createCMS = <
   if (definition.user) {
     cmsContext.resolvedUser = resolveUserConfig(definition.user);
   }
+  cmsContext.media = definition.media;
+  assertVisibilitySupported(definition.media);
 
   const pluginContext: CMSPluginContext = {
     ...cmsContext,
@@ -771,7 +774,11 @@ export const createCMS = <
     revalidationRunner,
   );
 
-  const mediaEndpoints = createMediaEndpoints(cmsContext, definition.media);
+  const mediaEndpoints = createMediaEndpoints(
+    cmsContext,
+    definition.media,
+    definition.basePath,
+  );
 
   const variableEndpoints = createVariableEndpoints(
     cmsContext,

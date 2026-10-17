@@ -72,7 +72,11 @@ describe('server-side S3 retries', () => {
     );
     await expect(
       headObject(client, { bucket: 'b', key: 'k' }),
-    ).resolves.toEqual({ contentLength: 5, contentType: 'image/png' });
+    ).resolves.toEqual({
+      contentLength: 5,
+      contentType: 'image/png',
+      cacheControl: null,
+    });
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 

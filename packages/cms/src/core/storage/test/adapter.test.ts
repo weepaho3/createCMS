@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { type TestS3, setupTestS3 } from '../../../test-utils/s3';
 import { getStorage } from '../get-storage';
 import { createS3StorageAdapter } from '../s3/adapter';
+import { providerCapabilities } from '../s3/presets';
 
 const BODY = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -40,6 +41,7 @@ describe('createS3StorageAdapter', () => {
     expect(await adapter.head('a/img.png')).toEqual({
       contentLength: BODY.byteLength,
       contentType: 'image/png',
+      cacheControl: null,
     });
     expect(await adapter.getRange('a/img.png', 1, 3)).toEqual(BODY.slice(1, 4));
 
@@ -88,11 +90,7 @@ describe('createS3StorageAdapter', () => {
       publicUrl: 'https://cdn.example.com',
     });
     expect(adapter.name).toBe('s3:aws');
-    expect(adapter.capabilities).toEqual({
-      signedUpload: { supported: true, contentType: true, contentLength: true },
-      signedUrl: { supported: true, disposition: true, maxExpiresIn: 604800 },
-      rangeRead: true,
-    });
+    expect(adapter.capabilities).toEqual(providerCapabilities.aws);
   });
 });
 
@@ -113,15 +111,7 @@ describe('getStorage', () => {
   it('prefers a configured adapter', () => {
     const custom = {
       name: 'memory',
-      capabilities: {
-        signedUpload: {
-          supported: false,
-          contentType: false,
-          contentLength: false,
-        },
-        signedUrl: { supported: false, disposition: false, maxExpiresIn: 0 },
-        rangeRead: false,
-      },
+      capabilities: providerCapabilities.generic,
       put: async () => {},
       delete: async () => {},
       head: async () => null,

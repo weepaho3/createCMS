@@ -43,6 +43,24 @@ export type CMSEndpointMeta = {
   public?: boolean;
 };
 
+/** The caller of a public endpoint, once its auth middleware accepted it. */
+export type PublicIdentity = {
+  userId: string | undefined;
+  scope: ResolvedScope;
+};
+
+/** What `toCMSEndpoints` adds to the context of a `public: true` endpoint. */
+export type PublicEndpointContext = {
+  /**
+   * Runs the auth middleware (with the endpoint's permission resource and
+   * operation) and the scope factories; `null` when the middleware rejects
+   * the request. Memoized per request.
+   */
+  resolveIdentity: () => Promise<PublicIdentity | null>;
+  /** True when a plugin scopes data (e.g. multi-tenant). */
+  hasScopeConditions: boolean;
+};
+
 export const cmsContext = createMiddleware(async () => {
   return {} as {
     db: DrizzleInstance;
@@ -163,6 +181,9 @@ function computeScope(
         ...result.pluginContext,
       };
     }
+    if (result.storageKeyPrefix) {
+      merged.storageKeyPrefix = result.storageKeyPrefix;
+    }
     // The reference resolver is provided by at most one scoping plugin.
     if (result.variableResolver) {
       merged.variableResolver = result.variableResolver;
@@ -233,8 +254,54 @@ export function toCMSEndpoints(
     }
 
     if (meta.public) {
-      // Intentionally exempt: handles its own access control.
-      wrapped[key] = endpoint;
+      // Exempt from the chain; handles its own access control. It may ask for
+      // the caller's identity through `context.resolveIdentity`, which runs
+      // the auth middleware and scope factories on first use only.
+      const publicHandler = async (rawContext: unknown) => {
+        if (ensureInit) await ensureInit();
+        const requestContext = (rawContext ?? {}) as {
+          body?: Record<string, unknown>;
+          query?: Record<string, unknown>;
+          params?: Record<string, unknown>;
+          headers?: HeadersInit;
+          request?: Request;
+          context?: Record<string, unknown>;
+        };
+        let identity: Promise<PublicIdentity | null> | undefined;
+        const resolveIdentity = () =>
+          (identity ??= (async () => {
+            try {
+              const mwResult = await runUserMiddleware(
+                userMiddleware,
+                cmsCtx,
+                meta,
+                {
+                  body: requestContext.body,
+                  query: requestContext.query,
+                  params: requestContext.params,
+                  headers: requestContext.headers,
+                  request: requestContext.request,
+                },
+              );
+              return {
+                userId: mwResult.userId,
+                scope: computeScope(cmsCtx.scopeConditions, mwResult),
+              };
+            } catch {
+              return null;
+            }
+          })());
+        return ep({
+          ...requestContext,
+          context: {
+            ...requestContext.context,
+            resolveIdentity,
+            hasScopeConditions: (cmsCtx.scopeConditions?.length ?? 0) > 0,
+          } satisfies PublicEndpointContext,
+        });
+      };
+      Object.assign(publicHandler, { path: ep.path, options: ep.options });
+      wrapped[key] = publicHandler as Endpoint;
       continue;
     }
 

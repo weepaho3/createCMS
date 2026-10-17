@@ -6,11 +6,7 @@ import type { DrizzleInstance } from '../types/drizzle';
 import { newId } from '../../utils/nanoid';
 import { assetFolders, assets } from '../db/schema.generated';
 import { CMSError, errorMessages } from '../errors';
-import {
-  buildUploadObjectKey,
-  createSlug,
-  isFileTypeAllowed,
-} from '../storage/s3/utils';
+import { createSlug, isFileTypeAllowed } from '../storage/s3/utils';
 
 const MAX_SLUG_ATTEMPTS = 100;
 
@@ -29,6 +25,8 @@ type PrepareUploadInput = {
   maxFileSize: number;
   allowedMimeTypes: string[];
   scope: ResolvedScope;
+  /** The object key for a new asset id and file name. */
+  objectKeyFor: (id: string, fileName: string) => string;
 };
 
 async function validateUploadBatch(
@@ -52,7 +50,7 @@ async function validateUploadBatch(
 
 /**
  * Validation for the server byte paths (`uploadAssets`): mints an id, a
- * unique slug (probing `assets` in scope) and `objectKey === slug` per file.
+ * unique slug (probing `assets` in scope) and an object key per file.
  */
 export async function prepareAssetUpload(
   db: DrizzleInstance,
@@ -80,7 +78,7 @@ export async function prepareAssetUpload(
 
     batchSlugs.add(slug);
 
-    const objectKey = buildUploadObjectKey(id, slug);
+    const objectKey = input.objectKeyFor(id, slug);
 
     prepared.push({ id, slug, objectKey, file });
   }
@@ -91,7 +89,7 @@ export async function prepareAssetUpload(
 /**
  * Validation for the presign path (`createSignedUpload`): the same checks as
  * `prepareAssetUpload`, but no slug is minted and no row is probed. The object
- * key is `buildUploadObjectKey(id, file.name)`, unique by the fresh id alone.
+ * key comes from `objectKeyFor`, unique by the fresh id alone.
  */
 export async function prepareSignedUpload(
   db: DrizzleInstance,
@@ -103,7 +101,7 @@ export async function prepareSignedUpload(
 
   const prepared = files.map((file) => {
     const id = newId('asset');
-    return { id, objectKey: buildUploadObjectKey(id, file.name), file };
+    return { id, objectKey: input.objectKeyFor(id, file.name), file };
   });
 
   return { actor, folderId, prepared };

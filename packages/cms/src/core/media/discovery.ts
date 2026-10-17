@@ -2,9 +2,11 @@ import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 
 import type { ResolvedScope } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
+import type { MediaConfig } from '../types/s3';
 
 import { loadBlocksAtCommit } from '../blocks/reconstruct-snapshot';
 import { assets, branches, publications, roots } from '../db/schema.generated';
+import { setAssetsVisibility } from './placement';
 import { collectAssetIdsFromProperties } from './usage';
 
 /**
@@ -14,7 +16,10 @@ import { collectAssetIdsFromProperties } from './usage';
  * asset public, so content in one tenant can never change the status of
  * another tenant's asset.
  */
-export type DiscoveryScope = Pick<ResolvedScope, 'assets' | 'roots'>;
+export type DiscoveryScope = Pick<
+  ResolvedScope,
+  'assets' | 'roots' | 'storageKeyPrefix'
+>;
 
 /**
  * Asset ids referenced by the root's blocks at `commitId` that exist inside
@@ -107,24 +112,26 @@ export async function findAssetsInAllPublications(
   return allAssetIds;
 }
 
+/**
+ * Makes the assets referenced at `commitId` public. With `media`, objects
+ * move to `pub/` (see `setAssetsVisibility`); returns the ids that changed.
+ */
 export async function syncAssetsOnPublish(
   db: DrizzleInstance,
   commitId: string,
   rootId: string,
   scope?: DiscoveryScope,
+  media?: MediaConfig,
 ): Promise<string[]> {
   const assetIds = await findAssetsInCommit(db, commitId, rootId, scope);
-
-  if (assetIds.length > 0) {
-    const conditions: SQL[] = [inArray(assets.id, assetIds)];
-    if (scope?.assets?.where) conditions.push(scope.assets.where);
-    await db
-      .update(assets)
-      .set({ status: 'public', updatedAt: new Date() })
-      .where(and(...conditions));
-  }
-
-  return assetIds;
+  const { changed } = await setAssetsVisibility(
+    db,
+    media,
+    assetIds,
+    'public',
+    scope,
+  );
+  return changed;
 }
 
 export async function syncAssetsOnUnpublish(
@@ -133,6 +140,7 @@ export async function syncAssetsOnUnpublish(
   rootId: string,
   branchId: string,
   scope?: DiscoveryScope,
+  media?: MediaConfig,
 ): Promise<string[]> {
   const assetIds = await findAssetsInCommit(db, commitId, rootId, scope);
   if (assetIds.length === 0) return [];
@@ -145,15 +153,12 @@ export async function syncAssetsOnUnpublish(
   );
 
   const toPrivatize = assetIds.filter((id) => !stillPublished.has(id));
-
-  if (toPrivatize.length > 0) {
-    const conditions: SQL[] = [inArray(assets.id, toPrivatize)];
-    if (scope?.assets?.where) conditions.push(scope.assets.where);
-    await db
-      .update(assets)
-      .set({ status: 'private', updatedAt: new Date() })
-      .where(and(...conditions));
-  }
-
-  return toPrivatize;
+  const { changed } = await setAssetsVisibility(
+    db,
+    media,
+    toPrivatize,
+    'private',
+    scope,
+  );
+  return changed;
 }

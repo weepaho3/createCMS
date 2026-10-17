@@ -124,7 +124,10 @@ export type CmsAssetListItem = {
   mimeType: string;
   size: number;
   objectKey: string;
-  url: string;
+  /** Direct bucket URL; `null` for private assets. */
+  url: string | null;
+  /** The asset gate path; works for every asset. */
+  deliveryUrl: string;
   status: string;
   folderId: string | null;
   variantOf: string | null;

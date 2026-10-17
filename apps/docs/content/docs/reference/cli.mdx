@@ -76,3 +76,21 @@ non-zero (with a diff hint) when they don't.
 <Callout type="info">
   Re-run `createcms generate` after adding or changing a plugin that contributes schema, not when you edit a collection.
 </Callout>
+
+## `createcms storage check`
+
+Checks the media storage behind your config and prints a checklist with a configuration to paste for every failed check.
+
+```bash
+npx createcms storage check [config] [--origin <admin origin>]
+```
+
+| Check | Passes when |
+| --- | --- |
+| Capabilities | The storage reports what `media.visibility` needs (`copy` for `'prefix'`). The line lists every capability. |
+| Lifecycle rule | The bucket aborts incomplete multipart uploads (`AbortIncompleteMultipartUpload`). Skipped for providers without a lifecycle API. |
+| CORS | A preflight from `--origin` allows `PUT` with `content-type` and `cache-control`. Skipped without `--origin`. |
+| Upload without an ACL header | A probe object can be written with the configured ACL and `Cache-Control`. |
+| Public reads on `pub/` only | With `visibility: 'prefix'`, `publicUrl` answers 200 for a `pub/` probe and 403 for a `prv/` probe. |
+
+The command writes two small probe objects and deletes them afterwards. The config must load with real credentials (read from `process.env`); it exits non-zero when a check fails. See [Media: Bucket setup](/docs/concepts/media#bucket-setup).

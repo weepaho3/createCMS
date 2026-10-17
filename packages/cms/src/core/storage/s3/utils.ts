@@ -127,6 +127,8 @@ export async function signPutObject(
     contentLength: number;
     expiresIn: number;
     acl?: ObjectAcl;
+    cacheControl?: string;
+    sha256?: string;
   },
 ): Promise<string> {
   const url = baseSignedUrl(
@@ -140,6 +142,8 @@ export async function signPutObject(
     'content-type': params.contentType,
   };
   if (params.acl) headers['x-amz-acl'] = params.acl;
+  if (params.cacheControl) headers['cache-control'] = params.cacheControl;
+  if (params.sha256) headers['x-amz-checksum-sha256'] = params.sha256;
 
   return (
     await client.s3.sign(url.toString(), {
@@ -162,6 +166,7 @@ export async function signGetObject(
     key: string;
     expiresIn: number;
     responseContentDisposition?: string;
+    responseContentType?: string;
   },
 ): Promise<string> {
   const url = baseSignedUrl(
@@ -174,6 +179,9 @@ export async function signGetObject(
       'response-content-disposition',
       params.responseContentDisposition,
     );
+  }
+  if (params.responseContentType) {
+    url.searchParams.set('response-content-type', params.responseContentType);
   }
   const signed = await client.s3.sign(url.toString(), {
     method: 'GET',
@@ -195,6 +203,8 @@ export async function putObject(
     contentType: string;
     contentLength: number;
     acl?: ObjectAcl;
+    cacheControl?: string;
+    ifNoneMatch?: boolean;
   },
 ): Promise<Response> {
   const url = `${client.buildBucketUrl(params.bucket)}/${params.key}`;
@@ -204,6 +214,8 @@ export async function putObject(
     'content-length': params.contentLength.toString(),
   };
   if (params.acl) headers['x-amz-acl'] = params.acl;
+  if (params.cacheControl) headers['cache-control'] = params.cacheControl;
+  if (params.ifNoneMatch) headers['if-none-match'] = '*';
 
   return throwS3Error(
     client.s3.fetch(url, {
@@ -233,6 +245,7 @@ export async function headObject(
 ): Promise<{
   contentLength: number | null;
   contentType: string | null;
+  cacheControl: string | null;
 } | null> {
   const url = `${client.buildBucketUrl(params.bucket)}/${params.key}`;
   const res = await fetchWithRetry(client, url, { method: 'HEAD' });
@@ -242,6 +255,158 @@ export async function headObject(
   return {
     contentLength: len === null ? null : Number(len),
     contentType: res.headers.get('content-type'),
+    cacheControl: res.headers.get('cache-control'),
+  };
+}
+
+/**
+ * Server-side `CopyObject`. Without `metadata` the destination keeps the
+ * source's content type and cache control (directive `COPY`); with it, both
+ * are replaced (directive `REPLACE`). S3 can answer 200 with an `<Error>`
+ * body, which is reported like a failed status.
+ */
+export async function copyObject(
+  client: S3Client,
+  params: {
+    bucket: string;
+    sourceKey: string;
+    destinationKey: string;
+    metadata?: { contentType: string; cacheControl: string };
+  },
+): Promise<void> {
+  const url = `${client.buildBucketUrl(params.bucket)}/${params.destinationKey}`;
+  const source = `/${params.bucket}/${params.sourceKey
+    .split('/')
+    .map(encodeURIComponent)
+    .join('/')}`;
+  const headers: Record<string, string> = { 'x-amz-copy-source': source };
+  if (params.metadata) {
+    headers['x-amz-metadata-directive'] = 'REPLACE';
+    headers['content-type'] = params.metadata.contentType;
+    headers['cache-control'] = params.metadata.cacheControl;
+  }
+  const res = await throwS3Error(
+    fetchWithRetry(client, url, { method: 'PUT', headers }),
+  );
+  const text = await res.text();
+  if (text.includes('<Error>')) {
+    const parsed = parseXml<{ Error: { Code: string; Message: string } }>(text);
+    throw new S3Error(`${parsed.Error.Code} - ${parsed.Error.Message}`);
+  }
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+async function sha256Base64(body: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(body),
+  );
+  let binary = '';
+  for (const byte of new Uint8Array(digest))
+    binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+/** `DeleteObjects` in quiet mode, 1000 keys per request. */
+export async function deleteObjects(
+  client: S3Client,
+  params: { bucket: string; keys: string[] },
+): Promise<void> {
+  for (let i = 0; i < params.keys.length; i += 1000) {
+    const batch = params.keys.slice(i, i + 1000);
+    const body =
+      '<?xml version="1.0" encoding="UTF-8"?><Delete><Quiet>true</Quiet>' +
+      batch
+        .map((key) => `<Object><Key>${escapeXml(key)}</Key></Object>`)
+        .join('') +
+      '</Delete>';
+    const res = await throwS3Error(
+      fetchWithRetry(
+        client,
+        `${client.buildBucketUrl(params.bucket)}/?delete`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/xml',
+            'x-amz-checksum-sha256': await sha256Base64(body),
+            'x-amz-sdk-checksum-algorithm': 'SHA256',
+          },
+          body,
+        },
+      ),
+    );
+    const text = await res.text();
+    if (text.includes('<Error>')) {
+      const parsed = parseXml<{
+        DeleteResult: {
+          Error:
+            | { Key: string; Code: string }
+            | { Key: string; Code: string }[];
+        };
+      }>(text, { arrayPath: ['DeleteResult.Error'] });
+      const errors = [parsed.DeleteResult.Error].flat();
+      throw new S3Error(
+        `DeleteObjects failed for ${errors.length} key(s): ${errors
+          .slice(0, 3)
+          .map((e) => `${e.Key} (${e.Code})`)
+          .join(', ')}`,
+      );
+    }
+  }
+}
+
+/** One `ListObjectsV2` page under `prefix`. */
+export async function listObjects(
+  client: S3Client,
+  params: {
+    bucket: string;
+    prefix: string;
+    cursor?: string | null;
+    limit?: number;
+  },
+): Promise<{
+  keys: { key: string; size: number; lastModified: Date | null }[];
+  cursor: string | null;
+}> {
+  const url = new URL(`${client.buildBucketUrl(params.bucket)}/`);
+  url.searchParams.set('list-type', '2');
+  url.searchParams.set('prefix', params.prefix);
+  url.searchParams.set(
+    'max-keys',
+    String(Math.min(params.limit ?? 1000, 1000)),
+  );
+  if (params.cursor) url.searchParams.set('continuation-token', params.cursor);
+  const res = await throwS3Error(
+    fetchWithRetry(client, url.toString(), { method: 'GET' }),
+  );
+  const parsed = parseXml<{
+    ListBucketResult: {
+      Contents?: {
+        Key: string | number;
+        Size: number;
+        LastModified?: string;
+      }[];
+      IsTruncated?: boolean | string;
+      NextContinuationToken?: string;
+    };
+  }>(await res.text(), { arrayPath: ['ListBucketResult.Contents'] });
+  const result = parsed.ListBucketResult;
+  const truncated = String(result.IsTruncated) === 'true';
+  return {
+    keys: (result.Contents ?? []).map((item) => ({
+      key: String(item.Key),
+      size: item.Size,
+      lastModified: item.LastModified ? new Date(item.LastModified) : null,
+    })),
+    cursor: truncated ? (result.NextContinuationToken ?? null) : null,
   };
 }
 

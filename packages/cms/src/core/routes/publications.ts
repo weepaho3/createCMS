@@ -209,6 +209,7 @@ export function createPublicationEndpoints<
           publication.commitId,
           rootId,
           ctx.context.scope,
+          cmsCtx.media,
         );
 
         // Stays bespoke (not on withNotifications): the recipient (branch
@@ -307,6 +308,7 @@ export function createPublicationEndpoints<
           rootId,
           branchId,
           ctx.context.scope,
+          cmsCtx.media,
         );
 
         return {

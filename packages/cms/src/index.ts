@@ -224,10 +224,22 @@ export type {
 export type {
   StorageAdapter,
   StorageCapabilities,
+  StorageListResult,
   StorageObjectAcl,
 } from './core/storage/adapter';
-export { StorageError } from './core/storage/adapter';
-export { createS3StorageAdapter } from './core/storage/s3/adapter';
+export { requireCapability, StorageError } from './core/storage/adapter';
+export {
+  createS3StorageAdapter,
+  resolveS3Capabilities,
+} from './core/storage/s3/adapter';
+export type {
+  StorageCapabilitiesOverride,
+  StoragePreset,
+} from './core/storage/s3/presets';
+export {
+  mergeCapabilities,
+  providerCapabilities,
+} from './core/storage/s3/presets';
 
 // Realtime (optional, Upstash-only). Configure with `realtime: { url, token }`
 // on createCMS to enable the shared `/realtime` SSE route and per-user push;

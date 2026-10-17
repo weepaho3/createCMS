@@ -104,6 +104,7 @@ export function multiTenant() {
         const insertColumns = { tenant_slug: tenantSlug };
 
         return {
+          storageKeyPrefix: `t/${encodeURIComponent(tenantSlug)}/`,
           roots: {
             where: sql`"cms"."roots"."tenant_slug" = ${tenantSlug}`,
             insertColumns,

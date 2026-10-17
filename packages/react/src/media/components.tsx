@@ -41,7 +41,7 @@ export type MediaRootProps = {
   pageSize?: number;
   /** After every change of the selected ids. */
   onSelectionChange?: (ids: string[]) => void;
-  /** `src` for `Media.Thumbnail` (default `asset.url`). */
+  /** `src` for `Media.Thumbnail` (default `asset.deliveryUrl`). */
   assetUrl?: (asset: MediaAsset) => string;
   /** Partial catalog merged over `defaultMediaMessages`. */
   messages?: MediaMessagesInput;
@@ -50,7 +50,7 @@ export type MediaRootProps = {
   children?: React.ReactNode;
 };
 
-const defaultAssetUrl = (asset: MediaAsset): string => asset.url;
+const defaultAssetUrl = (asset: MediaAsset): string => asset.deliveryUrl;
 
 /**
  * Provider-only root: renders no DOM element, creates the media store once,

@@ -6,49 +6,159 @@ const TEST_BUCKET = 'test-bucket';
 const TEST_ACCESS_KEY = 'S3RVER';
 const TEST_SECRET_KEY = 'S3RVER';
 
+type StoredObject = {
+  body: Buffer;
+  contentType?: string;
+  cacheControl?: string;
+};
+
 export type TestS3 = {
   config: CustomMediaConfig;
   /** Object keys (without bucket prefix) every GET/HEAD/DELETE answers with 500. */
   failKeys: Set<string>;
+  /** Object keys (without bucket prefix) a CopyObject from them answers 500. */
+  failCopyFrom: Set<string>;
+  /**
+   * Bucket policy for anonymous reads (no `Authorization` header, no
+   * `X-Amz-Signature`): keys for which it returns `false` answer 403.
+   * Default: every key is readable.
+   */
+  publicRead: { allows: (key: string) => boolean };
+  /** Object keys (without bucket prefix) currently stored. */
+  keys: () => string[];
+  /** The stored object at `key` (without bucket prefix). */
+  object: (key: string) => StoredObject | undefined;
   cleanup: () => Promise<void>;
 };
 
+function xmlError(code: string, message: string): string {
+  return `<?xml version="1.0" encoding="UTF-8"?><Error><Code>${code}</Code><Message>${message}</Message></Error>`;
+}
+
+function readBody(req: import('node:http').IncomingMessage): Promise<Buffer> {
+  return new Promise((resolve) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (c) => chunks.push(c as Buffer));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+  });
+}
+
 /**
  * Starts a minimal in-memory S3-compatible HTTP server on a random port.
- * Implements exactly what the media tests exercise: PUT (store), GET (serve,
- * with a single-range `Range` answered as 206), HEAD, DELETE (remove), keyed
- * by the request path. No SigV4 verification, no LIST/multipart/ACL. Returns
- * an S3-flavored <Error> XML body on a missing GET. Keys added to `failKeys`
- * answer every non-PUT request with 500.
+ * Implements what the media tests exercise: PUT (store, with
+ * `x-amz-copy-source` as CopyObject), GET (serve, single-range `Range` as
+ * 206), HEAD, DELETE, POST `?delete` (DeleteObjects) and GET `?list-type=2`
+ * (ListObjectsV2), keyed by the request path. No SigV4 verification, no
+ * multipart or ACLs. `Content-Type` and `Cache-Control` are stored and
+ * returned.
  */
 export async function setupTestS3(): Promise<TestS3> {
-  const store = new Map<string, { body: Buffer; contentType?: string }>();
+  const store = new Map<string, StoredObject>();
   const failKeys = new Set<string>();
+  const failCopyFrom = new Set<string>();
+  const publicRead = { allows: (_key: string) => true };
+  const bucketPrefix = `/${TEST_BUCKET}/`;
+  const bare = (path: string) =>
+    path.startsWith(bucketPrefix) ? path.slice(bucketPrefix.length) : path;
 
   const server: Server = createServer((req, res) => {
-    // Signed URLs carry ?X-Amz-... query params on PUT; strip the query so a
-    // signed PUT and a later unsigned GET/DELETE address the same object.
-    const key = (req.url ?? '/').split('?')[0];
+    const url = new URL(req.url ?? '/', 'http://localhost');
+    // Signed URLs carry ?X-Amz-... query params; the key is the path alone.
+    const key = decodeURIComponent(url.pathname);
     const method = req.method ?? 'GET';
+    const signed =
+      req.headers.authorization !== undefined ||
+      url.searchParams.has('X-Amz-Signature');
+
+    if (method === 'POST' && url.searchParams.has('delete')) {
+      void readBody(req).then((body) => {
+        for (const match of body
+          .toString('utf8')
+          .matchAll(/<Key>([^<]*)<\/Key>/g)) {
+          store.delete(`${bucketPrefix}${match[1]}`);
+        }
+        res.writeHead(200, { 'content-type': 'application/xml' });
+        res.end(
+          '<?xml version="1.0" encoding="UTF-8"?><DeleteResult></DeleteResult>',
+        );
+      });
+      return;
+    }
+
+    if (method === 'GET' && url.searchParams.get('list-type') === '2') {
+      const prefix = url.searchParams.get('prefix') ?? '';
+      const max = Number(url.searchParams.get('max-keys') ?? '1000');
+      const after = url.searchParams.get('continuation-token');
+      const all = [...store.keys()]
+        .map(bare)
+        .filter((k) => k.startsWith(prefix))
+        .sort();
+      const start = after ? all.indexOf(after) + 1 : 0;
+      const page = all.slice(start, start + max);
+      const truncated = start + max < all.length;
+      const contents = page
+        .map(
+          (k) =>
+            `<Contents><Key>${k}</Key><Size>${store.get(`${bucketPrefix}${k}`)!.body.length}</Size></Contents>`,
+        )
+        .join('');
+      res.writeHead(200, { 'content-type': 'application/xml' });
+      res.end(
+        `<?xml version="1.0" encoding="UTF-8"?><ListBucketResult><IsTruncated>${truncated}</IsTruncated>${contents}${
+          truncated
+            ? `<NextContinuationToken>${page[page.length - 1]}</NextContinuationToken>`
+            : ''
+        }</ListBucketResult>`,
+      );
+      return;
+    }
 
     if (method === 'PUT') {
-      const chunks: Buffer[] = [];
-      req.on('data', (c) => chunks.push(c as Buffer));
-      req.on('end', () => {
+      const copySource = req.headers['x-amz-copy-source'];
+      if (typeof copySource === 'string') {
+        const source = decodeURIComponent(copySource);
+        const sourceKey = source.startsWith('/') ? source : `/${source}`;
+        const obj = store.get(sourceKey);
+        if (failCopyFrom.has(bare(sourceKey))) {
+          res.writeHead(500, { 'content-type': 'application/xml' });
+          res.end(xmlError('InternalError', 'Copy failed.'));
+          return;
+        }
+        if (!obj) {
+          res.writeHead(404, { 'content-type': 'application/xml' });
+          res.end(xmlError('NoSuchKey', 'The specified key does not exist.'));
+          return;
+        }
+        store.set(
+          key,
+          req.headers['x-amz-metadata-directive'] === 'REPLACE'
+            ? {
+                body: obj.body,
+                contentType: req.headers['content-type'],
+                cacheControl: req.headers['cache-control'],
+              }
+            : { ...obj },
+        );
+        res.writeHead(200, { 'content-type': 'application/xml' });
+        res.end(
+          '<?xml version="1.0" encoding="UTF-8"?><CopyObjectResult><ETag>"test-etag"</ETag></CopyObjectResult>',
+        );
+        return;
+      }
+      void readBody(req).then((body) => {
         store.set(key, {
-          body: Buffer.concat(chunks),
+          body,
           contentType: req.headers['content-type'],
+          cacheControl: req.headers['cache-control'],
         });
         res.writeHead(200, { ETag: '"test-etag"' });
         res.end();
       });
       return;
     }
-    if (method !== 'PUT' && failKeys.has(key.replace(`/${TEST_BUCKET}/`, ''))) {
+    if (failKeys.has(bare(key))) {
       res.writeHead(500, { 'content-type': 'application/xml' });
-      res.end(
-        `<?xml version="1.0" encoding="UTF-8"?><Error><Code>InternalError</Code><Message>We encountered an internal error.</Message></Error>`,
-      );
+      res.end(xmlError('InternalError', 'We encountered an internal error.'));
       return;
     }
     if (method === 'DELETE') {
@@ -57,16 +167,24 @@ export async function setupTestS3(): Promise<TestS3> {
       return;
     }
     if (method === 'GET' || method === 'HEAD') {
+      if (!signed && !publicRead.allows(bare(key))) {
+        res.writeHead(403, { 'content-type': 'application/xml' });
+        res.end(
+          method === 'HEAD'
+            ? undefined
+            : xmlError('AccessDenied', 'Access Denied'),
+        );
+        return;
+      }
       const obj = store.get(key);
       if (!obj) {
         res.writeHead(404, { 'content-type': 'application/xml' });
-        res.end(
-          `<?xml version="1.0" encoding="UTF-8"?><Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message></Error>`,
-        );
+        res.end(xmlError('NoSuchKey', 'The specified key does not exist.'));
         return;
       }
       const headers: Record<string, string> = {};
       if (obj.contentType) headers['content-type'] = obj.contentType;
+      if (obj.cacheControl) headers['cache-control'] = obj.cacheControl;
       const range = /^bytes=(\d+)-(\d*)$/.exec(
         method === 'GET' ? (req.headers.range ?? '') : '',
       );
@@ -115,5 +233,13 @@ export async function setupTestS3(): Promise<TestS3> {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   };
 
-  return { config, failKeys, cleanup };
+  return {
+    config,
+    failKeys,
+    failCopyFrom,
+    publicRead,
+    keys: () => [...store.keys()].map(bare),
+    object: (k) => store.get(`${bucketPrefix}${k}`),
+    cleanup,
+  };
 }

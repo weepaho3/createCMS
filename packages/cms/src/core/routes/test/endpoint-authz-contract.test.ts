@@ -26,8 +26,8 @@ import { setupTestCMS } from '../../../test-utils/cms';
 
 type Expected = { permissionResource: string | undefined; operation: string };
 
-// ns -> endpoint -> expected labels. Public endpoints (no permissionResource
-// declared in source, e.g. media.asset) expect `permissionResource: undefined`.
+// ns -> endpoint -> expected labels. The public media.asset gate declares
+// `media` because it resolves the caller's identity for private assets.
 const EXPECTED: Record<string, Record<string, Expected>> = {
   // `pages` == the test collection name (src/test-utils/fixtures.ts). Merges
   // every collection-scoped endpoint family: approvals, blocks, branches,
@@ -182,7 +182,7 @@ const EXPECTED: Record<string, Record<string, Expected>> = {
     // Public asset redirect, built with better-call's `createEndpoint`
     // directly (not `createCMSEndpoint`) and marked `public: true` — it does
     // its own access control. No `permissionResource` in source.
-    asset: { permissionResource: undefined, operation: 'read' },
+    asset: { permissionResource: 'media', operation: 'read' },
     updateAssetsStatus: { permissionResource: 'media', operation: 'update' },
     moveAssets: { permissionResource: 'media', operation: 'update' },
     archiveAssets: { permissionResource: 'media', operation: 'delete' },

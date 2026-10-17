@@ -1,3 +1,4 @@
+import { APIError } from 'better-call';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 
@@ -377,8 +378,13 @@ describe('media.asset (public endpoint with 302 redirect)', () => {
     expect(res.headers.get('cache-control')).not.toContain('immutable');
   });
 
-  it('rejects access to private assets', async () => {
-    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+  it('rejects private assets for a caller the auth middleware rejects', async () => {
+    const { cms, db, s3 } = await setupTestCMS({
+      withS3: true,
+      authMiddleware: async () => {
+        throw new APIError(401, { message: 'Sign in' });
+      },
+    });
 
     const [privateAsset] = await db
       .insert(assets)

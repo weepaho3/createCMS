@@ -17,6 +17,7 @@ export function makeAsset(overrides: Partial<MediaAsset> = {}): MediaAsset {
     size: 100,
     objectKey: `assets/${id}.png`,
     url: `https://cdn.test/assets/${id}.png`,
+    deliveryUrl: `/api/cms/media/asset/${id}`,
     status: 'public',
     folderId: null,
     variantOf: null,

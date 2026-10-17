@@ -5,11 +5,13 @@ import { cac } from 'cac';
 import { version } from '../../package.json';
 import { registerGenerateCommand } from './commands/generate';
 import { registerInitCommand } from './commands/init';
+import { registerStorageCommand } from './commands/storage';
 
 const cli = cac('createcms');
 
 registerInitCommand(cli);
 registerGenerateCommand(cli);
+registerStorageCommand(cli);
 
 cli.help();
 // Inlined at build time from package.json (bunchee -> @rollup/plugin-json), so

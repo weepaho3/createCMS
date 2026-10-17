@@ -232,6 +232,12 @@ export type ResolvedScope = {
    */
   abTestResolver?: AbTestResolver;
   /**
+   * Key prefix for objects created in this scope, e.g. `t/acme/` from the
+   * multi-tenant plugin. Must end with `/`; core puts it before the
+   * visibility segment. Last writer wins across factories.
+   */
+  storageKeyPrefix?: string;
+  /**
    * Opaque per-plugin context slots, keyed by plugin id. Core never reads it;
    * each plugin stashes its own per-request context here from a scope factory
    * and reads it back via its own exported accessor. Merged generically in
@@ -667,6 +673,8 @@ export type CMSProcedureContext = {
   notificationService?: import('../notifications/service').NotificationService;
   realtime?: import('../realtime/types').RealtimeRuntime;
   resolvedUser?: ResolvedUserConfig;
+  /** The CMS media config; publish paths use it to move objects on status changes. */
+  media?: import('./s3').MediaConfig;
 };
 
 /**
