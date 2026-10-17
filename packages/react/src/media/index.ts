@@ -18,6 +18,7 @@ import {
   MediaThumbnail,
 } from './components';
 import { MediaDropzone } from './dropzone';
+import { MediaImage, MediaPicture } from './image-components';
 import {
   MediaUploadAbort,
   MediaUploadClear,
@@ -46,7 +47,13 @@ export const Media = {
   UploadProgress: MediaUploadProgress,
   UploadAbort: MediaUploadAbort,
   UploadClear: MediaUploadClear,
+  Image: MediaImage,
+  Picture: MediaPicture,
 };
+
+export { useAssetImage } from './image-components';
+export type { MediaImageProps } from './image-components';
+export type { AssetImage, AssetImageOptions, ImageAsset } from './image';
 
 export type {
   ItemContextValue,

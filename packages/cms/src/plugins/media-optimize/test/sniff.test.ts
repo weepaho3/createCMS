@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  hasProvenanceMarker,
   isAnimated,
+  isAnimatedGif,
   isAnimatedPng,
   isAnimatedWebp,
-  outputName,
 } from '../sniff';
 
 const text = new TextEncoder();
@@ -76,44 +75,15 @@ describe('animation detection', () => {
   });
 });
 
-describe('hasProvenanceMarker', () => {
-  it('detects an XMP DigitalSourceType property', () => {
-    const xmp = bytes(
-      [0xff, 0xd8, 0xff, 0xe1],
-      'http://ns.adobe.com/xap/1.0/\0<x:xmpmeta><rdf:Description ',
-      'Iptc4xmpExt:DigitalSourceType="http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia"/>',
-    );
-    expect(hasProvenanceMarker(xmp)).toBe(true);
-  });
-
-  it('detects a C2PA JUMBF box', () => {
-    const jumbf = bytes(
-      [0xff, 0xd8, 0xff, 0xeb],
-      'JP',
-      [0, 0, 0, 0],
-      'jumb',
-      [0, 0, 0, 0],
-      'jumd',
-      'c2pa',
-    );
-    expect(hasProvenanceMarker(jumbf)).toBe(true);
-  });
-
-  it('ignores files without either marker', () => {
-    expect(hasProvenanceMarker(bytes([0xff, 0xd8, 0xff, 0xe0], 'JFIF'))).toBe(
-      false,
-    );
-    expect(hasProvenanceMarker(bytes('jumb only'))).toBe(false);
-  });
-});
-
-describe('outputName', () => {
-  it('swaps the extension for the encoded type', () => {
-    expect(outputName('photo.JPG', 'image/webp')).toBe('photo.webp');
-    expect(outputName('photo.png', 'image/jpeg')).toBe('photo.jpg');
-    expect(outputName('archive.tar.png', 'image/webp')).toBe(
-      'archive.tar.webp',
-    );
-    expect(outputName('noext', 'image/png')).toBe('noext.png');
+describe('isAnimatedGif', () => {
+  it('needs a second graphic control extension', () => {
+    const gce = [0x21, 0xf9, 4, 0, 0, 0, 0, 0];
+    const head: (string | number[])[] = [
+      'GIF89a',
+      Array.from({ length: 7 }, () => 0),
+    ];
+    expect(isAnimatedGif(bytes(...head, gce))).toBe(false);
+    expect(isAnimatedGif(bytes(...head, gce, gce))).toBe(true);
+    expect(isAnimated('image/gif', bytes(...head, gce, gce))).toBe(true);
   });
 });

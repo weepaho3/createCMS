@@ -300,9 +300,11 @@ Create the asset rows for the files the browser PUT to the URLs from `createSign
     errors: { type: '{ index: number; code: string; message: string }[]', description: 'One entry per rejected token; `index` is its position in `uploads`.' },
   }}
   params={{
-    uploads: { type: '{ token: string }[]', required: true, description: 'The tokens from `createSignedUpload`, at least one and at most `maxFiles`.' },
+    uploads: { type: '{ token: string; hints?: { metadata?, provenance? } }[]', required: true, description: 'The tokens from `createSignedUpload`, at least one and at most `maxFiles`. `hints` are untrusted descriptions from the client (the media-optimize worker): only `metadata.placeholder`, `dominantColor`, `exif` and `media` are kept, validated like `updateAsset`.' },
   }}
 />
+
+For images, the server reads the first 256 KB of the object and stores `width` and `height` from the header, and `provenance` from the XMP `Iptc4xmpExt:DigitalSourceType` or a C2PA manifest (an AI action in the manifest means at least `ai_edited`). A `provenance` hint only counts when the bytes say nothing and the hint is `ai_generated` or `ai_edited`.
 
 Returns `{ assets, errors }`. Per-entry `code` is one of `UPLOAD_TOKEN_INVALID` (malformed, expired, or minted for another user or tenant), `UPLOAD_NOT_FOUND` (no object at the key: the PUT never completed), `VALIDATION_ERROR` (the object's length or content type differs from the declared file), `INVALID_FILE_TYPE` (the bytes contradict the declared image type), `FOLDER_NOT_FOUND` or `ASSET_NOT_FOUND` (the folder or `variantOf` target was removed after presign, or the asset from an earlier completion of this token was archived), `UPLOAD_FAILED` (the bucket answered the object check with an error), or `SLUG_GENERATION_FAILED`.
 
@@ -369,6 +371,57 @@ Look for existing assets with the same bytes before uploading. A `sha256` matche
     files: { type: '{ sha256?: string; name: string; size: number }[]', required: true, description: 'The files about to be uploaded; `sha256` is base64.' },
   }}
 />
+
+### Create a Signed Rendition [#createsignedrendition]
+
+Sign the upload of one **rendition** of an asset: a variant identified by its `variantKey` (`w640.webp`, `w1280-h720.avif`, `poster-w640.webp`). The server picks the variant id, puts the object next to the original's (same `pub/` or `prv/` prefix) and gives the row the original's status. When a live variant with this key exists, nothing is signed and `existing` carries it, so producing a rendition twice yields one row. The media-optimize plugin calls this for every rendition it produces.
+
+<APIMethod
+  method="POST"
+  path="/media/createSignedRendition"
+  fn="createSignedRendition"
+  collection="media"
+  resource="media"
+  operation="create"
+  args={`{
+  body: { assetId: 'ast_123', variantKey: 'w640.webp', size: 48211 }, // required
+}`}
+  returns={{
+    existing: { type: 'AssetListItem | null', description: 'The live variant with this key, when one exists.' },
+    upload: { type: '{ id, objectKey, signedUrl, headers, token, expiresAt } | null', description: 'Where to PUT the rendition, and the token for `commitRendition`.' },
+  }}
+  params={{
+    assetId: { type: 'string', required: true, description: 'The original asset (not a variant or revision).' },
+    variantKey: { type: 'string', required: true, description: 'Canonical variant key; its format sets the content type.' },
+    size: { type: 'number', required: true, description: 'Byte length of the rendition.' },
+  }}
+/>
+
+Throws `VALIDATION_ERROR` for a key that is not canonical, `ASSET_NOT_FOUND`, or `FILE_TOO_LARGE`.
+
+### Commit a Rendition [#commitrendition]
+
+Create the variant row for a rendition PUT to the URL from `createSignedRendition`. The object is checked like `completeUpload`, then its bytes must be the key's format and its width (and height, when the key has one) must match; otherwise it is deleted and the call throws `RENDITION_MISMATCH`. Idempotent: when a live variant with the key exists, that row is returned and this object is deleted.
+
+<APIMethod
+  method="POST"
+  path="/media/commitRendition"
+  fn="commitRendition"
+  collection="media"
+  resource="media"
+  operation="create"
+  args={`{
+  body: { token: upload.token }, // required
+}`}
+  returns={{
+    asset: { type: 'AssetListItem', description: 'The variant, with `variantKey`, `width` and `height`.' },
+  }}
+  params={{
+    token: { type: 'string', required: true, description: 'The token from `createSignedRendition`.' },
+  }}
+/>
+
+Throws `UPLOAD_TOKEN_INVALID`, `UPLOAD_NOT_FOUND`, `INVALID_FILE_TYPE` or `RENDITION_MISMATCH`.
 
 ### Upload Assets [#uploadassets]
 
@@ -793,8 +846,11 @@ Address an asset by its **id** (what content stores); the gate `302`s to the ass
   }}
   params={{
     assetId: { type: 'string', required: true, description: 'Path parameter: the asset id to serve.' },
-    format: { type: "'webp' | 'jpeg' | 'png'", description: 'Serve a pre-uploaded format variant, falling back to the original.' },
-    w: { type: 'number', description: 'Serve a pre-uploaded width variant (positive integer), falling back to the original.' },
+    format: { type: "'webp' | 'avif' | 'jpeg' | 'png'", description: 'Rendition format (default `webp` when `w` is given).' },
+    w: { type: 'number', description: 'Rendition width. Snaps up to the next of `renditionWidths` (default 320, 640, 1280, 1920); larger than the largest answers `RENDITION_WIDTH_UNSUPPORTED`.' },
+    strict: { type: 'boolean', description: 'Answer `RENDITION_NOT_FOUND` instead of serving the original when no rendition fits.' },
     download: { type: 'boolean', description: 'Set `true` to redirect to a signed URL that forces a download (`Content-Disposition: attachment`, filename = the asset slug) instead of the public object URL.' },
   }}
 />
+
+With `w` or `format`, the gate serves a **rendition** and says which in the `x-cms-rendition` header: `exact` (the variant with that `variantKey`, e.g. `w640.webp`), `nearest` (the smallest larger rendition of the same format) or `miss` (none fits: the original is served and `onRenditionMiss` is called). It never guesses a width that does not exist. Include `w`, `format`, `download` and `strict` in your CDN cache key (no `Vary: Accept`: the format is in the URL). The gate calls `onPurge` with `/media/asset/<id>` after a replace, archive, status change or new rendition.

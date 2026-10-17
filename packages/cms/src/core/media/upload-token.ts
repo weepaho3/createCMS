@@ -19,6 +19,8 @@ export type UploadTokenPayload =
       variantKey?: string | null;
       /** Base64 SHA-256 the PUT was signed with (`x-amz-checksum-sha256`). */
       sha256?: string | null;
+      /** Status of the new row; renditions take their original's. */
+      status?: 'public' | 'private';
       actor: string | null;
       scope: string;
       exp: number;

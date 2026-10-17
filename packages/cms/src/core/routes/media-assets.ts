@@ -21,7 +21,7 @@ import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError, errorMessages } from '../errors';
 import { archiveAssetsInScope } from '../media/archive';
 import { emitMediaEvents } from '../media/events';
-import { setAssetsVisibility } from '../media/placement';
+import { purgeAssetPaths, setAssetsVisibility } from '../media/placement';
 import { assertFolderExists } from '../media/uploads';
 import {
   ASSET_PROVENANCES,
@@ -469,6 +469,7 @@ export function createMediaAssetEndpoints<TItem>(
               failures.set(id, reason);
             }
             event = 'media.asset.archived';
+            await purgeAssetPaths(mediaConfig, ok);
             break;
           }
           case 'restore':
@@ -646,13 +647,7 @@ export function createMediaAssetEndpoints<TItem>(
 
         // The restored bytes may sit under the other visibility prefix.
         await setAssetsVisibility(db, mediaConfig, [assetId], status, scope);
-        if (mediaConfig.onPurge) {
-          try {
-            await mediaConfig.onPurge([`/media/asset/${assetId}`]);
-          } catch (err) {
-            console.error('[cms] media onPurge failed:', err);
-          }
-        }
+        await purgeAssetPaths(mediaConfig, [assetId]);
         await emitMediaEvents(cmsCtx.realtime, scope, [
           { event: 'media.asset.replaced', assetId, revisionId },
         ]);

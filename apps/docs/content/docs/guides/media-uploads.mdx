@@ -74,7 +74,7 @@ An entry moves through these statuses:
 | `preparing` | Hashing (`phase: 'hashing'`, with `dedupe`) or optimizing (`phase: 'optimizing'`, with the [media optimize plugin](/docs/plugins/media-optimize)). Images are optimized one at a time. |
 | `signing` | Requesting the signed URL. |
 | `uploading` | The PUT is running; `phase` turns `finalizing` once every byte is sent. |
-| `completing` | `completeUpload` is creating the row (`phase: 'processing'`). |
+| `completing` | `completeUpload` is creating the row (`phase: 'processing'`), then, with the media-optimize plugin, the renditions upload (`phase: 'renditions'`). |
 | `retrying` | Waiting before the next attempt; `attempt` counts retries and `nextRetryAt` says when (epoch ms). |
 | `paused` | Paused by `pause()`, by going offline, or waiting on a duplicate decision (`duplicateOf`). |
 | `success`, `error`, `aborted` | Final. `retry()` re-queues `error` entries (and a named `aborted` entry) with a fresh signature. |
@@ -93,24 +93,25 @@ Uploads are validated server-side against the limits (defaults: `maxFileSize` 4 
 | `replace` | `(assetId, file, options?) => Promise<CMSMediaUploadFileState>` | Queue new bytes for an existing asset (`createSignedReplace` + `commitReplace`). Options: `signal`, `optimize`, `revisionNote`. |
 | `isUploading` | `boolean` | `true` while any entry is active (`queued` through `completing`, or `retrying`). |
 | `progress` | `{ loaded, total, fraction, bytesPerSecond, eta }` | Bytes across every entry that is not `error` or `aborted`. `bytesPerSecond` is a smoothed rate (`null` until measured); `eta` is seconds left, `null` in the first 2.5 s of a transfer. |
-| `files` | `CMSMediaUploadFileState[]` | Every entry since the last `reset()`, in call order: `id`, `kind` (`create` or `replace`), `file`, `name`, `size`, `type`, `status`, `phase`, `loaded`, `total`, `progress`, `attempt`, `nextRetryAt`, `folderId`, `targetAssetId?`, `sha256?`, `duplicateOf?`, `error?` (`{ code, message, retryable, timedOut? }`), `optimize?` and `result?` (`{ id, slug, objectKey }`). |
+| `files` | `CMSMediaUploadFileState[]` | Every entry since the last `reset()`, in call order: `id`, `kind` (`create`, `replace`, or `rendition` with `parentId` and `variantKey`), `file`, `name`, `size`, `type`, `status`, `phase`, `loaded`, `total`, `progress`, `attempt`, `nextRetryAt`, `folderId`, `targetAssetId?`, `sha256?`, `duplicateOf?`, `error?` (`{ code, message, retryable, timedOut? }`), `optimize?` and `result?` (`{ id, slug, objectKey }`). |
 | `error` | `unknown` | The last error that failed an entry since the last `upload`, `replace` or `reset`; `null` otherwise. |
 | `budget` | `number` | Connections the queue may use now: 6, halved while throttled. |
 | `abort` | `(id?: string) => void` | Aborts one entry, or every unfinished entry. |
 | `retry` | `(id?: string) => void` | Re-queues one failed or aborted entry, or every failed entry. |
 | `pause` / `resume` | `(id?: string) => void` | Pauses or resumes one entry, or all. |
 | `resolveDuplicate` | `(id, decision) => void` | Settles an entry paused on a duplicate. |
+| `regenerateRenditions` | `(assetId) => Promise<CMSMediaUploadFileState[]>` | Downloads the original of an asset, runs it through the media-optimize plugin and uploads its renditions (existing ones are kept). Empty without the plugin. |
 | `reset` | `() => void` | Drops `success`, `error` and `aborted` entries and clears `error`; other entries stay. |
 
 The vanilla client exposes the same queue as the nanostores atom `client.media.uploadState`. After a reload, `takeInterruptedUploads()` (from `@createcms/core/react`, or `@createcms/core` for the vanilla client) returns the name, size and kind of every upload that was unfinished when the page was last hidden, so the app can ask the user to pick those files again.
 
 ### Optimize before upload
 
-Add the [media optimize plugin](/docs/plugins/media-optimize) and `upload` resizes, compresses and converts images in the browser before signing; see [Media optimize: Usage](/docs/plugins/media-optimize#usage).
+Add the [media optimize plugin](/docs/plugins/media-optimize) and `upload` removes GPS, reads the provenance and computes a placeholder in the browser, then uploads WebP renditions at 320, 640, 1280 and 1920 px as variants of the new asset. Each rendition is its own entry (`kind: 'rendition'`, `parentId`, `variantKey`); the parent finishes when they did, and `Media.UploadList` lists the parent only. See [Media optimize: Usage](/docs/plugins/media-optimize#usage).
 
 ### Serve an asset
 
-Serve assets through the CMS **gate**: `GET /media/asset/{id}`, a public redirect to the object, addressed by the **asset id** (which is exactly what content stores). Use this in content and on public pages — it enforces `status` (a `private` asset returns `ASSET_ACCESS_DENIED`; flip one to `public` with `updateAssetsStatus`) and honors `?format=` and `?w=` by resolving a **pre-uploaded** variant asset (falling back to the original). There is no on-the-fly transform: produce variants ahead of time (for example with the optimize plugin).
+Serve assets through the CMS **gate**: `GET /media/asset/{id}`, a public redirect to the object, addressed by the **asset id** (which is exactly what content stores). Use this in content and on public pages: it enforces `status` (a `private` asset returns `ASSET_ACCESS_DENIED`; flip one to `public` with `updateAssetsStatus`) and honors `?w=` and `?format=` by serving a **rendition**: `w` snaps up to the next rendition width, the `x-cms-rendition` header says `exact`, `nearest` (a larger rendition) or `miss` (the original, unless `strict=true`, which answers 404). There is no on-the-fly transform: produce renditions ahead of time with the optimize plugin. In React, `Media.Image` and `Media.Picture` build the `srcset` from the renditions that exist; see [React media: Media.Image](/docs/reference/react-media#mediaimage-and-mediapicture).
 
 ```html
 <img src="https://your-cms.example.com/media/asset/ast_6t4x5a98n2io352uhbkq" />

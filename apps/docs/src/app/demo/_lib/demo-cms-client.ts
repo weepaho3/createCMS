@@ -43,6 +43,7 @@ function idleUploadState(): CmsMediaUploadState {
     pause: () => {},
     resume: () => {},
     resolveDuplicate: () => {},
+    regenerateRenditions: async () => [],
     reset: () => {},
   };
 }

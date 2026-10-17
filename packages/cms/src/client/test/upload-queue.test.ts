@@ -708,6 +708,171 @@ describe('createUploadQueue', () => {
     });
   });
 
+  describe('renditions', () => {
+    const rendition = (variantKey: string) => ({
+      variantKey,
+      blob: new Blob([new Uint8Array(4)], { type: 'image/webp' }),
+      width: 320,
+      height: 200,
+    });
+
+    function renditionServer(
+      existing: Record<string, string> = {},
+      failCommit?: string,
+    ) {
+      return fakeServer({
+        '/media/createSignedRendition': (body) =>
+          existing[body.variantKey]
+            ? {
+                existing: {
+                  id: existing[body.variantKey],
+                  slug: 's',
+                  objectKey: 'k',
+                },
+                upload: null,
+              }
+            : {
+                existing: null,
+                upload: {
+                  id: `ast_${body.variantKey}`,
+                  objectKey: `pub/x/${body.variantKey}`,
+                  signedUrl: `https://bucket.test/${body.variantKey}`,
+                  headers: {},
+                  token: `rtok:${body.variantKey}`,
+                },
+              },
+        '/media/commitRendition': (body) => {
+          const key = body.token.split(':')[1];
+          if (key === failCommit) {
+            throw new CMSClientError({
+              code: 'RENDITION_MISMATCH',
+              message: 'bad',
+              status: 400,
+            });
+          }
+          return { asset: { id: `ast_${key}`, slug: key, objectKey: key } };
+        },
+      });
+    }
+
+    const optimizer = (keys: string[]) => ({
+      enabled: true,
+      process: async (input: File) => ({
+        file: input,
+        renditions: keys.map(rendition),
+        hints: { metadata: { dominantColor: '#112233' } },
+        info: {
+          optimized: true,
+          bytesBefore: 10,
+          bytesAfter: 10,
+          warnings: [],
+        },
+      }),
+    });
+
+    async function finishPuts() {
+      for (;;) {
+        await settle();
+        const open = openXHRs();
+        if (open.length === 0) return;
+        for (const xhr of open) xhr.fireLoad();
+      }
+    }
+
+    it('uploads renditions as children and finishes the parent after them', async () => {
+      const server = renditionServer();
+      const { state } = makeQueue(server.$fetch, {
+        getOptimizer: () => optimizer(['w320.webp', 'w640.webp']),
+      });
+
+      const done = state().upload([makeFile('a.png')]);
+      await settle();
+      openXHRs()[0].fireLoad();
+      await settle();
+      const parent = state().files[0];
+      expect(parent).toMatchObject({
+        status: 'completing',
+        phase: 'renditions',
+        result: { id: 'ast_a.png' },
+      });
+      const children = state().files.filter((f) => f.kind === 'rendition');
+      expect(
+        children.map((c) => [c.variantKey, c.parentId, c.targetAssetId]),
+      ).toEqual([
+        ['w320.webp', parent.id, 'ast_a.png'],
+        ['w640.webp', parent.id, 'ast_a.png'],
+      ]);
+
+      await finishPuts();
+      const [entry] = await done;
+      expect(entry.status).toBe('success');
+      expect(server.calls[1]).toMatchObject({
+        path: '/media/completeUpload',
+        body: {
+          uploads: [{ hints: { metadata: { dominantColor: '#112233' } } }],
+        },
+      });
+      expect(
+        server.paths().filter((p) => p === '/media/commitRendition'),
+      ).toHaveLength(2);
+    });
+
+    it('skips an existing rendition and reports a failed one on the parent', async () => {
+      const server = renditionServer({ 'w320.webp': 'ast_old' }, 'w640.webp');
+      const { state } = makeQueue(server.$fetch, {
+        getOptimizer: () => optimizer(['w320.webp', 'w640.webp']),
+      });
+
+      const done = state().upload([makeFile('a.png')]);
+      await finishPuts();
+      const [entry] = await done;
+
+      expect(entry.status).toBe('success');
+      expect(entry.optimize?.warnings).toEqual([
+        { code: 'rendition_failed', message: 'w640.webp: bad' },
+      ]);
+      const children = state().files.filter((f) => f.kind === 'rendition');
+      expect(children.map((c) => c.status)).toEqual(['success', 'error']);
+      expect(children[0].result?.id).toBe('ast_old');
+    });
+
+    it('regenerates the renditions of an existing asset', async () => {
+      const server = renditionServer();
+      server.calls.length = 0;
+      const getAssets = fakeServer({
+        '/media/getAssets': () => ({
+          assets: [
+            {
+              id: 'ast_x',
+              slug: 'x.png',
+              originalName: 'x.png',
+              mimeType: 'image/png',
+              deliveryUrl: '/api/cms/media/asset/ast_x',
+              folderId: null,
+            },
+          ],
+        }),
+      });
+      const $fetch = (async (path: string, init?: { body?: unknown }) =>
+        path === '/media/getAssets'
+          ? getAssets.$fetch(path, init)
+          : server.$fetch(path, init)) as CMSFetch;
+      const fetchBlob = vi.fn(async () => new Blob([new Uint8Array(8)]));
+      const { state } = makeQueue($fetch, {
+        getOptimizer: () => optimizer(['w320.webp']),
+        fetchBlob,
+      });
+
+      const pending = state().regenerateRenditions('ast_x');
+      await finishPuts();
+      const entries = await pending;
+      expect(fetchBlob).toHaveBeenCalledWith('/api/cms/media/asset/ast_x');
+      expect(entries).toMatchObject([
+        { kind: 'rendition', status: 'success', targetAssetId: 'ast_x' },
+      ]);
+    });
+  });
+
   it('withholds the ETA until the transfer warmed up', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     let clock = 0;

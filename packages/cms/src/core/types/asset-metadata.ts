@@ -42,6 +42,10 @@ export interface AssetMetadata {
     takenAt?: string;
     camera?: { make?: string; model?: string };
     colorSpace?: 'srgb' | 'display-p3' | 'other';
+    copyright?: string;
+    creator?: string;
+    /** GPS was removed from the stored bytes. */
+    gpsStripped?: boolean;
   };
   media?: {
     durationMs?: number;
@@ -51,6 +55,8 @@ export interface AssetMetadata {
     frameCount?: number;
     videoCodec?: string;
     audioCodec?: string;
+    /** Audio waveform: up to 2,000 peak values from 0 to 1. */
+    peaks?: number[];
   };
   /** At most 2,000 characters. */
   description?: string;
@@ -103,6 +109,9 @@ export const assetMetadataSchema: z.ZodType<AssetMetadata> = z.strictObject({
         })
         .optional(),
       colorSpace: z.enum(['srgb', 'display-p3', 'other']).optional(),
+      copyright: shortText.optional(),
+      creator: shortText.optional(),
+      gpsStripped: z.boolean().optional(),
     })
     .optional(),
   media: z
@@ -114,6 +123,7 @@ export const assetMetadataSchema: z.ZodType<AssetMetadata> = z.strictObject({
       frameCount: z.number().int().nonnegative().optional(),
       videoCodec: shortText.optional(),
       audioCodec: shortText.optional(),
+      peaks: z.array(z.number().min(0).max(1)).max(2000).optional(),
     })
     .optional(),
   description: z.string().max(2000).optional(),

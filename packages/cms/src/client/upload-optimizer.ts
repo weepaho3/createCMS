@@ -1,4 +1,8 @@
-import { readUploadAnnotation } from './upload-annotations';
+import type {
+  AssetMetadata,
+  AssetProvenance,
+} from '../core/types/asset-metadata';
+import type { CMSMediaUploadOptimizeInfo } from './types';
 
 /**
  * Shared-store key the media-optimize plugin publishes its auto-optimizer
@@ -7,39 +11,60 @@ import { readUploadAnnotation } from './upload-annotations';
  */
 export const UPLOAD_OPTIMIZER_KEY = 'media-optimize:uploadOptimizer';
 
-/**
- * Descriptor published on the shared client store. `optimize` returns one
- * file per input (the optimized output or the untouched input).
- */
+/** A rendition the queue uploads as a variant once the asset exists. */
+export type UploadRendition = {
+  /** Canonical variant key, e.g. `w640.webp`. */
+  variantKey: string;
+  blob: Blob;
+  width: number;
+  height: number;
+};
+
+/** Untrusted descriptions sent with `completeUpload` (`hints`). */
+export type UploadHints = {
+  metadata?: AssetMetadata;
+  provenance?: AssetProvenance;
+};
+
+/** What the optimizer made of one file. */
+export type OptimizedUpload = {
+  /** The file to upload as the asset. */
+  file: File;
+  renditions: UploadRendition[];
+  hints?: UploadHints;
+  info?: CMSMediaUploadOptimizeInfo;
+};
+
+/** Descriptor published on the shared client store. */
 export type UploadOptimizer = {
   enabled: boolean;
-  optimize: (files: File[]) => Promise<File[]>;
+  process: (file: File) => Promise<OptimizedUpload>;
 };
 
 /**
- * Runs the optimizer without ever blocking the upload: a rejection or a
- * result of the wrong length falls back to the original files. Outside
- * production, optimizer warnings are logged.
+ * Runs the optimizer without ever blocking the upload: a rejection falls
+ * back to the original file without renditions. Outside production,
+ * optimizer warnings are logged.
  */
-export async function optimizeOrPassThrough(
+export async function runOptimizer(
   optimizer: UploadOptimizer,
-  files: File[],
-): Promise<File[]> {
-  let output: File[];
+  file: File,
+): Promise<OptimizedUpload> {
+  let output: OptimizedUpload;
   try {
-    output = await optimizer.optimize(files);
+    output = await optimizer.process(file);
   } catch (err) {
     if (process.env.NODE_ENV !== 'production') {
-      console.warn('[cms] media optimization failed, uploading originals', err);
+      console.warn(
+        '[cms] media optimization failed, uploading the original',
+        err,
+      );
     }
-    return files;
+    return { file, renditions: [] };
   }
-  if (output.length !== files.length) return files;
   if (process.env.NODE_ENV !== 'production') {
-    for (const file of output) {
-      for (const warning of readUploadAnnotation(file)?.warnings ?? []) {
-        console.warn(`[cms] ${warning.code}: ${file.name}: ${warning.message}`);
-      }
+    for (const warning of output.info?.warnings ?? []) {
+      console.warn(`[cms] ${warning.code}: ${file.name}: ${warning.message}`);
     }
   }
   return output;

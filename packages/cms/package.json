@@ -112,6 +112,10 @@
       "types": "./dist/plugins/media-optimize/index.d.ts",
       "default": "./dist/plugins/media-optimize/index.js"
     },
+    "./plugins/media-optimize/worker": {
+      "types": "./dist/plugins/media-optimize/worker.d.ts",
+      "default": "./dist/plugins/media-optimize/worker.js"
+    },
     "./plugins/consent": {
       "types": "./dist/plugins/consent/index.d.ts",
       "default": "./dist/plugins/consent/index.js"
@@ -163,6 +167,7 @@
     "ora": "^9.4.1",
     "prompts": "^2.4.2",
     "slugify": "^1.6.8",
+    "thumbhash": "^0.1.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {

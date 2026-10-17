@@ -362,6 +362,47 @@ revisionId? }`; the inferred property type is the `ImageValue` union.
   `progress: { loaded: 0, total: 0, fraction: 0, bytesPerSecond: null, eta: null }`;
   custom message catalogs add `upload.status` texts for every status.
 
+- **The media-optimize plugin is a rendition pipeline with a new config.**
+  `compress`, `resize`, `convert` and `webpEncoder` are gone, and so are
+  `optimizeImage`, `optimizeFiles`, `optimizeForUpload` and the
+  `OptimizationConfig` type (no longer exported from `@createcms/core`). The
+  plugin now keeps the original (GPS removed), uploads WebP renditions at
+  320, 640, 1280 and 1920 px as variants, and takes `original`,
+  `renditions`, `quality`, `avif`, `stripGps`, `keepCopyright`,
+  `placeholder`, `concurrency`, `timeoutMsPerMegapixel`, `provenance`,
+  `codecs`, `pdf` and `worker`. `useOptimize` resolves to `OptimizeOutput`
+  per file. A custom `UploadOptimizer` implements `process(file)` returning
+  `{ file, renditions, hints?, info? }` instead of `optimize(files)`.
+  → **Migration:** replace `mediaOptimizeClient({ convert: { format: 'webp' }, webpEncoder })`
+  with `mediaOptimizeClient({ codecs: { webp: () => import('@jsquash/webp/encode') } })`;
+  a fixed `resize.maxSize` becomes `original: 'master'` with
+  `masterLongEdge`; read results from `OptimizeOutput` instead of
+  `OptimizeResult`.
+
+- **The asset endpoint serves renditions by snapped width.** `?w=` snaps up
+  to the next of `renditionWidths` (default 320, 640, 1280, 1920) and a
+  larger `w` answers 400 `RENDITION_WIDTH_UNSUPPORTED`; `?format` without
+  `w` asks for the largest width, and `w` without `format` for WebP. A
+  missing rendition falls back to the next larger one, then to the
+  original; `strict=true` answers 404 `RENDITION_NOT_FOUND` instead.
+  → **Migration:** request widths from the ladder (or set
+  `renditionWidths`), and include `strict` in CDN cache keys if you use it.
+
+- **Upload queue entries include renditions.** With the media-optimize
+  plugin, a finished upload stays `completing` (phase `renditions`) until
+  its rendition entries (`kind: 'rendition'`, `parentId`, `variantKey`)
+  finished; the queue state gains `regenerateRenditions(assetId)`.
+  `@createcms/react` mirrors this in `CmsMediaUploadFileState` and
+  `CmsMediaUploadState`, and `Media.UploadList` lists parents only.
+  → **Migration:** fakes of the upload state add `regenerateRenditions`;
+  code that iterates `files` skips entries with a `parentId` if it lists
+  uploads.
+
+- **A declared AVIF must be AVIF.** `completeUpload` and the server upload
+  paths now recognize AVIF bytes, so a file declared `image/avif` whose
+  bytes are not AVIF is rejected with `INVALID_FILE_TYPE`.
+  → **Migration:** none for valid files.
+
 ---
 
 ## 0.6.0 — 2026-08-14

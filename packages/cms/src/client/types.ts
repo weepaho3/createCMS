@@ -68,20 +68,29 @@ export type CMSMediaUploadStatus =
 /**
  * Detail within a status: `hashing`/`optimizing` while `preparing`,
  * `finalizing` once every byte is sent but the PUT has not answered,
- * `processing` while `completing`.
+ * `processing` while `completing`, and `renditions` once the asset exists
+ * while its rendition entries upload.
  */
 export type CMSMediaUploadPhase =
   | 'hashing'
   | 'optimizing'
   | 'finalizing'
   | 'processing'
+  | 'renditions'
   | null;
 
 export type CMSMediaUploadFileState = {
   /** Stable per-entry id, unique for the queue's lifetime. */
   id: string;
-  /** `create` uploads a new asset; `replace` swaps the bytes of `targetAssetId`. */
-  kind: 'create' | 'replace';
+  /**
+   * `create` uploads a new asset; `replace` swaps the bytes of
+   * `targetAssetId`; `rendition` adds the variant `variantKey` to it.
+   */
+  kind: 'create' | 'replace' | 'rendition';
+  /** The entry a `rendition` entry belongs to. */
+  parentId?: string;
+  /** The variant a `rendition` entry produces, e.g. `w640.webp`. */
+  variantKey?: string;
   file: File;
   name: string;
   size: number;
@@ -97,7 +106,7 @@ export type CMSMediaUploadFileState = {
   /** When a `retrying` entry tries again (epoch ms). */
   nextRetryAt: number | null;
   folderId: string | null;
-  /** The asset a `replace` entry swaps. */
+  /** The asset a `replace` entry swaps, or a `rendition` entry belongs to. */
   targetAssetId?: string;
   /** Base64 SHA-256 of the bytes, once hashed. */
   sha256?: string;
@@ -188,6 +197,13 @@ export type CMSMediaUploadState = {
   resume: (id?: string) => void;
   /** Settles an entry waiting on a duplicate. */
   resolveDuplicate: (id: string, decision: CMSMediaDuplicateDecision) => void;
+  /**
+   * Downloads the original of `assetId`, runs it through the optimizer and
+   * uploads its renditions (existing ones are kept). Resolves with the
+   * rendition entries once each settled; empty without the media-optimize
+   * plugin.
+   */
+  regenerateRenditions: (assetId: string) => Promise<CMSMediaUploadFileState[]>;
   /** Drops finished entries (success, error, aborted) and clears `error`. */
   reset: () => void;
 };

@@ -4002,3 +4002,348 @@ describe('custom storage adapter', () => {
     expect(second.sweepCursor).toBeNull();
   });
 });
+
+// ============================================================================
+// Renditions and the asset endpoint's rendition resolution
+// ============================================================================
+
+/** The 30-byte head of a WebP (VP8X) of the given canvas size. */
+function webpOfSize(width: number, height: number): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(30);
+  bytes.set(new TextEncoder().encode('RIFF'), 0);
+  bytes.set(new TextEncoder().encode('WEBPVP8X'), 8);
+  bytes[16] = 10;
+  const w = width - 1;
+  const h = height - 1;
+  bytes.set([w & 0xff, (w >> 8) & 0xff, (w >> 16) & 0xff], 24);
+  bytes.set([h & 0xff, (h >> 8) & 0xff, (h >> 16) & 0xff], 27);
+  return bytes;
+}
+
+describe('renditions', () => {
+  let cleanup: (() => Promise<void>) | undefined;
+  afterEach(async () => {
+    await cleanup?.();
+  });
+
+  async function setup(status: 'public' | 'private' = 'private') {
+    const ctx = await setupTestCMS({ withS3: true });
+    cleanup = ctx.s3.cleanup;
+    const { assets: created } = await uploadSigned(ctx.cms, [
+      { name: 'hero.png', type: 'image/png' },
+    ]);
+    if (status === 'public') {
+      await ctx.cms.api.media.updateAssetsStatus({
+        body: { assetIds: [created[0].id], status: 'public' },
+      });
+    }
+    return { ...ctx, original: created[0] };
+  }
+
+  async function produce(
+    cms: TestCMS,
+    assetId: string,
+    variantKey: string,
+    bytes: Uint8Array<ArrayBuffer>,
+  ) {
+    const signed = await cms.api.media.createSignedRendition({
+      body: { assetId, variantKey, size: bytes.byteLength },
+    });
+    expect(signed.upload).not.toBeNull();
+    await putWithHeaders(signed.upload!, bytes);
+    return { signed, bytes };
+  }
+
+  it('creates a variant with its key, dimensions and the original status', async () => {
+    const { cms, db, original } = await setup('public');
+    const { signed } = await produce(
+      cms,
+      original.id,
+      'w640.webp',
+      webpOfSize(640, 427),
+    );
+    expect(signed.upload!.objectKey).toMatch(/^pub\/ast_[0-9a-z]+\//);
+
+    const { asset } = await cms.api.media.commitRendition({
+      body: { token: signed.upload!.token },
+    });
+    const [row] = await db.select().from(assets).where(eq(assets.id, asset.id));
+    expect(row).toMatchObject({
+      variantOf: original.id,
+      variantKey: 'w640.webp',
+      width: 640,
+      height: 427,
+      status: 'public',
+      mimeType: 'image/webp',
+    });
+
+    // Committing again returns the same row.
+    const again = await cms.api.media.commitRendition({
+      body: { token: signed.upload!.token },
+    });
+    expect(again.asset.id).toBe(asset.id);
+  });
+
+  it('returns the live variant instead of signing a duplicate', async () => {
+    const { cms, original } = await setup();
+    const { signed } = await produce(
+      cms,
+      original.id,
+      'w320.webp',
+      webpOfSize(320, 200),
+    );
+    const { asset } = await cms.api.media.commitRendition({
+      body: { token: signed.upload!.token },
+    });
+
+    const second = await cms.api.media.createSignedRendition({
+      body: { assetId: original.id, variantKey: 'w320.webp', size: 30 },
+    });
+    expect(second.upload).toBeNull();
+    expect(second.existing?.id).toBe(asset.id);
+  });
+
+  it('rejects and deletes a rendition of the wrong width or format', async () => {
+    const { cms, s3, original } = await setup();
+    const wide = await produce(
+      cms,
+      original.id,
+      'w640.webp',
+      webpOfSize(800, 500),
+    );
+    await expect(
+      cms.api.media.commitRendition({
+        body: { token: wide.signed.upload!.token },
+      }),
+    ).rejects.toMatchObject({ body: { code: 'RENDITION_MISMATCH' } });
+    expect(
+      await objectExists(objectUrl(s3, wide.signed.upload!.objectKey)),
+    ).toBe(false);
+
+    const signed = await cms.api.media.createSignedRendition({
+      body: {
+        assetId: original.id,
+        variantKey: 'w1280.webp',
+        size: PNG_BYTES.byteLength,
+      },
+    });
+    await putWithHeaders(signed.upload!, PNG_BYTES);
+    await expect(
+      cms.api.media.commitRendition({ body: { token: signed.upload!.token } }),
+    ).rejects.toMatchObject({ body: { code: 'INVALID_FILE_TYPE' } });
+  });
+
+  it('rejects a non-canonical key and a variant as the original', async () => {
+    const { cms, original } = await setup();
+    await expect(
+      cms.api.media.createSignedRendition({
+        body: { assetId: original.id, variantKey: 'w0640.webp', size: 10 },
+      }),
+    ).rejects.toMatchObject({ body: { code: 'VALIDATION_ERROR' } });
+
+    const { signed } = await produce(
+      cms,
+      original.id,
+      'w320.webp',
+      webpOfSize(320, 200),
+    );
+    const { asset } = await cms.api.media.commitRendition({
+      body: { token: signed.upload!.token },
+    });
+    await expect(
+      cms.api.media.createSignedRendition({
+        body: { assetId: asset.id, variantKey: 'w320.webp', size: 10 },
+      }),
+    ).rejects.toMatchObject({ body: { code: 'ASSET_NOT_FOUND' } });
+  });
+
+  it('rejects an upload token as a rendition token', async () => {
+    const { cms } = await setup();
+    const { uploads } = await cms.api.media.createSignedUpload({
+      body: { files: [{ name: 'a.png', size: 8, type: 'image/png' }] },
+    });
+    await expect(
+      cms.api.media.commitRendition({ body: { token: uploads[0].token } }),
+    ).rejects.toMatchObject({ body: { code: 'UPLOAD_TOKEN_INVALID' } });
+  });
+
+  describe('asset endpoint', () => {
+    async function withLadder() {
+      const ctx = await setup('public');
+      for (const [key, w] of [
+        ['w320.webp', 320],
+        ['w1280.webp', 1280],
+      ] as const) {
+        const { signed } = await produce(
+          ctx.cms,
+          ctx.original.id,
+          key,
+          webpOfSize(w, Math.round(w / 2)),
+        );
+        await ctx.cms.api.media.commitRendition({
+          body: { token: signed.upload!.token },
+        });
+      }
+      const get = (query: string) =>
+        ctx.cms.router.handler(
+          new Request(
+            `http://localhost/api/cms/media/asset/${ctx.original.id}?${query}`,
+          ),
+        );
+      return { ...ctx, get };
+    }
+
+    it('serves the exact rendition', async () => {
+      const { get } = await withLadder();
+      const res = await get('w=300');
+      expect(res.status).toBe(302);
+      expect(res.headers.get('x-cms-rendition')).toBe('exact');
+      expect(res.headers.get('location')).toContain('hero-w320.webp');
+    });
+
+    it('serves the next larger rendition for a missing width', async () => {
+      const { get } = await withLadder();
+      // 600 snaps to 640, which does not exist.
+      const res = await get('w=600&format=webp');
+      expect(res.headers.get('x-cms-rendition')).toBe('nearest');
+      expect(res.headers.get('location')).toContain('hero-w1280.webp');
+    });
+
+    it('serves the original on a miss, and 404 in strict mode', async () => {
+      const onRenditionMiss = vi.fn();
+      const ctx = await setupTestCMS({
+        withS3: true,
+        media: { onRenditionMiss },
+      });
+      cleanup = ctx.s3.cleanup;
+      const { assets: created } = await uploadSigned(ctx.cms, [
+        { name: 'photo.png', type: 'image/png' },
+      ]);
+      await ctx.cms.api.media.updateAssetsStatus({
+        body: { assetIds: [created[0].id], status: 'public' },
+      });
+      const get = (query: string) =>
+        ctx.cms.router.handler(
+          new Request(
+            `http://localhost/api/cms/media/asset/${created[0].id}?${query}`,
+          ),
+        );
+
+      const res = await get('w=640&format=avif');
+      expect(res.status).toBe(302);
+      expect(res.headers.get('x-cms-rendition')).toBe('miss');
+      expect(res.headers.get('location')).toContain('photo.png');
+      expect(onRenditionMiss).toHaveBeenCalledWith({
+        assetId: created[0].id,
+        variantKey: 'w640.avif',
+      });
+
+      const strict = await get('w=640&strict=true');
+      expect(strict.status).toBe(404);
+      expect(await strict.json()).toMatchObject({
+        code: 'RENDITION_NOT_FOUND',
+      });
+    });
+
+    it('answers 400 above the largest rendition width', async () => {
+      const { get } = await withLadder();
+      const res = await get('w=4000');
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({
+        code: 'RENDITION_WIDTH_UNSUPPORTED',
+      });
+    });
+  });
+});
+
+describe('completeUpload description', () => {
+  let cleanup: (() => Promise<void>) | undefined;
+  afterEach(async () => {
+    await cleanup?.();
+  });
+
+  const IPTC = 'http://cv.iptc.org/newscodes/digitalsourcetype/';
+
+  async function complete(
+    bytes: Uint8Array<ArrayBuffer>,
+    type: string,
+    hints?: Record<string, unknown>,
+  ) {
+    const ctx = await setupTestCMS({ withS3: true });
+    cleanup = ctx.s3.cleanup;
+    const { uploads } = await ctx.cms.api.media.createSignedUpload({
+      body: { files: [{ name: 'file', size: bytes.byteLength, type }] },
+    });
+    await putSigned(uploads[0], bytes);
+    const result = await ctx.cms.api.media.completeUpload({
+      body: { uploads: [{ token: uploads[0].token, hints }] },
+    });
+    expect(result.errors).toEqual([]);
+    const [row] = await ctx.db
+      .select()
+      .from(assets)
+      .where(eq(assets.id, result.assets[0].id));
+    return row;
+  }
+
+  it('stores dimensions read from the object', async () => {
+    const row = await complete(webpOfSize(800, 600), 'image/webp');
+    expect(row).toMatchObject({ width: 800, height: 600 });
+  });
+
+  it('stores provenance read from the XMP of the object', async () => {
+    const bytes = new Uint8Array([
+      0xff,
+      0xd8,
+      0xff,
+      0xe1,
+      ...new TextEncoder().encode(
+        `<rdf:Description Iptc4xmpExt:DigitalSourceType="${IPTC}trainedAlgorithmicMedia"/>`,
+      ),
+    ]);
+    const row = await complete(bytes, 'image/jpeg', {
+      provenance: 'captured',
+    });
+    expect(row.provenance).toBe('ai_generated');
+    expect(row.metadata).toMatchObject({
+      iptcDigitalSourceType: `${IPTC}trainedAlgorithmicMedia`,
+      provenanceSource: 'iptc',
+    });
+  });
+
+  it('keeps allowlisted hints and lets a hint only raise unknown provenance', async () => {
+    const row = await complete(PNG_BYTES, 'image/png', {
+      provenance: 'ai_edited',
+      metadata: {
+        placeholder: { thumbhash: 'YJqGPQw7sFlslqhFafSE+Q6oJ1h2iHB2Rw==' },
+        dominantColor: '#336699',
+        description: 'not taken from a hint',
+      },
+    });
+    expect(row.provenance).toBe('ai_edited');
+    expect(row.metadata).toEqual({
+      placeholder: { thumbhash: 'YJqGPQw7sFlslqhFafSE+Q6oJ1h2iHB2Rw==' },
+      dominantColor: '#336699',
+    });
+  });
+
+  it('rejects hints that fail the metadata schema', async () => {
+    const ctx = await setupTestCMS({ withS3: true });
+    cleanup = ctx.s3.cleanup;
+    const { uploads } = await ctx.cms.api.media.createSignedUpload({
+      body: { files: [{ name: 'a.png', size: 8, type: 'image/png' }] },
+    });
+    await expect(
+      ctx.cms.api.media.completeUpload({
+        body: {
+          uploads: [
+            {
+              token: uploads[0].token,
+              hints: { metadata: { exif: { gps: [1, 2] } } },
+            },
+          ],
+        },
+      }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+});

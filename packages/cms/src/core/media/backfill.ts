@@ -88,7 +88,12 @@ export async function runMediaBackfill(
   const parentSlug = new Map(parents.map((p) => [p.id, p.slug]));
   const storage = getStorage(media);
 
-  for (const row of rows) {
+  // Within a batch, the variant without a collision counter (the shorter
+  // slug) claims a contested key first; the counted duplicate is detached.
+  const ordered = [...rows].sort(
+    (a, b) => a.slug.length - b.slug.length || a.slug.localeCompare(b.slug),
+  );
+  for (const row of ordered) {
     const set: Partial<typeof assets.$inferInsert> = {};
 
     if (!row.originalName) {

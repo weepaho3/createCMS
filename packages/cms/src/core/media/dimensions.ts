@@ -1,6 +1,6 @@
 /**
  * Image dimensions from the first bytes of a file (PNG IHDR, JPEG SOF, WebP
- * VP8/VP8L/VP8X, GIF), or `null` when the header is not recognized or lies
+ * VP8/VP8L/VP8X, GIF, AVIF/HEIF `ispe`), or `null` when the header is not recognized or lies
  * beyond the bytes given. No DOM or Node APIs.
  */
 export function readImageDimensions(
@@ -44,6 +44,25 @@ export function readImageDimensions(
         width: view.getUint16(26, true) & 0x3fff,
         height: view.getUint16(28, true) & 0x3fff,
       };
+    }
+    return null;
+  }
+
+  // AVIF/HEIF: the first `ispe` (image spatial extents) property box, a
+  // full box (version and flags) followed by big-endian width and height.
+  if (has(12) && ascii(4, 4) === 'ftyp') {
+    for (let i = 4; i + 16 <= bytes.length; i++) {
+      if (
+        bytes[i] === 0x69 &&
+        bytes[i + 1] === 0x73 &&
+        bytes[i + 2] === 0x70 &&
+        bytes[i + 3] === 0x65
+      ) {
+        return {
+          width: view.getUint32(i + 8),
+          height: view.getUint32(i + 12),
+        };
+      }
     }
     return null;
   }

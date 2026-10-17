@@ -320,6 +320,19 @@ export const CMS_ERRORS = {
     status: 409 as const,
     message: 'The asset changed since it was read; reload it and retry',
   },
+  RENDITION_MISMATCH: {
+    status: 400 as const,
+    message:
+      'The uploaded rendition does not match its variant key (format or dimensions)',
+  },
+  RENDITION_WIDTH_UNSUPPORTED: {
+    status: 400 as const,
+    message: 'The requested width is larger than every rendition width',
+  },
+  RENDITION_NOT_FOUND: {
+    status: 404 as const,
+    message: 'No rendition of this asset matches the request',
+  },
   REVISION_NOT_FOUND: {
     status: 404 as const,
     message: 'Revision not found for this asset',

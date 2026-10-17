@@ -122,7 +122,14 @@ async function deleteKeys(storage: StorageAdapter, keys: string[]) {
   for (const key of keys) await storage.delete(key);
 }
 
-async function purge(config: MediaConfig, assetIds: string[]) {
+/**
+ * Calls `onPurge` with the asset endpoint paths of `assetIds`, whose cached
+ * redirects point at objects that changed. Errors are logged, never thrown.
+ */
+export async function purgeAssetPaths(
+  config: MediaConfig,
+  assetIds: string[],
+): Promise<void> {
   if (!config.onPurge || assetIds.length === 0) return;
   try {
     await config.onPurge(assetIds.map((id) => `/media/asset/${id}`));
@@ -247,7 +254,7 @@ export async function setAssetsVisibility(
   } catch (err) {
     console.error('[cms] deleting moved media objects failed:', err);
   }
-  await purge(
+  await purgeAssetPaths(
     config,
     changed.filter((id) => movesByAsset.has(id)),
   );

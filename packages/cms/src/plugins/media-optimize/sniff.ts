@@ -1,33 +1,7 @@
 /**
- * Byte-level checks that decide whether a file may be re-encoded. All of them
- * read a prefix of the file and need no DOM.
+ * Animation detection on the leading bytes of a file. Animated images skip
+ * the raster pipeline (a re-encode keeps only the first frame). No DOM.
  */
-
-/**
- * Input types the canvas pipeline re-encodes. Everything else (SVG, GIF,
- * ICO, BMP, HEIC/HEIF, AVIF, TIFF, ...) is uploaded byte-identical: canvas
- * cannot encode most of them, `toBlob` silently falls back to PNG for
- * unsupported targets, and rasterizing SVG or GIF loses vector data or
- * animation frames.
- */
-export const ENCODABLE_TYPES: ReadonlySet<string> = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-]);
-
-/** File extension written for each encodable output type. */
-export const OUTPUT_EXTENSIONS: Readonly<Record<string, string>> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-};
-
-/** Prefix length scanned for animation chunks. */
-export const ANIMATION_SCAN_BYTES = 4096;
-
-/** Prefix length scanned for provenance markers (XMP, C2PA JUMBF). */
-export const PROVENANCE_SCAN_BYTES = 256 * 1024;
 
 const encoder = new TextEncoder();
 
@@ -80,36 +54,25 @@ export function isAnimatedPng(bytes: Uint8Array): boolean {
   return false;
 }
 
+/**
+ * True for a GIF with more than one frame: a second graphic control
+ * extension (`21 F9`), which precedes every frame of an animation.
+ */
+export function isAnimatedGif(bytes: Uint8Array): boolean {
+  if (ascii(bytes, 0, 4) !== 'GIF8') return false;
+  let frames = 0;
+  for (let i = 13; i < bytes.length - 1; i++) {
+    if (bytes[i] === 0x21 && bytes[i + 1] === 0xf9 && ++frames > 1) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** True when the bytes of `type` hold more than one frame. */
 export function isAnimated(type: string, bytes: Uint8Array): boolean {
   if (type === 'image/webp') return isAnimatedWebp(bytes);
   if (type === 'image/png') return isAnimatedPng(bytes);
+  if (type === 'image/gif') return isAnimatedGif(bytes);
   return false;
-}
-
-const DIGITAL_SOURCE_TYPE = encoder.encode('DigitalSourceType');
-const JUMBF_BOX = encoder.encode('jumb');
-const C2PA_LABEL = encoder.encode('c2pa');
-
-/**
- * True when the prefix carries machine-readable provenance: an XMP
- * `Iptc4xmpExt:DigitalSourceType` property or a C2PA manifest (a JUMBF `jumb`
- * box labelled `c2pa`). Any canvas re-encode drops both, so such files must
- * reach the bucket unchanged.
- */
-export function hasProvenanceMarker(bytes: Uint8Array): boolean {
-  if (indexOfBytes(bytes, DIGITAL_SOURCE_TYPE) !== -1) return true;
-  return (
-    indexOfBytes(bytes, JUMBF_BOX) !== -1 &&
-    indexOfBytes(bytes, C2PA_LABEL) !== -1
-  );
-}
-
-/** `name` with its extension replaced by the one for `type`. */
-export function outputName(name: string, type: string): string {
-  const ext = OUTPUT_EXTENSIONS[type];
-  if (!ext) return name;
-  const dot = name.lastIndexOf('.');
-  const base = dot > 0 ? name.slice(0, dot) : name;
-  return `${base}.${ext}`;
 }

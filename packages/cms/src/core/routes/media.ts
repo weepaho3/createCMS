@@ -16,8 +16,9 @@ import {
 } from 'drizzle-orm';
 import * as z from 'zod';
 
+import type { VariantFormat } from '../media/variant-key';
 import type { CMSProcedureContext, MediaConfig } from '../types';
-import type { AssetMetadata } from '../types/asset-metadata';
+import type { AssetMetadata, AssetProvenance } from '../types/asset-metadata';
 import type { ResolvedScope } from '../types/definitions';
 
 import { newId } from '../../utils/nanoid';
@@ -30,13 +31,16 @@ import {
 import { CMSError, errorMessages } from '../errors';
 import { archiveAssetsInScope } from '../media/archive';
 import { contentDisposition } from '../media/content-disposition';
+import { readImageDimensions } from '../media/dimensions';
 import { emitMediaEvents } from '../media/events';
 import {
   assetObjectKey,
   cacheControlFor,
+  purgeAssetPaths,
   setAssetsVisibility,
   uploadAcl,
 } from '../media/placement';
+import { PROVENANCE_SCAN_BYTES, readProvenance } from '../media/provenance';
 import {
   deriveUploadKey,
   mintUploadToken,
@@ -62,6 +66,10 @@ import {
 } from '../storage/adapter';
 import { getStorage } from '../storage/get-storage';
 import { buildPublicObjectUrl, buildVariantSlug } from '../storage/s3/utils';
+import {
+  ASSET_PROVENANCES,
+  assetMetadataSchema,
+} from '../types/asset-metadata';
 import { MEDIA_DEFAULTS } from '../types/s3';
 import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
 import { createMediaAssetEndpoints } from './media-assets';
@@ -126,11 +134,49 @@ const MEDIA_META = {
  * declared type outside this set (e.g. a custom-configured `image/avif`) is left
  * to the declared-type allowlist rather than false-rejected.
  */
+/**
+ * Descriptive metadata a client may send with `completeUpload` (computed by
+ * the media-optimize worker). Untrusted: validated against
+ * `assetMetadataSchema`, and only these keys are kept.
+ */
+const HINT_METADATA_KEYS = [
+  'placeholder',
+  'dominantColor',
+  'exif',
+  'media',
+] as const satisfies readonly (keyof AssetMetadata)[];
+
+const uploadHintsSchema = z.object({
+  metadata: assetMetadataSchema.optional(),
+  provenance: z.enum(ASSET_PROVENANCES).optional(),
+});
+
+type UploadHints = z.infer<typeof uploadHintsSchema>;
+
+type CompletedUploadExtra = {
+  width?: number;
+  height?: number;
+  provenance?: AssetProvenance;
+  metadata?: AssetMetadata;
+};
+
+/** Content type of each rendition format. */
+const RENDITION_MIME: Readonly<Record<VariantFormat, string>> = {
+  webp: 'image/webp',
+  avif: 'image/avif',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+};
+
+/** Leading bytes read to verify a rendition's format and dimensions. */
+const RENDITION_HEADER_BYTES = 64 * 1024;
+
 const SNIFFABLE_IMAGE_TYPES = new Set([
   'image/png',
   'image/jpeg',
   'image/gif',
   'image/webp',
+  'image/avif',
 ]);
 
 /**
@@ -185,6 +231,11 @@ function sniffImageType(bytes: Uint8Array): string | undefined {
     bytes[11] === 0x50
   ) {
     return 'image/webp';
+  }
+  // AVIF: ISO BMFF 'ftyp' box with an 'avif' or 'avis' major brand.
+  if (bytes.length >= 12) {
+    const box = String.fromCharCode(...bytes.subarray(4, 12));
+    if (box === 'ftypavif' || box === 'ftypavis') return 'image/avif';
   }
   return undefined;
 }
@@ -440,37 +491,76 @@ export function createMediaEndpoints(
     return grouped;
   }
 
+  const renditionWidths = [
+    ...new Set(mediaConfig.renditionWidths ?? MEDIA_DEFAULTS.renditionWidths),
+  ].sort((a, b) => a - b);
+
   /**
-   * The live variant of `asset` for `?format` and `?w`: by canonical
-   * `variantKey` when both are given, else by the former slug scheme
-   * (variants not yet backfilled).
+   * The rendition of `asset` the asset endpoint serves for `?w` and
+   * `?format` (default `webp`). `w` snaps up to the next rendition width;
+   * without `w` the largest width is asked for. `exact`: the live variant
+   * with that `variantKey` (or, for variants not yet backfilled, the former
+   * slug scheme). `nearest`: the smallest live image variant of the same
+   * format that is at least as wide. `miss`: neither exists.
    */
-  async function findVariant(
-    asset: { id: string; slug: string; mimeType: string },
-    format: 'webp' | 'jpeg' | 'png' | undefined,
-    width: number | undefined,
-  ) {
-    const select = (match: SQL) =>
-      db
-        .select({ objectKey: assets.objectKey, mimeType: assets.mimeType })
-        .from(assets)
-        .where(
-          and(eq(assets.variantOf, asset.id), isNull(assets.archivedAt), match),
-        )
-        .limit(1);
-    if (format && width) {
-      const key = parseVariantKey(`w${width}.${format}`);
-      if (key) {
-        const [byKey] = await select(
-          eq(assets.variantKey, formatVariantKey(key)),
-        );
-        if (byKey) return byKey;
+  async function resolveRendition(
+    asset: { id: string; slug: string },
+    format: VariantFormat | undefined,
+    requestedWidth: number | undefined,
+  ): Promise<{
+    variantKey: string;
+    match: 'exact' | 'nearest' | 'miss';
+    variant: { objectKey: string; mimeType: string } | null;
+  }> {
+    let width = renditionWidths.at(-1) ?? requestedWidth ?? 1;
+    if (requestedWidth !== undefined) {
+      const snapped = renditionWidths.find((w) => w >= requestedWidth);
+      if (snapped === undefined) {
+        throw new CMSError('RENDITION_WIDTH_UNSUPPORTED', {
+          message: `Width ${requestedWidth} is larger than the largest rendition width (${renditionWidths.at(-1)})`,
+        });
+      }
+      width = snapped;
+    }
+    const wanted = { kind: 'image' as const, width, format: format ?? 'webp' };
+    const variantKey = formatVariantKey(wanted);
+
+    const variants = await db
+      .select({
+        objectKey: assets.objectKey,
+        mimeType: assets.mimeType,
+        variantKey: assets.variantKey,
+        slug: assets.slug,
+      })
+      .from(assets)
+      .where(and(eq(assets.variantOf, asset.id), isNull(assets.archivedAt)));
+
+    const legacySlug = buildVariantSlug(asset.slug, format, requestedWidth);
+    const exact =
+      variants.find((v) => v.variantKey === variantKey) ??
+      variants.find((v) => v.variantKey === null && v.slug === legacySlug);
+    if (exact) return { variantKey, match: 'exact', variant: exact };
+
+    let nearest: { width: number; variant: (typeof variants)[number] } | null =
+      null;
+    for (const v of variants) {
+      const spec = v.variantKey ? parseVariantKey(v.variantKey) : null;
+      if (
+        !spec ||
+        spec.kind !== 'image' ||
+        spec.format !== wanted.format ||
+        spec.width < width
+      ) {
+        continue;
+      }
+      if (!nearest || spec.width < nearest.width) {
+        nearest = { width: spec.width, variant: v };
       }
     }
-    const [bySlug] = await select(
-      eq(assets.slug, buildVariantSlug(asset.slug, format, width)),
-    );
-    return bySlug;
+    if (nearest) {
+      return { variantKey, match: 'nearest', variant: nearest.variant };
+    }
+    return { variantKey, match: 'miss', variant: null };
   }
 
   const maxFileSize = mediaConfig.maxFileSize ?? MEDIA_DEFAULTS.maxFileSize;
@@ -576,6 +666,47 @@ export function createMediaEndpoints(
   }
 
   /**
+   * Columns the server derives for a verified upload: dimensions and
+   * provenance read from the object's leading bytes, plus the client's
+   * descriptive hints (placeholder, colour, EXIF allowlist, media facts).
+   * Dimensions come from the bytes only. Provenance read from the bytes wins;
+   * a hint can only raise an otherwise unknown provenance to an AI value.
+   */
+  async function describeUploadedObject(
+    claim: { objectKey: string; type: string },
+    hints: UploadHints | undefined,
+  ): Promise<CompletedUploadExtra> {
+    const metadata: AssetMetadata = {};
+    for (const key of HINT_METADATA_KEYS) {
+      const value = hints?.metadata?.[key];
+      if (value !== undefined) Object.assign(metadata, { [key]: value });
+    }
+    const extra: CompletedUploadExtra = { metadata };
+    if (!claim.type.startsWith('image/')) return extra;
+
+    const bytes = await getStorage(mediaConfig).getRange(
+      claim.objectKey,
+      0,
+      PROVENANCE_SCAN_BYTES - 1,
+    );
+    if (!bytes) return extra;
+    const dimensions = readImageDimensions(bytes);
+    if (dimensions) Object.assign(extra, dimensions);
+
+    const reading = readProvenance(bytes);
+    Object.assign(metadata, reading.metadata);
+    extra.provenance = reading.provenance;
+    if (
+      reading.provenance === 'unknown' &&
+      (hints?.provenance === 'ai_generated' ||
+        hints?.provenance === 'ai_edited')
+    ) {
+      extra.provenance = hints.provenance;
+    }
+    return extra;
+  }
+
+  /**
    * Inserts the `assets` row for a verified upload token and returns it
    * through drizzle. The slug is minted here, up to three times when another
    * row takes it first. A primary-key or object-key conflict means this token
@@ -586,6 +717,7 @@ export function createMediaEndpoints(
   async function insertCompletedUpload(
     payload: Extract<UploadTokenPayload, { kind: 'upload' }>,
     scope: ResolvedScope,
+    extra: CompletedUploadExtra = {},
   ): Promise<AssetRow> {
     const loadRow = async () => {
       const conditions: SQL[] = [
@@ -624,9 +756,13 @@ export function createMediaEndpoints(
             mime_type: payload.type,
             size: payload.size,
             object_key: payload.objectKey,
-            status: 'private' as const,
+            status: payload.status ?? 'private',
             folder_id: payload.folderId,
             variant_of: payload.variantOf,
+            width: extra.width ?? null,
+            height: extra.height ?? null,
+            provenance: extra.provenance ?? 'unknown',
+            metadata: JSON.stringify(extra.metadata ?? {}),
             variant_key: payload.variantKey ?? null,
             original_name: payload.name,
             sha256: payload.sha256 ? base64ToHex(payload.sha256) : null,
@@ -966,9 +1102,11 @@ export function createMediaEndpoints(
       {
         method: 'GET',
         query: z.object({
-          format: z.enum(['webp', 'jpeg', 'png']).optional(),
+          format: z.enum(['webp', 'avif', 'jpeg', 'png']).optional(),
           w: z.coerce.number().int().positive().optional(),
           download: wireBooleanSchema.optional(),
+          // Answer RENDITION_NOT_FOUND instead of serving the original.
+          strict: wireBooleanSchema.optional(),
           // A pinned revision (`AssetRef.revisionId`) of this asset.
           rev: z.string().optional(),
         }),
@@ -1036,14 +1174,31 @@ export function createMediaEndpoints(
           targetKey = revision.objectKey;
           targetMime = revision.mimeType;
         } else if (ctx.query?.format || ctx.query?.w) {
-          const variant = await findVariant(
+          const rendition = await resolveRendition(
             asset,
             ctx.query?.format,
             ctx.query?.w,
           );
-          if (variant) {
-            targetKey = variant.objectKey;
-            targetMime = variant.mimeType;
+          ctx.responseHeaders.set('x-cms-rendition', rendition.match);
+          if (rendition.variant) {
+            targetKey = rendition.variant.objectKey;
+            targetMime = rendition.variant.mimeType;
+          } else {
+            if (mediaConfig.onRenditionMiss) {
+              try {
+                await mediaConfig.onRenditionMiss({
+                  assetId: asset.id,
+                  variantKey: rendition.variantKey,
+                });
+              } catch (err) {
+                console.error('[cms] media onRenditionMiss failed:', err);
+              }
+            }
+            if (wireBooleanIsTrue(ctx.query?.strict)) {
+              throw new CMSError('RENDITION_NOT_FOUND', {
+                message: `Asset ${asset.id} has no rendition ${rendition.variantKey}`,
+              });
+            }
           }
         }
 
@@ -1285,12 +1440,15 @@ export function createMediaEndpoints(
             message: 'No assets found for the given IDs',
           });
         }
+        const archivedFound = archivedIds.filter((id) => found.includes(id));
+        await purgeAssetPaths(mediaConfig, archivedFound);
         await emitMediaEvents(
           cmsCtx.realtime,
           scope,
-          archivedIds
-            .filter((id) => found.includes(id))
-            .map((assetId) => ({ event: 'media.asset.archived', assetId })),
+          archivedFound.map((assetId) => ({
+            event: 'media.asset.archived',
+            assetId,
+          })),
         );
         return {
           archived: archivedIds.length,
@@ -1495,7 +1653,12 @@ export function createMediaEndpoints(
         method: 'POST',
         body: z.object({
           uploads: z
-            .array(z.object({ token: z.string().min(1) }))
+            .array(
+              z.object({
+                token: z.string().min(1),
+                hints: uploadHintsSchema.optional(),
+              }),
+            )
             .min(1)
             .max(maxFiles),
         }),
@@ -1539,7 +1702,11 @@ export function createMediaEndpoints(
               fail(i, rejected);
               continue;
             }
-            const row = await insertCompletedUpload(payload, scope);
+            const row = await insertCompletedUpload(
+              payload,
+              scope,
+              await describeUploadedObject(payload, ctx.body.uploads[i].hints),
+            );
             completed.push(toAssetListItem(row, urls));
           } catch (err) {
             if (err instanceof APIError) {
@@ -1938,6 +2105,7 @@ export function createMediaEndpoints(
             return repointed[0];
           });
 
+          await purgeAssetPaths(mediaConfig, [repointedRow.id]);
           await emitMediaEvents(cmsCtx.realtime, scope, [
             { event: 'media.asset.replaced', assetId: repointedRow.id },
           ]);
@@ -2118,6 +2286,257 @@ export function createMediaEndpoints(
             };
           }),
         };
+      },
+    ),
+
+    /**
+     * Signs the upload of one rendition of an asset: a variant whose identity
+     * is its `variantKey` (`w640.webp`, `poster-w640.webp`, see
+     * `parseVariantKey`). The server picks the variant id; the object lands
+     * next to the original's (same visibility prefix) and the row takes the
+     * original's status. When a live variant with this key exists, nothing is
+     * signed and `existing` carries it, so producing a rendition twice yields
+     * one row. Complete the PUT with `commitRendition`.
+     *
+     * @param assetId - The original asset (not a variant or revision).
+     * @param variantKey - Canonical key of the rendition; its format sets the content type.
+     * @param size - Byte length of the rendition.
+     * @returns `{ existing, upload }`: the live variant with this key, or `upload` (`{ id, objectKey, signedUrl, headers, token, expiresAt }`) to PUT to.
+     * @throws VALIDATION_ERROR if the variant key is not canonical.
+     * @throws ASSET_NOT_FOUND if the asset does not exist in scope, is archived, or is itself a variant or revision.
+     * @throws FILE_TOO_LARGE if `size` exceeds `maxFileSize`.
+     * @example await cmsClient.media.createSignedRendition({ assetId, variantKey: 'w640.webp', size: blob.size })
+     */
+    createSignedRendition: createCMSEndpoint(
+      '/media/createSignedRendition',
+      {
+        method: 'POST',
+        body: z.object({
+          assetId: z.string().min(1),
+          variantKey: z.string().min(1),
+          size: z.number().int().positive(),
+        }),
+        metadata: cmsMeta({}, { operation: 'create', ...MEDIA_META }),
+      },
+      async (ctx) => {
+        const { userId, scope } = ctx.context;
+        const { assetId, variantKey, size } = ctx.body;
+        const spec = parseVariantKey(variantKey);
+        if (!spec || formatVariantKey(spec) !== variantKey) {
+          throw new APIError(400, {
+            code: 'VALIDATION_ERROR',
+            message: `"${variantKey}" is not a canonical variant key`,
+          });
+        }
+
+        const conditions: SQL[] = [
+          eq(assets.id, assetId),
+          isNull(assets.archivedAt),
+          isNull(assets.variantOf),
+          isNull(assets.revisionOf),
+        ];
+        if (scope.assets?.where) conditions.push(scope.assets.where);
+        const [original] = await db
+          .select({
+            id: assets.id,
+            slug: assets.slug,
+            status: assets.status,
+            folderId: assets.folderId,
+          })
+          .from(assets)
+          .where(and(...conditions));
+        if (!original) {
+          throw new CMSError('ASSET_NOT_FOUND', {
+            message: errorMessages.assetNotFound(assetId),
+          });
+        }
+
+        const [existing] = await db
+          .select()
+          .from(assets)
+          .where(
+            and(
+              eq(assets.variantOf, original.id),
+              eq(assets.variantKey, variantKey),
+              isNull(assets.archivedAt),
+            ),
+          );
+        if (existing) {
+          return { existing: toAssetListItem(existing, urls), upload: null };
+        }
+
+        if (size > maxFileSize) {
+          throw new CMSError('FILE_TOO_LARGE', {
+            message: errorMessages.fileTooLarge(variantKey, size, maxFileSize),
+          });
+        }
+
+        const type = RENDITION_MIME[spec.format];
+        const storage = getStorage(mediaConfig);
+        requireSignedUploadCapability(storage, [type]);
+        const id = newId('asset');
+        const name = `${original.slug.replace(/\.[^.]*$/, '')}-${variantKey}`;
+        const objectKey = assetObjectKey(mediaConfig, {
+          id,
+          fileName: name,
+          visibility: original.status,
+          scope,
+        });
+        const exp = Date.now() + signedUrlExpiresIn * 1000;
+        const signed = await storage.signPut(objectKey, {
+          contentType: type,
+          contentLength: size,
+          expiresIn: signedUrlExpiresIn,
+          acl: original.status === 'public' ? objectAcl : undefined,
+          cacheControl: cacheControlFor(mediaConfig, original.status),
+        });
+        const token = await mintUploadToken(
+          await deriveUploadKey(mediaConfig),
+          {
+            kind: 'upload',
+            id,
+            name,
+            objectKey,
+            type,
+            size,
+            folderId: original.folderId ?? null,
+            variantOf: original.id,
+            variantKey,
+            status: original.status,
+            actor: userId ?? null,
+            scope: await scopeFingerprint(scope.assets?.insertColumns),
+            exp,
+          },
+        );
+        return {
+          existing: null,
+          upload: {
+            id,
+            objectKey,
+            signedUrl: signed.url,
+            headers: signed.headers,
+            token,
+            expiresAt: new Date(exp),
+          },
+        };
+      },
+    ),
+
+    /**
+     * Creates the variant row for a rendition PUT to the URL from
+     * `createSignedRendition`. Checks the object like `completeUpload`, then
+     * that its bytes are the format of the variant key and its width (and
+     * height, when the key has one) match; a mismatching object is deleted.
+     * Idempotent: when a live variant with the key exists (a second commit,
+     * or another producer won), that row is returned and this object is
+     * deleted.
+     *
+     * @param token - The token from `createSignedRendition`.
+     * @returns `{ asset }`: the variant, with the same fields as a `listAssets` row.
+     * @throws UPLOAD_TOKEN_INVALID if the token is malformed, expired, for another caller, or not a rendition token.
+     * @throws UPLOAD_NOT_FOUND if the PUT never landed.
+     * @throws RENDITION_MISMATCH if the bytes are not the declared format or size.
+     * @example await cmsClient.media.commitRendition({ token: upload.token })
+     */
+    commitRendition: createCMSEndpoint(
+      '/media/commitRendition',
+      {
+        method: 'POST',
+        body: z.object({ token: z.string().min(1) }),
+        metadata: cmsMeta({}, { operation: 'create', ...MEDIA_META }),
+      },
+      async (ctx) => {
+        const { userId, scope } = ctx.context;
+        const payload = await verifyUploadToken(
+          await deriveUploadKey(mediaConfig),
+          ctx.body.token,
+        );
+        const spec =
+          payload?.kind === 'upload' && payload.variantKey
+            ? parseVariantKey(payload.variantKey)
+            : null;
+        if (
+          !payload ||
+          payload.kind !== 'upload' ||
+          !payload.variantOf ||
+          !spec ||
+          payload.scope !==
+            (await scopeFingerprint(scope.assets?.insertColumns)) ||
+          payload.actor !== (userId ?? null)
+        ) {
+          throw new CMSError('UPLOAD_TOKEN_INVALID');
+        }
+
+        const storage = getStorage(mediaConfig);
+        const loadLive = async () => {
+          const [row] = await db
+            .select()
+            .from(assets)
+            .where(
+              and(
+                eq(assets.variantOf, payload.variantOf!),
+                eq(assets.variantKey, payload.variantKey!),
+                isNull(assets.archivedAt),
+              ),
+            );
+          return row;
+        };
+        const dropObject = async () => {
+          try {
+            await storage.delete(payload.objectKey);
+          } catch (err) {
+            console.error('[cms:media] failed to delete rendition', err);
+          }
+        };
+
+        const [committed] = await db
+          .select()
+          .from(assets)
+          .where(eq(assets.id, payload.id));
+        if (committed) return { asset: toAssetListItem(committed, urls) };
+
+        const rejected = await inspectUploadedObject(payload);
+        if (rejected) throw rejected;
+
+        const bytes = await storage.getRange(
+          payload.objectKey,
+          0,
+          RENDITION_HEADER_BYTES - 1,
+        );
+        const dimensions = bytes ? readImageDimensions(bytes) : null;
+        if (
+          !bytes ||
+          sniffImageType(bytes) !== RENDITION_MIME[spec.format] ||
+          !dimensions ||
+          dimensions.width !== spec.width ||
+          (spec.height !== undefined && dimensions.height !== spec.height)
+        ) {
+          await dropObject();
+          throw new CMSError('RENDITION_MISMATCH', {
+            message: `The object is not a ${spec.format} of width ${spec.width}`,
+          });
+        }
+
+        let row: AssetRow;
+        try {
+          row = await insertCompletedUpload(payload, scope, {
+            width: dimensions.width,
+            height: dimensions.height,
+          });
+        } catch (err) {
+          if ((err as CMSError).cmsCode !== 'VARIANT_EXISTS') throw err;
+          const live = await loadLive();
+          if (!live) throw err;
+          await dropObject();
+          return { asset: toAssetListItem(live, urls) };
+        }
+
+        // Cached `?w=` redirects may point at a larger rendition or the original.
+        await purgeAssetPaths(mediaConfig, [payload.variantOf]);
+        await emitMediaEvents(cmsCtx.realtime, scope, [
+          { event: 'media.rendition.created', assetId: payload.variantOf },
+        ]);
+        return { asset: toAssetListItem(row, urls) };
       },
     ),
 
@@ -2560,6 +2979,7 @@ export function createMediaEndpoints(
             return repointed[0];
           });
 
+          await purgeAssetPaths(mediaConfig, [repointedRow.id]);
           await emitMediaEvents(cmsCtx.realtime, scope, [
             { event: 'media.asset.replaced', assetId: repointedRow.id },
           ]);

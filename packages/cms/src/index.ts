@@ -224,7 +224,6 @@ export type { NotificationEvent } from './core/notifications/events';
 // `Parameters<typeof createCMS>[0]['media']`.
 export type {
   MediaConfig,
-  OptimizationConfig,
   AWSMediaConfig,
   DigitalOceanMediaConfig,
   CloudflareMediaConfig,

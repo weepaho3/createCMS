@@ -225,11 +225,16 @@ export type CmsMediaUploadPhase =
   | 'optimizing'
   | 'finalizing'
   | 'processing'
+  | 'renditions'
   | null;
 
 export type CmsMediaUploadFileState = {
   id: string;
-  kind: 'create' | 'replace';
+  kind: 'create' | 'replace' | 'rendition';
+  /** The entry a `rendition` entry belongs to. */
+  parentId?: string;
+  /** The variant a `rendition` entry produces, e.g. `w640.webp`. */
+  variantKey?: string;
   file: File;
   name: string;
   size: number;
@@ -304,6 +309,7 @@ export type CmsMediaUploadState = {
   pause: (id?: string) => void;
   resume: (id?: string) => void;
   resolveDuplicate: (id: string, decision: CmsMediaDuplicateDecision) => void;
+  regenerateRenditions: (assetId: string) => Promise<CmsMediaUploadFileState[]>;
   reset: () => void;
 };
 

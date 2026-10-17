@@ -184,3 +184,32 @@ describe('Media.UploadAbort / Media.UploadClear', () => {
     expect(reset).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('Media.UploadList renditions', () => {
+  it('lists rendition entries only through their parent', () => {
+    const parent = makeEntry({
+      id: 'up_1',
+      status: 'completing',
+      phase: 'renditions',
+    });
+    const child = makeEntry({
+      id: 'up_2',
+      kind: 'rendition',
+      parentId: 'up_1',
+      variantKey: 'w320.webp',
+    });
+    const client = makeClient({
+      useUploadAssets: vi.fn(() => makeUploadState({ files: [parent, child] })),
+    });
+    const { getAllByRole } = render(
+      <MediaRoot client={client}>
+        <MediaUploadList>
+          {(entry) => <li key={entry.id}>{entry.id}</li>}
+        </MediaUploadList>
+      </MediaRoot>,
+    );
+    expect(getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      'up_1',
+    ]);
+  });
+});

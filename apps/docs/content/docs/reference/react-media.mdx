@@ -220,6 +220,55 @@ the aggregate `progress.fraction` with the label `All uploads`.
 `abort()`, `disabled` while nothing is in flight. `Media.UploadClear`
 (`MediaUploadClearProps`) is a `button` that calls `reset()`.
 
+### `Media.Image` and `Media.Picture`
+
+Render an asset (`ImageAsset`: an `AssetListItem` with `variants`) as a
+responsive image. They work outside `Media.Root`, e.g. on public pages.
+`Media.Image` (`MediaImageProps`) is an `<img>` whose `srcset` lists the
+asset's **existing** WebP renditions only, never a guessed width;
+`Media.Picture` wraps the same `<img>` in a `<picture>` with one `<source>`
+per format that has renditions (AVIF, then WebP).
+
+```tsx
+<Media.Image
+  asset={asset}
+  alt={ref.alt ?? ''}
+  sizes="(min-width: 768px) 50vw, 100vw"
+  focal={ref.focal}
+  placeholderDataUrl={placeholderDataUrl} // from '@createcms/core'
+/>
+```
+
+`alt` is required (`""` for a decorative image). `width` and `height` come
+from the asset, `loading` defaults to `lazy` and `decoding` to `async`. The
+focal point (`metadata.focal`, overridden by `focal`) becomes
+`object-position`; with `object-fit: cover` the crop keeps it in view. Until
+the image loads, the ThumbHash placeholder (with `placeholderDataUrl`) or the
+dominant colour is its background.
+
+| Data attribute | Value |
+| --- | --- |
+| `data-provenance` | `unknown`, `captured`, `ai_generated` or `ai_edited` |
+| `data-loaded` | Present once the image loaded |
+| `data-placeholder` | Present while the placeholder shows |
+| `data-variant-missing` | The expected variant keys (`widths` below the source width) that do not exist |
+
+The same data is available without React from `@createcms/react/media/image`,
+which carries no client boundary and runs in server components:
+`getAssetImage(asset, options)` returns the `AssetImage`
+(`{ src, srcSet, sizes, width, height, sources, placeholder, objectPosition, provenance, provenanceLabel, missing }`),
+`variantUrl(asset, { w, format })` the URL of the smallest existing
+rendition at least `w` wide (or `null`), `buildSrcSet(asset, format)` and
+`objectPositionOf(focal)`.
+
+For `next/image`, point `images.loaderFile` at
+`@createcms/react/media/next-loader` and set `images.deviceSizes` and
+`images.imageSizes` to the rendition widths (`[320, 640, 1280, 1920]` by
+default). The loader snaps every requested width up to the next rendition
+width, so Next never asks the asset endpoint for a width outside the ladder.
+`createImageLoader({ widths, format })` builds one for other ladders or
+frameworks (Astro `getImage`, Nuxt image providers).
+
 ## Hooks
 
 ### `useMediaLibrary`
@@ -276,6 +325,14 @@ parts.
 (`{ store, selection, assetUrl }`) and throws
 `<componentName> must be used within a Media.Root component.` outside the
 root.
+
+### `useAssetImage`
+
+`useAssetImage(asset, options)` is `getAssetImage` memoized, with
+`provenanceLabel` taken from the catalog (`messages.image.provenance`) unless
+`options.provenanceLabels` is set. `options` (`AssetImageOptions`):
+`sizes`, `widths`, `formats`, `focal`, `placeholderDataUrl`,
+`provenanceLabels`.
 
 ### `useMediaMessages`
 

@@ -1,10 +1,8 @@
 // Type-only assertion, checked by `check-types` and never executed: the
-// loader documented for `webpEncoder` type-checks against the real
-// `@jsquash/webp/encode` module.
+// documented codec loaders type-check against the real jSquash module.
 
-import type { OptimizationConfig } from '../../core/types/s3';
+import type { CodecLoaders } from './pipeline/codecs';
 
-export const config: OptimizationConfig = {
-  convert: { format: 'webp' },
-  webpEncoder: () => import('@jsquash/webp/encode'),
+export const codecs: CodecLoaders = {
+  webp: () => import('@jsquash/webp/encode'),
 };

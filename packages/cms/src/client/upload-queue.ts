@@ -11,12 +11,15 @@ import type {
   CMSMediaUploadState,
   CMSMediaUploadStatus,
 } from './types';
-import type { UploadOptimizer } from './upload-optimizer';
+import type {
+  UploadHints,
+  UploadOptimizer,
+  UploadRendition,
+} from './upload-optimizer';
 
 import { isRetryable, retryDelay } from '../utils/retry';
 import { CMSClientError } from './error';
-import { readUploadAnnotation } from './upload-annotations';
-import { optimizeOrPassThrough } from './upload-optimizer';
+import { runOptimizer } from './upload-optimizer';
 import {
   isAbortError,
   UploadRequestError,
@@ -70,7 +73,14 @@ const TRANSITIONS: Readonly<
 > = {
   queued: ['preparing', 'paused', 'aborted'],
   preparing: ['preparing', 'signing', 'retrying', 'paused', 'error', 'aborted'],
-  signing: ['uploading', 'retrying', 'paused', 'error', 'aborted'],
+  signing: [
+    'uploading',
+    'completing',
+    'retrying',
+    'paused',
+    'error',
+    'aborted',
+  ],
   uploading: [
     'uploading',
     'signing',
@@ -116,8 +126,17 @@ type Internal = {
   runOptimizer: boolean;
   dedupe: boolean;
   revisionNote?: string;
+  /** Renditions the optimizer produced; uploaded as children once the asset exists. */
+  renditions: UploadRendition[];
+  hints?: UploadHints;
+  /** Child rendition entries of this entry. */
+  children: string[];
+  /** A rendition entry whose variant already existed: nothing is uploaded. */
+  existing?: UploadResult;
   waiters: (() => void)[];
 };
+
+type UploadResult = { id: string; slug: string; objectKey: string };
 
 class RequestTimeoutError extends Error {
   constructor() {
@@ -145,6 +164,8 @@ export type UploadQueueOptions = {
   scheduleUpdate?: (flush: () => void) => void;
   /** Watch `online`/`offline`, `beforeunload` and `visibilitychange`. Default: when `window` exists. */
   browserEvents?: boolean;
+  /** Downloads an asset's original for `regenerateRenditions`. Default: `fetch` with credentials. */
+  fetchBlob?: (url: string) => Promise<Blob>;
 };
 
 function defaultSchedule(flush: () => void): void {
@@ -261,7 +282,6 @@ export function createUploadQueue(
   let budget = CONNECTION_BUDGET;
   let lastThrottleAt = 0;
   let recoveryTimer: ReturnType<typeof setInterval> | undefined;
-  let optimizing: Promise<void> = Promise.resolve();
   let lastError: unknown = null;
   let speed: number | null = null;
   let speedTimer: ReturnType<typeof setInterval> | undefined;
@@ -289,6 +309,7 @@ export function createUploadQueue(
     resume: () => {},
     resolveDuplicate: () => {},
     reset: () => {},
+    regenerateRenditions: () => Promise.resolve([]),
   });
 
   // --- state and store ----------------------------------------------------
@@ -369,9 +390,48 @@ export function createUploadQueue(
       item.waiters = [];
       for (const resolve of waiters) resolve();
     }
+    if (FINAL.has(status) && item.entry.parentId) {
+      settleParent(item.entry.parentId);
+    }
     update();
     pump();
     return true;
+  }
+
+  /**
+   * Finishes a parent waiting on its renditions once every child is final.
+   * A failed or aborted rendition is a warning on the parent, never an error:
+   * the asset exists either way.
+   */
+  function settleParent(parentId: string) {
+    const parent = items.get(parentId);
+    if (!parent || parent.entry.status !== 'completing') return;
+    const children = parent.children.map((id) => items.get(id)?.entry);
+    if (children.some((child) => child && !FINAL.has(child.status))) return;
+    const failed = children.filter(
+      (child) => child && child.status !== 'success',
+    );
+    const info = parent.entry.optimize;
+    dispatch(parentId, 'success', {
+      phase: null,
+      loaded: parent.entry.total,
+      progress: 1,
+      optimize:
+        failed.length === 0
+          ? info
+          : {
+              optimized: info?.optimized ?? false,
+              bytesBefore: info?.bytesBefore ?? parent.entry.size,
+              bytesAfter: info?.bytesAfter ?? parent.entry.size,
+              warnings: [
+                ...(info?.warnings ?? []),
+                ...failed.map((child) => ({
+                  code: 'rendition_failed',
+                  message: `${child!.variantKey}: ${child!.error?.message ?? child!.status}`,
+                })),
+              ],
+            },
+    });
   }
 
   function setProgress(id: string, loaded: number, total: number) {
@@ -500,9 +560,36 @@ export function createUploadQueue(
     }
   }
 
-  async function sign(item: Internal, signal: AbortSignal): Promise<Signed> {
+  /** A signature for `item`, or `null` for a rendition that already exists. */
+  async function sign(
+    item: Internal,
+    signal: AbortSignal,
+  ): Promise<Signed | null> {
     dispatch(item.entry.id, 'signing', { phase: null });
     const { entry } = item;
+    if (entry.kind === 'rendition') {
+      const res = (await request(
+        item,
+        () =>
+          $fetch('/media/createSignedRendition', {
+            method: 'POST',
+            body: {
+              assetId: entry.targetAssetId,
+              variantKey: entry.variantKey,
+              size: entry.file.size,
+            },
+          }),
+        signal,
+      )) as {
+        existing: UploadResult | null;
+        upload: (Omit<Signed, 'assetId'> & { id: string }) | null;
+      };
+      if (res.existing || !res.upload) {
+        item.existing = res.existing ?? undefined;
+        return null;
+      }
+      return { ...res.upload, assetId: res.upload.id };
+    }
     if (entry.kind === 'replace') {
       const res = (await request(
         item,
@@ -550,7 +637,11 @@ export function createUploadQueue(
     const id = item.entry.id;
     let resigned = false;
     for (let attempt = 0; ; attempt++) {
-      item.signed ??= await sign(item, signal);
+      if (!item.signed) {
+        const signed = await sign(item, signal);
+        if (!signed) return;
+        item.signed = signed;
+      }
       dispatch(id, 'uploading', { phase: null });
       try {
         await uploadWithXHR(
@@ -584,10 +675,27 @@ export function createUploadQueue(
     }
   }
 
-  async function complete(item: Internal) {
+  async function complete(item: Internal): Promise<UploadResult> {
     const id = item.entry.id;
-    const signed = item.signed!;
     dispatch(id, 'completing', { phase: 'processing' });
+    if (item.existing) return item.existing;
+    const signed = item.signed!;
+    if (item.entry.kind === 'rendition') {
+      const res = (await request(
+        item,
+        () =>
+          $fetch('/media/commitRendition', {
+            method: 'POST',
+            body: { token: signed.token },
+          }),
+        null,
+      )) as { asset: UploadResult };
+      return {
+        id: res.asset.id,
+        slug: res.asset.slug,
+        objectKey: res.asset.objectKey,
+      };
+    }
     if (item.entry.kind === 'replace') {
       const res = (await request(
         item,
@@ -609,7 +717,7 @@ export function createUploadQueue(
       () =>
         $fetch('/media/completeUpload', {
           method: 'POST',
-          body: { uploads: [{ token: signed.token }] },
+          body: { uploads: [{ token: signed.token, hints: item.hints }] },
         }),
       null,
     )) as {
@@ -692,28 +800,19 @@ export function createUploadQueue(
       }
     }
     const optimizer = item.runOptimizer ? options.getOptimizer?.() : undefined;
-    if (optimizer?.enabled && item.entry.file.type.startsWith('image/')) {
+    if (optimizer?.enabled) {
       patch(id, { phase: 'optimizing' });
-      // One file at a time, so at most one decoded bitmap is in memory.
-      const turn = optimizing.then(async () => {
-        const [file] = await optimizeOrPassThrough(optimizer, [
-          item.entry.file,
-        ]);
-        return file;
-      });
-      optimizing = turn.then(
-        () => undefined,
-        () => undefined,
-      );
-      const file = await turn;
+      const out = await runOptimizer(optimizer, item.entry.file);
       if (signal.aborted) throw signal.reason;
+      item.renditions = out.renditions;
+      item.hints = out.hints;
       patch(id, {
-        file,
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        total: file.size,
-        optimize: readUploadAnnotation(file),
+        file: out.file,
+        name: out.file.name,
+        size: out.file.size,
+        type: out.file.type,
+        total: out.file.size,
+        optimize: out.info,
       });
     }
     return true;
@@ -733,6 +832,12 @@ export function createUploadQueue(
       if (!(await prepare(item, signal))) return;
       await put(item, signal);
       const result = await complete(item);
+      if (item.renditions.length > 0) {
+        // The asset exists; the entry finishes once its renditions did.
+        dispatch(id, 'completing', { result, phase: 'renditions' });
+        spawnRenditions(item, result.id);
+        return;
+      }
       dispatch(id, 'success', {
         result,
         loaded: item.entry.total,
@@ -763,6 +868,31 @@ export function createUploadQueue(
     }
   }
 
+  /** Queues the renditions of `parent` as child entries of asset `assetId`. */
+  function spawnRenditions(parent: Internal, assetId: string) {
+    const renditions = parent.renditions;
+    parent.renditions = [];
+    for (const rendition of renditions) {
+      const child = create(
+        new File([rendition.blob], rendition.variantKey, {
+          type: rendition.blob.type,
+        }),
+        'rendition',
+        {
+          parentId: parent.entry.id,
+          targetAssetId: assetId,
+          variantKey: rendition.variantKey,
+          folderId: parent.entry.folderId,
+          runOptimizer: false,
+          dedupe: false,
+        },
+      );
+      parent.children.push(child.entry.id);
+    }
+    update();
+    pump();
+  }
+
   // --- public API ---------------------------------------------------------------
 
   function create(
@@ -788,7 +918,6 @@ export function createUploadQueue(
         attempt: 0,
         nextRetryAt: null,
         folderId: null,
-        optimize: readUploadAnnotation(file),
         ...fields,
       },
       controller: null,
@@ -797,6 +926,8 @@ export function createUploadQueue(
       landed: false,
       runOptimizer,
       dedupe,
+      renditions: [],
+      children: [],
       waiters: [],
     };
     items.set(item.entry.id, item);
@@ -958,6 +1089,62 @@ export function createUploadQueue(
     dispatch(id, 'queued', { duplicateOf: undefined });
   }
 
+  async function regenerateRenditions(
+    assetId: string,
+  ): Promise<CMSMediaUploadFileState[]> {
+    const optimizer = options.getOptimizer?.();
+    if (!optimizer?.enabled) return [];
+    const { assets: found } = (await $fetch('/media/getAssets', {
+      method: 'GET',
+      query: { ids: [assetId] },
+    })) as {
+      assets: {
+        id: string;
+        slug: string;
+        originalName?: string | null;
+        mimeType: string;
+        deliveryUrl: string;
+        folderId: string | null;
+      }[];
+    };
+    const asset = found.find((a) => a.id === assetId);
+    if (!asset) return [];
+    const fetchBlob =
+      options.fetchBlob ??
+      (async (url: string) => {
+        const res = await fetch(url, { credentials: 'include' });
+        if (!res.ok)
+          throw new Error(`Could not download ${url}: ${res.status}`);
+        return res.blob();
+      });
+    const original = new File(
+      [await fetchBlob(asset.deliveryUrl)],
+      asset.originalName ?? asset.slug,
+      { type: asset.mimeType },
+    );
+    const { renditions } = await runOptimizer(optimizer, original);
+    const created = renditions.map((rendition) =>
+      create(
+        new File([rendition.blob], rendition.variantKey, {
+          type: rendition.blob.type,
+        }),
+        'rendition',
+        {
+          targetAssetId: assetId,
+          variantKey: rendition.variantKey,
+          folderId: asset.folderId,
+          runOptimizer: false,
+          dedupe: false,
+        },
+      ),
+    );
+    update();
+    pump();
+    await Promise.all(created.map(settled));
+    flush();
+    return created.map((item) => items.get(item.entry.id)!.entry);
+  }
+
   function reset() {
     const kept = order.filter((id) => !FINAL.has(items.get(id)!.entry.status));
     for (const id of order) {
@@ -1035,6 +1222,7 @@ export function createUploadQueue(
     pause,
     resume,
     resolveDuplicate,
+    regenerateRenditions,
     reset,
   });
   return store;

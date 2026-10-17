@@ -1,9 +1,9 @@
 ---
 title: Media optimize
-description: Client-side resize, compress, and WebP conversion before upload.
+description: Renditions, placeholders, provenance and GPS removal in the browser before upload.
 ---
 
-The media optimize plugin processes images in the browser before they are uploaded: it resizes, compresses, and optionally converts to WebP. It is a client-only plugin. Optimization never blocks an upload: a file that cannot be optimized is uploaded unchanged, with a warning.
+The media optimize plugin prepares files in the browser before they are uploaded. For images it removes GPS from the original, reads the AI provenance before anything is re-encoded, computes a ThumbHash placeholder, and produces WebP **renditions** at 320, 640, 1280 and 1920 px that are uploaded as variants of the asset. PDFs and videos get a poster, audio gets a waveform. It is a client-only plugin. Optimization never blocks an upload: whatever fails, the original is uploaded with a warning.
 
 ## Installation
 
@@ -16,36 +16,60 @@ import type { cms } from './cms';
 
 export const cmsClient = createCMSClient<typeof cms>()({
   baseURL: '/api/cms',
-  plugins: [
-    mediaOptimizeClient({
-      compress: { quality: 82 },
-      resize: { maxSize: 2000 },
-      convert: { format: 'webp' },
-    }),
-  ],
+  plugins: [mediaOptimizeClient()],
 });
 ```
 
-### WebP in Safari
+### Run it in a worker
 
-Safari's canvas cannot encode WebP. To convert there, install the WASM encoder and pass a loader. The import must sit in your app code so your bundler emits the `.wasm` file; it is called only after the native probe fails, so other browsers never download it.
+Decoding and encoding a 12 MP photo takes about half a second of CPU. Run the pipeline in a worker so the page never stalls: create a worker module in your app, so your bundler resolves the codec imports and emits their WASM files, and pass a factory.
 
-```bash
-npm install @jsquash/webp
+```ts title="lib/optimize.worker.ts"
+import { serveOptimizeWorker } from '@createcms/core/plugins/media-optimize/worker';
+
+serveOptimizeWorker({
+  codecs: { webp: () => import('@jsquash/webp/encode') },
+});
 ```
 
 ```ts
 mediaOptimizeClient({
-  convert: { format: 'webp' },
-  webpEncoder: () => import('@jsquash/webp/encode'),
+  worker: () =>
+    new Worker(new URL('./optimize.worker.ts', import.meta.url), { type: 'module' }),
+  codecs: { webp: () => import('@jsquash/webp/encode') },
 });
 ```
 
-Without `webpEncoder`, Safari uploads the original file and reports `optimize_unsupported`.
+Without `worker`, the same pipeline runs in the page (`createImageBitmap` and `OffscreenCanvas` keep most of the work off the main thread). Up to `min(2, cores / 2)` files are optimized at once (1 on iOS or with 4 GiB of memory or less). A file gets 3 s plus 1.5 s per megapixel; a worker that runs over its budget or crashes is replaced and the original is uploaded with `optimize_timeout` or `optimize_failed`. Idle workers end after 60 s.
+
+### Codecs
+
+WebP is encoded by the browser where it can; Safari's canvas cannot, so it needs the WASM encoder. Each loader runs the first time its codec is needed, so a browser downloads only what it uses.
+
+| Loader | Package | Used for | Size (gzip) |
+| --- | --- | --- | --- |
+| `codecs.webp` | `@jsquash/webp/encode` | WebP in Safari | 126 kB |
+| `codecs.jpeg` | `@jsquash/jpeg/encode` | JPEG masters and `legacyJpeg` (else canvas JPEG) | 59 kB |
+| `codecs.avif` | `@jsquash/avif/encode` | AVIF renditions, with `avif.enabled` | 1.12 MB |
+| `codecs.heic` | your libheif-js wrapper (`{ decode(bytes): Promise<ImageData> }`) | HEIC outside Safari | 483 kB |
+| `pdf` | `pdfjs-dist` (configure its worker in the loader) | PDF posters | 506 kB |
+
+Without `codecs.webp`, Safari uploads the original and its renditions are skipped with `rendition_failed`. `detectOptimizeSupport(codecs)` and the React hook `useOptimizeSupport({ codecs })` report what this browser can do: `{ worker, webp, jpeg, avif, heic }`.
+
+## What happens to a file
+
+1. **Type by magic bytes.** The declared type is not trusted.
+2. **Provenance first.** IPTC `DigitalSourceType` (in XMP) and a C2PA manifest are read before anything is re-encoded and sent as hints: `trainedAlgorithmicMedia` means `ai_generated`, composites with trained algorithmic media mean `ai_edited`, captures mean `captured`. Re-encodes of an AI image get the IPTC value written back as XMP (WebP, JPEG, PNG). The C2PA manifest itself stays only in the original: its signature binds the original bytes.
+3. **GPS removal.** JPEG, PNG and WebP lose their GPS data losslessly: only the GPS block of the EXIF data goes, while XMP, the ICC profile and the C2PA segment stay byte-identical. Artist and Copyright stay unless `keepCopyright: false`. Removing GPS changes the bytes the C2PA hash covers, so a validator reports the manifest as not matching; set `stripGps: false` to upload signed originals untouched.
+4. **Description.** Dimensions (upright), the allowlisted EXIF facts (capture time, camera, creator, copyright, colour space; never GPS), a ThumbHash placeholder and the dominant colour.
+5. **The original.** `keep` (default) uploads the original. Above 40 MP or 25 MB, `keep` becomes `master`: a re-encode with a 4096 px long edge at quality 90 (JPEG for photos, WebP otherwise), used only when it beats the source by 10 % unless it was downscaled. `discard` uploads the largest WebP instead; it is refused for AI images.
+6. **Renditions.** WebP at quality 82 in every ladder width below 90 % of the source width, never upscaled. AVIF (opt-in, up to 1280 px) and a 1280 px JPEG (`legacyJpeg`) can be added.
+
+Animated GIF, WebP and APNG are uploaded byte-identical with a still poster (`poster-w640.webp`). SVG is never rasterized. PDFs get a poster of page 1 and their page count, videos a poster frame, their duration and size, audio a waveform of 1,000 peaks (`metadata.media.peaks`). Images above 100 megapixels are uploaded unchanged.
 
 ## Usage
 
-With the plugin installed, `cmsClient.media.useUploadAssets().upload(files)` optimizes every image before signing. Opt out per call with `upload(files, { optimize: false })`. Each ledger entry carries the outcome in `entry.optimize`:
+With the plugin installed, `cmsClient.media.useUploadAssets().upload(files)` runs every file through the pipeline. Opt out per call with `upload(files, { optimize: false })`. The asset is created from the original first; then each rendition is uploaded as a child entry (`kind: 'rendition'`, `parentId`, `variantKey`) through `createSignedRendition` and `commitRendition`. The parent entry stays `completing` with phase `renditions` until every child finished; a failed rendition is a warning on the parent (`rendition_failed`), never an error. `entry.optimize` carries the outcome:
 
 ```ts
 type CMSMediaUploadOptimizeInfo = {
@@ -56,40 +80,42 @@ type CMSMediaUploadOptimizeInfo = {
 };
 ```
 
-To optimize without uploading, use `cmsClient.optimize.useOptimize(file, overrideConfig?)` in React, or the standalone `optimizeImage(file, config)` and `optimizeFiles(files, config)`. `optimizeImage` never rejects; `OptimizeResult` carries `file`, `optimized`, `bytesBefore`, `bytesAfter`, an optional `originalVariant` and an optional `warning`.
+`regenerateRenditions(assetId)` on the upload queue downloads the original of an existing asset and uploads its renditions; renditions that exist are kept.
+
+To run the pipeline without uploading, use `cmsClient.optimize.useOptimize(file, overrideConfig?)` in React; it resolves to `OptimizeOutput` (`{ file, renditions, hints, optimized, bytesBefore, bytesAfter, warnings }`) per file.
 
 ## Options
 
-All options are optional. Without `resize`, `compress` and `convert` the plugin changes nothing.
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `enabled` | `boolean` | `true` | `false` registers no auto-optimizer, so `upload(...)` sends the original bytes. |
+| `original` | `'keep' \| 'master' \| 'discard'` | `'keep'` | What becomes of the original (see above). |
+| `maxOriginalMegapixels` | `number` | `40` | Above this, `keep` becomes `master`. |
+| `maxOriginalBytes` | `number` | `25 MiB` | Above this, `keep` becomes `master`. |
+| `masterLongEdge` | `number` | `4096` | Longest edge of a master. |
+| `renditions.widths` | `number[]` | `[320, 640, 1280, 1920]` | Rendition widths; keep them equal to the server's `renditionWidths`. |
+| `renditions.formats` | `('webp' \| 'avif')[]` | `['webp']` | AVIF also needs `avif.enabled`. |
+| `renditions.legacyJpeg` | `boolean` | `false` | Adds `w1280.jpeg`. |
+| `quality` | `{ webp, jpeg, avif, master }` | `{ 82, 78, 62, 90 }` | Per-format quality, 1 to 100. |
+| `avif` | `{ enabled, speed, maxWidth }` | `{ false, 8, 1280 }` | AVIF renditions, encoded with `codecs.avif`. |
+| `keepIfSmallerRatio` | `number` | `0.9` | A master that needed no downscale must be at most this fraction of the source. |
+| `stripGps` | `boolean` | `true` | Remove GPS from the uploaded bytes. |
+| `keepCopyright` | `boolean` | `true` | Keep EXIF Artist and Copyright when removing GPS. |
+| `placeholder` | `'thumbhash' \| false` | `'thumbhash'` | Compute `metadata.placeholder.thumbhash` and `dominantColor`. |
+| `concurrency` | `number \| 'auto'` | `'auto'` | Files optimized at once. |
+| `timeoutMsPerMegapixel` | `number` | `1500` | Time budget per megapixel on top of 3 s per file. |
+| `provenance` | `{ read, writeBack }` | `{ true, true }` | Read IPTC and C2PA provenance; write it back into re-encodes. |
+| `codecs` | `CodecLoaders` | `{}` | WASM codec loaders (see [Codecs](#codecs)). |
+| `pdf` | `() => Promise<PdfModule>` | none | pdf.js for PDF posters. |
+| `worker` | `() => Worker` | none | Creates an optimization worker (see [Run it in a worker](#run-it-in-a-worker)). |
 
-| Section | Field | Type | Default | Description |
-| --- | --- | --- | --- | --- |
-| | `enabled` | `boolean` | `true` | Auto-optimize on upload. `false` registers no auto-optimizer, so `upload(...)` sends the original bytes. |
-| `compress` | `quality` | `number` | `82` | JPEG/WebP encode quality, 1 to 100. Also used when only `resize` or `convert` is set. PNG ignores it. |
-| `resize` | `maxSize` | `number` | none | Downscale so neither side exceeds this many pixels. Without it, images keep their dimensions. |
-| `convert` | `format` | `'webp'` | none | Encode the output as WebP. |
-| `convert` | `storeOriginal` | `boolean` | `false` | `optimizeImage` also returns `originalVariant`, a resized copy in the input format. Auto-upload sends only the primary file. |
-| | `keepIfSmallerRatio` | `number` | `0.9` | Without a downscale, the re-encoded file is used only if it is at most this fraction of the input size. |
-| | `webpEncoder` | `() => Promise<WebpEncoderModule>` | none | WebP encoder for browsers without native canvas WebP encoding. |
-
-## What gets optimized
-
-Only JPEG, PNG and WebP are re-encoded. These are uploaded byte-identical:
-
-- Non-image files.
-- SVG, GIF, ICO, BMP, AVIF, TIFF, HEIC/HEIF and every other image type.
-- Animated WebP and APNG.
-- Files whose first 256 KB carry an IPTC `DigitalSourceType` XMP property or a C2PA manifest. A canvas re-encode drops all metadata, including these provenance markers.
-
-Files are optimized one at a time, so only one decoded bitmap is held in memory. The output name and type always follow the encoded format (`photo.jpg` becomes `photo.webp`), and an encode that returns another type than requested is discarded.
-
-### Warnings
+## Warnings
 
 | Code | Meaning |
 | --- | --- |
-| `optimize_unsupported` | Excluded format, animated image, or WebP output in a browser without an encoder. |
-| `optimize_skipped_provenance` | The file carries IPTC `DigitalSourceType` or a C2PA manifest. |
-| `optimize_mislabel` | The encoder produced another type than requested. |
-| `optimize_failed` | Decoding, importing the fallback encoder, loading its WASM binary or encoding threw. |
-
-This plugin runs entirely in the browser, so there are no HTTP errors and no error codes on `$ERROR_CODES`.
+| `optimize_unsupported` | The type cannot be decoded in this browser (for example HEIC without `codecs.heic`); the original is uploaded. |
+| `optimize_failed` | Reading or decoding threw, or the worker crashed; the original is uploaded. |
+| `optimize_timeout` | The file ran over its time budget; the original is uploaded. |
+| `optimize_too_large` | Above 100 megapixels; the original is uploaded. |
+| `optimize_discard_blocked` | `discard` was refused for an AI image; the original is kept. |
+| `rendition_failed` | One rendition or poster could not be produced or uploaded; the asset and the other renditions are fine. |

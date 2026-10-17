@@ -55,13 +55,20 @@ export type MediaUploadListProps = Omit<
 };
 
 /**
- * The upload ledger of `Media.Root`'s client as a `ul`, plus a visually
+ * The upload queue of `Media.Root`'s client (rendition entries excepted) as
+ * a `ul`, plus a visually
  * hidden `role="log"` that announces each entry once when it reaches
  * `success`, `error` or `aborted`.
  */
 export function MediaUploadList(props: MediaUploadListProps) {
   const { children, render, ...rest } = props;
-  const { files } = useMediaUploadsContext('Media.UploadList');
+  const { files: all } = useMediaUploadsContext('Media.UploadList');
+  // Rendition entries are part of their parent upload, which stays
+  // `completing` until they finished; they are not listed on their own.
+  const files = React.useMemo(
+    () => all.filter((entry) => entry.parentId === undefined),
+    [all],
+  );
   const announced = React.useRef(new Set<string>());
   const [log, setLog] = React.useState<{ id: string; text: string }[]>([]);
 

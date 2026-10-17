@@ -111,6 +111,10 @@ export type MediaMessages = {
     /** `reason` is the translated `error.*` message for the entry's code. */
     failed: MediaMessageFn<{ reason: string }>;
   };
+  image: {
+    /** Labels `useAssetImage` returns as `provenanceLabel`. */
+    provenance: Record<'ai_generated' | 'ai_edited', string>;
+  };
   picker: {
     title: string;
     choose: string;
@@ -253,6 +257,9 @@ export const defaultMediaMessages: MediaMessages = {
       `${format.number(done)} of ${format.number(total)} ${pluralize(total, format, 'file', 'files')} (${format.percent(percent / 100)})`,
     eta: ({ seconds }, format) => format.eta(seconds),
     failed: ({ reason }) => `Failed: ${reason}`,
+  },
+  image: {
+    provenance: { ai_generated: 'AI-generated', ai_edited: 'AI-edited' },
   },
   picker: {
     title: 'Select asset',

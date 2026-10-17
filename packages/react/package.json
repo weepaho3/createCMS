@@ -49,6 +49,14 @@
     "./media": {
       "types": "./dist/media/index.d.ts",
       "default": "./dist/media/index.js"
+    },
+    "./media/image": {
+      "types": "./dist/media/image.d.ts",
+      "default": "./dist/media/image.js"
+    },
+    "./media/next-loader": {
+      "types": "./dist/media/next-loader.d.ts",
+      "default": "./dist/media/next-loader.js"
     }
   },
   "publishConfig": {

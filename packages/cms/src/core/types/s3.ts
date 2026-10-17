@@ -20,78 +20,6 @@ export type ObjectAcl =
   | 'bucket-owner-full-control';
 
 // ============================================================================
-// Optimization Options
-// ============================================================================
-
-export type CompressOptions = {
-  /** JPEG/WebP encode quality (1-100). PNG ignores it. @default 82 */
-  quality?: number;
-};
-
-export type ResizeOptions = {
-  /**
-   * Maximum width/height in pixels. Images within the bound keep their
-   * dimensions; without this option nothing is resized.
-   */
-  maxSize?: number;
-};
-
-/** Encodes RGBA pixels to WebP bytes (the `@jsquash/webp/encode` shape). */
-export type WebpEncode = (
-  data: ImageData,
-  options?: { quality?: number },
-) => Promise<ArrayBuffer>;
-
-/**
- * Module returned by {@link OptimizationConfig.webpEncoder}. `init` loads the
- * WASM binary ahead of the first encode, so a missing `.wasm` file is
- * reported apart from an encode failure.
- */
-export type WebpEncoderModule = {
-  default: WebpEncode;
-  init?: () => Promise<unknown>;
-};
-
-export type ConvertOptions = {
-  /** Only WebP conversion is supported. */
-  format: 'webp';
-  /**
-   * When true, also store a copy in the original format (resized + compressed
-   * but not converted). Useful for email clients that don't support WebP.
-   * @default false
-   */
-  storeOriginal?: boolean;
-};
-
-export type OptimizationConfig = {
-  /** Image compression options. Omit to disable. */
-  compress?: CompressOptions;
-  /** Resize options. Omit to disable. */
-  resize?: ResizeOptions;
-  /** Format conversion options. Omit to disable. */
-  convert?: ConvertOptions;
-  /**
-   * When the image was not downscaled, the re-encoded bytes are used only if
-   * they are at most this fraction of the original size; otherwise the
-   * original is uploaded. @default 0.9
-   */
-  keepIfSmallerRatio?: number;
-  /**
-   * Loads a WebP encoder for browsers whose canvas cannot encode WebP
-   * (Safari). Called only after the native probe fails, so other browsers
-   * never download it. The import must be written in app code so the
-   * bundler emits the WASM file:
-   *
-   * ```ts
-   * webpEncoder: () => import('@jsquash/webp/encode'),
-   * ```
-   *
-   * Without it, WebP output in such browsers falls back to the original file.
-   */
-  webpEncoder?: () => Promise<WebpEncoderModule>;
-};
-
-// ============================================================================
 // Media Configuration
 // ============================================================================
 
@@ -155,6 +83,24 @@ type BaseMediaConfig = {
    * `/media/asset/ast_...`. Errors are logged, never thrown.
    */
   onPurge?: (paths: string[]) => void | Promise<void>;
+
+  /**
+   * Rendition widths, ascending. The asset endpoint snaps `?w=` up to the
+   * next width here and answers RENDITION_WIDTH_UNSUPPORTED above the
+   * largest; the media-optimize plugin produces these widths.
+   * @default [320, 640, 1280, 1920]
+   */
+  renditionWidths?: number[];
+
+  /**
+   * Called when the asset endpoint is asked for a rendition that exists
+   * neither exactly nor in a larger width, and serves the original instead.
+   * Errors are logged, never thrown.
+   */
+  onRenditionMiss?: (miss: {
+    assetId: string;
+    variantKey: string;
+  }) => void | Promise<void>;
 
   /**
    * Overrides single capability flags of the provider preset (see
@@ -261,4 +207,5 @@ export const MEDIA_DEFAULTS = {
     'application/pdf',
   ],
   signedUrlExpiresIn: 300,
+  renditionWidths: [320, 640, 1280, 1920],
 } as const;

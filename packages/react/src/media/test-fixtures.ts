@@ -61,6 +61,7 @@ export function makeUploadState(
     pause: vi.fn(),
     resume: vi.fn(),
     resolveDuplicate: vi.fn(),
+    regenerateRenditions: vi.fn(async () => []),
     reset: vi.fn(),
     ...overrides,
   };

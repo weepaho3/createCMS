@@ -136,6 +136,9 @@ try {
 | `FOLDER_NAME_TAKEN` | 409 | A live folder with this name already exists under the same parent (`createFolder`, `renameFolder`, `moveFolder`) |
 | `VARIANT_EXISTS` | 409 | The asset already has a live variant with this `variantKey` |
 | `ASSET_CONFLICT` | 409 | `updateAsset` with an `expectedUpdatedAt` that no longer matches; the response carries the current asset |
+| `RENDITION_MISMATCH` | 400 | `commitRendition` found bytes that are not the variant key's format, width or height; the object is deleted |
+| `RENDITION_WIDTH_UNSUPPORTED` | 400 | The asset endpoint got a `w` larger than the largest of `renditionWidths` |
+| `RENDITION_NOT_FOUND` | 404 | The asset endpoint, with `strict=true`, has no exact or larger rendition to serve |
 | `REVISION_NOT_FOUND` | 404 | `setCurrentRevision` with a `revisionId` that is not a revision of the asset |
 | `TOO_MANY_FILES` | 400 | Too many files in upload batch |
 | `FILE_TOO_LARGE` | 400 | One or more files exceed the maximum allowed size |

@@ -63,6 +63,7 @@ function makeClient(
     pause: vi.fn(),
     resume: vi.fn(),
     resolveDuplicate: vi.fn(),
+    regenerateRenditions: vi.fn(async () => []),
     reset: vi.fn(),
   };
 
@@ -500,6 +501,7 @@ describe('useCmsFieldSources assets.useUpload', () => {
       pause: vi.fn(),
       resume: vi.fn(),
       resolveDuplicate: vi.fn(),
+      regenerateRenditions: vi.fn(async () => []),
       reset: vi.fn(),
     };
     const useUploadAssets = vi.fn(() => uploadState);

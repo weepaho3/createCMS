@@ -116,6 +116,9 @@ export const mediaMessagesDe: MediaMessages = {
     eta: ({ seconds }, format) => format.eta(seconds),
     failed: ({ reason }) => `Fehlgeschlagen: ${reason}`,
   },
+  image: {
+    provenance: { ai_generated: 'KI-generiert', ai_edited: 'KI-bearbeitet' },
+  },
   picker: {
     title: 'Datei auswählen',
     choose: 'Auswählen',
