@@ -47,6 +47,14 @@ export const multiTenantSchema = definePluginSchema<CoreTables>()({
         tenantNameUnique: {
           columns: ['tenantSlug', 'parentId', 'name'],
           unique: true,
+          where: 'archived_at IS NULL',
+        },
+        // Root folders have a NULL parent, which a unique index treats as
+        // distinct, so root names need their own per-tenant index.
+        tenantRootNameUnique: {
+          columns: ['tenantSlug', 'name'],
+          unique: true,
+          where: 'parent_id IS NULL AND archived_at IS NULL',
         },
         tenantIdx: {
           columns: ['tenantSlug'],
@@ -67,6 +75,9 @@ export const multiTenantSchema = definePluginSchema<CoreTables>()({
         tenantSlugUnique: {
           columns: ['tenantSlug', 'slug'],
           unique: true,
+        },
+        tenantShaIdx: {
+          columns: ['tenantSlug', 'sha256'],
         },
       },
     },

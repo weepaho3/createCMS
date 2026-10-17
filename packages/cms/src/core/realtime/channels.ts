@@ -4,7 +4,8 @@
  * The security invariant: private per-user channels (`notif:<recipientId>`) are
  * readable only by their owner and fail closed when the caller is
  * unauthenticated. A/B live channels (`ab:live:<testId>`) are world-readable
- * (aggregate dashboards carry no per-user private data). Every other channel is
+ * (aggregate dashboards carry no per-user private data). Media channels
+ * (`media`, `media:<tenant>`) need a signed-in caller. Every other channel is
  * rejected. Re-evaluated on every (re)connection, so there is no stale
  * authorization across a socket's lifetime.
  *
@@ -34,6 +35,12 @@ export function defaultAuthorizeChannels(
     } else if (channel.startsWith('ab:live:')) {
       // World-readable: explicit policy, not a default-open fallthrough.
       continue;
+    } else if (channel === 'media' || channel.startsWith('media:')) {
+      // Media events carry ids and timestamps only, but still require a
+      // signed-in caller. The policy sees no tenant; a multi-tenant app that
+      // must keep tenants from subscribing to each other's `media:<tenant>`
+      // passes its own `authorizeChannels`.
+      if (!userId) return new Response('Forbidden', { status: 403 });
     } else {
       return new Response('Forbidden', { status: 403 });
     }

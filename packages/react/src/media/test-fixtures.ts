@@ -74,7 +74,9 @@ export function makeEntry(
 }
 
 export type FakeClient = {
-  [K in keyof MediaClient]: ReturnType<typeof vi.fn<MediaClient[K]>>;
+  [K in keyof MediaClient]: ReturnType<
+    typeof vi.fn<NonNullable<MediaClient[K]>>
+  >;
 };
 
 /** A `MediaClient` of `vi.fn()`s resolving with one asset, no folders and an idle upload state. */

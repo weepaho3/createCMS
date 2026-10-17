@@ -189,6 +189,13 @@ function validateScalar(
         ? []
         : [{ code: 'format', message: 'Must be an ISO-8601 datetime (UTC).' }];
     case 'image':
+      return typeof value === 'string' ||
+        (typeof value === 'object' &&
+          value !== null &&
+          'assetId' in value &&
+          typeof value.assetId === 'string')
+        ? []
+        : [type('an asset id')];
     case 'reference':
       return typeof value === 'string' ? [] : [type('an id')];
     case 'select': {

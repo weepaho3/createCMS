@@ -184,6 +184,7 @@ function computeScope(
     if (result.storageKeyPrefix) {
       merged.storageKeyPrefix = result.storageKeyPrefix;
     }
+    if (result.channelKey) merged.channelKey = result.channelKey;
     // The reference resolver is provided by at most one scoping plugin.
     if (result.variableResolver) {
       merged.variableResolver = result.variableResolver;

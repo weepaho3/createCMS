@@ -174,6 +174,8 @@ const EXPECTED: Record<string, Record<string, Expected>> = {
   // system, + per-endpoint operation)
   media: {
     createFolder: { permissionResource: 'media', operation: 'create' },
+    renameFolder: { permissionResource: 'media', operation: 'update' },
+    getFolderPath: { permissionResource: 'media', operation: 'read' },
     moveFolder: { permissionResource: 'media', operation: 'update' },
     deleteFolder: { permissionResource: 'media', operation: 'delete' },
     listFolders: { permissionResource: 'media', operation: 'read' },
@@ -195,6 +197,13 @@ const EXPECTED: Record<string, Record<string, Expected>> = {
     // replaceAsset; a weaker label on either half reopens the bypass.
     createSignedReplace: { permissionResource: 'media', operation: 'update' },
     commitReplace: { permissionResource: 'media', operation: 'update' },
+    updateAsset: { permissionResource: 'media', operation: 'update' },
+    setFocalPoint: { permissionResource: 'media', operation: 'update' },
+    setProvenance: { permissionResource: 'media', operation: 'update' },
+    restoreAssets: { permissionResource: 'media', operation: 'update' },
+    batchAssets: { permissionResource: 'media', operation: 'update' },
+    listRevisions: { permissionResource: 'media', operation: 'read' },
+    setCurrentRevision: { permissionResource: 'media', operation: 'update' },
   },
 
   // routes/notifications.ts (setupTestCMS defaults notifications enabled)
@@ -218,6 +227,7 @@ const EXPECTED: Record<string, Record<string, Expected>> = {
   admin: {
     runPruning: { permissionResource: 'admin', operation: 'delete' },
     runScheduled: { permissionResource: 'admin', operation: 'create' },
+    runMediaBackfill: { permissionResource: 'admin', operation: 'update' },
     reindexSearch: { permissionResource: 'admin', operation: 'create' },
   },
 

@@ -1,3 +1,4 @@
+import type { ImageValue } from './assets';
 import type { AnyCollectionDefinition } from './collection';
 import type {
   LinkKind,
@@ -16,10 +17,10 @@ type BlockTypes = {
   boolean: boolean;
   date: string;
   richText: string;
-  // An image is the asset's id STRING on both write and read paths; it is
-  // served via the id-addressed gate `/media/asset/{id}` and nothing is
-  // resolved at read time (a slug swap behind the id propagates automatically).
-  image: string;
+  // An image is the asset id or an `AssetRef` (id plus alt text, caption,
+  // crop of this use), stored and read back as written; nothing is resolved
+  // at read time, the gate `/media/asset/{id}` serves the bytes.
+  image: ImageValue;
   select: string;
   // The AUTHORED value of a reference is the target's rootId STRING, inlined
   // to a `ResolvedReference` only on the published read path (the `resolved`
@@ -85,6 +86,12 @@ type BlockPropertySpec<T extends BlockPropertyType> = {
   // numeric range on number. Honoured by buildPropertiesSchema.
   (T extends 'string' | 'richText' ? StringConstraints : {}) &
   (T extends 'number' ? NumberConstraints : {}) &
+  (T extends 'image'
+    ? {
+        /** Saving fails unless the value carries `alt` or `decorative: true`. */
+        requireAlt?: boolean;
+      }
+    : {}) &
   (T extends 'link'
     ? {
         allowedKinds?: readonly LinkKind[];
@@ -169,9 +176,13 @@ type InferElementValue<
           >
         : ResolvedReference
       : string
-    : E extends { type: infer ET extends keyof BlockTypes }
-      ? BlockTypes[ET]
-      : never;
+    : E extends { type: 'image' }
+      ? // A list of images holds bare asset ids; per-use alt text and crop
+        // need a single `image` property.
+        string
+      : E extends { type: infer ET extends keyof BlockTypes }
+        ? BlockTypes[ET]
+        : never;
 
 /** Extracts the runtime value type for a block property.
  *  For `select` properties with options, returns the union of option values.
@@ -214,8 +225,8 @@ type InferPropertyValue<
           M extends 'resolved'
           ? ResolvedLink
           : LinkValue
-        : // `image` is the asset-id string in BOTH modes (served via the
-          // id-addressed gate; nothing is resolved at read time). Intersecting
+        : // `image` is the stored `ImageValue` in BOTH modes (nothing is
+          // resolved at read time). Intersecting
           // with `keyof BlockTypes` keeps this a direct indexed access (no
           // extra deferred conditional) while excluding the non-scalar 'list'
           // tag, which the branches above have already handled.

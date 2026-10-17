@@ -1,11 +1,13 @@
 import { APIError, createEndpoint } from 'better-call';
 import {
   and,
+  asc,
   eq,
   getTableColumns,
   gt,
   ilike,
   inArray,
+  isNotNull,
   isNull,
   lt,
   or,
@@ -15,16 +17,20 @@ import {
 import * as z from 'zod';
 
 import type { CMSProcedureContext, MediaConfig } from '../types';
+import type { AssetMetadata } from '../types/asset-metadata';
 import type { ResolvedScope } from '../types/definitions';
 
 import { newId } from '../../utils/nanoid';
-import { assetFolders, assets } from '../db/schema.generated';
+import { assets } from '../db/schema.generated';
 import {
   cmsMeta,
   createCMSEndpoint,
   type PublicEndpointContext,
 } from '../endpoint';
 import { CMSError, errorMessages } from '../errors';
+import { archiveAssetsInScope } from '../media/archive';
+import { contentDisposition } from '../media/content-disposition';
+import { emitMediaEvents } from '../media/events';
 import {
   assetObjectKey,
   cacheControlFor,
@@ -46,11 +52,8 @@ import {
   prepareSignedUpload,
   validateFiles,
 } from '../media/uploads';
-import {
-  assetsReferencedByLiveContent,
-  assetsSuspectedInRichText,
-  getAssetUsageDetails,
-} from '../media/usage';
+import { getAssetUsageDetails } from '../media/usage';
+import { formatVariantKey, parseVariantKey } from '../media/variant-key';
 import { crossScopeColumns, scopedInsert, scopedInsertBatch } from '../scope';
 import {
   requireCapability,
@@ -61,6 +64,8 @@ import { getStorage } from '../storage/get-storage';
 import { buildPublicObjectUrl, buildVariantSlug } from '../storage/s3/utils';
 import { MEDIA_DEFAULTS } from '../types/s3';
 import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
+import { createMediaAssetEndpoints } from './media-assets';
+import { createMediaFolderEndpoints } from './media-folders';
 
 /**
  * Types the gate redirects to the bare public URL. Everything else, and every
@@ -70,6 +75,29 @@ import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
  */
 const INLINE_SAFE =
   /^(image\/(png|jpeg|gif|webp|avif)|video\/|audio\/|application\/pdf$)/;
+
+/**
+ * Fields of one uploaded file. `variantKey` (see core/media/variant-key.ts)
+ * names the variant of `variantOf` the file is, and needs `variantOf`.
+ */
+const uploadFileFields = z.object({
+  name: z.string().min(1),
+  type: z.string().min(1),
+  variantOf: z.string().optional(),
+  variantKey: z
+    .string()
+    .refine((key) => parseVariantKey(key) !== null, 'Invalid variant key')
+    .optional(),
+});
+
+function requireVariantOfForKey<
+  T extends z.ZodType<{ variantOf?: string; variantKey?: string }>,
+>(schema: T) {
+  return schema.refine((file) => !file.variantKey || file.variantOf, {
+    message: 'variantKey requires variantOf',
+    path: ['variantKey'],
+  });
+}
 
 /** Lifetime of the signed GET a private asset redirects to. */
 const PRIVATE_SIGNED_GET_SECONDS = 300;
@@ -231,16 +259,34 @@ type AssetRow = typeof assets.$inferSelect;
  * object `url` for internal/admin display (see listAssets for why this URL is
  * NOT for embedding in content).
  */
-function toAssetListItem(asset: AssetRow, urls: AssetUrls) {
+/** A live variant of an asset, as listed with it. */
+export type AssetVariantSummary = {
+  variantKey: string;
+  width: number | null;
+  height: number | null;
+  size: number;
+};
+
+function toAssetListItem(
+  asset: AssetRow,
+  urls: AssetUrls,
+  variants: AssetVariantSummary[] = [],
+) {
   return {
     id: asset.id,
     slug: asset.slug,
+    originalName: asset.originalName ?? null,
     mimeType: asset.mimeType,
     size: asset.size,
+    width: asset.width ?? null,
+    height: asset.height ?? null,
     objectKey: asset.objectKey,
     url: urls.object(asset.status, asset.objectKey),
     deliveryUrl: urls.delivery(asset.id),
     status: asset.status,
+    provenance: asset.provenance,
+    metadata: asset.metadata as AssetMetadata,
+    variants,
     folderId: asset.folderId ?? null,
     variantOf: asset.variantOf ?? null,
     uploadedBy: asset.uploadedBy ?? null,
@@ -346,6 +392,75 @@ export function createMediaEndpoints(
 ) {
   const { db } = cmsCtx;
   const urls = assetUrls(mediaConfig.publicUrl, basePath);
+
+  /** Live, keyed variants of `assetIds` in one query, grouped by asset. */
+  async function loadVariants(
+    assetIds: string[],
+  ): Promise<Map<string, AssetVariantSummary[]>> {
+    const grouped = new Map<string, AssetVariantSummary[]>();
+    if (assetIds.length === 0) return grouped;
+    const rows = await db
+      .select({
+        variantOf: assets.variantOf,
+        variantKey: assets.variantKey,
+        width: assets.width,
+        height: assets.height,
+        size: assets.size,
+      })
+      .from(assets)
+      .where(
+        and(
+          inArray(assets.variantOf, assetIds),
+          isNull(assets.archivedAt),
+          isNotNull(assets.variantKey),
+        ),
+      )
+      .orderBy(asc(assets.width));
+    for (const row of rows) {
+      const list = grouped.get(row.variantOf!) ?? [];
+      list.push({
+        variantKey: row.variantKey!,
+        width: row.width,
+        height: row.height,
+        size: row.size,
+      });
+      grouped.set(row.variantOf!, list);
+    }
+    return grouped;
+  }
+
+  /**
+   * The live variant of `asset` for `?format` and `?w`: by canonical
+   * `variantKey` when both are given, else by the former slug scheme
+   * (variants not yet backfilled).
+   */
+  async function findVariant(
+    asset: { id: string; slug: string; mimeType: string },
+    format: 'webp' | 'jpeg' | 'png' | undefined,
+    width: number | undefined,
+  ) {
+    const select = (match: SQL) =>
+      db
+        .select({ objectKey: assets.objectKey, mimeType: assets.mimeType })
+        .from(assets)
+        .where(
+          and(eq(assets.variantOf, asset.id), isNull(assets.archivedAt), match),
+        )
+        .limit(1);
+    if (format && width) {
+      const key = parseVariantKey(`w${width}.${format}`);
+      if (key) {
+        const [byKey] = await select(
+          eq(assets.variantKey, formatVariantKey(key)),
+        );
+        if (byKey) return byKey;
+      }
+    }
+    const [bySlug] = await select(
+      eq(assets.slug, buildVariantSlug(asset.slug, format, width)),
+    );
+    return bySlug;
+  }
 
   const maxFileSize = mediaConfig.maxFileSize ?? MEDIA_DEFAULTS.maxFileSize;
   const maxFiles = mediaConfig.maxFiles ?? MEDIA_DEFAULTS.maxFiles;
@@ -474,6 +589,11 @@ export function createMediaEndpoints(
       return row;
     };
 
+    // A folder sent to the trash after presign is gone for new uploads.
+    if (payload.folderId) {
+      await assertFolderExists(db, payload.folderId, scope);
+    }
+
     // Slugs are unique per scope only (a scoping plugin adds its own unique
     // index); a slug that loses a concurrent insert race is excluded here so
     // the next attempt moves to the next counter.
@@ -496,11 +616,16 @@ export function createMediaEndpoints(
             status: 'private' as const,
             folder_id: payload.folderId,
             variant_of: payload.variantOf,
+            variant_key: payload.variantKey ?? null,
+            original_name: payload.name,
             uploaded_by: payload.actor,
           },
           scope.assets,
         );
       } catch (err) {
+        if (isConstraintViolation(err, '23505', 'assets_variant_unique')) {
+          throw new CMSError('VARIANT_EXISTS');
+        }
         if (
           isConstraintViolation(err, '23505', 'assets_pkey') ||
           isConstraintViolation(err, '23505', 'assets_object_key_unique')
@@ -541,309 +666,14 @@ export function createMediaEndpoints(
   }
 
   return {
-    // ========================================================================
-    // Folder Operations
-    // ========================================================================
-
-    /**
-     * Creates a new folder in the asset library.
-     *
-     * @param name - Folder name.
-     * @param parentFolderId - Optional parent folder id; if omitted, creates a root-level folder.
-     * @returns The created folder with its metadata (id, name, parentId, createdBy, createdAt).
-     * @throws PARENT_NOT_FOUND if parentFolderId does not reference an existing folder.
-     * @example await cmsClient.media.createFolder({ name: 'Images' })
-     */
-    createFolder: createCMSEndpoint(
-      '/media/createFolder',
-      {
-        method: 'POST',
-        body: z.object({
-          name: z.string().min(1),
-          parentFolderId: z.string().optional(),
-        }),
-        metadata: cmsMeta({}, { operation: 'create', ...MEDIA_META }),
-      },
-      async (ctx) => {
-        const { userId: actor, scope } = ctx.context;
-
-        if (ctx.body.parentFolderId) {
-          const conditions = [eq(assetFolders.id, ctx.body.parentFolderId)];
-          if (scope.assetFolders?.where)
-            conditions.push(scope.assetFolders.where);
-
-          const [parentFolder] = await db
-            .select({ id: assetFolders.id })
-            .from(assetFolders)
-            .where(and(...conditions));
-
-          if (!parentFolder) {
-            throw new CMSError('PARENT_NOT_FOUND', {
-              message: errorMessages.parentNotFound(ctx.body.parentFolderId),
-            });
-          }
-        }
-
-        const folder = await scopedInsert(
-          db,
-          'cms.asset_folders',
-          {
-            id: newId('assetFolder'),
-            name: ctx.body.name,
-            parent_id: ctx.body.parentFolderId ?? null,
-            created_by: actor ?? null,
-          },
-          scope.assetFolders,
-        );
-
-        return {
-          folder: {
-            id: folder.id,
-            name: folder.name,
-            parentId: folder.parent_id ?? null,
-            createdBy: folder.created_by ?? null,
-            createdAt: folder.created_at,
-          },
-        };
-      },
-    ),
-
-    /**
-     * Moves a folder to a new parent folder or to root level.
-     *
-     * @param folderId - The folder to move.
-     * @param newParentFolderId - New parent folder id. Omit or pass `null` to detach the folder to the root level.
-     * @returns The updated folder with its new parent relationship.
-     * @throws FOLDER_NOT_FOUND if folderId does not exist.
-     * @throws PARENT_NOT_FOUND if newParentFolderId does not exist.
-     * @throws CANNOT_MOVE_INTO_SELF if folderId equals newParentFolderId.
-     * @throws CANNOT_MOVE_INTO_DESCENDANT if newParentFolderId is a descendant of folderId.
-     */
-    moveFolder: createCMSEndpoint(
-      '/media/moveFolder',
-      {
-        method: 'POST',
-        body: z.object({
-          folderId: z.string(),
-          newParentFolderId: z.string().nullable().optional(),
-        }),
-        metadata: cmsMeta({}, { operation: 'update', ...MEDIA_META }),
-      },
-      async (ctx) => {
-        const { scope } = ctx.context;
-        const { folderId, newParentFolderId } = ctx.body;
-
-        if (newParentFolderId === folderId) {
-          throw new CMSError('CANNOT_MOVE_INTO_SELF');
-        }
-
-        const folderConditions = [eq(assetFolders.id, folderId)];
-        if (scope.assetFolders?.where)
-          folderConditions.push(scope.assetFolders.where);
-
-        const [folder] = await db
-          .select({ id: assetFolders.id, parentId: assetFolders.parentId })
-          .from(assetFolders)
-          .where(and(...folderConditions));
-
-        if (!folder) {
-          throw new CMSError('FOLDER_NOT_FOUND', {
-            message: errorMessages.folderNotFound(folderId),
-          });
-        }
-
-        if (newParentFolderId) {
-          const parentConditions = [eq(assetFolders.id, newParentFolderId)];
-          if (scope.assetFolders?.where)
-            parentConditions.push(scope.assetFolders.where);
-
-          const [newParent] = await db
-            .select({ id: assetFolders.id })
-            .from(assetFolders)
-            .where(and(...parentConditions));
-
-          if (!newParent) {
-            throw new CMSError('PARENT_NOT_FOUND', {
-              message: errorMessages.parentNotFound(newParentFolderId),
-            });
-          }
-
-          const [cycle] = await db
-            .select({
-              isCycle: sql<boolean>`EXISTS (
-                WITH RECURSIVE ancestors AS (
-                  SELECT id, parent_id FROM cms.asset_folders
-                    WHERE id = ${newParentFolderId}
-                  UNION ALL
-                  SELECT f.id, f.parent_id FROM cms.asset_folders f
-                    INNER JOIN ancestors a ON a.parent_id = f.id
-                )
-                SELECT 1 FROM ancestors WHERE id = ${folderId}
-              )`,
-            })
-            .from(sql`(SELECT 1) AS _`);
-
-          if (cycle?.isCycle) {
-            throw new CMSError('CANNOT_MOVE_INTO_DESCENDANT');
-          }
-        }
-
-        const updateConditions = [eq(assetFolders.id, folderId)];
-        if (scope.assetFolders?.where)
-          updateConditions.push(scope.assetFolders.where);
-
-        const [updatedFolder] = await db
-          .update(assetFolders)
-          .set({ parentId: newParentFolderId ?? null })
-          .where(and(...updateConditions))
-          .returning();
-
-        return {
-          folder: {
-            id: updatedFolder.id,
-            name: updatedFolder.name,
-            parentId: updatedFolder.parentId ?? null,
-            createdBy: updatedFolder.createdBy ?? null,
-            createdAt: updatedFolder.createdAt,
-          },
-        };
-      },
-    ),
-
-    /**
-     * Deletes an empty folder.
-     *
-     * @param folderId - The folder to delete.
-     * @returns The deleted folder id.
-     * @throws FOLDER_NOT_FOUND if folderId does not exist.
-     * @throws FOLDER_HAS_CONTENT if the folder contains assets or subfolders.
-     */
-    deleteFolder: createCMSEndpoint(
-      '/media/deleteFolder',
-      {
-        method: 'POST',
-        body: z.object({
-          folderId: z.string(),
-        }),
-        metadata: cmsMeta({}, { operation: 'delete', ...MEDIA_META }),
-      },
-      async (ctx) => {
-        const { scope } = ctx.context;
-        const { folderId } = ctx.body;
-
-        const folderConditions = [eq(assetFolders.id, folderId)];
-        if (scope.assetFolders?.where)
-          folderConditions.push(scope.assetFolders.where);
-
-        const [folder] = await db
-          .select({ id: assetFolders.id })
-          .from(assetFolders)
-          .where(and(...folderConditions));
-
-        if (!folder) {
-          throw new CMSError('FOLDER_NOT_FOUND', {
-            message: errorMessages.folderNotFound(folderId),
-          });
-        }
-
-        // Archived assets and assets outside the scope do not block: their
-        // folder_id is set to NULL by the FK, and archived ones stay
-        // restorable. Child folders are counted unscoped because
-        // asset_folders_parent_fk cascades.
-        const assetConditions: SQL[] = [
-          eq(assets.folderId, folderId),
-          isNull(assets.archivedAt),
-        ];
-        if (scope.assets?.where) assetConditions.push(scope.assets.where);
-        const [assetCount] = await db
-          .select({ n: sql<number>`count(*)::int` })
-          .from(assets)
-          .where(and(...assetConditions));
-        const [childCount] = await db
-          .select({ n: sql<number>`count(*)::int` })
-          .from(assetFolders)
-          .where(eq(assetFolders.parentId, folderId));
-
-        if (assetCount.n > 0 || childCount.n > 0) {
-          throw new CMSError('FOLDER_HAS_CONTENT', {
-            message: errorMessages.folderHasContent(folderId),
-          });
-        }
-
-        await db.delete(assetFolders).where(and(...folderConditions));
-
-        return { folderId };
-      },
+    ...createMediaFolderEndpoints(cmsCtx),
+    ...createMediaAssetEndpoints(cmsCtx, mediaConfig, (row) =>
+      toAssetListItem(row, urls),
     ),
 
     // ========================================================================
     // Asset Listing & Retrieval
     // ========================================================================
-
-    /**
-     * Lists folders in the asset library, by parent — the read counterpart to
-     * the folder mutations. Navigate the tree level by level: omit `parentFolderId`
-     * for the root-level folders, then pass a folder's id to get its children.
-     *
-     * @param parentFolderId - Optional parent folder id; if omitted, returns the ROOT-level folders (those with no parent).
-     * @returns The direct child folders of the given parent (or of the root), sorted by name.
-     *
-     * @remarks Intentionally unpaginated: this is per-level tree navigation, so
-     * each call is naturally bounded by a single parent's direct-child fan-out
-     * (not the whole tree). Callers page the tree by descending, not by offset.
-     * If a single level is ever expected to hold thousands of siblings, revisit
-     * and add `limit`/`offset` + `{ folders, total, hasMore }` to match listAssets.
-     * @example await cmsClient.media.listFolders()                  // root folders
-     * @example await cmsClient.media.listFolders({ parentFolderId })      // a folder's subfolders
-     */
-    listFolders: createCMSEndpoint(
-      '/media/listFolders',
-      {
-        method: 'GET',
-        query: z.object({ parentFolderId: z.string().optional() }).optional(),
-        metadata: cmsMeta(
-          { $Infer: { query: {} as { parentFolderId?: string } } },
-          { operation: 'read', ...MEDIA_META },
-        ),
-      },
-      async (ctx) => {
-        const { scope } = ctx.context;
-        const parentFolderId = ctx.query?.parentFolderId;
-
-        // Children of `parentFolderId`, or the root level when omitted. The scope
-        // predicate is applied to the CHILDREN, so an out-of-scope `parentFolderId`
-        // simply yields no rows (no cross-tenant leak).
-        const conditions: SQL[] = [
-          parentFolderId
-            ? eq(assetFolders.parentId, parentFolderId)
-            : isNull(assetFolders.parentId),
-        ];
-        if (scope.assetFolders?.where)
-          conditions.push(scope.assetFolders.where);
-
-        const folderRows = await db
-          .select({
-            id: assetFolders.id,
-            name: assetFolders.name,
-            parentId: assetFolders.parentId,
-            createdBy: assetFolders.createdBy,
-            createdAt: assetFolders.createdAt,
-          })
-          .from(assetFolders)
-          .where(and(...conditions))
-          .orderBy(sql`${assetFolders.name} ASC`);
-
-        return {
-          folders: folderRows.map((folder) => ({
-            id: folder.id,
-            name: folder.name,
-            parentId: folder.parentId ?? null,
-            createdBy: folder.createdBy ?? null,
-            createdAt: folder.createdAt,
-          })),
-        };
-      },
-    ),
 
     /**
      * Lists assets in the media library with optional filtering and pagination.
@@ -1026,8 +856,11 @@ export function createMediaEndpoints(
         const assetRows = hasNextPage ? fetched.slice(0, limit) : fetched;
         const lastRow = assetRows[assetRows.length - 1];
 
+        const variants = await loadVariants(assetRows.map((a) => a.id));
         return {
-          assets: assetRows.map((asset) => toAssetListItem(asset, urls)),
+          assets: assetRows.map((asset) =>
+            toAssetListItem(asset, urls, variants.get(asset.id)),
+          ),
           total: count,
           // Cursor mode reports liveness from the over-fetch; offset mode keeps
           // the historical offset/total comparison.
@@ -1086,9 +919,12 @@ export function createMediaEndpoints(
           .select()
           .from(assets)
           .where(and(...conditions));
+        const variantsById = await loadVariants(rows.map((a) => a.id));
 
         return {
-          assets: rows.map((asset) => toAssetListItem(asset, urls)),
+          assets: rows.map((asset) =>
+            toAssetListItem(asset, urls, variantsById.get(asset.id)),
+          ),
         };
       },
     ),
@@ -1121,6 +957,8 @@ export function createMediaEndpoints(
           format: z.enum(['webp', 'jpeg', 'png']).optional(),
           w: z.coerce.number().int().positive().optional(),
           download: wireBooleanSchema.optional(),
+          // A pinned revision (`AssetRef.revisionId`) of this asset.
+          rev: z.string().optional(),
         }),
         metadata: cmsMeta(
           {},
@@ -1145,6 +983,7 @@ export function createMediaEndpoints(
               status: assets.status,
               mimeType: assets.mimeType,
               slug: assets.slug,
+              originalName: assets.originalName,
             })
             .from(assets)
             .where(and(...conditions));
@@ -1170,23 +1009,30 @@ export function createMediaEndpoints(
         }
 
         let targetKey = asset.objectKey;
-        if (ctx.query?.format || ctx.query?.w) {
-          const variantSlug = buildVariantSlug(
-            asset.slug,
-            ctx.query?.format,
-            ctx.query?.w,
-          );
-          const [variant] = await db
-            .select({ objectKey: assets.objectKey })
+        let targetMime = asset.mimeType;
+        if (ctx.query?.rev) {
+          const [revision] = await db
+            .select({ objectKey: assets.objectKey, mimeType: assets.mimeType })
             .from(assets)
             .where(
               and(
-                eq(assets.slug, variantSlug),
-                eq(assets.variantOf, asset.id),
-                isNull(assets.archivedAt),
+                eq(assets.id, ctx.query.rev),
+                eq(assets.revisionOf, asset.id),
               ),
             );
-          if (variant) targetKey = variant.objectKey;
+          if (!revision) throw notFound();
+          targetKey = revision.objectKey;
+          targetMime = revision.mimeType;
+        } else if (ctx.query?.format || ctx.query?.w) {
+          const variant = await findVariant(
+            asset,
+            ctx.query?.format,
+            ctx.query?.w,
+          );
+          if (variant) {
+            targetKey = variant.objectKey;
+            targetMime = variant.mimeType;
+          }
         }
 
         // better-call applies headers from `ctx.responseHeaders` and the
@@ -1199,7 +1045,9 @@ export function createMediaEndpoints(
         );
         const wantsDownload = wireBooleanIsTrue(ctx.query?.download);
         const inlineSafe = INLINE_SAFE.test(asset.mimeType);
-        if (!isPrivate && !wantsDownload && inlineSafe) {
+        // A revision kept under `prv/` is unreadable through the public URL.
+        const privateKey = /^(t\/[^/]+\/)?prv\//.test(targetKey);
+        if (!isPrivate && !privateKey && !wantsDownload && inlineSafe) {
           return ctx.redirect(
             buildPublicObjectUrl(mediaConfig.publicUrl, targetKey),
           );
@@ -1215,14 +1063,13 @@ export function createMediaEndpoints(
             ? 'signed URLs with a bound content disposition'
             : 'signed URLs',
         );
-        const safeName = asset.slug.replace(/["\\\r\n]/g, '_');
         const signed = await storage.signGet(targetKey, {
           expiresIn: Math.min(
             isPrivate ? PRIVATE_SIGNED_GET_SECONDS : 3600,
             storage.capabilities.signedGet.maxExpiresIn,
           ),
           responseContentDisposition: attachment
-            ? `attachment;filename="${safeName}";filename*=UTF-8''${encodeURIComponent(asset.slug)}`
+            ? contentDisposition(asset.originalName ?? asset.slug, targetMime)
             : undefined,
         });
         return ctx.redirect(signed);
@@ -1285,6 +1132,11 @@ export function createMediaEndpoints(
           scope,
         );
 
+        await emitMediaEvents(
+          cmsCtx.realtime,
+          scope,
+          changed.map((assetId) => ({ event: 'media.asset.updated', assetId })),
+        );
         const skipped = assetIds.filter((id) => !changed.includes(id));
         return {
           updated: changed.length,
@@ -1373,6 +1225,14 @@ export function createMediaEndpoints(
         }
 
         const skipped = assetIds.filter((id) => !movedIds.includes(id));
+        await emitMediaEvents(
+          cmsCtx.realtime,
+          ctx.context.scope,
+          movedIds.map((assetId) => ({
+            event: 'media.asset.updated',
+            assetId,
+          })),
+        );
         return { moved: movedIds.length, movedIds, skipped };
       },
     ),
@@ -1403,88 +1263,27 @@ export function createMediaEndpoints(
         const { scope } = ctx.context;
         const { assetIds, force } = ctx.body;
 
-        const selectConditions: SQL[] = [
-          inArray(assets.id, assetIds),
-          isNull(assets.archivedAt),
-        ];
-        if (scope.assets?.where) selectConditions.push(scope.assets.where);
-
-        const existing = await db
-          .select({ id: assets.id })
-          .from(assets)
-          .where(and(...selectConditions));
-
-        if (existing.length === 0) {
+        const { found, archivedIds, skippedReasons } =
+          await archiveAssetsInScope(db, assetIds, scope, {
+            media: mediaConfig,
+            force,
+          });
+        if (found.length === 0) {
           throw new CMSError('ASSET_NOT_FOUND', {
             message: 'No assets found for the given IDs',
           });
         }
-
-        const existingIds = existing.map((a) => a.id);
-
-        // Guard: never archive an asset still referenced by live content.
-        // Archiving starts the pruning trash clock, so archiving an in-use asset
-        // would eventually delete it (and its S3 object) out from under a live
-        // page. The check is authoritative against branch-head block versions
-        // (the version-keyed content_usages index joined to branch heads). In-use
-        // assets are skipped, not failed, so a batch still archives the rest.
-        const scopeColumns = crossScopeColumns(scope.roots);
-        const referenced = await assetsReferencedByLiveContent(
-          db,
-          existingIds,
-          scopeColumns,
+        await emitMediaEvents(
+          cmsCtx.realtime,
+          scope,
+          archivedIds
+            .filter((id) => found.includes(id))
+            .map((assetId) => ({ event: 'media.asset.archived', assetId })),
         );
-        const suspected =
-          force || mediaConfig.guardRichTextReferences === false
-            ? new Set<string>()
-            : await assetsSuspectedInRichText(
-                db,
-                existingIds.filter((id) => !referenced.has(id)),
-                scopeColumns,
-              );
-        const toArchive: string[] = [];
-        const skipped: string[] = [];
-        const skippedReasons: Record<string, 'in_use' | 'richtext_suspect'> =
-          {};
-        for (const id of existingIds) {
-          if (referenced.has(id)) {
-            skipped.push(id);
-            skippedReasons[id] = 'in_use';
-          } else if (suspected.has(id)) {
-            skipped.push(id);
-            skippedReasons[id] = 'richtext_suspect';
-          } else {
-            toArchive.push(id);
-          }
-        }
-
-        if (toArchive.length === 0) {
-          return { archived: 0, archivedIds: [], skipped, skippedReasons };
-        }
-
-        // Archive the assets together with their variants so a variant object is
-        // never left orphaned without its original. The stored S3 object is kept
-        // until the pruning layer reclaims unreferenced, archived, old assets.
-        const now = new Date();
-        const archiveConditions: SQL[] = [
-          or(
-            inArray(assets.id, toArchive),
-            inArray(assets.variantOf, toArchive),
-          )!,
-          isNull(assets.archivedAt),
-        ];
-        if (scope.assets?.where) archiveConditions.push(scope.assets.where);
-
-        const archived = await db
-          .update(assets)
-          .set({ archivedAt: now, updatedAt: now })
-          .where(and(...archiveConditions))
-          .returning({ id: assets.id });
-
         return {
-          archived: archived.length,
-          archivedIds: archived.map((a) => a.id),
-          skipped,
+          archived: archivedIds.length,
+          archivedIds,
+          skipped: Object.keys(skippedReasons),
           skippedReasons,
         };
       },
@@ -1581,12 +1380,11 @@ export function createMediaEndpoints(
         body: z.object({
           files: z
             .array(
-              z.object({
-                name: z.string().min(1),
-                size: z.number().int().positive(),
-                type: z.string().min(1),
-                variantOf: z.string().optional(),
-              }),
+              requireVariantOfForKey(
+                uploadFileFields.extend({
+                  size: z.number().int().positive(),
+                }),
+              ),
             )
             .min(1),
           folderId: z.string().optional(),
@@ -1634,6 +1432,7 @@ export function createMediaEndpoints(
               size: p.file.size,
               folderId: folderId ?? null,
               variantOf: p.file.variantOf ?? null,
+              variantKey: p.file.variantKey ?? null,
               actor: actor ?? null,
               scope: scopeId,
               exp,
@@ -1741,6 +1540,14 @@ export function createMediaEndpoints(
           }
         }
 
+        await emitMediaEvents(
+          cmsCtx.realtime,
+          ctx.context.scope,
+          completed.map((asset) => ({
+            event: 'media.asset.created',
+            assetId: asset.id,
+          })),
+        );
         return { assets: completed, errors };
       },
     ),
@@ -1908,10 +1715,14 @@ export function createMediaEndpoints(
       '/media/commitReplace',
       {
         method: 'POST',
-        body: z.object({ token: z.string().min(1) }),
+        body: z.object({
+          token: z.string().min(1),
+          revisionNote: z.string().max(2000).optional(),
+        }),
         metadata: cmsMeta({}, { operation: 'update', ...MEDIA_META }),
       },
       async (ctx) => {
+        const revisionNote = ctx.body.revisionNote;
         const { userId, scope } = ctx.context;
 
         const payload = await verifyUploadToken(
@@ -1991,6 +1802,12 @@ export function createMediaEndpoints(
                 objectKey: assets.objectKey,
                 mimeType: assets.mimeType,
                 size: assets.size,
+                width: assets.width,
+                height: assets.height,
+                originalName: assets.originalName,
+                sha256: assets.sha256,
+                provenance: assets.provenance,
+                metadata: assets.metadata,
                 uploadedBy: assets.uploadedBy,
               })
               .from(assets)
@@ -2027,7 +1844,18 @@ export function createMediaEndpoints(
 
             const repointed = await tx
               .update(assets)
-              .set({ slug, objectKey, mimeType, size, updatedAt: now })
+              .set({
+                slug,
+                objectKey,
+                mimeType,
+                size,
+                originalName: slug,
+                width: null,
+                height: null,
+                sha256: null,
+                provenance: 'unknown',
+                updatedAt: now,
+              })
               .where(and(...updateConditions))
               .returning();
 
@@ -2066,10 +1894,22 @@ export function createMediaEndpoints(
                 slug: before.slug,
                 mime_type: before.mimeType,
                 size: before.size,
+                width: before.width,
+                height: before.height,
+                original_name: before.originalName,
+                sha256: before.sha256,
+                provenance: before.provenance,
+                metadata: JSON.stringify(
+                  revisionNote
+                    ? { ...before.metadata, revisionNote }
+                    : before.metadata,
+                ),
                 object_key: before.objectKey,
                 status: 'private' as const,
                 folder_id: null,
                 variant_of: null,
+                // The superseded bytes stay listed as a revision of the asset.
+                revision_of: assetId,
                 uploaded_by: before.uploadedBy,
                 archived_at: now,
               },
@@ -2079,23 +1919,10 @@ export function createMediaEndpoints(
             return repointed[0];
           });
 
-          return {
-            asset: {
-              id: repointedRow.id,
-              slug: repointedRow.slug,
-              mimeType: repointedRow.mimeType,
-              size: repointedRow.size,
-              objectKey: repointedRow.objectKey,
-              url: urls.object(repointedRow.status, repointedRow.objectKey),
-              deliveryUrl: urls.delivery(repointedRow.id),
-              status: repointedRow.status,
-              folderId: repointedRow.folderId ?? null,
-              variantOf: repointedRow.variantOf ?? null,
-              uploadedBy: repointedRow.uploadedBy ?? null,
-              createdAt: repointedRow.createdAt,
-              updatedAt: repointedRow.updatedAt,
-            },
-          };
+          await emitMediaEvents(cmsCtx.realtime, scope, [
+            { event: 'media.asset.replaced', assetId: repointedRow.id },
+          ]);
+          return { asset: toAssetListItem(repointedRow, urls) };
         } catch (err) {
           const orphaned = orphanedNewObject.value;
           if (orphaned) {
@@ -2154,13 +1981,12 @@ export function createMediaEndpoints(
         body: z.object({
           files: z
             .array(
-              z.object({
-                name: z.string().min(1),
-                size: z.number().int().positive(),
-                type: z.string().min(1),
-                buffer: z.instanceof(Blob).or(z.instanceof(ArrayBuffer)),
-                variantOf: z.string().optional(),
-              }),
+              requireVariantOfForKey(
+                uploadFileFields.extend({
+                  size: z.number().int().positive(),
+                  buffer: z.instanceof(Blob).or(z.instanceof(ArrayBuffer)),
+                }),
+              ),
             )
             .min(1),
           folderId: z.string().optional(),
@@ -2206,22 +2032,33 @@ export function createMediaEndpoints(
 
         const filesByIndex = new Map(files.map((f, i) => [i, f]));
 
-        const inserted = await scopedInsertBatch(
-          db,
-          'cms.assets',
-          prepared.map((p) => ({
-            id: p.id,
-            slug: p.slug,
-            mime_type: p.file.type,
-            size: p.file.size,
-            object_key: p.objectKey,
-            status: 'private' as const,
-            folder_id: folderId ?? null,
-            variant_of: p.file.variantOf ?? null,
-            uploaded_by: actor ?? null,
-          })),
-          scope.assets,
-        );
+        const inserted = await (async () => {
+          try {
+            return await scopedInsertBatch(
+              db,
+              'cms.assets',
+              prepared.map((p) => ({
+                id: p.id,
+                slug: p.slug,
+                mime_type: p.file.type,
+                size: p.file.size,
+                object_key: p.objectKey,
+                status: 'private' as const,
+                folder_id: folderId ?? null,
+                variant_of: p.file.variantOf ?? null,
+                variant_key: p.file.variantKey ?? null,
+                original_name: p.file.name,
+                uploaded_by: actor ?? null,
+              })),
+              scope.assets,
+            );
+          } catch (err) {
+            if (isConstraintViolation(err, '23505', 'assets_variant_unique')) {
+              throw new CMSError('VARIANT_EXISTS');
+            }
+            throw err;
+          }
+        })();
         const insertedById = new Map(inserted.map((row) => [row.id, row]));
 
         for (let i = 0; i < prepared.length; i++) {
@@ -2246,28 +2083,26 @@ export function createMediaEndpoints(
           }
         }
 
+        await emitMediaEvents(
+          cmsCtx.realtime,
+          scope,
+          prepared.map((p) => ({
+            event: 'media.asset.created',
+            assetId: p.id,
+          })),
+        );
+
+        // Read back through Drizzle so timestamps map exactly as in listAssets
+        // (a raw row's timestamp string carries no zone).
+        const rows = await db
+          .select()
+          .from(assets)
+          .where(inArray(assets.id, [...insertedById.keys()]));
+        const rowsById = new Map(rows.map((row) => [row.id, row]));
         return {
-          assets: prepared.map((p) => {
-            const row = insertedById.get(p.id)!;
-            return {
-              id: p.id,
-              slug: p.slug,
-              mimeType: p.file.type,
-              size: p.file.size,
-              objectKey: p.objectKey,
-              url: urls.object('private', p.objectKey),
-              deliveryUrl: urls.delivery(p.id),
-              status: 'private' as const,
-              folderId: folderId ?? null,
-              variantOf: p.file.variantOf ?? null,
-              uploadedBy: actor ?? null,
-              // scopedInsertBatch returns a raw db.execute row: timestamptz comes
-              // back as a string, so wrap it in a Date to match listAssets (which
-              // reads Dates via a Drizzle .select()).
-              createdAt: new Date(row.created_at as string),
-              updatedAt: new Date(row.updated_at as string),
-            };
-          }),
+          assets: prepared.map((p) =>
+            toAssetListItem(rowsById.get(p.id)!, urls),
+          ),
         };
       },
     ),
@@ -2310,6 +2145,7 @@ export function createMediaEndpoints(
       {
         method: 'POST',
         body: z.object({
+          revisionNote: z.string().max(2000).optional(),
           assetId: z.string().min(1),
           file: z.object({
             name: z.string().min(1),
@@ -2327,6 +2163,7 @@ export function createMediaEndpoints(
         ),
       },
       async (ctx) => {
+        const revisionNote = ctx.body.revisionNote;
         const { scope } = ctx.context;
         const { assetId, file } = ctx.body;
         // Measure the real bytes; the client-declared `size` is not trusted here.
@@ -2442,6 +2279,12 @@ export function createMediaEndpoints(
                 objectKey: assets.objectKey,
                 mimeType: assets.mimeType,
                 size: assets.size,
+                width: assets.width,
+                height: assets.height,
+                originalName: assets.originalName,
+                sha256: assets.sha256,
+                provenance: assets.provenance,
+                metadata: assets.metadata,
                 uploadedBy: assets.uploadedBy,
               })
               .from(assets)
@@ -2477,6 +2320,11 @@ export function createMediaEndpoints(
                 objectKey,
                 mimeType: file.type,
                 size: measuredSize,
+                originalName: file.name,
+                width: null,
+                height: null,
+                sha256: null,
+                provenance: 'unknown',
                 updatedAt: now,
               })
               .where(and(...updateConditions))
@@ -2524,10 +2372,22 @@ export function createMediaEndpoints(
                 slug: before.slug,
                 mime_type: before.mimeType,
                 size: before.size,
+                width: before.width,
+                height: before.height,
+                original_name: before.originalName,
+                sha256: before.sha256,
+                provenance: before.provenance,
+                metadata: JSON.stringify(
+                  revisionNote
+                    ? { ...before.metadata, revisionNote }
+                    : before.metadata,
+                ),
                 object_key: before.objectKey,
                 status: 'private' as const,
                 folder_id: null,
                 variant_of: null,
+                // The superseded bytes stay listed as a revision of the asset.
+                revision_of: assetId,
                 uploaded_by: before.uploadedBy,
                 archived_at: now,
               },
@@ -2537,23 +2397,10 @@ export function createMediaEndpoints(
             return repointed[0];
           });
 
-          return {
-            asset: {
-              id: repointedRow.id,
-              slug: repointedRow.slug,
-              mimeType: repointedRow.mimeType,
-              size: repointedRow.size,
-              objectKey: repointedRow.objectKey,
-              url: urls.object(repointedRow.status, repointedRow.objectKey),
-              deliveryUrl: urls.delivery(repointedRow.id),
-              status: repointedRow.status,
-              folderId: repointedRow.folderId ?? null,
-              variantOf: repointedRow.variantOf ?? null,
-              uploadedBy: repointedRow.uploadedBy ?? null,
-              createdAt: repointedRow.createdAt,
-              updatedAt: repointedRow.updatedAt,
-            },
-          };
+          await emitMediaEvents(cmsCtx.realtime, scope, [
+            { event: 'media.asset.replaced', assetId: repointedRow.id },
+          ]);
+          return { asset: toAssetListItem(repointedRow, urls) };
         } catch (err) {
           const orphaned = orphanedNewObject.value;
           if (orphaned) {

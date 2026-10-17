@@ -53,3 +53,10 @@ export type {
   RootDefinition,
   SlugConfig,
 } from './collection';
+export type {
+  AssetCrop,
+  AssetRef,
+  ImageValue,
+  RichTextImageAttrs,
+  RichTextLinkAttrs,
+} from './assets';

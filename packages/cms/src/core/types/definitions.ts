@@ -14,6 +14,11 @@ import type { MediaConfig } from './s3';
 // internal `../types/definitions` import and every public export path keeps
 // working unchanged.
 export type {
+  AssetCrop,
+  AssetRef,
+  ImageValue,
+  RichTextImageAttrs,
+  RichTextLinkAttrs,
   PublishedBranchSnapshot,
   ResolvedReference,
   LinkKind,
@@ -237,6 +242,11 @@ export type ResolvedScope = {
    * visibility segment. Last writer wins across factories.
    */
   storageKeyPrefix?: string;
+  /**
+   * Suffix of scoped realtime channels, e.g. the tenant slug: media events
+   * go to `media:<channelKey>` instead of `media`. Last writer wins.
+   */
+  channelKey?: string;
   /**
    * Opaque per-plugin context slots, keyed by plugin id. Core never reads it;
    * each plugin stashes its own per-request context here from a scope factory

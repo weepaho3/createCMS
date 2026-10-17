@@ -362,7 +362,17 @@ function RootPickerDialog({
 function MediaField(props: FieldControlProps<'image'>) {
   const { sources, media } = useCmsSourcesContext();
   const adapter = React.useMemo(() => sourcesMediaClient(sources), [sources]);
-  const previewUrl = props.value ? assetUrl(props.value) : null;
+  const value = props.value;
+  const assetId = typeof value === 'string' ? value : value?.assetId;
+  const previewUrl = assetId ? assetUrl(assetId) : null;
+  // A new pick keeps the alt text and caption of an AssetRef; a pinned
+  // revision belongs to the previous asset and is dropped.
+  const choose = (id: string) =>
+    props.onChange(
+      value === undefined || typeof value === 'string'
+        ? id
+        : { ...value, assetId: id, revisionId: undefined },
+    );
 
   return (
     <div id={props.id} className="flex flex-col gap-2" {...fieldAria(props)}>
@@ -376,8 +386,8 @@ function MediaField(props: FieldControlProps<'image'>) {
       <div className="flex flex-wrap gap-2">
         <MediaPicker
           client={media ?? adapter}
-          value={props.value}
-          onChange={props.onChange}
+          value={assetId}
+          onChange={choose}
           accept="image/*"
           disabled={props.disabled}
           trigger={

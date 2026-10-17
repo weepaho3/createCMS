@@ -6,7 +6,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { boolean, customType, foreignKey, index, integer, jsonb, pgSchema, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { bigint, boolean, customType, foreignKey, index, integer, jsonb, pgSchema, primaryKey, smallint, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { newId } from '../../utils/nanoid';
 
@@ -16,6 +16,8 @@ const tsvectorColumn = customType<{ data: string }>({
   dataType() { return 'tsvector'; },
 });
 export const approvalStatusEnum = cmsSchema.enum("approval_status", ["pending", "approved", "rejected"]);
+
+export const assetProvenanceEnum = cmsSchema.enum("asset_provenance", ["unknown", "captured", "ai_generated", "ai_edited"]);
 
 export const assetStatusEnum = cmsSchema.enum("asset_status", ["private", "public"]);
 
@@ -74,17 +76,22 @@ export const assetFolders = cmsSchema.table(
     id: text("id").primaryKey().$defaultFn(() => newId("assetFolder")),
     name: text("name").notNull(),
     parentId: text("parent_id"),
+    path: text("path"),
+    depth: smallint("depth"),
     createdBy: text("created_by"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at"),
+    archivedAt: timestamp("archived_at"),
   },
   (table) => [
     foreignKey({
       columns: [table.parentId],
       foreignColumns: [table.id],
       name: "asset_folders_parent_fk",
-    }).onDelete("cascade"),
+    }).onDelete("restrict"),
     index("asset_folders_parent_idx").on(table.parentId),
-    uniqueIndex("asset_folders_name_unique").on(table.parentId, table.name),
+    index("asset_folders_path_idx").on(table.path),
+    uniqueIndex("asset_folders_name_unique").on(table.parentId, table.name).where(sql`archived_at IS NULL`),
   ],
 );
 
@@ -94,11 +101,19 @@ export const assets = cmsSchema.table(
     id: text("id").primaryKey().$defaultFn(() => newId("asset")),
     slug: text("slug").notNull(),
     mimeType: text("mime_type").notNull(),
-    size: integer("size").notNull(),
+    size: bigint("size", { mode: 'number' }).notNull(),
+    width: integer("width"),
+    height: integer("height"),
+    originalName: text("original_name"),
+    sha256: text("sha256"),
+    provenance: assetProvenanceEnum("provenance").notNull().default("unknown"),
     objectKey: text("object_key").notNull(),
     status: assetStatusEnum("status").notNull().default("private"),
     folderId: text("folder_id").references(() => assetFolders.id, { onDelete: "set null" }),
     variantOf: text("variant_of").references((): AnyPgColumn => assets.id, { onDelete: "set null" }),
+    variantKey: text("variant_key"),
+    revisionOf: text("revision_of").references((): AnyPgColumn => assets.id, { onDelete: "cascade" }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     uploadedBy: text("uploaded_by"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -110,6 +125,11 @@ export const assets = cmsSchema.table(
     index("assets_variant_of_idx").on(table.variantOf),
     uniqueIndex("assets_object_key_unique").on(table.objectKey),
     index("assets_slug_idx").on(table.slug),
+    uniqueIndex("assets_variant_unique").on(table.variantOf, table.variantKey).where(sql`archived_at IS NULL AND variant_key IS NOT NULL`),
+    index("assets_revision_idx").on(table.revisionOf, table.createdAt).where(sql`revision_of IS NOT NULL`),
+    index("assets_sha_idx").on(table.sha256),
+    index("assets_provenance_idx").on(table.provenance).where(sql`archived_at IS NULL`),
+    index("assets_list_idx").on(table.folderId, table.createdAt, table.id).where(sql`archived_at IS NULL AND variant_of IS NULL AND revision_of IS NULL`),
   ],
 );
 
@@ -581,6 +601,7 @@ export const schema = {
   templateVariableUsages,
   variables,
   approvalStatusEnum,
+  assetProvenanceEnum,
   assetStatusEnum,
   commentMessageTypeEnum,
   commentSystemTypeEnum,

@@ -1283,18 +1283,21 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
             string,
             Map<string, string>
           >();
+          const batchRevisionPins = new Map<string, string>();
           for (const b of [...diff.created, ...diff.updated]) {
             collectPropertyReferences(
               b.type,
               b.properties,
               batchAssetIds,
               batchRefIdsByCollection,
+              batchRevisionPins,
             );
           }
           await assertCollectedReferencesExist(
             tx,
             batchAssetIds,
             batchRefIdsByCollection,
+            batchRevisionPins,
           );
 
           const changed: ChangedVersion[] = [

@@ -4,6 +4,9 @@ export type ColumnScalarType =
   | 'text'
   | 'boolean'
   | 'integer'
+  | 'smallint'
+  // A JS number in the app (exact up to 2^53).
+  | 'bigint'
   | 'timestamp'
   | 'jsonb'
   | 'tsvector';

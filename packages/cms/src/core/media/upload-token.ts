@@ -15,6 +15,8 @@ export type UploadTokenPayload =
       size: number;
       folderId: string | null;
       variantOf: string | null;
+      /** Canonical variant key; absent in tokens minted without one. */
+      variantKey?: string | null;
       actor: string | null;
       scope: string;
       exp: number;

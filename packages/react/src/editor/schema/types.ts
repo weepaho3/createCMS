@@ -3,6 +3,7 @@ import type {
   AnyCollectionDefinition,
   BlockProperty,
   CollectionDefinition,
+  ImageValue,
   LinkValue,
 } from '@createcms/schema';
 
@@ -28,7 +29,7 @@ export type AnyEditorSchema = AnyCollectionDefinition;
  * are typed against. `select` narrows to its option union and `list` to its
  * element type only through the typed factory hooks (same derivation as
  * `InferBlockProperties`; `schema.type-check.ts` pins both to each other).
- * `date` is an ISO-8601 datetime string, `image` an asset id, `reference` a
+ * `date` is an ISO-8601 datetime string, `image` an asset id or `AssetRef`, `reference` a
  * root id, `link` the authored `LinkValue` (raw mode, never resolved).
  */
 export type FieldValueMap = {
@@ -37,7 +38,7 @@ export type FieldValueMap = {
   boolean: boolean;
   date: string;
   richText: string;
-  image: string;
+  image: ImageValue;
   select: string;
   reference: string;
   link: LinkValue;

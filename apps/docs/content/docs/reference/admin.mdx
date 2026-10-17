@@ -78,6 +78,36 @@ Drain the scheduled-publishing queue: every due row (`scheduledAt <= now` and no
 
 `failed` is an array of `{ id, rootId, branchId, action, error }`, one entry per row whose publish or unpublish threw.
 
+### Backfill Media Columns [#runmediabackfill]
+
+Fill the asset and folder columns of the media data model on rows written before them: `originalName` from the slug, `variantKey` parsed from the former variant slugs (`<base>-<width>-<format>.<format>`, collision counters included), `width`/`height` from the first 64 KB of each image, and folder `path`/`depth`. Variants whose slug follows no known scheme, or whose key a live sibling already holds, become standalone assets and are listed in `detachedVariants`. Run it in batches until `cursor` is `null`; a second run changes nothing. Bytes replaced before revisions existed stay unlinked, since their object keys carry a fresh id rather than the asset's.
+
+<APIMethod
+  method="POST"
+  path="/admin/runMediaBackfill"
+  fn="runMediaBackfill"
+  collection="admin"
+  resource="admin"
+  operation="update"
+  args={`{
+  body: { cursor: null, limit: 500, dryRun: true },
+}`}
+  returns={{
+    processed: { type: 'number', description: 'Assets examined in this batch.' },
+    cursor: { type: 'string | null', description: 'Pass to the next call; `null` when done.' },
+    done: { type: 'boolean', description: 'Every asset was examined.' },
+    dryRun: { type: 'boolean', description: 'Nothing was written.' },
+    updated: { type: '{ originalName, variantKey, dimensions, folderPaths }', description: 'Rows changed per column.' },
+    detachedVariants: { type: 'string[]', description: 'Variants turned into standalone assets.' },
+    dimensionsUnreadable: { type: 'string[]', description: 'Images whose header could not be read.' },
+  }}
+  params={{
+    cursor: { type: 'string | null', description: 'The previous report\'s `cursor`; omit to start.' },
+    limit: { type: 'number', description: 'Assets per batch, 1 to 500. Default 500.' },
+    dryRun: { type: 'boolean', description: 'Report without writing.' },
+  }}
+/>
+
 ### Rebuild the Search Index [#reindexsearch]
 
 Rebuild the entire full-text search index from scratch, re-indexing every root, comment, merge request, variable, template, asset, and notification. Reach for this after a bulk import or an index-shape change; it takes no input and hands back the per-type counts it wrote.

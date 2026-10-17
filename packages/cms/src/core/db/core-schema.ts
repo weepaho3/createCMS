@@ -11,6 +11,10 @@ export const coreSchema = defineCoreSchema({
       enumName: 'asset_status',
       values: ['private', 'public'],
     },
+    assetProvenance: {
+      enumName: 'asset_provenance',
+      values: ['unknown', 'captured', 'ai_generated', 'ai_edited'],
+    },
     mergeRequestStatus: {
       enumName: 'merge_request_status',
       values: ['open', 'merged', 'closed'],
@@ -556,8 +560,14 @@ export const coreSchema = defineCoreSchema({
         },
         name: { type: 'text', notNull: true },
         parentId: { type: 'text' },
+        // `/<id>/<id>/` of the ancestors and the folder itself; `depth` is the
+        // number of ancestors. Maintained by createFolder and moveFolder.
+        path: { type: 'text' },
+        depth: { type: 'smallint' },
         createdBy: { type: 'text' },
         createdAt: { type: 'timestamp', notNull: true, defaultNow: true },
+        updatedAt: { type: 'timestamp' },
+        archivedAt: { type: 'timestamp' },
       },
       foreignKeys: [
         {
@@ -565,14 +575,20 @@ export const coreSchema = defineCoreSchema({
           foreignTable: 'assetFolders',
           foreignColumns: ['id'],
           name: 'asset_folders_parent_fk',
-          onDelete: 'cascade',
+          // Folders are deleted through deleteFolder's modes only.
+          onDelete: 'restrict',
         },
       ],
       indexes: {
         parentIdx: { columns: ['parentId'] },
+        pathIdx: { columns: ['path'] },
+        // Root names (NULL parent) are unique per scope at app level plus a
+        // per-scope index from a scoping plugin: a core index on `name`
+        // alone would stop two tenants from both owning a root "Brand".
         nameUnique: {
           columns: ['parentId', 'name'],
           unique: true,
+          where: 'archived_at IS NULL',
         },
       },
     },
@@ -588,7 +604,18 @@ export const coreSchema = defineCoreSchema({
         },
         slug: { type: 'text', notNull: true },
         mimeType: { type: 'text', notNull: true },
-        size: { type: 'integer', notNull: true },
+        size: { type: 'bigint', notNull: true },
+        width: { type: 'integer' },
+        height: { type: 'integer' },
+        /** The file name as uploaded, shown to editors and used for downloads. */
+        originalName: { type: 'text' },
+        /** Lower-case hex SHA-256 of the bytes. */
+        sha256: { type: 'text' },
+        provenance: {
+          type: { enum: 'assetProvenance' },
+          notNull: true,
+          default: { kind: 'literal', value: 'unknown' },
+        },
         objectKey: { type: 'text', notNull: true },
         status: {
           type: { enum: 'assetStatus' },
@@ -611,6 +638,23 @@ export const coreSchema = defineCoreSchema({
             onDelete: 'set null',
           },
         },
+        /** Canonical variant descriptor (see core/media/variant-key.ts). */
+        variantKey: { type: 'text' },
+        /** Set on earlier revisions of an asset; the row is archived. */
+        revisionOf: {
+          type: 'text',
+          references: {
+            table: 'assets',
+            column: 'id',
+            onDelete: 'cascade',
+          },
+        },
+        metadata: {
+          type: 'jsonb',
+          notNull: true,
+          default: { kind: 'literal', value: {} },
+          jsonType: 'Record<string, unknown>',
+        },
         uploadedBy: { type: 'text' },
         createdAt: { type: 'timestamp', notNull: true, defaultNow: true },
         updatedAt: { type: 'timestamp', notNull: true, defaultNow: true },
@@ -627,6 +671,25 @@ export const coreSchema = defineCoreSchema({
         // (generateUniqueSlug probes within the caller's scope) plus, under a
         // scoping plugin, a per-scope unique such as (tenant_slug, slug).
         slugIdx: { columns: ['slug'] },
+        variantUnique: {
+          columns: ['variantOf', 'variantKey'],
+          unique: true,
+          where: 'archived_at IS NULL AND variant_key IS NOT NULL',
+        },
+        revisionIdx: {
+          columns: ['revisionOf', 'createdAt'],
+          where: 'revision_of IS NOT NULL',
+        },
+        shaIdx: { columns: ['sha256'] },
+        provenanceIdx: {
+          columns: ['provenance'],
+          where: 'archived_at IS NULL',
+        },
+        listIdx: {
+          columns: ['folderId', 'createdAt', 'id'],
+          where:
+            'archived_at IS NULL AND variant_of IS NULL AND revision_of IS NULL',
+        },
       },
     },
 

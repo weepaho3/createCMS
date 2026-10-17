@@ -384,11 +384,11 @@ describe('multiTenant folder isolation', () => {
       body: { folderId: folder.folder.id },
     });
 
-    const remaining = await db
+    const [remaining] = await db
       .select()
       .from(assetFolders)
       .where(eq(assetFolders.id, folder.folder.id));
-    expect(remaining).toHaveLength(0);
+    expect(remaining.archivedAt).not.toBeNull();
   });
 });
 
@@ -410,7 +410,7 @@ describe('multiTenantPlugin asset isolation', () => {
 
     await expect(
       cms.api.media.deleteFolder({ body: { folderId: folder.id } }),
-    ).resolves.toEqual({ folderId: folder.id });
+    ).resolves.toMatchObject({ folderId: folder.id, assets: 0 });
   });
 
   it('lets two tenants own the same file name with the same slug', async () => {

@@ -267,6 +267,63 @@ cms.assets (slug);`). Code that derived an object key from a slug reads
   → **Migration:** fakes add `deliveryUrl`; code reading `asset.url` handles
   `null`.
 
+- **Media data model: new asset and folder columns.** `assets` gains
+  `width`, `height`, `original_name`, `sha256`, `provenance`
+  (`asset_provenance` enum), `variant_key`, `revision_of`, `metadata`
+  (jsonb) and partial indexes; `size` becomes `bigint` (a table rewrite:
+  plan a maintenance window on large tables). `asset_folders` gains `path`,
+  `depth`, `updated_at` and `archived_at`; its parent foreign key changes
+  from `cascade` to `restrict`, and the `(parent_id, name)` unique index
+  only covers live folders. The multi-tenant plugin adds a per-tenant unique
+  index on root folder names and `(tenant_slug, sha256)`.
+  → **Migration:** under the multi-tenant plugin, rename duplicate root
+  folder names per tenant first (the new index rejects them). Run
+  `createcms generate`, apply the migration, then call
+  `cms.api.admin.runMediaBackfill` until its `cursor` is `null` to fill
+  original names, variant keys, dimensions and folder paths. Variants whose
+  slug follows no known scheme become standalone assets (listed in the
+  report).
+
+- **Folders are deleted into the trash, by mode.** `deleteFolder` takes
+  `mode` (`empty-only` default, `move-to-parent`, `archive-contents`) and
+  `dryRun`, sets `archivedAt` instead of deleting the row, and returns
+  `{ folderId, folders, assets, assetsInUse, skipped }`. Assets keep their
+  `folderId` when archived with their folder. `createFolder`, `moveFolder`
+  and the new `renameFolder` reject a name a live sibling already has
+  (`FOLDER_NAME_TAKEN`), root folders included. Uploads into a folder in
+  the trash fail with `FOLDER_NOT_FOUND`.
+  → **Migration:** read the new `deleteFolder` result; handle
+  `FOLDER_NAME_TAKEN` where folders are created or renamed.
+
+- **An `image` property holds `string | AssetRef`.** The value may be a
+  bare asset id or `{ assetId, alt?, decorative?, caption?, crop?, focal?,
+revisionId? }`; the inferred property type is the `ImageValue` union.
+  Image elements of a `list` stay ids. `requireAlt` on an image property
+  rejects values without `alt` or `decorative: true`.
+  → **Migration:** code that reads image properties takes the id with
+  `assetIdOf(value)` (from `@createcms/core`); stored values need no change.
+
+- **Downloads use the original file name.** The gate's download
+  disposition is `attachment; filename="<ascii>"; filename*=UTF-8''<name>`
+  built from `originalName` (falling back to the slug) with RFC 8187
+  encoding, instead of `attachment;filename="<slug>"`.
+  → **Migration:** none, unless you parse the header.
+
+- **Replaced bytes are kept as revisions.** A replace writes the
+  superseded object as a row with `revisionOf` set, and pruning keeps the
+  ten newest revisions per asset (and every revision pinned in content), so
+  superseded objects are no longer reclaimed after the trash window alone.
+  → **Migration:** none; storage use grows by up to ten versions per
+  replaced asset.
+
+- **`@createcms/react`: the editor's `image` field value is `ImageValue`.**
+  `FieldValueMap['image']` is `string | AssetRef`, client validation accepts
+  an `AssetRef`, and `CmsAssetListItem` gains optional `originalName`,
+  `width`, `height`, `provenance`, `metadata` and `variants`. `MediaClient`
+  gains optional methods for the new media endpoints.
+  → **Migration:** custom image field controls read the id from an
+  `AssetRef` value; fakes of `MediaClient` need no change.
+
 ---
 
 ## 0.6.0 — 2026-08-14

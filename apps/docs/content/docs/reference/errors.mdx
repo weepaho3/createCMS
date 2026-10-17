@@ -132,7 +132,11 @@ try {
 | `ASSET_ACCESS_DENIED` | 403 | This asset is private and requires authentication |
 | `CANNOT_REPLACE_VARIANT` | 400 | `replaceAsset` / `commitReplace` targeted a generated variant. Replace the original and regenerate its variants instead |
 | `FOLDER_NOT_FOUND` | 404 | Folder not found |
-| `FOLDER_HAS_CONTENT` | 409 | Cannot delete folder that contains assets or subfolders |
+| `FOLDER_HAS_CONTENT` | 409 | `deleteFolder` with mode `empty-only` on a folder that contains live assets or subfolders |
+| `FOLDER_NAME_TAKEN` | 409 | A live folder with this name already exists under the same parent (`createFolder`, `renameFolder`, `moveFolder`) |
+| `VARIANT_EXISTS` | 409 | The asset already has a live variant with this `variantKey` |
+| `ASSET_CONFLICT` | 409 | `updateAsset` with an `expectedUpdatedAt` that no longer matches; the response carries the current asset |
+| `REVISION_NOT_FOUND` | 404 | `setCurrentRevision` with a `revisionId` that is not a revision of the asset |
 | `TOO_MANY_FILES` | 400 | Too many files in upload batch |
 | `FILE_TOO_LARGE` | 400 | One or more files exceed the maximum allowed size |
 | `INVALID_FILE_TYPE` | 400 | One or more files have a disallowed MIME type |

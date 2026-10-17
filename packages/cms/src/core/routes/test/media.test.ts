@@ -233,14 +233,22 @@ describe('media.deleteFolder', () => {
       body: { folderId: folder.folder.id },
     });
 
-    expect(result.folderId).toBe(folder.folder.id);
+    expect(result).toEqual({
+      folderId: folder.folder.id,
+      folders: 0,
+      assets: 0,
+      assetsInUse: 0,
+      skipped: [],
+    });
 
+    // Deleted folders go to the trash; the row stays, archived.
     const [deletedFolder] = await db
       .select()
       .from(assetFolders)
       .where(eq(assetFolders.id, folder.folder.id));
-
-    expect(deletedFolder).toBeUndefined();
+    expect(deletedFolder.archivedAt).not.toBeNull();
+    const { folders } = await cms.api.media.listFolders();
+    expect(folders).toEqual([]);
   });
 
   it('blocks deletion when assets exist in the folder', async () => {
@@ -289,7 +297,7 @@ describe('media.deleteFolder', () => {
       .select({ folderId: assets.folderId, archivedAt: assets.archivedAt })
       .from(assets)
       .where(eq(assets.id, archived.id));
-    expect(row.folderId).toBeNull();
+    expect(row.folderId).toBe(folder.folder.id);
     expect(row.archivedAt).not.toBeNull();
   });
 
@@ -2018,7 +2026,7 @@ describe('variant delivery via asset endpoint', () => {
     const location = new URL(res.headers.get('location')!);
     expect(location.pathname).toBe('/test-bucket/report.pdf');
     expect(location.searchParams.get('response-content-disposition')).toBe(
-      `attachment;filename="report.pdf";filename*=UTF-8''report.pdf`,
+      `attachment; filename="report.pdf"; filename*=UTF-8''report.pdf`,
     );
     expect(location.searchParams.get('X-Amz-Signature')).toMatch(
       /^[0-9a-f]{64}$/,
@@ -2093,7 +2101,7 @@ describe('variant delivery via asset endpoint', () => {
     );
     expect(location.pathname).toBe('/test-bucket/logo.svg');
     expect(location.searchParams.get('response-content-disposition')).toContain(
-      'attachment;filename="logo.svg"',
+      'attachment; filename="logo.svg"',
     );
     expect(location.searchParams.get('X-Amz-Signature')).toMatch(
       /^[0-9a-f]{64}$/,
@@ -3223,6 +3231,22 @@ describe('replaced asset object reclaim', () => {
       .update(assets)
       .set({ archivedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) })
       .where(eq(assets.id, id));
+  // Pruning keeps the ten newest revisions of an asset; ten newer ones push
+  // the replaced bytes out of that window.
+  const pushOutOfKeptRevisions = async (db: any, assetId: string) => {
+    for (let i = 0; i < 10; i++) {
+      await db.insert(assets).values({
+        slug: `newer-${i}.png`,
+        mimeType: 'image/png',
+        size: 1,
+        objectKey: `newer-${assetId}-${i}.png`,
+        revisionOf: assetId,
+        archivedAt: new Date(),
+        // Same clock as the column default, so ordering by created_at holds.
+        createdAt: sql`now() + make_interval(secs => ${i + 1})`,
+      });
+    }
+  };
 
   it("a replaced asset's previous object becomes reclaimable", async () => {
     const { cms, db, s3 } = await setupTestCMS({
@@ -3248,6 +3272,7 @@ describe('replaced asset object reclaim', () => {
     expect(tombstone.id).not.toBe(orig.id);
 
     await backdatePastTrashWindow(db, tombstone.id);
+    await pushOutOfKeptRevisions(db, orig.id);
 
     // A pruning pass, run with the trash window elapsed, must actually
     // delete the old object — not merely leave a tombstone row nobody
@@ -3301,6 +3326,7 @@ describe('replaced asset object reclaim', () => {
     expect(tombstone.id).not.toBe(orig.id);
 
     await backdatePastTrashWindow(db, tombstone.id);
+    await pushOutOfKeptRevisions(db, orig.id);
 
     const result = await cms.api.admin.runPruning({ body: { dryRun: false } });
 
@@ -3354,6 +3380,7 @@ describe('replaced asset object reclaim', () => {
     for (const t of tombstones) {
       await backdatePastTrashWindow(db, t.id);
     }
+    await pushOutOfKeptRevisions(db, orig.id);
 
     const result = await cms.api.admin.runPruning({ body: { dryRun: false } });
     for (const t of tombstones) {

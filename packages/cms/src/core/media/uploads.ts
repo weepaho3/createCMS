@@ -1,4 +1,4 @@
-import { and, eq, inArray, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, isNull, type SQL } from 'drizzle-orm';
 
 import type { ResolvedScope } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
@@ -15,6 +15,7 @@ type UploadFileInput = {
   size: number;
   type: string;
   variantOf?: string;
+  variantKey?: string;
 };
 
 type PrepareUploadInput = {
@@ -191,7 +192,10 @@ export async function assertFolderExists(
   folderId: string,
   scope: ResolvedScope,
 ) {
-  const conditions: SQL[] = [eq(assetFolders.id, folderId)];
+  const conditions: SQL[] = [
+    eq(assetFolders.id, folderId),
+    isNull(assetFolders.archivedAt),
+  ];
   if (scope.assetFolders?.where) conditions.push(scope.assetFolders.where);
 
   const [folder] = await db

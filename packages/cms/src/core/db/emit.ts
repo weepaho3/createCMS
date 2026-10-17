@@ -85,6 +85,8 @@ function emitColumn(
     if (columnDef.type === 'tsvector') {
       builder = `tsvectorColumn(${quote(columnName)})`;
       needsTsvector = true;
+    } else if (columnDef.type === 'bigint') {
+      builder = `bigint(${quote(columnName)}, { mode: 'number' })`;
     } else {
       builder = `${columnDef.type}(${quote(columnName)})`;
     }

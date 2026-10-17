@@ -129,6 +129,20 @@ export type CmsAssetListItem = {
   /** The asset gate path; works for every asset. */
   deliveryUrl: string;
   status: string;
+  /** The file name as uploaded. */
+  originalName?: string | null;
+  width?: number | null;
+  height?: number | null;
+  provenance?: 'unknown' | 'captured' | 'ai_generated' | 'ai_edited';
+  /** `AssetMetadata` from `@createcms/core`. */
+  metadata?: Record<string, unknown>;
+  /** Live variants, read instead of guessing sizes. */
+  variants?: {
+    variantKey: string;
+    width: number | null;
+    height: number | null;
+    size: number;
+  }[];
   folderId: string | null;
   variantOf: string | null;
   uploadedBy: string | null;

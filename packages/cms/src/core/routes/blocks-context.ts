@@ -350,6 +350,7 @@ export function buildBlocksContext<TDef extends CollectionWithName>(
     properties: Record<string, unknown> | undefined,
     assetIds: Map<string, string>, // assetId -> owning blockType (first seen wins)
     refIdsByCollection: Map<string, Map<string, string>>, // collection -> (rootId -> owning blockType)
+    revisionPins: Map<string, string> = new Map(), // revisionId -> assetId it must belong to
   ): void {
     if (!properties) return;
 
@@ -377,7 +378,18 @@ export function buildBlocksContext<TDef extends CollectionWithName>(
       if (value === undefined || value === null) continue;
 
       if (spec.type === 'image') {
-        addAsset(value);
+        if (typeof value === 'object') {
+          const ref = value as { assetId?: unknown; revisionId?: unknown };
+          addAsset(ref.assetId);
+          if (
+            typeof ref.revisionId === 'string' &&
+            typeof ref.assetId === 'string'
+          ) {
+            revisionPins.set(ref.revisionId, ref.assetId);
+          }
+        } else {
+          addAsset(value);
+        }
       } else if (spec.type === 'reference' && spec.collection) {
         addRef(spec.collection, value);
       } else if (spec.type === 'list') {
@@ -401,7 +413,23 @@ export function buildBlocksContext<TDef extends CollectionWithName>(
     tx: DrizzleInstance,
     assetIds: Map<string, string>,
     refIdsByCollection: Map<string, Map<string, string>>,
+    revisionPins: Map<string, string> = new Map(),
   ): Promise<void> {
+    if (revisionPins.size > 0) {
+      const rows = await tx
+        .select({ id: assets.id, revisionOf: assets.revisionOf })
+        .from(assets)
+        .where(inArray(assets.id, [...revisionPins.keys()]));
+      const owner = new Map(rows.map((r) => [r.id, r.revisionOf]));
+      for (const [revisionId, assetId] of revisionPins) {
+        if (owner.get(revisionId) !== assetId) {
+          throw new CMSError('INVALID_REFERENCE', {
+            message: `${revisionId} is not a revision of asset ${assetId}`,
+            data: { kind: 'image', id: revisionId },
+          });
+        }
+      }
+    }
     if (assetIds.size > 0) {
       const ids = [...assetIds.keys()];
       const found = await tx
@@ -450,13 +478,20 @@ export function buildBlocksContext<TDef extends CollectionWithName>(
   ): Promise<void> {
     const assetIds = new Map<string, string>();
     const refIdsByCollection = new Map<string, Map<string, string>>();
+    const revisionPins = new Map<string, string>();
     collectPropertyReferences(
       blockType,
       properties,
       assetIds,
       refIdsByCollection,
+      revisionPins,
     );
-    await assertCollectedReferencesExist(tx, assetIds, refIdsByCollection);
+    await assertCollectedReferencesExist(
+      tx,
+      assetIds,
+      refIdsByCollection,
+      revisionPins,
+    );
   }
 
   // Shared core of `updateBlock` and `updateRoot`: scope-guard, lock the branch,

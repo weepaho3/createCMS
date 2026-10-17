@@ -105,6 +105,7 @@ export function multiTenant() {
 
         return {
           storageKeyPrefix: `t/${encodeURIComponent(tenantSlug)}/`,
+          channelKey: tenantSlug,
           roots: {
             where: sql`"cms"."roots"."tenant_slug" = ${tenantSlug}`,
             insertColumns,

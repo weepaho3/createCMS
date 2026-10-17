@@ -135,6 +135,11 @@ export type {
   LinkKind,
   LinkValue,
   ResolvedLink,
+  AssetCrop,
+  AssetRef,
+  ImageValue,
+  RichTextImageAttrs,
+  RichTextLinkAttrs,
 } from './core/types/definitions';
 
 export type { DrizzleInstance } from './core/types/drizzle';
@@ -228,6 +233,42 @@ export type {
   StorageObjectAcl,
 } from './core/storage/adapter';
 export { requireCapability, StorageError } from './core/storage/adapter';
+export type {
+  AssetMetadata,
+  AssetProvenance,
+} from './core/types/asset-metadata';
+export {
+  ASSET_PROVENANCES,
+  assetMetadataSchema,
+  mergeMetadata,
+} from './core/types/asset-metadata';
+export type { VariantFormat, VariantSpec } from './core/media/variant-key';
+export {
+  formatVariantKey,
+  parseLegacyVariantSlug,
+  parseVariantKey,
+  VARIANT_FORMATS,
+} from './core/media/variant-key';
+export {
+  contentDisposition,
+  safeDownloadName,
+} from './core/media/content-disposition';
+export {
+  assetIdOf,
+  imageAlt,
+  normalizeAssetRef,
+  richTextImageAttrsSchema,
+  richTextLinkAttrsSchema,
+} from './core/media/asset-ref';
+export { readImageDimensions } from './core/media/dimensions';
+export type { MediaBackfillReport } from './core/media/backfill';
+export type {
+  MediaAssetEvent,
+  MediaAssetEventPayload,
+  MediaFolderEvent,
+  MediaFolderEventPayload,
+} from './core/media/events';
+export { mediaChannel } from './core/media/events';
 export {
   createS3StorageAdapter,
   resolveS3Capabilities,

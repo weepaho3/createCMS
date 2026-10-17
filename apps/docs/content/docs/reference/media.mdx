@@ -24,7 +24,7 @@ Walk the folder tree one level at a time. Omit `parentFolderId` to get the root-
   query: { parentFolderId: 'fld_images' }, // omit for the root-level folders
 }`}
   returns={{
-    folders: { type: '{ id, name, parentId, createdBy, createdAt }[]', description: 'The direct child folders (of the parent, or of the root), sorted by name. `parentId` and `createdBy` are `null` at the root or when unknown.' },
+    folders: { type: '{ id, name, parentId, createdBy, createdAt, assetCount, assetCountRecursive }[]', description: 'The live child folders (of the parent, or of the root), sorted by name. `assetCount` counts live original assets directly in the folder, `assetCountRecursive` those in its whole subtree, both within scope.' },
   }}
   params={{
     parentFolderId: { type: 'string', description: 'Parent folder id. Omit for the root-level folders (those with no parent).' },
@@ -83,9 +83,58 @@ Move a folder under a new parent, or detach it to the root with `newParentFolder
   }}
 />
 
+### Rename a Folder [#renamefolder]
+
+Rename a folder. Names are unique among the live folders of the same parent (root folders included).
+
+<APIMethod
+  method="POST"
+  path="/media/renameFolder"
+  fn="renameFolder"
+  collection="media"
+  resource="media"
+  operation="update"
+  args={`{
+  body: { folderId: 'afl_brand', name: 'Brand assets' }, // both required
+}`}
+  returns={{
+    folder: { type: '{ id, name, parentId, createdBy, createdAt }', description: 'The renamed folder.' },
+  }}
+  params={{
+    folderId: { type: 'string', required: true, description: 'The folder to rename.' },
+    name: { type: 'string', required: true, description: 'The new name; `FOLDER_NAME_TAKEN` when a sibling has it.' },
+  }}
+/>
+
+### Get a Folder's Path [#getfolderpath]
+
+The folders from the root down to a folder, for breadcrumbs of a folder opened by id.
+
+<APIMethod
+  method="GET"
+  path="/media/getFolderPath"
+  fn="getFolderPath"
+  collection="media"
+  resource="media"
+  operation="read"
+  args={`{
+  query: { folderId: 'afl_logos' }, // required
+}`}
+  returns={{
+    path: { type: '{ id, name, parentId, createdBy, createdAt }[]', description: 'Root first, the folder itself last.' },
+  }}
+  params={{
+    folderId: { type: 'string', required: true, description: 'The folder to resolve.' },
+  }}
+/>
+
 ### Delete a Folder [#deletefolder]
 
-Delete an empty folder. Clear out its assets and subfolders first — a folder that still holds content can't be deleted.
+Move a folder to the trash. Folders never cascade: pick what happens to the content with `mode`, and preview the effect with `dryRun`.
+
+- `empty-only` (default): only a folder without live assets or subfolders; otherwise `FOLDER_HAS_CONTENT`.
+- `move-to-parent`: subfolders and assets move one level up; `FOLDER_NAME_TAKEN` when a subfolder's name exists there.
+- `archive-contents`: the whole subtree goes to the trash; assets in use (or suspected in rich text) are skipped and moved to the parent instead.
 
 <APIMethod
   method="POST"
@@ -95,13 +144,23 @@ Delete an empty folder. Clear out its assets and subfolders first — a folder t
   resource="media"
   operation="delete"
   args={`{
-  body: { folderId: 'fld_images' }, // required
+  body: {
+    folderId: 'fld_images', // required
+    mode: 'archive-contents',
+    dryRun: true,
+  },
 }`}
   returns={{
-    folderId: { type: 'string', description: 'The id of the deleted folder.' },
+    folderId: { type: 'string', description: 'The folder.' },
+    folders: { type: 'number', description: 'Live subfolders in its subtree.' },
+    assets: { type: 'number', description: 'Live original assets in its subtree.' },
+    assetsInUse: { type: 'number', description: 'How many of those are referenced by live content.' },
+    skipped: { type: 'string[]', description: 'Asset ids `archive-contents` kept (in use or suspected in rich text); empty otherwise.' },
   }}
   params={{
     folderId: { type: 'string', required: true, description: 'The folder to delete.' },
+    mode: { type: "'empty-only' | 'move-to-parent' | 'archive-contents'", description: 'What happens to the content. Default `empty-only`.' },
+    dryRun: { type: 'boolean', description: 'Return the counts without changing anything.' },
   }}
 />
 
@@ -125,7 +184,7 @@ List the assets in your media library, with optional filtering (by folder, statu
   },
 }`}
   returns={{
-    assets: { type: 'AssetListItem[]', description: 'The assets on this page. Each carries `id`, `slug`, `mimeType`, `size`, `objectKey`, `url` (direct, `null` when private), `deliveryUrl` (gate path), `status`, `folderId`, `variantOf`, `uploadedBy`, `createdAt`, `updatedAt`.' },
+    assets: { type: 'AssetListItem[]', description: 'The assets on this page. Each carries `id`, `slug`, `originalName`, `mimeType`, `size`, `width`, `height`, `objectKey`, `url` (direct, `null` when private), `deliveryUrl` (gate path), `status`, `provenance`, `metadata` (`AssetMetadata`), `variants` (`{ variantKey, width, height, size }[]` of the live variants), `folderId`, `variantOf`, `uploadedBy`, `createdAt`, `updatedAt`.' },
     total: { type: 'number', description: 'Total assets across all pages for the current filter (ignores paging).' },
     hasMore: { type: 'boolean', description: 'Whether more assets exist after this page.' },
     nextCursor: { type: 'string | null', description: 'Opaque cursor for the next page; `null` at the end of the list. Pass it back as `cursor` to continue.' },
@@ -486,6 +545,181 @@ Soft-delete a batch of assets (and their variants) so a later garbage-collection
   params={{
     assetIds: { type: 'string[]', required: true, description: 'Asset ids to archive (at least one).' },
     force: { type: 'boolean', description: 'Archive `richtext_suspect` assets anyway. Live references still block. Has no effect with `guardRichTextReferences: false`.' },
+  }}
+/>
+
+## Editing assets
+
+### Update an Asset [#updateasset]
+
+Edit an asset's display name, metadata and provenance. The edit applies only if `expectedUpdatedAt` still matches, so two editors never overwrite each other silently: the second gets `ASSET_CONFLICT` (409) with the current asset in `data.asset`. `metadata` is merged key by key (`null` removes a key) and validated as a whole; EXIF outside the allowlist, GPS in particular, is rejected.
+
+<APIMethod
+  method="POST"
+  path="/media/updateAsset"
+  fn="updateAsset"
+  collection="media"
+  resource="media"
+  operation="update"
+  args={`{
+  body: {
+    assetId: 'ast_123', // required
+    patch: {
+      originalName: 'Team workshop.jpg',
+      metadata: { description: 'Workshop in Berlin', rights: { credit: 'Jo Doe' } },
+    },
+    expectedUpdatedAt: '2026-10-17T10:00:00.000Z', // required
+  },
+}`}
+  returns={{
+    asset: { type: 'AssetListItem', description: 'The updated asset.' },
+  }}
+  params={{
+    assetId: { type: 'string', required: true, description: 'The asset.' },
+    patch: { type: '{ originalName?, metadata?, provenance? }', required: true, description: 'Fields to change.' },
+    expectedUpdatedAt: { type: 'string', required: true, description: 'The `updatedAt` the edit is based on, as an ISO date-time.' },
+  }}
+/>
+
+### Set the Focal Point [#setfocalpoint]
+
+Set or clear `metadata.focal`, the point (fractions of width and height) renderers keep in view when cropping.
+
+<APIMethod
+  method="POST"
+  path="/media/setFocalPoint"
+  fn="setFocalPoint"
+  collection="media"
+  resource="media"
+  operation="update"
+  args={`{
+  body: { assetId: 'ast_123', focal: { x: 0.3, y: 0.4 } }, // focal: null clears it
+}`}
+  returns={{
+    asset: { type: 'AssetListItem', description: 'The updated asset.' },
+  }}
+  params={{
+    assetId: { type: 'string', required: true, description: 'The asset.' },
+    focal: { type: '{ x: number; y: number } | null', required: true, description: 'Fractions in 0..1, or `null`.' },
+  }}
+/>
+
+### Set the Provenance [#setprovenance]
+
+Set whether an asset is captured, AI-generated or AI-edited by hand; `metadata.provenanceSource` becomes `user`.
+
+<APIMethod
+  method="POST"
+  path="/media/setProvenance"
+  fn="setProvenance"
+  collection="media"
+  resource="media"
+  operation="update"
+  args={`{
+  body: { assetId: 'ast_123', provenance: 'ai_generated' }, // both required
+}`}
+  returns={{
+    asset: { type: 'AssetListItem', description: 'The updated asset.' },
+  }}
+  params={{
+    assetId: { type: 'string', required: true, description: 'The asset.' },
+    provenance: { type: "'unknown' | 'captured' | 'ai_generated' | 'ai_edited'", required: true, description: 'The provenance.' },
+  }}
+/>
+
+### Restore Assets [#restoreassets]
+
+Take archived assets out of the trash, with the variants archived together with them. An asset whose folder is in the trash returns to the root.
+
+<APIMethod
+  method="POST"
+  path="/media/restoreAssets"
+  fn="restoreAssets"
+  collection="media"
+  resource="media"
+  operation="update"
+  args={`{
+  body: { assetIds: ['ast_123'] }, // required, 1 to 500
+}`}
+  returns={{
+    restoredIds: { type: 'string[]', description: 'The restored assets.' },
+    skipped: { type: 'string[]', description: 'Ids that matched no archived asset in scope.' },
+  }}
+  params={{
+    assetIds: { type: 'string[]', required: true, description: 'Archived asset ids.' },
+  }}
+/>
+
+### Batch Operations [#batchassets]
+
+Apply one operation to up to 500 assets and get the outcome per id. More ids fail validation.
+
+<APIMethod
+  method="POST"
+  path="/media/batch"
+  fn="batchAssets"
+  collection="media"
+  resource="media"
+  operation="update"
+  args={`{
+  body: {
+    assetIds: ['ast_1', 'ast_2'], // required, 1 to 500
+    operation: { op: 'move', folderId: 'afl_brand' }, // required
+  },
+}`}
+  returns={{
+    results: { type: '{ id, ok, error? }[]', description: 'In input order. `error` is a code such as `ASSET_NOT_FOUND`, `in_use`, `richtext_suspect` or `STORAGE_ERROR`.' },
+  }}
+  params={{
+    assetIds: { type: 'string[]', required: true, description: 'The assets.' },
+    operation: { type: "{ op: 'move', folderId } | { op: 'archive', force? } | { op: 'restore' } | { op: 'setStatus', status } | { op: 'setProvenance', provenance }", required: true, description: 'The operation.' },
+  }}
+/>
+
+## Revisions
+
+Replacing an asset keeps the superseded bytes as a **revision** of the asset. Pruning keeps the ten newest revisions of every asset, and any revision pinned in content (`AssetRef.revisionId`); `GET /media/asset/{id}?rev={revisionId}` serves a pinned revision.
+
+### List Revisions [#listrevisions]
+
+<APIMethod
+  method="GET"
+  path="/media/listRevisions"
+  fn="listRevisions"
+  collection="media"
+  resource="media"
+  operation="read"
+  args={`{
+  query: { assetId: 'ast_123' }, // required
+}`}
+  returns={{
+    revisions: { type: '{ id, originalName, mimeType, size, width, height, note, uploadedBy, createdAt }[]', description: 'Newest first. `note` is the `revisionNote` passed to the replace.' },
+  }}
+  params={{
+    assetId: { type: 'string', required: true, description: 'The asset.' },
+  }}
+/>
+
+### Set the Current Revision [#setcurrentrevision]
+
+Roll an asset back to one of its revisions. The asset keeps its id; its current bytes become the newest revision, its variants are archived, and the object moves to the prefix of the asset's status.
+
+<APIMethod
+  method="POST"
+  path="/media/setCurrentRevision"
+  fn="setCurrentRevision"
+  collection="media"
+  resource="media"
+  operation="update"
+  args={`{
+  body: { assetId: 'ast_123', revisionId: 'ast_456' }, // both required
+}`}
+  returns={{
+    asset: { type: 'AssetListItem', description: 'The asset with the restored bytes.' },
+  }}
+  params={{
+    assetId: { type: 'string', required: true, description: 'The asset.' },
+    revisionId: { type: 'string', required: true, description: 'One of its revisions; `REVISION_NOT_FOUND` otherwise.' },
   }}
 />
 

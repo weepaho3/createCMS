@@ -41,6 +41,9 @@ import {
 import { richTextReferenceExists } from '../media/usage';
 import { getStorage } from '../storage/get-storage';
 
+/** Revisions per asset that pruning never reclaims. */
+const KEPT_REVISIONS = 10;
+
 export type PruningResult = {
   deletedCommits: number;
   deletedBlockVersions: number;
@@ -843,6 +846,14 @@ export async function runPruningPass(
         mediaConfig.guardRichTextReferences === false
           ? undefined
           : not(richTextReferenceExists(assets.id)),
+        // The ten newest revisions of an asset stay available for rollback;
+        // a revision pinned in content is protected by the usage check above.
+        sql`(${assets.revisionOf} IS NULL OR ${assets.id} NOT IN (
+          SELECT r.id FROM cms.assets r
+           WHERE r.revision_of = ${assets.revisionOf}
+           ORDER BY r.created_at DESC
+           LIMIT ${KEPT_REVISIONS}
+        ))`,
       ),
     )
     .orderBy(asc(assets.archivedAt))

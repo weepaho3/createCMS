@@ -52,6 +52,77 @@ export type MediaClient = {
     body: { assetIds: string[]; status: MediaAssetStatus };
   }): Promise<{ updated: number; updatedIds: string[]; skipped: string[] }>;
   useUploadAssets(): MediaUploadState;
+
+  // The methods below are optional so a smaller backend still fits; the
+  // parts that need one check for it.
+  getAssets?(args: {
+    query: { ids: string[] };
+  }): Promise<{ assets: MediaAsset[] }>;
+  updateAsset?(args: {
+    body: {
+      assetId: string;
+      patch: {
+        originalName?: string;
+        metadata?: Record<string, unknown>;
+        provenance?: MediaAsset['provenance'];
+      };
+      expectedUpdatedAt: string;
+    };
+  }): Promise<{ asset: MediaAsset }>;
+  restoreAssets?(args: {
+    body: { assetIds: string[] };
+  }): Promise<{ restoredIds: string[]; skipped: string[] }>;
+  renameFolder?(args: {
+    body: { folderId: string; name: string };
+  }): Promise<{ folder: MediaFolder }>;
+  moveFolder?(args: {
+    body: { folderId: string; newParentFolderId?: string | null };
+  }): Promise<{ folder: MediaFolder }>;
+  getFolderPath?(args: {
+    query: { folderId: string };
+  }): Promise<{ path: MediaFolder[] }>;
+  deleteFolder?(args: {
+    body: {
+      folderId: string;
+      mode?: 'empty-only' | 'move-to-parent' | 'archive-contents';
+      dryRun?: boolean;
+    };
+  }): Promise<{
+    folderId: string;
+    folders: number;
+    assets: number;
+    assetsInUse: number;
+    skipped: string[];
+  }>;
+  getAssetUsages?(args: { query: { assetId: string } }): Promise<{
+    pageCount: number;
+    pages: { rootId: string; collection: string }[];
+  }>;
+  listRevisions?(args: { query: { assetId: string } }): Promise<{
+    revisions: {
+      id: string;
+      originalName: string;
+      size: number;
+      note: string | null;
+      createdAt: Date | string;
+    }[];
+  }>;
+  setCurrentRevision?(args: {
+    body: { assetId: string; revisionId: string };
+  }): Promise<{ asset: MediaAsset }>;
+  createSignedReplace?(args: {
+    body: {
+      assetId: string;
+      file: { name: string; size: number; type: string };
+    };
+  }): Promise<{
+    signedUrl: string;
+    headers: Record<string, string>;
+    token: string;
+  }>;
+  commitReplace?(args: {
+    body: { token: string; revisionNote?: string };
+  }): Promise<{ asset: MediaAsset }>;
 };
 
 export type MediaSelectionMode = 'none' | 'single' | 'multiple';

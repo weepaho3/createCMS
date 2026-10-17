@@ -76,7 +76,8 @@ function buildLinkSchema(
  * - `string` / `richText` -> `z.string()` with `minLength`/`maxLength`/`pattern`
  * - `number` -> `z.number()` with `min`/`max`
  * - `date` -> ISO-8601 datetime string (`z.iso.datetime()`)
- * - `boolean` -> `z.boolean()`; `image` / `reference` -> `z.string()`
+ * - `boolean` -> `z.boolean()`; `image` / `reference` -> `z.string()` (a
+ *   single `image` property also accepts an `AssetRef`, see imageSchema)
  *
  * Typed loosely because it serves BOTH top-level property specs and list
  * element specs (both carry `type` plus the optional constraint fields).
@@ -116,6 +117,45 @@ function scalarSchema(spec: {
   }
 }
 
+const fraction = z.number().min(0).max(1);
+
+const assetRefSchema = z.strictObject({
+  assetId: z.string().min(1),
+  alt: z.string().max(1000).optional(),
+  decorative: z.boolean().optional(),
+  altSource: z.enum(['user', 'ai-suggested']).optional(),
+  caption: z.string().max(2000).optional(),
+  revisionId: z.string().min(1).optional(),
+  crop: z
+    .strictObject({
+      x: fraction,
+      y: fraction,
+      width: fraction,
+      height: fraction,
+    })
+    .refine((c) => c.x + c.width <= 1 && c.y + c.height <= 1, {
+      message: 'The crop must lie inside the image',
+    })
+    .optional(),
+  focal: z.strictObject({ x: fraction, y: fraction }).optional(),
+});
+
+/**
+ * Zod for a single `image` property: a bare asset id or an `AssetRef`.
+ * With `requireAlt`, the value must carry non-empty `alt` or
+ * `decorative: true` (a bare id never does).
+ */
+function imageSchema(requireAlt: boolean): z.ZodType {
+  const value = z.union([z.string().min(1), assetRefSchema]);
+  if (!requireAlt) return value;
+  return value.refine(
+    (v) =>
+      typeof v !== 'string' &&
+      (v.decorative === true || (v.alt !== undefined && v.alt.trim() !== '')),
+    { message: 'Alt text is required, or mark the image as decorative' },
+  );
+}
+
 /** Zod for one {@link ListElementSpec}: a `select` element enumerates its
  *  options; every other element reuses {@link scalarSchema} (a `reference`
  *  element validates as the rootId string). */
@@ -146,6 +186,8 @@ export function buildPropertiesSchema<T extends Record<string, BlockProperty>>(
       field = z.enum(values as [string, ...string[]]);
     } else if (prop.type === 'link') {
       field = buildLinkSchema(prop.allowedKinds, prop.allowedCollections);
+    } else if (prop.type === 'image') {
+      field = imageSchema(prop.requireAlt === true);
     } else {
       field = scalarSchema(prop);
     }

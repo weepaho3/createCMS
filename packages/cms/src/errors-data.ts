@@ -312,6 +312,22 @@ export const CMS_ERRORS = {
     message:
       'Cannot replace a variant asset directly; replace the original and regenerate its variants',
   },
+  VARIANT_EXISTS: {
+    status: 409 as const,
+    message: 'The asset already has a live variant with this variant key',
+  },
+  ASSET_CONFLICT: {
+    status: 409 as const,
+    message: 'The asset changed since it was read; reload it and retry',
+  },
+  REVISION_NOT_FOUND: {
+    status: 404 as const,
+    message: 'Revision not found for this asset',
+  },
+  FOLDER_NAME_TAKEN: {
+    status: 409 as const,
+    message: 'A folder with this name already exists here',
+  },
   VARIABLE_NOT_FOUND: { status: 404 as const, message: 'Variable not found' },
   VARIABLE_KEY_EXISTS: {
     status: 409 as const,

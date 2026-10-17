@@ -112,7 +112,7 @@ Every property is one of ten field types. The common shape:
 | `boolean` | `boolean` | |
 | `date` | `string` (ISO) | |
 | `richText` | `string` (HTML) | `minLength?`, `maxLength?`, `pattern?` |
-| `image` | `string` (asset reference) | |
+| `image` | `string \| AssetRef`: the asset id, or `{ assetId, alt?, decorative?, caption?, crop?, focal?, revisionId? }` with alt text and crop of this use (image elements of a `list` stay ids) | `requireAlt` (saving needs `alt` or `decorative: true`) |
 | `select` | one of `options[].value` | `options: { label, value }[]` |
 | `reference` | target `rootId` string | `collection: string` |
 | `link` | `LinkValue` (internal / external / email / phone) | `allowedKinds?`, `allowedCollections?` |

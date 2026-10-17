@@ -9,6 +9,7 @@ import { runScheduledPass } from '../admin/scheduling';
 import { DEFAULT_BRANCH_NAME } from '../branch-policy';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
+import { runMediaBackfill } from '../media/backfill';
 import { reindexAll } from '../search/index-builder';
 
 // ============================================================================
@@ -86,6 +87,41 @@ export function createAdminEndpoints(
           maxAssets: ctx.body.maxAssets,
         });
       },
+    ),
+
+    /**
+     * Fills the asset and folder columns added for the media data model on rows written before them, one resumable batch per call: `originalName`, `variantKey` (parsed from the former variant slugs; unparseable variants become standalone assets), `width`/`height` from image headers, and folder paths. Idempotent.
+     * @param cursor Optional; the `cursor` of the previous report. Omit to start.
+     * @param limit Optional; assets per batch, 1 to 500 (defaults to 500).
+     * @param dryRun Optional; report without writing.
+     * @returns A report with `processed`, the next `cursor` (null when `done`), per-column update counts, `detachedVariants` and `dimensionsUnreadable`.
+     * @example
+     * let cursor = null;
+     * do { ({ cursor } = await cms.api.admin.runMediaBackfill({ body: { cursor } })); } while (cursor);
+     */
+    runMediaBackfill: createCMSEndpoint(
+      '/admin/runMediaBackfill',
+      {
+        method: 'POST',
+        body: z.object({
+          cursor: z.string().nullable().optional(),
+          limit: z.number().int().min(1).max(500).optional(),
+          dryRun: z.boolean().optional(),
+        }),
+        metadata: cmsMeta(
+          {
+            $Infer: {
+              body: {} as {
+                cursor?: string | null;
+                limit?: number;
+                dryRun?: boolean;
+              },
+            },
+          },
+          { operation: 'update', ...ADMIN_META },
+        ),
+      },
+      async (ctx) => runMediaBackfill(db, mediaConfig, ctx.body ?? {}),
     ),
 
     /**
