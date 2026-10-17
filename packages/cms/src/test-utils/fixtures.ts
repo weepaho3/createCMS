@@ -14,6 +14,8 @@ export const DUMMY_MEDIA_CONFIG: CustomMediaConfig = {
   forcePathStyle: true,
   // No server answers this host, so status changes must not move objects.
   visibility: 'legacy',
+  // The pruning sweep would list the unreachable bucket.
+  capabilities: { list: false },
 };
 
 const hero = defineBlock({

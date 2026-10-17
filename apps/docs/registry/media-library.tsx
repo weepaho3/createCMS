@@ -25,6 +25,7 @@ import {
 import {
   CircleAlertIcon,
   CircleCheckIcon,
+  CirclePauseIcon,
   CircleXIcon,
   FileIcon,
   FileTextIcon,
@@ -549,8 +550,19 @@ function UploadStatusIcon({ status }: { status: MediaUploadEntry['status'] }) {
           aria-hidden="true"
         />
       );
-    case 'pending':
+    case 'paused':
+      return (
+        <CirclePauseIcon
+          className={cn(className, 'text-muted-foreground')}
+          aria-hidden="true"
+        />
+      );
+    case 'queued':
+    case 'preparing':
+    case 'signing':
     case 'uploading':
+    case 'completing':
+    case 'retrying':
       return (
         <LoaderCircleIcon
           className={cn(className, 'text-muted-foreground animate-spin')}

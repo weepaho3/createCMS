@@ -22,7 +22,7 @@ media: {
 
 ### Upload from the browser
 
-The React client's `media.useUploadAssets()` returns an `upload` function plus a ledger of every file handed to it. Under the hood it requests signed URLs and PUTs each file straight to your bucket, at most four at a time:
+The React client's `media.useUploadAssets()` returns the client's upload queue: an `upload` function, the entries of every file handed to it, and controls per entry. Under the hood it requests signed URLs and PUTs each file straight to your bucket. The queue belongs to the client, not to the component, so uploads keep running when the component that started them unmounts:
 
 ```tsx title="components/uploader.tsx"
 'use client';
@@ -64,19 +64,45 @@ export function Uploader() {
 }
 ```
 
-`upload(files, options?)` takes a `File[]` and an optional `{ folderId, concurrency, signal }`. It resolves with that call's entries once every file has settled, so a caller reads `result.id` from the returned array instead of scanning `files`. Each file is handled on its own when one of the `concurrency` slots (default 4) takes it: it is signed (`createSignedUpload` with that one file, URLs valid for `signedUrlExpiresIn`, default 300 s), PUT, and completed (`completeUpload`) right after its PUT, so a closed tab keeps every file that already landed. While the row is being created the entry shows `progress` 0.99; only `success` reaches 1.
+`upload(files, options?)` takes a `File[]` and optional `{ folderId, signal, optimize, dedupe }`. It resolves with that call's entries once each has settled (or paused), so a caller reads `result.id` from the returned array instead of scanning `files`. Every `upload()` and `replace()` call feeds the same queue, which runs at most four files and six connections at once. Each entry is signed on its own (`createSignedUpload` with that one file, URLs valid for `signedUrlExpiresIn`, default 300 s), PUT, and completed (`completeUpload`) right after its PUT, so a closed tab keeps every file that already landed.
 
-Network errors, 408, 429 and 5xx responses are retried up to five attempts with full-jitter backoff, for the PUT as well as for signing and completing; an abort is never retried. A PUT rejected because its signature expired is signed again once (`UPLOAD_EXPIRED` if it expires a second time). Uploads are validated server-side against the limits (defaults: `maxFileSize` 4 MB, `allowedMimeTypes` an explicit image/video/PDF allowlist that **excludes SVG**, see [Configuration](/docs/reference/configuration#media)); a rejected file ends `error` with the server code (`FILE_TOO_LARGE` or `INVALID_FILE_TYPE`). `maxFiles` limits a single `createSignedUpload` call, which the browser client always makes with one file. A PUT that fails on the network after the retries is `NETWORK_ERROR`; any other PUT failure is `UPLOAD_FAILED`. New assets are created **private**.
+An entry moves through these statuses:
+
+| Status | Meaning |
+| --- | --- |
+| `queued` | Waiting for a free slot. |
+| `preparing` | Hashing (`phase: 'hashing'`, with `dedupe`) or optimizing (`phase: 'optimizing'`, with the [media optimize plugin](/docs/plugins/media-optimize)). Images are optimized one at a time. |
+| `signing` | Requesting the signed URL. |
+| `uploading` | The PUT is running; `phase` turns `finalizing` once every byte is sent. |
+| `completing` | `completeUpload` is creating the row (`phase: 'processing'`). |
+| `retrying` | Waiting before the next attempt; `attempt` counts retries and `nextRetryAt` says when (epoch ms). |
+| `paused` | Paused by `pause()`, by going offline, or waiting on a duplicate decision (`duplicateOf`). |
+| `success`, `error`, `aborted` | Final. `retry()` re-queues `error` entries (and a named `aborted` entry) with a fresh signature. |
+
+`progress` stays at most 0.99 until the row exists; only `success` reaches 1. Network errors, timeouts, 408, 429 and 5xx responses are retried up to five attempts with full-jitter backoff, for the PUT as well as for signing and completing. A PUT without progress for 30 s, or slower than 32 KiB/s overall, times out (`UPLOAD_TIMEOUT`) and is retried. A 429 or an S3 `SlowDown` halves the connection budget (`budget`), which grows back by one every 30 s. A PUT rejected because its signature expired is signed again once (`UPLOAD_EXPIRED` if it expires a second time).
+
+Aborting an entry (`abort(id)`, `abort()` for all, or the call's `signal`) stops its PUT and calls [`abortUpload`](/docs/reference/media#abortupload), which deletes any bytes that already landed. Pausing does the same and restarts the PUT from the beginning on `resume()`. An entry whose bytes landed is no longer abortable: its row is created regardless. The queue pauses every entry when the browser goes offline and resumes them when it is back, and asks the user to confirm leaving the page only while bytes are moving or a row is being created. Objects of uploads that are never completed or aborted (a crashed tab) are removed later by the [pruning sweep](/docs/concepts/data-retention).
+
+With `dedupe: true`, files up to 64 MiB are hashed and checked against [`findDuplicates`](/docs/reference/media#findduplicates) first. An exact match pauses the entry with `duplicateOf`; settle it with `resolveDuplicate(id, decision)`: `{ action: 'use-existing', assetId }` finishes with that asset, `{ action: 'upload-copy' }` uploads anyway, `{ action: 'replace', assetId }` uploads the file as new bytes of that asset. When the storage verifies checksums on PUT, the hash is also signed into the URL and stored on the asset.
+
+Uploads are validated server-side against the limits (defaults: `maxFileSize` 4 MB, `allowedMimeTypes` an explicit image/video/PDF allowlist that **excludes SVG**, see [Configuration](/docs/reference/configuration#media)); a rejected file ends `error` with the server code (`FILE_TOO_LARGE` or `INVALID_FILE_TYPE`). `maxFiles` limits a single `createSignedUpload` call, which the browser client always makes with one file. A PUT that fails on the network after the retries is `NETWORK_ERROR`; any other PUT failure is `UPLOAD_FAILED`. New assets are created **private**.
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `upload` | `(files: File[], options?: CMSMediaUploadOptions) => Promise<CMSMediaUploadFileState[]>` | Start an upload; resolves with that call's entries. Options: `folderId`, `concurrency` (max parallel PUTs, default 4), `signal` (aborts this call only). |
-| `isUploading` | `boolean` | `true` while any entry is `pending` or `uploading`. |
-| `progress` | `{ loaded, total, fraction }` | Bytes uploaded over bytes expected across `pending`, `uploading`, and `success` entries; `fraction` is 0 to 1. `error` and `aborted` entries are excluded. |
-| `files` | `CMSMediaUploadFileState[]` | Every entry handed to `upload` since the last `reset()`, in call order. Each has `id`, `file`, `name`, `size`, `type`, `status` (`pending`, `uploading`, `success`, `error`, `aborted`), `loaded`, `total`, `progress` (0 to 1), `error?` (`{ code, message }`), and `result?` (`{ id, slug, objectKey }`). |
-| `error` | `unknown` | The signing error, or `'Some files failed to upload'` when a PUT failed. `null` otherwise. |
-| `abort` | `() => void` | Aborts every in-flight and pending entry; they end `aborted`, not `error`. |
-| `reset` | `() => void` | Drops `success`, `error`, and `aborted` entries and clears `error`; in-flight entries stay. |
+| `upload` | `(files: File[], options?: CMSMediaUploadOptions) => Promise<CMSMediaUploadFileState[]>` | Queue new assets; resolves with that call's entries. Options: `folderId`, `signal` (aborts this call's entries), `optimize` (`false` skips the optimize plugin), `dedupe`. |
+| `replace` | `(assetId, file, options?) => Promise<CMSMediaUploadFileState>` | Queue new bytes for an existing asset (`createSignedReplace` + `commitReplace`). Options: `signal`, `optimize`, `revisionNote`. |
+| `isUploading` | `boolean` | `true` while any entry is active (`queued` through `completing`, or `retrying`). |
+| `progress` | `{ loaded, total, fraction, bytesPerSecond, eta }` | Bytes across every entry that is not `error` or `aborted`. `bytesPerSecond` is a smoothed rate (`null` until measured); `eta` is seconds left, `null` in the first 2.5 s of a transfer. |
+| `files` | `CMSMediaUploadFileState[]` | Every entry since the last `reset()`, in call order: `id`, `kind` (`create` or `replace`), `file`, `name`, `size`, `type`, `status`, `phase`, `loaded`, `total`, `progress`, `attempt`, `nextRetryAt`, `folderId`, `targetAssetId?`, `sha256?`, `duplicateOf?`, `error?` (`{ code, message, retryable, timedOut? }`), `optimize?` and `result?` (`{ id, slug, objectKey }`). |
+| `error` | `unknown` | The last error that failed an entry since the last `upload`, `replace` or `reset`; `null` otherwise. |
+| `budget` | `number` | Connections the queue may use now: 6, halved while throttled. |
+| `abort` | `(id?: string) => void` | Aborts one entry, or every unfinished entry. |
+| `retry` | `(id?: string) => void` | Re-queues one failed or aborted entry, or every failed entry. |
+| `pause` / `resume` | `(id?: string) => void` | Pauses or resumes one entry, or all. |
+| `resolveDuplicate` | `(id, decision) => void` | Settles an entry paused on a duplicate. |
+| `reset` | `() => void` | Drops `success`, `error` and `aborted` entries and clears `error`; other entries stay. |
+
+The vanilla client exposes the same queue as the nanostores atom `client.media.uploadState`. After a reload, `takeInterruptedUploads()` (from `@createcms/core/react`, or `@createcms/core` for the vanilla client) returns the name, size and kind of every upload that was unfinished when the page was last hidden, so the app can ask the user to pick those files again.
 
 ### Optimize before upload
 

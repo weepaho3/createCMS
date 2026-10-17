@@ -17,6 +17,8 @@ export type UploadTokenPayload =
       variantOf: string | null;
       /** Canonical variant key; absent in tokens minted without one. */
       variantKey?: string | null;
+      /** Base64 SHA-256 the PUT was signed with (`x-amz-checksum-sha256`). */
+      sha256?: string | null;
       actor: string | null;
       scope: string;
       exp: number;

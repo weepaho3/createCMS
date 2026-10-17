@@ -193,7 +193,13 @@ describe('uploads', () => {
 
     uploadState = makeUploadState({
       isUploading: true,
-      progress: { loaded: 50, total: 100, fraction: 0.5 },
+      progress: {
+        loaded: 50,
+        total: 100,
+        fraction: 0.5,
+        bytesPerSecond: null,
+        eta: null,
+      },
     });
     rerender(<Harness client={client}>{children}</Harness>);
     await flush();

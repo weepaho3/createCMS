@@ -1,5 +1,3 @@
-import type { ReadableAtom } from 'nanostores';
-
 import type {
   CMSClientOptions,
   CMSClientPlugin,
@@ -8,18 +6,6 @@ import type {
 
 import { buildClient } from './build';
 import { getClientConfigSync, runPluginInit } from './config';
-import {
-  type CMSMediaReplaceState,
-  createMediaReplaceAtom,
-} from './media-upload';
-
-// Adds the browser-callable replace-asset atom to the client's `media`
-// namespace, mirroring `WithMediaAtom<T>` in types.ts.
-type WithReplaceState<T> = T extends { media: infer M }
-  ? Omit<T, 'media'> & {
-      media: M & { replaceState: ReadableAtom<CMSMediaReplaceState> };
-    }
-  : T & { media: { replaceState: ReadableAtom<CMSMediaReplaceState> } };
 
 /**
  * Creates a type-safe vanilla CMS client with plugin support.
@@ -29,8 +15,9 @@ type WithReplaceState<T> = T extends { media: infer M }
  * immediately: the config is ready before init completes, so calls do not
  * block on it.
  *
- * Media upload state is exposed as a raw nanostores atom at
- * `client.media.uploadState`. For React components, use `createCMSClient` from
+ * The media upload queue is exposed as a raw nanostores atom at
+ * `client.media.uploadState` (`upload`, `replace`, `abort`, `retry`,
+ * `pause`, `resume` are on its value). For React components, use `createCMSClient` from
  * `@createcms/core/react` instead.
  *
  * ```ts
@@ -52,13 +39,13 @@ export function createCMSClient<
   const TPlugins extends CMSClientPlugin[] = [],
 >(
   options: CMSClientOptions & { plugins?: TPlugins },
-): WithReplaceState<CMSVanillaClientInstance<TCMS, TPlugins>>;
+): CMSVanillaClientInstance<TCMS, TPlugins>;
 
 export function createCMSClient<TCMS = unknown>(): <
   const TPlugins extends CMSClientPlugin[] = [],
 >(
   options: CMSClientOptions & { plugins?: TPlugins },
-) => WithReplaceState<CMSVanillaClientInstance<TCMS, TPlugins>>;
+) => CMSVanillaClientInstance<TCMS, TPlugins>;
 
 export function createCMSClient<TCMS = unknown>(
   options?: CMSClientOptions & { plugins?: CMSClientPlugin[] },
@@ -73,7 +60,7 @@ export function createCMSClient<TCMS = unknown>(
 
 function createVanillaClient<TCMS, TPlugins extends CMSClientPlugin[]>(
   options: CMSClientOptions & { plugins?: TPlugins },
-): WithReplaceState<CMSVanillaClientInstance<TCMS, TPlugins>> {
+): CMSVanillaClientInstance<TCMS, TPlugins> {
   // Built synchronously like the React client so direct members such as
   // `client.media.uploadState` are real atoms immediately, which is what
   // makes subscribe-at-startup work.
@@ -81,11 +68,7 @@ function createVanillaClient<TCMS, TPlugins extends CMSClientPlugin[]>(
   runPluginInit(options, config).catch((err) =>
     console.error('[cms] plugin init failed:', err),
   );
-  const replaceAtom = createMediaReplaceAtom(config.$fetch);
-  return buildClient<
-    WithReplaceState<CMSVanillaClientInstance<TCMS, TPlugins>>
-  >(config, {
+  return buildClient<CMSVanillaClientInstance<TCMS, TPlugins>>(config, {
     uploadState: config.pluginsAtoms.uploadAssets,
-    replaceState: replaceAtom,
   });
 }

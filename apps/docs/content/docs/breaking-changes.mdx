@@ -327,6 +327,44 @@ revisionId? }`; the inferred property type is the `ImageValue` union.
   → **Migration:** custom image field controls read the id from an
   `AssetRef` value; fakes of `MediaClient` need no change.
 
+- **The client upload ledger is an upload queue.** `useUploadAssets()` (and
+  the vanilla `client.media.uploadState`) returns one queue per client that
+  `upload()` and the new `replace()` share. Entry statuses are `queued`,
+  `preparing`, `signing`, `uploading`, `completing`, `retrying`, `paused`,
+  `success`, `error` and `aborted` (`pending` is gone). Entries gain `kind`,
+  `phase`, `attempt`, `nextRetryAt` and `folderId`; `error` gains
+  `retryable`. `progress` gains `bytesPerSecond` and `eta`, and the state
+  gains `budget`, `retry`, `pause`, `resume` and `resolveDuplicate`.
+  `CMSMediaUploadOptions.concurrency` is removed: the queue runs at most four
+  files and six connections across all calls. `abort(id?)` takes an entry id
+  and deletes any bytes that already landed (`abortUpload`); an entry whose
+  bytes landed still completes. `error` holds the last failing error instead
+  of `'Some files failed to upload'`. The vanilla `client.media.replaceState`
+  atom is removed, and `useReplaceAsset()` returns
+  `{ entries, isReplacing, replace, abort, retry }` over the queue's replace
+  entries.
+  → **Migration:** match the new statuses (treat `queued` as the old
+  `pending`, and `preparing` through `retrying` as in progress); drop
+  `concurrency`; replace through `uploadState.get().replace(assetId, file)`
+  in the vanilla client; read a replace's outcome from the entry
+  `replace()` resolves with instead of `result`/`progress` on the hook.
+
+- **Pruning deletes orphaned upload objects.** When the storage can list
+  keys, `runPruning` deletes objects whose key has the CMS layout
+  (`[t/<tenant>/][pub/|prv/]ast_<id>/...`), that no asset row points at,
+  and that are older than `signedUrlExpiresIn` plus one hour.
+  → **Migration:** none, unless you write objects under CMS-shaped keys
+  yourself; keep those outside that layout.
+
+- **`@createcms/react`: the upload types mirror the upload queue.**
+  `CmsMediaUploadState`, `CmsMediaUploadFileState`, `CmsMediaUploadStatus`
+  and `CmsMediaUploadProgress` follow the core queue shape above; the
+  `/media` upload status messages are keyed by the new statuses.
+  → **Migration:** update fakes and idle states with `budget`, `replace`,
+  `retry`, `pause`, `resume`, `resolveDuplicate`, and
+  `progress: { loaded: 0, total: 0, fraction: 0, bytesPerSecond: null, eta: null }`;
+  custom message catalogs add `upload.status` texts for every status.
+
 ---
 
 ## 0.6.0 — 2026-08-14

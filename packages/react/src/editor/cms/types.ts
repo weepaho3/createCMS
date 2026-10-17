@@ -203,25 +203,55 @@ export type CmsVariableListResult = {
   hasMore: boolean;
 };
 
+/**
+ * Where an upload stands. Active: `queued`, `preparing`, `signing`,
+ * `uploading`, `completing`, `retrying`. Waiting: `paused`. Final:
+ * `success`, `error`, `aborted`.
+ */
 export type CmsMediaUploadStatus =
-  | 'pending'
+  | 'queued'
+  | 'preparing'
+  | 'signing'
   | 'uploading'
+  | 'completing'
   | 'success'
+  | 'paused'
+  | 'retrying'
   | 'error'
   | 'aborted';
 
+export type CmsMediaUploadPhase =
+  | 'hashing'
+  | 'optimizing'
+  | 'finalizing'
+  | 'processing'
+  | null;
+
 export type CmsMediaUploadFileState = {
   id: string;
+  kind: 'create' | 'replace';
   file: File;
   name: string;
   size: number;
   type: string;
   status: CmsMediaUploadStatus;
+  phase: CmsMediaUploadPhase;
   loaded: number;
   total: number;
-  /** 0..1 */
+  /** 0..1; at most 0.99 until `success`. */
   progress: number;
-  error?: { code: string; message: string };
+  attempt: number;
+  nextRetryAt: number | null;
+  folderId: string | null;
+  targetAssetId?: string;
+  sha256?: string;
+  duplicateOf?: { assetId: string; folderId: string | null }[];
+  error?: {
+    code: string;
+    message: string;
+    retryable: boolean;
+    timedOut?: boolean;
+  };
   optimize?: {
     optimized: boolean;
     bytesBefore: number;
@@ -235,18 +265,45 @@ export type CmsMediaUploadProgress = {
   loaded: number;
   total: number;
   fraction: number;
+  bytesPerSecond: number | null;
+  /** Seconds left; `null` early in a transfer or while stalled. */
+  eta: number | null;
 };
+
+export type CmsMediaUploadOptions = {
+  folderId?: string;
+  signal?: AbortSignal;
+  optimize?: boolean;
+  dedupe?: boolean;
+};
+
+export type CmsMediaDuplicateDecision =
+  | { action: 'use-existing'; assetId: string }
+  | { action: 'upload-copy' }
+  | { action: 'replace'; assetId: string };
 
 export type CmsMediaUploadState = {
   isUploading: boolean;
   files: CmsMediaUploadFileState[];
   progress: CmsMediaUploadProgress;
   error: unknown;
+  budget: number;
   upload: (
     files: File[],
-    options?: { folderId?: string; concurrency?: number; signal?: AbortSignal },
+    options?: CmsMediaUploadOptions,
   ) => Promise<CmsMediaUploadFileState[]>;
-  abort: () => void;
+  replace: (
+    assetId: string,
+    file: File,
+    options?: Pick<CmsMediaUploadOptions, 'signal' | 'optimize'> & {
+      revisionNote?: string;
+    },
+  ) => Promise<CmsMediaUploadFileState>;
+  abort: (id?: string) => void;
+  retry: (id?: string) => void;
+  pause: (id?: string) => void;
+  resume: (id?: string) => void;
+  resolveDuplicate: (id: string, decision: CmsMediaDuplicateDecision) => void;
   reset: () => void;
 };
 

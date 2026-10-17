@@ -63,7 +63,13 @@ describe('Media.UploadProgress', () => {
       makeUploadState({
         isUploading: true,
         files: [entry],
-        progress: { loaded: 45, total: 100, fraction: 0.45 },
+        progress: {
+          loaded: 45,
+          total: 100,
+          fraction: 0.45,
+          bytesPerSecond: null,
+          eta: null,
+        },
       }),
     );
     const item = getByRole('listitem');
@@ -80,7 +86,13 @@ describe('Media.UploadProgress', () => {
   it('reads the aggregate fraction outside an item', () => {
     const { getByTestId, getByRole } = setup(
       makeUploadState({
-        progress: { loaded: 30, total: 100, fraction: 0.3 },
+        progress: {
+          loaded: 30,
+          total: 100,
+          fraction: 0.3,
+          bytesPerSecond: null,
+          eta: null,
+        },
       }),
     );
     const all = getByTestId('all');
@@ -99,7 +111,7 @@ describe('Media.UploadProgress', () => {
             id: 'e',
             name: 'e.png',
             status: 'error',
-            error: { code: 'UPLOAD_FAILED', message: 'boom' },
+            error: { code: 'UPLOAD_FAILED', message: 'boom', retryable: false },
           }),
           makeEntry({ id: 'a', name: 'a.png', status: 'aborted' }),
         ],
@@ -146,7 +158,7 @@ describe('Media.UploadList log', () => {
             id: 'f',
             name: 'f.png',
             status: 'error',
-            error: { code: 'UPLOAD_FAILED', message: 'boom' },
+            error: { code: 'UPLOAD_FAILED', message: 'boom', retryable: false },
           }),
         ],
       }),

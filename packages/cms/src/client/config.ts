@@ -12,8 +12,9 @@ import type {
 
 import { CMSClientError } from './error';
 import { CMS_ERRORS } from './errors-data.generated';
-import { createMediaUploadAtom } from './media-upload';
 import { createStore } from './store';
+import { UPLOAD_OPTIMIZER_KEY, type UploadOptimizer } from './upload-optimizer';
+import { createUploadQueue } from './upload-queue';
 
 export interface ClientConfig {
   $fetch: CMSFetch;
@@ -60,8 +61,17 @@ export function getClientConfigSync(options: CMSClientOptions): ClientConfig {
 
   const pluginsAtoms: Record<string, WritableAtom<unknown>> = {
     $mediaSignal: atom(false),
-    uploadAssets: createMediaUploadAtom($fetch) as WritableAtom<unknown>,
   };
+  // One queue per client; the optimizer is looked up per file because
+  // plugins publish it after this runs.
+  pluginsAtoms.uploadAssets = createUploadQueue($fetch, {
+    getOptimizer: () =>
+      (
+        pluginsAtoms[UPLOAD_OPTIMIZER_KEY] as
+          | WritableAtom<UploadOptimizer>
+          | undefined
+      )?.get(),
+  }) as WritableAtom<unknown>;
   // POST endpoints callable with no/optional body: the proxy's body-presence
   // heuristic would otherwise dispatch GET and 404. Endpoints with a required
   // body are inferred correctly, so collection routes need nothing here.

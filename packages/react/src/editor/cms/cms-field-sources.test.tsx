@@ -47,10 +47,22 @@ function makeClient(
   const uploadState: CmsMediaUploadState = {
     isUploading: false,
     files: [],
-    progress: { loaded: 0, total: 0, fraction: 0 },
+    progress: {
+      loaded: 0,
+      total: 0,
+      fraction: 0,
+      bytesPerSecond: null,
+      eta: null,
+    },
     error: null,
+    budget: 6,
     upload: vi.fn(async () => []),
     abort: vi.fn(),
+    replace: vi.fn(),
+    retry: vi.fn(),
+    pause: vi.fn(),
+    resume: vi.fn(),
+    resolveDuplicate: vi.fn(),
     reset: vi.fn(),
   };
 
@@ -472,10 +484,22 @@ describe('useCmsFieldSources assets.useUpload', () => {
     const uploadState: CmsMediaUploadState = {
       isUploading: true,
       files: [],
-      progress: { loaded: 50, total: 100, fraction: 0.5 },
+      progress: {
+        loaded: 50,
+        total: 100,
+        fraction: 0.5,
+        bytesPerSecond: null,
+        eta: null,
+      },
       error: null,
+      budget: 6,
       upload: vi.fn(async () => []),
       abort: vi.fn(),
+      replace: vi.fn(),
+      retry: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+      resolveDuplicate: vi.fn(),
       reset: vi.fn(),
     };
     const useUploadAssets = vi.fn(() => uploadState);

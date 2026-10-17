@@ -32,8 +32,13 @@ function announcement(entry: MediaUploadEntry): string {
       return `${entry.name} failed${entry.error ? `: ${entry.error.message}` : ''}`;
     case 'aborted':
       return `${entry.name} cancelled`;
-    case 'pending':
+    case 'queued':
+    case 'preparing':
+    case 'signing':
     case 'uploading':
+    case 'completing':
+    case 'retrying':
+    case 'paused':
       return '';
   }
 }
@@ -143,9 +148,14 @@ function valueText(
         format,
       );
     case 'aborted':
-      return messages.upload.status.aborted;
-    case 'pending':
+    case 'paused':
+    case 'retrying':
+      return messages.upload.status[entry.status];
+    case 'queued':
+    case 'preparing':
+    case 'signing':
     case 'uploading':
+    case 'completing':
     case 'success':
       return format.percent(fraction);
   }

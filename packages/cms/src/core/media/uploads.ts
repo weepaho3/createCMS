@@ -16,6 +16,7 @@ type UploadFileInput = {
   type: string;
   variantOf?: string;
   variantKey?: string;
+  sha256?: string;
 };
 
 type PrepareUploadInput = {

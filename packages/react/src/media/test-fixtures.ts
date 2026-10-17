@@ -45,10 +45,22 @@ export function makeUploadState(
   return {
     isUploading: false,
     files: [],
-    progress: { loaded: 0, total: 0, fraction: 0 },
+    progress: {
+      loaded: 0,
+      total: 0,
+      fraction: 0,
+      bytesPerSecond: null,
+      eta: null,
+    },
     error: null,
+    budget: 6,
     upload: vi.fn(async () => []),
+    replace: vi.fn(async () => makeEntry({ kind: 'replace' })),
     abort: vi.fn(),
+    retry: vi.fn(),
+    pause: vi.fn(),
+    resume: vi.fn(),
+    resolveDuplicate: vi.fn(),
     reset: vi.fn(),
     ...overrides,
   };
@@ -61,14 +73,19 @@ export function makeEntry(
   const file = new File(['x'], name, { type: 'image/png' });
   return {
     id: 'up_1',
+    kind: 'create',
     file,
     name,
     size: 100,
     type: 'image/png',
-    status: 'pending',
+    status: 'queued',
+    phase: null,
     loaded: 0,
     total: 100,
     progress: 0,
+    attempt: 0,
+    nextRetryAt: null,
+    folderId: null,
     ...overrides,
   };
 }

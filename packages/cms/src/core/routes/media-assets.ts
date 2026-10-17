@@ -418,7 +418,7 @@ export function createMediaAssetEndpoints<TItem>(
      * @returns `{ results: { id, ok, error? }[] }` in input order; `error` is a code such as `ASSET_NOT_FOUND`, `in_use` or `richtext_suspect`.
      */
     batchAssets: createCMSEndpoint(
-      '/media/batch',
+      '/media/batchAssets',
       {
         method: 'POST',
         body: z.object({

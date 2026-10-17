@@ -183,10 +183,13 @@ level, not inside callbacks.
 | `CmsSuggestItem`            | One suggest row for variables.                                       |
 | `CmsSuggestRenderContext`   | Context passed to variable suggest UI.                               |
 | `CmsVariableSuggest`        | Suggest config from `useVariableSuggest`.                            |
-| `CmsMediaUploadState`       | Upload ledger from `assets.useUpload()`; entries accumulate until `reset()`. |
-| `CmsMediaUploadFileState`   | Per-file upload entry (`status`, `loaded`, `total`, `result`).       |
-| `CmsMediaUploadStatus`      | `pending`, `uploading`, `success`, `error`, or `aborted`.            |
-| `CmsMediaUploadProgress`    | Byte-summed `{ loaded, total, fraction }` over the ledger.           |
+| `CmsMediaUploadState`       | Upload queue from `assets.useUpload()`; entries accumulate until `reset()`. Also `replace`, `abort(id?)`, `retry(id?)`, `pause(id?)`, `resume(id?)` and `resolveDuplicate`. |
+| `CmsMediaUploadFileState`   | Per-file queue entry (`kind`, `status`, `phase`, `loaded`, `total`, `attempt`, `duplicateOf`, `result`). |
+| `CmsMediaUploadStatus`      | `queued`, `preparing`, `signing`, `uploading`, `completing`, `retrying`, `paused`, `success`, `error`, or `aborted`. |
+| `CmsMediaUploadPhase`       | Detail within a status: `hashing`, `optimizing`, `finalizing`, `processing`, or `null`. |
+| `CmsMediaUploadProgress`    | Byte-summed `{ loaded, total, fraction, bytesPerSecond, eta }` over the queue. |
+| `CmsMediaUploadOptions`     | `upload()` options: `folderId`, `signal`, `optimize`, `dedupe`.     |
+| `CmsMediaDuplicateDecision` | Argument of `resolveDuplicate`: `use-existing`, `upload-copy`, or `replace`. |
 | `AssetUrlOptions`           | Options for `assetUrl` (`format`, `w`, `h`, …).                    |
 | `CMS_RESOLVE_DEBOUNCE_MS`   | Debounce before `resolveTree` after local edits (default 300 ms).  |
 | `linkLabel`                 | Resolve a link value to a display string.                            |

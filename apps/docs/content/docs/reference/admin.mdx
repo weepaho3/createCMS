@@ -34,6 +34,8 @@ Run one bounded, resumable pruning pass to reclaim storage: it deletes old commi
     deletedRoots: { type: 'string[]', description: 'Ids of soft-archived entries hard-deleted this pass (past the trash window).' },
     deletedAssets: { type: 'string[]', description: 'Ids of archived, unreferenced assets reclaimed this pass (DB row plus S3 object).' },
     processedLiveRoots: { type: 'number', description: 'How many live entries were visited for history pruning this pass.' },
+    sweptObjects: { type: 'string[]', description: 'Storage keys the orphan sweep deleted this pass: objects of signed uploads that were never completed.' },
+    sweepCursor: { type: 'string | null', description: 'Pass to the next pass as `sweepCursor`; `null` once the sweep reached the end of the bucket, or when the storage cannot list keys.' },
     plugins: { type: 'Record<string, Record<string, number>>', description: 'Per-plugin pruning metrics keyed by plugin id; always present, empty when no plugin prunes.' },
     stoppedReason: { type: "'maxRoots' | 'budget' | 'idle'", description: 'Why the pass stopped: it hit the count cap, ran out of the time budget, or drained all due work.' },
     done: { type: 'boolean', description: 'True when the pass drained all currently-due work (stopped idle); keep re-running while it is false.' },
@@ -44,6 +46,8 @@ Run one bounded, resumable pruning pass to reclaim storage: it deletes old commi
     maxDurationMs: { type: 'number', default: '8000', description: 'Soft wall-clock budget in milliseconds; the pass returns before exceeding it. Minimum 100.' },
     liveRescanMs: { type: 'number', default: '86400000', description: 'Interval in milliseconds after which a live root becomes due for re-scanning. Minimum 0.' },
     maxAssets: { type: 'number', default: '100', description: 'Maximum archived, unreferenced assets to reclaim this pass, 1 to 1000.' },
+    sweepCursor: { type: 'string | null', description: 'The `sweepCursor` of the previous pass, where the orphan sweep resumes. Omit to start at the first key.' },
+    maxSweepObjects: { type: 'number', default: '1000', description: 'Storage keys the orphan sweep inspects this pass, 1 to 1000.' },
   }}
 />
 

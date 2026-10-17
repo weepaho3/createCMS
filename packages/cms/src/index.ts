@@ -38,9 +38,13 @@ export type {
   CMSMediaUploadState,
   CMSMediaUploadFileState,
   CMSMediaUploadOptions,
+  CMSMediaUploadOptimizeInfo,
+  CMSMediaUploadPhase,
   CMSMediaUploadProgress,
   CMSMediaUploadStatus,
+  CMSMediaDuplicateDecision,
 } from './client/types';
+export { takeInterruptedUploads } from './client/upload-queue';
 
 export { cmsMeta, cmsContext, createCMSEndpoint } from './core/endpoint';
 export type { CMSEndpointMeta } from './core/endpoint';

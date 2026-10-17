@@ -56,7 +56,7 @@ Method inputs and outputs match the [Server API](/docs/reference/server-api) exa
 
 - `client.$fetch` for raw requests.
 - `client.$store` for the reactive store.
-- `client.media.useUploadAssets()` for uploads (React client only; the vanilla client exposes the underlying nanostores atom).
+- `client.media.useUploadAssets()` for uploads (React client only; the vanilla client exposes the same queue as the nanostores atom `client.media.uploadState`). See [Upload and serve media](/docs/guides/media-uploads).
 
 ## Error handling
 

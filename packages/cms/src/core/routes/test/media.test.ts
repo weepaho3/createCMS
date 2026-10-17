@@ -1,4 +1,5 @@
 import { eq, inArray, sql } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { setupMultiTenantTestCMS } from '../../../plugins/multi-tenant/test/utils/cms';
@@ -1346,6 +1347,250 @@ describe('media.createSignedUpload', () => {
       },
     ]);
     expect(await db.select().from(assets)).toHaveLength(1);
+  });
+});
+
+// ============================================================================
+// abortUpload, findDuplicates and checksum signing
+// ============================================================================
+
+/** The browser's PUT with every signed header. */
+async function putWithHeaders(
+  target: SignedPut,
+  body: Uint8Array<ArrayBuffer>,
+) {
+  const res = await fetch(target.signedUrl, {
+    method: 'PUT',
+    headers: {
+      ...target.headers,
+      'content-length': String(body.byteLength),
+    },
+    body,
+  });
+  expect(res.ok).toBe(true);
+}
+
+/** The object's URL on the test bucket, which answers anonymous reads. */
+function objectUrl(s3: { config: { publicUrl?: string } }, key: string) {
+  return `${s3.config.publicUrl}/${key}`;
+}
+
+function sha256Base64(bytes: Uint8Array): string {
+  return createHash('sha256').update(bytes).digest('base64');
+}
+
+describe('media.abortUpload', () => {
+  let cleanup: (() => Promise<void>) | undefined;
+  afterEach(async () => {
+    await cleanup?.();
+  });
+
+  it('deletes the object of an upload that was never completed', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const { uploads } = await cms.api.media.createSignedUpload({
+      body: { files: [{ name: 'a.png', size: 8, type: 'image/png' }] },
+    });
+    await putSigned(uploads[0], PNG_BYTES);
+    expect(await objectExists(objectUrl(s3, uploads[0].objectKey))).toBe(true);
+
+    const result = await cms.api.media.abortUpload({
+      body: { token: uploads[0].token },
+    });
+    expect(result).toEqual({ aborted: true, committed: false });
+    expect(await objectExists(objectUrl(s3, uploads[0].objectKey))).toBe(false);
+    expect(await db.select().from(assets)).toHaveLength(0);
+
+    // Idempotent: the object is already gone.
+    expect(
+      await cms.api.media.abortUpload({ body: { token: uploads[0].token } }),
+    ).toEqual({ aborted: true, committed: false });
+  });
+
+  it('leaves a completed upload alone', async () => {
+    const { cms, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const { signed } = await uploadSigned(cms, [
+      { name: 'a.png', type: 'image/png' },
+    ]);
+
+    const result = await cms.api.media.abortUpload({
+      body: { token: signed.uploads[0].token },
+    });
+    expect(result).toEqual({ aborted: false, committed: true });
+    expect(await objectExists(objectUrl(s3, signed.uploads[0].objectKey))).toBe(
+      true,
+    );
+  });
+
+  it('rejects a tampered token', async () => {
+    const { cms, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+    const { uploads } = await cms.api.media.createSignedUpload({
+      body: { files: [{ name: 'a.png', size: 8, type: 'image/png' }] },
+    });
+
+    await expect(
+      cms.api.media.abortUpload({
+        body: { token: tamperToken(uploads[0].token) },
+      }),
+    ).rejects.toMatchObject({ body: { code: 'UPLOAD_TOKEN_INVALID' } });
+  });
+
+  it('rejects a token minted in another tenant', async () => {
+    const { cms, setTenant, s3 } = await setupMultiTenantTestCMS({
+      withS3: true,
+    });
+    cleanup = s3.cleanup;
+    setTenant('acme');
+    const { uploads } = await cms.api.media.createSignedUpload({
+      body: { files: [{ name: 'a.png', size: 8, type: 'image/png' }] },
+    });
+    await putSigned(uploads[0], PNG_BYTES);
+
+    setTenant('globex');
+    await expect(
+      cms.api.media.abortUpload({ body: { token: uploads[0].token } }),
+    ).rejects.toMatchObject({ body: { code: 'UPLOAD_TOKEN_INVALID' } });
+    expect(await objectExists(objectUrl(s3, uploads[0].objectKey))).toBe(true);
+  });
+});
+
+describe('checksum signing', () => {
+  let cleanup: (() => Promise<void>) | undefined;
+  afterEach(async () => {
+    await cleanup?.();
+  });
+
+  it('signs and stores the sha256 when the storage verifies checksums', async () => {
+    const { cms, db, s3 } = await setupTestCMS({
+      withS3: true,
+      media: { capabilities: { checksum: { sha256Put: true } } },
+    });
+    cleanup = s3.cleanup;
+    const sha256 = sha256Base64(PNG_BYTES);
+
+    const { uploads } = await cms.api.media.createSignedUpload({
+      body: { files: [{ name: 'a.png', size: 8, type: 'image/png', sha256 }] },
+    });
+    expect(uploads[0].headers['x-amz-checksum-sha256']).toBe(sha256);
+    await putWithHeaders(uploads[0], PNG_BYTES);
+    await cms.api.media.completeUpload({
+      body: { uploads: [{ token: uploads[0].token }] },
+    });
+
+    const [row] = await db.select().from(assets);
+    expect(row.sha256).toBe(
+      createHash('sha256').update(PNG_BYTES).digest('hex'),
+    );
+  });
+
+  it('ignores the sha256 when the storage cannot verify it', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+
+    const { uploads } = await cms.api.media.createSignedUpload({
+      body: {
+        files: [
+          {
+            name: 'a.png',
+            size: 8,
+            type: 'image/png',
+            sha256: sha256Base64(PNG_BYTES),
+          },
+        ],
+      },
+    });
+    expect(uploads[0].headers).not.toHaveProperty('x-amz-checksum-sha256');
+    await putSigned(uploads[0], PNG_BYTES);
+    await cms.api.media.completeUpload({
+      body: { uploads: [{ token: uploads[0].token }] },
+    });
+
+    const [row] = await db.select().from(assets);
+    expect(row.sha256).toBeNull();
+  });
+});
+
+describe('media.findDuplicates', () => {
+  const insertAsset = (
+    db: Awaited<ReturnType<typeof setupTestCMS>>['db'],
+    values: Partial<typeof assets.$inferInsert>,
+  ) =>
+    db
+      .insert(assets)
+      .values({
+        slug: values.id ?? 'x',
+        mimeType: 'image/png',
+        size: 8,
+        objectKey: `pub/${values.id}/x.png`,
+        ...values,
+      })
+      .returning();
+
+  it('matches by sha256, else by original name and size', async () => {
+    const { cms, db } = await setupTestCMS();
+    const hash = createHash('sha256').update(PNG_BYTES);
+    const hex = hash.copy().digest('hex');
+    const base64 = hash.digest('base64');
+    await insertAsset(db, {
+      id: 'ast_hash',
+      sha256: hex,
+      originalName: 'x.png',
+    });
+    await insertAsset(db, { id: 'ast_name', originalName: 'b.png', size: 8 });
+    await insertAsset(db, {
+      id: 'ast_gone',
+      sha256: hex,
+      archivedAt: new Date(),
+    });
+
+    const { results } = await cms.api.media.findDuplicates({
+      body: {
+        files: [
+          { sha256: base64, name: 'b.png', size: 8 },
+          { name: 'b.png', size: 8 },
+          { name: 'b.png', size: 9 },
+        ],
+      },
+    });
+    expect(results).toEqual([
+      {
+        index: 0,
+        candidates: [
+          { assetId: 'ast_hash', folderId: null, matchedBy: 'sha256' },
+        ],
+      },
+      {
+        index: 1,
+        candidates: [
+          { assetId: 'ast_name', folderId: null, matchedBy: 'name-size' },
+        ],
+      },
+      { index: 2, candidates: [] },
+    ]);
+  });
+
+  it('only sees assets of the caller tenant', async () => {
+    const { cms, db, setTenant } = await setupMultiTenantTestCMS();
+    const hex = createHash('sha256').update(PNG_BYTES).digest('hex');
+    await db.execute(sql`
+      INSERT INTO cms.assets (id, slug, mime_type, size, object_key, sha256, tenant_slug)
+      VALUES ('ast_acme', 'x.png', 'image/png', 8, 'pub/ast_acme/x.png', ${hex}, 'acme')
+    `);
+
+    const query = () =>
+      cms.api.media.findDuplicates({
+        body: {
+          files: [{ sha256: sha256Base64(PNG_BYTES), name: 'x', size: 8 }],
+        },
+      });
+    setTenant('globex');
+    expect((await query()).results[0].candidates).toEqual([]);
+    setTenant('acme');
+    expect((await query()).results[0].candidates).toEqual([
+      { assetId: 'ast_acme', folderId: null, matchedBy: 'sha256' },
+    ]);
   });
 });
 
@@ -3670,5 +3915,90 @@ describe('custom storage adapter', () => {
     const result = await cms.api.admin.runPruning({ body: { dryRun: false } });
     expect(result.deletedAssets).toContain(asset.id);
     expect(await storage.head('gc.png')).toBeNull();
+  });
+
+  it('the pruning sweep deletes old objects that no asset row points at', async () => {
+    const storage = createMemoryStorage();
+    const { cms, db } = await setupTestCMS({
+      media: { storage, signedUrlExpiresIn: 300 },
+      dataRetention: { keepDays: 7, keepMinCommits: 1, archiveKeepDays: 7 },
+    });
+    const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const put = async (key: string, lastModified: Date) => {
+      await storage.put(key, PNG_BYTES, {
+        contentType: 'image/png',
+        contentLength: PNG_BYTES.byteLength,
+      });
+      storage.objects.get(key)!.lastModified = lastModified;
+    };
+    const orphan = 'pub/ast_00000000000000000001/a.png';
+    const tenantOrphan = 't/acme/prv/ast_00000000000000000002/b.png';
+    const young = 'pub/ast_00000000000000000003/c.png';
+    const owned = 'pub/ast_00000000000000000004/d.png';
+    const archived = 'pub/ast_00000000000000000005/e.png';
+    const foreign = 'uploads/manual.png';
+    for (const key of [orphan, tenantOrphan, owned, archived, foreign]) {
+      await put(key, old);
+    }
+    await put(young, new Date());
+    await db.insert(assets).values([
+      {
+        slug: 'd.png',
+        mimeType: 'image/png',
+        size: PNG_BYTES.byteLength,
+        objectKey: owned,
+      },
+      {
+        slug: 'e.png',
+        mimeType: 'image/png',
+        size: PNG_BYTES.byteLength,
+        objectKey: archived,
+        archivedAt: new Date(),
+      },
+    ]);
+
+    const dry = await cms.api.admin.runPruning({ body: { dryRun: true } });
+    expect(dry.sweptObjects).toEqual([orphan, tenantOrphan]);
+    expect(storage.objects.has(orphan)).toBe(true);
+
+    const result = await cms.api.admin.runPruning({ body: { dryRun: false } });
+    expect(result.sweptObjects).toEqual([orphan, tenantOrphan]);
+    expect(result.sweepCursor).toBeNull();
+    expect(new Set(storage.objects.keys())).toEqual(
+      new Set([archived, foreign, owned, young]),
+    );
+  });
+
+  it('the pruning sweep pages through the bucket with its cursor', async () => {
+    const storage = createMemoryStorage();
+    const { cms } = await setupTestCMS({
+      media: { storage },
+      dataRetention: { keepDays: 7, keepMinCommits: 1, archiveKeepDays: 7 },
+    });
+    const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const keys = [1, 2, 3].map((n) => `pub/ast_0000000000000000000${n}/x.png`);
+    for (const key of keys) {
+      await storage.put(key, PNG_BYTES, {
+        contentType: 'image/png',
+        contentLength: PNG_BYTES.byteLength,
+      });
+      storage.objects.get(key)!.lastModified = old;
+    }
+
+    const first = await cms.api.admin.runPruning({
+      body: { dryRun: false, maxSweepObjects: 2 },
+    });
+    expect(first.sweptObjects).toEqual(keys.slice(0, 2));
+    expect(first.sweepCursor).toBe(keys[1]);
+
+    const second = await cms.api.admin.runPruning({
+      body: {
+        dryRun: false,
+        maxSweepObjects: 2,
+        sweepCursor: first.sweepCursor,
+      },
+    });
+    expect(second.sweptObjects).toEqual([keys[2]]);
+    expect(second.sweepCursor).toBeNull();
   });
 });

@@ -10,6 +10,8 @@ export type MemoryObject = {
   body: Uint8Array;
   contentType: string;
   cacheControl: string | null;
+  /** Set on `put`; tests backdate it to age an object. */
+  lastModified: Date | null;
 };
 
 /**
@@ -46,6 +48,7 @@ export function createMemoryStorage(
         body: bytes,
         contentType: opts.contentType,
         cacheControl: opts.cacheControl ?? null,
+        lastModified: new Date(),
       });
     },
     async delete(key) {
@@ -84,14 +87,15 @@ export function createMemoryStorage(
     },
     async list(prefix, opts) {
       const keys = [...store.keys()].filter((k) => k.startsWith(prefix)).sort();
-      const start = opts?.cursor ? keys.indexOf(opts.cursor) + 1 : 0;
+      const cursor = opts?.cursor;
+      const start = cursor ? keys.filter((k) => k <= cursor).length : 0;
       const limit = opts?.limit ?? 1000;
       const page = keys.slice(start, start + limit);
       return {
         keys: page.map((key) => ({
           key,
           size: store.get(key)!.body.byteLength,
-          lastModified: null,
+          lastModified: store.get(key)!.lastModified,
         })),
         cursor: start + limit < keys.length ? page[page.length - 1] : null,
       };

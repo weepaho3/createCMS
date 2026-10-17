@@ -5,7 +5,8 @@
 // it from a Server Component is an error. RSC code uses the granular, server-safe
 // entries instead: `@createcms/core/react/blocks` (rendering) and
 // `@createcms/core/react/variant` (pickVariant). (react-02)
-export { createCMSClient } from '../client/react';
+export { createCMSClient, takeInterruptedUploads } from '../client/react';
+export type { CMSMediaReplaceState } from '../client/react';
 export { useStore } from '../client/react-store';
 export { createCMSQuery } from '../client/query';
 export { CMSClientError } from '../client/error';

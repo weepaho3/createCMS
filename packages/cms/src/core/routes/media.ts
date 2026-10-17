@@ -80,6 +80,12 @@ const INLINE_SAFE =
  * Fields of one uploaded file. `variantKey` (see core/media/variant-key.ts)
  * names the variant of `variantOf` the file is, and needs `variantOf`.
  */
+/** Base64 SHA-256 of the bytes; signed into the PUT where the storage verifies it. */
+const sha256Base64 = z
+  .string()
+  .regex(/^[A-Za-z0-9+/]{43}=$/, 'Must be a base64 SHA-256')
+  .optional();
+
 const uploadFileFields = z.object({
   name: z.string().min(1),
   type: z.string().min(1),
@@ -88,7 +94,12 @@ const uploadFileFields = z.object({
     .string()
     .refine((key) => parseVariantKey(key) !== null, 'Invalid variant key')
     .optional(),
+  sha256: sha256Base64,
 });
+
+function base64ToHex(value: string): string {
+  return Buffer.from(value, 'base64').toString('hex');
+}
 
 function requireVariantOfForKey<
   T extends z.ZodType<{ variantOf?: string; variantKey?: string }>,
@@ -618,6 +629,7 @@ export function createMediaEndpoints(
             variant_of: payload.variantOf,
             variant_key: payload.variantKey ?? null,
             original_name: payload.name,
+            sha256: payload.sha256 ? base64ToHex(payload.sha256) : null,
             uploaded_by: payload.actor,
           },
           scope.assets,
@@ -1416,12 +1428,18 @@ export function createMediaEndpoints(
 
         const uploads = await Promise.all(
           prepared.map(async (p) => {
+            // Only a storage that verifies the checksum makes the hash
+            // trustworthy enough to store and deduplicate by.
+            const sha256 = storage.capabilities.checksum.sha256Put
+              ? p.file.sha256
+              : undefined;
             const signed = await storage.signPut(p.objectKey, {
               contentType: p.file.type,
               contentLength: p.file.size,
               expiresIn: signedUrlExpiresIn,
               acl: objectAcl,
               cacheControl: cacheControlFor(mediaConfig, 'private'),
+              sha256,
             });
             const token = await mintUploadToken(key, {
               kind: 'upload',
@@ -1433,6 +1451,7 @@ export function createMediaEndpoints(
               folderId: folderId ?? null,
               variantOf: p.file.variantOf ?? null,
               variantKey: p.file.variantKey ?? null,
+              sha256: sha256 ?? null,
               actor: actor ?? null,
               scope: scopeId,
               exp,
@@ -1955,6 +1974,150 @@ export function createMediaEndpoints(
           }
           throw err;
         }
+      },
+    ),
+
+    /**
+     * Cancels a signed upload or replace that will not be completed: deletes
+     * the object its PUT may have written. Idempotent; a token whose upload
+     * was already completed (or whose replace was committed) is left alone.
+     *
+     * @param token - The token from `createSignedUpload` or `createSignedReplace`.
+     * @returns `{ aborted, committed }`: `aborted` when the object was removed, `committed` when the upload had already been completed.
+     * @throws UPLOAD_TOKEN_INVALID if the token is not valid for this caller.
+     * @example await cmsClient.media.abortUpload({ token })
+     */
+    abortUpload: createCMSEndpoint(
+      '/media/abortUpload',
+      {
+        method: 'POST',
+        body: z.object({ token: z.string().min(1) }),
+        metadata: cmsMeta({}, { operation: 'create', ...MEDIA_META }),
+      },
+      async (ctx) => {
+        const { userId, scope } = ctx.context;
+        const actor = userId ?? null;
+        const payload = await verifyUploadToken(
+          await deriveUploadKey(mediaConfig),
+          ctx.body.token,
+        );
+        if (
+          !payload ||
+          payload.scope !==
+            (await scopeFingerprint(scope.assets?.insertColumns)) ||
+          payload.actor !== actor
+        ) {
+          throw new CMSError('UPLOAD_TOKEN_INVALID');
+        }
+
+        const [row] = await db
+          .select({ objectKey: assets.objectKey })
+          .from(assets)
+          .where(
+            eq(
+              assets.id,
+              payload.kind === 'upload' ? payload.id : payload.assetId,
+            ),
+          );
+        const committed =
+          payload.kind === 'upload'
+            ? row !== undefined
+            : row?.objectKey === payload.objectKey;
+        if (committed) return { aborted: false, committed: true };
+
+        try {
+          await getStorage(mediaConfig).delete(payload.objectKey);
+        } catch (err) {
+          // A missing object is the goal; anything else is left to the sweeper.
+          console.error('[cms:media] abortUpload delete failed', err);
+          return { aborted: false, committed: false };
+        }
+        return { aborted: true, committed: false };
+      },
+    ),
+
+    /**
+     * Looks for existing assets with the same bytes before uploading. A
+     * `sha256` matches exactly (assets whose hash the storage verified); a
+     * file without one, or without a hash match, matches by original name
+     * and size as a hint only. Live originals in scope only.
+     *
+     * @param files - Up to 100 files: `{ sha256?, name, size }`.
+     * @returns `{ results: { index, candidates: { assetId, folderId, matchedBy }[] }[] }`, `matchedBy` being `sha256` or `name-size`.
+     * @example await cmsClient.media.findDuplicates({ files: [{ sha256, name: 'a.jpg', size: 1024 }] })
+     */
+    findDuplicates: createCMSEndpoint(
+      '/media/findDuplicates',
+      {
+        method: 'POST',
+        body: z.object({
+          files: z
+            .array(
+              z.object({
+                sha256: sha256Base64,
+                name: z.string().min(1),
+                size: z.number().int().nonnegative(),
+              }),
+            )
+            .min(1)
+            .max(100),
+        }),
+        metadata: cmsMeta({}, { operation: 'read', ...MEDIA_META }),
+      },
+      async (ctx) => {
+        const { scope } = ctx.context;
+        const live: SQL[] = [
+          isNull(assets.archivedAt),
+          isNull(assets.variantOf),
+          isNull(assets.revisionOf),
+        ];
+        if (scope.assets?.where) live.push(scope.assets.where);
+        const columns = {
+          id: assets.id,
+          folderId: assets.folderId,
+          sha256: assets.sha256,
+          originalName: assets.originalName,
+          size: assets.size,
+        };
+
+        const hashes = ctx.body.files.flatMap((f) =>
+          f.sha256 ? [base64ToHex(f.sha256)] : [],
+        );
+        const byHash = hashes.length
+          ? await db
+              .select(columns)
+              .from(assets)
+              .where(and(...live, inArray(assets.sha256, hashes)))
+          : [];
+        const names = ctx.body.files.map((f) => f.name);
+        const byName = await db
+          .select(columns)
+          .from(assets)
+          .where(and(...live, inArray(assets.originalName, names)));
+
+        return {
+          results: ctx.body.files.map((file, index) => {
+            const hex = file.sha256 ? base64ToHex(file.sha256) : null;
+            const exact = hex ? byHash.filter((a) => a.sha256 === hex) : [];
+            const matches =
+              exact.length > 0
+                ? exact.map((a) => ({ a, matchedBy: 'sha256' as const }))
+                : byName
+                    .filter(
+                      (a) =>
+                        a.originalName === file.name && a.size === file.size,
+                    )
+                    .map((a) => ({ a, matchedBy: 'name-size' as const }));
+            return {
+              index,
+              candidates: matches.map(({ a, matchedBy }) => ({
+                assetId: a.id,
+                folderId: a.folderId ?? null,
+                matchedBy,
+              })),
+            };
+          }),
+        };
       },
     ),
 

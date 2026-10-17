@@ -9,7 +9,6 @@ import type {
   CMSClientOptions,
   CMSClientPlugin,
   CMSMediaUploadFileState,
-  CMSMediaUploadOptions,
   CMSMediaUploadState,
 } from './types';
 
@@ -19,79 +18,67 @@ import {
   getClientConfigSync,
   runPluginInit,
 } from './config';
-import {
-  type CMSMediaReplaceState,
-  createMediaReplaceAtom,
-} from './media-upload';
 import { useStore } from './react-store';
-import {
-  optimizeOrPassThrough,
-  UPLOAD_OPTIMIZER_KEY,
-  type UploadOptimizer,
-} from './upload-optimizer';
 
-// Adds the browser-callable replace-asset hook to the client's `media`
-// namespace, mirroring `WithMedia<T>` in types.ts.
+/**
+ * The replace entries of the client's upload queue, with the queue's
+ * controls. Replaces run in the same queue as uploads, with the same
+ * statuses, retries and progress.
+ */
+export type CMSMediaReplaceState = {
+  /** Replace entries, oldest first. */
+  entries: CMSMediaUploadFileState[];
+  isReplacing: boolean;
+  replace: CMSMediaUploadState['replace'];
+  abort: CMSMediaUploadState['abort'];
+  retry: CMSMediaUploadState['retry'];
+};
+
+// Adds the replace hook to the client's `media` namespace, mirroring
+// `WithMedia<T>` in types.ts.
 type WithReplaceAsset<T> = T extends { media: infer M }
   ? Omit<T, 'media'> & {
       media: M & { useReplaceAsset: () => CMSMediaReplaceState };
     }
   : T & { media: { useReplaceAsset: () => CMSMediaReplaceState } };
 
-// Per-call opt-out: pass `{ optimize: false }` to skip auto-optimization even
-// when the media-optimize plugin is installed and enabled.
-type UploadOptions = CMSMediaUploadOptions & { optimize?: boolean };
-
-/**
- * React `useUploadAssets` hook. Wraps the raw media-upload atom so that, when
- * the `media-optimize` plugin is installed and enabled, files are optimized on
- * the client before signing/upload. Opt out per call with
- * `upload(files, { optimize: false })`; without the plugin the original bytes
- * are uploaded unchanged.
- */
-function makeUseUploadAssets(config: ClientConfig): () => CMSMediaUploadState {
-  return () => {
-    const state = useStore(
-      config.pluginsAtoms.uploadAssets as ReadableAtom<CMSMediaUploadState>,
-    );
-
-    const wrappedUpload = useMemo(() => {
-      const baseUpload = state.upload;
-      return async (
-        files: File[],
-        options?: UploadOptions,
-      ): Promise<CMSMediaUploadFileState[]> => {
-        const optimizer = (
-          config.pluginsAtoms[UPLOAD_OPTIMIZER_KEY] as
-            | ReadableAtom<UploadOptimizer>
-            | undefined
-        )?.get();
-
-        const shouldOptimize =
-          !!optimizer && optimizer.enabled && options?.optimize !== false;
-
-        const finalFiles = shouldOptimize
-          ? await optimizeOrPassThrough(optimizer, files)
-          : files;
-
-        return baseUpload(finalFiles, options);
-      };
-      // `state.upload` is set once by the atom factory, so this memo holds
-      // for the component's lifetime.
-    }, [state.upload]);
-
-    return { ...state, upload: wrappedUpload as CMSMediaUploadState['upload'] };
-  };
+function queueOf(config: ClientConfig): ReadableAtom<CMSMediaUploadState> {
+  return config.pluginsAtoms.uploadAssets as ReadableAtom<CMSMediaUploadState>;
 }
 
 /**
- * React `useReplaceAsset` hook, backed by a `CMSMediaReplaceState` atom
- * created once per client instance.
+ * React `useUploadAssets` hook: the client's upload queue. The queue lives
+ * as long as the client, so uploads keep running when the component that
+ * started them unmounts. With the media-optimize plugin, images are
+ * optimized before signing; opt out per call with
+ * `upload(files, { optimize: false })`.
  */
-function makeUseReplaceAsset(
-  replaceAtom: ReadableAtom<CMSMediaReplaceState>,
-): () => CMSMediaReplaceState {
-  return () => useStore(replaceAtom);
+function makeUseUploadAssets(config: ClientConfig): () => CMSMediaUploadState {
+  const queue = queueOf(config);
+  return () => useStore(queue);
+}
+
+/** React `useReplaceAsset` hook over the same queue. */
+function makeUseReplaceAsset(config: ClientConfig): () => CMSMediaReplaceState {
+  const queue = queueOf(config);
+  return () => {
+    const state = useStore(queue);
+    return useMemo(() => {
+      const entries = state.files.filter((entry) => entry.kind === 'replace');
+      return {
+        entries,
+        isReplacing: entries.some(
+          (entry) =>
+            entry.status !== 'success' &&
+            entry.status !== 'error' &&
+            entry.status !== 'aborted',
+        ),
+        replace: state.replace,
+        abort: state.abort,
+        retry: state.retry,
+      };
+    }, [state]);
+  };
 }
 
 /**
@@ -113,14 +100,8 @@ function makeUseReplaceAsset(
  *   plugins: [mediaOptimizeClient()],
  * });
  *
- * // Also works: single call (plugin types inferred only when TCMS is omitted)
- * const client2 = createCMSClient({
- *   baseURL: '/api/cms',
- *   plugins: [mediaOptimizeClient()],
- * });
- *
  * function MyComponent() {
- *   const upload = client.media.useUploadAssets();
+ *   const uploads = client.media.useUploadAssets();
  * }
  * ```
  */
@@ -144,33 +125,26 @@ export function createCMSClient<TCMS = unknown>(): <
 export function createCMSClient<TCMS = unknown>(
   options?: CMSClientOptions & { plugins?: CMSClientPlugin[] },
 ) {
-  if (options) {
-    const config = getClientConfigSync(options);
-    runPluginInit(options, config).catch((err) =>
-      console.error('[cms] plugin init failed:', err),
-    );
-    const replaceAtom = createMediaReplaceAtom(config.$fetch);
-    return buildClient<WithReplaceAsset<CMSClientInstance<TCMS>>>(config, {
-      useUploadAssets: makeUseUploadAssets(config),
-      useReplaceAsset: makeUseReplaceAsset(replaceAtom),
-    });
-  }
-  return <const TPlugins extends CMSClientPlugin[] = []>(
+  const build = <TPlugins extends CMSClientPlugin[]>(
     opts: CMSClientOptions & { plugins?: TPlugins },
   ): WithReplaceAsset<CMSClientInstance<TCMS, TPlugins>> => {
     const config = getClientConfigSync(opts);
     runPluginInit(opts, config).catch((err) =>
       console.error('[cms] plugin init failed:', err),
     );
-    const replaceAtom = createMediaReplaceAtom(config.$fetch);
     return buildClient<WithReplaceAsset<CMSClientInstance<TCMS, TPlugins>>>(
       config,
       {
         useUploadAssets: makeUseUploadAssets(config),
-        useReplaceAsset: makeUseReplaceAsset(replaceAtom),
+        useReplaceAsset: makeUseReplaceAsset(config),
       },
     );
   };
+  if (options) return build(options);
+  return <const TPlugins extends CMSClientPlugin[] = []>(
+    opts: CMSClientOptions & { plugins?: TPlugins },
+  ) => build(opts);
 }
 
 export { useStore } from './react-store';
+export { takeInterruptedUploads } from './upload-queue';

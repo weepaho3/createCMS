@@ -17,6 +17,8 @@ Retention never deletes anything the live system can still reach. It waits out a
 
 Closed merge requests past `keepDays`, and the resolved or superseded approvals tied to a branch, are swept in the same pass.
 
+- **Orphaned objects.** A browser that was signed an upload, PUT the bytes, and never completed or aborted it leaves an object without a row. When the storage can list keys, the pass walks the bucket page by page and deletes objects whose key has the CMS layout (`[t/<tenant>/][pub/|prv/]<asset id>/...`), that no asset row of any status points at, and that are older than `signedUrlExpiresIn` plus one hour. Other keys in a shared bucket are never touched. The result's `sweepCursor` says where the next pass resumes; pass it back as `sweepCursor`.
+
 ## Bounded and resumable
 
 A pass is built for a periodic serverless invocation, so it can never run unbounded. It does capped work, then stops and reports where it stopped:
@@ -24,6 +26,7 @@ A pass is built for a periodic serverless invocation, so it can never run unboun
 - **`maxRoots`** (default 50) caps how many roots it touches, archived and live combined.
 - **`maxDurationMs`** (default 8000) is a soft wall-clock budget; the pass returns before exceeding it.
 - **`maxAssets`** (default 100) caps how many assets it frees.
+- **`maxSweepObjects`** (default 1000) caps how many storage keys the orphan sweep inspects.
 
 Each root is processed in its own transaction, so a pass is never one giant cross-root lock, and stopping between roots keeps every root already finished. The result carries a `stoppedReason` of `'maxRoots'`, `'budget'`, or `'idle'`, and `done` is true only when it stopped `'idle'`, having found nothing left to do this cycle.
 

@@ -38,7 +38,9 @@ export function createAdminEndpoints(
      * @param maxDurationMs Optional; soft wall-clock budget in milliseconds; the pass returns before exceeding it (defaults to 8000).
      * @param liveRescanMs Optional; interval in milliseconds after which a live root becomes due for re-scanning (defaults to 24 hours); enables draining.
      * @param maxAssets Optional; maximum archived unreferenced assets to reclaim this pass (defaults to 100).
-     * @returns An object with deletion counts (commits, block versions, snapshots, merge requests, approvals), lists of deleted root IDs and asset IDs, the number of live roots processed, and a `done` flag (true when all due work is drained within budget).
+     * @param sweepCursor Optional; the `sweepCursor` of the previous pass, where the orphan sweep resumes. Omit or pass null to start at the first key.
+     * @param maxSweepObjects Optional; storage keys the orphan sweep inspects this pass, 1 to 1000 (defaults to 1000). Objects without an asset row, older than the signed URL lifetime plus one hour, are deleted.
+     * @returns An object with deletion counts (commits, block versions, snapshots, merge requests, approvals), lists of deleted root IDs, asset IDs and swept storage keys, the next `sweepCursor`, the number of live roots processed, and a `done` flag (true when all due work is drained within budget).
      * @throws DATA_RETENTION_NOT_CONFIGURED if dataRetention is not configured.
      * @example
      * const result = await cmsClient.admin.runPruning({ dryRun: false, maxRoots: 10, maxDurationMs: 5000 });
@@ -53,6 +55,8 @@ export function createAdminEndpoints(
           maxDurationMs: z.number().int().min(100).optional(),
           liveRescanMs: z.number().int().min(0).optional(),
           maxAssets: z.number().int().min(1).max(1000).optional(),
+          sweepCursor: z.string().max(2048).nullable().optional(),
+          maxSweepObjects: z.number().int().min(1).max(1000).optional(),
         }),
         metadata: cmsMeta(
           {
@@ -63,6 +67,8 @@ export function createAdminEndpoints(
                 maxDurationMs?: number;
                 liveRescanMs?: number;
                 maxAssets?: number;
+                sweepCursor?: string | null;
+                maxSweepObjects?: number;
               },
             },
           },
@@ -85,6 +91,8 @@ export function createAdminEndpoints(
           maxDurationMs: ctx.body.maxDurationMs,
           liveRescanMs: ctx.body.liveRescanMs,
           maxAssets: ctx.body.maxAssets,
+          sweepCursor: ctx.body.sweepCursor,
+          maxSweepObjects: ctx.body.maxSweepObjects,
         });
       },
     ),

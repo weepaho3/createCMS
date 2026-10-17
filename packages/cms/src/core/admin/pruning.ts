@@ -12,6 +12,7 @@ import {
   sql,
 } from 'drizzle-orm';
 
+import type { StorageListResult } from '../storage/adapter';
 import type { CMSProcedureContext, MediaConfig } from '../types';
 import type { DataRetentionConfig } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
@@ -40,6 +41,7 @@ import {
 } from '../db/schema.generated';
 import { richTextReferenceExists } from '../media/usage';
 import { getStorage } from '../storage/get-storage';
+import { MEDIA_DEFAULTS } from '../types/s3';
 
 /** Revisions per asset that pruning never reclaims. */
 const KEPT_REVISIONS = 10;
@@ -635,6 +637,13 @@ export type PruningPassOptions = {
   liveRescanMs?: number;
   /** Max archived assets reclaimed this invocation. Default 100. */
   maxAssets?: number;
+  /**
+   * Where the orphan sweep resumes: the `sweepCursor` of the previous pass.
+   * Omitted or `null` starts at the first key of the bucket.
+   */
+  sweepCursor?: string | null;
+  /** Max storage keys the orphan sweep inspects this invocation. Default 1000. */
+  maxSweepObjects?: number;
   dryRun?: boolean;
 };
 
@@ -645,6 +654,14 @@ export type PruningPassResult = PruningResult & {
   deletedAssets: string[];
   /** Live roots whose history was pruned (or visited) this pass. */
   processedLiveRoots: number;
+  /** Storage keys deleted by the orphan sweep: objects without an asset row. */
+  sweptObjects: string[];
+  /**
+   * Pass to the next pass as `sweepCursor`; `null` once the sweep reached
+   * the end of the bucket (the next pass starts over), or when the storage
+   * cannot list keys.
+   */
+  sweepCursor: string | null;
   /** Why the pass stopped: hit the count cap, the time budget, or ran dry. */
   stoppedReason: 'maxRoots' | 'budget' | 'idle';
   /**
@@ -659,6 +676,17 @@ const DEFAULT_MAX_ROOTS = 50;
 const DEFAULT_MAX_DURATION_MS = 8_000;
 const DEFAULT_LIVE_RESCAN_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_MAX_ASSETS = 100;
+const DEFAULT_MAX_SWEEP_OBJECTS = 1000;
+
+/** Grace after a signature expires before its unclaimed object is swept. */
+const SWEEP_GRACE_MS = 3600 * 1000;
+
+/**
+ * Object keys the CMS writes: an optional tenant prefix, an optional
+ * visibility prefix, then the asset id. Other keys in a shared bucket are
+ * never touched.
+ */
+const CMS_OBJECT_KEY = /^(t\/[^/]+\/)?(pub\/|prv\/)?(ast_[0-9a-z]{20})\//;
 
 /**
  * One bounded, resumable pruning pass. Designed for a periodic serverless cron:
@@ -691,6 +719,8 @@ export async function runPruningPass(
   const totals = createEmptyPruningResult();
   const deletedRoots: string[] = [];
   const deletedAssets: string[] = [];
+  const sweptObjects: string[] = [];
+  let sweepCursor: string | null = null;
   let processedLiveRoots = 0;
   let budget = maxRoots;
 
@@ -707,6 +737,8 @@ export async function runPruningPass(
     deletedRoots,
     deletedAssets,
     processedLiveRoots,
+    sweptObjects,
+    sweepCursor,
     stoppedReason: reason,
     done: reason === 'idle',
   });
@@ -874,5 +906,87 @@ export async function runPruningPass(
   }
   if (reclaimable.length === maxAssets) return finish('maxRoots');
 
+  if (Date.now() >= deadline) return finish('budget');
+  sweepCursor = await sweepOrphanedObjects(db, mediaConfig, {
+    cursor: opts.sweepCursor ?? null,
+    limit: opts.maxSweepObjects ?? DEFAULT_MAX_SWEEP_OBJECTS,
+    olderThan: new Date(
+      startedAt -
+        (mediaConfig.signedUrlExpiresIn ?? MEDIA_DEFAULTS.signedUrlExpiresIn) *
+          1000 -
+        SWEEP_GRACE_MS,
+    ),
+    dryRun,
+    swept: sweptObjects,
+  });
+
   return finish('idle');
+}
+
+/**
+ * One page of the orphan sweep. Deletes CMS-shaped objects that no asset
+ * row (of any status) points at and that are older than a signature's
+ * lifetime plus grace: the bytes of an upload that was signed and PUT but
+ * never completed or aborted. Objects without `lastModified` are kept,
+ * since their age is unknown. Returns the cursor for the next page.
+ */
+async function sweepOrphanedObjects(
+  db: DrizzleInstance,
+  mediaConfig: MediaConfig,
+  opts: {
+    cursor: string | null;
+    limit: number;
+    olderThan: Date;
+    dryRun: boolean;
+    swept: string[];
+  },
+): Promise<string | null> {
+  const storage = getStorage(mediaConfig);
+  if (!storage.capabilities.list || !storage.list) return null;
+
+  let page: StorageListResult;
+  try {
+    page = await storage.list('', { cursor: opts.cursor, limit: opts.limit });
+  } catch {
+    // The next pass retries this page; a storage error never fails the pass.
+    return opts.cursor;
+  }
+  const candidates = page.keys.filter(
+    (object) =>
+      CMS_OBJECT_KEY.test(object.key) &&
+      object.lastModified !== null &&
+      object.lastModified < opts.olderThan,
+  );
+  if (candidates.length === 0) return page.cursor;
+
+  const known = await db
+    .select({ objectKey: assets.objectKey })
+    .from(assets)
+    .where(
+      inArray(
+        assets.objectKey,
+        candidates.map((object) => object.key),
+      ),
+    );
+  const knownKeys = new Set(known.map((row) => row.objectKey));
+  const orphans = candidates
+    .map((object) => object.key)
+    .filter((key) => !knownKeys.has(key));
+  if (orphans.length === 0) return page.cursor;
+
+  if (!opts.dryRun) {
+    try {
+      if (storage.deleteMany) {
+        for (let i = 0; i < orphans.length; i += 1000) {
+          await storage.deleteMany(orphans.slice(i, i + 1000));
+        }
+      } else {
+        for (const key of orphans) await storage.delete(key);
+      }
+    } catch {
+      return opts.cursor;
+    }
+  }
+  opts.swept.push(...orphans);
+  return page.cursor;
 }

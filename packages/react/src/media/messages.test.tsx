@@ -135,7 +135,11 @@ describe('Media.Root messages', () => {
               id: 'e',
               name: 'e.png',
               status: 'error',
-              error: { code: 'UPLOAD_EXPIRED', message: 'server text' },
+              error: {
+                code: 'UPLOAD_EXPIRED',
+                message: 'server text',
+                retryable: false,
+              },
             }),
           ],
         }),

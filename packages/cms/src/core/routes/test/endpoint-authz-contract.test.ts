@@ -191,6 +191,9 @@ const EXPECTED: Record<string, Record<string, Expected>> = {
     getAssetUsages: { permissionResource: 'media', operation: 'read' },
     createSignedUpload: { permissionResource: 'media', operation: 'create' },
     completeUpload: { permissionResource: 'media', operation: 'create' },
+    // Deletes only the object of the caller's own uncompleted token.
+    abortUpload: { permissionResource: 'media', operation: 'create' },
+    findDuplicates: { permissionResource: 'media', operation: 'read' },
     uploadAssets: { permissionResource: 'media', operation: 'create' },
     replaceAsset: { permissionResource: 'media', operation: 'update' },
     // The browser-callable replace flow must carry the same label as

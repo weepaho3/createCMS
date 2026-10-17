@@ -180,7 +180,7 @@ describe('Media.Dropzone', () => {
         id: 'bad',
         name: 'bad.png',
         status: 'error',
-        error: { code: 'UPLOAD_FAILED', message: 'boom' },
+        error: { code: 'UPLOAD_FAILED', message: 'boom', retryable: false },
       }),
     ]);
     await waitFor(() => expect(onUploaded).toHaveBeenCalledTimes(1));

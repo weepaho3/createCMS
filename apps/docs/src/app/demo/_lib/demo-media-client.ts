@@ -12,10 +12,22 @@ function idleUploadState(): CmsMediaUploadState {
   return {
     isUploading: false,
     files: [],
-    progress: { loaded: 0, total: 0, fraction: 0 },
+    progress: {
+      loaded: 0,
+      total: 0,
+      fraction: 0,
+      bytesPerSecond: null,
+      eta: null,
+    },
     error: undefined,
+    budget: 6,
     upload: async () => [],
+    replace: () => Promise.reject(new Error('The demo does not upload')),
     abort: () => {},
+    retry: () => {},
+    pause: () => {},
+    resume: () => {},
+    resolveDuplicate: () => {},
     reset: () => {},
   };
 }
