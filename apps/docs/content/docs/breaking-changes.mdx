@@ -144,6 +144,84 @@ on, schema changes are picked up with `createcms generate` + a Drizzle migration
   `{ isUploading, files: [], progress: { loaded: 0, total: 0, fraction: 0 }, error, upload: async () => [], abort, reset }`
   and any UI that read `totalProgress` or `status === 'done'`.
 
+- **Asset slugs are unique per scope, not globally.** The core unique index
+  `assets_slug_unique` becomes the non-unique `assets_slug_idx`; slug
+  generation already probes within the caller's scope, and the multi-tenant
+  plugin keeps its `(tenant_slug, slug)` unique. Two tenants can now both own
+  `hero.jpg`. Server-side `uploadAssets` and `replaceAsset` store objects at
+  `<id>/<slug>` (previously the slug verbatim), like browser uploads, so equal
+  slugs never share an object; existing rows keep their keys.
+  → **Migration:** run `createcms generate` and apply the migration
+  (`DROP INDEX cms.assets_slug_unique; CREATE INDEX assets_slug_idx ON
+cms.assets (slug);`). Code that derived an object key from a slug reads
+  `objectKey` from the asset instead.
+
+- **`archiveAssets` skips assets that may be referenced from rich text.**
+  With the new `media.guardRichTextReferences` (default `true`), an asset
+  whose id appears inside a longer string of any block version (rich text
+  HTML, stringified JSON) is skipped instead of archived, and pruning never
+  reclaims it. The response gains `skippedReasons`
+  (`in_use` | `richtext_suspect`).
+  → **Migration:** pass `force: true` to archive such assets anyway, or set
+  `media.guardRichTextReferences: false` once rich text references are
+  tracked elsewhere.
+
+- **Publish discovery is scoped to the publishing request.** Publishing,
+  unpublishing, release publishes and scheduled passes only change the status
+  of assets inside the active `scope.assets`, and only publications of roots
+  in scope keep an asset public. Content in one tenant that names another
+  tenant's asset id no longer flips that asset's status.
+  → **Migration:** none for single-tenant setups.
+
+- **The media optimizer never blocks or throws.** `optimizeImage` resolves
+  with the input file and a `warning` instead of rejecting, and only
+  re-encodes JPEG, PNG and WebP: GIF, SVG, ICO, BMP, AVIF, TIFF, HEIC/HEIF,
+  animated WebP/APNG and files carrying IPTC `DigitalSourceType` or a C2PA
+  manifest are uploaded byte-identical. A result larger than
+  `keepIfSmallerRatio` (default 0.9) of the input is discarded unless the
+  image was downscaled. The default quality is 82 (was 80). `OptimizeResult`
+  gains `bytesBefore`, `bytesAfter` and `warning`; `OptimizeState` (from
+  `useOptimize`) loses `error`. `@jsquash/webp` is no longer an optional peer
+  and is never imported by the plugin.
+  → **Migration:** read `result.warning` instead of catching; drop
+  `state.error`. For WebP in Safari, install `@jsquash/webp` and pass
+  `webpEncoder: () => import('@jsquash/webp/encode')` to
+  `mediaOptimizeClient`.
+
+- **Upload ledger entries carry `optimize` instead of `optimized` and
+  `originalVariantId`.** `CMSMediaUploadFileState.optimize` is
+  `{ optimized, bytesBefore, bytesAfter, warnings }` when the media-optimize
+  plugin processed the file.
+  → **Migration:** read `entry.optimize?.optimized`; `originalVariantId` was
+  never set and has no replacement.
+
+- **`@createcms/react`: `CmsMediaUploadFileState` carries `optimize` instead
+  of `optimized` and `originalVariantId`**, mirroring the core ledger entry.
+  → **Migration:** update fakes that set `optimized` or `originalVariantId`.
+
+- **The upload client signs, uploads and completes each file on its own.**
+  `useUploadAssets().upload(files)` calls `createSignedUpload` with one file
+  when a pool slot takes it and `completeUpload` right after that file's PUT,
+  retries transient failures and re-signs an expired PUT once. A signing
+  failure now marks only that file `error`, and the ledger's `error` is the
+  string `Some files failed to upload` rather than the thrown
+  `CMSClientError`. `maxFiles` therefore limits a single raw
+  `createSignedUpload` call, not a client `upload()` call. The default
+  `signedUrlExpiresIn` is 300 s (was 120 s).
+  → **Migration:** read per-file `entry.error` instead of the ledger's
+  `error` object. Enforce a per-batch file limit in the UI if you relied on
+  `TOO_MANY_FILES` from the client.
+
+- **`@createcms/react`: `/media` reads its texts from a messages catalog.**
+  `Media.Root` takes `messages` and `locale`; `Media.Crumb` for the root
+  defaults to `Library` (was `Root`), and `Media.UploadProgress` announces
+  the translated error code instead of the server message. In the docs
+  registry, `MEDIA_LABELS`, `MEDIA_PICKER_LABELS` and `formatBytes` are
+  removed.
+  → **Migration:** pass translated texts as `messages` (see
+  `defaultMediaMessages` for the keys) instead of editing `MEDIA_LABELS`;
+  pass `children` to `Media.Crumb` to keep a custom root label.
+
 ---
 
 ## 0.6.0 — 2026-08-14

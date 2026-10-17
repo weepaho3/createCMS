@@ -66,8 +66,8 @@ export type {
   MediaType,
 } from './components';
 export { mediaTypeOf, useMediaItemContext } from './components';
-export type { MediaContextValue } from './context';
-export { useMediaContext } from './context';
+export type { MediaContextValue, MediaMessagesContextValue } from './context';
+export { useMediaContext, useMediaMessages } from './context';
 export type {
   MediaDropzoneProps,
   MediaDropzoneState,
@@ -75,6 +75,20 @@ export type {
 } from './dropzone';
 export { acceptsFile } from './dropzone';
 export type { MediaLibrary, MediaSelection } from './hooks';
+export type {
+  MediaErrorCode,
+  MediaFormatters,
+  MediaMessageFn,
+  MediaMessages,
+  MediaMessagesInput,
+  MediaTypeLabel,
+} from './messages';
+export {
+  createMediaFormatters,
+  defaultMediaMessages,
+  mediaErrorMessage,
+  mergeMediaMessages,
+} from './messages';
 export {
   useMediaAsset,
   useMediaLibrary,

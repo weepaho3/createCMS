@@ -37,7 +37,7 @@ import type { cms } from './cms';
 export const cmsClient = createCMSClient<typeof cms>()({
   baseURL: '/api/cms',
   plugins: [
-    mediaOptimizeClient({ convert: { format: 'webp', storeOriginal: true } }),
+    mediaOptimizeClient({ convert: { format: 'webp' } }),
     abTestClient(),
   ],
 });

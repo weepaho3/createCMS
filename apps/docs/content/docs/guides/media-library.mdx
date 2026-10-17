@@ -90,13 +90,23 @@ import {
 | `MediaEmpty`, `MediaError`, `MediaMutationError`, `MediaLoadMore` | the matching parts | Errors render a destructive `Alert` with Retry or Dismiss                     |
 | `MediaSelectionBar`   | `useMediaSelection` + `useMediaLibrary`         | See below                                                                               |
 
-All user-facing strings live in `MEDIA_LABELS`; edit that object to translate the library.
+Every visible string comes from the media messages catalog (see [Messages](/docs/reference/react-media#messages)). Pass a partial catalog and a locale to `Media.Root` to translate the library; sizes, numbers and plurals follow the locale. `MediaPicker` takes the same `messages` and `locale` props.
 
-`MediaUploadList` passes the shadcn `Progress` as the `render` element of `Media.UploadProgress`. Both set `role="progressbar"` and `aria-value*`; the part's attributes win, so the bar announces the file name and `Failed: <message>` on an error.
+```tsx
+import { mediaMessagesDe } from '@/lib/media-messages-de';
+
+<Media.Root client={cmsClient.media} messages={mediaMessagesDe} locale="de-DE">
+  <MediaLibraryLayout />
+</Media.Root>
+```
+
+`apps/docs/src/lib/media-messages-de.ts` is a complete German catalog, typed as `MediaMessages` so the compiler flags any untranslated key.
+
+`MediaUploadList` passes the shadcn `Progress` as the `render` element of `Media.UploadProgress`. Both set `role="progressbar"` and `aria-value*`; the part's attributes win, so the bar announces the file name and, on an error, `upload.failed` with the translated error code (never the server message).
 
 ### Selection actions
 
-`MediaSelectionBar` appears once at least one asset is selected and offers **Move to folder** (a dialog listing the subfolders of the current folder plus the root), **Make public**, **Make private** and **Archive** behind a confirmation. Each action awaits the store's `move`, `setStatus` or `archive`; when the server skips ids (assets in use, already archived or out of scope) the bar shows an inline notice such as "2 assets were skipped because they are in use". A rejected action surfaces through `MediaMutationError`, never through the list error view.
+`MediaSelectionBar` appears once at least one asset is selected and offers **Move to folder** (a dialog listing the subfolders of the current folder plus the root), **Make public**, **Make private** and **Archive** behind a confirmation, with a note that visibility controls delivery through the asset endpoint but is not an access boundary. Each action awaits the store's `move`, `setStatus` or `archive`; when the server skips ids (assets in use, already archived or out of scope) the bar shows an inline notice such as "2 assets were skipped because they are in use". A rejected action surfaces through `MediaMutationError`, never through the list error view.
 
 ### Thumbnails
 

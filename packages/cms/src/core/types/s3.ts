@@ -20,13 +20,32 @@ export type ObjectAcl =
 // ============================================================================
 
 export type CompressOptions = {
-  /** JPEG/PNG quality (1-100). @default 80 */
+  /** JPEG/WebP encode quality (1-100). PNG ignores it. @default 82 */
   quality?: number;
 };
 
 export type ResizeOptions = {
-  /** Maximum width/height in pixels. @default 2000 */
+  /**
+   * Maximum width/height in pixels. Images within the bound keep their
+   * dimensions; without this option nothing is resized.
+   */
   maxSize?: number;
+};
+
+/** Encodes RGBA pixels to WebP bytes (the `@jsquash/webp/encode` shape). */
+export type WebpEncode = (
+  data: ImageData,
+  options?: { quality?: number },
+) => Promise<ArrayBuffer>;
+
+/**
+ * Module returned by {@link OptimizationConfig.webpEncoder}. `init` loads the
+ * WASM binary ahead of the first encode, so a missing `.wasm` file is
+ * reported apart from an encode failure.
+ */
+export type WebpEncoderModule = {
+  default: WebpEncode;
+  init?: () => Promise<unknown>;
 };
 
 export type ConvertOptions = {
@@ -47,6 +66,25 @@ export type OptimizationConfig = {
   resize?: ResizeOptions;
   /** Format conversion options. Omit to disable. */
   convert?: ConvertOptions;
+  /**
+   * When the image was not downscaled, the re-encoded bytes are used only if
+   * they are at most this fraction of the original size; otherwise the
+   * original is uploaded. @default 0.9
+   */
+  keepIfSmallerRatio?: number;
+  /**
+   * Loads a WebP encoder for browsers whose canvas cannot encode WebP
+   * (Safari). Called only after the native probe fails, so other browsers
+   * never download it. The import must be written in app code so the
+   * bundler emits the WASM file:
+   *
+   * ```ts
+   * webpEncoder: () => import('@jsquash/webp/encode'),
+   * ```
+   *
+   * Without it, WebP output in such browsers falls back to the original file.
+   */
+  webpEncoder?: () => Promise<WebpEncoderModule>;
 };
 
 // ============================================================================
@@ -87,8 +125,29 @@ type BaseMediaConfig = {
    */
   allowedMimeTypes?: string[];
 
+  /**
+   * Object ACL sent with every upload. `false` sends no `x-amz-acl` header:
+   * required for AWS buckets with Object Ownership "Bucket owner enforced"
+   * (the default for new buckets), which reject ACL headers with
+   * `AccessControlListNotSupported`. Public delivery then needs a bucket
+   * policy or a CDN in front of the bucket. An asset's `public`/`private`
+   * status controls delivery through the asset endpoint, not object access
+   * in the bucket. @default 'public-read'
+   */
+  acl?: 'public-read' | false;
+
+  /**
+   * Treat an asset id that appears inside a longer string of any block
+   * version (rich text HTML, stringified JSON) as a reference:
+   * `archiveAssets` skips such assets unless called with `force`, and pruning
+   * never reclaims them. Rich text is not indexed in `content_usages`, so
+   * without this guard an image used only in rich text can be archived and
+   * deleted. @default true
+   */
+  guardRichTextReferences?: boolean;
+
   // URL generation
-  /** Signed URL expiration time in seconds. @default 120 */
+  /** Signed URL expiration time in seconds. @default 300 */
   signedUrlExpiresIn?: number;
 
   /**
@@ -173,5 +232,5 @@ export const MEDIA_DEFAULTS = {
     'video/webm',
     'application/pdf',
   ],
-  signedUrlExpiresIn: 120,
+  signedUrlExpiresIn: 300,
 } as const;

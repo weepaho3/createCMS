@@ -1104,6 +1104,39 @@ describe('runPruning: archived-root hard delete and resumability', () => {
     expect(row).toBeUndefined();
   });
 
+  it('keeps an archived asset whose id appears inside rich text', async () => {
+    const { cms, db } = await setupTestCMS({
+      dataRetention: { keepDays: 7, keepMinCommits: 1, archiveKeepDays: 7 },
+    });
+    const [asset] = await db
+      .insert(assets)
+      .values({
+        slug: 'inline.png',
+        mimeType: 'image/png',
+        size: 1,
+        objectKey: 'inline.png',
+        archivedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      })
+      .returning();
+    const root = await cms.api.pages.createRoot({
+      body: { slug: '/rich', properties: { title: 'Rich' } },
+    });
+    await cms.api.pages.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: `<img src="/media/asset/${asset.id}">` },
+      },
+    });
+
+    const result = await cms.api.admin.runPruning({ body: { dryRun: false } });
+    expect(result.deletedAssets).not.toContain(asset.id);
+    const [row] = await db.select().from(assets).where(eq(assets.id, asset.id));
+    expect(row).toBeDefined();
+  });
+
   it('keeps an archived asset that is still referenced by a live root', async () => {
     const { cms, db } = await setupTestCMS({
       dataRetention: { keepDays: 7, keepMinCommits: 1, archiveKeepDays: 7 },

@@ -10,7 +10,15 @@ import type {
   CMSMediaUploadState,
 } from './types';
 
+import {
+  isRetryable,
+  parseRetryAfter,
+  withRetry,
+  type RetryDecision,
+  type WithRetryOptions,
+} from '../utils/retry';
 import { CMSClientError } from './error';
+import { readUploadAnnotation } from './upload-annotations';
 
 const FORBIDDEN_XHR_HEADERS = new Set([
   'content-length',
@@ -70,17 +78,72 @@ export type CMSMediaReplaceState = {
   reset: () => void;
 };
 
+type UploadRequestCode = 'NETWORK_ERROR' | 'UPLOAD_FAILED' | 'UPLOAD_EXPIRED';
+
 /**
  * Thrown by `uploadWithXHR` for a failed PUT. `code` is `NETWORK_ERROR` for
- * the XHR `error` event and `UPLOAD_FAILED` for a non-2xx response.
+ * the XHR `error` event, `UPLOAD_EXPIRED` for a 403 whose S3 error says the
+ * signature expired, and `UPLOAD_FAILED` for any other non-2xx response.
+ * `s3Code` is the `<Code>` of the S3 XML error body, when readable.
  */
 class UploadRequestError extends Error {
-  readonly code: 'NETWORK_ERROR' | 'UPLOAD_FAILED';
+  readonly code: UploadRequestCode;
+  readonly status: number;
+  readonly s3Code: string | undefined;
+  readonly retryAfterMs: number | undefined;
 
-  constructor(code: 'NETWORK_ERROR' | 'UPLOAD_FAILED', message: string) {
+  constructor(
+    code: UploadRequestCode,
+    message: string,
+    details: { status: number; s3Code?: string; retryAfterMs?: number },
+  ) {
     super(message);
     this.name = 'UploadRequestError';
     this.code = code;
+    this.status = details.status;
+    this.s3Code = details.s3Code;
+    this.retryAfterMs = details.retryAfterMs;
+  }
+}
+
+/** `<Code>` and `<Message>` of an S3 XML error body. */
+function parseS3Error(body: string | undefined): {
+  code?: string;
+  message?: string;
+} {
+  if (!body) return {};
+  return {
+    code: /<Code>([^<]*)<\/Code>/.exec(body)?.[1],
+    message: /<Message>([^<]*)<\/Message>/.exec(body)?.[1],
+  };
+}
+
+/**
+ * True for a 403 caused by an expired presigned URL: S3 answers
+ * `AccessDenied` with "Request has expired", STS credentials `ExpiredToken`.
+ */
+function isExpiredSignature(
+  status: number,
+  s3: { code?: string; message?: string },
+): boolean {
+  if (status !== 403) return false;
+  if (s3.code === 'ExpiredToken') return true;
+  return s3.code === 'AccessDenied' && /expired/i.test(s3.message ?? '');
+}
+
+function readResponseText(xhr: XMLHttpRequest): string | undefined {
+  try {
+    return typeof xhr.responseText === 'string' ? xhr.responseText : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function readRetryAfter(xhr: XMLHttpRequest): number | undefined {
+  try {
+    return parseRetryAfter(xhr.getResponseHeader?.('Retry-After'));
+  } catch {
+    return undefined;
   }
 }
 
@@ -135,21 +198,36 @@ function uploadWithXHR(
     xhr.addEventListener('load', () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         settle(resolve, undefined);
-      } else {
-        settle(
-          reject,
-          new UploadRequestError(
-            'UPLOAD_FAILED',
-            `Upload failed with status ${xhr.status}`,
-          ),
-        );
+        return;
       }
+      const s3 = parseS3Error(readResponseText(xhr));
+      const details = {
+        status: xhr.status,
+        s3Code: s3.code,
+        retryAfterMs: readRetryAfter(xhr),
+      };
+      settle(
+        reject,
+        isExpiredSignature(xhr.status, s3)
+          ? new UploadRequestError(
+              'UPLOAD_EXPIRED',
+              'The signed upload URL expired',
+              details,
+            )
+          : new UploadRequestError(
+              'UPLOAD_FAILED',
+              `Upload failed with status ${xhr.status}`,
+              details,
+            ),
+      );
     });
 
     xhr.addEventListener('error', () =>
       settle(
         reject,
-        new UploadRequestError('NETWORK_ERROR', 'Network error during upload'),
+        new UploadRequestError('NETWORK_ERROR', 'Network error during upload', {
+          status: 0,
+        }),
       ),
     );
     xhr.addEventListener('abort', () => settle(reject, abortError()));
@@ -159,6 +237,13 @@ function uploadWithXHR(
 }
 
 let entrySequence = 0;
+
+function withOptimizeInfo(
+  file: File,
+): Pick<CMSMediaUploadFileState, 'optimize'> {
+  const info = readUploadAnnotation(file);
+  return info ? { optimize: info } : {};
+}
 
 function isActive(entry: CMSMediaUploadFileState): boolean {
   return entry.status === 'pending' || entry.status === 'uploading';
@@ -232,15 +317,51 @@ const INITIAL_STATE: CMSMediaUploadState = {
 
 const DEFAULT_CONCURRENCY = 4;
 
+/** Attempts per request (PUT, presign, complete), including the first. */
+const UPLOAD_ATTEMPTS = 5;
+
+/**
+ * Progress shown once a PUT has finished but `completeUpload` has not yet
+ * created the row: an entry only reaches 1 as `success`.
+ */
+const LANDED_PROGRESS = 0.99;
+
+function classifyPut(err: unknown): RetryDecision {
+  if (err instanceof UploadRequestError && err.code !== 'UPLOAD_EXPIRED') {
+    return {
+      retry: isRetryable({ status: err.status, code: err.s3Code }),
+      retryAfterMs: err.retryAfterMs,
+    };
+  }
+  return { retry: false };
+}
+
+function classifyRequest(err: unknown): RetryDecision {
+  return {
+    retry: err instanceof CMSClientError && isRetryable({ status: err.status }),
+  };
+}
+
+/** Test seams for the retry waits. */
+export type MediaUploadAtomOptions = {
+  retry?: Pick<WithRetryOptions, 'sleep' | 'random'>;
+};
+
 /**
  * Nanostores atom holding the upload ledger. Entries accumulate across
- * `upload()` calls until `reset()` drops the finished ones. Each call signs
- * (`createSignedUpload`), PUTs with a bounded worker pool, then completes
- * (`completeUpload`); an entry is `success` only once its row exists.
- * Validation of file size, count, and MIME types lives server-side.
+ * `upload()` calls until `reset()` drops the finished ones. Each file is
+ * handled on its own once a pool slot takes it: sign (`createSignedUpload`
+ * for that file), PUT, then `completeUpload` for that file. An entry is
+ * `success` only once its row exists.
+ *
+ * Transient failures (network, 408, 429, 5xx, S3 `RequestTimeout`) are
+ * retried with full-jitter backoff. A PUT rejected because its signature
+ * expired is re-signed and sent once more. Validation of file size, count,
+ * and MIME types lives server-side.
  */
 export function createMediaUploadAtom(
   $fetch: CMSFetch,
+  atomOptions: MediaUploadAtomOptions = {},
 ): WritableAtom<CMSMediaUploadState> {
   const store = atom<CMSMediaUploadState>({ ...INITIAL_STATE });
 
@@ -287,72 +408,166 @@ export function createMediaUploadAtom(
     );
   }
 
-  /**
-   * Completes every entry whose PUT finished: one `completeUpload` call for
-   * the batch, then `success` with the asset (matched by the token's asset
-   * id) or `error` with the entry's reported code. A rejected call marks all
-   * of them `error`. Runs after an abort as well, since the objects already
-   * exist in the bucket.
-   */
-  async function finalize(
-    sent: { id: string; assetId: string; token: string }[],
-  ) {
-    if (sent.length === 0) return;
+  function retrying<T>(
+    fn: () => Promise<T>,
+    classify: (err: unknown) => RetryDecision,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    return withRetry(fn, {
+      attempts: UPLOAD_ATTEMPTS,
+      classify,
+      signal,
+      ...atomOptions.retry,
+    });
+  }
 
+  function sign(
+    file: File,
+    folderId: string | undefined,
+    signal: AbortSignal,
+  ): Promise<SignedUpload> {
+    return retrying(
+      async () => {
+        const response = (await $fetch('/media/createSignedUpload', {
+          method: 'POST',
+          body: {
+            files: [{ name: file.name, size: file.size, type: file.type }],
+            folderId,
+          },
+        })) as { uploads: SignedUpload[] };
+        return response.uploads[0];
+      },
+      classifyRequest,
+      signal,
+    );
+  }
+
+  /**
+   * PUTs `file`, retrying transient failures. A 403 for an expired
+   * signature gets exactly one fresh signature; a second expiry is terminal.
+   * Resolves with the signature the bytes landed under.
+   */
+  async function put(
+    id: string,
+    file: File,
+    signed: SignedUpload,
+    resign: () => Promise<SignedUpload>,
+    signal: AbortSignal,
+  ): Promise<SignedUpload> {
+    let current = signed;
+    let resigned = false;
+    for (;;) {
+      try {
+        await retrying(
+          () =>
+            uploadWithXHR(
+              current.signedUrl,
+              file,
+              current.headers,
+              (loaded, total) => {
+                const fraction = total === 0 ? 0 : loaded / total;
+                patch([id], (entry) => ({
+                  ...entry,
+                  loaded: Math.min(loaded, Math.floor(total * LANDED_PROGRESS)),
+                  total,
+                  progress: Math.min(fraction, LANDED_PROGRESS),
+                }));
+              },
+              signal,
+            ),
+          classifyPut,
+          signal,
+        );
+        return current;
+      } catch (err) {
+        const expired =
+          err instanceof UploadRequestError && err.code === 'UPLOAD_EXPIRED';
+        if (!expired || resigned) throw err;
+        resigned = true;
+        current = await resign();
+      }
+    }
+  }
+
+  /**
+   * Creates the row for one landed object. Not tied to the abort signal: the
+   * object is already in the bucket, so an abort after the PUT still
+   * completes it. `completeUpload` is idempotent per token.
+   */
+  async function complete(id: string, signed: SignedUpload) {
     let result: CompleteUploadResult;
     try {
-      result = (await $fetch('/media/completeUpload', {
-        method: 'POST',
-        body: { uploads: sent.map(({ token }) => ({ token })) },
-      })) as CompleteUploadResult;
+      result = await retrying(
+        async () =>
+          (await $fetch('/media/completeUpload', {
+            method: 'POST',
+            body: { uploads: [{ token: signed.token }] },
+          })) as CompleteUploadResult,
+        classifyRequest,
+      );
     } catch (err) {
       const error = toUploadError(err);
-      patch(
-        sent.map(({ id }) => id),
-        (entry) => ({ ...entry, status: 'error', error }),
-      );
+      patch([id], (entry) => ({ ...entry, status: 'error', error }));
       return;
     }
 
-    const assetsById = new Map(result.assets.map((a) => [a.id, a]));
-    const errorsByIndex = new Map(result.errors.map((e) => [e.index, e]));
-    const updates = new Map(
-      sent.map(({ id, assetId }, index) => {
-        const asset = assetsById.get(assetId);
-        const failure = errorsByIndex.get(index);
-        return [
-          id,
-          asset
-            ? {
-                status: 'success' as const,
-                result: {
-                  id: asset.id,
-                  slug: asset.slug,
-                  objectKey: asset.objectKey,
-                },
-              }
-            : {
-                status: 'error' as const,
-                error: {
-                  code: failure?.code ?? 'UPLOAD_FAILED',
-                  message: failure?.message ?? 'Upload was not completed',
-                },
-              },
-        ];
-      }),
-    );
-    patch(updates.keys(), (entry) => {
-      const update = updates.get(entry.id)!;
-      return update.status === 'success'
-        ? {
-            ...entry,
-            status: 'success',
-            loaded: entry.total,
-            progress: 1,
-            result: update.result,
-          }
-        : { ...entry, status: 'error', error: update.error };
-    });
+    const asset = result.assets.find((a) => a.id === signed.id);
+    if (asset) {
+      patch([id], (entry) => ({
+        ...entry,
+        status: 'success',
+        loaded: entry.total,
+        progress: 1,
+        result: { id: asset.id, slug: asset.slug, objectKey: asset.objectKey },
+      }));
+      return;
+    }
+    const failure = result.errors[0];
+    patch([id], (entry) => ({
+      ...entry,
+      status: 'error',
+      error: {
+        code: failure?.code ?? 'UPLOAD_FAILED',
+        message: failure?.message ?? 'Upload was not completed',
+      },
+    }));
+  }
+
+  async function sendOne(
+    id: string,
+    file: File,
+    folderId: string | undefined,
+    signal: AbortSignal,
+  ) {
+    patch([id], (entry) => ({ ...entry, status: 'uploading' }));
+
+    let landed: SignedUpload;
+    try {
+      const signed = await sign(file, folderId, signal);
+      if (signal.aborted) throw abortError();
+      landed = await put(
+        id,
+        file,
+        signed,
+        () => sign(file, folderId, signal),
+        signal,
+      );
+    } catch (err) {
+      if (isAbortError(err) || signal.aborted) {
+        patch([id], (entry) => ({ ...entry, status: 'aborted' }));
+      } else {
+        const error = toUploadError(err);
+        patch([id], (entry) => ({ ...entry, status: 'error', error }));
+      }
+      return;
+    }
+
+    patch([id], (entry) => ({
+      ...entry,
+      loaded: Math.floor(entry.total * LANDED_PROGRESS),
+      progress: LANDED_PROGRESS,
+    }));
+    await complete(id, landed);
   }
 
   function abort() {
@@ -381,6 +596,7 @@ export function createMediaUploadAtom(
       loaded: 0,
       total: file.size,
       progress: 0,
+      ...withOptimizeInfo(file),
     }));
     const ids = entries.map((entry) => entry.id);
     commit([...store.get().files, ...entries], { error: null });
@@ -388,88 +604,18 @@ export function createMediaUploadAtom(
     const { signal, release } = mergeSignals(root.signal, options?.signal);
 
     try {
-      if (signal.aborted) {
-        abortPending(ids);
-        return snapshot(ids);
-      }
-
-      let signResponse: { uploads: SignedUpload[]; expiresAt: Date };
-      try {
-        signResponse = (await $fetch('/media/createSignedUpload', {
-          method: 'POST',
-          body: {
-            files: files.map((f) => ({
-              name: f.name,
-              size: f.size,
-              type: f.type,
-            })),
-            folderId: options?.folderId,
-          },
-        })) as { uploads: SignedUpload[]; expiresAt: Date };
-      } catch (err) {
-        if (signal.aborted) {
-          abortPending(ids);
-          return snapshot(ids);
-        }
-        const error = toUploadError(err);
-        patch(ids, (entry) => ({ ...entry, status: 'error', error }), {
-          error: err,
-        });
-        return snapshot(ids);
-      }
-
-      if (signal.aborted) {
-        abortPending(ids);
-        return snapshot(ids);
-      }
-
-      const uploads = signResponse.uploads;
-      const landed: { id: string; assetId: string; token: string }[] = [];
       let cursor = 0;
 
       async function worker() {
         while (cursor < entries.length) {
           const index = cursor++;
           const id = ids[index];
-          const upload = uploads[index];
           if (signal.aborted) {
             abortPending([id]);
             continue;
           }
           if (snapshot([id])[0]?.status !== 'pending') continue;
-
-          patch([id], (entry) => ({ ...entry, status: 'uploading' }));
-
-          try {
-            await uploadWithXHR(
-              upload.signedUrl,
-              files[index],
-              upload.headers,
-              (loaded, total) => {
-                patch([id], (entry) => ({
-                  ...entry,
-                  loaded,
-                  total,
-                  progress: total === 0 ? 0 : loaded / total,
-                }));
-              },
-              signal,
-            );
-
-            landed.push({ id, assetId: upload.id, token: upload.token });
-            patch([id], (entry) => ({
-              ...entry,
-              loaded: entry.total,
-              progress: 1,
-            }));
-          } catch (err) {
-            if (isAbortError(err)) {
-              patch([id], (entry) => ({ ...entry, status: 'aborted' }));
-            } else {
-              const error = toUploadError(err);
-              patch([id], (entry) => ({ ...entry, status: 'error', error }));
-            }
-          }
+          await sendOne(id, files[index], options?.folderId, signal);
         }
       }
 
@@ -478,8 +624,6 @@ export function createMediaUploadAtom(
         Math.min(options?.concurrency ?? DEFAULT_CONCURRENCY, entries.length),
       );
       await Promise.all(Array.from({ length: size }, worker));
-
-      await finalize(landed);
 
       const failed = snapshot(ids).some((entry) => entry.status === 'error');
       if (failed) {

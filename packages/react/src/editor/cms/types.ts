@@ -205,8 +205,12 @@ export type CmsMediaUploadFileState = {
   /** 0..1 */
   progress: number;
   error?: { code: string; message: string };
-  optimized?: boolean;
-  originalVariantId?: string;
+  optimize?: {
+    optimized: boolean;
+    bytesBefore: number;
+    bytesAfter: number;
+    warnings: { code: string; message: string }[];
+  };
   result?: { id: string; slug: string; objectKey: string };
 };
 

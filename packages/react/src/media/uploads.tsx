@@ -1,10 +1,12 @@
 import * as React from 'react';
 
 import type { UseRenderComponentProps } from '../use-render';
+import type { MediaMessagesContextValue } from './context';
 import type { MediaUploadEntry } from './types';
 
 import { mergeProps, useRender } from '../use-render';
-import { useMediaUploadsContext } from './context';
+import { useMediaMessages, useMediaUploadsContext } from './context';
+import { mediaErrorMessage } from './messages';
 
 const VISUALLY_HIDDEN: React.CSSProperties = {
   position: 'absolute',
@@ -129,29 +131,40 @@ export type MediaUploadProgressProps = UseRenderComponentProps<
   UploadProgressState
 >;
 
-function valueText(entry: MediaUploadEntry, percent: number): string {
+function valueText(
+  entry: MediaUploadEntry,
+  fraction: number,
+  { messages, format }: MediaMessagesContextValue,
+): string {
   switch (entry.status) {
     case 'error':
-      return `Failed${entry.error ? `: ${entry.error.message}` : ''}`;
+      return messages.upload.failed(
+        { reason: mediaErrorMessage(messages, entry.error?.code) },
+        format,
+      );
     case 'aborted':
-      return 'Cancelled';
+      return messages.upload.status.aborted;
     case 'pending':
     case 'uploading':
     case 'success':
-      return `${percent}%`;
+      return format.percent(fraction);
   }
 }
 
 /**
  * `role="progressbar"` for the enclosing `Media.UploadItem`, or for all
- * uploads (`progress.fraction`, label "All uploads") outside one.
+ * uploads (`progress.fraction`, labelled `upload.all`) outside one.
  */
 export function MediaUploadProgress(props: MediaUploadProgressProps) {
   const { render, ...rest } = props;
   const uploads = useMediaUploadsContext('Media.UploadProgress');
   const entry = React.useContext(UploadItemContext);
-  const fraction = entry ? entry.progress : uploads.progress.fraction;
-  const percent = Math.round(Math.min(Math.max(fraction, 0), 1) * 100);
+  const catalog = useMediaMessages();
+  const fraction = Math.min(
+    Math.max(entry ? entry.progress : uploads.progress.fraction, 0),
+    1,
+  );
+  const percent = Math.round(fraction * 100);
 
   return useRender({
     defaultTagName: 'div',
@@ -165,8 +178,10 @@ export function MediaUploadProgress(props: MediaUploadProgressProps) {
         'aria-valuemin': 0,
         'aria-valuemax': 100,
         'aria-valuenow': percent,
-        'aria-valuetext': entry ? valueText(entry, percent) : `${percent}%`,
-        'aria-label': entry ? entry.name : 'All uploads',
+        'aria-valuetext': entry
+          ? valueText(entry, fraction, catalog)
+          : catalog.format.percent(fraction),
+        'aria-label': entry ? entry.name : catalog.messages.upload.all,
       },
       rest,
     ),

@@ -6,11 +6,17 @@
 // rejecting Editor.Root and Canvas.Root in ui output, requires Media.Root
 // here and rejects it in media-library.
 
-import type { MediaClient, MediaUploadedAsset } from '@createcms/react/media';
+import type {
+  MediaClient,
+  MediaMessagesInput,
+  MediaUploadedAsset,
+} from '@createcms/react/media';
 
 import {
   Media,
+  mergeMediaMessages,
   useMediaLibrary,
+  useMediaMessages,
   useMediaSelection,
 } from '@createcms/react/media';
 import * as React from 'react';
@@ -28,7 +34,6 @@ import { cn } from '@/lib/utils';
 
 import {
   MEDIA_EMPTY_CLASS,
-  MEDIA_LABELS,
   MediaAssetCard,
   MediaBreadcrumbs,
   MediaDropzone,
@@ -43,13 +48,6 @@ import {
   matchesAccept,
 } from './media-library';
 
-export const MEDIA_PICKER_LABELS = {
-  title: 'Select asset',
-  choose: 'Choose',
-  select: 'Select',
-  cancel: 'Cancel',
-};
-
 /** Pages fetched automatically per folder or query while every listed asset is filtered out. */
 const AUTO_PAGE_LIMIT = 5;
 
@@ -59,9 +57,14 @@ export type MediaPickerProps = {
   onChange: (id: string) => void;
   /** Like the `accept` attribute; filters the grid and the dropzone (default `image/*`). */
   accept?: string;
-  /** The dialog trigger; a `<Button>` with `MEDIA_PICKER_LABELS.choose` when omitted. */
+  /** The dialog trigger; a `<Button>` labelled `picker.choose` when omitted. */
   trigger?: React.ReactElement;
+  /** Dialog title; `picker.title` when omitted. */
   title?: string;
+  /** Partial catalog for the picker and its `Media.Root`. */
+  messages?: MediaMessagesInput;
+  /** BCP 47 locale, passed to `Media.Root`. */
+  locale?: string;
   disabled?: boolean;
   className?: string;
 };
@@ -119,6 +122,7 @@ function PickerGrid({ accept }: { accept: string | undefined }) {
  * with a cursor left past the limit only `MediaLoadMore` stays.
  */
 function PickerAutoPage({ accept }: { accept: string | undefined }) {
+  const { messages: t } = useMediaMessages();
   const {
     assets,
     folders,
@@ -162,7 +166,7 @@ function PickerAutoPage({ accept }: { accept: string | undefined }) {
   }
   return (
     <div data-slot="media-empty" className={MEDIA_EMPTY_CLASS}>
-      {MEDIA_LABELS.empty}
+      {t.list.empty}
     </div>
   );
 }
@@ -174,13 +178,14 @@ function PickerFooter({
   onSelect: (id: string) => void;
   onCancel: () => void;
 }) {
+  const { messages: t } = useMediaMessages();
   const { selected } = useMediaSelection();
   const id = selected.length === 1 ? selected[0] : undefined;
 
   return (
     <DialogFooter>
       <Button type="button" variant="outline" onClick={onCancel}>
-        {MEDIA_PICKER_LABELS.cancel}
+        {t.action.cancel}
       </Button>
       <Button
         type="button"
@@ -189,7 +194,7 @@ function PickerFooter({
           if (id !== undefined) onSelect(id);
         }}
       >
-        {MEDIA_PICKER_LABELS.select}
+        {t.picker.select}
       </Button>
     </DialogFooter>
   );
@@ -201,11 +206,15 @@ function MediaPicker({
   onChange,
   accept = 'image/*',
   trigger,
-  title = MEDIA_PICKER_LABELS.title,
+  title,
+  messages,
+  locale,
   disabled,
   className,
 }: MediaPickerProps) {
   const [open, setOpen] = React.useState(false);
+  // The trigger and title render outside Media.Root, so merge here too.
+  const t = React.useMemo(() => mergeMediaMessages(messages), [messages]);
 
   const choose = (id: string) => {
     onChange(id);
@@ -224,7 +233,7 @@ function MediaPicker({
         render={
           trigger ?? (
             <Button type="button" variant="outline">
-              {MEDIA_PICKER_LABELS.choose}
+              {t.picker.choose}
             </Button>
           )
         }
@@ -234,9 +243,14 @@ function MediaPicker({
         className={cn('flex max-h-[85vh] max-w-3xl flex-col', className)}
       >
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle>{title ?? t.picker.title}</DialogTitle>
         </DialogHeader>
-        <Media.Root client={client} selection="single">
+        <Media.Root
+          client={client}
+          selection="single"
+          messages={messages}
+          locale={locale}
+        >
           <PickerSelection value={value} />
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
             <div className="flex flex-wrap items-center gap-2">

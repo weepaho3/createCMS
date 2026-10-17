@@ -6,6 +6,7 @@
 import type {
   MediaAsset,
   MediaBulkResult,
+  MediaMessages,
   MediaSortBy,
   MediaSortDirection,
   MediaType,
@@ -14,8 +15,10 @@ import type {
 
 import {
   Media,
+  mediaErrorMessage,
   mediaTypeOf,
   useMediaLibrary,
+  useMediaMessages,
   useMediaSelection,
   useMediaUploads,
 } from '@createcms/react/media';
@@ -82,67 +85,6 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
-export const MEDIA_LABELS = {
-  breadcrumbs: 'Folder path',
-  root: 'Library',
-  search: 'Search assets',
-  sort: 'Sort',
-  sortNewest: 'Newest first',
-  sortOldest: 'Oldest first',
-  sortNameAsc: 'Name A–Z',
-  sortNameDesc: 'Name Z–A',
-  sortSizeAsc: 'Smallest first',
-  sortSizeDesc: 'Largest first',
-  newFolder: 'New folder',
-  newFolderTitle: 'Create folder',
-  newFolderDescription: 'The folder is created inside the current folder.',
-  folderName: 'Folder name',
-  create: 'Create',
-  cancel: 'Cancel',
-  dropzone: 'Drop files here or click to upload',
-  dropzoneActive: 'Release to upload',
-  dropzoneUploading: 'Uploading…',
-  empty: 'No assets in this folder.',
-  loadError: 'Could not load assets.',
-  retry: 'Retry',
-  mutationError: 'The last change failed.',
-  dismiss: 'Dismiss',
-  loadMore: 'Load more',
-  uploads: 'Uploads',
-  abortUploads: 'Cancel uploads',
-  clearUploads: 'Clear finished',
-  selected: (count: number) => `${count} selected`,
-  clearSelection: 'Clear',
-  moveToFolder: 'Move to folder',
-  moveTitle: 'Move assets',
-  moveDescription: 'Choose a destination for the selected assets.',
-  makePublic: 'Make public',
-  makePrivate: 'Make private',
-  archive: 'Archive',
-  archiveTitle: 'Archive assets?',
-  archiveDescription:
-    'Archived assets stop being served. Assets referenced by content are skipped.',
-  skipped: (count: number) =>
-    count === 1
-      ? '1 asset was skipped because it is in use'
-      : `${count} assets were skipped because they are in use`,
-  private: 'Private',
-  type: {
-    image: 'Image',
-    video: 'Video',
-    audio: 'Audio',
-    document: 'Document',
-    other: 'File',
-  } satisfies Record<MediaType, string>,
-  uploadStatus: {
-    pending: 'Queued',
-    uploading: 'Uploading',
-    success: 'Uploaded',
-    error: 'Failed',
-    aborted: 'Cancelled',
-  } satisfies Record<MediaUploadEntry['status'], string>,
-};
-
 const TYPE_ICONS: Record<
   MediaType,
   React.ComponentType<{ className?: string }>
@@ -156,60 +98,47 @@ const TYPE_ICONS: Record<
 
 const SORT_OPTIONS: Array<{
   value: string;
-  label: string;
+  label: Exclude<keyof MediaMessages['sort'], 'label'>;
   sortBy: MediaSortBy;
   sortDirection: MediaSortDirection;
 }> = [
   {
     value: 'createdAt:desc',
-    label: MEDIA_LABELS.sortNewest,
+    label: 'newest',
     sortBy: 'createdAt',
     sortDirection: 'desc',
   },
   {
     value: 'createdAt:asc',
-    label: MEDIA_LABELS.sortOldest,
+    label: 'oldest',
     sortBy: 'createdAt',
     sortDirection: 'asc',
   },
   {
     value: 'slug:asc',
-    label: MEDIA_LABELS.sortNameAsc,
+    label: 'nameAsc',
     sortBy: 'slug',
     sortDirection: 'asc',
   },
   {
     value: 'slug:desc',
-    label: MEDIA_LABELS.sortNameDesc,
+    label: 'nameDesc',
     sortBy: 'slug',
     sortDirection: 'desc',
   },
   {
     value: 'size:asc',
-    label: MEDIA_LABELS.sortSizeAsc,
+    label: 'sizeAsc',
     sortBy: 'size',
     sortDirection: 'asc',
   },
   {
     value: 'size:desc',
-    label: MEDIA_LABELS.sortSizeDesc,
+    label: 'sizeDesc',
     sortBy: 'size',
     sortDirection: 'desc',
   },
 ];
-
-export function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes < 0) return '—';
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ['KB', 'MB', 'GB', 'TB'];
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
-}
 
 /** Mirrors the `accept` attribute for a listed asset: `.ext` against the slug, `type/*` and exact types against the MIME type. */
 export function matchesAccept(
@@ -231,10 +160,12 @@ export function matchesAccept(
   });
 }
 
-function errorMessage(error: unknown): string | null {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === 'string' && error) return error;
-  return null;
+function errorCode(error: unknown): string | undefined {
+  if (typeof error === 'object' && error !== null && 'code' in error) {
+    const { code } = error;
+    if (typeof code === 'string') return code;
+  }
+  return undefined;
 }
 
 // --- Breadcrumbs ---------------------------------------------------------------
@@ -243,17 +174,18 @@ function MediaBreadcrumbs({
   className,
   ...props
 }: Omit<React.ComponentProps<typeof Media.Breadcrumbs>, 'children'>) {
+  const { messages: t } = useMediaMessages();
   return (
     <Media.Breadcrumbs
       data-slot="media-breadcrumbs"
-      aria-label={MEDIA_LABELS.breadcrumbs}
+      aria-label={t.folder.path}
       className={cn('min-w-0', className)}
       render={<Breadcrumb />}
       {...props}
     >
       {(path) => (
         <BreadcrumbList>
-          <MediaCrumb folder={null}>{MEDIA_LABELS.root}</MediaCrumb>
+          <MediaCrumb folder={null}>{t.folder.root}</MediaCrumb>
           {path.map((folder) => (
             <React.Fragment key={folder.id}>
               <BreadcrumbSeparator />
@@ -303,11 +235,12 @@ function MediaSearch({
   className,
   ...props
 }: React.ComponentProps<typeof Media.Search>) {
+  const { messages: t } = useMediaMessages();
   return (
     <Media.Search
       data-slot="media-search"
-      placeholder={MEDIA_LABELS.search}
-      aria-label={MEDIA_LABELS.search}
+      placeholder={t.search.label}
+      aria-label={t.search.label}
       className={cn('w-full sm:w-56', className)}
       render={<Input />}
       {...props}
@@ -316,6 +249,7 @@ function MediaSearch({
 }
 
 function MediaSortSelect({ className }: { className?: string }) {
+  const { messages: t } = useMediaMessages();
   const { sortBy, sortDirection, setSort } = useMediaLibrary();
   const value = `${sortBy}:${sortDirection}`;
 
@@ -324,7 +258,7 @@ function MediaSortSelect({ className }: { className?: string }) {
       value={value}
       items={SORT_OPTIONS.map((option) => ({
         value: option.value,
-        label: option.label,
+        label: t.sort[option.label],
       }))}
       onValueChange={(next) => {
         const option = SORT_OPTIONS.find((entry) => entry.value === next);
@@ -333,7 +267,7 @@ function MediaSortSelect({ className }: { className?: string }) {
     >
       <SelectTrigger
         data-slot="media-sort"
-        aria-label={MEDIA_LABELS.sort}
+        aria-label={t.sort.label}
         className={cn('w-full sm:w-44', className)}
       >
         <SelectValue />
@@ -350,6 +284,7 @@ function MediaSortSelect({ className }: { className?: string }) {
 }
 
 function MediaNewFolder({ className }: { className?: string }) {
+  const { messages: t } = useMediaMessages();
   const { createFolder, clearMutationError } = useMediaLibrary();
   const [open, setOpen] = React.useState(false);
   const [name, setName] = React.useState('');
@@ -387,7 +322,7 @@ function MediaNewFolder({ className }: { className?: string }) {
             className={cn(className)}
           >
             <FolderPlusIcon data-icon="inline-start" aria-hidden="true" />
-            {MEDIA_LABELS.newFolder}
+            {t.folder.create}
           </Button>
         }
       />
@@ -400,14 +335,12 @@ function MediaNewFolder({ className }: { className?: string }) {
           }}
         >
           <DialogHeader>
-            <DialogTitle>{MEDIA_LABELS.newFolderTitle}</DialogTitle>
-            <DialogDescription>
-              {MEDIA_LABELS.newFolderDescription}
-            </DialogDescription>
+            <DialogTitle>{t.folder.createTitle}</DialogTitle>
+            <DialogDescription>{t.folder.createDescription}</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-1.5">
             <label htmlFor={inputId} className="text-sm font-medium">
-              {MEDIA_LABELS.folderName}
+              {t.folder.name}
             </label>
             <Input
               id={inputId}
@@ -425,7 +358,7 @@ function MediaNewFolder({ className }: { className?: string }) {
               disabled={pending}
               onClick={() => onOpenChange(false)}
             >
-              {MEDIA_LABELS.cancel}
+              {t.action.cancel}
             </Button>
             <Button type="submit" disabled={pending || name.trim() === ''}>
               {pending ? (
@@ -435,7 +368,7 @@ function MediaNewFolder({ className }: { className?: string }) {
                   aria-hidden="true"
                 />
               ) : null}
-              {MEDIA_LABELS.create}
+              {t.action.create}
             </Button>
           </DialogFooter>
         </form>
@@ -512,6 +445,7 @@ function MediaAssetCard({
   /** Like the `accept` attribute; a non-matching asset renders nothing. */
   accept?: string;
 }) {
+  const { messages: t, format } = useMediaMessages();
   if (!matchesAccept(accept, asset)) return null;
   const type = mediaTypeOf(asset.mimeType);
   const Icon = TYPE_ICONS[type];
@@ -539,14 +473,14 @@ function MediaAssetCard({
         {asset.slug}
       </span>
       <div className="flex flex-wrap items-center justify-between gap-1">
-        <Badge variant="secondary">{MEDIA_LABELS.type[type]}</Badge>
+        <Badge variant="secondary">{t.type[type]}</Badge>
         {asset.status === 'private' ? (
           <Badge variant="outline" data-slot="media-asset-status">
-            {MEDIA_LABELS.private}
+            {t.visibility.private}
           </Badge>
         ) : null}
         <span className="text-muted-foreground text-xs tabular-nums">
-          {formatBytes(asset.size)}
+          {format.bytes(asset.size)}
         </span>
       </div>
     </Media.Item>
@@ -562,6 +496,7 @@ function MediaDropzone({
 }: Omit<React.ComponentProps<typeof Media.Dropzone>, 'children'> & {
   children?: React.ComponentProps<typeof Media.Dropzone>['children'];
 }) {
+  const { messages: t } = useMediaMessages();
   return (
     <Media.Dropzone
       data-slot="media-dropzone"
@@ -578,10 +513,10 @@ function MediaDropzone({
           <>
             <UploadIcon className="size-4" aria-hidden="true" />
             {uploading
-              ? MEDIA_LABELS.dropzoneUploading
+              ? t.dropzone.uploading
               : dragActive
-                ? MEDIA_LABELS.dropzoneActive
-                : MEDIA_LABELS.dropzone}
+                ? t.dropzone.active
+                : t.dropzone.idle}
           </>
         ))}
     </Media.Dropzone>
@@ -626,30 +561,31 @@ function UploadStatusIcon({ status }: { status: MediaUploadEntry['status'] }) {
 }
 
 function MediaUploadList({ className }: { className?: string }) {
+  const { messages: t } = useMediaMessages();
   const { files } = useMediaUploads();
   if (files.length === 0) return null;
 
   return (
     <section
       data-slot="media-upload-list"
-      aria-label={MEDIA_LABELS.uploads}
+      aria-label={t.upload.title}
       className={cn(
         'bg-card flex flex-col gap-3 rounded-lg border p-3',
         className,
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-medium">{MEDIA_LABELS.uploads}</h3>
+        <h3 className="text-sm font-medium">{t.upload.title}</h3>
         <div className="flex gap-1">
           <Media.UploadAbort
             render={<Button type="button" variant="ghost" size="sm" />}
           >
-            {MEDIA_LABELS.abortUploads}
+            {t.upload.abort}
           </Media.UploadAbort>
           <Media.UploadClear
             render={<Button type="button" variant="ghost" size="sm" />}
           >
-            {MEDIA_LABELS.clearUploads}
+            {t.upload.clear}
           </Media.UploadClear>
         </div>
       </div>
@@ -667,9 +603,9 @@ function MediaUploadList({ className }: { className?: string }) {
                 {entry.name}
               </span>
               <span className="text-muted-foreground text-xs">
-                {entry.status === 'error' && entry.error
-                  ? entry.error.message
-                  : MEDIA_LABELS.uploadStatus[entry.status]}
+                {entry.status === 'error'
+                  ? mediaErrorMessage(t, entry.error?.code)
+                  : t.upload.status[entry.status]}
               </span>
             </div>
             <Media.UploadProgress
@@ -693,13 +629,14 @@ function MediaEmpty({
   children,
   ...props
 }: React.ComponentProps<typeof Media.Empty>) {
+  const { messages: t } = useMediaMessages();
   return (
     <Media.Empty
       data-slot="media-empty"
       className={cn(MEDIA_EMPTY_CLASS, className)}
       {...props}
     >
-      {children ?? MEDIA_LABELS.empty}
+      {children ?? t.list.empty}
     </Media.Empty>
   );
 }
@@ -708,6 +645,7 @@ function MediaError({
   className,
   ...props
 }: Omit<React.ComponentProps<typeof Media.Error>, 'children'>) {
+  const { messages: t } = useMediaMessages();
   return (
     <Media.Error
       data-slot="media-error"
@@ -718,13 +656,13 @@ function MediaError({
       {({ error, retry }) => (
         <>
           <CircleAlertIcon aria-hidden="true" />
-          <AlertTitle>{MEDIA_LABELS.loadError}</AlertTitle>
-          {errorMessage(error) ? (
-            <AlertDescription>{errorMessage(error)}</AlertDescription>
-          ) : null}
+          <AlertTitle>{t.list.loadError}</AlertTitle>
+          <AlertDescription>
+            {mediaErrorMessage(t, errorCode(error))}
+          </AlertDescription>
           <AlertAction>
             <Button type="button" variant="outline" size="sm" onClick={retry}>
-              {MEDIA_LABELS.retry}
+              {t.action.retry}
             </Button>
           </AlertAction>
         </>
@@ -737,6 +675,7 @@ function MediaMutationError({
   className,
   ...props
 }: Omit<React.ComponentProps<typeof Media.MutationError>, 'children'>) {
+  const { messages: t } = useMediaMessages();
   return (
     <Media.MutationError
       data-slot="media-mutation-error"
@@ -747,13 +686,13 @@ function MediaMutationError({
       {({ error, dismiss }) => (
         <>
           <CircleAlertIcon aria-hidden="true" />
-          <AlertTitle>{MEDIA_LABELS.mutationError}</AlertTitle>
-          {errorMessage(error) ? (
-            <AlertDescription>{errorMessage(error)}</AlertDescription>
-          ) : null}
+          <AlertTitle>{t.list.mutationError}</AlertTitle>
+          <AlertDescription>
+            {mediaErrorMessage(t, errorCode(error))}
+          </AlertDescription>
           <AlertAction>
             <Button type="button" variant="outline" size="sm" onClick={dismiss}>
-              {MEDIA_LABELS.dismiss}
+              {t.action.dismiss}
             </Button>
           </AlertAction>
         </>
@@ -767,6 +706,7 @@ function MediaLoadMore({
   children,
   ...props
 }: React.ComponentProps<typeof Media.LoadMore>) {
+  const { messages: t } = useMediaMessages();
   return (
     <Media.LoadMore
       data-slot="media-load-more"
@@ -774,7 +714,7 @@ function MediaLoadMore({
       render={<Button type="button" variant="outline" />}
       {...props}
     >
-      {children ?? MEDIA_LABELS.loadMore}
+      {children ?? t.action.loadMore}
     </Media.LoadMore>
   );
 }
@@ -782,6 +722,7 @@ function MediaLoadMore({
 // --- Selection bar -------------------------------------------------------------
 
 function MediaSelectionBar({ className }: { className?: string }) {
+  const { messages: t, format } = useMediaMessages();
   const { selected, clear } = useMediaSelection();
   const { folders, move, setStatus, archive } = useMediaLibrary();
   const [pending, setPending] = React.useState(false);
@@ -814,14 +755,14 @@ function MediaSelectionBar({ className }: { className?: string }) {
     <div
       data-slot="media-selection-bar"
       role="toolbar"
-      aria-label={MEDIA_LABELS.selected(ids.length)}
+      aria-label={t.selection.count({ count: ids.length }, format)}
       className={cn(
         'bg-card sticky bottom-2 flex flex-wrap items-center gap-2 rounded-lg border p-2 shadow-md',
         className,
       )}
     >
       <span className="px-1 text-sm font-medium">
-        {MEDIA_LABELS.selected(ids.length)}
+        {t.selection.count({ count: ids.length }, format)}
       </span>
       <Dialog open={moveOpen} onOpenChange={setMoveOpen}>
         <DialogTrigger
@@ -832,20 +773,18 @@ function MediaSelectionBar({ className }: { className?: string }) {
               size="sm"
               disabled={pending}
             >
-              {MEDIA_LABELS.moveToFolder}
+              {t.action.move}
             </Button>
           }
         />
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>{MEDIA_LABELS.moveTitle}</DialogTitle>
-            <DialogDescription>
-              {MEDIA_LABELS.moveDescription}
-            </DialogDescription>
+            <DialogTitle>{t.action.moveTitle}</DialogTitle>
+            <DialogDescription>{t.action.moveDescription}</DialogDescription>
           </DialogHeader>
           <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto">
             {[
-              { id: null, name: MEDIA_LABELS.root },
+              { id: null, name: t.folder.root },
               ...folders.map((folder) => ({
                 id: folder.id,
                 name: folder.name,
@@ -877,7 +816,7 @@ function MediaSelectionBar({ className }: { className?: string }) {
         disabled={pending}
         onClick={() => void run(() => setStatus(ids, 'public'))}
       >
-        {MEDIA_LABELS.makePublic}
+        {t.action.makePublic}
       </Button>
       <Button
         type="button"
@@ -886,7 +825,7 @@ function MediaSelectionBar({ className }: { className?: string }) {
         disabled={pending}
         onClick={() => void run(() => setStatus(ids, 'private'))}
       >
-        {MEDIA_LABELS.makePrivate}
+        {t.action.makePrivate}
       </Button>
       <AlertDialog>
         <AlertDialogTrigger
@@ -897,27 +836,27 @@ function MediaSelectionBar({ className }: { className?: string }) {
               size="sm"
               disabled={pending}
             >
-              {MEDIA_LABELS.archive}
+              {t.action.archive}
             </Button>
           }
         />
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{MEDIA_LABELS.archiveTitle}</AlertDialogTitle>
+            <AlertDialogTitle>{t.action.archiveTitle}</AlertDialogTitle>
             <AlertDialogDescription>
-              {MEDIA_LABELS.archiveDescription}
+              {t.action.archiveDescription}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel type="button">
-              {MEDIA_LABELS.cancel}
+              {t.action.cancel}
             </AlertDialogCancel>
             <AlertDialogAction
               type="button"
               variant="destructive"
               onClick={() => void run(() => archive(ids))}
             >
-              {MEDIA_LABELS.archive}
+              {t.action.archive}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -930,7 +869,7 @@ function MediaSelectionBar({ className }: { className?: string }) {
         disabled={pending}
         onClick={clear}
       >
-        {MEDIA_LABELS.clearSelection}
+        {t.action.clearSelection}
       </Button>
       {skipped > 0 ? (
         <p
@@ -938,9 +877,15 @@ function MediaSelectionBar({ className }: { className?: string }) {
           role="status"
           className="text-muted-foreground basis-full px-1 text-xs"
         >
-          {MEDIA_LABELS.skipped(skipped)}
+          {t.bulk.skipped({ count: skipped }, format)}
         </p>
       ) : null}
+      <p
+        data-slot="media-visibility-hint"
+        className="text-muted-foreground basis-full px-1 text-xs"
+      >
+        {t.visibility.hint}
+      </p>
     </div>
   );
 }

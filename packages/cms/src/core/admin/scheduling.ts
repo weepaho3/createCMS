@@ -206,9 +206,13 @@ export async function runScheduledPass(
         result.published++;
         // Best-effort: the publish is already committed, so an asset-sync hiccup
         // must not flip a live page back to "failed".
-        await syncAssetsOnPublish(db, outcome.commitId, row.rootId).catch(
-          (err) =>
-            console.error('[cms] scheduled publish asset sync failed:', err),
+        await syncAssetsOnPublish(
+          db,
+          outcome.commitId,
+          row.rootId,
+          scope,
+        ).catch((err) =>
+          console.error('[cms] scheduled publish asset sync failed:', err),
         );
         if (opts.revalidationRunner) {
           await opts.revalidationRunner
@@ -231,6 +235,7 @@ export async function runScheduledPass(
           outcome.commitId,
           row.rootId,
           row.branchId,
+          scope,
         ).catch((err) =>
           console.error('[cms] scheduled unpublish asset sync failed:', err),
         );

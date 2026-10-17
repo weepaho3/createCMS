@@ -98,6 +98,8 @@ type MediaRootProps = {
   pageSize?: number; // 1–100, default 40, read once
   onSelectionChange?: (ids: string[]) => void;
   assetUrl?: (asset: MediaAsset) => string; // default asset.url
+  messages?: MediaMessagesInput; // partial catalog, merged over the defaults
+  locale?: string; // BCP 47; sizes, dates, numbers, plurals
   children?: ReactNode;
 };
 ```
@@ -274,6 +276,52 @@ parts.
 (`{ store, selection, assetUrl }`) and throws
 `<componentName> must be used within a Media.Root component.` outside the
 root.
+
+### `useMediaMessages`
+
+`useMediaMessages()` returns `MediaMessagesContextValue`
+(`{ messages, format }`): the merged catalog and locale-bound formatters of
+the nearest `Media.Root`, or the defaults outside one.
+
+## Messages
+
+Every visible string and accessible name comes from a `MediaMessages`
+catalog. `defaultMediaMessages` is English; pass a partial
+`MediaMessagesInput` as `Media.Root`'s `messages` to translate it, and
+`mergeMediaMessages(input)` merges one yourself. Static entries are
+strings; entries with parameters are `MediaMessageFn<P>`, called as
+`(params, format)`, where `format` is a `MediaFormatters` object bound to the
+`locale`:
+
+| Formatter | Output |
+| --- | --- |
+| `bytes(n)` | `Intl.NumberFormat` unit style, unit picked by magnitude (byte, kilobyte, megabyte, gigabyte) |
+| `number(n)`, `percent(fraction)` | `Intl.NumberFormat` |
+| `date(value)` | `Intl.DateTimeFormat`, medium date and short time |
+| `eta(seconds)` | `Intl.RelativeTimeFormat` in seconds, minutes or hours |
+| `plural(count)` | `Intl.PluralRules` category |
+| `apple` | `true` on macOS and iOS, for `shortcut` labels |
+
+`createMediaFormatters(locale)` builds the same object outside React.
+
+```tsx
+<Media.Root
+  client={cmsClient.media}
+  locale="de-DE"
+  messages={{
+    folder: { root: 'Mediathek', path: 'Ordnerpfad' },
+    selection: {
+      count: ({ count }, format) =>
+        `${format.number(count)} ${format.plural(count) === 'one' ? 'Datei' : 'Dateien'} ausgewählt`,
+    },
+  }}
+>
+```
+
+Parts never render a server message. An error code is translated with
+`mediaErrorMessage(messages, code)`: codes in `MediaErrorCode` map to
+`messages.error[code]`, any other code to `messages.error.unknown`.
+`MediaTypeLabel` keys `messages.type`, one label per `MediaType`.
 
 ### `useSelector`
 

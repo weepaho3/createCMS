@@ -68,6 +68,6 @@ await cms.api.pages.getPublishedContent({ query: { rootId } });
 
 ## WebP optimization unavailable
 
-**Cause.** The media optimize plugin tried to encode WebP in a browser without native support, and `@jsquash/webp` is not installed. Optimization is best-effort, so the original file still uploads; the failure surfaces as a string in `useOptimize`'s `state.error` (there is no error code).
+**Cause.** The media optimize plugin was asked to convert to WebP in a browser whose canvas cannot encode WebP (Safari), and no `webpEncoder` fallback is configured. The original file is uploaded unchanged; the ledger entry's `optimize.warnings` holds `optimize_unsupported`, and in development the warning is also logged.
 
-**Fix.** Install the optional `@jsquash/webp` fallback — see [Media optimize → Installation](/docs/plugins/media-optimize#add-the-client-plugin).
+**Fix.** Install `@jsquash/webp` and pass `webpEncoder: () => import('@jsquash/webp/encode')` to `mediaOptimizeClient`; see [Media optimize](/docs/plugins/media-optimize#webp-in-safari).

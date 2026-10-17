@@ -38,6 +38,7 @@ import {
 } from '../media/uploads';
 import {
   assetsReferencedByLiveContent,
+  assetsSuspectedInRichText,
   getAssetUsageDetails,
 } from '../media/usage';
 import { crossScopeColumns, scopedInsert, scopedInsertBatch } from '../scope';
@@ -48,8 +49,8 @@ import {
 } from '../storage/adapter';
 import { getStorage } from '../storage/get-storage';
 import {
-  buildObjectKey,
   buildPublicObjectUrl,
+  buildUploadObjectKey,
   buildVariantSlug,
 } from '../storage/s3/utils';
 import { MEDIA_DEFAULTS } from '../types/s3';
@@ -321,6 +322,10 @@ export function createMediaEndpoints(
   ];
   const signedUrlExpiresIn =
     mediaConfig.signedUrlExpiresIn ?? MEDIA_DEFAULTS.signedUrlExpiresIn;
+  // `undefined` sends no `x-amz-acl` header, which buckets with ACLs
+  // disabled ("Bucket owner enforced") require.
+  const objectAcl =
+    mediaConfig.acl === false ? undefined : (mediaConfig.acl ?? 'public-read');
 
   /**
    * Throws STORAGE_UNSUPPORTED unless the adapter signs uploads and, when any
@@ -435,9 +440,9 @@ export function createMediaEndpoints(
       return row;
     };
 
-    // `assets_slug_unique` is global while the probe in generateUniqueSlug is
-    // scope-filtered; a slug held by a row outside the scope is excluded here
-    // so the next attempt moves to the next counter.
+    // Slugs are unique per scope only (a scoping plugin adds its own unique
+    // index); a slug that loses a concurrent insert race is excluded here so
+    // the next attempt moves to the next counter.
     const taken = new Set<string>();
 
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -472,7 +477,7 @@ export function createMediaEndpoints(
             message: errorMessages.assetNotFound(payload.id),
           });
         }
-        if (isConstraintViolation(err, '23505', 'assets_slug_unique')) {
+        if (isConstraintViolation(err, '23505', 'slug')) {
           taken.add(slug);
           continue;
         }
@@ -707,14 +712,25 @@ export function createMediaEndpoints(
           });
         }
 
-        const [counts] = await db
-          .select({
-            assetCount: sql<number>`(SELECT count(*)::int FROM cms.assets WHERE folder_id = ${folderId})`,
-            childCount: sql<number>`(SELECT count(*)::int FROM cms.asset_folders WHERE parent_id = ${folderId})`,
-          })
-          .from(sql`(SELECT 1) AS _`);
+        // Archived assets and assets outside the scope do not block: their
+        // folder_id is set to NULL by the FK, and archived ones stay
+        // restorable. Child folders are counted unscoped because
+        // asset_folders_parent_fk cascades.
+        const assetConditions: SQL[] = [
+          eq(assets.folderId, folderId),
+          isNull(assets.archivedAt),
+        ];
+        if (scope.assets?.where) assetConditions.push(scope.assets.where);
+        const [assetCount] = await db
+          .select({ n: sql<number>`count(*)::int` })
+          .from(assets)
+          .where(and(...assetConditions));
+        const [childCount] = await db
+          .select({ n: sql<number>`count(*)::int` })
+          .from(assetFolders)
+          .where(eq(assetFolders.parentId, folderId));
 
-        if (counts.assetCount > 0 || counts.childCount > 0) {
+        if (assetCount.n > 0 || childCount.n > 0) {
           throw new CMSError('FOLDER_HAS_CONTENT', {
             message: errorMessages.folderHasContent(folderId),
           });
@@ -1320,10 +1336,13 @@ export function createMediaEndpoints(
 
     /**
      * Archives one or more assets and their variants, soft-deleting them for later garbage collection.
-     * Assets referenced by live (published) content are skipped, not failed, allowing partial batch success.
+     * Assets referenced by live content are skipped, not failed, allowing partial batch success.
+     * With `guardRichTextReferences` on (the default), assets whose id appears inside a longer
+     * string of any block version (rich text) are skipped too, unless `force` is set.
      *
      * @param assetIds - Array of asset ids to archive (at least one).
-     * @returns Count of archived assets, their ids, and ids of skipped (in-use) assets.
+     * @param force - Archive assets suspected in rich text anyway. Live references still block.
+     * @returns Count of archived assets, their ids, the skipped ids, and why each was skipped (`in_use` or `richtext_suspect`).
      * @throws ASSET_NOT_FOUND if none of the asset ids exist.
      * @example await cmsClient.media.archiveAssets({ assetIds: ['ast_...'] })
      */
@@ -1333,12 +1352,13 @@ export function createMediaEndpoints(
         method: 'POST',
         body: z.object({
           assetIds: z.array(z.string()).min(1),
+          force: z.boolean().optional(),
         }),
         metadata: cmsMeta({}, { operation: 'delete', ...MEDIA_META }),
       },
       async (ctx) => {
         const { scope } = ctx.context;
-        const { assetIds } = ctx.body;
+        const { assetIds, force } = ctx.body;
 
         const selectConditions: SQL[] = [
           inArray(assets.id, assetIds),
@@ -1365,23 +1385,38 @@ export function createMediaEndpoints(
         // page. The check is authoritative against branch-head block versions
         // (the version-keyed content_usages index joined to branch heads). In-use
         // assets are skipped, not failed, so a batch still archives the rest.
+        const scopeColumns = crossScopeColumns(scope.roots);
         const referenced = await assetsReferencedByLiveContent(
           db,
           existingIds,
-          crossScopeColumns(scope.roots),
+          scopeColumns,
         );
+        const suspected =
+          force || mediaConfig.guardRichTextReferences === false
+            ? new Set<string>()
+            : await assetsSuspectedInRichText(
+                db,
+                existingIds.filter((id) => !referenced.has(id)),
+                scopeColumns,
+              );
         const toArchive: string[] = [];
         const skipped: string[] = [];
+        const skippedReasons: Record<string, 'in_use' | 'richtext_suspect'> =
+          {};
         for (const id of existingIds) {
           if (referenced.has(id)) {
             skipped.push(id);
+            skippedReasons[id] = 'in_use';
+          } else if (suspected.has(id)) {
+            skipped.push(id);
+            skippedReasons[id] = 'richtext_suspect';
           } else {
             toArchive.push(id);
           }
         }
 
         if (toArchive.length === 0) {
-          return { archived: 0, archivedIds: [], skipped };
+          return { archived: 0, archivedIds: [], skipped, skippedReasons };
         }
 
         // Archive the assets together with their variants so a variant object is
@@ -1407,6 +1442,7 @@ export function createMediaEndpoints(
           archived: archived.length,
           archivedIds: archived.map((a) => a.id),
           skipped,
+          skippedReasons,
         };
       },
     ),
@@ -1542,7 +1578,7 @@ export function createMediaEndpoints(
               contentType: p.file.type,
               contentLength: p.file.size,
               expiresIn: signedUrlExpiresIn,
-              acl: 'public-read',
+              acl: objectAcl,
             });
             const token = await mintUploadToken(key, {
               kind: 'upload',
@@ -1749,7 +1785,7 @@ export function createMediaEndpoints(
         if (!slug) {
           throw new CMSError('SLUG_GENERATION_FAILED');
         }
-        const objectKey = `${newId('asset')}/${slug}`;
+        const objectKey = buildUploadObjectKey(newId('asset'), slug);
 
         const storage = getStorage(mediaConfig);
         requireSignedUploadCapability(storage, [file.type]);
@@ -1759,7 +1795,7 @@ export function createMediaEndpoints(
           contentType: file.type,
           contentLength: file.size,
           expiresIn: signedUrlExpiresIn,
-          acl: 'public-read',
+          acl: objectAcl,
         });
         const token = await mintUploadToken(
           await deriveUploadKey(mediaConfig),
@@ -1923,8 +1959,7 @@ export function createMediaEndpoints(
 
             // The row already points at this token's object: an earlier
             // commit landed and its response was lost. The tombstone for
-            // `before` exists from that commit and would collide on
-            // assets_slug_unique if written again.
+            // `before` exists from that commit and must not be written again.
             if (before.objectKey === objectKey) {
               const [current] = await tx
                 .select()
@@ -2146,7 +2181,7 @@ export function createMediaEndpoints(
             await storage.put(p.objectKey, file.buffer, {
               contentType: file.type,
               contentLength: file.size,
-              acl: 'public-read',
+              acl: objectAcl,
             });
           } catch (err) {
             // The raw S3 error must not reach the client. This log is the only
@@ -2285,7 +2320,7 @@ export function createMediaEndpoints(
         if (!slug) {
           throw new CMSError('SLUG_GENERATION_FAILED');
         }
-        const objectKey = buildObjectKey(slug);
+        const objectKey = buildUploadObjectKey(newId('asset'), slug);
 
         // 5. PUT the new object FIRST — on failure the row is untouched, so the
         //    asset keeps serving its existing (still-present) object.
@@ -2293,7 +2328,7 @@ export function createMediaEndpoints(
           await getStorage(mediaConfig).put(objectKey, file.buffer, {
             contentType: file.type,
             contentLength: measuredSize,
-            acl: 'public-read',
+            acl: objectAcl,
           });
         } catch (err) {
           // The raw S3 error must not reach the client; this log is the only

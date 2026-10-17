@@ -5,6 +5,14 @@ import type { CMSFetch } from '../types';
 
 import { CMSClientError } from '../error';
 import { createMediaUploadAtom } from '../media-upload';
+import { annotateUpload } from '../upload-annotations';
+
+// Retries wait for nothing, so a test only has to fire the next request.
+const NO_WAIT = { retry: { sleep: () => Promise.resolve() } };
+
+const EXPIRED_BODY =
+  '<?xml version="1.0" encoding="UTF-8"?><Error><Code>AccessDenied</Code>' +
+  '<Message>Request has expired</Message></Error>';
 
 type Listener = (event: unknown) => void;
 
@@ -14,6 +22,7 @@ class FakeXHR {
   static instances: FakeXHR[] = [];
 
   status = 0;
+  responseText = '';
   aborted = false;
   private listeners = new Map<string, Listener[]>();
   private uploadListeners = new Map<string, Listener[]>();
@@ -50,8 +59,9 @@ class FakeXHR {
     }
   }
 
-  fireLoad(status = 200) {
+  fireLoad(status = 200, body = '') {
     this.status = status;
+    this.responseText = body;
     this.emit('load');
   }
 
@@ -290,7 +300,7 @@ describe('createMediaUploadAtom', () => {
         message: 'File exceeds the size limit',
       });
     }
-    expect(store.get().error).toBeInstanceOf(CMSClientError);
+    expect(store.get().error).toBe('Some files failed to upload');
     expect(store.get().isUploading).toBe(false);
     expect(FakeXHR.instances).toHaveLength(0);
   });
@@ -336,7 +346,7 @@ describe('createMediaUploadAtom', () => {
     expect(result.map((f) => f.name)).toEqual(['b.bin', 'c.bin']);
     expect(result.map((f) => f.result?.id)).toEqual([
       'ast_0_b.bin',
-      'ast_1_c.bin',
+      'ast_0_c.bin',
     ]);
     expect(result[0].result).toEqual({
       id: 'ast_0_b.bin',
@@ -353,13 +363,13 @@ describe('createMediaUploadAtom', () => {
       .upload([makeFile('a.bin', 100), makeFile('b.bin', 200)]);
     await tick();
 
-    FakeXHR.instances[0].fireError();
+    FakeXHR.instances[0].fireLoad(400);
     FakeXHR.instances[1].fireProgress(200, 200);
     FakeXHR.instances[1].fireLoad();
     const result = await promise;
 
     expect(result[0].status).toBe('error');
-    expect(result[0].error?.code).toBe('NETWORK_ERROR');
+    expect(result[0].error?.code).toBe('UPLOAD_FAILED');
     expect(result[1].status).toBe('success');
     expect(store.get().progress).toEqual({
       loaded: 200,
@@ -398,7 +408,8 @@ describe('createMediaUploadAtom', () => {
 
     const before = store.get().files;
     expect(before.map((f) => f.status)).toEqual(['uploading', 'uploading']);
-    expect(before.every((f) => f.loaded === f.total)).toBe(true);
+    expect(before.map((f) => f.progress)).toEqual([0.99, 0.99]);
+    expect(before.every((f) => f.loaded < f.total)).toBe(true);
     expect(store.get().isUploading).toBe(true);
 
     const result = await promise;
@@ -438,8 +449,8 @@ describe('createMediaUploadAtom', () => {
   it('maps a completeUpload error onto the entry at that index', async () => {
     const store = createMediaUploadAtom(
       signingFetch({
-        reject: (index) =>
-          index === 1
+        reject: (_index, name) =>
+          name === 'b.bin'
             ? { code: 'UPLOAD_NOT_FOUND', message: 'No object' }
             : undefined,
       }),
@@ -551,5 +562,219 @@ describe('createMediaUploadAtom', () => {
     expect(remove).toHaveBeenCalled();
     expect(maxSeen).toBeGreaterThan(0);
     expect([...counts.values()].every((count) => count === 0)).toBe(true);
+  });
+
+  describe('retries and per-file signing', () => {
+    function countingFetch(inner = signingFetch()) {
+      const calls: string[] = [];
+      const fetch = (async (path: string, init?: unknown) => {
+        calls.push(path);
+        return inner(path, init as never);
+      }) as CMSFetch;
+      return { fetch, calls };
+    }
+
+    it('retries a network error and succeeds on the next attempt', async () => {
+      const store = createMediaUploadAtom(signingFetch(), NO_WAIT);
+      const promise = store.get().upload([makeFile('a.bin', 10)]);
+      await tick();
+
+      FakeXHR.instances[0].fireError();
+      await tick();
+      expect(FakeXHR.instances).toHaveLength(2);
+      FakeXHR.instances[1].fireLoad();
+      const [entry] = await promise;
+      expect(entry.status).toBe('success');
+    });
+
+    it('retries a single 503 on a PUT', async () => {
+      const store = createMediaUploadAtom(signingFetch(), NO_WAIT);
+      const promise = store.get().upload([makeFile('a.bin', 10)]);
+      await tick();
+
+      FakeXHR.instances[0].fireLoad(503);
+      await tick();
+      FakeXHR.instances[1].fireLoad();
+      const [entry] = await promise;
+      expect(entry.status).toBe('success');
+      expect(FakeXHR.instances).toHaveLength(2);
+    });
+
+    it('stops after five attempts', async () => {
+      const store = createMediaUploadAtom(signingFetch(), NO_WAIT);
+      const promise = store.get().upload([makeFile('a.bin', 10)]);
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await tick();
+        FakeXHR.instances[attempt].fireLoad(500);
+      }
+      const [entry] = await promise;
+      expect(entry.status).toBe('error');
+      expect(FakeXHR.instances).toHaveLength(5);
+    });
+
+    it('never retries a terminal S3 error', async () => {
+      const store = createMediaUploadAtom(signingFetch(), NO_WAIT);
+      const promise = store.get().upload([makeFile('a.bin', 10)]);
+      await tick();
+
+      FakeXHR.instances[0].fireLoad(
+        500,
+        '<Error><Code>BadDigest</Code><Message>x</Message></Error>',
+      );
+      const [entry] = await promise;
+      expect(entry.status).toBe('error');
+      expect(FakeXHR.instances).toHaveLength(1);
+    });
+
+    it('never retries an abort', async () => {
+      const store = createMediaUploadAtom(signingFetch(), NO_WAIT);
+      const promise = store.get().upload([makeFile('a.bin', 10)]);
+      await tick();
+
+      store.get().abort();
+      const [entry] = await promise;
+      expect(entry.status).toBe('aborted');
+      expect(FakeXHR.instances).toHaveLength(1);
+    });
+
+    it('re-signs once when the signature expired', async () => {
+      const { fetch, calls } = countingFetch();
+      const store = createMediaUploadAtom(fetch, NO_WAIT);
+      const promise = store.get().upload([makeFile('a.bin', 10)]);
+      await tick();
+
+      FakeXHR.instances[0].fireLoad(403, EXPIRED_BODY);
+      await tick();
+      expect(
+        calls.filter((path) => path === '/media/createSignedUpload'),
+      ).toHaveLength(2);
+      FakeXHR.instances[1].fireLoad();
+      const [entry] = await promise;
+      expect(entry.status).toBe('success');
+    });
+
+    it('treats a second expiry as terminal', async () => {
+      const store = createMediaUploadAtom(signingFetch(), NO_WAIT);
+      const promise = store.get().upload([makeFile('a.bin', 10)]);
+      await tick();
+
+      FakeXHR.instances[0].fireLoad(403, EXPIRED_BODY);
+      await tick();
+      FakeXHR.instances[1].fireLoad(403, EXPIRED_BODY);
+      const [entry] = await promise;
+      expect(entry.status).toBe('error');
+      expect(entry.error?.code).toBe('UPLOAD_EXPIRED');
+      expect(FakeXHR.instances).toHaveLength(2);
+    });
+
+    it('treats other 403 responses as terminal', async () => {
+      const store = createMediaUploadAtom(signingFetch(), NO_WAIT);
+      const promise = store.get().upload([makeFile('a.bin', 10)]);
+      await tick();
+
+      FakeXHR.instances[0].fireLoad(
+        403,
+        '<Error><Code>SignatureDoesNotMatch</Code></Error>',
+      );
+      const [entry] = await promise;
+      expect(entry.error?.code).toBe('UPLOAD_FAILED');
+      expect(FakeXHR.instances).toHaveLength(1);
+    });
+
+    it('retries a transient presign failure', async () => {
+      let failures = 1;
+      const inner = signingFetch();
+      const flaky = (async (path: string, init?: unknown) => {
+        if (path === '/media/createSignedUpload' && failures-- > 0) {
+          throw new CMSClientError({ status: 503, message: 'busy' });
+        }
+        return inner(path, init as never);
+      }) as CMSFetch;
+      const store = createMediaUploadAtom(flaky, NO_WAIT);
+      const promise = store.get().upload([makeFile('a.bin', 10)]);
+      await tick();
+      await tick();
+      await completeAll(FakeXHR.instances);
+      const [entry] = await promise;
+      expect(entry.status).toBe('success');
+    });
+
+    it('signs a file only when a pool slot takes it', async () => {
+      const { fetch, calls } = countingFetch();
+      const store = createMediaUploadAtom(fetch);
+      const promise = store
+        .get()
+        .upload([makeFile('a.bin', 10), makeFile('b.bin', 10)], {
+          concurrency: 1,
+        });
+      await tick();
+      expect(calls).toEqual(['/media/createSignedUpload']);
+
+      FakeXHR.instances[0].fireLoad();
+      await tick();
+      expect(calls).toEqual([
+        '/media/createSignedUpload',
+        '/media/completeUpload',
+        '/media/createSignedUpload',
+      ]);
+      await completeAll(FakeXHR.instances.slice(1));
+      await promise;
+    });
+
+    it('completes each file right after its own PUT', async () => {
+      const completed: string[] = [];
+      const store = createMediaUploadAtom(
+        signingFetch({
+          onComplete: (body) => completed.push(body.uploads[0].token),
+        }),
+      );
+      const promise = store
+        .get()
+        .upload([makeFile('a.bin', 10), makeFile('b.bin', 10)]);
+      await tick();
+
+      FakeXHR.instances[0].fireLoad();
+      await tick();
+      expect(completed).toEqual(['tok:ast_0_a.bin:a.bin']);
+      expect(store.get().files.map((f) => f.status)).toEqual([
+        'success',
+        'uploading',
+      ]);
+
+      FakeXHR.instances[1].fireLoad();
+      await promise;
+      expect(completed).toHaveLength(2);
+    });
+
+    it('caps progress at 0.99 until the row exists', async () => {
+      const store = createMediaUploadAtom(signingFetch());
+      const promise = store.get().upload([makeFile('a.bin', 100)]);
+      await tick();
+
+      FakeXHR.instances[0].fireProgress(100, 100);
+      expect(store.get().files[0].progress).toBe(0.99);
+      expect(store.get().files[0].loaded).toBe(99);
+      FakeXHR.instances[0].fireLoad();
+      const [entry] = await promise;
+      expect(entry.progress).toBe(1);
+      expect(entry.loaded).toBe(100);
+    });
+  });
+
+  it('copies the optimizer outcome onto the entry', async () => {
+    const file = makeFile('a.webp', 10);
+    const info = {
+      optimized: true,
+      bytesBefore: 40,
+      bytesAfter: 10,
+      warnings: [],
+    };
+    annotateUpload(file, info);
+    const store = createMediaUploadAtom(signingFetch());
+    const promise = store.get().upload([file]);
+    await tick();
+    expect(store.get().files[0].optimize).toEqual(info);
+    await completeAll(FakeXHR.instances);
+    await promise;
   });
 });

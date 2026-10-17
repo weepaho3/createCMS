@@ -621,7 +621,12 @@ export const coreSchema = defineCoreSchema({
         statusIdx: { columns: ['status'] },
         variantOfIdx: { columns: ['variantOf'] },
         objectKeyUnique: { columns: ['objectKey'], unique: true },
-        slugUnique: { columns: ['slug'], unique: true },
+        // Non-unique on purpose, like roots.slugIdx: a core global unique
+        // cannot be loosened by a plugin (merge.ts only ADDS), so it would stop
+        // two tenants from both owning `hero.jpg`. Uniqueness is app-level
+        // (generateUniqueSlug probes within the caller's scope) plus, under a
+        // scoping plugin, a per-scope unique such as (tenant_slug, slug).
+        slugIdx: { columns: ['slug'] },
       },
     },
 

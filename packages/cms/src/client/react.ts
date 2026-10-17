@@ -24,6 +24,11 @@ import {
   createMediaReplaceAtom,
 } from './media-upload';
 import { useStore } from './react-store';
+import {
+  optimizeOrPassThrough,
+  UPLOAD_OPTIMIZER_KEY,
+  type UploadOptimizer,
+} from './upload-optimizer';
 
 // Adds the browser-callable replace-asset hook to the client's `media`
 // namespace, mirroring `WithMedia<T>` in types.ts.
@@ -32,17 +37,6 @@ type WithReplaceAsset<T> = T extends { media: infer M }
       media: M & { useReplaceAsset: () => CMSMediaReplaceState };
     }
   : T & { media: { useReplaceAsset: () => CMSMediaReplaceState } };
-
-// Shared-store key the media-optimize plugin publishes its auto-optimizer
-// under. Kept as a literal (not imported) so the React entry never statically
-// pulls in the plugin's canvas/WebP code. Must match `UPLOAD_OPTIMIZER_KEY`
-// in plugins/media-optimize/index.ts.
-const UPLOAD_OPTIMIZER_KEY = 'media-optimize:uploadOptimizer';
-
-type UploadOptimizer = {
-  enabled: boolean;
-  optimize: (files: File[]) => Promise<File[]>;
-};
 
 // Per-call opt-out: pass `{ optimize: false }` to skip auto-optimization even
 // when the media-optimize plugin is installed and enabled.
@@ -77,7 +71,7 @@ function makeUseUploadAssets(config: ClientConfig): () => CMSMediaUploadState {
           !!optimizer && optimizer.enabled && options?.optimize !== false;
 
         const finalFiles = shouldOptimize
-          ? await optimizer.optimize(files)
+          ? await optimizeOrPassThrough(optimizer, files)
           : files;
 
         return baseUpload(finalFiles, options);

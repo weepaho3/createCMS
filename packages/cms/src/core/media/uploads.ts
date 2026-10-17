@@ -7,7 +7,6 @@ import { newId } from '../../utils/nanoid';
 import { assetFolders, assets } from '../db/schema.generated';
 import { CMSError, errorMessages } from '../errors';
 import {
-  buildObjectKey,
   buildUploadObjectKey,
   createSlug,
   isFileTypeAllowed,
@@ -81,7 +80,7 @@ export async function prepareAssetUpload(
 
     batchSlugs.add(slug);
 
-    const objectKey = buildObjectKey(slug);
+    const objectKey = buildUploadObjectKey(id, slug);
 
     prepared.push({ id, slug, objectKey, file });
   }

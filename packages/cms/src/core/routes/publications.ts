@@ -204,7 +204,12 @@ export function createPublicationEndpoints<
           }),
         );
 
-        await syncAssetsOnPublish(db, publication.commitId, rootId);
+        await syncAssetsOnPublish(
+          db,
+          publication.commitId,
+          rootId,
+          ctx.context.scope,
+        );
 
         // Stays bespoke (not on withNotifications): the recipient (branch
         // creator) is read AFTER commit, and the notify must fire AFTER asset
@@ -296,7 +301,13 @@ export function createPublicationEndpoints<
           }),
         );
 
-        await syncAssetsOnUnpublish(db, commitId, rootId, branchId);
+        await syncAssetsOnUnpublish(
+          db,
+          commitId,
+          rootId,
+          branchId,
+          ctx.context.scope,
+        );
 
         return {
           rootId,

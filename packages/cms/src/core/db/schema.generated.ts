@@ -109,7 +109,7 @@ export const assets = cmsSchema.table(
     index("assets_status_idx").on(table.status),
     index("assets_variant_of_idx").on(table.variantOf),
     uniqueIndex("assets_object_key_unique").on(table.objectKey),
-    uniqueIndex("assets_slug_unique").on(table.slug),
+    index("assets_slug_idx").on(table.slug),
   ],
 );
 

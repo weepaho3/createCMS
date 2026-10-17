@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { OptimizationConfig } from '../../core/types/s3';
 import type { OptimizeResult } from './optimize';
 
-import { optimizeImage } from './optimize';
+import { optimizeFiles } from './optimize';
 
 /**
  * Config accepted by {@link useOptimize}: the raw {@link OptimizationConfig}
@@ -17,24 +17,23 @@ export type UseOptimizeConfig = OptimizationConfig & { enabled?: boolean };
 export type OptimizeState = {
   results: OptimizeResult[] | null;
   isOptimizing: boolean;
-  error: string | null;
 };
 
 const INITIAL_STATE: OptimizeState = {
   results: null,
   isOptimizing: false,
-  error: null,
 };
 
 /**
  * React hook that optimizes image files on the client.
  *
  * Accepts a single `File` or `File[]` and an `OptimizationConfig`.
- * Runs `optimizeImage` automatically whenever the input reference changes.
- * Non-image files pass through with `optimized: false`.
+ * Runs `optimizeFiles` whenever the input files or the config change.
+ * Files that cannot be optimized come back unchanged with `optimized: false`
+ * and, for images, a `warning`.
  *
  * ```tsx
- * const { results, isOptimizing, error } = cmsClient.optimize.useOptimize(file, {
+ * const { results, isOptimizing } = cmsClient.optimize.useOptimize(file, {
  *   compress: { quality: 80 },
  *   resize: { maxSize: 1200 },
  * });
@@ -72,7 +71,7 @@ export function useOptimize(
       setState((prev) =>
         prev.results?.length === 0 && !prev.isOptimizing
           ? prev
-          : { results: [], isOptimizing: false, error: null },
+          : { results: [], isOptimizing: false },
       );
       return;
     }
@@ -80,27 +79,25 @@ export function useOptimize(
     abortRef.current = false;
     const currentRun = ++runIdRef.current;
 
-    setState({ results: null, isOptimizing: true, error: null });
+    setState({ results: null, isOptimizing: true });
 
-    Promise.all(
-      files.map((file) =>
-        configRef.current.enabled === false
-          ? Promise.resolve<OptimizeResult>({ file, optimized: false })
-          : optimizeImage(file, configRef.current),
-      ),
-    )
-      .then((results) => {
-        if (abortRef.current || runIdRef.current !== currentRun) return;
-        setState({ results, isOptimizing: false, error: null });
-      })
-      .catch((err) => {
-        if (abortRef.current || runIdRef.current !== currentRun) return;
-        setState({
-          results: null,
-          isOptimizing: false,
-          error: err instanceof Error ? err.message : 'Optimization failed',
-        });
-      });
+    const config = configRef.current;
+    const run =
+      config.enabled === false
+        ? Promise.resolve(
+            files.map<OptimizeResult>((file) => ({
+              file,
+              optimized: false,
+              bytesBefore: file.size,
+              bytesAfter: file.size,
+            })),
+          )
+        : optimizeFiles(files, config);
+
+    void run.then((results) => {
+      if (abortRef.current || runIdRef.current !== currentRun) return;
+      setState({ results, isOptimizing: false });
+    });
 
     return () => {
       abortRef.current = true;

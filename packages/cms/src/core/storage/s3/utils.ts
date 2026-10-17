@@ -3,6 +3,12 @@ import slugify from 'slugify';
 
 import type { ObjectAcl, S3Client } from '../../types/s3';
 
+import {
+  isRetryable,
+  parseRetryAfter,
+  withRetry,
+  type WithRetryOptions,
+} from '../../../utils/retry';
 import { StorageError } from '../adapter';
 
 export function parseXml<T = Record<string, unknown>>(
@@ -45,6 +51,62 @@ export async function throwS3Error(fn: Promise<Response>): Promise<Response> {
   }
 
   return res;
+}
+
+class RetryableResponse extends Error {
+  constructor(readonly response: Response) {
+    super(`S3 request failed with status ${response.status}`);
+    this.name = 'RetryableResponse';
+  }
+}
+
+/** Attempts per idempotent server-side S3 request (HEAD, GET, DELETE). */
+const S3_ATTEMPTS = 3;
+
+/**
+ * `client.s3.fetch` with full-jitter retries on network errors and on 408,
+ * 429 and 5xx responses. Only for idempotent requests whose body can be
+ * resent. After the last attempt the final response is returned as-is, so
+ * callers report it through `throwS3Error`.
+ */
+export async function fetchWithRetry(
+  client: S3Client,
+  url: string,
+  init: RequestInit,
+  options?: Pick<WithRetryOptions, 'sleep' | 'random'>,
+): Promise<Response> {
+  try {
+    return await withRetry(
+      async () => {
+        const res = await client.s3.fetch(url, init);
+        if (isRetryable({ status: res.status })) {
+          throw new RetryableResponse(res);
+        }
+        return res;
+      },
+      {
+        attempts: S3_ATTEMPTS,
+        classify: (err) =>
+          err instanceof RetryableResponse
+            ? {
+                retry: true,
+                retryAfterMs: parseRetryAfter(
+                  err.response.headers.get('retry-after'),
+                ),
+              }
+            : { retry: true },
+        onRetry: (err) => {
+          if (err instanceof RetryableResponse) {
+            void err.response.body?.cancel();
+          }
+        },
+        ...options,
+      },
+    );
+  } catch (err) {
+    if (err instanceof RetryableResponse) return err.response;
+    throw err;
+  }
 }
 
 export function baseSignedUrl(
@@ -158,11 +220,7 @@ export async function deleteObject(
 ): Promise<Response> {
   const url = `${client.buildBucketUrl(params.bucket)}/${params.key}`;
 
-  return throwS3Error(
-    client.s3.fetch(url, {
-      method: 'DELETE',
-    }),
-  );
+  return throwS3Error(fetchWithRetry(client, url, { method: 'DELETE' }));
 }
 
 /**
@@ -177,7 +235,7 @@ export async function headObject(
   contentType: string | null;
 } | null> {
   const url = `${client.buildBucketUrl(params.bucket)}/${params.key}`;
-  const res = await client.s3.fetch(url, { method: 'HEAD' });
+  const res = await fetchWithRetry(client, url, { method: 'HEAD' });
   if (res.status === 404) return null;
   await throwS3Error(Promise.resolve(res));
   const len = res.headers.get('content-length');
@@ -197,7 +255,7 @@ export async function getObjectRange(
   params: { bucket: string; key: string; start: number; end: number },
 ): Promise<Uint8Array | null> {
   const url = `${client.buildBucketUrl(params.bucket)}/${params.key}`;
-  const res = await client.s3.fetch(url, {
+  const res = await fetchWithRetry(client, url, {
     method: 'GET',
     headers: { range: `bytes=${params.start}-${params.end}` },
   });
@@ -248,19 +306,10 @@ export function createSlug(text: string): string {
 }
 
 /**
- * The S3 object key for an asset: the asset slug verbatim. Core does not
- * partition object keys by any scope; scope isolation (e.g. multi-tenant) is
- * enforced by the plugin-owned scope column + scope.assets.where, never by the
- * key string.
- */
-export function buildObjectKey(assetSlug: string): string {
-  return assetSlug;
-}
-
-/**
- * The S3 object key for a browser (presign/complete) upload: `<id>/<slug of
- * fileName>`. Unique without a database row, so two presigns of the same file
- * name never share an object.
+ * The S3 object key for an asset: `<id>/<slug of fileName>`. Unique by the
+ * fresh id alone, so two assets never share an object even when their slugs
+ * match (slugs are unique only per scope). Scope isolation is enforced by the
+ * plugin-owned scope column and `scope.assets.where`, never by the key.
  */
 export function buildUploadObjectKey(id: string, fileName: string): string {
   return `${id}/${createSlug(fileName)}`;

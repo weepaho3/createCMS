@@ -64,7 +64,9 @@ export function Uploader() {
 }
 ```
 
-`upload(files, options?)` takes a `File[]` and an optional `{ folderId, concurrency, signal }`. It resolves with that call's entries once every PUT has settled, so a caller reads `result.id` from the returned array instead of scanning `files`. Uploads are validated server-side against the limits (defaults: `maxFiles` 10, `maxFileSize` 4 MB, `allowedMimeTypes` an explicit image/video/PDF allowlist that **excludes SVG**, see [Configuration](/docs/reference/configuration#media)); a rejected batch marks every entry of that call `error` with the server code (`FILE_TOO_LARGE`, `TOO_MANY_FILES`, or `INVALID_FILE_TYPE`). A PUT that fails on the network is `NETWORK_ERROR`; any other PUT failure is `UPLOAD_FAILED`. New assets are created **private**.
+`upload(files, options?)` takes a `File[]` and an optional `{ folderId, concurrency, signal }`. It resolves with that call's entries once every file has settled, so a caller reads `result.id` from the returned array instead of scanning `files`. Each file is handled on its own when one of the `concurrency` slots (default 4) takes it: it is signed (`createSignedUpload` with that one file, URLs valid for `signedUrlExpiresIn`, default 300 s), PUT, and completed (`completeUpload`) right after its PUT, so a closed tab keeps every file that already landed. While the row is being created the entry shows `progress` 0.99; only `success` reaches 1.
+
+Network errors, 408, 429 and 5xx responses are retried up to five attempts with full-jitter backoff, for the PUT as well as for signing and completing; an abort is never retried. A PUT rejected because its signature expired is signed again once (`UPLOAD_EXPIRED` if it expires a second time). Uploads are validated server-side against the limits (defaults: `maxFileSize` 4 MB, `allowedMimeTypes` an explicit image/video/PDF allowlist that **excludes SVG**, see [Configuration](/docs/reference/configuration#media)); a rejected file ends `error` with the server code (`FILE_TOO_LARGE` or `INVALID_FILE_TYPE`). `maxFiles` limits a single `createSignedUpload` call, which the browser client always makes with one file. A PUT that fails on the network after the retries is `NETWORK_ERROR`; any other PUT failure is `UPLOAD_FAILED`. New assets are created **private**.
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -78,7 +80,7 @@ export function Uploader() {
 
 ### Optimize before upload
 
-Add the [media optimize plugin](/docs/plugins/media-optimize) to resize, compress, and convert images in the browser before handing them to `upload` — see [Media optimize → Usage](/docs/plugins/media-optimize#usage).
+Add the [media optimize plugin](/docs/plugins/media-optimize) and `upload` resizes, compresses and converts images in the browser before signing; see [Media optimize: Usage](/docs/plugins/media-optimize#usage).
 
 ### Serve an asset
 

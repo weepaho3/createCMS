@@ -308,21 +308,21 @@ describe('Media.Breadcrumbs / Media.Crumb / Media.Folder', () => {
 
     const crumbs = () =>
       Array.from(nav.querySelectorAll('button')).map((el) => el.textContent);
-    expect(crumbs()).toEqual(['Root', 'A', 'B']);
+    expect(crumbs()).toEqual(['Library', 'A', 'B']);
     const current = nav.querySelector('[aria-current="page"]');
     expect(current?.textContent).toBe('B');
     expect(current?.hasAttribute('data-current')).toBe(true);
 
     fireEvent.click(getAllByRole('button', { name: 'A' })[0]!);
     await flush();
-    expect(crumbs()).toEqual(['Root', 'A']);
+    expect(crumbs()).toEqual(['Library', 'A']);
     expect(client.listFolders).toHaveBeenLastCalledWith({
       query: { parentFolderId: 'fld_a' },
     });
 
-    fireEvent.click(getByRole('button', { name: 'Root' }));
+    fireEvent.click(getByRole('button', { name: 'Library' }));
     await flush();
-    expect(crumbs()).toEqual(['Root']);
+    expect(crumbs()).toEqual(['Library']);
     expect(queryByRole('button', { name: 'B' })).toBeNull();
   });
 
@@ -336,7 +336,7 @@ describe('Media.Breadcrumbs / Media.Crumb / Media.Folder', () => {
     const labels = Array.from(nav.querySelectorAll('button')).map(
       (el) => el.textContent,
     );
-    expect(labels).toEqual(['Root', '…']);
+    expect(labels).toEqual(['Library', '…']);
     expect(nav.querySelector('[aria-current="page"]')?.textContent).toBe('…');
   });
 });

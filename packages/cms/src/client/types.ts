@@ -67,9 +67,20 @@ export type CMSMediaUploadFileState = {
   /** 0..1 */
   progress: number;
   error?: { code: string; message: string };
-  optimized?: boolean;
-  originalVariantId?: string;
+  /** Outcome of the media-optimize plugin, when it processed this file. */
+  optimize?: CMSMediaUploadOptimizeInfo;
   result?: { id: string; slug: string; objectKey: string };
+};
+
+/**
+ * What the media-optimize plugin did to a file before upload. `optimized` is
+ * false when the input was uploaded unchanged; `warnings` then says why.
+ */
+export type CMSMediaUploadOptimizeInfo = {
+  optimized: boolean;
+  bytesBefore: number;
+  bytesAfter: number;
+  warnings: { code: string; message: string }[];
 };
 
 export type CMSMediaUploadProgress = {

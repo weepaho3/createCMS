@@ -265,6 +265,34 @@ describe('media.deleteFolder', () => {
     ).rejects.toThrow(/contains assets or subfolders/i);
   });
 
+  it('deletes a folder that holds only archived assets', async () => {
+    const { cms, db } = await setupTestCMS();
+
+    const folder = await cms.api.media.createFolder({
+      body: { name: 'Archived Only' },
+    });
+    const [archived] = await db
+      .insert(assets)
+      .values({
+        slug: 'old.png',
+        mimeType: 'image/png',
+        size: 1024,
+        objectKey: 'old.png',
+        folderId: folder.folder.id,
+        archivedAt: new Date(),
+      })
+      .returning();
+
+    await cms.api.media.deleteFolder({ body: { folderId: folder.folder.id } });
+
+    const [row] = await db
+      .select({ folderId: assets.folderId, archivedAt: assets.archivedAt })
+      .from(assets)
+      .where(eq(assets.id, archived.id));
+    expect(row.folderId).toBeNull();
+    expect(row.archivedAt).not.toBeNull();
+  });
+
   it('blocks deletion when child folders exist', async () => {
     const { cms } = await setupTestCMS();
 
@@ -882,6 +910,35 @@ describe('media.createSignedUpload', () => {
     expect(result.expiresAt.getTime()).toBeGreaterThan(Date.now());
   });
 
+  it('signs x-amz-acl public-read by default', async () => {
+    const { cms, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+
+    const { uploads } = await cms.api.media.createSignedUpload({
+      body: { files: [{ name: 'a.jpg', size: 10, type: 'image/jpeg' }] },
+    });
+    expect(uploads[0].headers['x-amz-acl']).toBe('public-read');
+    expect(
+      new URL(uploads[0].signedUrl).searchParams.get('X-Amz-SignedHeaders'),
+    ).toContain('x-amz-acl');
+  });
+
+  it('sends no ACL with acl: false', async () => {
+    const { cms, s3 } = await setupTestCMS({
+      withS3: true,
+      media: { acl: false },
+    });
+    cleanup = s3.cleanup;
+
+    const { uploads } = await cms.api.media.createSignedUpload({
+      body: { files: [{ name: 'a.jpg', size: 10, type: 'image/jpeg' }] },
+    });
+    expect(uploads[0].headers).not.toHaveProperty('x-amz-acl');
+    expect(
+      new URL(uploads[0].signedUrl).searchParams.get('X-Amz-SignedHeaders'),
+    ).not.toContain('x-amz-acl');
+  });
+
   it('creates no row until completeUpload', async () => {
     const { cms, db, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
@@ -1146,7 +1203,7 @@ describe('media.createSignedUpload', () => {
     expect(await db.select().from(assets)).toHaveLength(1);
   });
 
-  it('advances the slug counter past a slug held by another tenant', async () => {
+  it('reuses a slug held by another tenant', async () => {
     const { cms, db, setTenant, s3 } = await setupMultiTenantTestCMS({
       withS3: true,
     });
@@ -1162,7 +1219,7 @@ describe('media.createSignedUpload', () => {
       { name: 'photo.jpg', type: 'image/jpeg' },
     ]);
 
-    expect(completed[0].slug).toBe('photo-2.jpg');
+    expect(completed[0].slug).toBe('photo.jpg');
     const rows = await db.execute(
       sql`SELECT tenant_slug FROM cms.assets WHERE id = ${completed[0].id}`,
     );
@@ -1602,7 +1659,7 @@ describe('upload validation', () => {
 
     expect(asset.folderId).toBe(folder.folder.id);
     // Object key is just the slug in flat S3 structure (no folder in path)
-    expect(asset.objectKey).toBe('placed.png');
+    expect(asset.objectKey).toMatch(/^ast_[0-9a-z]{20}\/placed\.png$/);
   });
 
   it('uploadAssets rejects upload to non-existent folder', async () => {
@@ -2256,6 +2313,98 @@ describe('media.archiveAsset', () => {
     expect(variantRow.archivedAt).not.toBeNull();
   });
 
+  describe('rich text references', () => {
+    async function setup(text: (id: string) => string, media = {}) {
+      const ctx = await setupTestCMS({ media });
+      const [asset] = await ctx.db
+        .insert(assets)
+        .values({
+          slug: 'inline.png',
+          mimeType: 'image/png',
+          size: 1,
+          objectKey: 'inline.png',
+        })
+        .returning();
+      const root = await ctx.cms.api.pages.createRoot({
+        body: { slug: '/rich', properties: { title: 'Rich' } },
+      });
+      await ctx.cms.api.pages.createBlock({
+        body: {
+          rootId: root.rootId,
+          branchId: root.branchId,
+          parentBlockId: root.rootId,
+          type: 'paragraph',
+          properties: { text: text(asset.id) },
+        },
+      });
+      return { ...ctx, asset };
+    }
+
+    it.each([
+      [
+        'an HTML img src',
+        (id: string) => `<p><img src="/media/asset/${id}"></p>`,
+      ],
+      [
+        'a stringified JSON document',
+        (id: string) =>
+          JSON.stringify({ type: 'image', attrs: { assetId: id } }),
+      ],
+    ])('skips an asset referenced from %s', async (_label, text) => {
+      const { cms, asset } = await setup(text);
+      const res = await cms.api.media.archiveAssets({
+        body: { assetIds: [asset.id] },
+      });
+      expect(res.archived).toBe(0);
+      expect(res.skipped).toEqual([asset.id]);
+      expect(res.skippedReasons).toEqual({ [asset.id]: 'richtext_suspect' });
+    });
+
+    it('archives a suspect with force', async () => {
+      const { cms, asset } = await setup((id) => `<img src="${id}.png">`);
+      const res = await cms.api.media.archiveAssets({
+        body: { assetIds: [asset.id], force: true },
+      });
+      expect(res.archivedIds).toEqual([asset.id]);
+    });
+
+    it('archives a suspect when the guard is off', async () => {
+      const { cms, asset } = await setup((id) => `<img src="${id}.png">`, {
+        guardRichTextReferences: false,
+      });
+      const res = await cms.api.media.archiveAssets({
+        body: { assetIds: [asset.id] },
+      });
+      expect(res.archivedIds).toEqual([asset.id]);
+    });
+
+    it('reports a live whole-value reference as in_use', async () => {
+      const { cms, asset } = await setup((id) => id);
+      const res = await cms.api.media.archiveAssets({
+        body: { assetIds: [asset.id] },
+      });
+      expect(res.skippedReasons).toEqual({ [asset.id]: 'in_use' });
+    });
+
+    it('leaves unrelated assets archivable', async () => {
+      const { cms, db } = await setup(() => '<p>No images here</p>');
+      const [other] = await db
+        .insert(assets)
+        .values({
+          slug: 'other.png',
+          mimeType: 'image/png',
+          size: 1,
+          objectKey: 'other.png',
+        })
+        .returning();
+      const res = await cms.api.media.archiveAssets({
+        body: { assetIds: [other.id] },
+      });
+      expect(res.archivedIds).toEqual([other.id]);
+      expect(res.skippedReasons).toEqual({});
+    });
+  });
+
   it('throws ASSET_NOT_FOUND for unknown ids', async () => {
     const { cms } = await setupTestCMS();
     await expect(
@@ -2464,7 +2613,8 @@ describe('media.replaceAsset', () => {
     expect(result.asset.id).toBe(orig.id); // id unchanged — the whole point
     expect(result.asset.slug).not.toBe('acme-logo.png'); // new slug → cache bust
     expect(result.asset.slug).toContain('globex-logo');
-    expect(result.asset.objectKey).toBe(result.asset.slug);
+    expect(result.asset.objectKey).toMatch(/^ast_[0-9a-z]{20}\//);
+    expect(result.asset.objectKey.endsWith(`/${result.asset.slug}`)).toBe(true);
 
     const [row] = await db.select().from(assets).where(eq(assets.id, orig.id));
     expect(row.slug).toBe(result.asset.slug);

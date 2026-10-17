@@ -471,15 +471,20 @@ Soft-delete a batch of assets (and their variants) so a later garbage-collection
   resource="media"
   operation="delete"
   args={`{
-  body: { assetIds: ['ast_123'] }, // required
+  body: {
+    assetIds: ['ast_123'], // required
+    force: false, // archive assets suspected in rich text anyway
+  },
 }`}
   returns={{
     archived: { type: 'number', description: 'How many assets were archived (variants archived alongside them).' },
     archivedIds: { type: 'string[]', description: 'The ids that were archived.' },
-    skipped: { type: 'string[]', description: 'Ids skipped because they are still referenced by live content.' },
+    skipped: { type: 'string[]', description: 'Ids that were not archived.' },
+    skippedReasons: { type: "Record<string, 'in_use' | 'richtext_suspect'>", description: '`in_use`: referenced by live content. `richtext_suspect`: the id appears inside a longer string of a block version (rich text), which the usage index does not see.' },
   }}
   params={{
     assetIds: { type: 'string[]', required: true, description: 'Asset ids to archive (at least one).' },
+    force: { type: 'boolean', description: 'Archive `richtext_suspect` assets anyway. Live references still block. Has no effect with `guardRichTextReferences: false`.' },
   }}
 />
 

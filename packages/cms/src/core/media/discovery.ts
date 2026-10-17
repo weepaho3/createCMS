@@ -1,15 +1,31 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 
+import type { ResolvedScope } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
 
 import { loadBlocksAtCommit } from '../blocks/reconstruct-snapshot';
-import { assets, branches, publications } from '../db/schema.generated';
+import { assets, branches, publications, roots } from '../db/schema.generated';
 import { collectAssetIdsFromProperties } from './usage';
 
+/**
+ * The scope publish discovery runs in: the publishing request's scope. Asset
+ * ids found in content are matched only against assets inside
+ * `scope.assets`, and only publications of roots inside `scope.roots` keep an
+ * asset public, so content in one tenant can never change the status of
+ * another tenant's asset.
+ */
+export type DiscoveryScope = Pick<ResolvedScope, 'assets' | 'roots'>;
+
+/**
+ * Asset ids referenced by the root's blocks at `commitId` that exist inside
+ * `scope.assets`. Ids outside the scope are ignored (and counted in a
+ * development log).
+ */
 export async function findAssetsInCommit(
   db: DrizzleInstance,
   commitId: string,
   rootId: string,
+  scope?: DiscoveryScope,
 ): Promise<string[]> {
   const { blocks } = await loadBlocksAtCommit(db, commitId, rootId);
 
@@ -24,10 +40,25 @@ export async function findAssetsInCommit(
   if (candidates.size === 0) return [];
 
   const candidateArray = [...candidates];
+  const conditions: SQL[] = [inArray(assets.id, candidateArray)];
+  if (scope?.assets?.where) conditions.push(scope.assets.where);
   const found = await db
     .select({ id: assets.id })
     .from(assets)
-    .where(inArray(assets.id, candidateArray));
+    .where(and(...conditions));
+
+  if (scope?.assets?.where && process.env.NODE_ENV !== 'production') {
+    const known = await db
+      .select({ id: assets.id })
+      .from(assets)
+      .where(inArray(assets.id, candidateArray));
+    const ignored = known.length - found.length;
+    if (ignored > 0) {
+      console.debug(
+        `[cms] asset discovery ignored ${ignored} asset id(s) outside the scope of root ${rootId}`,
+      );
+    }
+  }
 
   return found.map((row) => row.id);
 }
@@ -36,25 +67,34 @@ export async function findAssetsInAllPublications(
   db: DrizzleInstance,
   excludeRootId?: string,
   excludeBranchId?: string,
+  scope?: DiscoveryScope,
 ): Promise<Set<string>> {
-  const conditions = [];
+  const conditions: SQL[] = [];
   if (excludeRootId && excludeBranchId) {
     conditions.push(
       sql`NOT (${publications.rootId} = ${excludeRootId} AND ${publications.branchId} = ${excludeBranchId})`,
     );
   }
 
-  const pubs = await db
+  const rootWhere = scope?.roots?.where;
+  if (rootWhere) conditions.push(rootWhere);
+
+  const base = db
     .select({
       rootId: publications.rootId,
       headCommitId: branches.headCommitId,
     })
     .from(publications)
-    .innerJoin(branches, eq(branches.id, publications.branchId))
-    .where(conditions.length > 0 ? and(...conditions) : undefined);
+    .innerJoin(branches, eq(branches.id, publications.branchId));
+  // `scope.roots.where` references `cms.roots`, so join it only when needed.
+  const pubs = await (
+    rootWhere ? base.innerJoin(roots, eq(roots.id, publications.rootId)) : base
+  ).where(conditions.length > 0 ? and(...conditions) : undefined);
 
   const results = await Promise.all(
-    pubs.map((pub) => findAssetsInCommit(db, pub.headCommitId, pub.rootId)),
+    pubs.map((pub) =>
+      findAssetsInCommit(db, pub.headCommitId, pub.rootId, scope),
+    ),
   );
 
   const allAssetIds = new Set<string>();
@@ -71,14 +111,17 @@ export async function syncAssetsOnPublish(
   db: DrizzleInstance,
   commitId: string,
   rootId: string,
+  scope?: DiscoveryScope,
 ): Promise<string[]> {
-  const assetIds = await findAssetsInCommit(db, commitId, rootId);
+  const assetIds = await findAssetsInCommit(db, commitId, rootId, scope);
 
   if (assetIds.length > 0) {
+    const conditions: SQL[] = [inArray(assets.id, assetIds)];
+    if (scope?.assets?.where) conditions.push(scope.assets.where);
     await db
       .update(assets)
       .set({ status: 'public', updatedAt: new Date() })
-      .where(inArray(assets.id, assetIds));
+      .where(and(...conditions));
   }
 
   return assetIds;
@@ -89,23 +132,27 @@ export async function syncAssetsOnUnpublish(
   commitId: string,
   rootId: string,
   branchId: string,
+  scope?: DiscoveryScope,
 ): Promise<string[]> {
-  const assetIds = await findAssetsInCommit(db, commitId, rootId);
+  const assetIds = await findAssetsInCommit(db, commitId, rootId, scope);
   if (assetIds.length === 0) return [];
 
   const stillPublished = await findAssetsInAllPublications(
     db,
     rootId,
     branchId,
+    scope,
   );
 
   const toPrivatize = assetIds.filter((id) => !stillPublished.has(id));
 
   if (toPrivatize.length > 0) {
+    const conditions: SQL[] = [inArray(assets.id, toPrivatize)];
+    if (scope?.assets?.where) conditions.push(scope.assets.where);
     await db
       .update(assets)
       .set({ status: 'private', updatedAt: new Date() })
-      .where(inArray(assets.id, toPrivatize));
+      .where(and(...conditions));
   }
 
   return toPrivatize;

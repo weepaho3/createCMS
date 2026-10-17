@@ -7,6 +7,7 @@ import {
   isNull,
   lt,
   ne,
+  not,
   or,
   sql,
 } from 'drizzle-orm';
@@ -37,6 +38,7 @@ import {
   roots,
   searchIndex,
 } from '../db/schema.generated';
+import { richTextReferenceExists } from '../media/usage';
 import { getStorage } from '../storage/get-storage';
 
 export type PruningResult = {
@@ -838,6 +840,9 @@ export async function runPruningPass(
           JOIN cms.block_versions bv ON bv.id = cu.block_version_id AND bv.deleted = false
           WHERE cu.target_kind = 'asset' AND cu.target_key = ${assets.id}
         )`,
+        mediaConfig.guardRichTextReferences === false
+          ? undefined
+          : not(richTextReferenceExists(assets.id)),
       ),
     )
     .orderBy(asc(assets.archivedAt))

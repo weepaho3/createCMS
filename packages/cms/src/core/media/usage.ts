@@ -1,4 +1,12 @@
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import {
+  type AnyColumn,
+  and,
+  eq,
+  inArray,
+  isNull,
+  type SQL,
+  sql,
+} from 'drizzle-orm';
 
 import type { VersionToIndex } from '../content-index';
 import type { DrizzleInstance } from '../types/drizzle';
@@ -183,6 +191,57 @@ export async function isAssetReferencedByLiveContent(
     )
     .limit(1);
   return hit.length > 0;
+}
+
+/**
+ * True when any block version, in any branch or commit, holds a string that
+ * contains the asset id without being exactly the id: an `<img src>` in rich
+ * text HTML, a stringified JSON document, a URL. The `content_usages` index
+ * matches whole-string ids only, so such references are invisible to it.
+ *
+ * Ids with characters outside `[A-Za-z0-9_-]` never match, since the id is
+ * spliced into a jsonpath literal. `scopeColumns` limits the search to roots
+ * in scope (cross-scope columns, as for the live-usage guard).
+ */
+export function richTextReferenceExists(
+  assetId: AnyColumn | SQL,
+  scopeColumns?: Record<string, unknown>,
+): SQL {
+  const scoped = rootScopeConditions(scopeColumns);
+  return sql`EXISTS (
+    SELECT 1 FROM cms.block_versions bv
+    ${scoped.length > 0 ? sql`JOIN cms.roots ON cms.roots.id = bv.root_id` : sql``}
+    WHERE bv.properties::text LIKE '%' || ${assetId} || '%'
+      AND CASE WHEN ${assetId} ~ '^[A-Za-z0-9_-]+$'
+        THEN jsonb_path_exists(
+          bv.properties,
+          ('$.** ? (@.type() == "string" && @ like_regex "' || ${assetId} ||
+            '" && @ != "' || ${assetId} || '")')::jsonpath
+        )
+        ELSE false END
+      ${scoped.length > 0 ? sql`AND ${and(...scoped)}` : sql``}
+  )`;
+}
+
+/**
+ * The subset of `assetIds` that {@link richTextReferenceExists} flags.
+ */
+export async function assetsSuspectedInRichText(
+  db: DrizzleInstance,
+  assetIds: string[],
+  scopeColumns?: Record<string, unknown>,
+): Promise<Set<string>> {
+  if (assetIds.length === 0) return new Set();
+  const rows = await db
+    .select({ id: assets.id })
+    .from(assets)
+    .where(
+      and(
+        inArray(assets.id, assetIds),
+        richTextReferenceExists(assets.id, scopeColumns),
+      ),
+    );
+  return new Set(rows.map((r) => r.id));
 }
 
 /**

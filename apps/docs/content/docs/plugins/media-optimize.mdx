@@ -3,7 +3,7 @@ title: Media optimize
 description: Client-side resize, compress, and WebP conversion before upload.
 ---
 
-The media optimize plugin processes images in the browser before they are uploaded: it resizes, compresses, and optionally converts to WebP. This cuts bandwidth and storage with no server-side processing. It is a client-only plugin.
+The media optimize plugin processes images in the browser before they are uploaded: it resizes, compresses, and optionally converts to WebP. It is a client-only plugin. Optimization never blocks an upload: a file that cannot be optimized is uploaded unchanged, with a warning.
 
 ## Installation
 
@@ -18,51 +18,78 @@ export const cmsClient = createCMSClient<typeof cms>()({
   baseURL: '/api/cms',
   plugins: [
     mediaOptimizeClient({
-      compress: { quality: 90 },
+      compress: { quality: 82 },
       resize: { maxSize: 2000 },
-      convert: { format: 'webp', storeOriginal: true },
+      convert: { format: 'webp' },
     }),
   ],
 });
 ```
 
-For WebP in browsers without native encoding (for example older Safari), also install the optional fallback:
+### WebP in Safari
+
+Safari's canvas cannot encode WebP. To convert there, install the WASM encoder and pass a loader. The import must sit in your app code so your bundler emits the `.wasm` file; it is called only after the native probe fails, so other browsers never download it.
 
 ```bash
 npm install @jsquash/webp
 ```
 
-## Usage
-
-The plugin adds an `optimize` namespace. Optimize files first, then hand the results to the upload hook:
-
-```tsx
-function Uploader({ file }: { file: File }) {
-  const { results } = cmsClient.optimize.useOptimize(file);
-  const upload = cmsClient.media.useUploadAssets();
-
-  // `results` is OptimizeResult[]; flatten to the File[] that upload expects.
-  const files = (results ?? []).flatMap((r) =>
-    r.originalVariant ? [r.file, r.originalVariant] : [r.file],
-  );
-  // upload.upload(files)
-}
+```ts
+mediaOptimizeClient({
+  convert: { format: 'webp' },
+  webpEncoder: () => import('@jsquash/webp/encode'),
+});
 ```
 
-Pass a second argument to `useOptimize` to override the config for a single call. For a one-off outside React, use the standalone `optimizeImage(file, config)`.
+Without `webpEncoder`, Safari uploads the original file and reports `optimize_unsupported`.
+
+## Usage
+
+With the plugin installed, `cmsClient.media.useUploadAssets().upload(files)` optimizes every image before signing. Opt out per call with `upload(files, { optimize: false })`. Each ledger entry carries the outcome in `entry.optimize`:
+
+```ts
+type CMSMediaUploadOptimizeInfo = {
+  optimized: boolean;
+  bytesBefore: number;
+  bytesAfter: number;
+  warnings: { code: string; message: string }[];
+};
+```
+
+To optimize without uploading, use `cmsClient.optimize.useOptimize(file, overrideConfig?)` in React, or the standalone `optimizeImage(file, config)` and `optimizeFiles(files, config)`. `optimizeImage` never rejects; `OptimizeResult` carries `file`, `optimized`, `bytesBefore`, `bytesAfter`, an optional `originalVariant` and an optional `warning`.
 
 ## Options
 
-All options are optional; omit a section to skip that step.
+All options are optional. Without `resize`, `compress` and `convert` the plugin changes nothing.
 
 | Section | Field | Type | Default | Description |
 | --- | --- | --- | --- | --- |
-| | `enabled` | `boolean` | `true` | Auto-optimize on upload. Set `false` to register no auto-optimizer, so `useUploadAssets().upload(...)` sends the original bytes and you optimize manually with `useOptimize` / `optimizeImage`. |
-| `compress` | `quality` | `number` | `80` | JPEG/PNG quality, 1 to 100. |
-| `resize` | `maxSize` | `number` | `2000` | Max width or height in pixels (aspect ratio preserved). |
-| `convert` | `format` | `'webp'` | | Target format (only WebP is supported). |
-| `convert` | `storeOriginal` | `boolean` | `false` | Also keep a resized, compressed copy in the original format. |
+| | `enabled` | `boolean` | `true` | Auto-optimize on upload. `false` registers no auto-optimizer, so `upload(...)` sends the original bytes. |
+| `compress` | `quality` | `number` | `82` | JPEG/WebP encode quality, 1 to 100. Also used when only `resize` or `convert` is set. PNG ignores it. |
+| `resize` | `maxSize` | `number` | none | Downscale so neither side exceeds this many pixels. Without it, images keep their dimensions. |
+| `convert` | `format` | `'webp'` | none | Encode the output as WebP. |
+| `convert` | `storeOriginal` | `boolean` | `false` | `optimizeImage` also returns `originalVariant`, a resized copy in the input format. Auto-upload sends only the primary file. |
+| | `keepIfSmallerRatio` | `number` | `0.9` | Without a downscale, the re-encoded file is used only if it is at most this fraction of the input size. |
+| | `webpEncoder` | `() => Promise<WebpEncoderModule>` | none | WebP encoder for browsers without native canvas WebP encoding. |
 
-### Failures
+## What gets optimized
 
-This plugin runs entirely in the browser, so there are no HTTP errors. When optimization fails, `useOptimize` surfaces it as an `error` string, and the standalone `optimizeImage` throws. Common causes are a failed WebP encode (the browser lacks native encoding and `@jsquash/webp` is not installed) or being unable to acquire a canvas 2D context.
+Only JPEG, PNG and WebP are re-encoded. These are uploaded byte-identical:
+
+- Non-image files.
+- SVG, GIF, ICO, BMP, AVIF, TIFF, HEIC/HEIF and every other image type.
+- Animated WebP and APNG.
+- Files whose first 256 KB carry an IPTC `DigitalSourceType` XMP property or a C2PA manifest. A canvas re-encode drops all metadata, including these provenance markers.
+
+Files are optimized one at a time, so only one decoded bitmap is held in memory. The output name and type always follow the encoded format (`photo.jpg` becomes `photo.webp`), and an encode that returns another type than requested is discarded.
+
+### Warnings
+
+| Code | Meaning |
+| --- | --- |
+| `optimize_unsupported` | Excluded format, animated image, or WebP output in a browser without an encoder. |
+| `optimize_skipped_provenance` | The file carries IPTC `DigitalSourceType` or a C2PA manifest. |
+| `optimize_mislabel` | The encoder produced another type than requested. |
+| `optimize_failed` | Decoding, importing the fallback encoder, loading its WASM binary or encoding threw. |
+
+This plugin runs entirely in the browser, so there are no HTTP errors and no error codes on `$ERROR_CODES`.

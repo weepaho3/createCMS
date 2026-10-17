@@ -519,7 +519,12 @@ export function createReleaseEndpoints(
 
         // Post-commit, best-effort: the publications are already durable.
         for (const s of synced) {
-          await syncAssetsOnPublish(db, s.commitId, s.rootId).catch((err) =>
+          await syncAssetsOnPublish(
+            db,
+            s.commitId,
+            s.rootId,
+            ctx.context.scope,
+          ).catch((err) =>
             console.error('[cms] release publish asset sync failed:', err),
           );
         }

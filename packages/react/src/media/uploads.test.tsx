@@ -109,7 +109,7 @@ describe('Media.UploadProgress', () => {
       getByRole('progressbar', { name: 'e.png' }).getAttribute(
         'aria-valuetext',
       ),
-    ).toBe('Failed: boom');
+    ).toBe('Failed: The upload failed.');
     expect(
       getByRole('progressbar', { name: 'a.png' }).getAttribute(
         'aria-valuetext',

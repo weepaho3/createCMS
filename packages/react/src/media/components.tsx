@@ -13,7 +13,18 @@ import type {
 
 import { shallowEqual } from '../editor/binding';
 import { mergeProps, useRender } from '../use-render';
-import { MediaContext, MediaUploadsContext, useMediaContext } from './context';
+import {
+  MediaContext,
+  MediaMessagesContext,
+  MediaUploadsContext,
+  useMediaContext,
+  useMediaMessages,
+} from './context';
+import {
+  createMediaFormatters,
+  type MediaMessagesInput,
+  mergeMediaMessages,
+} from './messages';
 import { UNKNOWN_FOLDER_NAME, createMediaStore } from './store';
 import { useSelector } from './use-store';
 
@@ -32,6 +43,10 @@ export type MediaRootProps = {
   onSelectionChange?: (ids: string[]) => void;
   /** `src` for `Media.Thumbnail` (default `asset.url`). */
   assetUrl?: (asset: MediaAsset) => string;
+  /** Partial catalog merged over `defaultMediaMessages`. */
+  messages?: MediaMessagesInput;
+  /** BCP 47 locale for sizes, dates, numbers and plurals (default: runtime locale). */
+  locale?: string;
   children?: React.ReactNode;
 };
 
@@ -50,6 +65,8 @@ export function MediaRoot({
   pageSize = 40,
   onSelectionChange,
   assetUrl = defaultAssetUrl,
+  messages,
+  locale,
   children,
 }: MediaRootProps) {
   const clientRef = React.useRef(client);
@@ -108,11 +125,21 @@ export function MediaRoot({
     [store],
   );
 
+  const catalog = React.useMemo(
+    () => ({
+      messages: mergeMediaMessages(messages),
+      format: createMediaFormatters(locale),
+    }),
+    [messages, locale],
+  );
+
   return (
     <MediaContext.Provider value={value}>
-      <MediaUploadsContext.Provider value={uploads}>
-        {children}
-      </MediaUploadsContext.Provider>
+      <MediaMessagesContext.Provider value={catalog}>
+        <MediaUploadsContext.Provider value={uploads}>
+          {children}
+        </MediaUploadsContext.Provider>
+      </MediaMessagesContext.Provider>
     </MediaContext.Provider>
   );
 }
@@ -399,13 +426,14 @@ const selectPath = (state: MediaLibraryState) => ({
 });
 
 /**
- * `nav[aria-label="Folder path"]`. When the current folder was opened by
+ * `nav` labelled `folder.path`. When the current folder was opened by
  * id without a known ancestry (`defaultFolderId`), `path` holds one entry
  * for it named `…`.
  */
 export function MediaBreadcrumbs(props: MediaBreadcrumbsProps) {
   const { children, render, ...rest } = props;
   const { store } = useMediaContext('Media.Breadcrumbs');
+  const { messages } = useMediaMessages();
   const { folderId, path } = useSelector(store, selectPath);
   const crumbs =
     folderId === null || path[path.length - 1]?.id === folderId
@@ -415,7 +443,7 @@ export function MediaBreadcrumbs(props: MediaBreadcrumbsProps) {
   return useRender({
     defaultTagName: 'nav',
     render,
-    props: mergeProps<'nav'>({ 'aria-label': 'Folder path' }, rest, {
+    props: mergeProps<'nav'>({ 'aria-label': messages.folder.path }, rest, {
       children: children(crumbs),
     }),
   });
@@ -434,6 +462,7 @@ const selectFolderId = (state: MediaLibraryState) => state.folderId;
 export function MediaCrumb(props: MediaCrumbProps) {
   const { folder, render, children, ...rest } = props;
   const { store } = useMediaContext('Media.Crumb');
+  const { messages } = useMediaMessages();
   const folderId = useSelector(store, selectFolderId, Object.is);
   const current = (folder?.id ?? null) === folderId;
 
@@ -446,7 +475,7 @@ export function MediaCrumb(props: MediaCrumbProps) {
         type: 'button',
         'aria-current': current ? 'page' : undefined,
         onClick: () => store.actions.navigate(folder),
-        children: children ?? (folder ? folder.name : 'Root'),
+        children: children ?? (folder ? folder.name : messages.folder.root),
       },
       rest,
     ),
@@ -512,6 +541,7 @@ const selectSearch = (state: MediaLibraryState) => state.search;
 export function MediaSearch(props: MediaSearchProps) {
   const { render, ...rest } = props;
   const { store } = useMediaContext('Media.Search');
+  const { messages } = useMediaMessages();
   const search = useSelector(store, selectSearch, Object.is);
 
   const element = useRender({
@@ -520,7 +550,7 @@ export function MediaSearch(props: MediaSearchProps) {
     props: mergeProps<'input'>(
       {
         type: 'search',
-        'aria-label': 'Search assets',
+        'aria-label': messages.search.label,
         value: search,
         onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
           store.actions.setSearch(event.target.value),

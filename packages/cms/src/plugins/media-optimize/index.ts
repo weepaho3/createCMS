@@ -7,13 +7,20 @@ import type {
   CMSClientStore,
   CMSFetch,
 } from '../../client/types';
+import type { UploadOptimizer } from '../../client/upload-optimizer';
 import type { OptimizationConfig } from '../../core/types/s3';
 
-import { optimizeImage } from './optimize';
+import { annotateUpload } from '../../client/upload-annotations';
+import { UPLOAD_OPTIMIZER_KEY } from '../../client/upload-optimizer';
+import { optimizeFiles } from './optimize';
 import { useOptimize } from './use-optimize';
 
-export type { OptimizeResult } from './optimize';
-export { optimizeImage } from './optimize';
+export type {
+  OptimizeResult,
+  OptimizeWarning,
+  OptimizeWarningCode,
+} from './optimize';
+export { optimizeFiles, optimizeImage } from './optimize';
 export { useOptimize } from './use-optimize';
 export type { OptimizeState } from './use-optimize';
 
@@ -30,47 +37,55 @@ export type MediaOptimizeClientConfig = OptimizationConfig & {
   enabled?: boolean;
 };
 
-/**
- * Shared-store key under which the plugin publishes its auto-optimizer so the
- * React `useUploadAssets` upload path can pick it up and optimize by default.
- * The React client (`client/react.ts`) reads this exact key; keep the two in
- * sync. Absent key means plugin not installed, so uploads are untouched.
- */
-export const UPLOAD_OPTIMIZER_KEY = `${PLUGIN_ID}:uploadOptimizer` as const;
+export { UPLOAD_OPTIMIZER_KEY } from '../../client/upload-optimizer';
+export type { UploadOptimizer } from '../../client/upload-optimizer';
 
 /**
- * Descriptor published on the shared client store. `optimize` runs the
- * configured client-side pipeline over a batch and returns the files to
- * actually upload (primary optimized variants).
+ * Optimizes a batch for upload: one file per input, annotated with its
+ * outcome (`entry.optimize` in the upload ledger). A file whose optimization
+ * fails is passed through unchanged with a warning.
  */
-export type UploadOptimizer = {
-  enabled: boolean;
-  optimize: (files: File[]) => Promise<File[]>;
-};
+export async function optimizeForUpload(
+  files: File[],
+  config: OptimizationConfig,
+): Promise<File[]> {
+  const results = await optimizeFiles(files, config);
+  return results.map((result) => {
+    annotateUpload(result.file, {
+      optimized: result.optimized,
+      bytesBefore: result.bytesBefore,
+      bytesAfter: result.bytesAfter,
+      warnings: result.warning
+        ? [{ code: result.warning.code, message: result.warning.message }]
+        : [],
+    });
+    return result.file;
+  });
+}
 
 /**
- * Client plugin that adds image optimization under its own namespace.
+ * Client plugin that optimizes images before upload and adds the
+ * `optimize` namespace.
  *
- * Exposes `cmsClient.optimize.useOptimize(file, config)` for client-side
- * image optimization. Optimized files can then be passed to
- * `cmsClient.media.useUploadAssets().upload(files)`.
+ * With the plugin installed, `cmsClient.media.useUploadAssets().upload(files)`
+ * optimizes each image first (opt out per call with `{ optimize: false }`).
+ * `cmsClient.optimize.useOptimize(file, config)` runs the same pipeline
+ * without uploading.
  *
  * ```ts
  * import { mediaOptimizeClient } from '@createcms/core/plugins/media-optimize';
  *
- * const client = createCMSClient<typeof cms>({
+ * const client = createCMSClient<typeof cms>()({
  *   baseURL: '/api/cms',
  *   plugins: [
  *     mediaOptimizeClient({
- *       compress: { quality: 90 },
+ *       compress: { quality: 82 },
  *       resize: { maxSize: 2000 },
- *       convert: { format: 'webp', storeOriginal: true },
+ *       convert: { format: 'webp' },
+ *       webpEncoder: () => import('@jsquash/webp/encode'),
  *     }),
  *   ],
  * });
- *
- * // In a component:
- * const { results, isOptimizing } = client.optimize.useOptimize(file, config);
  * ```
  */
 export function mediaOptimizeClient(config: MediaOptimizeClientConfig) {
@@ -87,12 +102,7 @@ export function mediaOptimizeClient(config: MediaOptimizeClientConfig) {
     getActions: (_$fetch: CMSFetch, $store: CMSClientStore) => {
       $store.atoms[UPLOAD_OPTIMIZER_KEY] = atom<UploadOptimizer>({
         enabled,
-        optimize: async (files) => {
-          const results = await Promise.all(
-            files.map((file) => optimizeImage(file, config)),
-          );
-          return results.map((r) => r.file);
-        },
+        optimize: (files) => optimizeForUpload(files, config),
       }) as WritableAtom<unknown>;
 
       return {

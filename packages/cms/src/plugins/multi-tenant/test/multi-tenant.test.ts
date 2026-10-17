@@ -8,6 +8,7 @@ import {
   roots,
   scheduledPublications,
 } from '../../../schema';
+import { publishApprovedBranch } from '../../../test-utils/helpers';
 import { resolveTenantSlug } from '../index';
 import { setupMultiTenantTestCMS } from './utils/cms';
 
@@ -396,6 +397,155 @@ describe('multiTenant folder isolation', () => {
 // ============================================================================
 
 describe('multiTenantPlugin asset isolation', () => {
+  it('deletes a folder whose only assets belong to another tenant', async () => {
+    const { cms, db, setTenant } = await setupMultiTenantTestCMS();
+    setTenant('acme');
+    const { folder } = await cms.api.media.createFolder({
+      body: { name: 'Shared id' },
+    });
+    await db.execute(sql`
+      INSERT INTO cms.assets (id, slug, mime_type, size, object_key, status, tenant_slug, folder_id)
+      VALUES ('asset-globex-f', 'globex-file', 'image/png', 1, 'globex-f.png', 'private', 'globex', ${folder.id})
+    `);
+
+    await expect(
+      cms.api.media.deleteFolder({ body: { folderId: folder.id } }),
+    ).resolves.toEqual({ folderId: folder.id });
+  });
+
+  it('lets two tenants own the same file name with the same slug', async () => {
+    const { cms, db, s3, setTenant } = await setupMultiTenantTestCMS({
+      withS3: true,
+    });
+    try {
+      const png = new Uint8Array([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      ]);
+      const upload = () =>
+        cms.api.media.uploadAssets({
+          body: {
+            files: [
+              {
+                name: 'hero.png',
+                size: png.byteLength,
+                type: 'image/png',
+                buffer: new Blob([png]),
+              },
+            ],
+          },
+        });
+
+      setTenant('acme');
+      const acme = await upload();
+      setTenant('globex');
+      const globex = await upload();
+
+      expect(acme.assets[0].slug).toBe('hero.png');
+      expect(globex.assets[0].slug).toBe('hero.png');
+      expect(acme.assets[0].objectKey).not.toBe(globex.assets[0].objectKey);
+
+      // The per-tenant unique still applies inside one tenant.
+      const again = await upload();
+      expect(again.assets[0].slug).toBe('hero-2.png');
+
+      const rows = await db
+        .select({ slug: assets.slug })
+        .from(assets)
+        .where(eq(assets.slug, 'hero.png'));
+      expect(rows).toHaveLength(2);
+    } finally {
+      await s3.cleanup();
+    }
+  });
+
+  describe('publish discovery', () => {
+    const ACME_ASSET = 'ast_acme0000000000000001';
+    const GLOBEX_ASSET = 'ast_globex00000000000001';
+
+    async function setup() {
+      const ctx = await setupMultiTenantTestCMS();
+      await ctx.db.execute(sql`
+        INSERT INTO cms.assets (id, slug, mime_type, size, object_key, status, tenant_slug)
+        VALUES
+          (${ACME_ASSET}, 'acme-hero', 'image/png', 1024, 'acme-hero.png', 'private', 'acme'),
+          (${GLOBEX_ASSET}, 'globex-hero', 'image/png', 1024, 'globex-hero.png', 'private', 'globex')
+      `);
+      return ctx;
+    }
+
+    async function pageWith(
+      cms: Awaited<ReturnType<typeof setup>>['cms'],
+      slug: string,
+      assetIds: string[],
+    ) {
+      const root = await cms.api.pages.createRoot({
+        body: { slug, properties: { title: 'Page' } },
+      });
+      for (const src of assetIds) {
+        await cms.api.pages.createBlock({
+          body: {
+            rootId: root.rootId,
+            branchId: root.branchId,
+            parentBlockId: root.rootId,
+            type: 'image',
+            properties: { src, alt: 'Hero' },
+          },
+        });
+      }
+      return root;
+    }
+
+    async function statusOf(
+      db: Awaited<ReturnType<typeof setup>>['db'],
+      id: string,
+    ) {
+      const [row] = await db
+        .select({ status: assets.status })
+        .from(assets)
+        .where(eq(assets.id, id));
+      return row.status;
+    }
+
+    it("never publishes another tenant's asset", async () => {
+      const { cms, db, setTenant } = await setup();
+      setTenant('globex');
+      const root = await pageWith(cms, '/cross', [ACME_ASSET, GLOBEX_ASSET]);
+      await publishApprovedBranch(cms, {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        publishedBy: 'user-1',
+      });
+
+      expect(await statusOf(db, GLOBEX_ASSET)).toBe('public');
+      expect(await statusOf(db, ACME_ASSET)).toBe('private');
+    });
+
+    it("never unpublishes another tenant's asset", async () => {
+      const { cms, db, setTenant } = await setup();
+      setTenant('acme');
+      const acmePage = await pageWith(cms, '/own', [ACME_ASSET]);
+      await publishApprovedBranch(cms, {
+        rootId: acmePage.rootId,
+        branchId: acmePage.branchId,
+        publishedBy: 'user-1',
+      });
+      expect(await statusOf(db, ACME_ASSET)).toBe('public');
+
+      setTenant('globex');
+      const globexPage = await pageWith(cms, '/cross', [ACME_ASSET]);
+      await publishApprovedBranch(cms, {
+        rootId: globexPage.rootId,
+        branchId: globexPage.branchId,
+        publishedBy: 'user-1',
+      });
+      await cms.api.pages.unpublishBranch({
+        body: { rootId: globexPage.rootId, branchId: globexPage.branchId },
+      });
+
+      expect(await statusOf(db, ACME_ASSET)).toBe('public');
+    });
+  });
+
   it('lists only assets belonging to the active tenant', async () => {
     const { cms, db, setTenant } = await setupMultiTenantTestCMS();
 

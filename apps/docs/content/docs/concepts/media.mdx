@@ -13,14 +13,14 @@ Each upload creates a row in `assets`:
 | --- | --- |
 | `id` | Stable primary key (`ast_…`). What content stores and what the gate resolves. Never changes, even when the bytes are replaced. |
 | `slug` | Unique, URL-friendly name derived from the filename. Regenerated on `replaceAsset`. |
-| `objectKey` | The key in your bucket: `<id>/<slug>` for browser uploads and replaces, the slug verbatim for server-side `uploadAssets` / `replaceAsset`. |
+| `objectKey` | The key in your bucket: `<id>/<slug>`, where the id is fresh per upload or replace. |
 | `status` | `'private'` (default) or `'public'`. |
 | `folderId` | The folder it lives in, if any. |
 | `variantOf` | If set, this asset is a variant (a resized or reformatted copy) of another. |
 | `mimeType`, `size` | Content type and byte size. |
 | `archivedAt` | Soft-delete marker for pruning. |
 
-Three of these are identifiers, and keeping them straight is the key to the whole model. The `id` is stable and opaque: content references it, and the gate is addressed by it. The `slug` is a human-readable, unique name derived from the filename; the `objectKey` is where the bytes live in your bucket and ends in the slug. The `id` and the slug/key pair are decoupled on purpose. [`replaceAsset`](/docs/reference/media#replaceasset) (server-side) or [`createSignedReplace`](/docs/reference/media#createsignedreplace) + [`commitReplace`](/docs/reference/media#commitreplace) (browser) mints a new slug and object key for the new bytes but keeps the `id`, so every reference follows the swap while the CDN still treats each version's object as immutable.
+Three of these are identifiers, and keeping them straight is the key to the whole model. The `id` is stable and opaque: content references it, and the gate is addressed by it. The `slug` is a human-readable name derived from the filename, unique within a scope (two tenants can both own `hero.jpg`); the `objectKey` is where the bytes live in your bucket and ends in the slug. The `id` and the slug/key pair are decoupled on purpose. [`replaceAsset`](/docs/reference/media#replaceasset) (server-side) or [`createSignedReplace`](/docs/reference/media#createsignedreplace) + [`commitReplace`](/docs/reference/media#commitreplace) (browser) mints a new slug and object key for the new bytes but keeps the `id`, so every reference follows the swap while the CDN still treats each version's object as immutable.
 
 Folders are a nested tree (`asset_folders`, each with a `parentId`). They organize the media library and nothing more: a folder does not affect an asset's URL, its status, or how it is served. [`listFolders`](/docs/reference/media#listfolders) reads one level at a time (the children of a parent, or the root-level folders when no `parentFolderId` is given); [`createFolder`](/docs/reference/media#createfolder), [`moveFolder`](/docs/reference/media#movefolder), and [`deleteFolder`](/docs/reference/media#deletefolder) manage them. A folder that still holds assets or subfolders cannot be deleted (it throws `FOLDER_HAS_CONTENT`), and moving an asset carries its variants along, so an original and its variants are never split across folders.
 
@@ -28,7 +28,13 @@ Folders are a nested tree (`asset_folders`, each with a `parentId`). They organi
 
 `status` is a **visibility flag**. An asset is created `private`, and a private asset is not served by the public gate: [`GET /media/asset/{id}`](/docs/reference/media#asset) returns `ASSET_ACCESS_DENIED`. To expose one, flip it to `public` with [`updateAssetsStatus`](/docs/reference/media#updateassetsstatus). You rarely call that by hand: publishing content that references an asset flips it to `public` automatically, and unpublishing reverts it to `private` unless another published page still references it. Status tracks what your live content needs, so it mostly manages itself.
 
-The gate is enforced by the CMS endpoints, not by the object store. Uploaded objects are `public-read`, so `status` is not a hard-privacy boundary. Treat it as "should this be shown," not "is this secret." As defense in depth, serve assets from a **cross-origin** host (a `publicUrl` that is not your app's origin) so an uploaded file cannot run as same-origin, and note that the default `allowedMimeTypes` excludes SVG for the same reason. See [Security → Media privacy](/docs/resources/security#media-privacy).
+The gate is enforced by the CMS endpoints, not by the object store. Uploaded objects are `public-read`, so `status` is not a hard-privacy boundary. Treat it as "should this be shown," not "is this secret."
+
+<Callout type="warn">
+`private` is not an access boundary. It decides whether the gate serves an asset; anyone who knows an object's key can still read it from the bucket. Do not upload files that must stay secret.
+</Callout>
+
+By default every upload is sent with `x-amz-acl: public-read`. New AWS buckets enforce bucket-owner object ownership and reject that header with `AccessControlListNotSupported`; set [`acl: false`](/docs/reference/configuration#media) for them and grant public reads with a bucket policy or a CDN instead. As defense in depth, serve assets from a **cross-origin** host (a `publicUrl` that is not your app's origin) so an uploaded file cannot run as same-origin, and note that the default `allowedMimeTypes` excludes SVG for the same reason. See [Security → Media privacy](/docs/resources/security#media-privacy).
 
 ## Uploading: signed URL vs server
 
@@ -37,7 +43,7 @@ Two upload paths write the same rows and enforce the same limits; they differ on
 - **[`createSignedUpload`](/docs/reference/media#createsignedupload) + [`completeUpload`](/docs/reference/media#completeupload) (default).** `createSignedUpload` returns presigned PUT URLs and a signed token per file without writing a row; the browser uploads each file straight to the bucket; `completeUpload` verifies each landed object (length, content type, and the magic bytes of a declared image) and only then creates the row. No file bytes pass through your server, so there are no serverless body-size limits and less egress. A PUT that is never completed leaves an object in the bucket but no row, so it never appears in the library. Use this for browser uploads; the React `useUploadAssets` hook wraps all three steps.
 - **[`uploadAssets`](/docs/reference/media#uploadassets).** You send the file bytes (a `buffer: Blob | ArrayBuffer` per file) to the CMS, which PUTs them to the bucket. Use this for server-side sources.
 
-Both validate against the limits (defaults: `maxFiles` 10, `maxFileSize` 4 MB, and an `allowedMimeTypes` allowlist that **excludes SVG**; see [Configuration](/docs/reference/configuration#media)), and signed URLs expire after 120s by default. Every new asset lands `private`, so uploading and serving are two steps:
+Both validate against the limits (defaults: `maxFiles` 10, `maxFileSize` 4 MB, and an `allowedMimeTypes` allowlist that **excludes SVG**; see [Configuration](/docs/reference/configuration#media)), and signed URLs expire after 300s by default. Every new asset lands `private`, so uploading and serving are two steps:
 
 ```ts
 // Server-side upload: bytes go through the CMS to the bucket.
