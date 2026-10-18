@@ -103,13 +103,17 @@ import {
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import {
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogTitle,
+} from '@/components/ui/responsive-dialog';
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 
 import { MediaDetailPanel } from './media-detail';
@@ -1261,7 +1265,8 @@ function useMediaQuery(query: string) {
  * Media.Root. A click selects (Finder rules), Space opens the fullscreen
  * preview. With `detail`, the selected asset's preview and details follow
  * the selection in a side column from `xl` (1280 px); below that they open
- * in a sheet on double click, Enter or the selection bar's Details button.
+ * in a responsive dialog (a side drawer, a bottom drawer on phones) on
+ * double click, Enter or the selection bar's Details button.
  */
 function MediaLibraryLayout({
   className,
@@ -1274,7 +1279,6 @@ function MediaLibraryLayout({
   const preview = usePreview();
   const { selected } = useMediaSelection();
   const wide = useMediaQuery('(min-width: 80rem)');
-  const phone = !useMediaQuery('(min-width: 40rem)');
   const single = selected.length === 1;
   const [sheetOpen, setSheetOpen] = React.useState(false);
   React.useEffect(() => {
@@ -1334,15 +1338,21 @@ function MediaLibraryLayout({
         <MediaDetailPanel className="sticky top-4 max-h-[calc(100vh-2rem)] self-start overflow-y-auto" />
       ) : null}
       {showSheet ? (
-        <Sheet open={sheetOpen && single} onOpenChange={setSheetOpen}>
-          <SheetContent
-            side={phone ? 'bottom' : 'right'}
-            aria-label={t.detail.title}
-            className="max-h-[90vh] gap-0 overflow-y-auto p-0 data-[side=right]:max-h-none data-[side=right]:w-96"
+        <ResponsiveDialog
+          open={sheetOpen && single}
+          onOpenChange={setSheetOpen}
+          desktopDirection="right"
+        >
+          <ResponsiveDialogContent
+            showCloseButton
+            className="data-[drawer-direction=right]:w-96 data-[drawer-direction=right]:max-w-[calc(100vw-2rem)]"
           >
-            <MediaDetailPanel className="rounded-none border-0 pt-12" />
-          </SheetContent>
-        </Sheet>
+            <ResponsiveDialogTitle className="sr-only">
+              {t.detail.title}
+            </ResponsiveDialogTitle>
+            <MediaDetailPanel className="rounded-none border-0 bg-transparent pt-8" />
+          </ResponsiveDialogContent>
+        </ResponsiveDialog>
       ) : null}
     </div>
   );

@@ -155,7 +155,7 @@
         "breadcrumb",
         "dropdown-menu",
         "media-detail",
-        "sheet"
+        "responsive-dialog"
       ],
       "files": [
         {
@@ -186,6 +186,20 @@
       "files": [
         {
           "path": "registry/media-picker.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "responsive-dialog",
+      "type": "registry:ui",
+      "title": "Responsive Dialog",
+      "description": "A bottom drawer with swipe to close on phones and a centred dialog or side drawer from md on, built on the Base UI Drawer.",
+      "dependencies": ["@base-ui/react", "lucide-react"],
+      "registryDependencies": ["button", "use-mobile"],
+      "files": [
+        {
+          "path": "src/components/ui/responsive-dialog.tsx",
           "type": "registry:ui"
         }
       ]
