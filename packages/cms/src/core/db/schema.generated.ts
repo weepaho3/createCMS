@@ -35,6 +35,8 @@ export const conflictResolutionEnum = cmsSchema.enum("conflict_resolution", ["so
 
 export const contentUsageTargetEnum = cmsSchema.enum("content_usage_target", ["asset", "variable", "reference", "link"]);
 
+export const mediaExportStatusEnum = cmsSchema.enum("media_export_status", ["pending", "running", "ready", "failed"]);
+
 export const mergeRequestStatusEnum = cmsSchema.enum("merge_request_status", ["open", "merged", "closed"]);
 
 export const notificationTypeEnum = cmsSchema.enum("notification_type", ["mention", "comment", "threadResolved", "threadReopened", "approvalRequested", "approvalApproved", "approvalRejected", "mergeRequestOpened", "mergeRequestMerged", "mergeRequestClosed", "mergeRequestReopened", "published", "custom"]);
@@ -321,6 +323,34 @@ export const contentUsages = cmsSchema.table(
   ],
 );
 
+export const mediaExports = cmsSchema.table(
+  "media_exports",
+  {
+    id: text("id").primaryKey().$defaultFn(() => newId("mediaExport")),
+    status: mediaExportStatusEnum("status").notNull().default("pending"),
+    name: text("name").notNull(),
+    createdBy: text("created_by"),
+    scope: text("scope").notNull(),
+    channelKey: text("channel_key"),
+    objectKey: text("object_key").notNull(),
+    entries: jsonb("entries").$type<{ assetId: string | null; objectKey: string | null; name: string; size: number; crc: number | null; skipped?: boolean; usage?: number | null }[]>().notNull(),
+    manifest: boolean("manifest").notNull().default(false),
+    cursor: jsonb("cursor").$type<{ position: number; crc: number; uploadId: string; partNumber: number }>(),
+    totalBytes: bigint("total_bytes", { mode: 'number' }).notNull(),
+    writtenBytes: bigint("written_bytes", { mode: 'number' }).notNull().default(0),
+    attempts: integer("attempts").notNull().default(0),
+    error: text("error"),
+    lockedUntil: timestamp("locked_until"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    completedAt: timestamp("completed_at"),
+    expiresAt: timestamp("expires_at"),
+  },
+  (table) => [
+    index("mex_actor_idx").on(table.createdBy, table.status),
+    index("mex_status_idx").on(table.status, table.createdAt),
+  ],
+);
+
 export const mergeConflicts = cmsSchema.table(
   "merge_conflicts",
   {
@@ -599,6 +629,7 @@ export const schema = {
   commits,
   commitSnapshots,
   contentUsages,
+  mediaExports,
   mergeConflicts,
   mergeRequests,
   notifications,
@@ -622,6 +653,7 @@ export const schema = {
   commentThreadTargetEnum,
   conflictResolutionEnum,
   contentUsageTargetEnum,
+  mediaExportStatusEnum,
   mergeRequestStatusEnum,
   notificationTypeEnum,
   redirectEndpointTypeEnum,
@@ -661,6 +693,9 @@ export type NewCommitSnapshot = typeof commitSnapshots.$inferInsert;
 
 export type ContentUsage = typeof contentUsages.$inferSelect;
 export type NewContentUsage = typeof contentUsages.$inferInsert;
+
+export type MediaExport = typeof mediaExports.$inferSelect;
+export type NewMediaExport = typeof mediaExports.$inferInsert;
 
 export type MergeConflict = typeof mergeConflicts.$inferSelect;
 export type NewMergeConflict = typeof mergeConflicts.$inferInsert;

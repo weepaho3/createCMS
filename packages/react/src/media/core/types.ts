@@ -288,8 +288,40 @@ export type MediaClient = {
     skipped: string[];
     expiresAt: string;
   }>;
+  /** Starts a server-written ZIP archive of assets. */
+  createZipExport?(args: {
+    body: {
+      assetIds: string[];
+      name?: string;
+      flatten?: boolean;
+      manifest?: boolean;
+    };
+  }): Promise<{ export: MediaZipExport }>;
+  /** The state of a server-written archive, with a signed `url` once ready. */
+  getZipExport?(args: {
+    body: { exportId: string };
+  }): Promise<{ export: MediaZipExport }>;
+  /** Cancels a server-written archive or deletes it. */
+  deleteZipExport?(args: {
+    body: { exportId: string };
+  }): Promise<{ deleted: true }>;
   /** Server events (`media.*`), e.g. from the realtime client; returns the unsubscribe. */
   subscribe?(onEvent: (event: MediaServerEvent) => void): () => void;
+};
+
+/** A server-written archive as `getZipExport` returns it. */
+export type MediaZipExport = {
+  id: string;
+  name: string;
+  status: 'pending' | 'running' | 'ready' | 'failed';
+  files: number;
+  skipped: string[];
+  loaded: number;
+  total: number;
+  url: string | null;
+  error: string | null;
+  createdAt: string;
+  expiresAt: string | null;
 };
 
 export type { FilterState };

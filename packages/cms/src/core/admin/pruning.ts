@@ -42,6 +42,7 @@ import {
 import { assetsUsedExternally } from '../media/archive';
 import { scanPendingAssets } from '../media/scan';
 import { richTextReferenceExists } from '../media/usage';
+import { processZipExports } from '../media/zip-export';
 import { getStorage } from '../storage/get-storage';
 import { MEDIA_DEFAULTS } from '../types/s3';
 
@@ -662,6 +663,10 @@ export type PruningPassResult = PruningResult & {
   scannedAssets: string[];
   /** Pending assets the scanner found infected: object deleted, `failed`. */
   failedAssets: string[];
+  /** Archive exports (`createZipExport`) finished this pass. */
+  finishedExports: string[];
+  /** Expired archive exports deleted this pass, with their archives. */
+  expiredExports: string[];
   /**
    * Pass to the next pass as `sweepCursor`; `null` once the sweep reached
    * the end of the bucket (the next pass starts over), or when the storage
@@ -728,6 +733,8 @@ export async function runPruningPass(
   const sweptObjects: string[] = [];
   const scannedAssets: string[] = [];
   const failedAssets: string[] = [];
+  const finishedExports: string[] = [];
+  const expiredExports: string[] = [];
   let sweepCursor: string | null = null;
   let processedLiveRoots = 0;
   let budget = maxRoots;
@@ -748,6 +755,8 @@ export async function runPruningPass(
     sweptObjects,
     scannedAssets,
     failedAssets,
+    finishedExports,
+    expiredExports,
     sweepCursor,
     stoppedReason: reason,
     done: reason === 'idle',
@@ -930,6 +939,17 @@ export async function runPruningPass(
   scannedAssets.push(...scanned.ready);
   failedAssets.push(...scanned.failed);
   if (scanned.more) return finish('budget');
+
+  // 5) Continue unfinished archive exports at their last stored part and
+  //    delete expired archives.
+  if (Date.now() >= deadline) return finish('budget');
+  const exported = await processZipExports(db, mediaConfig, cmsCtx.realtime, {
+    deadline,
+    dryRun,
+  });
+  finishedExports.push(...exported.finished);
+  expiredExports.push(...exported.expired);
+  if (exported.more) return finish('budget');
 
   if (Date.now() >= deadline) return finish('budget');
   sweepCursor = await sweepOrphanedObjects(db, mediaConfig, {

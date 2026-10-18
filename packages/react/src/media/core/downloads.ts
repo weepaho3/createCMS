@@ -49,8 +49,11 @@ export type DownloadJob = {
   loaded: number;
   /** Bytes of the finished archive. */
   total: number;
-  /** `file` (saved while streaming) or `blob` (assembled in memory). */
-  sink: DownloadSink['kind'] | null;
+  /**
+   * `file` (saved while streaming), `blob` (assembled in memory) or
+   * `server` (written by `createZipExport`, then downloaded).
+   */
+  sink: DownloadSink['kind'] | 'server' | null;
   error: string | null;
 };
 
@@ -94,6 +97,33 @@ export type DownloadOptions = {
   /** Usage counts for the manifest. */
   usage?: Record<string, number>;
 };
+
+/** A server-written archive (`createZipExport` / `getZipExport`). */
+export type ServerExport = {
+  id: string;
+  status: 'pending' | 'running' | 'ready' | 'failed';
+  /** Asset ids left out because their object was missing. */
+  skipped: string[];
+  loaded: number;
+  total: number;
+  url: string | null;
+  error: string | null;
+};
+
+/** Starts, polls and cancels server-written archives. */
+export type DownloadExporter = {
+  create(
+    assetIds: string[],
+    options: { name: string; flatten?: boolean; manifest?: boolean },
+  ): Promise<ServerExport>;
+  get(exportId: string): Promise<ServerExport>;
+  delete?(exportId: string): Promise<void>;
+};
+
+/** From this many files on, an archive is written on the server. */
+export const SERVER_EXPORT_FILES = 500;
+/** Interval between `getZipExport` polls. */
+export const SERVER_EXPORT_POLL_MS = 2000;
 
 /** Blob archives above these sizes are refused (memory). */
 export const BLOB_DOWNLOAD_LIMIT = 2 * 1024 ** 3;
@@ -189,6 +219,35 @@ export async function chooseSink(
   return file ?? blobSink(name, size);
 }
 
+/** Starts the browser download of a signed archive URL. */
+function openUrl(url: string) {
+  if (typeof document === 'undefined') return;
+  const link = document.createElement('a');
+  link.href = url;
+  link.rel = 'noopener';
+  document.body.append(link);
+  link.click();
+  link.remove();
+}
+
+function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 let jobCounter = 0;
 
 export type DownloadQueue = {
@@ -206,6 +265,14 @@ export type DownloadQueue = {
 
 export function createDownloadQueue(options: {
   sign: DownloadSigner;
+  /**
+   * Writes archives on the server instead: used from `SERVER_EXPORT_FILES`
+   * files on, on iOS, and when the browser can neither stream to a file nor
+   * hold the archive in memory.
+   */
+  exporter?: DownloadExporter;
+  /** Waits between export polls (tests). */
+  sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
   fetch?: typeof fetch;
   sink?: (name: string, size: number) => Promise<DownloadSink>;
   concurrency?: number;
@@ -213,6 +280,7 @@ export function createDownloadQueue(options: {
   const doFetch = options.fetch ?? ((input, init) => fetch(input, init));
   const pickSink = options.sink ?? chooseSink;
   const concurrency = Math.max(1, options.concurrency ?? DOWNLOAD_CONCURRENCY);
+  const sleep = options.sleep ?? abortableSleep;
   let state: DownloadState = { jobs: [] };
   const listeners = new Set<() => void>();
   const controllers = new Map<string, AbortController>();
@@ -379,6 +447,20 @@ export function createDownloadQueue(options: {
       if (manifest) yield { name: 'manifest.csv', input: manifest };
     }
 
+    const hasFilePicker =
+      typeof (globalThis as { showSaveFilePicker?: unknown })
+        .showSaveFilePicker === 'function';
+    if (
+      options.exporter &&
+      (items.length >= SERVER_EXPORT_FILES ||
+        isIos() ||
+        (!hasFilePicker && total > BLOB_DOWNLOAD_LIMIT))
+    ) {
+      await exportOnServer(id, name, opts, controller.signal);
+      controllers.delete(id);
+      return state.jobs.find((job) => job.id === id)!;
+    }
+
     try {
       const sink = await pickSink(name, total);
       setJob(id, (job) => ({ ...job, status: 'downloading', sink: sink.kind }));
@@ -407,6 +489,71 @@ export function createDownloadQueue(options: {
     }
     return state.jobs.find((job) => job.id === id)!;
   };
+
+  async function exportOnServer(
+    id: string,
+    name: string,
+    opts: DownloadOptions,
+    signal: AbortSignal,
+  ) {
+    const exporter = options.exporter!;
+    const ids = state.jobs.find((job) => job.id === id)!.items.map((i) => i.id);
+    let exportId: string | null = null;
+    try {
+      setJob(id, (job) => ({ ...job, status: 'downloading', sink: 'server' }));
+      let current = await exporter.create(ids, {
+        name,
+        flatten: opts.flatten,
+        manifest: opts.manifest,
+      });
+      exportId = current.id;
+      while (current.status === 'pending' || current.status === 'running') {
+        const progress = current;
+        setJob(id, (job) => ({
+          ...job,
+          loaded: progress.loaded,
+          total: progress.total,
+        }));
+        await sleep(SERVER_EXPORT_POLL_MS, signal);
+        current = await exporter.get(current.id);
+      }
+      if (current.status === 'failed' || !current.url) {
+        throw new DownloadError('DOWNLOAD_FAILED', current.error ?? 'failed');
+      }
+      const skipped = new Set(current.skipped);
+      const done = current;
+      setJob(id, (job) => ({
+        ...job,
+        status: 'success',
+        loaded: done.total,
+        total: done.total,
+        items: job.items.map((item) => ({
+          ...item,
+          status: skipped.has(item.id) ? 'skipped' : 'success',
+          loaded: skipped.has(item.id) ? 0 : item.size,
+          error: skipped.has(item.id) ? 'NOT_FOUND' : null,
+        })),
+      }));
+      openUrl(done.url!);
+    } catch (error) {
+      const aborted = signal.aborted;
+      if (aborted && exportId) void exporter.delete?.(exportId).catch(() => {});
+      setJob(id, (job) => ({
+        ...job,
+        status: aborted ? 'aborted' : 'error',
+        error: aborted
+          ? null
+          : error instanceof DownloadError
+            ? error.code
+            : 'DOWNLOAD_FAILED',
+        items: job.items.map((item) =>
+          item.status === 'pending' || item.status === 'downloading'
+            ? { ...item, status: aborted ? 'aborted' : 'error' }
+            : item,
+        ),
+      }));
+    }
+  }
 
   return {
     getState: () => state,

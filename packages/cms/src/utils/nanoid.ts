@@ -13,6 +13,7 @@ const prefixes = {
   approval: 'apr',
   assetFolder: 'afl',
   asset: 'ast',
+  mediaExport: 'mex',
   contentUsage: 'cus',
   commentThread: 'cth',
   commentMessage: 'cmg',

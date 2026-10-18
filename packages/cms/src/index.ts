@@ -270,6 +270,8 @@ export type {
   MediaAssetEventPayload,
   MediaFolderEvent,
   MediaFolderEventPayload,
+  MediaExportEvent,
+  MediaExportEventPayload,
 } from './core/media/events';
 export { mediaChannel } from './core/media/events';
 export {

@@ -16,6 +16,8 @@ export type MediaFolderEvent =
   | 'media.folder.moved'
   | 'media.folder.deleted';
 
+export type MediaExportEvent = 'media.export.ready' | 'media.export.failed';
+
 export type MediaAssetEventPayload = {
   tenant: string | null;
   assetId: string;
@@ -28,6 +30,13 @@ export type MediaAssetEventPayload = {
 export type MediaFolderEventPayload = {
   tenant: string | null;
   folderId: string;
+  updatedAt: string;
+};
+
+/** `media.export.ready` and `media.export.failed`: poll `getZipExport` for details. */
+export type MediaExportEventPayload = {
+  tenant: string | null;
+  exportId: string;
   updatedAt: string;
 };
 
@@ -54,6 +63,7 @@ export async function emitMediaEvents(
         reason?: string;
       }
     | { event: MediaFolderEvent; folderId: string }
+    | { event: MediaExportEvent; exportId: string }
   )[],
 ): Promise<void> {
   if (!realtime || events.length === 0) return;
@@ -61,8 +71,13 @@ export async function emitMediaEvents(
   const tenant = scope?.channelKey ?? null;
   const updatedAt = new Date().toISOString();
   for (const item of events) {
-    let payload: MediaAssetEventPayload | MediaFolderEventPayload;
-    if ('assetId' in item) {
+    let payload:
+      | MediaAssetEventPayload
+      | MediaFolderEventPayload
+      | MediaExportEventPayload;
+    if ('exportId' in item) {
+      payload = { tenant, exportId: item.exportId, updatedAt };
+    } else if ('assetId' in item) {
       const assetPayload: MediaAssetEventPayload = {
         tenant,
         assetId: item.assetId,

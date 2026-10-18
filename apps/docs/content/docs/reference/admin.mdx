@@ -37,6 +37,8 @@ Run one bounded, resumable pruning pass to reclaim storage: it deletes old commi
     sweptObjects: { type: 'string[]', description: 'Storage keys the orphan sweep deleted this pass: objects of signed uploads that were never completed.' },
     scannedAssets: { type: 'string[]', description: 'Pending assets `media.scan` cleared this pass; they are `ready` (and moved to the public prefix where the asset is public).' },
     failedAssets: { type: 'string[]', description: 'Pending assets `media.scan` found infected this pass; their objects are deleted and they are `failed`.' },
+    finishedExports: { type: 'string[]', description: 'ZIP exports (`createZipExport`) this pass finished; unfinished ones continue at their last stored part.' },
+    expiredExports: { type: 'string[]', description: 'Finished or failed ZIP exports past their 24 hours, deleted this pass with their archives.' },
     sweepCursor: { type: 'string | null', description: 'Pass to the next pass as `sweepCursor`; `null` once the sweep reached the end of the bucket, or when the storage cannot list keys.' },
     plugins: { type: 'Record<string, Record<string, number>>', description: 'Per-plugin pruning metrics keyed by plugin id; always present, empty when no plugin prunes.' },
     stoppedReason: { type: "'maxRoots' | 'budget' | 'idle'", description: 'Why the pass stopped: it hit the count cap, ran out of the time budget, or drained all due work.' },

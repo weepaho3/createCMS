@@ -343,6 +343,18 @@ order; a file that is missing or fails is skipped and the archive shrinks
 accordingly. Archive paths keep the folder path unless `flatten`, are made
 safe and unique, and `manifest` adds `manifest.csv`.
 
+With an `exporter` (a `DownloadExporter`: `create(assetIds, options)`,
+`get(exportId)`, optional `delete(exportId)`, each resolving with a
+`ServerExport`), the archive is written on the server instead from
+`SERVER_EXPORT_FILES` (500) files on, on iOS, and when the browser can
+neither stream to a file nor hold the archive in memory. The job's `sink`
+is then `server`; it polls every `SERVER_EXPORT_POLL_MS` (2 s), reports the
+server's byte progress, marks assets the server left out as `skipped` and
+opens the signed URL once the archive is ready. Cancelling deletes the
+export. The library passes an exporter when the client has
+`createZipExport` and `getZipExport`, whose response is a
+`MediaZipExport`.
+
 A `DownloadSink` is `{ kind, writable, finish }`: `fileSink(name)` streams
 to a file the user picks (`showSaveFilePicker`, `null` where unsupported),
 `blobSink(name, size)` collects in memory and saves through a link, refused

@@ -232,8 +232,28 @@ export function downloadQueueOf(store: MediaStore): DownloadQueue | null {
   let queue = downloadQueues.get(store);
   if (!queue) {
     const intent = client.downloadIntent.bind(client);
+    const { createZipExport, getZipExport, deleteZipExport } = client;
     queue = createDownloadQueue({
       sign: (assetIds) => intent({ body: { assetIds } }),
+      exporter:
+        createZipExport && getZipExport
+          ? {
+              create: async (assetIds, options) =>
+                (
+                  await createZipExport.call(client, {
+                    body: { assetIds, ...options },
+                  })
+                ).export,
+              get: async (exportId) =>
+                (await getZipExport.call(client, { body: { exportId } }))
+                  .export,
+              delete: deleteZipExport
+                ? async (exportId) => {
+                    await deleteZipExport.call(client, { body: { exportId } });
+                  }
+                : undefined,
+            }
+          : undefined,
     });
     downloadQueues.set(store, queue);
   }

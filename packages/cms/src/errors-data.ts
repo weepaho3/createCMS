@@ -247,6 +247,10 @@ export const CMS_ERRORS = {
     status: 404 as const,
     message: 'No object was uploaded for this token',
   },
+  EXPORT_NOT_FOUND: {
+    status: 404 as const,
+    message: 'No archive export with this id exists for the caller',
+  },
   STORAGE_UNSUPPORTED: {
     status: 500 as const,
     message: 'The storage adapter does not support this operation',

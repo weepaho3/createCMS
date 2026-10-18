@@ -93,6 +93,7 @@ import {
 import { MEDIA_DEFAULTS } from '../types/s3';
 import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
 import { createMediaAssetEndpoints } from './media-assets';
+import { createMediaExportEndpoints } from './media-exports';
 import { createMediaFolderEndpoints } from './media-folders';
 import { createMediaUsageEndpoints } from './media-usage';
 
@@ -963,6 +964,7 @@ export function createMediaEndpoints(
   return {
     ...createMediaFolderEndpoints(cmsCtx),
     ...createMediaUsageEndpoints(cmsCtx),
+    ...createMediaExportEndpoints(cmsCtx, mediaConfig),
     ...createMediaAssetEndpoints(cmsCtx, mediaConfig, (row) =>
       toAssetListItem(row, urls),
     ),

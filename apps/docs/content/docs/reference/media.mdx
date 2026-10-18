@@ -1065,6 +1065,99 @@ Signs short-lived download URLs for assets the caller can read. Each URL is vali
 
 Every signed asset counts against `media.downloadRateLimit` (default 60 per actor and minute, counted per server process); past it the endpoint answers `RATE_LIMITED` (429) with a `Retry-After` header. `media.onAssetDownload` receives `{ assetIds, actorId, variantKey, bulkJobId, ipHash }` after each call. Throws `STORAGE_UNSUPPORTED` when the storage cannot sign reads with a content disposition.
 
+### Export a ZIP Archive [#createzipexport]
+
+Writes a ZIP archive of assets on the server, for downloads the browser cannot assemble itself: archives above its memory cap (2 GB, 500 MB on iOS), 500 files and more, or Safari on iOS. The archive holds the originals of live, `ready` assets in the caller's scope, uncompressed, under their download names; folders become directories unless `flatten`, names are made safe and unique per directory (` (2)`, ` (3)`) like a browser download, and `manifest` adds `manifest.csv` (`id,path,size,usage`, usage counting the live pages). The archive is written to `exports/<id>/<name>` in parts of 8 MiB and is downloadable for 24 hours.
+
+<APIMethod
+  method="POST"
+  path="/media/createZipExport"
+  fn="createZipExport"
+  collection="media"
+  resource="media"
+  operation="read"
+  args={`{
+  body: {
+    assetIds: ['ast_1', 'ast_2'],
+    name: 'campaign',
+    manifest: true,
+  },
+}`}
+  returns={{
+    export: { type: 'MediaZipExport', description: 'The export as `getZipExport` returns it, `pending` at first.' },
+  }}
+  params={{
+    assetIds: { type: 'string[]', description: 'Up to 10,000 asset ids; or pass `allMatching`.' },
+    allMatching: { type: '{ query: Record<string, unknown>; except?: string[] }', description: 'A `listAssets` filter resolved on the server instead of `assetIds`.' },
+    name: { type: 'string', description: 'Archive file name; `.zip` is appended when missing. Default `media`.' },
+    flatten: { type: 'boolean', description: 'Put every file at the top level.' },
+    manifest: { type: 'boolean', description: 'Add `manifest.csv`.' },
+  }}
+/>
+
+The work runs in the background through `media.runExport` (see [Configuration](/docs/reference/configuration#media)), and the [pruning pass](/docs/reference/admin#runpruning) continues every unfinished export at its last stored part, so an export survives a serverless function that is stopped early. When it finishes, the realtime channel of the scope gets `media.export.ready` (or `media.export.failed`) with `{ exportId }`. An asset whose object is missing or has another length when its turn comes is left out and listed in `skipped`. `media.onAssetDownload` receives the asset ids with the export id as `bulkJobId`. Throws `RATE_LIMITED` (429) when the caller already has 3 unfinished exports, and `STORAGE_UNSUPPORTED` when the storage cannot write multipart uploads or sign reads with a content disposition.
+
+### Get a ZIP Export [#getzipexport]
+
+<APIMethod
+  method="POST"
+  path="/media/getZipExport"
+  fn="getZipExport"
+  collection="media"
+  resource="media"
+  operation="read"
+  args={`{
+  body: { exportId: job.id }, // required
+}`}
+  returns={{
+    export: { type: '{ id, name, status, files, skipped, loaded, total, url, error, createdAt, expiresAt }', description: '`status` is `pending`, `running`, `ready` or `failed`; `loaded` and `total` are archive bytes; `files` counts the included assets and `skipped` lists the ids left out; `url` is a signed download (5 minutes) once `ready`, call again for a fresh one; `error` is a code once `failed` (`ASSET_NOT_FOUND` when an object vanished while it was written, `STORAGE_UNSUPPORTED`, `EXPORT_FAILED`); `expiresAt` is when a finished archive is deleted.' },
+  }}
+  params={{
+    exportId: { type: 'string', required: true, description: 'The id from `createZipExport`.' },
+  }}
+/>
+
+Throws `EXPORT_NOT_FOUND` for an unknown or expired export, or one another user started.
+
+### List ZIP Exports [#listzipexports]
+
+<APIMethod
+  method="POST"
+  path="/media/listZipExports"
+  fn="listZipExports"
+  collection="media"
+  resource="media"
+  operation="read"
+  args={`{ body: {} }`}
+  returns={{
+    exports: { type: 'MediaZipExport[]', description: 'The caller\'s exports in its scope, newest first (at most 50), until they expire.' },
+  }}
+/>
+
+### Delete a ZIP Export [#deletezipexport]
+
+Cancels an unfinished export (its stored parts are dropped) or deletes a finished archive before it expires.
+
+<APIMethod
+  method="POST"
+  path="/media/deleteZipExport"
+  fn="deleteZipExport"
+  collection="media"
+  resource="media"
+  operation="read"
+  args={`{
+  body: { exportId: job.id }, // required
+}`}
+  returns={{
+    deleted: { type: 'true', description: 'The export and its archive are gone.' },
+  }}
+  params={{
+    exportId: { type: 'string', required: true, description: 'The id from `createZipExport`.' },
+  }}
+/>
+
+Throws `EXPORT_NOT_FOUND` like `getZipExport`.
+
 ## Public delivery
 
 ### Serve an Asset [#asset]

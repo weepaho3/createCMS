@@ -52,6 +52,17 @@ on, schema changes are picked up with `createcms generate` + a Drizzle migration
 
 ## Unreleased
 
+- **New table `media_exports` for server-written ZIP archives.** The
+  enum `media_export_status` and the table `media_exports` hold the
+  exports of `createZipExport`. `PruningPassResult` gains
+  `finishedExports` and `expiredExports`; the pass now continues
+  unfinished exports and deletes expired archives under `exports/` in the
+  bucket. In `@createcms/react`, `DownloadJob.sink` can be `'server'`.
+  → **Migration:** run `createcms generate` and apply the migration that
+  creates `media_exports`. On a serverless platform, set `media.runExport`
+  (for example `(task) => after(task)` in Next.js) so an export starts
+  right away; otherwise the next pruning pass picks it up.
+
 - **`createSignedUpload` entries can have `signedUrl: null`.** A file above
   `media.multipart.threshold` (64 MiB) on a storage with the `multipart`
   capability starts a multipart upload: its entry carries

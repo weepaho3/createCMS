@@ -150,6 +150,7 @@ try {
 | `UPLOAD_FAILED` | 500 | Server-side upload to S3 failed |
 | `UPLOAD_TOKEN_INVALID` | 403 | Upload token is invalid, expired, issued to another user, or redeemed at another endpoint or on another host than the one that signed it |
 | `UPLOAD_NOT_FOUND` | 404 | No object was uploaded for this token |
+| `EXPORT_NOT_FOUND` | 404 | No archive export with this id exists for the caller |
 | `STORAGE_UNSUPPORTED` | 500 | The storage adapter does not support this operation |
 | `MISSING_REQUIRED_S3_PARAMETERS` | 400 | Missing required S3 parameters: hostname, accessKeyId, or secretAccessKey |
 | `UNKNOWN_S3_PROVIDER` | 400 | Unknown S3 provider specified |

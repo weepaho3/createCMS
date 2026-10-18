@@ -20,6 +20,10 @@ export const coreSchema = defineCoreSchema({
       enumName: 'asset_processing_state',
       values: ['pending', 'ready', 'failed'],
     },
+    mediaExportStatus: {
+      enumName: 'media_export_status',
+      values: ['pending', 'running', 'ready', 'failed'],
+    },
     mergeRequestStatus: {
       enumName: 'merge_request_status',
       values: ['open', 'merged', 'closed'],
@@ -1192,6 +1196,71 @@ export const coreSchema = defineCoreSchema({
     // RELEASES: atomic multi-page (multi-root) publish bundle.
     // Branches + publishing are per (rootId, branchId), so a coordinated launch
     // spanning several pages is otherwise a manual, non-atomic sequence. A
+    // MEDIA_EXPORTS: server-written ZIP archives of assets. The archive is
+    // written in parts; `entries` and `cursor` are the checkpoint after the
+    // last stored part, so any worker holding the lease continues there.
+    mediaExports: {
+      tableName: 'media_exports',
+      indexPrefix: 'mex',
+      columns: {
+        id: {
+          type: 'text',
+          primaryKey: true,
+          defaultId: true,
+          defaultIdPrefix: 'mediaExport',
+        },
+        status: {
+          type: { enum: 'mediaExportStatus' },
+          notNull: true,
+          default: { kind: 'literal', value: 'pending' },
+        },
+        /** File name of the archive, ending in `.zip`. */
+        name: { type: 'text', notNull: true },
+        createdBy: { type: 'text' },
+        /** `scopeFingerprint` of the creator's asset scope. */
+        scope: { type: 'text', notNull: true },
+        /** Realtime channel key of the creator's scope, if any. */
+        channelKey: { type: 'text' },
+        objectKey: { type: 'text', notNull: true },
+        entries: {
+          type: 'jsonb',
+          notNull: true,
+          jsonType:
+            '{ assetId: string | null; objectKey: string | null; name: string; size: number; crc: number | null; skipped?: boolean; usage?: number | null }[]',
+        },
+        manifest: {
+          type: 'boolean',
+          notNull: true,
+          default: { kind: 'literal', value: false },
+        },
+        cursor: {
+          type: 'jsonb',
+          jsonType:
+            '{ position: number; crc: number; uploadId: string; partNumber: number }',
+        },
+        totalBytes: { type: 'bigint', notNull: true },
+        writtenBytes: {
+          type: 'bigint',
+          notNull: true,
+          default: { kind: 'literal', value: 0 },
+        },
+        attempts: {
+          type: 'integer',
+          notNull: true,
+          default: { kind: 'literal', value: 0 },
+        },
+        error: { type: 'text' },
+        lockedUntil: { type: 'timestamp' },
+        createdAt: { type: 'timestamp', notNull: true, defaultNow: true },
+        completedAt: { type: 'timestamp' },
+        expiresAt: { type: 'timestamp' },
+      },
+      indexes: {
+        actorIdx: { columns: ['createdBy', 'status'] },
+        statusIdx: { columns: ['status', 'createdAt'] },
+      },
+    },
+
     // release is a draft list of (rootId, branchId) items (`release_items`);
     // `publishRelease` runs the SAME per-root publish machinery for every item
     // inside ONE database transaction, so either every page goes live or none

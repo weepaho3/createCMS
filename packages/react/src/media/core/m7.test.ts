@@ -640,6 +640,96 @@ describe('download queue', () => {
     const job = await running;
     expect(job.status).toBe('aborted');
   });
+
+  const many = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      id: `a${i}`,
+      name: `f${i}.png`,
+      size: 10,
+    }));
+
+  it('writes archives of 500 files and more on the server and polls them', async () => {
+    const sign = vi.fn();
+    const states = [
+      { status: 'running' as const, loaded: 100, url: null },
+      { status: 'ready' as const, loaded: 5000, url: 'https://s3/x.zip' },
+    ];
+    const exporter = {
+      create: vi.fn(async () => ({
+        id: 'mex_1',
+        status: 'pending' as const,
+        skipped: [],
+        loaded: 0,
+        total: 5000,
+        url: null,
+        error: null,
+      })),
+      get: vi.fn(async () => ({
+        id: 'mex_1',
+        skipped: ['a3'],
+        total: 5000,
+        error: null,
+        ...states.shift()!,
+      })),
+    };
+    const queue = createDownloadQueue({
+      sign,
+      exporter,
+      sleep: async () => {},
+    });
+    const job = await queue.download(many(500), { name: 'all', flatten: true });
+
+    expect(sign).not.toHaveBeenCalled();
+    expect(exporter.create).toHaveBeenCalledWith(
+      many(500).map((a) => a.id),
+      { name: 'all.zip', flatten: true, manifest: undefined },
+    );
+    expect(exporter.get).toHaveBeenCalledTimes(2);
+    expect(job).toMatchObject({
+      status: 'success',
+      sink: 'server',
+      loaded: 5000,
+    });
+    expect(job.items.find((i) => i.id === 'a3')?.status).toBe('skipped');
+    expect(job.items.filter((i) => i.status === 'success')).toHaveLength(499);
+  });
+
+  it('keeps small archives in the browser and deletes a cancelled server export', async () => {
+    const exporter = {
+      create: vi.fn(async () => ({
+        id: 'mex_2',
+        status: 'running' as const,
+        skipped: [],
+        loaded: 0,
+        total: 1,
+        url: null,
+        error: null,
+      })),
+      get: vi.fn(),
+      delete: vi.fn(async () => {}),
+    };
+    const small = createDownloadQueue({
+      sign: async () => ({ items: [] }),
+      exporter,
+      sink: sinkInto([]),
+    });
+    await small.download(many(2), { name: 'x' });
+    expect(exporter.create).not.toHaveBeenCalled();
+
+    const queue = createDownloadQueue({
+      sign: async () => ({ items: [] }),
+      exporter,
+      sleep: (_ms, signal) =>
+        new Promise((_, reject) =>
+          signal.addEventListener('abort', () => reject(signal.reason)),
+        ),
+    });
+    const running = queue.download(many(600), { name: 'x' });
+    await vi.waitFor(() => expect(exporter.create).toHaveBeenCalled());
+    queue.cancel();
+    expect((await running).status).toBe('aborted');
+    expect(exporter.delete).toHaveBeenCalledWith('mex_2');
+  });
 });
 
 describe('long press', () => {

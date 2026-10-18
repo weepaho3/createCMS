@@ -197,6 +197,15 @@ type BaseMediaConfig = {
   downloadRateLimit?: number;
 
   /**
+   * Runs an archive export started by `createZipExport` in the background,
+   * for example `(task) => after(task)` in Next.js or `ctx.waitUntil(task())`
+   * on a worker. Default: the task starts without being awaited, which a
+   * serverless platform may stop early; the pruning pass continues every
+   * unfinished export at its last stored part.
+   */
+  runExport?: (task: () => Promise<void>) => void;
+
+  /**
    * Whether `replaceAsset` accepts a file of another MIME type than the
    * asset's. Default `true`; `false` answers `INVALID_FILE_TYPE`.
    */
