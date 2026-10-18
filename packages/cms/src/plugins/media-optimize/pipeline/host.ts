@@ -78,7 +78,10 @@ export function createOptimizeHost(options: OptimizeHostOptions): OptimizeHost {
     const size = readImageDimensions(head) ?? { width: 4000, height: 3000 };
     return fileTimeoutMs(size.width, size.height, {
       msPerMegapixel: options.msPerMegapixel,
-      avif: settings.renditionFormats.includes('avif'),
+      // JPEG XL in WebAssembly is about as slow as AVIF.
+      avif:
+        settings.renditionFormats.includes('avif') ||
+        settings.renditionFormats.includes('jxl'),
     });
   }
 

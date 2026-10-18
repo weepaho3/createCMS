@@ -479,7 +479,7 @@ responsive image. They work outside `Media.Root`, e.g. on public pages.
 `Media.Image` (`MediaImageProps`) is an `<img>` whose `srcset` lists the
 asset's **existing** WebP renditions only, never a guessed width;
 `Media.Picture` wraps the same `<img>` in a `<picture>` with one `<source>`
-per format that has renditions (AVIF, then WebP).
+per format that has renditions (JPEG XL, then AVIF, then WebP).
 
 ```tsx
 <Media.Image

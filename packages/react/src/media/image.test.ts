@@ -89,6 +89,30 @@ describe('image helpers', () => {
     ]);
   });
 
+  it('offers JPEG XL first where it exists and expects it only on request', () => {
+    const withJxl: ImageAsset = {
+      ...asset,
+      variants: [...(asset.variants ?? []), variant('w640.jxl', 640)],
+    };
+    const image = getAssetImage(withJxl, {
+      sizes: '100vw',
+      widths: [640],
+    });
+    expect(image.sources.map((source) => source.type)).toEqual([
+      'image/jxl',
+      'image/avif',
+      'image/webp',
+    ]);
+    expect(image.missing).toEqual(['w640.webp']);
+    expect(
+      getAssetImage(withJxl, {
+        sizes: '100vw',
+        widths: [640],
+        formats: ['jxl', 'webp'],
+      }).missing,
+    ).toEqual(['w640.webp']);
+  });
+
   it('falls back to the original without renditions', () => {
     const image = getAssetImage(
       { id: 'a', deliveryUrl: '/a', mimeType: 'image/png' },

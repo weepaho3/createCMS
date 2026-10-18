@@ -6,10 +6,10 @@
  *   image:  `w{width}[-h{height}][-q{quality}][-fit{cover|contain}].{format}`
  *   poster: `poster-w{width}.{format}`
  * Numbers have no leading zeros; width and height are 1 to 16384, quality
- * 1 to 100; `format` is one of `webp`, `avif`, `jpeg`, `png`.
+ * 1 to 100; `format` is one of `webp`, `avif`, `jxl`, `jpeg`, `png`.
  */
 
-export const VARIANT_FORMATS = ['webp', 'avif', 'jpeg', 'png'] as const;
+export const VARIANT_FORMATS = ['webp', 'avif', 'jxl', 'jpeg', 'png'] as const;
 export type VariantFormat = (typeof VARIANT_FORMATS)[number];
 
 export type VariantSpec = {
@@ -92,6 +92,7 @@ export function formatVariantKey(spec: VariantSpec): string {
 const LEGACY_FORMATS: Readonly<Record<string, VariantFormat>> = {
   webp: 'webp',
   avif: 'avif',
+  jxl: 'jxl',
   jpeg: 'jpeg',
   jpg: 'jpeg',
   png: 'png',

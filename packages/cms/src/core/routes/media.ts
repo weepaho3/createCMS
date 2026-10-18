@@ -106,7 +106,7 @@ import { createMediaUsageEndpoints } from './media-usage';
 /** Raster images a transform service can read. */
 const TRANSFORMABLE = /^image\/(jpeg|png|webp|avif|gif)$/;
 const INLINE_SAFE =
-  /^(image\/(png|jpeg|gif|webp|avif)|video\/|audio\/|application\/pdf$)/;
+  /^(image\/(png|jpeg|gif|webp|avif|jxl)|video\/|audio\/|application\/pdf$)/;
 
 /**
  * Fields of one uploaded file. `variantKey` (see core/media/variant-key.ts)
@@ -196,6 +196,7 @@ type CompletedUploadExtra = {
 const RENDITION_MIME: Readonly<Record<VariantFormat, string>> = {
   webp: 'image/webp',
   avif: 'image/avif',
+  jxl: 'image/jxl',
   jpeg: 'image/jpeg',
   png: 'image/png',
 };
@@ -1334,7 +1335,7 @@ export function createMediaEndpoints(
       {
         method: 'GET',
         query: z.object({
-          format: z.enum(['webp', 'avif', 'jpeg', 'png']).optional(),
+          format: z.enum(['webp', 'avif', 'jxl', 'jpeg', 'png']).optional(),
           w: z.coerce.number().int().positive().optional(),
           download: wireBooleanSchema.optional(),
           // Answer RENDITION_NOT_FOUND instead of serving the original.

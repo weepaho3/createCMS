@@ -39,6 +39,8 @@ export type CodecLoaders = {
   jpeg?: () => Promise<EncoderModule>;
   /** AVIF; renditions in AVIF are produced only with this loader. */
   avif?: () => Promise<EncoderModule>;
+  /** JPEG XL (`@jsquash/jxl/encode`); JXL renditions need this loader. */
+  jxl?: () => Promise<EncoderModule>;
   /** HEIC decoding where `createImageBitmap` cannot (all but Safari). */
   heic?: () => Promise<HeicDecoderModule>;
 };
@@ -132,7 +134,7 @@ export function canEncodeWebpNatively(): Promise<boolean> {
 /** The pipeline environment of a browser tab or worker. */
 export function createBrowserEnv(
   codecs: CodecLoaders = {},
-  options: { avifSpeed?: number } = {},
+  options: { avifSpeed?: number; jxlEffort?: number } = {},
 ): PipelineEnv {
   async function scaled(
     image: DecodedImage,
@@ -222,6 +224,15 @@ export function createBrowserEnv(
             speed: options.avifSpeed ?? 8,
           });
         }
+        if (format === 'jxl') {
+          if (!codecs.jxl)
+            throw new Error('JPEG XL needs the `codecs.jxl` loader');
+          // Effort 4 keeps a 1920 px encode around a second in WebAssembly.
+          return await encodeWith(codecs.jxl, canvas, width, height, type, {
+            quality,
+            effort: options.jxlEffort ?? 4,
+          });
+        }
         return await canvas.toBlob(type);
       } finally {
         canvas.release();
@@ -249,6 +260,7 @@ export type OptimizeSupport = {
   webp: 'native' | 'wasm' | false;
   jpeg: 'mozjpeg' | 'canvas';
   avif: boolean;
+  jxl: boolean;
   heic: 'native' | 'wasm' | false;
 };
 
@@ -273,6 +285,7 @@ export async function detectOptimizeSupport(
     webp,
     jpeg: codecs.jpeg ? 'mozjpeg' : 'canvas',
     avif: Boolean(codecs.avif),
+    jxl: Boolean(codecs.jxl),
     heic,
   };
 }

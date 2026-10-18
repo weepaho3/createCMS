@@ -65,14 +65,20 @@ export type MediaOptimizeClientConfig = {
   renditions?: {
     /** @default [320, 640, 1280, 1920] */
     widths?: number[];
-    /** AVIF is added only with `avif.enabled`. @default ['webp'] */
-    formats?: ('webp' | 'avif')[];
+    /** AVIF and JPEG XL are added only with `avif.enabled` and `jxl.enabled`. @default ['webp'] */
+    formats?: ('webp' | 'avif' | 'jxl')[];
     /** Also a JPEG at 1280 px for clients without WebP. @default false */
     legacyJpeg?: boolean;
   };
-  /** Per-format quality (1 to 100). @default { webp: 82, jpeg: 78, avif: 62, master: 90 } */
+  /** Per-format quality (1 to 100). @default { webp: 82, jpeg: 78, avif: 62, jxl: 80, master: 90 } */
   quality?: Partial<OptimizeSettings['quality']>;
   avif?: { enabled?: boolean; speed?: number; maxWidth?: number };
+  /**
+   * JPEG XL renditions next to WebP (needs `codecs.jxl`). Off by default:
+   * few browsers decode JPEG XL yet, so WebP stays the fallback that
+   * `Media.Picture` offers after it. @default { enabled: false, maxWidth: 1920 }
+   */
+  jxl?: { enabled?: boolean; maxWidth?: number };
   /** A re-encoded master that needed no downscale must be at most this fraction of the source. @default 0.9 */
   keepIfSmallerRatio?: number;
   /** Remove GPS from the uploaded bytes. @default true */
@@ -100,10 +106,12 @@ export function resolveOptimizeSettings(
   config: MediaOptimizeClientConfig = {},
 ): OptimizeSettings {
   const avif = config.avif?.enabled === true;
+  const jxl = config.jxl?.enabled === true;
   const formats = (config.renditions?.formats ?? ['webp']).filter(
-    (f) => f !== 'avif' || avif,
+    (f) => (f !== 'avif' || avif) && (f !== 'jxl' || jxl),
   );
   if (avif && !formats.includes('avif')) formats.push('avif');
+  if (jxl && !formats.includes('jxl')) formats.push('jxl');
   return {
     ...DEFAULT_SETTINGS,
     original: config.original ?? DEFAULT_SETTINGS.original,
@@ -116,6 +124,7 @@ export function resolveOptimizeSettings(
       config.renditions?.widths ?? DEFAULT_SETTINGS.renditionWidths,
     renditionFormats: formats,
     avifMaxWidth: config.avif?.maxWidth ?? DEFAULT_SETTINGS.avifMaxWidth,
+    jxlMaxWidth: config.jxl?.maxWidth ?? DEFAULT_SETTINGS.jxlMaxWidth,
     legacyJpeg: config.renditions?.legacyJpeg ?? false,
     quality: { ...DEFAULT_SETTINGS.quality, ...config.quality },
     keepIfSmallerRatio:

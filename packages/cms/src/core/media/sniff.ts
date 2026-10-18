@@ -1,6 +1,6 @@
 /**
  * Dependency-free content sniffing of an upload's leading bytes. Covers the
- * raster images createcms accepts, the ISO BMFF family (AVIF, HEIC/HEIF,
+ * raster images createcms accepts (JPEG XL included), the ISO BMFF family (AVIF, HEIC/HEIF,
  * MP4, QuickTime), Matroska/WebM, PDF, ZIP and common audio, and detects
  * markup (HTML, SVG, XML) under any declared type: markup served from the
  * media origin runs script there, so it is never accepted.
@@ -15,6 +15,10 @@ const ascii = (bytes: Uint8Array, start: number, end: number) =>
 const startsWith = (bytes: Uint8Array, signature: readonly number[], at = 0) =>
   bytes.length >= at + signature.length &&
   signature.every((byte, i) => bytes[at + i] === byte);
+
+const JXL_CONTAINER = [
+  0x00, 0x00, 0x00, 0x0c, 0x4a, 0x58, 0x4c, 0x20, 0x0d, 0x0a, 0x87, 0x0a,
+] as const;
 
 const HEIF_BRANDS = new Set(['heic', 'heix', 'heim', 'heis', 'hevc', 'hevx']);
 const HEIF_GENERIC = new Set(['mif1', 'msf1']);
@@ -78,6 +82,9 @@ export function sniffType(bytes: Uint8Array): string | undefined {
     return 'image/png';
   }
   if (startsWith(bytes, [0xff, 0xd8, 0xff])) return 'image/jpeg';
+  // JPEG XL: a bare codestream, or the ISO BMFF style container.
+  if (startsWith(bytes, [0xff, 0x0a])) return 'image/jxl';
+  if (startsWith(bytes, JXL_CONTAINER)) return 'image/jxl';
   if (ascii(bytes, 0, 4) === 'GIF8') return 'image/gif';
   if (ascii(bytes, 0, 4) === 'RIFF') {
     const form = ascii(bytes, 8, 12);

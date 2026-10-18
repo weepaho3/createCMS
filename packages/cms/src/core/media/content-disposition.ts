@@ -9,6 +9,7 @@ const EXTENSIONS: Readonly<Record<string, readonly string[]>> = {
   'image/webp': ['webp'],
   'image/gif': ['gif'],
   'image/avif': ['avif'],
+  'image/jxl': ['jxl'],
   'image/svg+xml': ['svg'],
   'video/mp4': ['mp4'],
   'video/webm': ['webm'],

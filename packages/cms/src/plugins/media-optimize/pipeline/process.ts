@@ -28,7 +28,7 @@ import {
 import { POSTER_WIDTH } from './posters';
 
 /** Output formats of the pipeline's encoders. */
-export type EncodeFormat = 'webp' | 'jpeg' | 'avif' | 'png';
+export type EncodeFormat = 'webp' | 'jpeg' | 'avif' | 'jxl' | 'png';
 
 /** A decoded, upright image held by the environment. */
 export type DecodedImage = {
@@ -68,12 +68,19 @@ export type OptimizeSettings = {
   maxOriginalBytes: number;
   masterLongEdge: number;
   renditionWidths: number[];
-  /** `avif` renditions are produced only up to `avifMaxWidth`. */
-  renditionFormats: ('webp' | 'avif')[];
+  /** `avif` and `jxl` renditions are produced only up to their max width. */
+  renditionFormats: ('webp' | 'avif' | 'jxl')[];
   avifMaxWidth: number;
+  jxlMaxWidth: number;
   /** Also produce a JPEG rendition at 1280 px for clients without WebP. */
   legacyJpeg: boolean;
-  quality: { webp: number; jpeg: number; avif: number; master: number };
+  quality: {
+    webp: number;
+    jpeg: number;
+    avif: number;
+    jxl: number;
+    master: number;
+  };
   keepIfSmallerRatio: number;
   stripGps: boolean;
   keepCopyright: boolean;
@@ -89,8 +96,9 @@ export const DEFAULT_SETTINGS: OptimizeSettings = {
   renditionWidths: [320, 640, 1280, 1920],
   renditionFormats: ['webp'],
   avifMaxWidth: 1280,
+  jxlMaxWidth: 1920,
   legacyJpeg: false,
-  quality: { webp: 82, jpeg: 78, avif: 62, master: 90 },
+  quality: { webp: 82, jpeg: 78, avif: 62, jxl: 80, master: 90 },
   keepIfSmallerRatio: 0.9,
   stripGps: true,
   keepCopyright: true,
@@ -137,6 +145,7 @@ const EXTENSION: Readonly<Record<EncodeFormat, string>> = {
   webp: 'webp',
   jpeg: 'jpg',
   avif: 'avif',
+  jxl: 'jxl',
   png: 'png',
 };
 
@@ -322,7 +331,8 @@ export async function processFile(
           )
         : null;
     const withXmp = async (blob: Blob, format: EncodeFormat): Promise<Blob> => {
-      if (!xmp || format === 'avif') return blob;
+      // No container writer for AVIF and JPEG XL: they keep no XMP.
+      if (!xmp || format === 'avif' || format === 'jxl') return blob;
       const written = writeXmp(
         await bytesOf(blob),
         `image/${format}` as ContainerType,
@@ -379,6 +389,7 @@ export async function processFile(
     for (const w of renditionWidthsFor(width, settings.renditionWidths)) {
       for (const format of settings.renditionFormats) {
         if (format === 'avif' && w > settings.avifMaxWidth) continue;
+        if (format === 'jxl' && w > settings.jxlMaxWidth) continue;
         jobs.push({ width: w, format, quality: settings.quality[format] });
       }
     }

@@ -1,5 +1,5 @@
 /** Output formats a transform service can be asked for. */
-export type TransformFormat = 'webp' | 'avif' | 'jpeg' | 'png';
+export type TransformFormat = 'webp' | 'avif' | 'jxl' | 'jpeg' | 'png';
 
 /** The original a transform reads: always a public object. */
 export type TransformSource = {

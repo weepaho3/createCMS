@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import { readImageDimensions } from '../../../core/media/dimensions';
+import { sniffType } from '../../../core/media/sniff';
+import { parseVariantKey } from '../../../core/media/variant-key';
 import { hasGps } from '../container';
 import { canEncodeWebpNatively, createBrowserEnv } from '../pipeline/codecs';
 import { DEFAULT_SETTINGS, processFile } from '../pipeline/process';
@@ -93,6 +96,37 @@ describe('optimizer pipeline in this engine', () => {
       expect(
         contains(renditionBytes, [...encode('trainedAlgorithmicMedia')]),
       ).toBe(true);
+    }
+  });
+
+  it('adds JPEG XL renditions when they are enabled', async () => {
+    const withJxl = createBrowserEnv({
+      webp: () => import('@jsquash/webp/encode'),
+      jxl: () => import('@jsquash/jxl/encode'),
+    });
+    const file = new File(
+      [new Uint8Array(await canvasJpeg(1600, 1200))],
+      'photo.jpg',
+      { type: 'image/jpeg' },
+    );
+    const out = await processFile(
+      file,
+      { ...DEFAULT_SETTINGS, renditionFormats: ['webp', 'jxl'] },
+      withJxl,
+    );
+    const jxl = out.renditions.filter((r) => r.variantKey.endsWith('.jxl'));
+    expect(jxl.map((r) => r.variantKey)).toEqual([
+      'w320.jxl',
+      'w640.jxl',
+      'w1280.jxl',
+    ]);
+    for (const rendition of jxl) {
+      const bytes = new Uint8Array(await rendition.blob.arrayBuffer());
+      // The server checks exactly this before it accepts the rendition.
+      expect(sniffType(bytes)).toBe('image/jxl');
+      expect(readImageDimensions(bytes)?.width).toBe(
+        parseVariantKey(rendition.variantKey)?.width,
+      );
     }
   });
 

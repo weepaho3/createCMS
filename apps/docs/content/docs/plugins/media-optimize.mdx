@@ -51,10 +51,26 @@ WebP is encoded by the browser where it can; Safari's canvas cannot, so it needs
 | `codecs.webp` | `@jsquash/webp/encode` | WebP in Safari | 126 kB |
 | `codecs.jpeg` | `@jsquash/jpeg/encode` | JPEG masters and `legacyJpeg` (else canvas JPEG) | 59 kB |
 | `codecs.avif` | `@jsquash/avif/encode` | AVIF renditions, with `avif.enabled` | 1.12 MB |
+| `codecs.jxl` | `@jsquash/jxl/encode` | JPEG XL renditions, with `jxl.enabled` | 514 kB |
 | `codecs.heic` | your libheif-js wrapper (`{ decode(bytes): Promise<ImageData> }`) | HEIC outside Safari | 483 kB |
 | `pdf` | `pdfjs-dist` (configure its worker in the loader) | PDF posters | 506 kB |
 
 Without `codecs.webp`, Safari uploads the original and its renditions are skipped with `rendition_failed`. `detectOptimizeSupport(codecs)` and the React hook `useOptimizeSupport({ codecs })` report what this browser can do: `{ worker, webp, jpeg, avif, heic }`.
+
+
+### JPEG XL
+
+JPEG XL files are smaller than WebP at the same quality, but in October 2026 only Safari (from 26.4, still images only) and Chrome and Firefox in their newest versions decode them; Edge and Chrome on Android do not yet. So JPEG XL is never the only format: with `jxl: { enabled: true }` and `codecs.jxl`, every width gets a JPEG XL rendition next to its WebP one, `Media.Picture` offers the JPEG XL `<source>` first, and every other browser takes the WebP one. Each rendition costs storage and about as much encoding time as AVIF; the timeout budget treats both alike.
+
+```ts
+mediaOptimizeClient({
+  jxl: { enabled: true },
+  codecs: {
+    webp: () => import('@jsquash/webp/encode'),
+    jxl: () => import('@jsquash/jxl/encode'),
+  },
+});
+```
 
 ## What happens to a file
 
@@ -63,7 +79,7 @@ Without `codecs.webp`, Safari uploads the original and its renditions are skippe
 3. **GPS removal.** JPEG, PNG and WebP lose their GPS data losslessly: only the GPS block of the EXIF data goes, while XMP, the ICC profile and the C2PA segment stay byte-identical. Artist and Copyright stay unless `keepCopyright: false`. Removing GPS changes the bytes the C2PA hash covers, so a validator reports the manifest as not matching; set `stripGps: false` to upload signed originals untouched.
 4. **Description.** Dimensions (upright), the allowlisted EXIF facts (capture time, camera, creator, copyright, colour space; never GPS), a ThumbHash placeholder and the dominant colour.
 5. **The original.** `keep` (default) uploads the original. Above 40 MP or 25 MB, `keep` becomes `master`: a re-encode with a 4096 px long edge at quality 90 (JPEG for photos, WebP otherwise), used only when it beats the source by 10 % unless it was downscaled. `discard` uploads the largest WebP instead; it is refused for AI images.
-6. **Renditions.** WebP at quality 82 in every ladder width below 90 % of the source width, never upscaled. AVIF (opt-in, up to 1280 px) and a 1280 px JPEG (`legacyJpeg`) can be added.
+6. **Renditions.** WebP at quality 82 in every ladder width below 90 % of the source width, never upscaled. AVIF (opt-in, up to 1280 px), JPEG XL (opt-in, up to 1920 px) and a 1280 px JPEG (`legacyJpeg`) can be added.
 
 Animated GIF, WebP and APNG are uploaded byte-identical with a still poster (`poster-w640.webp`). SVG is never rasterized. PDFs get a poster of page 1 and their page count, videos a poster frame, their duration and size, audio a waveform of 1,000 peaks (`metadata.media.peaks`). Images above 100 megapixels are uploaded unchanged.
 
@@ -94,10 +110,11 @@ To run the pipeline without uploading, use `cmsClient.optimize.useOptimize(file,
 | `maxOriginalBytes` | `number` | `25 MiB` | Above this, `keep` becomes `master`. |
 | `masterLongEdge` | `number` | `4096` | Longest edge of a master. |
 | `renditions.widths` | `number[]` | `[320, 640, 1280, 1920]` | Rendition widths; keep them equal to the server's `renditionWidths`. |
-| `renditions.formats` | `('webp' \| 'avif')[]` | `['webp']` | AVIF also needs `avif.enabled`. |
+| `renditions.formats` | `('webp' \| 'avif' \| 'jxl')[]` | `['webp']` | AVIF and JPEG XL also need `avif.enabled` and `jxl.enabled`. |
 | `renditions.legacyJpeg` | `boolean` | `false` | Adds `w1280.jpeg`. |
-| `quality` | `{ webp, jpeg, avif, master }` | `{ 82, 78, 62, 90 }` | Per-format quality, 1 to 100. |
+| `quality` | `{ webp, jpeg, avif, jxl, master }` | `{ 82, 78, 62, 80, 90 }` | Per-format quality, 1 to 100. |
 | `avif` | `{ enabled, speed, maxWidth }` | `{ false, 8, 1280 }` | AVIF renditions, encoded with `codecs.avif`. |
+| `jxl` | `{ enabled, maxWidth }` | `{ false, 1920 }` | JPEG XL renditions next to WebP, encoded with `codecs.jxl` (effort 4). |
 | `keepIfSmallerRatio` | `number` | `0.9` | A master that needed no downscale must be at most this fraction of the source. |
 | `stripGps` | `boolean` | `true` | Remove GPS from the uploaded bytes. |
 | `keepCopyright` | `boolean` | `true` | Keep EXIF Artist and Copyright when removing GPS. |

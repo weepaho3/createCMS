@@ -40,7 +40,10 @@ export type MediaImageProps = Omit<
     alt: string;
   };
 
-function useImageProps(props: MediaImageProps, formats: ('avif' | 'webp')[]) {
+function useImageProps(
+  props: MediaImageProps,
+  formats: ('jxl' | 'avif' | 'webp')[] | undefined,
+) {
   const {
     asset,
     sizes,
@@ -106,13 +109,13 @@ export function MediaImage(props: MediaImageProps) {
 }
 
 /**
- * A `<picture>` with one `<source>` per format that has renditions (AVIF,
- * then WebP) around the same `<img>` as `Media.Image`.
+ * A `<picture>` with one `<source>` per format that has renditions (JPEG
+ * XL, then AVIF, then WebP) around the same `<img>` as `Media.Image`.
  */
 export function MediaPicture(
-  props: MediaImageProps & { formats?: ('avif' | 'webp')[] },
+  props: MediaImageProps & { formats?: ('jxl' | 'avif' | 'webp')[] },
 ) {
-  const { formats = ['avif', 'webp'], ...rest } = props;
+  const { formats, ...rest } = props;
   const { image, img } = useImageProps(rest, formats);
   return (
     <picture data-provenance={image.provenance}>

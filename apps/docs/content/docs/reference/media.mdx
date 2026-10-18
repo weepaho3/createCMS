@@ -1235,11 +1235,11 @@ Address an asset by its **id** (what content stores); the gate `302`s to the ass
   query: { w: 800, format: 'webp' },
 }`}
   returns={{
-    Location: { type: '302 redirect', description: "A `302` (short-cached, `max-age=300`) to the asset's public object URL for raster images (PNG, JPEG, GIF, WebP, AVIF), video, audio and PDF, or, for `download=true` and every other type, to a signed object URL valid for one hour whose `response-content-disposition=attachment` makes the bucket answer with a download. No JSON body: the browser follows the `Location` header to the bytes." },
+    Location: { type: '302 redirect', description: "A `302` (short-cached, `max-age=300`) to the asset's public object URL for raster images (PNG, JPEG, GIF, WebP, AVIF, JPEG XL), video, audio and PDF, or, for `download=true` and every other type, to a signed object URL valid for one hour whose `response-content-disposition=attachment` makes the bucket answer with a download. No JSON body: the browser follows the `Location` header to the bytes." },
   }}
   params={{
     assetId: { type: 'string', required: true, description: 'Path parameter: the asset id to serve.' },
-    format: { type: "'webp' | 'avif' | 'jpeg' | 'png'", description: 'Rendition format (default `webp` when `w` is given).' },
+    format: { type: "'webp' | 'avif' | 'jxl' | 'jpeg' | 'png'", description: 'Rendition format (default `webp` when `w` is given).' },
     w: { type: 'number', description: 'Rendition width. Snaps up to the next of `renditionWidths` (default 320, 640, 1280, 1920); larger than the largest answers `RENDITION_WIDTH_UNSUPPORTED`.' },
     strict: { type: 'boolean', description: 'Answer `RENDITION_NOT_FOUND` instead of serving the original when no rendition fits.' },
     download: { type: 'boolean', description: 'Set `true` to redirect to a signed URL that forces a download (`Content-Disposition: attachment`, filename = the asset slug) instead of the public object URL.' },

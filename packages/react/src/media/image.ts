@@ -18,12 +18,12 @@ export type ImageAsset = Pick<
     >
   >;
 
-export type ImageFormat = 'avif' | 'webp' | 'jpeg';
+export type ImageFormat = 'jxl' | 'avif' | 'webp' | 'jpeg';
 
 type Rendition = { width: number; height: number | null; format: ImageFormat };
 
 const IMAGE_KEY =
-  /^w([1-9][0-9]*)(?:-h([1-9][0-9]*))?(?:-q[0-9]+)?(?:-fit(?:cover|contain))?\.(avif|webp|jpeg)$/;
+  /^w([1-9][0-9]*)(?:-h([1-9][0-9]*))?(?:-q[0-9]+)?(?:-fit(?:cover|contain))?\.(jxl|avif|webp|jpeg)$/;
 
 /** The width renditions of `asset` (posters and cropped keys excluded). */
 function renditionsOf(asset: ImageAsset): Rendition[] {
@@ -90,8 +90,13 @@ export type AssetImageOptions = {
   sizes: string;
   /** Rendition widths the app expects; used to report `missing`. */
   widths?: number[];
-  /** Formats offered as `<source>`s, in order of preference. @default ['avif', 'webp'] */
-  formats?: ('avif' | 'webp')[];
+  /**
+   * Formats offered as `<source>`s, in order of preference; only formats
+   * with renditions get one. Without `formats`, `missing` reports AVIF and
+   * WebP keys only (JPEG XL is opt-in in the optimizer).
+   * @default ['jxl', 'avif', 'webp']
+   */
+  formats?: ('jxl' | 'avif' | 'webp')[];
   /** Overrides the asset's focal point, e.g. `AssetRef.focal`. */
   focal?: { x: number; y: number };
   /** Decodes a ThumbHash to a data URL (`placeholderDataUrl` from `@createcms/core`). */
@@ -135,7 +140,8 @@ export function getAssetImage(
   options: AssetImageOptions,
 ): AssetImage {
   const metadata = metadataOf(asset);
-  const formats = options.formats ?? ['avif', 'webp'];
+  const formats = options.formats ?? ['jxl', 'avif', 'webp'];
+  const expected = options.formats ?? ['avif', 'webp'];
   const sources = formats
     .map((format) => ({
       type: `image/${format}`,
@@ -149,7 +155,7 @@ export function getAssetImage(
   const missing: string[] = [];
   for (const w of options.widths ?? []) {
     if (w >= sourceWidth * 0.9) continue;
-    for (const format of formats) {
+    for (const format of expected) {
       const key = `w${w}.${format}`;
       if (!present.has(key)) missing.push(key);
     }
