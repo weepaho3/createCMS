@@ -42,7 +42,12 @@
       "title": "Editor Canvas",
       "description": "Styled wrappers for Canvas overlay and interaction parts. Does not wrap Canvas.Root.",
       "dependencies": ["@createcms/react", "lucide-react"],
-      "registryDependencies": ["button", "separator", "tooltip"],
+      "registryDependencies": [
+        "button",
+        "separator",
+        "tooltip",
+        "dropdown-menu"
+      ],
       "files": [
         {
           "path": "registry/editor-canvas.tsx",
@@ -87,7 +92,8 @@
       "dependencies": [
         "@createcms/react",
         "lucide-react",
-        "@tanstack/react-virtual@3.14.21"
+        "@tanstack/react-virtual@3.14.21",
+        "@base-ui/react@^1.9.0"
       ],
       "registryDependencies": [
         "editor-form",
@@ -101,8 +107,7 @@
         "toggle-group",
         "tabs",
         "separator",
-        "kbd",
-        "sheet"
+        "kbd"
       ],
       "files": [
         {

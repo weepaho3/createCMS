@@ -5,20 +5,25 @@
 // palette-footer, outline-row-actions and status-bar.
 //
 // Composes shadcn Sidebar, Tooltip, Command, ToggleGroup, Tabs, Separator,
-// Kbd, Sheet, Button, Dialog and Input. Do not replace those primitives with
+// Kbd, Button, Dialog and Input, and Base UI Drawer for the phone and tablet
+// sheets. Do not replace those primitives with
 // custom chrome.
 
 import type { FlatOutlineNodeRow } from '@createcms/react/editor';
 
+import { Drawer } from '@base-ui/react/drawer';
 import {
   Editor,
+  insertPointFor,
   useAnyBlock,
   useBlockActions,
   useEditor,
+  useEditorContext,
   useEditorKeyboard,
   useEditorStore,
   useFlatOutline,
   useHistory,
+  useKeyboardInset,
   usePalette,
   useCommand,
   useCommands,
@@ -30,12 +35,15 @@ import { Canvas } from '@createcms/react/editor/canvas';
 import { groupPaletteItems } from '@createcms/react/editor/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
+  ArrowDownIcon,
+  ArrowUpIcon,
   BoxIcon,
   CopyIcon,
   GripVerticalIcon,
   ImageIcon,
   LayoutGridIcon,
   ListIcon,
+  ListTreeIcon,
   ChevronRightIcon,
   CommandIcon,
   LoaderCircleIcon,
@@ -44,12 +52,14 @@ import {
   PlusIcon,
   Redo2Icon,
   SaveIcon,
+  SlidersHorizontalIcon,
   SmartphoneIcon,
   SparklesIcon,
   TabletIcon,
   Trash2Icon,
   TypeIcon,
   Undo2Icon,
+  XIcon,
 } from 'lucide-react';
 import * as React from 'react';
 
@@ -74,13 +84,6 @@ import { Input } from '@/components/ui/input';
 import { Kbd } from '@/components/ui/kbd';
 import { Separator } from '@/components/ui/separator';
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet';
-import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
@@ -94,7 +97,6 @@ import {
   SidebarProvider,
   SidebarRail,
   SidebarTrigger,
-  useSidebar,
 } from '@/components/ui/sidebar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -118,10 +120,50 @@ const deviceWidth: Record<Device, number | 'full'> = {
   mobile: 375,
 };
 
+/**
+ * Shell layout by viewport width: `phone` (< 640px) shows the canvas full
+ * width with a bottom action bar and bottom sheets, `tablet` (640 to
+ * 1023px) docks the left panel and opens the inspector as a drawer,
+ * `desktop` docks both panels.
+ */
+type ShellLayout = 'phone' | 'tablet' | 'desktop';
+
+/** One sheet at a time: opening another replaces it. */
+type ShellSheet = 'props' | 'add' | 'outline' | null;
+
+function useMediaQuery(query: string): boolean {
+  const subscribe = React.useCallback(
+    (onChange: () => void) => {
+      const list = window.matchMedia(query);
+      list.addEventListener('change', onChange);
+      return () => list.removeEventListener('change', onChange);
+    },
+    [query],
+  );
+  return React.useSyncExternalStore(
+    subscribe,
+    () => window.matchMedia(query).matches,
+    () => false,
+  );
+}
+
+function useShellLayout(): ShellLayout {
+  const phone = useMediaQuery('(max-width: 639px)');
+  const tablet = useMediaQuery('(max-width: 1023px)');
+  return phone ? 'phone' : tablet ? 'tablet' : 'desktop';
+}
+
+/** Form controls keep a 16px font under a coarse pointer (no iOS focus zoom). */
+const COARSE_TEXT =
+  'pointer-coarse:[&_input]:text-base pointer-coarse:[&_select]:text-base pointer-coarse:[&_textarea]:text-base';
+
 type EditorChromeContextValue = {
   device: Device;
   setDevice: (device: Device) => void;
   mode: 'canvas' | 'form';
+  layout: ShellLayout;
+  sheet: ShellSheet;
+  setSheet: (sheet: ShellSheet) => void;
   requireCommitMessage: boolean;
   addOpen: boolean;
   setAddOpen: (open: boolean) => void;
@@ -212,6 +254,8 @@ function EditorProvider({
   const [device, setDevice] = React.useState<Device>('desktop');
   const [addOpen, setAddOpen] = React.useState(false);
   const [commandsOpen, setCommandsOpen] = React.useState(false);
+  const [sheet, setSheet] = React.useState<ShellSheet>(null);
+  const layout = useShellLayout();
   const [saveOpen, setSaveOpen] = React.useState(false);
   const scopeRef = React.useRef<HTMLDivElement | null>(null);
   const { dirty, saving, save } = useSave();
@@ -225,9 +269,11 @@ function EditorProvider({
     () =>
       store.on('ui', ({ action }) => {
         if (action === 'commandPalette') setCommandsOpen(true);
-        if (action === 'quickInsert' && mode === 'canvas') setAddOpen(true);
+        if (action !== 'quickInsert' || mode !== 'canvas') return;
+        if (layout === 'phone') setSheet('add');
+        else setAddOpen(true);
       }),
-    [store, mode],
+    [store, mode, layout],
   );
 
   React.useEffect(() => {
@@ -274,6 +320,9 @@ function EditorProvider({
               device,
               setDevice,
               mode,
+              layout,
+              sheet,
+              setSheet,
               requireCommitMessage,
               addOpen,
               setAddOpen,
@@ -287,7 +336,8 @@ function EditorProvider({
               ref={scopeRef}
               data-slot="editor-shell"
               data-mode={mode}
-              className="flex min-h-0 min-w-0 flex-1"
+              data-layout={layout}
+              className={cn('flex min-h-0 min-w-0 flex-1', COARSE_TEXT)}
             >
               {children}
             </div>
@@ -301,19 +351,72 @@ function EditorProvider({
   );
 }
 
-function EditorAddBlockDialog() {
-  const { addOpen, setAddOpen } = useEditorChrome();
+/**
+ * The searchable block list: inserts into the selected block when it
+ * accepts the type, else right after it, else at the end of the page.
+ */
+function AddBlockList({
+  onAdded,
+  className,
+}: {
+  onAdded: () => void;
+  className?: string;
+}) {
   const editor = useEditor();
+  const { schema } = useEditorContext('AddBlockList');
+  const nodes = useEditor((state) => state.nodes);
   const rootId = useEditor((state) => state.rootId);
   const selected = useSelection().selected;
-  const palette = usePalette();
-  const groups = groupPaletteItems(palette);
-  const targetId = selected ?? rootId;
-  const targetActions = useBlockActions(targetId);
-  const addParent =
-    selected && targetActions.canHaveChildren ? selected : rootId;
-  const parentActions = useBlockActions(addParent);
+  const groups = groupPaletteItems(usePalette());
 
+  return (
+    <Command className={className}>
+      <CommandInput placeholder="Search blocks…" />
+      <CommandList className="max-h-none">
+        <CommandEmpty>No blocks found.</CommandEmpty>
+        {groups.map((group) => (
+          <CommandGroup
+            key={group.category ?? 'ungrouped'}
+            heading={group.category ?? 'Blocks'}
+          >
+            {group.items.map((item) => {
+              const Icon = blockTypeIcon(item.type);
+              const point = insertPointFor(
+                schema,
+                nodes,
+                rootId,
+                selected,
+                item.type,
+              );
+              return (
+                <CommandItem
+                  key={item.type}
+                  value={`${item.label} ${item.type} ${group.category ?? ''}`}
+                  disabled={!point.allowed}
+                  className="pointer-coarse:min-h-11"
+                  onSelect={() => {
+                    const id = editor.add(item.type, {
+                      parent: point.parent,
+                      index: point.index,
+                    });
+                    if (id) editor.select(id);
+                    onAdded();
+                  }}
+                >
+                  <Icon />
+                  {item.label}
+                </CommandItem>
+              );
+            })}
+          </CommandGroup>
+        ))}
+      </CommandList>
+    </Command>
+  );
+}
+
+function EditorAddBlockDialog() {
+  const { addOpen, setAddOpen } = useEditorChrome();
   return (
     <CommandDialog
       open={addOpen}
@@ -321,42 +424,10 @@ function EditorAddBlockDialog() {
       title="Add block"
       description="Search and insert a block"
     >
-      <Command>
-        <CommandInput placeholder="Search blocks…" />
-        <CommandList>
-          <CommandEmpty>No blocks found.</CommandEmpty>
-          {groups.map((group) => (
-            <CommandGroup
-              key={group.category ?? 'ungrouped'}
-              heading={group.category ?? 'Blocks'}
-            >
-              {group.items.map((item) => {
-                const Icon = blockTypeIcon(item.type);
-                const allowed = parentActions.allowedChildTypes.includes(
-                  item.type,
-                );
-                return (
-                  <CommandItem
-                    key={item.type}
-                    value={`${item.label} ${item.type} ${group.category ?? ''}`}
-                    disabled={!allowed}
-                    onSelect={() => {
-                      const id = editor.add(item.type, {
-                        parent: { id: addParent },
-                      });
-                      if (id) editor.select(id);
-                      setAddOpen(false);
-                    }}
-                  >
-                    <Icon />
-                    {item.label}
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
-          ))}
-        </CommandList>
-      </Command>
+      <AddBlockList
+        onAdded={() => setAddOpen(false)}
+        className="[&_[cmdk-list]]:max-h-80"
+      />
     </CommandDialog>
   );
 }
@@ -473,12 +544,14 @@ function EditorToolbar({
     device,
     setDevice,
     mode,
+    layout,
+    sheet,
+    setSheet,
     requireCommitMessage,
     setAddOpen,
     setCommandsOpen,
     setSaveOpen,
   } = useEditorChrome();
-  const { isMobile } = useSidebar();
   const undo = useCommand('history.undo');
   const redo = useCommand('history.redo');
   const quickInsert = useCommand('ui.quickInsert');
@@ -502,7 +575,9 @@ function EditorToolbar({
       )}
       {...props}
     >
-      {mode === 'form' ? null : <SidebarTrigger className="md:inline-flex" />}
+      {mode === 'form' || layout === 'phone' ? null : (
+        <SidebarTrigger className="md:inline-flex" />
+      )}
       <Editor.Slot name="toolbar-start" />
       <ToolbarHintButton
         label={undo?.label ?? 'Undo'}
@@ -520,7 +595,7 @@ function EditorToolbar({
       >
         <Redo2Icon />
       </ToolbarHintButton>
-      {mode === 'canvas' ? (
+      {mode === 'canvas' && layout !== 'phone' ? (
         <>
           <Separator orientation="vertical" className="mx-1 h-5" />
           <ToggleGroup
@@ -568,21 +643,13 @@ function EditorToolbar({
         >
           <CommandIcon />
         </ToolbarHintButton>
-        {mode === 'canvas' && isMobile ? (
-          <Sheet>
-            <SheetTrigger
-              render={<Button type="button" variant="ghost" size="icon-sm" />}
-            >
-              <PanelRightIcon />
-              <span className="sr-only">Inspector</span>
-            </SheetTrigger>
-            <SheetContent side="right" className="w-80 p-0">
-              <SheetHeader className="sr-only">
-                <SheetTitle>Inspector</SheetTitle>
-              </SheetHeader>
-              <EditorInspector />
-            </SheetContent>
-          </Sheet>
+        {mode === 'canvas' && layout === 'tablet' ? (
+          <ToolbarHintButton
+            label="Inspector"
+            onClick={() => setSheet(sheet === 'props' ? null : 'props')}
+          >
+            <PanelRightIcon />
+          </ToolbarHintButton>
         ) : null}
         <Tooltip>
           <TooltipTrigger
@@ -665,17 +732,25 @@ function EditorPalette({ className, ...props }: React.ComponentProps<'div'>) {
 }
 
 const OUTLINE_ROW_PX = 32;
+/** 44px rows under a coarse pointer (WCAG 2.5.5 touch targets). */
+const OUTLINE_ROW_COARSE_PX = 44;
 
 /** One block row: the APG tree item, a collapse toggle, icon and label. */
 function OutlineRow({
   row,
   start,
+  height,
+  compact,
 }: {
   row: FlatOutlineNodeRow;
   start: number;
+  height: number;
+  /** Touch layout: the selected row shows move up and down buttons. */
+  compact: boolean;
 }) {
   const store = useEditorStore();
   const selected = useSelection().selected === row.id;
+  const actions = useBlockActions(row.id);
   const palette = usePalette();
   const label =
     palette.find((item) => item.type === row.type)?.label ?? row.type;
@@ -687,7 +762,7 @@ function OutlineRow({
       className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[active]:bg-sidebar-accent focus-visible:ring-sidebar-ring absolute left-0 flex w-full items-center gap-2 rounded-md pr-2 text-sm outline-none focus-visible:ring-2 data-[active]:font-medium"
       style={{
         top: 0,
-        height: OUTLINE_ROW_PX,
+        height,
         transform: `translateY(${start}px)`,
         paddingLeft: 8 + (row.level - 1) * 12,
       }}
@@ -697,7 +772,7 @@ function OutlineRow({
           type="button"
           tabIndex={-1}
           aria-hidden
-          className="flex size-4 shrink-0 items-center justify-center"
+          className="flex size-4 shrink-0 items-center justify-center pointer-coarse:size-11"
           onClick={(event) => {
             event.stopPropagation();
             store.setCollapsed(row.id, row.expanded);
@@ -711,10 +786,40 @@ function OutlineRow({
           />
         </button>
       ) : (
-        <span className="size-4 shrink-0" />
+        <span className="size-4 shrink-0 pointer-coarse:w-11" />
       )}
       <Icon className="size-4 shrink-0" />
       <span className="flex-1 truncate">{label}</span>
+      {compact && selected ? (
+        // Keyboard users move with the tree's own shortcuts; these buttons
+        // are the touch path, so they stay out of the tab order.
+        <span className="flex items-center" aria-hidden>
+          <button
+            type="button"
+            tabIndex={-1}
+            disabled={!actions.canMoveUp}
+            className="flex size-11 items-center justify-center disabled:opacity-40"
+            onClick={(event) => {
+              event.stopPropagation();
+              actions.moveUp();
+            }}
+          >
+            <ArrowUpIcon className="size-4" />
+          </button>
+          <button
+            type="button"
+            tabIndex={-1}
+            disabled={!actions.canMoveDown}
+            className="flex size-11 items-center justify-center disabled:opacity-40"
+            onClick={(event) => {
+              event.stopPropagation();
+              actions.moveDown();
+            }}
+          >
+            <ArrowDownIcon className="size-4" />
+          </button>
+        </span>
+      ) : null}
       <Editor.Slot name="outline-row-actions" props={{ blockId: row.id }} />
     </Editor.OutlineItem>
   );
@@ -725,8 +830,15 @@ function OutlineRow({
  * keyboard navigation reaches every row (`Editor.Outline rows`), rows drag
  * to reorder and nest.
  */
-function EditorOutline({ className, ...props }: React.ComponentProps<'div'>) {
+function EditorOutline({
+  className,
+  scrollClassName,
+  ...props
+}: React.ComponentProps<'div'> & { scrollClassName?: string }) {
   const rows = useFlatOutline();
+  const coarse = useMediaQuery('(pointer: coarse)');
+  const { layout } = useEditorChrome();
+  const rowHeight = coarse ? OUTLINE_ROW_COARSE_PX : OUTLINE_ROW_PX;
   const ids = React.useMemo(
     () => rows.flatMap((row) => (row.kind === 'node' ? [row.id] : [])),
     [rows],
@@ -738,9 +850,10 @@ function EditorOutline({ className, ...props }: React.ComponentProps<'div'>) {
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => OUTLINE_ROW_PX,
+    estimateSize: () => rowHeight,
     overscan: 8,
   });
+  React.useEffect(() => virtualizer.measure(), [virtualizer, rowHeight]);
   const reveal = React.useCallback(
     (id: string) => {
       const index = rows.findIndex((row) => row.id === id);
@@ -754,7 +867,7 @@ function EditorOutline({ className, ...props }: React.ComponentProps<'div'>) {
       <SidebarGroupLabel>Outline</SidebarGroupLabel>
       <SidebarGroupContent
         ref={scrollRef}
-        className="max-h-[50vh] overflow-y-auto"
+        className={cn('max-h-[50vh] overflow-y-auto', scrollClassName)}
       >
         <Editor.Outline
           rows={ids}
@@ -764,7 +877,13 @@ function EditorOutline({ className, ...props }: React.ComponentProps<'div'>) {
           {virtualizer.getVirtualItems().map((item) => {
             const row = rows[item.index]!;
             return row.kind === 'node' ? (
-              <OutlineRow key={row.id} row={row} start={item.start} />
+              <OutlineRow
+                key={row.id}
+                row={row}
+                start={item.start}
+                height={rowHeight}
+                compact={coarse || layout === 'phone'}
+              />
             ) : (
               <span
                 key={row.id}
@@ -772,7 +891,7 @@ function EditorOutline({ className, ...props }: React.ComponentProps<'div'>) {
                 className="text-muted-foreground absolute left-0 flex w-full items-end pb-1 text-xs"
                 style={{
                   top: 0,
-                  height: OUTLINE_ROW_PX,
+                  height: rowHeight,
                   transform: `translateY(${item.start}px)`,
                   paddingLeft: 8 + (row.level - 1) * 12,
                 }}
@@ -913,8 +1032,6 @@ function useDeviceFrame(): { width: number | 'full' } {
 }
 
 function EditorRightSidebar() {
-  const { isMobile } = useSidebar();
-  if (isMobile) return null;
   return (
     <Sidebar side="right" collapsible="icon" className="absolute h-full">
       <SidebarContent>
@@ -925,6 +1042,305 @@ function EditorRightSidebar() {
   );
 }
 
+/**
+ * While open, the sheet owns a history entry: the browser's back gesture
+ * closes it, and closing it otherwise drops the entry again.
+ */
+function useBackToClose(open: boolean, close: () => void) {
+  const closeRef = React.useRef(close);
+  closeRef.current = close;
+  React.useEffect(() => {
+    if (!open) return;
+    const key = `editor-sheet-${Math.random().toString(36).slice(2)}`;
+    window.history.pushState({ ...window.history.state, editorSheet: key }, '');
+    let popped = false;
+    const onPop = () => {
+      popped = true;
+      closeRef.current();
+    };
+    window.addEventListener('popstate', onPop);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      if (!popped && window.history.state?.editorSheet === key) {
+        window.history.back();
+      }
+    };
+  }, [open]);
+}
+
+/**
+ * The selected block, scrolled to the top of the canvas so it stays
+ * visible above a bottom sheet.
+ */
+function revealBlock(id: string) {
+  const surface = document.querySelector('[data-slot="editor-surface"]');
+  if (!surface) return;
+  const selector = `[data-editor-block="${CSS.escape(id)}"]`;
+  const docs = [
+    surface,
+    ...[...surface.querySelectorAll('iframe')].flatMap((frame) =>
+      frame.contentDocument ? [frame.contentDocument] : [],
+    ),
+  ];
+  for (const doc of docs) {
+    const el = doc.querySelector(selector);
+    if (el) {
+      el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      return;
+    }
+  }
+}
+
+/** Drag handle, title and close button of a sheet. */
+function SheetHeading({
+  title,
+  onClose,
+}: {
+  title: React.ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div className="flex shrink-0 flex-col items-center border-b px-3 pt-2 pb-1">
+      <div
+        aria-hidden
+        className="bg-muted-foreground/40 h-1 w-10 rounded-full"
+      />
+      <div className="flex w-full items-center gap-2">
+        <Drawer.Title className="flex-1 truncate text-sm font-medium">
+          {title}
+        </Drawer.Title>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-11"
+          onClick={onClose}
+        >
+          <XIcon />
+          <span className="sr-only">Close</span>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+const SHEET_SNAP_POINTS = [0.35, 0.6, 1];
+
+/**
+ * A bottom sheet (Base UI Drawer): the properties sheet is non-modal with
+ * snap points, so the canvas stays usable above it; add and outline are
+ * modal. Lifts its content above the on-screen keyboard.
+ */
+function BottomSheet({
+  open,
+  onClose,
+  title,
+  modal,
+  snapPoints,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: React.ReactNode;
+  modal: boolean;
+  snapPoints?: number[];
+  children: React.ReactNode;
+}) {
+  useBackToClose(open, onClose);
+  return (
+    <Drawer.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      modal={modal}
+      disablePointerDismissal={!modal}
+      snapPoints={snapPoints}
+    >
+      <Drawer.VirtualKeyboardProvider>
+        <Drawer.Portal>
+          {modal ? (
+            <Drawer.Backdrop className="fixed inset-0 z-50 bg-black/30 transition-opacity duration-(--editor-duration-slow) data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
+          ) : null}
+          <Drawer.Viewport className="pointer-events-none fixed inset-0 z-50 flex items-end">
+            <Drawer.Popup
+              className={cn(
+                'bg-background pointer-events-auto flex w-full flex-col rounded-t-xl border-t shadow-lg outline-none',
+                'pb-[calc(env(safe-area-inset-bottom)+var(--drawer-keyboard-inset,0px))]',
+                'translate-y-[calc(var(--drawer-snap-point-offset,0px)+var(--drawer-swipe-movement-y,0px))]',
+                'transition-transform duration-(--editor-duration-slow) ease-out data-[ending-style]:translate-y-full data-[starting-style]:translate-y-full data-[swiping]:transition-none motion-reduce:transition-none',
+                snapPoints ? 'h-[calc(100dvh-1rem)]' : 'max-h-[85dvh]',
+                COARSE_TEXT,
+              )}
+            >
+              <SheetHeading title={title} onClose={onClose} />
+              <Drawer.Content className="min-h-0 flex-1 overflow-y-auto">
+                {children}
+              </Drawer.Content>
+            </Drawer.Popup>
+          </Drawer.Viewport>
+        </Drawer.Portal>
+      </Drawer.VirtualKeyboardProvider>
+    </Drawer.Root>
+  );
+}
+
+/** Phone sheets: properties of the selection, add block, outline. */
+function PhoneSheets() {
+  const { sheet, setSheet } = useEditorChrome();
+  const selected = useSelection().selected;
+  const block = useAnyBlock(selected);
+  const palette = usePalette();
+  const title = selected
+    ? (palette.find((item) => item.type === block?.type)?.label ?? 'Block')
+    : 'Page';
+  const close = React.useCallback(() => setSheet(null), [setSheet]);
+
+  // Selecting a block opens its properties; the block scrolls above the sheet.
+  const previous = React.useRef(selected);
+  React.useEffect(() => {
+    if (selected === previous.current) return;
+    previous.current = selected;
+    if (!selected) return;
+    if (sheet === null) setSheet('props');
+    if (sheet === null || sheet === 'props') revealBlock(selected);
+  }, [selected, sheet, setSheet]);
+
+  return (
+    <>
+      <BottomSheet
+        open={sheet === 'props'}
+        onClose={close}
+        title={title}
+        modal={false}
+        snapPoints={SHEET_SNAP_POINTS}
+      >
+        <EditorInspector />
+      </BottomSheet>
+      <BottomSheet
+        open={sheet === 'add'}
+        onClose={close}
+        title="Add block"
+        modal
+      >
+        <AddBlockList onAdded={close} />
+      </BottomSheet>
+      <BottomSheet
+        open={sheet === 'outline'}
+        onClose={close}
+        title="Outline"
+        modal
+      >
+        <EditorOutline scrollClassName="max-h-none" />
+      </BottomSheet>
+    </>
+  );
+}
+
+/** Tablet: the inspector as a non-modal drawer from the right edge. */
+function TabletInspector() {
+  const { sheet, setSheet } = useEditorChrome();
+  const open = sheet === 'props';
+  const close = () => setSheet(null);
+  return (
+    <Drawer.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) close();
+      }}
+      modal={false}
+      disablePointerDismissal
+      swipeDirection="right"
+    >
+      <Drawer.Portal>
+        <Drawer.Viewport className="pointer-events-none fixed inset-0 z-50 flex justify-end">
+          <Drawer.Popup
+            className={cn(
+              'bg-background pointer-events-auto flex h-full w-80 max-w-[85vw] flex-col border-l shadow-lg outline-none',
+              'translate-x-[var(--drawer-swipe-movement-x,0px)] transition-transform duration-(--editor-duration-slow) ease-out data-[ending-style]:translate-x-full data-[starting-style]:translate-x-full data-[swiping]:transition-none motion-reduce:transition-none',
+              COARSE_TEXT,
+            )}
+          >
+            <div className="flex items-center border-b px-3 py-1">
+              <Drawer.Title className="flex-1 text-sm font-medium">
+                Inspector
+              </Drawer.Title>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={close}
+              >
+                <XIcon />
+                <span className="sr-only">Close</span>
+              </Button>
+            </div>
+            <EditorInspector />
+          </Drawer.Popup>
+        </Drawer.Viewport>
+      </Drawer.Portal>
+    </Drawer.Root>
+  );
+}
+
+/** Phone: add, outline, properties, undo and redo, above the home indicator. */
+function EditorBottomBar() {
+  const { setSheet } = useEditorChrome();
+  const history = useHistory();
+  const inset = useKeyboardInset();
+  const items: {
+    label: string;
+    icon: React.ElementType;
+    onClick: () => void;
+    disabled?: boolean;
+  }[] = [
+    { label: 'Add block', icon: PlusIcon, onClick: () => setSheet('add') },
+    {
+      label: 'Outline',
+      icon: ListTreeIcon,
+      onClick: () => setSheet('outline'),
+    },
+    {
+      label: 'Properties',
+      icon: SlidersHorizontalIcon,
+      onClick: () => setSheet('props'),
+    },
+    {
+      label: 'Undo',
+      icon: Undo2Icon,
+      onClick: () => history.undo(),
+      disabled: !history.canUndo,
+    },
+    {
+      label: 'Redo',
+      icon: Redo2Icon,
+      onClick: () => history.redo(),
+      disabled: !history.canRedo,
+    },
+  ];
+  return (
+    <nav
+      aria-label="Editor actions"
+      data-slot="editor-bottom-bar"
+      className="bg-background border-border flex shrink-0 items-stretch justify-around border-t pb-[env(safe-area-inset-bottom)]"
+      style={inset > 0 ? { transform: `translateY(-${inset}px)` } : undefined}
+    >
+      {items.map(({ label, icon: Icon, onClick, disabled }) => (
+        <button
+          key={label}
+          type="button"
+          disabled={disabled}
+          onClick={onClick}
+          className="text-muted-foreground hover:text-foreground flex min-h-11 min-w-11 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] disabled:opacity-40"
+        >
+          <Icon className="size-5" />
+          {label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
 type EditorShellProps = {
   className?: string;
   children?: React.ReactNode;
@@ -932,19 +1348,12 @@ type EditorShellProps = {
   mode?: 'canvas' | 'form';
 };
 
-function EditorShell({
-  className,
-  children,
-  requireCommitMessage = false,
-  mode = 'canvas',
-}: EditorShellProps) {
+function EditorShellLayout({ children }: { children?: React.ReactNode }) {
+  const { mode, layout } = useEditorChrome();
+  const canvas = mode === 'canvas';
   return (
-    <EditorProvider
-      className={className}
-      requireCommitMessage={requireCommitMessage}
-      mode={mode}
-    >
-      {mode === 'canvas' ? (
+    <>
+      {canvas && layout !== 'phone' ? (
         <Sidebar side="left" collapsible="icon" className="absolute h-full">
           <SidebarContent>
             <EditorPalette />
@@ -962,8 +1371,28 @@ function EditorShell({
         >
           <Editor.Slot name="status-bar" />
         </footer>
+        {canvas && layout === 'phone' ? <EditorBottomBar /> : null}
       </SidebarInset>
-      {mode === 'canvas' ? <EditorRightSidebar /> : null}
+      {canvas && layout === 'desktop' ? <EditorRightSidebar /> : null}
+      {canvas && layout === 'tablet' ? <TabletInspector /> : null}
+      {canvas && layout === 'phone' ? <PhoneSheets /> : null}
+    </>
+  );
+}
+
+function EditorShell({
+  className,
+  children,
+  requireCommitMessage = false,
+  mode = 'canvas',
+}: EditorShellProps) {
+  return (
+    <EditorProvider
+      className={className}
+      requireCommitMessage={requireCommitMessage}
+      mode={mode}
+    >
+      <EditorShellLayout>{children}</EditorShellLayout>
     </EditorProvider>
   );
 }

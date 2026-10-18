@@ -165,7 +165,7 @@ The items copy into your shadcn components directory. Adjust import paths to mat
 
 ## `editor-shell` parts
 
-The assembled `EditorShell` is a default composition of shadcn `Sidebar` (left palette + outline, right inspector), not a custom three-column grid. Cmd+B, icon-rail collapse, mobile sheet, and cookie persistence come from `SidebarProvider`.
+The assembled `EditorShell` is a default composition of shadcn `Sidebar` (left palette + outline, right inspector), not a custom three-column grid. Cmd+B, icon-rail collapse and cookie persistence come from `SidebarProvider`; phones and tablets get bottom sheets and a drawer instead (see [Phones and tablets](#phones-and-tablets)).
 
 | Export            | Role                                                                                          | Composed from                                      |
 | ----------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------- |
@@ -298,3 +298,38 @@ platform (`⌘⇧Z` on Apple, `Ctrl+Shift+Z` elsewhere); commands that cannot
 run right now are disabled. `/` opens the add-block dialog. Both keys run
 the `ui.commandPalette` and `ui.quickInsert` commands, so rebinding those in
 the editor's shortcuts moves the dialogs with them.
+
+## Phones and tablets
+
+`editor-shell` picks its layout from the viewport width:
+
+| Width | Layout |
+| --- | --- |
+| below 640px | The canvas takes the full width. A bottom bar holds Add block, Outline, Properties, Undo and Redo. Each opens a bottom sheet, and only one sheet is open at a time. |
+| 640 to 1023px | The palette and outline stay docked on the left. The inspector opens as a non-modal drawer from the toolbar. |
+| 1024px and up | Both panels are docked. |
+
+On phones, selecting a block opens its properties in a non-modal sheet. The
+sheet snaps to 35%, 60% and full height, and the block scrolls above the
+sheet. The browser's back gesture closes a sheet. The add sheet inserts into
+the selected block when it accepts the type, else right after the selection.
+In the outline sheet, the selected row has move up and move down buttons.
+The block toolbar's More menu offers Move to, Wrap, Copy and Select parent,
+so every structure change works without a drag. Under a coarse pointer,
+outline rows, menu items and toolbar buttons are 44px tall, and form inputs
+keep a 16px font so iOS does not zoom on focus.
+
+Sheets stay above the on-screen keyboard (`Drawer.VirtualKeyboardProvider`),
+and the bottom bar follows `useKeyboardInset()`. Give the page this viewport
+meta so the safe-area insets and keyboard resizing apply. Keep zoom
+enabled:
+
+```tsx
+// app/layout.tsx
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  interactiveWidget: 'resizes-content',
+};
+```

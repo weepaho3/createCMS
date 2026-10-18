@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 
 import { RootProvider } from 'fumadocs-ui/provider/next';
 
@@ -35,6 +35,16 @@ export const metadata: Metadata = {
     description: COPY.ogDescription,
     images: [HOME_OG_IMAGE.url],
   },
+};
+
+// viewport-fit=cover exposes env(safe-area-inset-*) to the editor's bottom
+// bar; resizes-content shrinks the layout viewport for the on-screen
+// keyboard. Zoom stays enabled.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  interactiveWidget: 'resizes-content',
 };
 
 export default function Layout({ children }: LayoutProps<'/'>) {

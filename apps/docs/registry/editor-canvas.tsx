@@ -1,18 +1,35 @@
 'use client';
 
-import { Editor, useBlockActions, useSelection } from '@createcms/react/editor';
+import {
+  Editor,
+  useBlockActions,
+  useCommand,
+  useMoveTargets,
+  useSelection,
+} from '@createcms/react/editor';
 import { Canvas } from '@createcms/react/editor/canvas';
 import {
   ArrowDownIcon,
   ArrowUpIcon,
   CopyIcon,
   GripVerticalIcon,
+  MoreHorizontalIcon,
   PlusIcon,
   Trash2Icon,
 } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
 import {
   Tooltip,
@@ -153,6 +170,7 @@ function DefaultBlockToolbarActions() {
       <CanvasIconButton label="Delete" onClick={() => actions.remove()}>
         <Trash2Icon />
       </CanvasIconButton>
+      <MoreActions blockId={selected} />
       <Editor.Slot name="block-toolbar" props={{ blockId: selected }} />
       <Canvas.InlineRichTextToolbar>
         <Separator orientation="vertical" className="h-4" />
@@ -174,6 +192,70 @@ function DefaultBlockToolbarActions() {
         </Editor.RichTextToolbar>
       </Canvas.InlineRichTextToolbar>
     </>
+  );
+}
+
+function CommandMenuItem({ id }: { id: string }) {
+  const command = useCommand(id);
+  if (!command) return null;
+  return (
+    <DropdownMenuItem
+      className="pointer-coarse:min-h-11"
+      disabled={!command.canExecute}
+      onClick={() => command.run()}
+    >
+      {command.label ?? id}
+      {command.shortcutLabel ? (
+        <DropdownMenuShortcut>{command.shortcutLabel}</DropdownMenuShortcut>
+      ) : null}
+    </DropdownMenuItem>
+  );
+}
+
+/** The structure actions that do not fit the toolbar, reachable without a drag. */
+function MoreActions({ blockId }: { blockId: string }) {
+  const { targets, moveTo } = useMoveTargets(blockId);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            className="pointer-events-auto"
+          />
+        }
+      >
+        <MoreHorizontalIcon />
+        <span className="sr-only">More actions</span>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-48">
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger
+            className="pointer-coarse:min-h-11"
+            disabled={targets.length === 0}
+          >
+            Move to…
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
+            {targets.map((target) => (
+              <DropdownMenuItem
+                key={`${target.parent.id}:${target.parent.slot}`}
+                className="pointer-coarse:min-h-11"
+                style={{ paddingLeft: 8 + target.depth * 12 }}
+                onClick={() => moveTo(target.parent, target.count)}
+              >
+                {target.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+        <CommandMenuItem id="block.wrap" />
+        <CommandMenuItem id="clipboard.copy" />
+        <CommandMenuItem id="selection.parent" />
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

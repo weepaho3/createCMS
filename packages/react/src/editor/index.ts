@@ -50,6 +50,7 @@ export type { SectionOverrideEntry } from './sections';
 export { useSection, useSectionOverrides } from './sections';
 export type { RovingFocus, RovingFocusOptions } from './roving';
 export { useRovingFocus } from './roving';
+export { useKeyboardInset } from './keyboard-inset';
 
 export const Editor = {
   Root: EditorRoot,
