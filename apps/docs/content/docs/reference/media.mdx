@@ -281,7 +281,7 @@ Resolve a batch of assets by id — the id-to-asset counterpart to `listAssets`,
 
 ### Get Asset Usages [#getassetusages]
 
-Check where an asset is used before you touch it. Usage comes from an index written with every block version: each image value (with its alt-text state and a revision pin), each asset URL in text (`matchedBy: 'url'`) and each id-shaped string in untyped values (`heuristic`). Pick a scope: `live` (the head of any branch, the default), `published` (the head of a published branch, what the site serves), `history` (any commit), or one branch with `branchId`. Results are grouped by root and paginated; pages that embed a reusable block using the asset come with `via`. Roots outside your scope only count in `total.hiddenRoots`.
+Check where an asset is used before you touch it. Usage comes from an index written with every block version: each image value (with its alt-text state and a revision pin), each image node and internal link mark of a rich text document (ProseMirror JSON; the path points at the node, e.g. `/text/content/0/content/1`), each asset URL in text (`matchedBy: 'url'`) and each id-shaped string in untyped values (`heuristic`). Pick a scope: `live` (the head of any branch, the default), `published` (the head of a published branch, what the site serves), `history` (any commit), or one branch with `branchId`. Results are grouped by root and paginated; pages that embed a reusable block using the asset come with `via`. Roots outside your scope only count in `total.hiddenRoots`.
 
 <APIMethod
   method="GET"

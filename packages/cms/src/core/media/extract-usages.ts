@@ -146,6 +146,95 @@ function heuristicUsages(
   }
 }
 
+/**
+ * A rich text document (ProseMirror JSON, `{ type: 'doc', content }`), or
+ * the same document serialized as a string; `null` for HTML or plain text.
+ */
+function richTextDoc(value: unknown): Record<string, unknown> | null {
+  if (isRecord(value)) return value.type === 'doc' ? value : null;
+  if (typeof value !== 'string' || !value.startsWith('{"type":"doc"')) {
+    return null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return isRecord(parsed) && parsed.type === 'doc' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The target of a link mark: `attrs.link` (`{ kind, rootId, ... }`), or a
+ * plain `attrs.href` of documents written before link values.
+ */
+function linkMarkTarget(
+  attrs: unknown,
+): { rootId?: string; url?: string } | null {
+  if (!isRecord(attrs)) return null;
+  const link = attrs.link;
+  if (isRecord(link)) {
+    if (link.kind === 'internal' && typeof link.rootId === 'string') {
+      return { rootId: link.rootId };
+    }
+    if (link.kind === 'external' && typeof link.url === 'string') {
+      return { url: link.url };
+    }
+    return null;
+  }
+  return typeof attrs.href === 'string' ? { url: attrs.href } : null;
+}
+
+/**
+ * Usages inside a rich text document: image nodes (`attrs.assetId`, with
+ * the alt state of `attrs.alt` and `attrs.decorative` and a revision pin),
+ * internal link marks, and asset URLs in text and external links. Paths
+ * point at the node (`/body/content/3/content/0`); nodes carry no stable
+ * ids, so they are positional.
+ */
+function richTextUsages(
+  node: Record<string, unknown>,
+  propertyKey: string,
+  path: string,
+  out: Usage[],
+): void {
+  if (node.type === 'image') {
+    const usage = imageUsage(node.attrs, propertyKey, path);
+    if (usage) out.push(usage);
+  }
+  if (typeof node.text === 'string') {
+    out.push(...textUsages(node.text, propertyKey, path));
+  }
+  if (Array.isArray(node.marks)) {
+    for (const mark of node.marks) {
+      if (!isRecord(mark) || mark.type !== 'link') continue;
+      const target = linkMarkTarget(mark.attrs);
+      if (target?.rootId) {
+        out.push({
+          kind: 'link',
+          key: target.rootId,
+          propertyKey,
+          path,
+          matchedBy: 'schema',
+        });
+      } else if (target?.url) {
+        out.push(...textUsages(target.url, propertyKey, path));
+      }
+    }
+  }
+  if (Array.isArray(node.content)) {
+    node.content.forEach((child, i) => {
+      if (isRecord(child)) {
+        richTextUsages(
+          child,
+          propertyKey,
+          `${path}${pointer('content', i)}`,
+          out,
+        );
+      }
+    });
+  }
+}
+
 function elementUsages(
   type: string,
   value: unknown,
@@ -186,8 +275,15 @@ function elementUsages(
         });
       }
       return;
+    case 'richText': {
+      const doc = richTextDoc(value);
+      if (doc) richTextUsages(doc, propertyKey, path, out);
+      else if (typeof value === 'string') {
+        out.push(...textUsages(value, propertyKey, path));
+      }
+      return;
+    }
     case 'string':
-    case 'richText':
       if (typeof value === 'string')
         out.push(...textUsages(value, propertyKey, path));
       return;
@@ -205,9 +301,11 @@ function elementUsages(
  * Every usage in `properties`, typed by `specs` (the block's property specs):
  * `image` and lists of `image` give asset usages with `altState` (a bare id
  * counts as missing alt text) and `revisionId`; `reference` and lists of
- * `reference` give references; an internal `link` gives a link; `string` and
- * `richText` give assets whose URLs they contain (`matchedBy: 'url'`), or an
- * asset id as the whole value (`heuristic`). Properties without a spec are
+ * `reference` give references; an internal `link` gives a link; `richText`
+ * documents give their image nodes (like `image`), internal link marks and
+ * the asset URLs in their text and external links; `string` (and rich text
+ * stored as HTML) gives assets whose URLs it contains (`matchedBy: 'url'`),
+ * or an asset id as the whole value (`heuristic`). Properties without a spec are
  * searched for id-shaped strings and asset URLs (`heuristic`).
  */
 export function extractUsages(
@@ -246,7 +344,8 @@ export function extractUsages(
  * image values (a bare id, or `AssetRef.assetId`, keeping alt text and
  * caption; a revision pin is dropped since it belongs to `from`, and so is
  * the crop with `dropCrop`), references in single or list properties, and
- * internal link targets. Returns the same object when nothing changed.
+ * internal link targets, also as image nodes and internal link marks of
+ * rich text documents. Returns the same object when nothing changed.
  */
 export function rewriteUsages(
   specs: Readonly<Record<string, UsagePropertySpec>> | undefined,
@@ -256,15 +355,65 @@ export function rewriteUsages(
   options: { dropCrop?: boolean } = {},
 ): Record<string, unknown> {
   let changed = false;
+  const swapImage = (value: Record<string, unknown>) => {
+    const { revisionId: _revision, crop, ...rest } = value;
+    return options.dropCrop || crop === undefined
+      ? { ...rest, assetId: to }
+      : { ...rest, crop, assetId: to };
+  };
+  /** The node with `from` replaced in image nodes and internal link marks. */
+  const swapNode = (node: unknown): unknown => {
+    if (!isRecord(node)) return node;
+    let next = node;
+    if (
+      node.type === 'image' &&
+      isRecord(node.attrs) &&
+      node.attrs.assetId === from
+    ) {
+      next = { ...next, attrs: swapImage(node.attrs) };
+    }
+    if (Array.isArray(node.marks)) {
+      const before: unknown[] = node.marks;
+      const marks = before.map((mark) => {
+        if (
+          isRecord(mark) &&
+          mark.type === 'link' &&
+          isRecord(mark.attrs) &&
+          isRecord(mark.attrs.link) &&
+          mark.attrs.link.kind === 'internal' &&
+          mark.attrs.link.rootId === from
+        ) {
+          return {
+            ...mark,
+            attrs: { ...mark.attrs, link: { ...mark.attrs.link, rootId: to } },
+          };
+        }
+        return mark;
+      });
+      if (marks.some((mark, i) => mark !== before[i])) {
+        next = { ...next, marks };
+      }
+    }
+    if (Array.isArray(node.content)) {
+      const before: unknown[] = node.content;
+      const content = before.map(swapNode);
+      if (content.some((child, i) => child !== before[i])) {
+        next = { ...next, content };
+      }
+    }
+    return next;
+  };
   const swap = (type: string, value: unknown): unknown => {
+    if (type === 'richText') {
+      const doc = richTextDoc(value);
+      if (!doc) return value;
+      const swapped = swapNode(doc);
+      if (swapped === doc) return value;
+      return typeof value === 'string' ? JSON.stringify(swapped) : swapped;
+    }
     if (type === 'image') {
       if (value === from) return to;
-      if (isRecord(value) && value.assetId === from) {
-        const { revisionId: _revision, crop, ...rest } = value;
-        return options.dropCrop || crop === undefined
-          ? { ...rest, assetId: to }
-          : { ...rest, crop, assetId: to };
-      }
+      if (isRecord(value) && value.assetId === from) return swapImage(value);
       return value;
     }
     if (type === 'reference') return value === from ? to : value;

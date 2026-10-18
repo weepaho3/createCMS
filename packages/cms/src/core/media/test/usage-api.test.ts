@@ -376,3 +376,54 @@ describe('replaceAssetUsages', () => {
     expect(res.results.map((r) => r.branchId)).toEqual([ctx.draft.branch.id]);
   });
 });
+
+describe('rich text usages', () => {
+  it('lists an asset that only a rich text image node uses and keeps it from archiving', async () => {
+    const ctx = await setupTestCMS({ withS3: true });
+    const [asset] = await ctx.db
+      .insert(assets)
+      .values([
+        { slug: 'r.png', mimeType: 'image/png', size: 1, objectKey: 'r-key' },
+      ])
+      .returning();
+    const api = ctx.cms.api.pages;
+    const root = await api.createRoot({
+      body: { slug: '/story', properties: { title: 'Story' } },
+    });
+    const doc = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [{ type: 'image', attrs: { assetId: asset.id, alt: null } }],
+        },
+      ],
+    };
+    await api.createBlock({
+      body: {
+        rootId: root.rootId,
+        branchId: root.branchId,
+        parentBlockId: root.rootId,
+        type: 'paragraph',
+        properties: { text: JSON.stringify(doc) },
+      },
+    });
+
+    const page = await ctx.cms.api.media.getAssetUsages({
+      query: { assetId: asset.id },
+    });
+    expect(page.items.map((item) => item.rootId)).toEqual([root.rootId]);
+    expect(page.items[0].occurrences[0]).toMatchObject({
+      propertyKey: 'text',
+      path: '/text/content/0/content/0',
+      matchedBy: 'schema',
+      altState: 'missing',
+    });
+
+    const archived = await ctx.cms.api.media.archiveAssets({
+      body: { assetIds: [asset.id] },
+    });
+    expect(archived.skippedReasons).toEqual({ [asset.id]: 'in_use' });
+    await ctx.s3.cleanup();
+  });
+});

@@ -159,3 +159,202 @@ describe('rewriteUsages', () => {
     expect(rewriteUsages(specs, untouched, A, B)).toBe(untouched);
   });
 });
+
+describe('rich text documents', () => {
+  const C = 'ast_cccccccccccccccccccc';
+  const R2 = 'rot_dddddddddddddddddddd';
+  const internal = (rootId: string) => ({
+    type: 'link',
+    attrs: { link: { kind: 'internal', rootId, collection: 'pages' } },
+  });
+  // A heading, a nested list with an image and an internal link, a table
+  // with a decorative image, and an external link to an asset URL.
+  const doc = {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'See ', marks: [] },
+          { type: 'text', text: 'the team', marks: [internal(R)] },
+        ],
+      },
+      {
+        type: 'bulletList',
+        content: [
+          {
+            type: 'listItem',
+            content: [
+              {
+                type: 'paragraph',
+                content: [
+                  {
+                    type: 'image',
+                    attrs: {
+                      assetId: A,
+                      alt: 'Two people',
+                      revisionId: 'ast_rev00000000000000000',
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        type: 'table',
+        content: [
+          {
+            type: 'tableRow',
+            content: [
+              {
+                type: 'tableCell',
+                content: [
+                  {
+                    type: 'image',
+                    attrs: { assetId: B, alt: null, decorative: true },
+                  },
+                  { type: 'image', attrs: { assetId: C, alt: null } },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        type: 'paragraph',
+        content: [
+          {
+            type: 'text',
+            text: 'download',
+            marks: [
+              {
+                type: 'link',
+                attrs: {
+                  link: {
+                    kind: 'external',
+                    url: `https://cms.example.com/api/cms/media/asset/${A}`,
+                  },
+                },
+              },
+              internal(R2),
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  it('reads image nodes, internal links and asset URLs with node paths', () => {
+    expect(extractUsages(specs, { body: doc })).toEqual([
+      {
+        kind: 'link',
+        key: R,
+        propertyKey: 'body',
+        path: '/body/content/0/content/1',
+        matchedBy: 'schema',
+      },
+      {
+        kind: 'asset',
+        key: A,
+        propertyKey: 'body',
+        path: '/body/content/1/content/0/content/0/content/0',
+        matchedBy: 'schema',
+        altState: 'present',
+        revisionId: 'ast_rev00000000000000000',
+      },
+      {
+        kind: 'asset',
+        key: B,
+        propertyKey: 'body',
+        path: '/body/content/2/content/0/content/0/content/0',
+        matchedBy: 'schema',
+        altState: 'decorative',
+      },
+      {
+        kind: 'asset',
+        key: C,
+        propertyKey: 'body',
+        path: '/body/content/2/content/0/content/0/content/1',
+        matchedBy: 'schema',
+        altState: 'missing',
+      },
+      {
+        kind: 'asset',
+        key: A,
+        propertyKey: 'body',
+        path: '/body/content/3/content/0',
+        matchedBy: 'url',
+      },
+      {
+        kind: 'link',
+        key: R2,
+        propertyKey: 'body',
+        path: '/body/content/3/content/0',
+        matchedBy: 'schema',
+      },
+    ]);
+  });
+
+  it('reads a document stored as a string and keeps HTML on the URL path', () => {
+    const fromString = extractUsages(specs, { body: JSON.stringify(doc) });
+    expect(fromString).toEqual(extractUsages(specs, { body: doc }));
+    expect(
+      extractUsages(specs, {
+        body: `<p><img src="/api/cms/media/asset/${B}"></p>`,
+      }),
+    ).toEqual([
+      {
+        kind: 'asset',
+        key: B,
+        propertyKey: 'body',
+        path: '/body',
+        matchedBy: 'url',
+      },
+    ]);
+    expect(
+      extractUsages(specs, {
+        body: {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [
+                {
+                  type: 'text',
+                  text: 'x',
+                  marks: [
+                    { type: 'link', attrs: { href: `/media/asset/${C}` } },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      }).map((u) => [u.key, u.matchedBy]),
+    ).toEqual([[C, 'url']]);
+  });
+
+  it('rewrites image nodes and internal link marks and keeps the rest', () => {
+    type Node = { attrs?: Record<string, unknown>; content: Node[] };
+    const swapped = rewriteUsages(specs, { body: doc, title: 'x' }, A, B) as {
+      body: Node;
+    };
+    const image = swapped.body.content[1].content[0].content[0].content[0];
+    expect(image.attrs).toEqual({ assetId: B, alt: 'Two people' });
+    expect(swapped.body.content[0]).toBe(doc.content[0] as unknown);
+    expect(swapped.body.content[2]).toBe(doc.content[2] as unknown);
+
+    const relinked = rewriteUsages(specs, { body: JSON.stringify(doc) }, R, R2);
+    expect(
+      extractUsages(specs, relinked)
+        .filter((u) => u.kind === 'link')
+        .map((u) => u.key),
+    ).toEqual([R2, R2]);
+    const untouched = { body: doc };
+    expect(rewriteUsages(specs, untouched, 'ast_zzzzzzzzzzzzzzzzzzzz', B)).toBe(
+      untouched,
+    );
+  });
+});
