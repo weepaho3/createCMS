@@ -8,190 +8,17 @@ import {
   sql,
 } from 'drizzle-orm';
 
-import type { VersionToIndex } from '../content-index';
 import type { DrizzleInstance } from '../types/drizzle';
 
-import { newId } from '../../utils/nanoid';
 import {
   assets,
-  blockVersions,
   branches,
   commitSnapshots,
   contentUsages,
+  publications,
   roots,
 } from '../db/schema.generated';
 import { rootScopeConditions } from '../scope';
-
-// Asset ids are nanoids like `ast_<20 chars>`; the generic id shape is matched
-// then validated against the assets table (assetId is a real FK), so other ids
-// that happen to match are never inserted.
-const ASSET_ID_PATTERN = /^[a-z]{2,5}_[0-9a-z]{20}$/;
-
-/**
- * Recursively collects candidate asset-id strings from a property value,
- * descending into nested objects/arrays (galleries, rich-text reference nodes).
- */
-function collectAssetIdCandidates(value: unknown, out: Set<string>): void {
-  if (typeof value === 'string') {
-    if (ASSET_ID_PATTERN.test(value)) out.add(value);
-    return;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) collectAssetIdCandidates(item, out);
-    return;
-  }
-  if (value && typeof value === 'object') {
-    for (const v of Object.values(value as Record<string, unknown>)) {
-      collectAssetIdCandidates(v, out);
-    }
-  }
-}
-
-/**
- * Flat, deduplicated list of every asset-id candidate found anywhere in a
- * block's properties (descending into nested objects/arrays). Used wherever
- * only the set of referenced ids matters (publish-status sync, discovery).
- */
-export function collectAssetIdsFromProperties(
-  properties: Record<string, unknown>,
-): string[] {
-  const found = new Set<string>();
-  collectAssetIdCandidates(properties, found);
-  return [...found];
-}
-
-/**
- * Maps each top-level property key to the asset-id candidates found anywhere
- * within its (possibly nested) value.
- */
-export function extractAssetIdsFromProperties(
-  properties: Record<string, unknown>,
-): Map<string, string[]> {
-  const result = new Map<string, string[]>();
-  for (const [propKey, value] of Object.entries(properties)) {
-    const found = new Set<string>();
-    collectAssetIdCandidates(value, found);
-    if (found.size > 0) result.set(propKey, [...found]);
-  }
-  return result;
-}
-
-/**
- * Inserts content_usages asset rows for newly-created block versions, within
- * the same transaction that created them. Insert-only: there is no
- * delete-then-reinsert (the branch-blind anti-pattern). MUST be called at every
- * block-version insert site (commit-writer's writeCommit + createInitialCommit,
- * and merges' createMergeBlockVersion): a version that references an asset but
- * skips this call would be invisible to the GC, which could then delete a live
- * asset.
- *
- * Candidates are validated against the assets table because assetId is an FK.
- */
-export async function insertAssetReferencesForVersions(
-  tx: DrizzleInstance,
-  rootId: string,
-  versions: VersionToIndex[],
-): Promise<void> {
-  const pending: {
-    blockVersionId: string;
-    blockId: string;
-    propertyKey: string;
-    assetId: string;
-  }[] = [];
-  const candidateIds = new Set<string>();
-
-  for (const version of versions) {
-    const extracted = extractAssetIdsFromProperties(version.properties);
-    for (const [propertyKey, ids] of extracted) {
-      for (const id of ids) {
-        pending.push({
-          blockVersionId: version.blockVersionId,
-          blockId: version.blockId,
-          propertyKey,
-          assetId: id,
-        });
-        candidateIds.add(id);
-      }
-    }
-  }
-  if (pending.length === 0) return;
-
-  const realAssetIds = new Set(
-    (
-      await tx
-        .select({ id: assets.id })
-        .from(assets)
-        .where(inArray(assets.id, [...candidateIds]))
-    ).map((r) => r.id),
-  );
-  if (realAssetIds.size === 0) return;
-
-  const rows = pending
-    .filter((p) => realAssetIds.has(p.assetId))
-    .map((p) => ({
-      id: newId('contentUsage'),
-      targetKind: 'asset' as const,
-      targetKey: p.assetId,
-      blockVersionId: p.blockVersionId,
-      rootId,
-      blockId: p.blockId,
-      propertyKey: p.propertyKey,
-    }));
-
-  if (rows.length > 0) {
-    await tx.insert(contentUsages).values(rows).onConflictDoNothing();
-  }
-}
-
-/**
- * Authoritative liveness check for destructive paths (pruning GC reclaim,
- * archiveAssets guard) and the media-library UI: true if a non-deleted block
- * version that references the asset sits in the HEAD snapshot of any branch of
- * any non-archived root.
- *
- * Because references are keyed by the immutable blockVersionId and inserted at
- * every version-creation site, the index cannot drift or under-report across
- * branches/merges. The commit_snapshots join to branches(headCommitId)
- * restricts to live content; deleted=false drops tombstones.
- *
- * `scopeColumns` are the active cross-scope columns (the caller already removed
- * a scoping plugin's cross-scope columns via `crossScopeColumns`), so a host in
- * any such sibling scope still counts while a host outside the scope (e.g.
- * another tenant) can never block the owner's archiveAssets, since asset ids
- * are author-controlled raw strings in block properties. Symmetric with
- * loadPublishedRoots and isReferencedByLiveContent (core/references.ts);
- * undefined / single scope means unscoped.
- */
-export async function isAssetReferencedByLiveContent(
-  db: DrizzleInstance,
-  assetId: string,
-  scopeColumns?: Record<string, unknown>,
-): Promise<boolean> {
-  const hit = await db
-    .select({ id: contentUsages.id })
-    .from(contentUsages)
-    .innerJoin(
-      commitSnapshots,
-      eq(commitSnapshots.blockVersionId, contentUsages.blockVersionId),
-    )
-    .innerJoin(branches, eq(branches.headCommitId, commitSnapshots.commitId))
-    .innerJoin(roots, eq(roots.id, branches.rootId))
-    .innerJoin(
-      blockVersions,
-      eq(blockVersions.id, contentUsages.blockVersionId),
-    )
-    .where(
-      and(
-        eq(contentUsages.targetKind, 'asset'),
-        eq(contentUsages.targetKey, assetId),
-        isNull(roots.archivedAt),
-        eq(blockVersions.deleted, false),
-        ...rootScopeConditions(scopeColumns),
-      ),
-    )
-    .limit(1);
-  return hit.length > 0;
-}
 
 /**
  * True when any block version, in any branch or commit, holds a string that
@@ -245,127 +72,262 @@ export async function assetsSuspectedInRichText(
 }
 
 /**
- * Batch counterpart of {@link isAssetReferencedByLiveContent}: given a set of
- * asset ids, returns the subset that is still referenced by live content, in a
- * single query (rather than one liveness EXISTS per id). Same liveness
- * semantics and scoping as the single-id check: a version keyed by an
- * immutable blockVersionId that sits in the HEAD snapshot of any branch of any
- * non-archived, in-scope root, with a non-deleted block version.
- *
- * Callers partition their id list against the returned set in memory: ids IN
- * the set are in-use (skip), ids NOT in it are free to archive.
+ * Where an asset usage counts. `live`: in the head of any branch;
+ * `published`: in the head of a published branch (what the published site
+ * serves); `history`: in any commit; `{ branchId }`: in that branch's head.
  */
-export async function assetsReferencedByLiveContent(
+export type UsageScope =
+  | 'published'
+  | 'live'
+  | 'history'
+  | { branchId: string };
+
+export type UsageFilter = {
+  /** The indexed targets: asset ids, or referenced root ids with `kind: 'reference'`. */
+  assetIds?: string[];
+  /** @default 'asset' */
+  kind?: 'asset' | 'reference';
+  scope: UsageScope;
+  /** The caller's cross-scope columns (see `rootScopeConditions`). */
+  scopeColumns?: Record<string, unknown>;
+  /** A root predicate of the caller's scope (`scope.roots.where`). */
+  rootsWhere?: SQL;
+  /** Count roots in the trash (they return on restore). */
+  includeArchivedRoots?: boolean;
+  /** Only image usages without alt text. */
+  missingAlt?: boolean;
+  /** One root only. */
+  rootId?: string;
+  /** With `published`: leave out this publication (the one being unpublished). */
+  excludePublication?: { rootId: string; branchId: string };
+};
+
+function usageConditions(filter: UsageFilter): SQL[] {
+  const conditions: SQL[] = [
+    eq(contentUsages.targetKind, filter.kind ?? 'asset'),
+  ];
+  if (filter.assetIds)
+    conditions.push(inArray(contentUsages.targetKey, filter.assetIds));
+  if (filter.rootId) conditions.push(eq(contentUsages.rootId, filter.rootId));
+  if (!filter.includeArchivedRoots) conditions.push(isNull(roots.archivedAt));
+  if (filter.missingAlt) conditions.push(eq(contentUsages.altState, 'missing'));
+  conditions.push(...rootScopeConditions(filter.scopeColumns));
+  if (filter.rootsWhere) conditions.push(filter.rootsWhere);
+  return conditions;
+}
+
+/**
+ * The scope of `filter` as one condition on a `content_usages` row. Branch
+ * scopes probe the head snapshot of the root's branches by its primary key
+ * (`commitId`, `blockId`) plus the version, so a usage counts only while its
+ * exact block version is in a head; tombstones are never indexed, so no
+ * version check is needed. `history` asks whether any commit holds the
+ * version.
+ */
+function scopeCondition(filter: UsageFilter): SQL {
+  if (filter.scope === 'history') {
+    return sql`EXISTS (SELECT 1 FROM ${commitSnapshots} WHERE ${commitSnapshots.blockVersionId} = ${contentUsages.blockVersionId})`;
+  }
+  const extra: SQL[] = [];
+  let publicationJoin = sql``;
+  if (filter.scope === 'published') {
+    publicationJoin = sql`JOIN ${publications} ON ${publications.branchId} = ${branches.id}`;
+    if (filter.excludePublication) {
+      extra.push(
+        sql`NOT (${publications.rootId} = ${filter.excludePublication.rootId} AND ${publications.branchId} = ${filter.excludePublication.branchId})`,
+      );
+    }
+  } else if (typeof filter.scope === 'object') {
+    extra.push(sql`${branches.id} = ${filter.scope.branchId}`);
+  }
+  return sql`EXISTS (
+    SELECT 1 FROM ${branches}
+    JOIN ${commitSnapshots}
+      ON ${commitSnapshots.commitId} = ${branches.headCommitId}
+     AND ${commitSnapshots.blockId} = ${contentUsages.blockId}
+     AND ${commitSnapshots.blockVersionId} = ${contentUsages.blockVersionId}
+    ${publicationJoin}
+    WHERE ${branches.rootId} = ${contentUsages.rootId}
+    ${extra.length > 0 ? sql`AND ${and(...extra)}` : sql``}
+  )`;
+}
+
+/** Every condition of `filter` on `content_usages` joined to `roots`. */
+function usageWhere(filter: UsageFilter): SQL {
+  return and(...usageConditions(filter), scopeCondition(filter))!;
+}
+
+/** The asset ids among `filter.assetIds` that have a usage in `filter.scope`. */
+export async function assetsUsedIn(
+  db: DrizzleInstance,
+  filter: UsageFilter & { assetIds: string[] },
+): Promise<Set<string>> {
+  if (filter.assetIds.length === 0) return new Set();
+  const rows = await db
+    .selectDistinct({ assetId: contentUsages.targetKey })
+    .from(contentUsages)
+    .innerJoin(roots, eq(roots.id, contentUsages.rootId))
+    .where(usageWhere(filter));
+  return new Set(rows.map((r) => r.assetId));
+}
+
+/** The assets in use by live content, in scope; see {@link assetsUsedIn}. */
+export function assetsReferencedByLiveContent(
   db: DrizzleInstance,
   assetIds: string[],
   scopeColumns?: Record<string, unknown>,
 ): Promise<Set<string>> {
-  if (assetIds.length === 0) return new Set();
+  return assetsUsedIn(db, { assetIds, scope: 'live', scopeColumns });
+}
+
+/** One usage of an asset in `filter.scope`, with its root and branch. */
+export type ScopedUsage = {
+  assetId: string;
+  rootId: string;
+  collection: string;
+  slug: string | null;
+  branchId: string | null;
+  branchName: string | null;
+  blockId: string;
+  propertyKey: string;
+  path: string;
+  matchedBy: string;
+  altState: string | null;
+  revisionId: string | null;
+};
+
+/**
+ * Every usage in `filter`, ordered by collection, root, branch and path.
+ * Branch scopes list a usage once per branch whose head holds it; `history`
+ * lists it once, without a branch.
+ */
+export async function scopedUsages(
+  db: DrizzleInstance,
+  filter: UsageFilter,
+): Promise<ScopedUsage[]> {
+  const fields = {
+    assetId: contentUsages.targetKey,
+    rootId: contentUsages.rootId,
+    collection: roots.collection,
+    slug: roots.slug,
+    blockId: contentUsages.blockId,
+    propertyKey: contentUsages.propertyKey,
+    path: contentUsages.path,
+    matchedBy: contentUsages.matchedBy,
+    altState: contentUsages.altState,
+    revisionId: contentUsages.revisionId,
+  };
+  let rows: ScopedUsage[];
+  if (filter.scope === 'history') {
+    rows = (
+      await db
+        .select(fields)
+        .from(contentUsages)
+        .innerJoin(roots, eq(roots.id, contentUsages.rootId))
+        .where(usageWhere(filter))
+    ).map((row) => ({ ...row, branchId: null, branchName: null }));
+  } else {
+    // One row per branch whose head holds the usage; `scopeCondition`
+    // already restricted the usage, this join names the branches.
+    const branchConditions: SQL[] = [
+      eq(branches.rootId, contentUsages.rootId),
+      sql`EXISTS (SELECT 1 FROM ${commitSnapshots} WHERE ${commitSnapshots.commitId} = ${branches.headCommitId} AND ${commitSnapshots.blockId} = ${contentUsages.blockId} AND ${commitSnapshots.blockVersionId} = ${contentUsages.blockVersionId})`,
+    ];
+    if (typeof filter.scope === 'object') {
+      branchConditions.push(eq(branches.id, filter.scope.branchId));
+    }
+    if (filter.scope === 'published') {
+      branchConditions.push(
+        sql`EXISTS (SELECT 1 FROM ${publications} WHERE ${publications.branchId} = ${branches.id})`,
+      );
+    }
+    rows = await db
+      .select({ ...fields, branchId: branches.id, branchName: branches.name })
+      .from(contentUsages)
+      .innerJoin(roots, eq(roots.id, contentUsages.rootId))
+      .innerJoin(branches, and(...branchConditions))
+      .where(usageWhere(filter));
+  }
+  return rows.sort(
+    (a, b) =>
+      a.collection.localeCompare(b.collection) ||
+      a.rootId.localeCompare(b.rootId) ||
+      (a.branchName ?? '').localeCompare(b.branchName ?? '') ||
+      a.path.localeCompare(b.path),
+  );
+}
+
+/**
+ * Per asset, the number of roots using it in `scope` and of published roots
+ * using it. Read from the index on every call: never cache it for a
+ * protection decision.
+ */
+export async function assetUsageCounts(
+  db: DrizzleInstance,
+  assetIds: string[],
+  scope: UsageScope,
+  scopeColumns?: Record<string, unknown>,
+): Promise<Record<string, { roots: number; published: number }>> {
+  const counts: Record<string, { roots: number; published: number }> = {};
+  for (const id of assetIds) counts[id] = { roots: 0, published: 0 };
+  if (assetIds.length === 0) return counts;
+  const count = (filter: UsageFilter) =>
+    db
+      .select({
+        assetId: contentUsages.targetKey,
+        roots: sql<number>`count(DISTINCT ${contentUsages.rootId})::int`,
+      })
+      .from(contentUsages)
+      .innerJoin(roots, eq(roots.id, contentUsages.rootId))
+      .where(usageWhere(filter))
+      .groupBy(contentUsages.targetKey);
+  const [inScope, published] = await Promise.all([
+    count({ assetIds, scope, scopeColumns }),
+    count({ assetIds, scope: 'published', scopeColumns }),
+  ]);
+  for (const row of inScope) counts[row.assetId].roots = row.roots;
+  for (const row of published) counts[row.assetId].published = row.roots;
+  return counts;
+}
+
+/** The asset ids indexed for the blocks of `rootId` at `commitId`. */
+export async function assetsAtCommit(
+  db: DrizzleInstance,
+  commitId: string,
+  rootId: string,
+): Promise<string[]> {
   const rows = await db
     .selectDistinct({ assetId: contentUsages.targetKey })
     .from(contentUsages)
     .innerJoin(
       commitSnapshots,
-      eq(commitSnapshots.blockVersionId, contentUsages.blockVersionId),
-    )
-    .innerJoin(branches, eq(branches.headCommitId, commitSnapshots.commitId))
-    .innerJoin(roots, eq(roots.id, branches.rootId))
-    .innerJoin(
-      blockVersions,
-      eq(blockVersions.id, contentUsages.blockVersionId),
+      and(
+        eq(commitSnapshots.commitId, commitId),
+        eq(commitSnapshots.blockId, contentUsages.blockId),
+        eq(commitSnapshots.blockVersionId, contentUsages.blockVersionId),
+      ),
     )
     .where(
       and(
         eq(contentUsages.targetKind, 'asset'),
-        inArray(contentUsages.targetKey, assetIds),
-        isNull(roots.archivedAt),
-        eq(blockVersions.deleted, false),
-        ...rootScopeConditions(scopeColumns),
+        eq(contentUsages.rootId, rootId),
       ),
     );
-  return new Set(rows.map((r) => r.assetId));
+  return rows.map((r) => r.assetId);
 }
 
 /**
- * Page-centric usage for the media library — "this image is used on these N
- * pages". Returns each distinct live (non-archived) page that references the
- * asset, with its per-block occurrences. A page counts once even when the asset
- * appears in several of its blocks or branches.
- *
- * `scopeColumns` are the active CROSS-SCOPE columns (a scoping plugin's
- * cross-scope columns already removed by the caller), so a host outside the scope
- * (e.g. another tenant) never appears in the usage list — symmetric with the
- * archiveAssets guard and the read path. Undefined → unscoped.
+ * A condition on `assetId` (a column of the outer query): the asset has a
+ * usage matching `filter` (assets of `filter.assetIds` are ignored here).
  */
-export async function getAssetUsageDetails(
-  db: DrizzleInstance,
-  assetId: string,
-  scopeColumns?: Record<string, unknown>,
-): Promise<{
-  pageCount: number;
-  pages: {
-    rootId: string;
-    collection: string;
-    slug: string | null;
-    occurrences: { branchId: string; blockId: string; propertyKey: string }[];
-  }[];
-}> {
-  const rows = await db
-    .select({
-      rootId: roots.id,
-      collection: roots.collection,
-      slug: roots.slug,
-      branchId: branches.id,
-      blockId: contentUsages.blockId,
-      propertyKey: contentUsages.propertyKey,
-    })
-    .from(contentUsages)
-    .innerJoin(
-      commitSnapshots,
-      eq(commitSnapshots.blockVersionId, contentUsages.blockVersionId),
-    )
-    .innerJoin(branches, eq(branches.headCommitId, commitSnapshots.commitId))
-    .innerJoin(roots, eq(roots.id, branches.rootId))
-    .innerJoin(
-      blockVersions,
-      eq(blockVersions.id, contentUsages.blockVersionId),
-    )
-    .where(
-      and(
-        eq(contentUsages.targetKind, 'asset'),
-        eq(contentUsages.targetKey, assetId),
-        isNull(roots.archivedAt),
-        eq(blockVersions.deleted, false),
-        ...rootScopeConditions(scopeColumns),
-      ),
-    );
-
-  const pageMap = new Map<string, (typeof pages)[number]>();
-  const pages: {
-    rootId: string;
-    collection: string;
-    slug: string | null;
-    occurrences: { branchId: string; blockId: string; propertyKey: string }[];
-  }[] = [];
-
-  for (const row of rows) {
-    let page = pageMap.get(row.rootId);
-    if (!page) {
-      page = {
-        rootId: row.rootId,
-        collection: row.collection,
-        slug: row.slug ?? null,
-        occurrences: [],
-      };
-      pageMap.set(row.rootId, page);
-      pages.push(page);
-    }
-    page.occurrences.push({
-      branchId: row.branchId,
-      blockId: row.blockId,
-      propertyKey: row.propertyKey,
-    });
-  }
-
-  return { pageCount: pages.length, pages };
+export function assetHasUsage(
+  assetId: AnyColumn,
+  filter: Omit<UsageFilter, 'assetIds' | 'kind'>,
+): SQL {
+  return sql`EXISTS (
+    SELECT 1 FROM ${contentUsages}
+    JOIN ${roots} ON ${roots.id} = ${contentUsages.rootId}
+    WHERE ${contentUsages.targetKey} = ${assetId}
+      AND ${usageWhere(filter)}
+  )`;
 }

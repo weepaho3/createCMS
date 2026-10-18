@@ -26,6 +26,17 @@ import {
   MediaUploadList,
   MediaUploadProgress,
 } from './uploads';
+import {
+  UsageCount,
+  UsageEmpty,
+  UsageItem,
+  UsageList,
+  UsageLoadMore,
+  UsageMissingAltFilter,
+  UsageOccurrence,
+  UsageRoot,
+  UsageScopeSwitch,
+} from './usage';
 
 export const Media = {
   Root: MediaRoot,
@@ -51,6 +62,43 @@ export const Media = {
   Picture: MediaPicture,
 };
 
+/** Where an asset is used: `Usage.Root` and its parts. */
+export const Usage = {
+  Root: UsageRoot,
+  Count: UsageCount,
+  ScopeSwitch: UsageScopeSwitch,
+  MissingAltFilter: UsageMissingAltFilter,
+  List: UsageList,
+  Item: UsageItem,
+  Occurrence: UsageOccurrence,
+  Empty: UsageEmpty,
+  LoadMore: UsageLoadMore,
+};
+
+export {
+  createEditorHrefAdapter,
+  invalidateAssetUsageCounts,
+  useAssetUsageCounts,
+  useAssetUsages,
+  useUsage,
+} from './usage';
+export type {
+  EditorHrefAdapter,
+  MediaUsageItem,
+  MediaUsageOccurrence,
+  MediaUsagePage,
+  MediaUsageScope,
+  UseAssetUsagesState,
+  UsageCountProps,
+  UsageEmptyProps,
+  UsageItemProps,
+  UsageListProps,
+  UsageLoadMoreProps,
+  UsageMissingAltFilterProps,
+  UsageOccurrenceProps,
+  UsageRootProps,
+  UsageScopeSwitchProps,
+} from './usage';
 export { useAssetImage } from './image-components';
 export type { MediaImageProps } from './image-components';
 export type { AssetImage, AssetImageOptions, ImageAsset } from './image';

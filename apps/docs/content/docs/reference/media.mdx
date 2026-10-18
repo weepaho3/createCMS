@@ -199,6 +199,10 @@ List the assets in your media library, with optional filtering (by folder, statu
     cursor: { type: 'string', description: "Opaque keyset cursor from a previous page's `nextCursor`; pages past the offset ceiling." },
     sortBy: { type: "'createdAt' | 'slug' | 'size'", default: "'createdAt'", description: 'Sort field.' },
     sortDirection: { type: "'asc' | 'desc'", default: "'desc'", description: 'Sort order.' },
+    usage: { type: "'used' | 'unused'", description: 'Only assets with (or without) a usage in `usageScope`.' },
+    usageScope: { type: "'live' | 'published'", default: "'live'", description: 'The scope `usage` and `unusedSinceDays` look at (see [`getAssetUsages`](#getassetusages)).' },
+    missingAlt: { type: 'boolean', description: 'Only assets with at least one live image usage without alt text.' },
+    unusedSinceDays: { type: 'number', description: 'Only assets without a usage in `usageScope` that were created at least this many days ago.' },
   }}
 />
 
@@ -228,7 +232,7 @@ Resolve a batch of assets by id — the id-to-asset counterpart to `listAssets`,
 
 ### Get Asset Usages [#getassetusages]
 
-Check where an asset is used across your live content before you touch it — you get each page that references it, with per-block occurrences. Each page reports its `rootId`, `collection`, `storedSlug` (the page's bare stored slug segment, not a full URL path), and the block-level `occurrences`.
+Check where an asset is used before you touch it. Usage comes from an index written with every block version: each image value (with its alt-text state and a revision pin), each asset URL in text (`matchedBy: 'url'`) and each id-shaped string in untyped values (`heuristic`). Pick a scope: `live` (the head of any branch, the default), `published` (the head of a published branch, what the site serves), `history` (any commit), or one branch with `branchId`. Results are grouped by root and paginated; pages that embed a reusable block using the asset come with `via`. Roots outside your scope only count in `total.hiddenRoots`.
 
 <APIMethod
   method="GET"
@@ -238,14 +242,71 @@ Check where an asset is used across your live content before you touch it — yo
   resource="media"
   operation="read"
   args={`{
-  query: { assetId: 'ast_123' }, // required
+  query: { assetId: 'ast_123', scope: 'published', limit: 20 }, // assetId required
 }`}
   returns={{
-    pageCount: { type: 'number', description: 'How many distinct live pages reference the asset.' },
-    pages: { type: '{ rootId, collection, storedSlug, occurrences }[]', description: "One entry per referencing page. `storedSlug` is the page's bare stored slug segment (`null` for root pages); `occurrences` is `{ branchId, blockId, propertyKey }[]`." },
+    total: { type: '{ roots, occurrences, hiddenRoots }', description: 'Counts over every page of the result.' },
+    items: { type: '{ rootId, collection, title, storedSlug, status, via, occurrences }[]', description: "One entry per root. `status` is `published`, `scheduled` or `draft`; `via` is the reusable block the asset sits in; `occurrences` is `{ branchId, branchName, blockId, propertyKey, path, matchedBy, altState, revisionId }[]`, `path` a JSON pointer into the block's properties." },
+    nextCursor: { type: 'string | null', description: 'Pass as `cursor` for the next page.' },
   }}
   params={{
-    assetId: { type: 'string', required: true, description: 'The asset id to query. Throws `ASSET_NOT_FOUND` if it does not exist.' },
+    assetId: { type: 'string', required: true, description: 'The asset. Throws `ASSET_NOT_FOUND` outside your scope.' },
+    scope: { type: "'live' | 'published' | 'history'", description: 'Default `live`.' },
+    branchId: { type: 'string', description: 'Only this branch head.' },
+    collection: { type: 'string', description: 'Only roots of this collection.' },
+    missingAlt: { type: "'true'", description: 'Only image usages without alt text.' },
+    cursor: { type: 'string', description: 'The `nextCursor` of the previous page.' },
+    limit: { type: 'number', description: 'Roots per page, 1 to 100 (default 20).' },
+  }}
+/>
+
+### Count Asset Usages [#getassetusagecounts]
+
+Usage counts for many assets at once, for badges in a grid. Read from the index on every call, never cached.
+
+<APIMethod
+  method="POST"
+  path="/media/getAssetUsageCounts"
+  fn="getAssetUsageCounts"
+  collection="media"
+  resource="media"
+  operation="read"
+  args={`{
+  body: { assetIds: ['ast_1', 'ast_2'], scope: 'live' }, // assetIds required, up to 200
+}`}
+  returns={{
+    counts: { type: 'Record<assetId, { roots, published }>', description: 'Roots using each asset in `scope`, and published roots using it. Assets outside your scope are left out.' },
+  }}
+  params={{
+    assetIds: { type: 'string[]', required: true, description: 'Up to 200 asset ids.' },
+    scope: { type: "'live' | 'published' | 'history'", description: 'Default `live`.' },
+  }}
+/>
+
+### Replace an Asset Everywhere [#replaceassetusages]
+
+Swap one asset for another in all content: one commit per root and branch head (`Replace asset <from> with <to>`) through the normal commit pipeline. Image values keep their alt text and caption; a revision pin is dropped, and so is a crop when the aspect ratios differ (`cropDropped`). A branch the branch policy protects fails with its error code while the others go on. Usages found in text (asset URLs) are not rewritten; `notRewritten` counts them. Collection hooks do not run. Unlike [`replaceAsset`](#replaceasset), which keeps the id and swaps the bytes, this changes content, so it needs the `admin` resource.
+
+<APIMethod
+  method="POST"
+  path="/media/replaceAssetUsages"
+  fn="replaceAssetUsages"
+  collection="media"
+  resource="admin"
+  operation="update"
+  args={`{
+  body: { fromAssetId: 'ast_old', toAssetId: 'ast_new', dryRun: true }, // ids required
+}`}
+  returns={{
+    results: { type: '{ rootId, branchId, ok, commitId, blocks, error }[]', description: 'One entry per affected root and branch; `commitId` is `null` in a dry run or when nothing changed.' },
+    cropDropped: { type: 'boolean', description: 'Crops were removed because the aspect ratios differ.' },
+    notRewritten: { type: 'number', description: 'Usages in text that stay as they are.' },
+  }}
+  params={{
+    fromAssetId: { type: 'string', required: true, description: 'The asset to replace.' },
+    toAssetId: { type: 'string', required: true, description: 'An original asset (not a variant or revision).' },
+    branchIds: { type: 'string[]', description: 'Only these branches.' },
+    dryRun: { type: 'boolean', description: 'List the affected pairs without committing.' },
   }}
 />
 
@@ -623,7 +684,7 @@ Throws `FOLDER_NOT_FOUND` (unknown/out-of-scope target) or `ASSET_NOT_FOUND` (no
 
 ### Archive Assets [#archiveassets]
 
-Soft-delete a batch of assets (and their variants) so a later garbage-collection pass can reclaim them. Assets still referenced by live (published) content are skipped rather than failed, so the rest of the batch still archives. Throws `ASSET_NOT_FOUND` if none of the ids match a live, in-scope asset.
+Soft-delete a batch of assets (and their variants) so a later garbage-collection pass can reclaim them. Assets still in use are skipped rather than failed, so the rest of the batch still archives: used by the head of any branch (`in_use`), reported by a [`usageSources`](/docs/reference/configuration) entry (`external`), or suspected in rich text (`richtext_suspect`). Show the user [`getAssetUsages`](#getassetusages) and repeat with `force` to archive them anyway; content keeps pointing at them, and pruning never reclaims an asset any commit still uses. Throws `ASSET_NOT_FOUND` if none of the ids match a live, in-scope asset.
 
 <APIMethod
   method="POST"
@@ -635,18 +696,20 @@ Soft-delete a batch of assets (and their variants) so a later garbage-collection
   args={`{
   body: {
     assetIds: ['ast_123'], // required
-    force: false, // archive assets suspected in rich text anyway
+    force: false, // archive assets that are in use too
   },
 }`}
   returns={{
     archived: { type: 'number', description: 'How many assets were archived (variants archived alongside them).' },
     archivedIds: { type: 'string[]', description: 'The ids that were archived.' },
     skipped: { type: 'string[]', description: 'Ids that were not archived.' },
-    skippedReasons: { type: "Record<string, 'in_use' | 'richtext_suspect'>", description: '`in_use`: referenced by live content. `richtext_suspect`: the id appears inside a longer string of a block version (rich text), which the usage index does not see.' },
+    skippedReasons: { type: "Record<string, 'in_use' | 'external' | 'richtext_suspect'>", description: '`in_use`: used by the head of a branch. `external`: a usage source reports it. `richtext_suspect`: the id appears inside a longer string of a block version that the usage index does not cover.' },
+    usage: { type: 'Record<string, { roots, published }>', description: 'Root counts for the `in_use` ids.' },
+    usedByArchivedRoots: { type: 'string[]', description: 'Archived ids that archived roots still use; restoring such a root brings back a reference to an archived asset.' },
   }}
   params={{
     assetIds: { type: 'string[]', required: true, description: 'Asset ids to archive (at least one).' },
-    force: { type: 'boolean', description: 'Archive `richtext_suspect` assets anyway. Live references still block. Has no effect with `guardRichTextReferences: false`.' },
+    force: { type: 'boolean', description: 'Archive skipped assets anyway, whatever the reason. Use after the user confirmed the usage list.' },
   }}
 />
 

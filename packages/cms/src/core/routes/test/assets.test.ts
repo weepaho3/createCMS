@@ -54,8 +54,8 @@ describe('asset reference tracking', () => {
     const usages = await cms.api.media.getAssetUsages({
       query: { assetId: asset.id },
     });
-    expect(usages.pageCount).toBeGreaterThan(0);
-    expect(usages.pages[0].rootId).toBe(root.rootId);
+    expect(usages.total.roots).toBeGreaterThan(0);
+    expect(usages.items[0].rootId).toBe(root.rootId);
   });
 
   it('stops reporting live usage once the block stops referencing the asset', async () => {
@@ -93,7 +93,7 @@ describe('asset reference tracking', () => {
     const usages = await cms.api.media.getAssetUsages({
       query: { assetId: asset.id },
     });
-    expect(usages.pageCount).toBe(0);
+    expect(usages.total.roots).toBe(0);
 
     const refs = await db
       .select()
@@ -154,6 +154,6 @@ describe('asset reference tracking', () => {
     const usages = await cms.api.media.getAssetUsages({
       query: { assetId: asset.id },
     });
-    expect(usages.pageCount).toBe(0);
+    expect(usages.total.roots).toBe(0);
   });
 });

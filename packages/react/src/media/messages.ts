@@ -115,6 +115,17 @@ export type MediaMessages = {
     /** Labels `useAssetImage` returns as `provenanceLabel`. */
     provenance: Record<'ai_generated' | 'ai_edited', string>;
   };
+  usage: {
+    title: string;
+    count: MediaMessageFn<{ roots: number }>;
+    /** Roots outside the caller's scope. */
+    hiddenRoots: MediaMessageFn<{ count: number }>;
+    scopeLabel: string;
+    scope: Record<'live' | 'published' | 'history', string>;
+    missingAlt: string;
+    empty: string;
+    loadMore: string;
+  };
   picker: {
     title: string;
     choose: string;
@@ -123,7 +134,6 @@ export type MediaMessages = {
       dimensions: MediaMessageFn<{ minWidth: number; minHeight: number }>;
     };
   };
-  usage: { hiddenRoots: MediaMessageFn<{ count: number }> };
   /** A keyboard shortcut label for `key` with the platform modifier. */
   shortcut: MediaMessageFn<{ key: string }>;
   error: Record<MediaErrorCode, string> & {
@@ -261,6 +271,27 @@ export const defaultMediaMessages: MediaMessages = {
   image: {
     provenance: { ai_generated: 'AI-generated', ai_edited: 'AI-edited' },
   },
+  usage: {
+    title: 'Usage',
+    count: ({ roots }, format) =>
+      `Used on ${format.number(roots)} ${pluralize(roots, format, 'page', 'pages')}`,
+    scopeLabel: 'Show usage in',
+    scope: {
+      live: 'All branches',
+      published: 'Published',
+      history: 'History',
+    },
+    missingAlt: 'Only without alt text',
+    empty: 'Not used anywhere',
+    loadMore: 'Show more',
+    hiddenRoots: ({ count }, format) =>
+      pluralize(
+        count,
+        format,
+        `${format.number(count)} more page you cannot see`,
+        `${format.number(count)} more pages you cannot see`,
+      ),
+  },
   picker: {
     title: 'Select asset',
     choose: 'Choose',
@@ -269,15 +300,6 @@ export const defaultMediaMessages: MediaMessages = {
       dimensions: ({ minWidth, minHeight }, format) =>
         `Needs at least ${format.number(minWidth)} × ${format.number(minHeight)} px`,
     },
-  },
-  usage: {
-    hiddenRoots: ({ count }, format) =>
-      pluralize(
-        count,
-        format,
-        `${format.number(count)} more page you cannot see`,
-        `${format.number(count)} more pages you cannot see`,
-      ),
   },
   shortcut: ({ key }, format) => (format.apple ? `⌘${key}` : `Ctrl+${key}`),
   error: {

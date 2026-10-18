@@ -39,6 +39,7 @@ import {
   roots,
   searchIndex,
 } from '../db/schema.generated';
+import { assetsUsedExternally } from '../media/archive';
 import { richTextReferenceExists } from '../media/usage';
 import { getStorage } from '../storage/get-storage';
 import { MEDIA_DEFAULTS } from '../types/s3';
@@ -850,15 +851,13 @@ export async function runPruningPass(
     if (budget <= 0) return finish('maxRoots');
   }
 
-  // 3) Reclaim archived assets that no live content references and that are
-  //    past the trash window. Liveness comes from the content_usages index
-  //    (asset rows), which is authoritative: keyed by the immutable
-  //    blockVersionId and populated at every version-creation site, so it
-  //    cannot drift across branches/merges. An asset is reclaimable only if no
-  //    referencing, non-deleted block version sits in the HEAD snapshot of any
-  //    branch of any non-archived root; this liveness join (not the absent
-  //    per-asset FK) is what makes reclaim correct. DB row first (its
-  //    content_usages rows cascade by block_version_id), then S3 best-effort.
+  // 3) Reclaim archived assets past the trash window that no commit uses:
+  //    the content_usages index (keyed by immutable block versions) joined to
+  //    every commit snapshot, so history and archived roots keep an asset
+  //    until their commits are pruned or the root is hard-deleted. A revision
+  //    pinned in content (`revision_id`) counts as a use of that revision.
+  //    Usage sources are asked last. DB row first (its content_usages rows
+  //    cascade by block_version_id), then S3 best-effort.
   const reclaimable = await db
     .select({ id: assets.id, objectKey: assets.objectKey })
     .from(assets)
@@ -869,17 +868,17 @@ export async function runPruningPass(
         sql`NOT EXISTS (
           SELECT 1
           FROM cms.content_usages cu
-          JOIN cms.commit_snapshots cs ON cs.block_version_id = cu.block_version_id
-          JOIN cms.branches b ON b.head_commit_id = cs.commit_id
-          JOIN cms.roots r ON r.id = b.root_id AND r.archived_at IS NULL
-          JOIN cms.block_versions bv ON bv.id = cu.block_version_id AND bv.deleted = false
-          WHERE cu.target_kind = 'asset' AND cu.target_key = ${assets.id}
+          WHERE cu.target_kind = 'asset'
+            AND (cu.target_key = ${assets.id} OR cu.revision_id = ${assets.id})
+            AND EXISTS (
+              SELECT 1 FROM cms.commit_snapshots cs
+              WHERE cs.block_version_id = cu.block_version_id
+            )
         )`,
         mediaConfig.guardRichTextReferences === false
           ? undefined
           : not(richTextReferenceExists(assets.id)),
-        // The ten newest revisions of an asset stay available for rollback;
-        // a revision pinned in content is protected by the usage check above.
+        // The ten newest revisions of an asset stay available for rollback.
         sql`(${assets.revisionOf} IS NULL OR ${assets.id} NOT IN (
           SELECT r.id FROM cms.assets r
            WHERE r.revision_of = ${assets.revisionOf}
@@ -891,8 +890,13 @@ export async function runPruningPass(
     .orderBy(asc(assets.archivedAt))
     .limit(maxAssets);
 
+  const external = await assetsUsedExternally(
+    mediaConfig,
+    reclaimable.map((asset) => asset.id),
+  );
   for (const asset of reclaimable) {
     if (Date.now() >= deadline) return finish('budget');
+    if (external.has(asset.id)) continue;
     if (!dryRun) {
       await db.delete(assets).where(eq(assets.id, asset.id));
       try {

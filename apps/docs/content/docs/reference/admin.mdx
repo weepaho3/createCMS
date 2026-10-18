@@ -112,6 +112,43 @@ Fill the asset and folder columns of the media data model on rows written before
   }}
 />
 
+### Re-index Usages [#runusagebackfill]
+
+Re-index the asset, reference and link usages of existing block versions with the current extractor: JSON pointer paths, alt-text state, revision pins and asset URLs in text. Run it once after upgrading, after `generate` and the migration; until then [`getAssetUsages`](/docs/reference/media#getassetusages) only knows the usages of versions written since. Block versions are immutable, so the result is exact and a second run changes nothing.
+
+<APIMethod
+  method="POST"
+  path="/admin/runUsageBackfill"
+  fn="runUsageBackfill"
+  collection="admin"
+  resource="admin"
+  operation="update"
+  args={`{
+  body: { cursor: null, limit: 500, dryRun: true },
+}`}
+  returns={{
+    processed: { type: 'number', description: 'Block versions read in this batch.' },
+    cursor: { type: 'string | null', description: 'Pass to the next call; `null` when done.' },
+    done: { type: 'boolean', description: 'Every block version was read.' },
+    dryRun: { type: 'boolean', description: 'Nothing was written.' },
+    rowsBefore: { type: 'number', description: 'Usage rows of this batch before the re-index.' },
+    rowsAfter: { type: 'number', description: 'Usage rows of this batch after it.' },
+    skippedVersions: { type: 'number', description: 'Versions of roots whose collection is no longer configured; left as they are.' },
+  }}
+  params={{
+    cursor: { type: 'string | null', description: 'The previous report\'s `cursor`; omit to start.' },
+    limit: { type: 'number', description: 'Block versions per batch, 1 to 1000. Default 500.' },
+    dryRun: { type: 'boolean', description: 'Report without writing.' },
+  }}
+/>
+
+```ts
+let cursor: string | null = null;
+do {
+  ({ cursor } = await cms.api.admin.runUsageBackfill({ body: { cursor } }));
+} while (cursor);
+```
+
 ### Rebuild the Search Index [#reindexsearch]
 
 Rebuild the entire full-text search index from scratch, re-indexing every root, comment, merge request, variable, template, asset, and notification. Reach for this after a bulk import or an index-shape change; it takes no input and hands back the per-type counts it wrote.

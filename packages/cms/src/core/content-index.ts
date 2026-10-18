@@ -1,8 +1,12 @@
+import { inArray } from 'drizzle-orm';
+
+import type { UsagePropertySpec } from './media/extract-usages';
 import type { CollectionWithName } from './types';
 import type { DrizzleInstance } from './types/drizzle';
 
-import { insertAssetReferencesForVersions } from './media/usage';
-import { insertReferenceUsagesForVersions } from './references';
+import { newId } from '../utils/nanoid';
+import { assets, contentUsages } from './db/schema.generated';
+import { extractUsages } from './media/extract-usages';
 import { insertVariableUsagesForVersions } from './variables';
 
 /**
@@ -63,7 +67,70 @@ export async function indexVersionContent(
     properties: v.properties,
   }));
 
-  await insertAssetReferencesForVersions(tx, rootId, payload);
+  await insertContentUsagesForVersions(tx, rootId, payload, collectionDef);
   await insertVariableUsagesForVersions(tx, rootId, payload);
-  await insertReferenceUsagesForVersions(tx, rootId, payload, collectionDef);
+}
+
+/** The property specs of `blockType` (the root block or a block type). */
+export function propertySpecsFor(
+  collectionDef: CollectionWithName,
+  blockType: string,
+): Readonly<Record<string, UsagePropertySpec>> | undefined {
+  return blockType === collectionDef.name || blockType === 'root'
+    ? collectionDef.root.properties
+    : collectionDef.blocks?.[blockType]?.properties;
+}
+
+/**
+ * Inserts the asset, reference and link rows of `content_usages` for freshly
+ * created block versions, from `extractUsages` (one row per usage path).
+ * Asset candidates are kept only when an asset with that id exists, since
+ * heuristic and URL matches can name anything. Insert-only and keyed by the
+ * immutable block version, like the variable index.
+ */
+export async function insertContentUsagesForVersions(
+  tx: DrizzleInstance,
+  rootId: string,
+  versions: VersionToIndex[],
+  collectionDef: CollectionWithName,
+): Promise<void> {
+  const rows: (typeof contentUsages.$inferInsert)[] = [];
+  const assetCandidates = new Set<string>();
+  for (const version of versions) {
+    const specs = propertySpecsFor(collectionDef, version.type);
+    for (const usage of extractUsages(specs, version.properties)) {
+      if (usage.kind === 'asset') assetCandidates.add(usage.key);
+      rows.push({
+        id: newId('contentUsage'),
+        targetKind: usage.kind,
+        targetKey: usage.key,
+        blockVersionId: version.blockVersionId,
+        rootId,
+        blockId: version.blockId,
+        propertyKey: usage.propertyKey,
+        path: usage.path,
+        matchedBy: usage.matchedBy,
+        altState: usage.altState ?? null,
+        revisionId: usage.revisionId ?? null,
+      });
+    }
+  }
+  if (rows.length === 0) return;
+
+  const realAssets = assetCandidates.size
+    ? new Set(
+        (
+          await tx
+            .select({ id: assets.id })
+            .from(assets)
+            .where(inArray(assets.id, [...assetCandidates]))
+        ).map((r) => r.id),
+      )
+    : new Set<string>();
+  const kept = rows.filter(
+    (row) => row.targetKind !== 'asset' || realAssets.has(row.targetKey),
+  );
+  if (kept.length > 0) {
+    await tx.insert(contentUsages).values(kept).onConflictDoNothing();
+  }
 }

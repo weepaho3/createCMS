@@ -403,6 +403,43 @@ revisionId? }`; the inferred property type is the `ImageValue` union.
   bytes are not AVIF is rejected with `INVALID_FILE_TYPE`.
   → **Migration:** none for valid files.
 
+- **`content_usages` carries paths and alt-text state.** The usage index
+  gains the columns `path`, `matched_by`, `alt_state` and `revision_id`, a
+  unique index on version, target and path, and indexes for root lookups and
+  missing alt text; `branches` gains an index on `head_commit_id`. Asset
+  usages are now indexed per occurrence by the property schema (lists, alt
+  text, revision pins) and include asset URLs in text.
+  → **Migration:** regenerate the schema (`generate`), run the migration,
+  then call `admin.runUsageBackfill` until its `cursor` is `null` so
+  existing block versions are re-indexed.
+
+- **`getAssetUsages` returns roots grouped and paginated.** The query takes
+  `assetId`, `scope` (`live` by default, `published`, `history`),
+  `branchId`, `collection`, `missingAlt`, `cursor` and `limit`, and the
+  response is `{ total: { roots, occurrences, hiddenRoots }, items,
+nextCursor }`, each item a root with `title`, `status`, `via` and its
+  `occurrences`. The former `pageCount` and `pages` are gone.
+  `@createcms/react` types `MediaClient.getAssetUsages` the same way.
+  → **Migration:** read `total.roots` instead of `pageCount` and `items`
+  instead of `pages`; pass `scope: 'published'` for the former
+  published-only answer.
+
+- **`archiveAssets` skips assets in use by any branch head, and `force`
+  overrides it.** An asset used by the head of any branch is skipped with
+  `in_use` (published content only before), an asset a
+  `media.usageSources` entry reports with `external`; `force: true` now
+  archives all skipped assets, `in_use` ones included. The response adds
+  `usage` and `usedByArchivedRoots`.
+  → **Migration:** show `getAssetUsages` before passing `force`; code that
+  relied on `force` not touching used assets checks `skippedReasons` first.
+
+- **Pruning keeps assets that any commit uses.** An archived asset is
+  reclaimed only when no block version in any commit snapshot uses it
+  (history and archived roots included) and no usage source reports it,
+  instead of when no live head references it.
+  → **Migration:** none; archived assets used by old commits are freed once
+  those commits were pruned.
+
 ---
 
 ## 0.6.0 — 2026-08-14

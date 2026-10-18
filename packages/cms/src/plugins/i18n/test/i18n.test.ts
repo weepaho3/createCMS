@@ -1079,7 +1079,7 @@ describe('i18n + multiTenant composition', () => {
     // scope, so it neither shows up in usage nor blocks the archive.
     set('acme', 'en');
     const usage = await cms.api.media.getAssetUsages({ query: { assetId } });
-    expect(usage.pageCount).toBe(0);
+    expect(usage.total.roots).toBe(0);
 
     const res = await cms.api.media.archiveAssets({
       body: { assetIds: [assetId] },
@@ -1114,7 +1114,7 @@ describe('i18n + multiTenant composition', () => {
     // Same tenant: the host is in acme's scope, so it both reports usage and
     // skips (protects) the asset on archive.
     const usage = await cms.api.media.getAssetUsages({ query: { assetId } });
-    expect(usage.pageCount).toBe(1);
+    expect(usage.total.roots).toBe(1);
 
     const res = await cms.api.media.archiveAssets({
       body: { assetIds: [assetId] },

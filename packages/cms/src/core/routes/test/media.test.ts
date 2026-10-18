@@ -2653,22 +2653,25 @@ describe('media.archiveAsset', () => {
 
     it.each([
       [
+        // The URL is a usage in the index.
         'an HTML img src',
         (id: string) => `<p><img src="/media/asset/${id}"></p>`,
+        'in_use',
       ],
       [
         'a stringified JSON document',
         (id: string) =>
           JSON.stringify({ type: 'image', attrs: { assetId: id } }),
+        'richtext_suspect',
       ],
-    ])('skips an asset referenced from %s', async (_label, text) => {
+    ])('skips an asset referenced from %s', async (_label, text, reason) => {
       const { cms, asset } = await setup(text);
       const res = await cms.api.media.archiveAssets({
         body: { assetIds: [asset.id] },
       });
       expect(res.archived).toBe(0);
       expect(res.skipped).toEqual([asset.id]);
-      expect(res.skippedReasons).toEqual({ [asset.id]: 'richtext_suspect' });
+      expect(res.skippedReasons).toEqual({ [asset.id]: reason });
     });
 
     it('archives a suspect with force', async () => {

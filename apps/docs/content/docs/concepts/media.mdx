@@ -139,7 +139,7 @@ const { pageCount, pages } = await cms.api.media.getAssetUsages({
 
 ## Object lifecycle [#object-lifecycle]
 
-Archiving an asset ([`archiveAssets`](/docs/reference/media#archiveassets)) is soft-delete: the row gets `archivedAt` set and drops out of `listAssets`/the gate, but the row and its S3 object both stay put until a later [pruning pass](/docs/concepts/data-retention) reclaims them — once it is past the trash window (`archiveKeepDays`) and no live content references it.
+Archiving an asset ([`archiveAssets`](/docs/reference/media#archiveassets)) is soft-delete: the row gets `archivedAt` set and drops out of `listAssets`/the gate, but the row and its S3 object both stay put until a later [pruning pass](/docs/concepts/data-retention) reclaims them: once it is past the trash window (`archiveKeepDays`) and no commit (history included) uses it. Assets still in use are skipped unless you pass `force`; [`getAssetUsages`](/docs/reference/media#getassetusages) lists where.
 
 Replacing an asset (either path above) mints a *new* object for the new bytes but keeps the row's `id`, so the row that used to name the *old* object no longer exists after the swap — nothing would ever reference the superseded object for reclaim. To close that gap, a replace also inserts a **tombstone**: a fresh, already-archived asset row that reuses the *old* slug/object key (with a brand-new `id`, never referenced by any content). That tombstone is what the pruning pass actually finds and reclaims once its trash window elapses — so a superseded object is not left behind forever, and replacing the same asset repeatedly does not accumulate orphaned bytes in your bucket.
 

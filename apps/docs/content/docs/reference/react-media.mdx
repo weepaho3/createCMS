@@ -269,6 +269,63 @@ width, so Next never asks the asset endpoint for a width outside the ladder.
 `createImageLoader({ widths, format })` builds one for other ladders or
 frameworks (Astro `getImage`, Nuxt image providers).
 
+## Usage parts
+
+`Usage` shows where an asset is used, from
+[`getAssetUsages`](/docs/reference/media#getassetusages). It works outside
+`Media.Root` (in an asset detail panel or before archiving) and reads its
+strings from the nearest catalog (`messages.usage`).
+
+```tsx
+import { Usage, createEditorHrefAdapter } from '@createcms/react/media';
+
+<Usage.Root
+  client={cmsClient.media}
+  assetId={asset.id}
+  editorHref={createEditorHrefAdapter('/admin/editor')}
+>
+  <Usage.Count />
+  <Usage.ScopeSwitch />
+  <Usage.MissingAltFilter />
+  <Usage.List>
+    {(item) => (
+      <Usage.Item>
+        {item.title}
+        {item.occurrences.map((occurrence) => (
+          <Usage.Occurrence key={occurrence.path} occurrence={occurrence}>
+            {occurrence.propertyKey}
+          </Usage.Occurrence>
+        ))}
+      </Usage.Item>
+    )}
+  </Usage.List>
+  <Usage.Empty />
+  <Usage.LoadMore />
+</Usage.Root>;
+```
+
+| Part | Element | Description |
+| --- | --- | --- |
+| `Usage.Root` (`UsageRootProps`) | `section` | Runs `useAssetUsages` for `assetId` with `client`, `scope`, `missingAlt` and `limit`; `editorHref` defaults to `createEditorHrefAdapter()`. `aria-label` is `usage.title`; `data-scope` and `data-loading` reflect the query. |
+| `Usage.Count` (`UsageCountProps`) | `p` | "Used on N pages", plus `usage.hiddenRoots` for roots outside the scope. Renders nothing before the first page. |
+| `Usage.ScopeSwitch` (`UsageScopeSwitchProps`) | `select` | The scopes `live`, `published` and `history`. |
+| `Usage.MissingAltFilter` (`UsageMissingAltFilterProps`) | `label` | A checkbox that keeps only image usages without alt text. |
+| `Usage.List` (`UsageListProps`) | `ul` | Calls `children(item)` for every `MediaUsageItem`. |
+| `Usage.Item` (`UsageItemProps`) | `li` | One root; `data-status` is `published`, `scheduled` or `draft`. |
+| `Usage.Occurrence` (`UsageOccurrenceProps`) | `a` | Links into the editor at one `MediaUsageOccurrence`; an image usage without alt text opens with the alt field focused (`focus=alt`). `data-alt-state` carries the alt-text state. |
+| `Usage.Empty` (`UsageEmptyProps`) | `p` | Renders once the query finished without any usage (`usage.empty`). |
+| `Usage.LoadMore` (`UsageLoadMoreProps`) | `button` | Loads the next page; absent when there is none (`usage.loadMore`). |
+
+`EditorHrefAdapter` (`{ build(target) }`) turns an occurrence
+(`{ rootId, collection, branchId, blockId, path, focus }`) into a link.
+`createEditorHrefAdapter(base = '/editor')` builds
+`<base>/<collection>/<rootId>?block=...&path=...&branch=...&focus=alt`; pass
+your own adapter for another editor.
+
+The response types are `MediaUsagePage` (`{ total, items, nextCursor }`),
+`MediaUsageItem`, `MediaUsageOccurrence` and `MediaUsageScope`
+(`'live' | 'published' | 'history'`).
+
 ## Hooks
 
 ### `useMediaLibrary`
@@ -333,6 +390,23 @@ root.
 `options.provenanceLabels` is set. `options` (`AssetImageOptions`):
 `sizes`, `widths`, `formats`, `focal`, `placeholderDataUrl`,
 `provenanceLabels`.
+
+### `useAssetUsages`
+
+`useAssetUsages(client, { assetId, scope, missingAlt, limit })` returns
+`UseAssetUsagesState`: `{ status, error, total, items, hasMore, scope,
+missingAlt, setScope, setMissingAlt, loadMore, reload }`. Changing the scope
+or the filter starts over; call `reload()` after a replace or an edit.
+`useUsage()` returns the same state from the nearest `Usage.Root`.
+
+### `useAssetUsageCounts`
+
+`useAssetUsageCounts(client, assetIds, scope = 'live')` returns
+`Record<assetId, { roots, published }>` for grid badges. The requests of every
+component in one frame go out as a single `getAssetUsageCounts` call per
+client and scope. Counts are cached until
+`invalidateAssetUsageCounts(client, assetIds?)` drops them (all of them
+without `assetIds`).
 
 ### `useMediaMessages`
 

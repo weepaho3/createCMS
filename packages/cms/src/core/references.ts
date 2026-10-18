@@ -1,11 +1,9 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 
-import type { VersionToIndex } from './content-index';
 import type { CollectionWithName } from './types';
 import type { ReferenceResolver } from './types/definitions';
 import type { DrizzleInstance } from './types/drizzle';
 
-import { newId } from '../utils/nanoid';
 import {
   blockVersions,
   branches,
@@ -72,83 +70,6 @@ export function getLinkPropertyNames(
     if (spec.type === 'link') linkProps.add(key);
   }
   return linkProps;
-}
-
-/**
- * Inserts content_usages `reference` rows for newly-created block versions,
- * within the same transaction that created them. A reference is a top-level
- * block property of type `reference` (per the collection def); its stored VALUE
- * is the raw reference string (a `rot_` rootId, or under i18n a `tgr_`
- * translationKey), recorded verbatim as `targetKey` so the reverse "who embeds
- * me" query can match the anchor rootId directly.
- *
- * INSERT-only and keyed by the immutable blockVersionId, like its asset and
- * variable siblings. The `collectionDef` is REQUIRED (no default) so every
- * version-insert site must thread it; a missed site would silently
- * under-index, which is load-bearing for the reusable-block delete guard.
- */
-export async function insertReferenceUsagesForVersions(
-  tx: DrizzleInstance,
-  rootId: string,
-  versions: VersionToIndex[],
-  collectionDef: CollectionWithName,
-): Promise<void> {
-  const rows: {
-    id: string;
-    targetKind: 'reference' | 'link';
-    targetKey: string;
-    blockVersionId: string;
-    rootId: string;
-    blockId: string;
-    propertyKey: string;
-  }[] = [];
-
-  for (const version of versions) {
-    const refProps = getReferencePropertyNames(collectionDef, version.type);
-    for (const [propKey] of refProps) {
-      const raw = version.properties[propKey];
-      // A single `reference` stores a string; a `list` of `reference` stores an
-      // array of strings. Index one usage row per referenced id either way, so
-      // the reusable-block delete guard protects list references too.
-      const values = Array.isArray(raw) ? raw : [raw];
-      for (const value of values) {
-        if (typeof value !== 'string' || !value) continue;
-        rows.push({
-          id: newId('contentUsage'),
-          targetKind: 'reference',
-          targetKey: value,
-          blockVersionId: version.blockVersionId,
-          rootId,
-          blockId: version.blockId,
-          propertyKey: propKey,
-        });
-      }
-    }
-
-    // INTERNAL links index their target rootId too (targetKind 'link') — for the
-    // usage UI / soft delete-warning. External/email/phone links are not tracked.
-    const linkProps = getLinkPropertyNames(collectionDef, version.type);
-    for (const propKey of linkProps) {
-      const value = version.properties[propKey] as
-        | { kind?: string; rootId?: unknown }
-        | undefined;
-      if (!value || value.kind !== 'internal') continue;
-      if (typeof value.rootId !== 'string' || !value.rootId) continue;
-      rows.push({
-        id: newId('contentUsage'),
-        targetKind: 'link',
-        targetKey: value.rootId,
-        blockVersionId: version.blockVersionId,
-        rootId,
-        blockId: version.blockId,
-        propertyKey: propKey,
-      });
-    }
-  }
-
-  if (rows.length > 0) {
-    await tx.insert(contentUsages).values(rows).onConflictDoNothing();
-  }
 }
 
 /**

@@ -19,6 +19,14 @@ export type ObjectAcl =
   | 'bucket-owner-read'
   | 'bucket-owner-full-control';
 
+/** A place outside content that uses assets (see `MediaConfig.usageSources`). */
+export type MediaUsageSource = {
+  /** Names the source in usage reports, e.g. `seo-settings`. */
+  kind: string;
+  /** The ids among `assetIds` this source uses. */
+  assetsInUse: (assetIds: string[]) => Promise<Iterable<string>>;
+};
+
 // ============================================================================
 // Media Configuration
 // ============================================================================
@@ -83,6 +91,13 @@ type BaseMediaConfig = {
    * `/media/asset/ast_...`. Errors are logged, never thrown.
    */
   onPurge?: (paths: string[]) => void | Promise<void>;
+
+  /**
+   * Usages the content index cannot see, such as asset ids in plugin
+   * tables or settings. An asset a source reports is skipped by
+   * `archiveAssets` (unless `force`) and never reclaimed by pruning.
+   */
+  usageSources?: MediaUsageSource[];
 
   /**
    * Rendition widths, ascending. The asset endpoint snaps `?w=` up to the

@@ -10,6 +10,7 @@ import { DEFAULT_BRANCH_NAME } from '../branch-policy';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError } from '../errors';
 import { runMediaBackfill } from '../media/backfill';
+import { runUsageBackfill } from '../media/usage-backfill';
 import { reindexAll } from '../search/index-builder';
 
 // ============================================================================
@@ -130,6 +131,41 @@ export function createAdminEndpoints(
         ),
       },
       async (ctx) => runMediaBackfill(db, mediaConfig, ctx.body ?? {}),
+    ),
+
+    /**
+     * Re-indexes the asset, reference and link usages of existing block versions (paths, alt-text state, revision pins, asset URLs in text), one resumable batch per call. Block versions are immutable, so the result is exact and a second run changes nothing.
+     * @param cursor Optional; the `cursor` of the previous report. Omit to start.
+     * @param limit Optional; block versions per batch, 1 to 1000 (defaults to 500).
+     * @param dryRun Optional; report without writing.
+     * @returns A report with `processed`, the next `cursor` (null when `done`), `rowsBefore` and `rowsAfter` for the batch, and `skippedVersions` (roots of collections no longer configured).
+     * @example
+     * let cursor = null;
+     * do { ({ cursor } = await cms.api.admin.runUsageBackfill({ body: { cursor } })); } while (cursor);
+     */
+    runUsageBackfill: createCMSEndpoint(
+      '/admin/runUsageBackfill',
+      {
+        method: 'POST',
+        body: z.object({
+          cursor: z.string().nullable().optional(),
+          limit: z.number().int().min(1).max(1000).optional(),
+          dryRun: z.boolean().optional(),
+        }),
+        metadata: cmsMeta(
+          {
+            $Infer: {
+              body: {} as {
+                cursor?: string | null;
+                limit?: number;
+                dryRun?: boolean;
+              },
+            },
+          },
+          { operation: 'update', ...ADMIN_META },
+        ),
+      },
+      async (ctx) => runUsageBackfill(db, cmsCtx.collections, ctx.body ?? {}),
     ),
 
     /**

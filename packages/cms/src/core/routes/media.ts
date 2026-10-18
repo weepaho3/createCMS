@@ -10,6 +10,7 @@ import {
   isNotNull,
   isNull,
   lt,
+  not,
   or,
   type SQL,
   sql,
@@ -56,7 +57,7 @@ import {
   prepareSignedUpload,
   validateFiles,
 } from '../media/uploads';
-import { getAssetUsageDetails } from '../media/usage';
+import { assetHasUsage } from '../media/usage';
 import { formatVariantKey, parseVariantKey } from '../media/variant-key';
 import { crossScopeColumns, scopedInsert, scopedInsertBatch } from '../scope';
 import {
@@ -74,6 +75,7 @@ import { MEDIA_DEFAULTS } from '../types/s3';
 import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
 import { createMediaAssetEndpoints } from './media-assets';
 import { createMediaFolderEndpoints } from './media-folders';
+import { createMediaUsageEndpoints } from './media-usage';
 
 /**
  * Types the gate redirects to the bare public URL. Everything else, and every
@@ -815,6 +817,7 @@ export function createMediaEndpoints(
 
   return {
     ...createMediaFolderEndpoints(cmsCtx),
+    ...createMediaUsageEndpoints(cmsCtx),
     ...createMediaAssetEndpoints(cmsCtx, mediaConfig, (row) =>
       toAssetListItem(row, urls),
     ),
@@ -842,6 +845,10 @@ export function createMediaEndpoints(
      * @param cursor - Opaque keyset cursor from a previous page's `nextCursor`; pages past the offset ceiling.
      * @param sortBy - Sort field: 'createdAt', 'slug', or 'size' (default 'createdAt').
      * @param sortDirection - Sort direction: 'asc' or 'desc' (default 'desc').
+     * @param usage - `used` or `unused`: assets with or without a usage in `usageScope`.
+     * @param usageScope - `live` (default: the head of any branch) or `published`.
+     * @param missingAlt - Set `true` for assets with at least one live image usage without alt text.
+     * @param unusedSinceDays - Assets without a usage in `usageScope` that were created at least this many days ago.
      * @returns Paginated list of assets (each with a ready-to-use public `url`), the full `total`, a `hasMore` flag, and `nextCursor` (the cursor for the next page, or `null` at the end).
      * @example await cmsClient.media.listAssets({ limit: 20, status: 'public' })
      * @example await cmsClient.media.listAssets({ unfiled: true })  // root-level (unfiled) assets
@@ -876,6 +883,10 @@ export function createMediaEndpoints(
               .optional()
               .default('createdAt'),
             sortDirection: z.enum(['asc', 'desc']).optional().default('desc'),
+            usage: z.enum(['used', 'unused']).optional(),
+            usageScope: z.enum(['live', 'published']).optional(),
+            missingAlt: wireBooleanSchema.optional(),
+            unusedSinceDays: z.coerce.number().int().min(1).optional(),
           })
           .optional(),
         metadata: cmsMeta(
@@ -891,6 +902,10 @@ export function createMediaEndpoints(
                 cursor?: string;
                 sortBy?: 'createdAt' | 'slug' | 'size';
                 sortDirection?: 'asc' | 'desc';
+                usage?: 'used' | 'unused';
+                usageScope?: 'live' | 'published';
+                missingAlt?: boolean;
+                unusedSinceDays?: number;
               },
             },
           },
@@ -909,10 +924,44 @@ export function createMediaEndpoints(
           cursor,
           sortBy = 'createdAt',
           sortDirection = 'desc',
+          usage,
+          usageScope = 'live',
+          missingAlt,
+          unusedSinceDays,
         } = ctx.query ?? {};
 
         const conditions: SQL[] = [isNull(assets.archivedAt)];
         if (scope.assets?.where) conditions.push(scope.assets.where);
+
+        // Usage filters read the usage index in the caller's root scope.
+        const usageFilter = {
+          scopeColumns: crossScopeColumns(scope.roots),
+          rootsWhere: scope.roots?.where,
+        };
+        if (usage) {
+          const used = assetHasUsage(assets.id, {
+            ...usageFilter,
+            scope: usageScope,
+          });
+          conditions.push(usage === 'used' ? used : not(used));
+        }
+        if (unusedSinceDays !== undefined) {
+          conditions.push(
+            not(
+              assetHasUsage(assets.id, { ...usageFilter, scope: usageScope }),
+            ),
+            sql`${assets.createdAt} < now() - make_interval(days => ${unusedSinceDays})`,
+          );
+        }
+        if (wireBooleanIsTrue(missingAlt)) {
+          conditions.push(
+            assetHasUsage(assets.id, {
+              ...usageFilter,
+              scope: 'live',
+              missingAlt: true,
+            }),
+          );
+        }
 
         // Root-level filtering is wire-safe via the `unfiled` boolean rather
         // than a `null` folderId (which never survives URL serialization — see
@@ -1406,13 +1455,12 @@ export function createMediaEndpoints(
 
     /**
      * Archives one or more assets and their variants, soft-deleting them for later garbage collection.
-     * Assets referenced by live content are skipped, not failed, allowing partial batch success.
-     * With `guardRichTextReferences` on (the default), assets whose id appears inside a longer
-     * string of any block version (rich text) are skipped too, unless `force` is set.
+     * Without `force`, assets used by live content (`in_use`), by a configured usage source (`external`) or whose id appears inside rich text (`richtext_suspect`) are skipped, not failed, allowing partial batch success.
+     * With `force` they are archived as well; pruning still reclaims an asset only once no commit (history and archived roots included) and no usage source uses it.
      *
      * @param assetIds - Array of asset ids to archive (at least one).
-     * @param force - Archive assets suspected in rich text anyway. Live references still block.
-     * @returns Count of archived assets, their ids, the skipped ids, and why each was skipped (`in_use` or `richtext_suspect`).
+     * @param force - Archive assets that are in use too (after the caller confirmed the usage list).
+     * @returns Count of archived assets, their ids, the skipped ids, why each was skipped (`in_use`, `external` or `richtext_suspect`), `usage` root counts for the `in_use` ones, and `usedByArchivedRoots` (archived ids that roots in the trash still use).
      * @throws ASSET_NOT_FOUND if none of the asset ids exist.
      * @example await cmsClient.media.archiveAssets({ assetIds: ['ast_...'] })
      */
@@ -1430,11 +1478,16 @@ export function createMediaEndpoints(
         const { scope } = ctx.context;
         const { assetIds, force } = ctx.body;
 
-        const { found, archivedIds, skippedReasons } =
-          await archiveAssetsInScope(db, assetIds, scope, {
-            media: mediaConfig,
-            force,
-          });
+        const {
+          found,
+          archivedIds,
+          skippedReasons,
+          usage,
+          usedByArchivedRoots,
+        } = await archiveAssetsInScope(db, assetIds, scope, {
+          media: mediaConfig,
+          force,
+        });
         if (found.length === 0) {
           throw new CMSError('ASSET_NOT_FOUND', {
             message: 'No assets found for the given IDs',
@@ -1455,69 +1508,8 @@ export function createMediaEndpoints(
           archivedIds,
           skipped: Object.keys(skippedReasons),
           skippedReasons,
-        };
-      },
-    ),
-
-    /**
-     * Returns page-centric usage details for an asset across all live content.
-     *
-     * Each page carries `storedSlug` — the page's OWN bare stored slug segment
-     * (e.g. `about`), NOT a full URL path. It is a single ancestor-relative
-     * segment (root pages are `null`), so it is deliberately named `storedSlug`
-     * rather than exposed as a leading-slash `path`: assembling the full path
-     * would require walking the ancestor chain, which this usage query does not
-     * do (toe-int-14).
-     *
-     * @param assetId - The asset id to query.
-     * @returns Page count and a list of each live (non-archived) page using the asset (each with its bare `storedSlug`), with per-block occurrences.
-     * @throws ASSET_NOT_FOUND if the asset does not exist.
-     * @example await cmsClient.media.getAssetUsages({ assetId: 'ast_...' })
-     */
-    getAssetUsages: createCMSEndpoint(
-      '/media/getAssetUsages',
-      {
-        method: 'GET',
-        query: z.object({ assetId: z.string() }),
-        metadata: cmsMeta(
-          { $Infer: { query: {} as { assetId: string } } },
-          { operation: 'read', ...MEDIA_META },
-        ),
-      },
-      async (ctx) => {
-        const { scope } = ctx.context;
-        const { assetId } = ctx.query;
-
-        // Scope/IDOR guard: only report usage for an asset in the caller's scope.
-        const conditions: SQL[] = [eq(assets.id, assetId)];
-        if (scope.assets?.where) conditions.push(scope.assets.where);
-        const [asset] = await db
-          .select({ id: assets.id })
-          .from(assets)
-          .where(and(...conditions));
-        if (!asset) {
-          throw new CMSError('ASSET_NOT_FOUND', {
-            message: errorMessages.assetNotFound(assetId),
-          });
-        }
-
-        const usage = await getAssetUsageDetails(
-          db,
-          assetId,
-          crossScopeColumns(scope.roots),
-        );
-
-        // Rename the bare page slug to `storedSlug` (per the slug/path
-        // convention): the value is a single stored slug segment, never a
-        // URL-shaped leading-slash path, so it must not masquerade as one.
-        return {
-          pageCount: usage.pageCount,
-          pages: usage.pages.map((page) => ({
-            rootId: page.rootId,
-            collection: page.collection,
-            storedSlug: page.slug,
-            occurrences: page.occurrences,
-          })),
+          usage,
+          usedByArchivedRoots,
         };
       },
     ),

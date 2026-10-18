@@ -1,13 +1,12 @@
-import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
+import { and, inArray, type SQL } from 'drizzle-orm';
 
 import type { ResolvedScope } from '../types/definitions';
 import type { DrizzleInstance } from '../types/drizzle';
 import type { MediaConfig } from '../types/s3';
 
-import { loadBlocksAtCommit } from '../blocks/reconstruct-snapshot';
-import { assets, branches, publications, roots } from '../db/schema.generated';
+import { assets } from '../db/schema.generated';
 import { setAssetsVisibility } from './placement';
-import { collectAssetIdsFromProperties } from './usage';
+import { assetsAtCommit, assetsUsedIn } from './usage';
 
 /**
  * The scope publish discovery runs in: the publishing request's scope. Asset
@@ -22,9 +21,9 @@ export type DiscoveryScope = Pick<
 >;
 
 /**
- * Asset ids referenced by the root's blocks at `commitId` that exist inside
- * `scope.assets`. Ids outside the scope are ignored (and counted in a
- * development log).
+ * Asset ids the usage index holds for the root's blocks at `commitId` that
+ * exist inside `scope.assets`. Ids outside the scope are ignored (and
+ * counted in a development log).
  */
 export async function findAssetsInCommit(
   db: DrizzleInstance,
@@ -32,19 +31,9 @@ export async function findAssetsInCommit(
   rootId: string,
   scope?: DiscoveryScope,
 ): Promise<string[]> {
-  const { blocks } = await loadBlocksAtCommit(db, commitId, rootId);
+  const candidateArray = await assetsAtCommit(db, commitId, rootId);
+  if (candidateArray.length === 0) return [];
 
-  const candidates = new Set<string>();
-  for (const block of blocks.values()) {
-    if (block.deleted) continue;
-    for (const id of collectAssetIdsFromProperties(block.properties)) {
-      candidates.add(id);
-    }
-  }
-
-  if (candidates.size === 0) return [];
-
-  const candidateArray = [...candidates];
   const conditions: SQL[] = [inArray(assets.id, candidateArray)];
   if (scope?.assets?.where) conditions.push(scope.assets.where);
   const found = await db
@@ -66,50 +55,6 @@ export async function findAssetsInCommit(
   }
 
   return found.map((row) => row.id);
-}
-
-export async function findAssetsInAllPublications(
-  db: DrizzleInstance,
-  excludeRootId?: string,
-  excludeBranchId?: string,
-  scope?: DiscoveryScope,
-): Promise<Set<string>> {
-  const conditions: SQL[] = [];
-  if (excludeRootId && excludeBranchId) {
-    conditions.push(
-      sql`NOT (${publications.rootId} = ${excludeRootId} AND ${publications.branchId} = ${excludeBranchId})`,
-    );
-  }
-
-  const rootWhere = scope?.roots?.where;
-  if (rootWhere) conditions.push(rootWhere);
-
-  const base = db
-    .select({
-      rootId: publications.rootId,
-      headCommitId: branches.headCommitId,
-    })
-    .from(publications)
-    .innerJoin(branches, eq(branches.id, publications.branchId));
-  // `scope.roots.where` references `cms.roots`, so join it only when needed.
-  const pubs = await (
-    rootWhere ? base.innerJoin(roots, eq(roots.id, publications.rootId)) : base
-  ).where(conditions.length > 0 ? and(...conditions) : undefined);
-
-  const results = await Promise.all(
-    pubs.map((pub) =>
-      findAssetsInCommit(db, pub.headCommitId, pub.rootId, scope),
-    ),
-  );
-
-  const allAssetIds = new Set<string>();
-  for (const assetIds of results) {
-    for (const id of assetIds) {
-      allAssetIds.add(id);
-    }
-  }
-
-  return allAssetIds;
 }
 
 /**
@@ -145,12 +90,14 @@ export async function syncAssetsOnUnpublish(
   const assetIds = await findAssetsInCommit(db, commitId, rootId, scope);
   if (assetIds.length === 0) return [];
 
-  const stillPublished = await findAssetsInAllPublications(
-    db,
-    rootId,
-    branchId,
-    scope,
-  );
+  // Published content elsewhere (any other published branch in scope)
+  // keeps an asset public; read from the usage index.
+  const stillPublished = await assetsUsedIn(db, {
+    assetIds,
+    scope: 'published',
+    rootsWhere: scope?.roots?.where,
+    excludePublication: { rootId, branchId },
+  });
 
   const toPrivatize = assetIds.filter((id) => !stillPublished.has(id));
   const { changed } = await setAssetsVisibility(

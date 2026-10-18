@@ -195,6 +195,9 @@ const EXPECTED: Record<string, Record<string, Expected>> = {
     abortUpload: { permissionResource: 'media', operation: 'create' },
     findDuplicates: { permissionResource: 'media', operation: 'read' },
     createSignedRendition: { permissionResource: 'media', operation: 'create' },
+    getAssetUsageCounts: { permissionResource: 'media', operation: 'read' },
+    // Rewrites content of any collection, so it needs the admin resource.
+    replaceAssetUsages: { permissionResource: 'admin', operation: 'update' },
     commitRendition: { permissionResource: 'media', operation: 'create' },
     uploadAssets: { permissionResource: 'media', operation: 'create' },
     replaceAsset: { permissionResource: 'media', operation: 'update' },
@@ -233,6 +236,7 @@ const EXPECTED: Record<string, Record<string, Expected>> = {
     runPruning: { permissionResource: 'admin', operation: 'delete' },
     runScheduled: { permissionResource: 'admin', operation: 'create' },
     runMediaBackfill: { permissionResource: 'admin', operation: 'update' },
+    runUsageBackfill: { permissionResource: 'admin', operation: 'update' },
     reindexSearch: { permissionResource: 'admin', operation: 'create' },
   },
 

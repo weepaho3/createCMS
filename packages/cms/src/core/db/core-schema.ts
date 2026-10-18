@@ -215,6 +215,8 @@ export const coreSchema = defineCoreSchema({
       indexes: {
         rootIdIdx: { columns: ['rootId'] },
         rootNameUnique: { columns: ['rootId', 'name'], unique: true },
+        // Usage scopes join content_usages to branch heads.
+        headCommitIdx: { columns: ['headCommitId'] },
       },
     },
 
@@ -892,13 +894,41 @@ export const coreSchema = defineCoreSchema({
         },
         blockId: { type: 'text', notNull: true },
         propertyKey: { type: 'text', notNull: true },
+        // JSON pointer of the usage inside the block's properties
+        // (`/gallery/2`): positional, for deep links, never for identity.
+        path: {
+          type: 'text',
+          notNull: true,
+          default: { kind: 'literal', value: '' },
+        },
+        // 'schema' | 'url' | 'heuristic': how the extractor found the usage.
+        matchedBy: {
+          type: 'text',
+          notNull: true,
+          default: { kind: 'literal', value: 'heuristic' },
+        },
+        // Image usages: 'present' | 'decorative' | 'missing' alt text.
+        altState: { type: 'text' },
+        // Image usages pinned to a revision (AssetRef.revisionId).
+        revisionId: { type: 'text' },
       },
       indexes: {
-        versionTargetPropUnique: {
-          columns: ['blockVersionId', 'targetKind', 'targetKey', 'propertyKey'],
+        versionTargetPathUnique: {
+          columns: [
+            'blockVersionId',
+            'targetKind',
+            'targetKey',
+            'propertyKey',
+            'path',
+          ],
           unique: true,
         },
         targetIdx: { columns: ['targetKind', 'targetKey'] },
+        targetRootIdx: { columns: ['targetKind', 'targetKey', 'rootId'] },
+        missingAltIdx: {
+          columns: ['targetKey'],
+          where: "alt_state = 'missing'",
+        },
         blockVersionIdx: { columns: ['blockVersionId'] },
         rootIdx: { columns: ['rootId'] },
       },

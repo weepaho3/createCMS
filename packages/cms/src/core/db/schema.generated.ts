@@ -168,6 +168,7 @@ export const branches = cmsSchema.table(
   (table) => [
     index("branches_root_id_idx").on(table.rootId),
     uniqueIndex("branches_root_name_unique").on(table.rootId, table.name),
+    index("branches_head_commit_idx").on(table.headCommitId),
   ],
 );
 
@@ -300,10 +301,16 @@ export const contentUsages = cmsSchema.table(
     rootId: text("root_id").notNull().references(() => roots.id, { onDelete: "cascade" }),
     blockId: text("block_id").notNull(),
     propertyKey: text("property_key").notNull(),
+    path: text("path").notNull().default(""),
+    matchedBy: text("matched_by").notNull().default("heuristic"),
+    altState: text("alt_state"),
+    revisionId: text("revision_id"),
   },
   (table) => [
-    uniqueIndex("cu_version_target_prop_unique").on(table.blockVersionId, table.targetKind, table.targetKey, table.propertyKey),
+    uniqueIndex("cu_version_target_path_unique").on(table.blockVersionId, table.targetKind, table.targetKey, table.propertyKey, table.path),
     index("cu_target_idx").on(table.targetKind, table.targetKey),
+    index("cu_target_root_idx").on(table.targetKind, table.targetKey, table.rootId),
+    index("cu_missing_alt_idx").on(table.targetKey).where(sql`alt_state = 'missing'`),
     index("cu_block_version_idx").on(table.blockVersionId),
     index("cu_root_idx").on(table.rootId),
   ],

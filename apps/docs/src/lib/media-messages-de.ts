@@ -119,6 +119,27 @@ export const mediaMessagesDe: MediaMessages = {
   image: {
     provenance: { ai_generated: 'KI-generiert', ai_edited: 'KI-bearbeitet' },
   },
+  usage: {
+    title: 'Verwendung',
+    count: ({ roots }, format) =>
+      `Verwendet auf ${format.number(roots)} ${plural(roots, format, 'Seite', 'Seiten')}`,
+    scopeLabel: 'Verwendung zeigen in',
+    scope: {
+      live: 'Allen Branches',
+      published: 'Veröffentlicht',
+      history: 'Historie',
+    },
+    missingAlt: 'Nur ohne Alt-Text',
+    empty: 'Nirgends verwendet',
+    loadMore: 'Mehr zeigen',
+    hiddenRoots: ({ count }, format) =>
+      plural(
+        count,
+        format,
+        `${format.number(count)} weitere Seite ohne Zugriff`,
+        `${format.number(count)} weitere Seiten ohne Zugriff`,
+      ),
+  },
   picker: {
     title: 'Datei auswählen',
     choose: 'Auswählen',
@@ -127,15 +148,6 @@ export const mediaMessagesDe: MediaMessages = {
       dimensions: ({ minWidth, minHeight }, format) =>
         `Mindestens ${format.number(minWidth)} × ${format.number(minHeight)} px nötig`,
     },
-  },
-  usage: {
-    hiddenRoots: ({ count }, format) =>
-      plural(
-        count,
-        format,
-        `${format.number(count)} weitere Seite ohne Zugriff`,
-        `${format.number(count)} weitere Seiten ohne Zugriff`,
-      ),
   },
   shortcut: ({ key }, format) => (format.apple ? `⌘${key}` : `Strg+${key}`),
   error: {

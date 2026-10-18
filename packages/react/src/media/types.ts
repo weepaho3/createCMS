@@ -5,6 +5,7 @@ import type {
   CmsMediaUploadFileState,
   CmsMediaUploadState,
 } from '../editor/cms/types';
+import type { MediaUsagePage } from './usage';
 
 export type MediaAsset = CmsAssetListItem;
 
@@ -94,10 +95,20 @@ export type MediaClient = {
     assetsInUse: number;
     skipped: string[];
   }>;
-  getAssetUsages?(args: { query: { assetId: string } }): Promise<{
-    pageCount: number;
-    pages: { rootId: string; collection: string }[];
-  }>;
+  getAssetUsages?(args: {
+    query: {
+      assetId: string;
+      scope?: 'live' | 'published' | 'history';
+      branchId?: string;
+      collection?: string;
+      missingAlt?: 'true' | 'false';
+      cursor?: string;
+      limit?: number;
+    };
+  }): Promise<MediaUsagePage>;
+  getAssetUsageCounts?(args: {
+    body: { assetIds: string[]; scope?: 'live' | 'published' | 'history' };
+  }): Promise<{ counts: Record<string, { roots: number; published: number }> }>;
   listRevisions?(args: { query: { assetId: string } }): Promise<{
     revisions: {
       id: string;

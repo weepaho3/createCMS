@@ -41,7 +41,7 @@ describe('image values', () => {
     const usage = await cms.api.media.getAssetUsages({
       query: { assetId: asset.id },
     });
-    expect(usage.pageCount).toBe(1);
+    expect(usage.total.roots).toBe(1);
   });
 
   it('keeps accepting a bare id', async () => {
