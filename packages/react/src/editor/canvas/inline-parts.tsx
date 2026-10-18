@@ -1,6 +1,7 @@
 import * as React from 'react';
 
 import type { UseRenderComponentProps } from '../../use-render';
+import type { EditorStore } from '../core/store';
 import type { CanvasRect } from './rect';
 
 import { useRender } from '../../use-render';
@@ -109,6 +110,12 @@ function measureOriginField(
   const origin = fieldOrigin(host, blockId, key);
   if (!origin) return null;
   return canvasRectOf(origin, host);
+}
+
+/** The stored string of a text field; a missing value reads as `''`. */
+function storedText(store: EditorStore, blockId: string, key: string): string {
+  const value = store.getDoc().nodes[blockId]?.props[key];
+  return typeof value === 'string' ? value : '';
 }
 
 function isModKey(event: KeyboardEvent): boolean {
@@ -502,6 +509,7 @@ export function CanvasInlineText({
         stripPlaceholder(el.textContent ?? ''),
         plainOptionsRef.current.multiline,
       );
+      if (text === storedText(ctx.store, editing.blockId, editing.key)) return;
       ctx.store.update(editing.blockId, { [editing.key]: text }, { coalesce });
     },
     [editing, ctx.store],
@@ -622,11 +630,16 @@ export function CanvasInlineText({
         event.preventDefault();
         if (discardOnEscape && editing !== null) {
           skipBlurCommit.current = true;
-          ctx.store.update(
-            editing.blockId,
-            { [editing.key]: sessionStart.current },
-            { coalesce: false },
-          );
+          if (
+            sessionStart.current !==
+            storedText(ctx.store, editing.blockId, editing.key)
+          ) {
+            ctx.store.update(
+              editing.blockId,
+              { [editing.key]: sessionStart.current },
+              { coalesce: false },
+            );
+          }
         }
         endEditing();
       }

@@ -242,6 +242,71 @@ describe('Canvas inline text in a real browser', () => {
     expect(store.getDoc().nodes.h1!.props.text).toBe('Kept');
   });
 
+  it('leaving the glass without typing records no change', async () => {
+    const { host, store } = renderCanvas(inlineOverlay());
+    const field = host.querySelector('[data-editor-field="text"]');
+    await waitForLayout(field!);
+    const version = store.getDoc().version;
+    clickCenter(field!);
+    await waitForLayout(host);
+    const glass = host.querySelector(
+      '[data-editor-inline-text]',
+    ) as HTMLElement;
+    expect(document.activeElement).toBe(glass);
+    glass.blur();
+    await waitForLayout(host);
+    expect(store.getSession().editing).toBeNull();
+    expect(store.getDoc().version).toBe(version);
+    expect(store.getSession().history.canUndo).toBe(false);
+    expect(store.isDirty()).toBe(false);
+  });
+
+  it('discardOnEscape without typing records no change', async () => {
+    const { host, store } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.InlineText discardOnEscape />
+      </Canvas.Overlay>,
+    );
+    const field = host.querySelector('[data-editor-field="text"]');
+    await waitForLayout(field!);
+    const version = store.getDoc().version;
+    clickCenter(field!);
+    await waitForLayout(host);
+    const glass = host.querySelector(
+      '[data-editor-inline-text]',
+    ) as HTMLElement;
+    glass.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await waitForLayout(host);
+    expect(store.getSession().editing).toBeNull();
+    expect(store.getDoc().version).toBe(version);
+    expect(store.isDirty()).toBe(false);
+  });
+
+  it('typing then leaving the glass is one undo step', async () => {
+    const { host, store } = renderCanvas(inlineOverlay());
+    const field = host.querySelector('[data-editor-field="text"]');
+    await waitForLayout(field!);
+    clickCenter(field!);
+    await waitForLayout(host);
+    const glass = host.querySelector(
+      '[data-editor-inline-text]',
+    ) as HTMLElement;
+    glass.textContent = 'Hi';
+    glass.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    glass.blur();
+    await waitForLayout(host);
+    expect(store.getDoc().nodes.h1!.props.text).toBe('Hi');
+    store.undo();
+    expect(store.getDoc().nodes.h1!.props.text).toBe('Hello');
+    expect(store.getSession().history.canUndo).toBe(false);
+  });
+
   it('discardOnEscape restores the pre-session value', async () => {
     const { host, store } = renderCanvas(
       <Canvas.Overlay>
