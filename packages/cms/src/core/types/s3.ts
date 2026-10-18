@@ -1,5 +1,6 @@
 import type { AwsClient } from 'aws4fetch';
 
+import type { TransformAdapter } from '../media/transform';
 import type { StorageAdapter } from '../storage/adapter';
 import type {
   StorageCapabilitiesOverride,
@@ -133,6 +134,14 @@ type BaseMediaConfig = {
    * `archiveAssets` (unless `force`) and never reclaimed by pruning.
    */
   usageSources?: MediaUsageSource[];
+
+  /**
+   * Image transform service for renditions that are not stored: the asset
+   * endpoint redirects `?w`/`?format` misses of public raster images to the
+   * adapter's signed URL (see `imgproxyTransform`). Its widths are added to
+   * the widths the endpoint snaps to.
+   */
+  transform?: TransformAdapter;
 
   /**
    * Usages outside the CMS that integrations push through

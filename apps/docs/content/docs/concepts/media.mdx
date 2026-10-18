@@ -97,7 +97,44 @@ Both mint a fresh slug and object key (the cache-bust) and keep the asset's `id`
 
 Serve assets through the **gate**: [`GET /media/asset/{id}`](/docs/reference/media#asset), a redirect addressed by the **asset id** (which is what content stores). It is the contract to use in content and on public pages. It enforces `status` (a `private` asset returns `ASSET_ACCESS_DENIED`), serves only assets whose `processingState` is `ready` (`ASSET_NOT_READY` otherwise), and honors `?w=<width>` and `?format=webp|avif|jpeg|png` by resolving a **rendition**.
 
-There is no on-the-fly transform. A rendition is another asset row whose `variantOf` points at the original and whose `variantKey` names it canonically (`w640.webp`). `?w` snaps up to the next of `renditionWidths` (320, 640, 1280, 1920 by default) and the gate answers in the `x-cms-rendition` header which one it served: `exact`, `nearest` (the smallest larger rendition of the format) or `miss` (none fits: the original is served and `onRenditionMiss` is called; `?strict=true` answers `RENDITION_NOT_FOUND` instead). The [media optimize plugin](/docs/plugins/media-optimize) produces the WebP renditions in the browser and uploads them with [`createSignedRendition`](/docs/reference/media#createsignedrendition) and [`commitRendition`](/docs/reference/media#commitrendition), so every image arrives with its sizes.
+By default there is no on-the-fly transform. A rendition is another asset row whose `variantOf` points at the original and whose `variantKey` names it canonically (`w640.webp`). `?w` snaps up to the next of `renditionWidths` (320, 640, 1280, 1920 by default) and the gate answers in the `x-cms-rendition` header which one it served: `exact`, `nearest` (the smallest larger rendition of the format) or `miss` (none fits: the original is served and `onRenditionMiss` is called; `?strict=true` answers `RENDITION_NOT_FOUND` instead). The [media optimize plugin](/docs/plugins/media-optimize) produces the WebP renditions in the browser and uploads them with [`createSignedRendition`](/docs/reference/media#createsignedrendition) and [`commitRendition`](/docs/reference/media#commitrendition), so every image arrives with its sizes.
+
+### Transform services [#transform-services]
+
+For sizes and formats the browser does not produce (AVIF, more widths), set `media.transform` to a `TransformAdapter`. On a `miss`, the gate redirects a **public** raster image (PNG, JPEG, GIF, WebP, AVIF) to the adapter's signed URL instead of the original and answers `x-cms-rendition: transform`; private assets, other types and formats the adapter does not list still get the original. The adapter's widths join `renditionWidths` for snapping, so the default widths become 320, 640, 960, 1280, 1920 and 2560. Stored renditions always win.
+
+Free `?w=` never reaches the transformer: the gate only asks for allowlisted widths, formats and qualities, the format is part of the URL (no `Vary: Accept`), and the URL is signed, so a service that checks signatures refuses every other size. `imgproxyTransform` ships with core:
+
+```ts
+import { imgproxyTransform } from '@createcms/core';
+
+createCMS({
+  media: {
+    // ...
+    transform: imgproxyTransform({
+      baseUrl: 'https://img.example.com',
+      key: process.env.IMGPROXY_KEY!, // hex, same as the service
+      salt: process.env.IMGPROXY_SALT!,
+      formats: ['webp', 'avif'],
+      qualities: [75],
+    }),
+  },
+});
+```
+
+Run imgproxy with the same `IMGPROXY_KEY` and `IMGPROXY_SALT`; without them it accepts unsigned URLs, which defeats the allowlist. Put a CDN in front of it: the gate redirect is cached for five minutes, the transformed image as long as the CDN keeps it. Another service is a small adapter: `url(source, spec)` returns its signed URL and throws `TransformNotAllowedError` (see `assertTransformAllowed`) outside the allowlists.
+
+What transforms cost, for 2,000 images in 6 widths and 2 formats (24,000 transformations, approximate list prices; check the providers' pricing pages before you decide):
+
+| Service | Cost |
+| --- | --- |
+| imgproxy, self-hosted | Your server and CDN only |
+| Cloudflare Images | About 9.50 USD after 5,000 free transformations per month |
+| Bunny Optimizer | 9.50 USD per month flat |
+| Vercel Image Optimization | About 1.20 to 2 USD plus cache writes |
+| Cloudinary | About 24 credits |
+
+The browser renditions of the media optimize plugin cost nothing on the server; a transform service is worth it for AVIF and for widths between them.
 
 `?download=true` redirects to a short-lived **signed** object URL (valid for one hour) that carries `response-content-disposition=attachment` bound into the signature, so the bucket answers with a `Content-Disposition` header and the browser downloads the file under its slug; a `Content-Disposition` header on the `302` itself would be ignored by browsers. Types outside the raster-image (PNG, JPEG, GIF, WebP, AVIF), video, audio and PDF set are always served that way, so an allowed SVG or HTML asset never renders inline from the gate even if `allowedMimeTypes` admits it.
 

@@ -239,6 +239,20 @@ export type {
   StorageObjectAcl,
 } from './core/storage/adapter';
 export { requireCapability, StorageError } from './core/storage/adapter';
+export {
+  assertTransformAllowed,
+  imgproxySignature,
+  imgproxyTransform,
+  TRANSFORM_WIDTHS,
+  TransformNotAllowedError,
+} from './core/media/transform';
+export type {
+  ImgproxyTransformOptions,
+  TransformAdapter,
+  TransformFormat,
+  TransformSource,
+  TransformSpec,
+} from './core/media/transform';
 export type {
   AssetMetadata,
   AssetProvenance,

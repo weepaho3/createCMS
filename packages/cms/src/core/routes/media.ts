@@ -103,6 +103,8 @@ import { createMediaUsageEndpoints } from './media-usage';
  * `response-content-disposition` forces a download. Raster formats are listed
  * explicitly so `image/svg+xml` never renders inline from the gate.
  */
+/** Raster images a transform service can read. */
+const TRANSFORMABLE = /^image\/(jpeg|png|webp|avif|gif)$/;
 const INLINE_SAFE =
   /^(image\/(png|jpeg|gif|webp|avif)|video\/|audio\/|application\/pdf$)/;
 
@@ -456,9 +458,59 @@ export function createMediaEndpoints(
     return grouped;
   }
 
+  // A transform adapter adds its widths: they are served transformed until
+  // a stored rendition exists.
   const renditionWidths = [
-    ...new Set(mediaConfig.renditionWidths ?? MEDIA_DEFAULTS.renditionWidths),
+    ...new Set([
+      ...(mediaConfig.renditionWidths ?? MEDIA_DEFAULTS.renditionWidths),
+      ...(mediaConfig.transform?.widths ?? []),
+    ]),
   ].sort((a, b) => a - b);
+
+  /**
+   * The signed transform URL for a missing rendition, or `null` when no
+   * adapter is configured or it cannot serve this asset: only public
+   * originals of raster image types, at a width and format the adapter
+   * allows, with its first quality.
+   */
+  async function transformUrl(
+    asset: {
+      id: string;
+      status: string;
+      objectKey: string;
+      mimeType: string;
+      width: number | null;
+      height: number | null;
+      metadata: Record<string, unknown>;
+    },
+    width: number,
+    format: VariantFormat,
+  ): Promise<string | null> {
+    const adapter = mediaConfig.transform;
+    if (
+      !adapter ||
+      asset.status !== 'public' ||
+      /^(t\/[^/]+\/)?prv\//.test(asset.objectKey) ||
+      !TRANSFORMABLE.test(asset.mimeType) ||
+      !adapter.widths.includes(width) ||
+      !adapter.formats.includes(format) ||
+      adapter.qualities.length === 0
+    ) {
+      return null;
+    }
+    const focal = asset.metadata.focal as { x: number; y: number } | undefined;
+    return adapter.url(
+      {
+        assetId: asset.id,
+        url: buildPublicObjectUrl(mediaConfig.publicUrl, asset.objectKey),
+        objectKey: asset.objectKey,
+        width: asset.width,
+        height: asset.height,
+        focalPoint: focal,
+      },
+      { w: width, format, q: adapter.qualities[0] },
+    );
+  }
 
   /**
    * The rendition of `asset` the asset endpoint serves for `?w` and
@@ -474,6 +526,7 @@ export function createMediaEndpoints(
     requestedWidth: number | undefined,
   ): Promise<{
     variantKey: string;
+    width: number;
     match: 'exact' | 'nearest' | 'miss';
     variant: { objectKey: string; mimeType: string } | null;
   }> {
@@ -510,7 +563,7 @@ export function createMediaEndpoints(
     const exact =
       variants.find((v) => v.variantKey === variantKey) ??
       variants.find((v) => v.variantKey === null && v.slug === legacySlug);
-    if (exact) return { variantKey, match: 'exact', variant: exact };
+    if (exact) return { variantKey, width, match: 'exact', variant: exact };
 
     let nearest: { width: number; variant: (typeof variants)[number] } | null =
       null;
@@ -529,9 +582,9 @@ export function createMediaEndpoints(
       }
     }
     if (nearest) {
-      return { variantKey, match: 'nearest', variant: nearest.variant };
+      return { variantKey, width, match: 'nearest', variant: nearest.variant };
     }
-    return { variantKey, match: 'miss', variant: null };
+    return { variantKey, width, match: 'miss', variant: null };
   }
 
   const maxFileSize = mediaConfig.maxFileSize ?? MEDIA_DEFAULTS.maxFileSize;
@@ -1314,6 +1367,9 @@ export function createMediaEndpoints(
               slug: assets.slug,
               originalName: assets.originalName,
               processingState: assets.processingState,
+              width: assets.width,
+              height: assets.height,
+              metadata: assets.metadata,
             })
             .from(assets)
             .where(and(...conditions));
@@ -1378,6 +1434,16 @@ export function createMediaEndpoints(
               } catch (err) {
                 console.error('[cms] media onRenditionMiss failed:', err);
               }
+            }
+            const transformed = await transformUrl(
+              asset,
+              rendition.width,
+              ctx.query?.format ?? 'webp',
+            );
+            if (transformed) {
+              ctx.responseHeaders.set('x-cms-rendition', 'transform');
+              ctx.responseHeaders.set('cache-control', 'public, max-age=300');
+              return ctx.redirect(transformed);
             }
             if (wireBooleanIsTrue(ctx.query?.strict)) {
               throw new CMSError('RENDITION_NOT_FOUND', {
