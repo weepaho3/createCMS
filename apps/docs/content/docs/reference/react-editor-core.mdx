@@ -649,6 +649,31 @@ History rules of `JsonDocStore`:
 | `HistoryStep`  | What `undo`/`redo` applied.                                                 |
 | `MarkId`       | Opaque handle of a mark.                                                    |
 
+### Conformance
+
+`runDocStoreConformance(createStore, options?)` checks a `DocStore` against
+the contract above, without a test framework: `createStore(initialValue)`
+returns a fresh store holding `conformanceDocument()` per check, and the
+first violation throws a `DocStoreConformanceError` (`check` names it). It
+returns the names of the passed checks. A third-party store runs it from any
+test runner; see [Write your own DocStore](/docs/guides/custom-doc-store).
+
+```ts
+import {
+  createJsonDocStore,
+  runDocStoreConformance,
+} from '@createcms/react/editor/core';
+
+runDocStoreConformance((initialValue) => createJsonDocStore({ initialValue }));
+```
+
+| Name                         | Description                                                                                                                  |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `runDocStoreConformance`     | Runs the checks: atomic transactions, origins, change events, atomic moves, undo and redo, history exclusions, marks, merging. |
+| `DocStoreConformanceOptions` | `merge?`: `false` skips the `mergeKey` check for a store without merging.                                                    |
+| `DocStoreConformanceError`   | The failed check: `check` and a message.                                                                                     |
+| `conformanceDocument`        | The document every check starts from.                                                                                        |
+
 ## Saving
 
 With `persistence`, the store saves through `persistence.save(doc, { ops,

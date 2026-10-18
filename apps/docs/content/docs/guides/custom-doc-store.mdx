@@ -1,0 +1,67 @@
+---
+title: Write your own DocStore
+description: Back the editor with your own document store (a CRDT, a server-authoritative model) and verify it with the conformance suite.
+---
+
+The editor never touches a document directly: every write goes through a
+`DocStore` (see [Document store and history](/docs/reference/react-editor-core#document-store-and-history)).
+`createJsonDocStore` is the single-user store. A collaborative or
+server-authoritative backend (Loro, Liveblocks Storage, your own sync
+service) plugs in by implementing the same interface and passing it to
+`createEditorStore({ docStore })`.
+
+## The contract
+
+- **Transactions are all or nothing.** `transact(fn, meta)` applies every
+  write of `fn` or none: an invalid write or a throwing `fn` throws
+  `TxRejectedError` and leaves the snapshot unchanged.
+- **Snapshots are immutable.** `getSnapshot()` returns a new `DocState`
+  after every change and the same object otherwise; `version` bumps on every
+  applied change.
+- **Subscribers learn what changed and who changed it.** Each change
+  notifies once with the `Change[]` (`node`, `props` with keys, `placement`)
+  and the `Origin`: `local`, `remote`, `history` (undo, redo) or `system`.
+- **A move is atomic.** No subscriber ever sees a node in two slots or in
+  none, and a move into the node's own subtree is rejected.
+- **Only local writes are undoable.** `remote` and `history` origins and
+  `history: 'ignore'` never add undo steps; `mark`, `squash` and `bail`
+  group or revert live writes; steps with the same `mergeKey` merge until
+  `breakMerge`.
+
+## Verify it
+
+Run the conformance suite from your tests. It needs no test framework and
+throws on the first violation:
+
+```ts
+import { runDocStoreConformance } from '@createcms/react/editor/core';
+import { it } from 'vitest';
+
+import { createMyDocStore } from './my-doc-store';
+
+it('conforms to the DocStore contract', () => {
+  runDocStoreConformance((initialValue) => createMyDocStore({ initialValue }));
+});
+```
+
+Pass `{ merge: false }` when your store does not merge steps by
+`mergeKey`.
+
+## Things a shared store must solve
+
+- **Cycles.** Two people can each move a block into the other's subtree at
+  the same time. Each move is valid locally; merged, they form a cycle. A
+  shared store needs a deterministic repair rule that every peer applies the
+  same way (for example: undo the move with the later timestamp, ties broken
+  by client id) and must never publish a state with a cycle.
+- **Order keys.** Index-based positions break under concurrent inserts.
+  Store sibling order as fractional keys (a string between its neighbours)
+  and derive the slot arrays from them, so two inserts at the same place both
+  survive.
+- **Remote changes and history.** Apply remote updates with origin
+  `remote`: they must not become undo steps, and a local undo step whose
+  nodes a remote change touched has to be dropped (the JSON store does this)
+  or rebased, never applied blindly.
+- **Presence.** Selections, the focused field and cursors are not
+  document state. Keep them out of the `DocStore` and send them through a
+  presence channel (Yjs Awareness, your service's presence API).

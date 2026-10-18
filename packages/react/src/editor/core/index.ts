@@ -26,6 +26,12 @@ export type {
 export { EditorAdapterError } from './adapter';
 export type { MemoryAdapter, MemoryAdapterOptions } from './memory-adapter';
 export { createMemoryAdapter } from './memory-adapter';
+export type { DocStoreConformanceOptions } from './testing/docstore-conformance';
+export {
+  conformanceDocument,
+  DocStoreConformanceError,
+  runDocStoreConformance,
+} from './testing/docstore-conformance';
 
 // Editor anchors handed to components.
 export type { EditAttrs, EditProps, EditRef } from './edit';
