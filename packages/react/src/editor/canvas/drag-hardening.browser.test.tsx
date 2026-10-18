@@ -1,10 +1,11 @@
-import { act, cleanup } from '@testing-library/react';
+import { act, cleanup, waitFor } from '@testing-library/react';
 import * as React from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { EditProps } from '../core/edit';
 import type { CanvasComponents } from './map';
 
+import { Editor } from '../index';
 import { Canvas } from './index';
 import {
   columnStackBlocks,
@@ -175,5 +176,87 @@ describe('hardened pointer drags', () => {
     }
     dispatchPointer(palette, 'pointerup', { x, y: gapY - 1 });
     expect(store.getDoc().nodes.stack1!.slots.children).toHaveLength(4);
+  });
+
+  it('a remote removal of the dragged block ends the drag with an announcement', async () => {
+    const { host, store } = renderCanvas(
+      <>
+        <Editor.LiveAnnouncer />
+        <Canvas.Overlay>
+          <Canvas.DragHandle blockId="h1">grip</Canvas.DragHandle>
+          <Canvas.DropIndicator />
+        </Canvas.Overlay>
+      </>,
+    );
+    await waitForLayout(host.querySelector('[data-editor-block="h1"]')!);
+    const handle = host.querySelector('[data-editor-drag-handle]')!;
+    const from = center(handle.getBoundingClientRect());
+    dispatchPointer(handle, 'pointerdown', from);
+    dispatchPointer(handle, 'pointermove', { x: from.x + 10, y: from.y + 40 });
+    await waitFor(() => expect(host.hasAttribute('data-dragging')).toBe(true));
+    act(() => {
+      store.applyRemote([{ op: 'remove', id: 'h1' }]);
+    });
+    await waitFor(() => expect(host.hasAttribute('data-dragging')).toBe(false));
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-editor-live-announcer]')?.textContent,
+      ).toContain('the block was removed');
+    });
+    dispatchPointer(handle, 'pointerup', { x: from.x + 10, y: from.y + 40 });
+  });
+});
+
+describe('files dropped from the desktop', () => {
+  it('an image file becomes an image block at the drop position', async () => {
+    const uploads: string[] = [];
+    const { host, store } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.DropIndicator />
+      </Canvas.Overlay>,
+      {
+        style: { height: 400 },
+        fileDrop: {
+          blockType: 'image',
+          field: 'url',
+          accept: 'image/*',
+          upload: async (file) => {
+            uploads.push(file.name);
+            return { assetId: `asset-${uploads.length}` };
+          },
+        },
+      },
+    );
+    const h1 = host.querySelector('[data-editor-block="h1"]')!;
+    await waitForLayout(h1);
+    const data = new DataTransfer();
+    data.items.add(new File(['x'], 'photo.png', { type: 'image/png' }));
+    data.items.add(new File(['y'], 'notes.txt', { type: 'text/plain' }));
+    const r = rectOf(h1);
+    const point = { clientX: r.x + r.width / 2, clientY: r.y + 4 };
+    const fire = (type: string) =>
+      host.dispatchEvent(
+        new DragEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer: data,
+          ...point,
+        }),
+      );
+    fire('dragenter');
+    fire('dragover');
+    await waitFor(() => {
+      expect(host.querySelector('[data-editor-drop-indicator]')).not.toBeNull();
+    });
+    fire('drop');
+    await waitFor(() => {
+      expect(store.getDoc().nodes.root_1!.slots.children).toHaveLength(3);
+    });
+    expect(uploads).toEqual(['photo.png']);
+    const first = store.getDoc().nodes.root_1!.slots.children[0]!;
+    expect(store.getDoc().nodes[first]!.type).toBe('image');
+    expect(store.getDoc().nodes[first]!.props.url).toEqual({
+      assetId: 'asset-1',
+    });
   });
 });

@@ -150,6 +150,27 @@ describe('axe in a real browser', () => {
     expect(await violations(toolbar!)).toEqual([]);
   });
 
+  it('the drag handle menu and the move-to dialog have no violations', async () => {
+    const { host } = renderCanvas(
+      <Canvas.Overlay data-testid="overlay">
+        <Canvas.DragHandle blockId="h1" />
+      </Canvas.Overlay>,
+    );
+    const handle = host.querySelector<HTMLElement>(
+      '[data-editor-drag-handle]',
+    )!;
+    act(() => handle.click());
+    const menu = host.querySelector('[role="menu"]')!;
+    expect(await violations(menu)).toEqual([]);
+    expect(await violations(handle)).toEqual([]);
+    const moveTo = [
+      ...menu.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+    ][2]!;
+    act(() => moveTo.click());
+    const dialog = host.querySelector('[role="dialog"]')!;
+    expect(await violations(dialog)).toEqual([]);
+  });
+
   it('Editor.Outline has no violations, collapsed or expanded', async () => {
     const { getByTestId, store } = mount(<Outline />);
     const outline = getByTestId('outline');

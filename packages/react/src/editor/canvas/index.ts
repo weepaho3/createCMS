@@ -33,6 +33,7 @@ export type { CanvasClickToEdit } from './context';
 export type { CanvasContextMenuProps, ContextMenuEntry } from './context-menu';
 export { CONTEXT_MENU_COMMANDS } from './context-menu';
 export { createSectionRefBlock } from './section-ref';
+export type { CanvasFileDrop } from './file-drop';
 export { useSurface } from './context';
 export type { PreviewSurface, SurfacePoint, SurfaceRect } from './surface';
 export type {

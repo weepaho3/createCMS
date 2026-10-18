@@ -83,6 +83,7 @@ describe('namespace shape', () => {
       'LiveAnnouncer',
       'ShortcutHelp',
       'ErrorSummary',
+      'MoveToDialog',
     ]);
   });
 

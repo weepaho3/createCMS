@@ -5,11 +5,16 @@ import type { InsertTarget, InsertOrientation, InsertVariant } from './insert';
 import type { PreviewSurface } from './surface';
 
 import { composeRefs, useRender } from '../../use-render';
+import { describeBlock } from '../announcer';
 import { useDocSelector, useSessionSelector } from '../binding';
 import { useEditorContext } from '../context';
+import { insertionPoints, type InsertionPoint } from '../core/insertion';
 import { isHTMLElement, isNode } from '../dom';
+import { useBlockActions } from '../hooks';
 import { useMessages } from '../messages';
+import { useRovingFocus } from '../roving';
 import { insertPointFor } from '../structure/insert-point';
+import { EditorMoveToDialog } from '../structure/move-to';
 import { blockElements, isInsideReadonly } from './anchors';
 import { CanvasContext, useCanvasContext } from './context';
 import {
@@ -24,6 +29,7 @@ import {
   createInsertAdapters,
   resolveDropTarget,
 } from './insert-dom';
+import { targetFor } from './keyboard-drag';
 import { useCanvasSession, type CanvasSurfaceHandle } from './provider';
 import { OVERLAY_CHROME_INSET_PX, visibleIntersection } from './rect';
 import { useHostViewBox } from './rects';
@@ -428,11 +434,286 @@ export type CanvasDragHandleProps = React.ComponentPropsWithRef<'button'> & {
   render?: UseRenderComponentProps<'button', DragHandleState>['render'];
 };
 
+/**
+ * Keyboard drag of `blockId` from its handle: Space picks the block up,
+ * arrows step through every valid place in document order, Space or
+ * Enter drops, Escape (or leaving the handle) puts it back. Each step is
+ * announced.
+ */
+function useKeyboardDrag(
+  blockId: string,
+  handleRef: React.RefObject<HTMLElement | null>,
+) {
+  const canvas = React.useContext(CanvasContext);
+  const canvasSession = useCanvasSession('Canvas.DragHandle');
+  const ctx = useEditorContext('Canvas.DragHandle');
+  const engine = useDragEngine();
+  const { store, schema, messages, announcer } = ctx;
+  const stateRef = React.useRef<{
+    points: InsertionPoint[];
+    at: number;
+    from: InsertionPoint;
+    ending: boolean;
+  } | null>(null);
+  const [active, setActive] = React.useState(false);
+
+  const parentLabel = React.useCallback(
+    (parentId: string) => {
+      const { nodes, rootId } = store.getDoc();
+      const node = nodes[parentId];
+      return parentId === rootId || !node
+        ? messages.announce.root
+        : describeBlock(schema, node).label;
+    },
+    [store, schema, messages],
+  );
+  const countIn = React.useCallback(
+    (point: InsertionPoint) =>
+      (
+        store.getDoc().nodes[point.parent.id]?.slots[point.parent.slot] ?? []
+      ).filter((id) => id !== blockId).length + 1,
+    [store, blockId],
+  );
+
+  const show = React.useCallback(
+    (point: InsertionPoint) => {
+      const measurer = canvas?.measurer;
+      const host = canvas?.host;
+      if (!measurer || !host) return;
+      const { nodes, rootId } = store.getDoc();
+      const target = targetFor(point, nodes, rootId, {
+        getRect: (id) => measurer.getBlockRect(id),
+        getSlotRect: (id, slot) => measurer.getSlotRect(id, slot),
+        movingId: blockId,
+      });
+      const surface =
+        canvasSession.getSurfaces().find((entry) => entry.host === host) ??
+        undefined;
+      engine.setTarget(target, surface);
+      const siblings = (
+        nodes[point.parent.id]?.slots[point.parent.slot] ?? []
+      ).filter((id) => id !== blockId);
+      const near = siblings[point.index] ?? siblings[point.index - 1];
+      const el = blockElements(host, near ?? point.parent.id)[0];
+      el?.scrollIntoView?.({ block: 'nearest' });
+    },
+    [canvas, canvasSession, engine, store, blockId],
+  );
+
+  const finish = React.useCallback(() => {
+    stateRef.current = null;
+    setActive(false);
+    handleRef.current?.focus();
+  }, [handleRef]);
+
+  // The drag can end elsewhere (the canvas's Escape, a remote removal).
+  React.useEffect(
+    () =>
+      canvasSession.dnd.subscribeSession(() => {
+        const state = stateRef.current;
+        if (!state || state.ending || canvasSession.dnd.getSession()) return;
+        const node = store.getDoc().nodes[blockId];
+        if (node) {
+          announcer.announce(
+            messages.announce.dragCancelled({
+              block: describeBlock(schema, node),
+              position: state.from.index + 1,
+              count: countIn(state.from),
+              parent: parentLabel(state.from.parent.id),
+            }),
+          );
+        }
+        finish();
+      }),
+    [
+      canvasSession,
+      store,
+      blockId,
+      announcer,
+      messages,
+      schema,
+      countIn,
+      parentLabel,
+      finish,
+    ],
+  );
+
+  const onKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    const state = stateRef.current;
+    const { nodes, rootId } = store.getDoc();
+    const node = nodes[blockId];
+    if (!node || node.parent === null) return;
+    const block = describeBlock(schema, node);
+    if (!state) {
+      if (event.key !== ' ') return;
+      event.preventDefault();
+      const points = insertionPoints(schema, nodes, rootId, node.type, blockId);
+      const index =
+        nodes[node.parent.id]?.slots[node.parent.slot]?.indexOf(blockId) ?? 0;
+      const at = points.findIndex(
+        (point) =>
+          point.parent.id === node.parent!.id &&
+          point.parent.slot === node.parent!.slot &&
+          point.index === index,
+      );
+      if (points.length < 2 || at < 0) {
+        announcer.announce(messages.announce.dragNoTargets);
+        return;
+      }
+      stateRef.current = { points, at, from: points[at]!, ending: false };
+      setActive(true);
+      engine.start({ kind: 'move', id: blockId });
+      show(points[at]!);
+      announcer.announce(
+        messages.announce.dragPickedUp({
+          block,
+          position: index + 1,
+          count: countIn(points[at]!),
+          parent: parentLabel(node.parent.id),
+        }),
+      );
+      return;
+    }
+    const step =
+      event.key === 'ArrowDown' || event.key === 'ArrowRight'
+        ? 1
+        : event.key === 'ArrowUp' || event.key === 'ArrowLeft'
+          ? -1
+          : 0;
+    if (step !== 0) {
+      event.preventDefault();
+      const at = Math.max(
+        0,
+        Math.min(state.points.length - 1, state.at + step),
+      );
+      if (at === state.at) return;
+      state.at = at;
+      const point = state.points[at]!;
+      show(point);
+      announcer.announce(
+        messages.announce.dragMoved({
+          position: point.index + 1,
+          count: countIn(point),
+          parent: parentLabel(point.parent.id),
+        }),
+      );
+      return;
+    }
+    if (event.key === ' ' || event.key === 'Enter') {
+      event.preventDefault();
+      const point = state.points[state.at]!;
+      state.ending = true;
+      engine.end();
+      announcer.announce(
+        messages.announce.dragDropped({
+          block,
+          position: point.index + 1,
+          parent: parentLabel(point.parent.id),
+        }),
+      );
+      finish();
+      return;
+    }
+    if (event.key === 'Escape' || event.key === 'Tab') {
+      if (event.key === 'Escape') event.preventDefault();
+      // The subscription above announces the cancel and resets.
+      engine.cancel('escape');
+    }
+  };
+
+  const onBlur = () => {
+    if (stateRef.current && !stateRef.current.ending) engine.cancel('blur');
+  };
+
+  return { active, onKeyDown, onBlur };
+}
+
+/** The handle's menu: the non-drag way to move, copy and delete a block. */
+function HandleMenu({
+  blockId,
+  onClose,
+  onMoveTo,
+}: {
+  blockId: string;
+  onClose: (restore: boolean) => void;
+  onMoveTo: () => void;
+}) {
+  const messages = useMessages();
+  const actions = useBlockActions(blockId);
+  const roving = useRovingFocus<HTMLDivElement>({ orientation: 'vertical' });
+  const rovingFocus = roving.focus;
+  React.useLayoutEffect(() => {
+    rovingFocus();
+  }, [rovingFocus]);
+  const item = (
+    label: string,
+    run: () => unknown,
+    disabled = false,
+    closes = true,
+  ) => (
+    <button
+      type="button"
+      role="menuitem"
+      aria-disabled={disabled || undefined}
+      onClick={() => {
+        if (disabled) return;
+        if (closes) onClose(true);
+        run();
+      }}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div
+      ref={roving.ref}
+      role="menu"
+      aria-label={messages.parts.handleMenu}
+      data-editor-handle-menu=""
+      style={{ position: 'absolute', pointerEvents: 'auto', zIndex: 3 }}
+      onFocus={roving.onFocus}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' || event.key === 'Tab') {
+          event.preventDefault();
+          onClose(true);
+          return;
+        }
+        roving.onKeyDown(event);
+      }}
+    >
+      {item(
+        messages.commands['block.moveUp'] ?? 'block.moveUp',
+        actions.moveUp,
+        !actions.canMoveUp,
+      )}
+      {item(
+        messages.commands['block.moveDown'] ?? 'block.moveDown',
+        actions.moveDown,
+        !actions.canMoveDown,
+      )}
+      {item(messages.parts.moveTo, onMoveTo, false, false)}
+      {item(
+        messages.commands['block.duplicate'] ?? 'block.duplicate',
+        actions.duplicate,
+      )}
+      {item(
+        messages.commands['block.remove'] ?? 'block.remove',
+        actions.remove,
+      )}
+    </div>
+  );
+}
+
 export function CanvasDragHandle({
   blockId,
   render,
   style,
   onPointerDown,
+  onClick,
+  onKeyDown,
+  onKeyUp,
+  onBlur,
+  ref,
   ...rest
 }: CanvasDragHandleProps) {
   useCanvasSession('Canvas.DragHandle');
@@ -449,16 +730,26 @@ export function CanvasDragHandle({
   );
   const session = useDragSessionSnapshot();
   const ctx = useEditorContext('Canvas.DragHandle');
+  const handleRef = React.useRef<HTMLButtonElement | null>(null);
+  const [menu, setMenu] = React.useState<'closed' | 'menu' | 'move-to'>(
+    'closed',
+  );
+  const skipClickRef = React.useRef(false);
+  const keyboard = useKeyboardDrag(blockId, handleRef);
   const dragSession = React.useCallback((): DragSession => {
     const ids = draggedIds(ctx.store, blockId);
     return ids.length > 1
       ? { kind: 'move', id: blockId, ids }
       : { kind: 'move', id: blockId };
   }, [ctx.store, blockId]);
+  const onGestureEnd = React.useCallback((dragged: boolean) => {
+    skipClickRef.current = dragged;
+  }, []);
   const gestureDown = usePointerGesture({
     session: dragSession,
     blockId,
     handle: true,
+    onGestureEnd,
   });
   const isDragging = session?.kind === 'move' && session.id === blockId;
   const vis = rect ? (visibleIntersection(rect, view) ?? rect) : null;
@@ -472,14 +763,22 @@ export function CanvasDragHandle({
           pointerEvents: 'auto',
           zIndex: 2,
         };
+  const closeMenu = React.useCallback((restore: boolean) => {
+    setMenu('closed');
+    if (restore) handleRef.current?.focus();
+  }, []);
 
-  return useRender<'button', DragHandleState>({
+  const button = useRender<'button', DragHandleState>({
     defaultTagName: 'button',
     render,
     props: {
       type: 'button',
       'aria-label': rest['aria-label'] ?? messages.parts.dragHandle,
+      'aria-haspopup': 'menu',
+      'aria-expanded': menu === 'menu',
+      'aria-pressed': keyboard.active || undefined,
       ...rest,
+      ref: composeRefs(handleRef, ref),
       style: {
         ...HANDLE_STYLE,
         ...anchorStyle,
@@ -487,14 +786,60 @@ export function CanvasDragHandle({
       },
       onPointerDown: (event) => {
         onPointerDown?.(event);
+        skipClickRef.current = false;
         gestureDown(event);
+      },
+      onClick: (event) => {
+        onClick?.(event);
+        // A pointer drag ends with a compatibility click: no menu then.
+        if (event.defaultPrevented || skipClickRef.current) {
+          skipClickRef.current = false;
+          return;
+        }
+        if (keyboard.active) return;
+        setMenu((open) => (open === 'closed' ? 'menu' : 'closed'));
+      },
+      onKeyDown: (event) => {
+        onKeyDown?.(event);
+        if (event.defaultPrevented) return;
+        keyboard.onKeyDown(event);
+      },
+      onKeyUp: (event) => {
+        onKeyUp?.(event);
+        // Space picked the block up or dropped it; it does not click.
+        if (event.key === ' ') event.preventDefault();
+      },
+      onBlur: (event) => {
+        onBlur?.(event);
+        keyboard.onBlur();
       },
     },
     state: {
       editorDragHandle: true,
-      dragging: isDragging,
+      dragging: isDragging || keyboard.active,
     },
   });
+
+  return (
+    <>
+      {button}
+      {menu === 'menu' ? (
+        <HandleMenu
+          blockId={blockId}
+          onClose={closeMenu}
+          onMoveTo={() => setMenu('move-to')}
+        />
+      ) : null}
+      {menu === 'move-to' ? (
+        <EditorMoveToDialog
+          blockId={blockId}
+          onClose={() => closeMenu(true)}
+          data-editor-move-to=""
+          style={{ position: 'absolute', pointerEvents: 'auto', zIndex: 3 }}
+        />
+      ) : null}
+    </>
+  );
 }
 
 type PaletteItemState = {

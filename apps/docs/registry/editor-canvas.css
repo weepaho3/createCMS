@@ -11,6 +11,11 @@
   user-select: none;
 }
 
+/* Empty slots stay a reachable drop target while editing. */
+[data-editor-canvas][data-interactive='edit'] [data-editor-slot]:empty {
+  min-height: var(--editor-slot-min-empty-height, 128px);
+}
+
 [data-slot='editor-drop-indicator'][data-variant='line']::before,
 [data-slot='editor-drop-indicator'][data-variant='line']::after {
   content: '';

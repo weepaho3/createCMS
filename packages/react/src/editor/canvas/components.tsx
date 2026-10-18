@@ -23,6 +23,7 @@ import { CanvasContext } from './context';
 import { type DndStore } from './dnd';
 import { CanvasDndEffects } from './dnd-parts';
 import { createEditCache, type EditCache } from './edit';
+import { bindFileDrop, type CanvasFileDrop } from './file-drop';
 import { CanvasFrameShell } from './frame/frame-shell';
 import { handleCanvasClick, handleCanvasPointerOver } from './interact';
 import { createMeasurer } from './measurer';
@@ -86,6 +87,8 @@ export type CanvasRootProps = Omit<
    * `select-and-edit` for a mouse, `select-first` for touch and pen.
    */
   clickToEdit?: CanvasClickToEdit;
+  /** Files dropped from the desktop become blocks of this type (uploaded first). */
+  fileDrop?: CanvasFileDrop;
   /** With `surface="frame"`: head, body attributes, width, height, scale, styles. */
   frame?: CanvasFrameOptions;
   /** With `surface="frame"`: wraps the canvas inside the frame (an e-mail table). */
@@ -103,6 +106,7 @@ export function CanvasRoot({
   renderBlockError,
   renderUnknownBlock,
   clickToEdit,
+  fileDrop,
   frame,
   wrapper,
   children,
@@ -120,12 +124,14 @@ export function CanvasRoot({
   const interactiveRef = React.useRef(interactive);
   const storeRef = React.useRef(ctx.store);
   const clickToEditRef = React.useRef(clickToEdit);
+  const fileDropRef = React.useRef(fileDrop);
   const pointerTypeRef = React.useRef('mouse');
   // The primary selection when the pointer went down: a select-first tap
   // edits only a block that was already selected before it.
   const selectedAtDownRef = React.useRef<string | null>(null);
   React.useLayoutEffect(() => {
     clickToEditRef.current = clickToEdit;
+    fileDropRef.current = fileDrop;
     componentsRef.current = components;
     resolveRef.current = resolve;
     interactiveRef.current = interactive;
@@ -290,6 +296,16 @@ export function CanvasRoot({
       doc.removeEventListener('keydown', onKeyDown, true);
     };
   }, [hostNode]);
+
+  React.useEffect(() => {
+    if (!hostEl || !measurer) return;
+    return bindFileDrop(hostEl, {
+      store: storeRef.current,
+      dnd: sessionRef.current.dnd,
+      measurer,
+      options: () => fileDropRef.current,
+    });
+  }, [hostEl, measurer]);
 
   const previewSurface = React.useMemo((): PreviewSurface | null => {
     if (!hostEl) return null;

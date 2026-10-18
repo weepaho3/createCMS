@@ -329,3 +329,5 @@ export {
   sectionRefOf,
   sectionsPlugin,
 } from './sections';
+export type { InsertionPoint } from './insertion';
+export { insertionPoints } from './insertion';

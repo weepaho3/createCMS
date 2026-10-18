@@ -22,6 +22,7 @@ import type {
   SaveConflict,
   SaveStatus,
   UpdateOptions,
+  SlotTarget,
 } from './core/store';
 import type { EditorScrollToOptions } from './scroll';
 
@@ -149,6 +150,11 @@ export type BlockActions = {
   duplicate(): string | null;
   moveUp(): boolean;
   moveDown(): boolean;
+  /**
+   * Moves the block to `index` of `parent` (any slot that takes it), the
+   * index counting that slot without the block: the non-drag way to move.
+   */
+  moveTo(parent: SlotTarget, index: number): boolean;
 };
 
 function makeBlockHandle(
@@ -397,6 +403,10 @@ export function useBlockActions(id: string): BlockActions {
         if (type === null || parent === null || index < 0) return false;
         if (index >= siblings - 1) return false;
         return store.move(id, { parent, index: index + 1 });
+      },
+      moveTo(target, at) {
+        if (type === null || parent === null) return false;
+        return store.move(id, { parent: target, index: at });
       },
     };
   }, [ctx.store, ctx.schema, id, slice]);

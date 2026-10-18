@@ -495,6 +495,15 @@ Built-in UI commands (labels from the catalog's `commands`):
 `Alt+F10`, `?` and `Mod+/`. A plugin's `shortcuts` replace a default
 binding; an empty id unbinds it.
 
+## Insertion points
+
+`insertionPoints(schema, nodes, rootId, type, movingId?)` lists every
+`InsertionPoint` (`{ parent, index }`) where a block of `type` may go, in
+document order: each slot that takes it contributes its gaps, and a
+child's own slots follow the gap before it. With `movingId`, places inside
+that block are left out and its own slot counts it as gone. Keyboard drags
+step through this list; `useMoveTargets` groups it by slot.
+
 ## Clipboard
 
 Blocks travel as a `ClipboardPayload` (`{ app: CLIPBOARD_APP, version:

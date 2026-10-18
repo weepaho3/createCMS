@@ -19,6 +19,7 @@ import { EditorFramePreview, EditorPreview } from './preview';
 import { EditorShortcutHelp } from './shortcut-help';
 import {
   EditorAddBlock,
+  EditorMoveToDialog,
   EditorOutline,
   EditorOutlineGroup,
   EditorOutlineItem,
@@ -65,6 +66,7 @@ export const Editor = {
   LiveAnnouncer: EditorLiveAnnouncer,
   ShortcutHelp: EditorShortcutHelp,
   ErrorSummary: EditorErrorSummary,
+  MoveToDialog: EditorMoveToDialog,
 };
 
 // Field parts: context, built-in controls and their prop types.
@@ -113,7 +115,8 @@ export type {
   OutlineGroupState,
   OutlineItemState,
 } from './structure';
-export { insertPointFor } from './structure';
+export { insertPointFor, useMoveTargets } from './structure';
+export type { EditorMoveToDialogProps, MoveToTarget } from './structure';
 
 // React binding and untyped hooks.
 export type {

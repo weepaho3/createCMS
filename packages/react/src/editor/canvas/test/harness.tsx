@@ -7,6 +7,7 @@ import type { AnyEditorSchema } from '../../core/schema';
 import type { EditorStore } from '../../core/store';
 import type { CanvasInteractive } from '../components';
 import type { CanvasClickToEdit } from '../context';
+import type { CanvasFileDrop } from '../file-drop';
 import type { CanvasComponents } from '../map';
 import type { CanvasResolve } from '../resolve';
 
@@ -53,6 +54,7 @@ export type RenderCanvasOptions = {
   style?: React.CSSProperties;
   chunkSize?: number;
   clickToEdit?: CanvasClickToEdit;
+  fileDrop?: CanvasFileDrop;
 };
 
 type StoreProbeBag = { store: EditorStore | null };
@@ -80,6 +82,7 @@ export function renderCanvas(
         resolve={options?.resolve}
         chunkSize={options?.chunkSize}
         clickToEdit={options?.clickToEdit}
+        fileDrop={options?.fileDrop}
         style={{
           position: 'relative',
           boxSizing: 'border-box',

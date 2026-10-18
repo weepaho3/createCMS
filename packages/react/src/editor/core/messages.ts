@@ -48,6 +48,12 @@ export type Messages = {
     readonly blockToolbar: (p: { label: string }) => string;
     readonly outline: string;
     readonly contextMenu: string;
+    /** The drag handle's menu (move, duplicate, delete). */
+    readonly handleMenu: string;
+    readonly moveTo: string;
+    readonly moveToTitle: (p: { block: AnnouncedBlock }) => string;
+    readonly moveToPosition: (p: { position: number; count: number }) => string;
+    readonly moveToBack: string;
     readonly contextSelect: (p: { block: AnnouncedBlock }) => string;
     readonly contextSelectBelow: (p: { block: AnnouncedBlock }) => string;
   };
@@ -184,6 +190,11 @@ export const EN_MESSAGES: Messages = {
     blockToolbar: (p) => `${p.label} actions`,
     outline: 'Page structure',
     contextMenu: 'Block actions',
+    handleMenu: 'Block actions',
+    moveTo: 'Move to...',
+    moveToTitle: (p) => `Move ${named(p.block)} to`,
+    moveToPosition: (p) => `Position ${p.position} of ${p.count}`,
+    moveToBack: 'Back',
     contextSelect: (p) => `Select ${named(p.block)}`,
     contextSelectBelow: (p) => `Select layer below: ${named(p.block)}`,
   },

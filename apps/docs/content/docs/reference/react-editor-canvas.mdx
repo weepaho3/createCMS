@@ -188,6 +188,20 @@ blocks (the outermost ones), landing next to each other in document order
 as one undo step. When someone else removes a dragged block, the drag ends
 and `Editor.LiveAnnouncer` says so.
 
+`Canvas.DragHandle` also works without dragging (WCAG 2.5.7). A click or
+Enter opens its menu (`role="menu"`: move up, move down, move to, duplicate,
+delete; Move to opens `Editor.MoveToDialog`). Space picks the block up for
+a keyboard drag: arrows step through every valid place in document order
+(`insertionPoints`), the drop indicator follows, Space or Enter drops,
+Escape or leaving the handle puts the block back. `Editor.LiveAnnouncer`
+announces each step; focus returns to the handle.
+
+Files dragged from the desktop need `fileDrop` (`CanvasFileDrop`:
+`blockType`, `field`, `upload(file)`, `accept?`): the drop indicator
+follows the same targets, and each dropped file is uploaded and inserted
+in order at the drop position. Empty slots keep a minimum height while
+editing in the registry styles (`--editor-slot-min-empty-height`, 128 px).
+
 Auto-scroll moves the innermost scroller under the pointer whose edge zone
 (a quarter of its size, at most 180 px) holds it, outer scrollers once it
 reaches its end, at up to 900 px per second regardless of the frame rate,
@@ -277,7 +291,7 @@ below 1 ms either way); a browser test keeps it under 1.5 times inline.
 | Part                   | Default element | Props                                                                                                                          | Data attributes                                                                                           |
 | ---------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
 | `Canvas.Provider`      | none            | `children`. Renders no element; owns the drag session shared by every part and `Canvas.Root` below it. Optional.               | none                                                                                                      |
-| `Canvas.Root`          | `div`           | `components` (required), `surface`, `interactive`, `resolve`, `chunkSize`, `renderBlockError`, `renderUnknownBlock`, `clickToEdit`, `frame`, `wrapper`, `children` (overlay), `render`, div props | `data-editor-canvas`, `data-interactive`, `data-dragging`, `data-editing`                                 |
+| `Canvas.Root`          | `div`           | `components` (required), `surface`, `interactive`, `resolve`, `chunkSize`, `renderBlockError`, `renderUnknownBlock`, `clickToEdit`, `fileDrop`, `frame`, `wrapper`, `children` (overlay), `render`, div props | `data-editor-canvas`, `data-interactive`, `data-dragging`, `data-editing`                                 |
 | `data-editor-frame-surface`  | `Canvas.Root` with `surface="frame"` | The element in the host page around the frame; takes the consumer's props.                                                                             |
 | `data-editor-host-layer`     | frame surface                        | The host-page layer over the frame (`Canvas.Overlay layer="host"`).                                                                                       |
 | `data-editor-frame-root`     | inside the frame                     | The mount node in the frame body (`translate="no"`).                                                                                                      |
@@ -290,7 +304,7 @@ below 1 ms either way); a browser test keeps it under 1.5 times inline.
 | `Canvas.FieldRing`     | `div`           | `render`, div props. Sized from the focused field rect (own-block only).                                                       | `data-editor-field-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
 | `Canvas.BlockToolbar`  | `div`           | `align`, `side`, `offset`, `render`, div props. Consumer supplies buttons. Shown in `edit` and `select`. Pins inside the visible block when `side="top"` would clip. Named from the catalog (`parts.blockToolbar`), one tab stop, Alt+F10 entry. | `data-editor-block-toolbar`, `data-side`, `data-block-type`                                               |
 | `Canvas.InsertButton`  | `button`        | `placement` (`between` \| `container`), optional `type`, optional `onInsert`, `render`, button props. Shown only in `edit`.    | `data-editor-insert-button`, `data-orientation`, `data-empty-container`                                   |
-| `Canvas.DragHandle`    | `button`        | `blockId` (required), `render`, button props. Move an existing block by pointer drag. Overlay siblings inset into the visible block; inside `Canvas.BlockToolbar` the handle stays in flow. | `data-editor-drag-handle`, `data-dragging` on the handle while its block is the move session              |
+| `Canvas.DragHandle`    | `button`        | `blockId` (required), `render`, button props. Move an existing block by pointer drag (a multi-selection moves along), by keyboard (Space), or through its menu (click, Enter). Overlay siblings inset into the visible block; inside `Canvas.BlockToolbar` the handle stays in flow. | `data-editor-drag-handle`, `data-dragging` on the handle while its block is the move session              |
 | `Canvas.PaletteItem`   | `button`        | `type` (required), optional `properties`, `render`, button props. Click inserts like `Editor.AddBlock`; drag adds by geometry. | `data-editor-palette-item`, `data-block-type`, `data-dragging` while this item starts a new-block session |
 | `Canvas.DropIndicator` | `div`           | `render`, div props. Line or box from the active drop target. Presentational.                                                  | `data-editor-drop-indicator`, `data-orientation`, `data-variant`, `data-kind` (`new` \| `move`)           |
 | `Canvas.DragPreview`   | `div`           | `render`, div props, optional children. Follows the pointer during a session. Presentational.                                  | `data-editor-drag-preview`, `data-kind` (`new` \| `move`)                                                 |
@@ -332,6 +346,7 @@ below 1 ms either way); a browser test keeps it under 1.5 times inline.
 | `CanvasUnknownBlockProps`    | Props of `Canvas.UnknownBlock`.                                                                   |
 | `CanvasContextMenuProps`     | Props of `Canvas.ContextMenu`.                                                                    |
 | `ContextMenuEntry`           | A menu row: `{ kind: 'command', id, label, disabled }` or `{ kind: 'select', role, blockId, label }`. |
+| `CanvasFileDrop`             | `fileDrop` of `Canvas.Root`: `{ blockType, field, upload(file), accept? }`.                       |
 | `CanvasClickToEdit`          | `'select-and-edit' \| 'select-first'`.                                                            |
 | `BlockErrorBoundaryProps`    | Props of `BlockErrorBoundary`: `resetKey`, `fallback(error)`, `onError?`, `onReset?`.             |
 | `CanvasResolve`              | Field kind to `FieldResolver`.                                                                    |
@@ -418,6 +433,8 @@ client component.
 | `data-orientation`           | `Canvas.InsertButton`                | `'horizontal'` or `'vertical'`.                                                                                                                         |
 | `data-empty-container`       | `Canvas.InsertButton`                | Present when the target variant is `box`.                                                                                                               |
 | `data-editor-drag-handle`    | `Canvas.DragHandle`                  | Presence marker.                                                                                                                                        |
+| `data-editor-handle-menu`    | `Canvas.DragHandle` menu             | The handle's `role="menu"`.                                                                                                                              |
+| `data-dragging`              | dragged blocks, drag handle          | Present on the blocks a drag moves and on the handle while it drags.                                                                                     |
 | `data-editor-palette-item`   | `Canvas.PaletteItem`                 | Presence marker.                                                                                                                                        |
 | `data-editor-drop-indicator` | `Canvas.DropIndicator`               | Presence marker. `aria-hidden`.                                                                                                                         |
 | `data-editor-drag-preview`   | `Canvas.DragPreview`                 | Presence marker. `aria-hidden`.                                                                                                                         |
