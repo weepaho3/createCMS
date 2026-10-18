@@ -18,7 +18,7 @@
     "release": "changeset publish",
     "test": "turbo test",
     "test:scripts": "node --test scripts/linear-release-attribution.test.mjs",
-    "version-packages": "changeset version && node scripts/sync-changelog.mjs"
+    "version-packages": "changeset version && node scripts/sync-changelog.mjs && node apps/docs/scripts/stamp-registry.mjs && oxfmt apps/docs/registry.json apps/docs/registry && bun run --filter=docs registry:build"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.7.0",

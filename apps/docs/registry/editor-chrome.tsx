@@ -1,3 +1,4 @@
+// @registry editor-chrome@0.3.2
 'use client';
 
 // The chrome state the editor shell parts share: device and layout, the

@@ -1,3 +1,4 @@
+// @registry editor-field@0.3.2
 'use client';
 
 // Styled wrappers for the Editor.Field parts (label, control, description,

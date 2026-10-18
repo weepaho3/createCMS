@@ -1,3 +1,4 @@
+// @registry media-library@0.3.2
 'use client';
 
 // Styled wrappers for the Media.* parts. Does not render Media.Root;

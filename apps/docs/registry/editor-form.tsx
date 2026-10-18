@@ -1,3 +1,4 @@
+// @registry editor-form@0.3.2
 'use client';
 
 // The styled form of one block and the form-only edit surface. Does not wrap

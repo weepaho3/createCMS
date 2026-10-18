@@ -248,6 +248,32 @@ index })`. `getPlacement` / `canPlace` / `PlacementIndex` are replaced by
 
 ---
 
+## Registry items
+
+Breaks in the shadcn registry items under `https://createcms.dev/r/`. Items
+version in lockstep with `@createcms/react`: each copied file starts with
+`// @registry <item>@<version>`, so a break listed under a version applies
+to copies stamped below it. The per-item history lives in the
+[registry changelog](https://github.com/weepaho3/createCMS/blob/main/apps/docs/registry/CHANGELOG.md).
+
+### Unreleased
+
+- **`editor-app` is generic; the createCMS page moved to
+  `editor-app-createcms`.** `editor-app` now exports `EditorApp` (props
+  `adapter`, `documentId`, `baseVersion?`, `schema`, `components`) and
+  `EditorAppView`; `CmsEditor` lives in `editor-app-createcms`. Reinstall
+  with `npx shadcn@latest add https://createcms.dev/r/editor-app-createcms.json`
+  and import `CmsEditor` from `@/components/editor-app-createcms`.
+- **The createCMS field controls left `editor-form`.** `cmsFields` and
+  `CmsSourcesProvider` come from `editor-form-createcms`; the `Field` parts
+  and `fieldControls` (the shadcn controls for the built-in kinds) from
+  `editor-field`. `editor-form` keeps `Form` and `FormSurface`.
+- **`editor-shell` exports only the shell.** `EditorToolbar`,
+  `EditorPalette`, `EditorOutline` and `EditorInspector` are their own items
+  (`editor-toolbar`, `editor-palette`, `editor-outline`,
+  `editor-inspector`), and `useEditorChrome` plus the `Device` type come
+  from `editor-chrome`. Import each from its own file.
+
 ## At a glance
 
 | Release    | Date       | Breaking changes                                                                                                                                                       | Database action                             |

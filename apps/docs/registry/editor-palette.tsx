@@ -1,3 +1,4 @@
+// @registry editor-palette@0.3.2
 'use client';
 
 // The block palette (draggable rows), the searchable add-block list and its

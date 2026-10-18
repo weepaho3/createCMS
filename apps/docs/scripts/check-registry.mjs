@@ -71,9 +71,9 @@ function assertNamedItem(item, name, expectedType) {
     console.error(`check-registry: ${name}.json missing dependencies array`);
     process.exit(1);
   }
-  if (!item.dependencies.includes('@createcms/react')) {
+  if (!item.dependencies.some((dep) => dep.startsWith('@createcms/react@^'))) {
     console.error(
-      `check-registry: ${name}.json dependencies must include @createcms/react`,
+      `check-registry: ${name}.json dependencies must pin @createcms/react@^<version>`,
     );
     process.exit(1);
   }

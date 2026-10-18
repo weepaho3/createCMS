@@ -1,3 +1,4 @@
+// @registry editor-app@0.3.2
 'use client';
 
 import type { EditorRootProps, FieldControls } from '@createcms/react/editor';

@@ -1,3 +1,4 @@
+// @registry editor-outline@0.3.2
 'use client';
 
 // The block tree as a virtualized APG tree (`@tanstack/react-virtual`).

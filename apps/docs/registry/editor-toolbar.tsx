@@ -1,3 +1,4 @@
+// @registry editor-toolbar@0.3.2
 'use client';
 
 // The top toolbar (history, device frame, add, commands, save), the command

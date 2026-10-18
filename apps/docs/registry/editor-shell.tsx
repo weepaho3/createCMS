@@ -1,3 +1,4 @@
+// @registry editor-shell@0.3.2
 'use client';
 
 // The assembled editor shell: provider, layouts per viewport (docked panels,

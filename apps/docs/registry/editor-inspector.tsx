@@ -1,3 +1,4 @@
+// @registry editor-inspector@0.3.2
 'use client';
 
 // The selected block's fields and the page fields, in tabs. Plugins add UI

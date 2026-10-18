@@ -1,3 +1,4 @@
+// @registry media-picker@0.3.2
 'use client';
 
 // Self-contained picker control: a dialog that owns its own Media.Root (the

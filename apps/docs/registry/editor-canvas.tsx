@@ -1,3 +1,4 @@
+// @registry editor-canvas@0.3.2
 'use client';
 
 import {

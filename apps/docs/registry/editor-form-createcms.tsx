@@ -1,3 +1,4 @@
+// @registry editor-form-createcms@0.3.2
 'use client';
 
 import type { FieldControlProps, FieldControls } from '@createcms/react/editor';

@@ -1,3 +1,4 @@
+// @registry editor-app-createcms@0.3.2
 'use client';
 
 import type {
