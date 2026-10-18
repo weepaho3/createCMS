@@ -33,6 +33,9 @@ export const mediaMessagesDe: MediaMessages = {
       return parts.join(' ');
     },
     tree: 'Ordner',
+    trash: 'Papierkorb',
+    trashHint:
+      'Archivierte Dateien aus allen Ordnern. Stelle sie wieder her oder lösche sie endgültig.',
     defaultName: 'Neuer Ordner',
     rename: 'Umbenennen',
     delete: 'Ordner löschen',
@@ -151,6 +154,10 @@ export const mediaMessagesDe: MediaMessages = {
     archiveTitle: 'Dateien archivieren?',
     archiveDescription:
       'Archivierte Dateien werden nicht mehr ausgeliefert. Dateien, die in Inhalten verwendet werden, bleiben unverändert.',
+    more: ({ name }) => `Aktionen für ${name}`,
+    preview: 'Vorschau',
+    details: 'Details',
+    rename: 'Umbenennen',
   },
   visibility: {
     private: 'Privat',

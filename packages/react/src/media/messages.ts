@@ -43,6 +43,9 @@ export type MediaMessages = {
     }>;
     /** Accessible name of `Folder.Tree`. */
     tree: string;
+    /** The view of archived assets (restore or delete them for good). */
+    trash: string;
+    trashHint: string;
     /** The default name of a folder created inline. */
     defaultName: string;
     rename: string;
@@ -142,6 +145,11 @@ export type MediaMessages = {
     archive: string;
     archiveTitle: string;
     archiveDescription: string;
+    /** Accessible name of an asset's actions menu. */
+    more: MediaMessageFn<{ name: string }>;
+    preview: string;
+    details: string;
+    rename: string;
   };
   visibility: {
     private: string;
@@ -419,6 +427,9 @@ export const defaultMediaMessages: MediaMessages = {
       return parts.join(' ');
     },
     tree: 'Folders',
+    trash: 'Trash',
+    trashHint:
+      'Archived files from every folder. Restore them or delete them permanently.',
     defaultName: 'New folder',
     rename: 'Rename',
     delete: 'Delete folder',
@@ -537,6 +548,10 @@ export const defaultMediaMessages: MediaMessages = {
     archiveTitle: 'Archive assets?',
     archiveDescription:
       'Archived assets stop being served. Assets referenced by content are skipped.',
+    more: ({ name }) => `Actions for ${name}`,
+    preview: 'Preview',
+    details: 'Details',
+    rename: 'Rename',
   },
   visibility: {
     private: 'Private',

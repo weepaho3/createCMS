@@ -4,6 +4,7 @@
 // MediaLibraryLayout and every wrapper below must sit inside one.
 
 import type {
+  MediaAsset,
   MediaMessages,
   MediaType,
   MediaUploadEntry,
@@ -28,6 +29,7 @@ import {
   mediaTypeOf,
   useDownloads,
   useMediaFacets,
+  useMediaContext,
   useMediaFilter,
   useMediaMessages,
   useMediaSelection,
@@ -46,7 +48,15 @@ import {
   FileIcon,
   FileTextIcon,
   FilmIcon,
+  DownloadIcon,
+  EllipsisIcon,
+  EyeIcon,
   FolderIcon,
+  FolderInputIcon,
+  InfoIcon,
+  PencilIcon,
+  RotateCcwIcon,
+  Trash2Icon,
   FolderPlusIcon,
   ImageIcon,
   LoaderCircleIcon,
@@ -87,6 +97,11 @@ import {
 } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -98,6 +113,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
@@ -486,11 +502,178 @@ function MediaUploadTile({ entry }: { entry: MediaUploadEntry }) {
   );
 }
 
+/** What `MediaLibraryLayout` offers the cards' actions menu. */
+const MediaLayoutContext = React.createContext<{
+  /** Shows the details of `assetId`; `name` focuses its file name field. */
+  openDetails: (assetId: string, focus?: 'name') => void;
+  trash: boolean;
+} | null>(null);
+
+/**
+ * The entries of an asset's actions menu, for the `⋯` button and the
+ * right click alike. They act on the selection when the asset is part of
+ * a larger one (as Finder does), else on the asset alone.
+ */
+function MediaAssetMenuItems({
+  asset,
+  itemId,
+  confirm,
+  onMove,
+}: {
+  asset: MediaAsset;
+  itemId: string | undefined;
+  confirm: (descriptor: ConfirmDescriptor) => Promise<boolean>;
+  onMove: () => void;
+}) {
+  const { messages: t } = useMediaMessages();
+  const { store } = useMediaContext('MediaAssetMenuItems');
+  const layout = React.useContext(MediaLayoutContext);
+  const trash = layout?.trash ?? false;
+  return (
+    <>
+      <DropdownMenuItem
+        onClick={() =>
+          void store.dispatch({ type: 'openPreview', id: asset.id })
+        }
+      >
+        <EyeIcon aria-hidden="true" />
+        {t.action.preview}
+      </DropdownMenuItem>
+      {layout ? (
+        <DropdownMenuItem onClick={() => layout.openDetails(asset.id)}>
+          <InfoIcon aria-hidden="true" />
+          {t.action.details}
+        </DropdownMenuItem>
+      ) : null}
+      {layout && !trash ? (
+        <DropdownMenuItem onClick={() => layout.openDetails(asset.id, 'name')}>
+          <PencilIcon aria-hidden="true" />
+          {t.action.rename}
+        </DropdownMenuItem>
+      ) : null}
+      <Bulk.Action
+        action="download"
+        itemId={itemId}
+        render={<DropdownMenuItem />}
+        className="aria-disabled:opacity-50"
+      >
+        <DownloadIcon aria-hidden="true" />
+        {t.bulk.action.download}
+      </Bulk.Action>
+      {trash ? null : (
+        <DropdownMenuItem onClick={onMove}>
+          <FolderInputIcon aria-hidden="true" />
+          {t.bulk.action.move}
+        </DropdownMenuItem>
+      )}
+      <DropdownMenuSeparator />
+      {trash ? (
+        <>
+          <Bulk.Action
+            action="restore"
+            itemId={itemId}
+            render={<DropdownMenuItem />}
+            className="aria-disabled:opacity-50"
+          >
+            <RotateCcwIcon aria-hidden="true" />
+            {t.bulk.action.restore}
+          </Bulk.Action>
+          <Bulk.Action
+            action="purge"
+            itemId={itemId}
+            confirm={confirm}
+            render={<DropdownMenuItem variant="destructive" />}
+            className="aria-disabled:opacity-50"
+          >
+            <Trash2Icon aria-hidden="true" />
+            {t.bulk.action.purge}
+          </Bulk.Action>
+        </>
+      ) : (
+        <Bulk.Action
+          action="archive"
+          itemId={itemId}
+          confirm={confirm}
+          render={<DropdownMenuItem variant="destructive" />}
+          className="aria-disabled:opacity-50"
+        >
+          <Trash2Icon aria-hidden="true" />
+          {t.bulk.action.archive}
+        </Bulk.Action>
+      )}
+    </>
+  );
+}
+
+/**
+ * The actions of one asset: a `⋯` button on the tile and the same menu on
+ * right click (pointers with hover only; touch has the button). Opening it
+ * on an unselected asset selects that asset first.
+ */
+function MediaAssetActions({
+  asset,
+  children,
+}: {
+  asset: MediaAsset;
+  children: React.ReactNode;
+}) {
+  const { messages: t, format } = useMediaMessages();
+  const selection = useMediaSelection();
+  const { confirm, dialog } = useConfirmDialog();
+  const [moveOpen, setMoveOpen] = React.useState(false);
+  const hover = useMediaQuery('(hover: hover)');
+  const inGroup =
+    selection.selected.includes(asset.id) && selection.selected.length > 1;
+  const itemId = inGroup ? undefined : asset.id;
+  const onOpenChange = (open: boolean) => {
+    if (open && !selection.selected.includes(asset.id))
+      selection.select(asset.id);
+  };
+  const name = asset.originalName ?? asset.slug;
+  const items = (
+    <MediaAssetMenuItems
+      asset={asset}
+      itemId={itemId}
+      confirm={confirm}
+      onMove={() => setMoveOpen(true)}
+    />
+  );
+  return (
+    <>
+      <ContextMenu onOpenChange={onOpenChange} disabled={!hover}>
+        <ContextMenuTrigger className="contents">{children}</ContextMenuTrigger>
+        <ContextMenuContent>{items}</ContextMenuContent>
+      </ContextMenu>
+      <DropdownMenu onOpenChange={onOpenChange}>
+        <DropdownMenuTrigger
+          aria-label={t.action.more({ name }, format)}
+          onDoubleClick={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+          className="bg-background/90 hover:bg-background absolute top-1.5 right-1.5 flex size-6 items-center justify-center rounded-md opacity-0 shadow-sm transition-opacity group-focus-within/card:opacity-100 group-hover/card:opacity-100 data-popup-open:opacity-100 [@media(hover:none)]:opacity-100"
+        >
+          <EllipsisIcon className="size-4" aria-hidden="true" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          {items}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {moveOpen ? (
+        <MediaMoveDialog open onOpenChange={setMoveOpen} itemId={itemId} />
+      ) : null}
+      {dialog}
+    </>
+  );
+}
+
 function MediaAssetCard({
   asset,
   className,
+  actions = false,
   ...props
-}: React.ComponentProps<typeof Media.Item>) {
+}: React.ComponentProps<typeof Media.Item> & {
+  /** The `⋯` and right-click actions menu (off in the picker). */
+  actions?: boolean;
+}) {
   const { messages: t } = useMediaMessages();
   const type = mediaTypeOf(asset.mimeType);
   const Icon = TYPE_ICONS[type];
@@ -498,19 +681,8 @@ function MediaAssetCard({
   // Checkboxes show on hover, focus and touch, and on every card once
   // anything is selected; the selection itself reads like Finder's.
   const { selected } = useMediaSelection();
-  return (
-    <Media.Item
-      asset={asset}
-      data-slot="media-asset-card"
-      aria-disabled={picker.disabled || undefined}
-      className={cn(
-        'group/card hover:bg-muted/60 focus-visible:ring-ring/50 flex min-w-0 flex-col gap-1.5 rounded-lg p-1.5 outline-none focus-visible:ring-[3px]',
-        'data-selected:bg-media-selection/15 data-selected:hover:bg-media-selection/20',
-        'aria-disabled:opacity-50',
-        className,
-      )}
-      {...props}
-    >
+  const body = (
+    <>
       <div className="bg-muted group-data-selected/card:ring-media-selection relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md group-data-selected/card:ring-2">
         <Media.Thumbnail
           className="size-full object-cover data-error:hidden"
@@ -554,6 +726,26 @@ function MediaAssetCard({
         ) : null}
       </div>
       <Picker.Reason className="text-muted-foreground text-xs" />
+    </>
+  );
+  return (
+    <Media.Item
+      asset={asset}
+      data-slot="media-asset-card"
+      aria-disabled={picker.disabled || undefined}
+      className={cn(
+        'group/card relative hover:bg-muted/60 focus-visible:ring-ring/50 flex min-w-0 flex-col gap-1.5 rounded-lg p-1.5 outline-none focus-visible:ring-[3px]',
+        'data-selected:bg-media-selection/15 data-selected:hover:bg-media-selection/20',
+        'aria-disabled:opacity-50',
+        className,
+      )}
+      {...props}
+    >
+      {actions ? (
+        <MediaAssetActions asset={asset}>{body}</MediaAssetActions>
+      ) : (
+        body
+      )}
     </Media.Item>
   );
 }
@@ -1069,9 +1261,12 @@ function useConfirmDialog() {
 function MediaMoveDialog({
   open,
   onOpenChange,
+  itemId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Moves this asset instead of the selection. */
+  itemId?: string;
 }) {
   const { messages: t } = useMediaMessages();
   const [target, setTarget] = React.useState<string | null | undefined>(
@@ -1115,6 +1310,7 @@ function MediaMoveDialog({
           <Bulk.Action
             ref={moveRef}
             action="move"
+            itemId={itemId}
             input={{ folderId: target ?? null }}
             disabled={target === undefined}
             onResult={() => onOpenChange(false)}
@@ -1131,8 +1327,11 @@ function MediaMoveDialog({
 function MediaBulkBar({
   className,
   onDetails,
+  trash = false,
 }: {
   className?: string;
+  /** The trash view: restore and delete permanently only. */
+  trash?: boolean;
   /** Shows a Details button while exactly one asset is selected. */
   onDetails?: () => void;
 }) {
@@ -1161,7 +1360,7 @@ function MediaBulkBar({
         <Bulk.Bar className="flex flex-wrap items-center gap-2">
           {(actions) =>
             actions.map(({ action }) =>
-              action.id === 'move' ? (
+              action.id === 'move' && !trash ? (
                 <Button
                   key={action.id}
                   type="button"
@@ -1172,7 +1371,9 @@ function MediaBulkBar({
                   {t.bulk.action.move}
                 </Button>
               ) : action.id === 'setProvenance' ||
-                action.id === 'restore' ? null : (
+                (trash
+                  ? !['restore', 'purge', 'download'].includes(action.id)
+                  : action.id === 'restore') ? null : (
                 <Bulk.Action
                   key={action.id}
                   action={action.id}
@@ -1181,7 +1382,9 @@ function MediaBulkBar({
                     <Button
                       type="button"
                       variant={
-                        action.id === 'archive' ? 'destructive' : 'outline'
+                        action.id === 'archive' || action.id === 'purge'
+                          ? 'destructive'
+                          : 'outline'
                       }
                       size="sm"
                     />
@@ -1276,85 +1479,157 @@ function MediaLibraryLayout({
   detail?: boolean;
 }) {
   const { messages: t } = useMediaMessages();
+  const { store } = useMediaContext('MediaLibraryLayout');
   const preview = usePreview();
-  const { selected } = useMediaSelection();
+  const selection = useMediaSelection();
+  const { filter, set: setFilter } = useMediaFilter();
+  const trash = filter.archived === true;
   const wide = useMediaQuery('(min-width: 80rem)');
-  const single = selected.length === 1;
+  const single = selection.selected.length === 1;
   const [sheetOpen, setSheetOpen] = React.useState(false);
   React.useEffect(() => {
     if (!single) setSheetOpen(false);
   }, [single]);
   const showSheet = detail && !wide;
+  const layoutValue = React.useMemo(
+    () => ({
+      trash,
+      openDetails: (assetId: string, focus?: 'name') => {
+        selection.select(assetId);
+        if (showSheet) setSheetOpen(true);
+        if (focus === 'name') {
+          // The panel mounts or follows the selection on the next frames.
+          setTimeout(() => {
+            document
+              .querySelector<HTMLInputElement>('[data-slot=media-detail] input')
+              ?.focus();
+          }, 150);
+        }
+      },
+    }),
+    [trash, selection, showSheet],
+  );
+  // The trash lists archived assets of every folder; leaving it opens the root.
+  const toggleTrash = () => {
+    if (trash) {
+      setFilter({ archived: undefined });
+      void store.dispatch({ type: 'openFolder', folderId: null });
+    } else {
+      setFilter({
+        archived: true,
+        folderId: undefined,
+        unfiled: undefined,
+        recursive: undefined,
+      });
+    }
+  };
   return (
-    <div
-      data-slot="media-library"
-      className={cn(
-        'grid gap-4 md:grid-cols-[14rem_1fr]',
-        detail && 'xl:grid-cols-[14rem_1fr_20rem]',
-        className,
-      )}
-    >
-      <aside className="hidden md:block">
-        <MediaFolderTree />
-      </aside>
-      <div className="flex min-w-0 flex-col gap-4">
-        <div
-          data-slot="media-toolbar"
-          className="flex flex-wrap items-center gap-2"
-        >
-          <MediaBreadcrumbs className="mr-auto" />
-          <MediaSearch />
-          <MediaSortSelect />
-          <MediaNewFolder />
-        </div>
-        <MediaFilterBar />
-        <MediaError />
-        <MediaMutationError />
-        <MediaDropzone />
-        <MediaFolderList>
-          {(folder) => <MediaFolderCard key={folder.id} folder={folder} />}
-        </MediaFolderList>
-        <MediaGrid
-          spaceAction="preview"
-          onAction={(asset) =>
-            showSheet ? setSheetOpen(true) : preview.open(asset.id)
-          }
-        >
-          {(asset) => <MediaAssetCard key={asset.id} asset={asset} />}
-        </MediaGrid>
-        <MediaEmpty />
-        <MediaLoadMore />
-        <MediaUploadList />
-        <MediaDownloadList />
-        <MediaPreview />
-        <MediaBulkBar
-          onDetails={showSheet ? () => setSheetOpen(true) : undefined}
-        />
-        <MediaOutcome />
-        <MediaDropOverlay />
-        <MediaFolderPrompt />
-      </div>
-      {detail && wide ? (
-        <MediaDetailPanel className="sticky top-4 max-h-[calc(100vh-2rem)] self-start overflow-y-auto" />
-      ) : null}
-      {showSheet ? (
-        <ResponsiveDialog
-          open={sheetOpen && single}
-          onOpenChange={setSheetOpen}
-          desktopDirection="right"
-        >
-          <ResponsiveDialogContent
-            showCloseButton
-            className="data-[drawer-direction=right]:w-96 data-[drawer-direction=right]:max-w-[calc(100vw-2rem)]"
+    <MediaLayoutContext.Provider value={layoutValue}>
+      <div
+        data-slot="media-library"
+        className={cn(
+          'grid gap-4 md:grid-cols-[14rem_1fr]',
+          detail && 'xl:grid-cols-[14rem_1fr_20rem]',
+          className,
+        )}
+      >
+        <aside className="hidden flex-col gap-1 md:flex">
+          <div
+            onClickCapture={() => {
+              if (trash) setFilter({ archived: undefined });
+            }}
           >
-            <ResponsiveDialogTitle className="sr-only">
-              {t.detail.title}
-            </ResponsiveDialogTitle>
-            <MediaDetailPanel className="rounded-none border-0 bg-transparent pt-8" />
-          </ResponsiveDialogContent>
-        </ResponsiveDialog>
-      ) : null}
-    </div>
+            <MediaFolderTree />
+          </div>
+          <button
+            type="button"
+            data-slot="media-trash"
+            aria-pressed={trash}
+            onClick={toggleTrash}
+            className="hover:bg-muted aria-pressed:bg-muted flex items-center gap-1 rounded-md py-1 ps-1 pr-2 text-left text-sm"
+          >
+            <span className="size-4" aria-hidden="true" />
+            <Trash2Icon
+              className="text-muted-foreground size-4 shrink-0"
+              aria-hidden="true"
+            />
+            {t.folder.trash}
+          </button>
+        </aside>
+        <div className="flex min-w-0 flex-col gap-4">
+          <div
+            data-slot="media-toolbar"
+            className="flex flex-wrap items-center gap-2"
+          >
+            {trash ? (
+              <h2 className="mr-auto text-sm font-medium">{t.folder.trash}</h2>
+            ) : (
+              <MediaBreadcrumbs className="mr-auto" />
+            )}
+            <MediaSearch />
+            <MediaSortSelect />
+            {trash ? null : <MediaNewFolder />}
+          </div>
+          <MediaFilterBar />
+          <MediaError />
+          <MediaMutationError />
+          {trash ? (
+            <p className="text-muted-foreground text-sm">
+              {t.folder.trashHint}
+            </p>
+          ) : (
+            <>
+              <MediaDropzone />
+              <MediaFolderList>
+                {(folder) => (
+                  <MediaFolderCard key={folder.id} folder={folder} />
+                )}
+              </MediaFolderList>
+            </>
+          )}
+          <MediaGrid
+            spaceAction="preview"
+            onAction={(asset) =>
+              showSheet ? setSheetOpen(true) : preview.open(asset.id)
+            }
+          >
+            {(asset) => <MediaAssetCard key={asset.id} asset={asset} actions />}
+          </MediaGrid>
+          <MediaEmpty />
+          <MediaLoadMore />
+          <MediaUploadList />
+          <MediaDownloadList />
+          <MediaPreview />
+          <MediaBulkBar
+            trash={trash}
+            onDetails={showSheet ? () => setSheetOpen(true) : undefined}
+          />
+          <MediaOutcome />
+          <MediaDropOverlay />
+          <MediaFolderPrompt />
+        </div>
+        {detail && wide ? (
+          <MediaDetailPanel className="sticky top-4 max-h-[calc(100vh-2rem)] self-start overflow-y-auto" />
+        ) : null}
+        {showSheet ? (
+          <ResponsiveDialog
+            open={sheetOpen && single}
+            onOpenChange={setSheetOpen}
+            desktopDirection="right"
+          >
+            <ResponsiveDialogContent
+              showCloseButton
+              className="data-[drawer-direction=right]:w-96 data-[drawer-direction=right]:max-w-[calc(100vw-2rem)]"
+            >
+              <ResponsiveDialogTitle className="sr-only">
+                {t.detail.title}
+              </ResponsiveDialogTitle>
+              <MediaDetailPanel className="rounded-none border-0 bg-transparent pt-8" />
+            </ResponsiveDialogContent>
+          </ResponsiveDialog>
+        ) : null}
+      </div>
+    </MediaLayoutContext.Provider>
   );
 }
 

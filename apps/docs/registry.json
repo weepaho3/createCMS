@@ -155,7 +155,8 @@
         "breadcrumb",
         "dropdown-menu",
         "media-detail",
-        "responsive-dialog"
+        "responsive-dialog",
+        "context-menu"
       ],
       "files": [
         {

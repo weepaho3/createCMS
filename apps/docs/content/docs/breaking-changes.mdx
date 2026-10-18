@@ -55,6 +55,12 @@ on, schema changes are picked up with `createcms generate` + a Drizzle migration
 
 ## Unreleased
 
+- **`MediaMessages` gains `action.more`, `action.preview`,
+  `action.details`, `action.rename`, `folder.trash` and
+  `folder.trashHint`** for the item actions menu and the trash view.
+  → **Migration:** add the six keys to your own catalogs; the English and
+  German catalogs have them.
+
 - **`MediaMessages` gains `usage.external`, `usage.externalBlocking` and
   `bulk.archivedExternal`** for the external usage group and the archive
   warning.
