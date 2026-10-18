@@ -11,9 +11,15 @@ import type {
   NodeData,
   Op,
   SlotRef,
+  HistoryEntry,
+  HistoryStep,
+  MarkId,
+  Origin,
+  TxMeta,
 } from '../core';
 
-import { applyOp, createDocStoreCore, DEFAULT_SLOT } from '../core';
+import { applyOp, createDocStoreCore, DEFAULT_SLOT, MERGE_MS } from '../core';
+import { diffOps } from './diff-ops';
 
 /**
  * Where a node sits: one atomic value, so concurrent moves of the same node
@@ -110,6 +116,10 @@ export function createYjsDocStore(
   const local = { store: 'editor' };
   /** Marks a cycle repair this store wrote (published as `system`). */
   const repairing = { store: 'editor-repair' };
+  /** Our writes that are not undoable (remote ops, `history: 'ignore'`). */
+  const untracked = { store: 'editor-untracked' };
+  /** The origin `write` uses for the transaction running now. */
+  let writeOrigin: object = local;
 
   if (meta.get('rootId') === undefined && options.initialValue) {
     const doc = options.initialValue;
@@ -521,6 +531,7 @@ export function createYjsDocStore(
       mergeMs: options.mergeMs,
       maxEntries: options.maxEntries,
       initial,
+      recordHistory: false,
     },
     {
       write(ops, from, to) {
@@ -543,33 +554,234 @@ export function createYjsDocStore(
             writeOp(op, state, after);
             state = after;
           }
-        }, local);
+        }, writeOrigin);
         return derive(to.version);
       },
     },
   );
 
+  // Undo runs on Yjs: only our own tracked writes are undone, and an undo
+  // reverts just what the step changed (a move only the placement), so
+  // other people's changes always stay.
+  const undoManager = new Y.UndoManager([nodesMap, meta], {
+    trackedOrigins: new Set<unknown>([local]),
+    captureTimeout: options.mergeMs ?? MERGE_MS,
+  });
+  const captureTimeout = undoManager.captureTimeout;
+  let replaying = false;
+  let lastMergeKey: string | undefined;
+  let mergeOpen = false;
+  /** Selection and label of the write running now, for its stack item. */
+  let pending: {
+    before: readonly string[];
+    after: readonly string[];
+    label: string | undefined;
+  } | null = null;
+
+  type Mark = {
+    readonly id: MarkId;
+    readonly stackLength: number;
+    readonly snapshot: DocState;
+    wrote: boolean;
+  };
+  let marks: Mark[] = [];
+  let nextMark = 1;
+
+  undoManager.on('stack-item-added', ({ stackItem, type }) => {
+    if (replaying || type !== 'undo' || !pending) return;
+    stackItem.meta.set('before', pending.before);
+    stackItem.meta.set('after', pending.after);
+    if (pending.label !== undefined) stackItem.meta.set('label', pending.label);
+  });
+  undoManager.on('stack-item-updated', ({ stackItem, type }) => {
+    if (replaying || type !== 'undo' || !pending) return;
+    stackItem.meta.set('after', pending.after);
+  });
+
   const onAfterTransaction = (tr: Y.Transaction) => {
-    if (tr.origin === local) {
+    if (tr.origin === local || tr.origin === untracked) {
       moved.clear();
       return;
     }
     if (tr.changed.size === 0 && tr.changedParentTypes.size === 0) return;
-    const origin = tr.origin === repairing ? 'system' : 'remote';
+    const origin =
+      tr.origin === repairing
+        ? 'system'
+        : tr.origin === undoManager
+          ? 'history'
+          : 'remote';
     core.receive(derive(core.getSnapshot().version + 1), origin);
     const candidates = [...moved];
     moved.clear();
-    if (origin === 'remote') repairCycles(candidates);
+    if (origin !== 'system') repairCycles(candidates);
   };
   ydoc.on('afterTransaction', onAfterTransaction);
+
+  /** Runs an undo-manager step and reports what it changed. */
+  function replay(
+    run: () => { meta: Map<string, unknown> } | null,
+    selectionKey: 'before' | 'after',
+  ): HistoryStep | null {
+    const before = core.getSnapshot();
+    replaying = true;
+    let item: { meta: Map<string, unknown> } | null;
+    try {
+      item = run();
+    } finally {
+      replaying = false;
+    }
+    mergeOpen = false;
+    if (!item) return null;
+    const label = item.meta.get('label');
+    return {
+      ops: diffOps(before, core.getSnapshot()),
+      selection:
+        (item.meta.get(selectionKey) as readonly string[] | undefined) ?? [],
+      label: typeof label === 'string' ? label : undefined,
+    };
+  }
+
+  const entryOf = (item: { meta: Map<string, unknown> }): HistoryEntry => {
+    const label = item.meta.get('label');
+    return {
+      ops: [],
+      inverse: [],
+      at: 0,
+      selectionBefore:
+        (item.meta.get('before') as readonly string[] | undefined) ?? [],
+      selectionAfter:
+        (item.meta.get('after') as readonly string[] | undefined) ?? [],
+      label: typeof label === 'string' ? label : undefined,
+    };
+  };
+
+  /** Picks the Yjs origin and the capture grouping for one local write. */
+  function prepareWrite(meta: TxMeta): void {
+    const origin: Origin = meta.origin ?? 'local';
+    if (origin !== 'local') {
+      writeOrigin = untracked;
+      return;
+    }
+    const mark = marks.at(-1);
+    if (!mark && meta.history === 'ignore') {
+      writeOrigin = untracked;
+      return;
+    }
+    writeOrigin = local;
+    const first = !mark || !mark.wrote;
+    if (first) {
+      const merges =
+        meta.mergeKey !== undefined &&
+        mergeOpen &&
+        meta.mergeKey === lastMergeKey;
+      if (!merges) undoManager.stopCapturing();
+      lastMergeKey = meta.mergeKey;
+      mergeOpen = meta.mergeKey !== undefined;
+    }
+    if (mark) {
+      mark.wrote = true;
+      // Everything until the squash becomes one stack item.
+      undoManager.captureTimeout = Number.POSITIVE_INFINITY;
+    }
+    const before = meta.selection?.before ?? [];
+    pending = {
+      before,
+      after: meta.selection?.after ?? before,
+      label: meta.label,
+    };
+  }
 
   return {
     ...core,
     ydoc,
+    transact(fn, meta = {}) {
+      prepareWrite(meta);
+      try {
+        return core.transact(fn, meta);
+      } finally {
+        writeOrigin = local;
+        pending = null;
+      }
+    },
+    undo: () => replay(() => undoManager.undo(), 'before'),
+    redo: () => replay(() => undoManager.redo(), 'after'),
+    canUndo: () => undoManager.canUndo(),
+    canRedo: () => undoManager.canRedo(),
+    mark() {
+      const id = nextMark++ as MarkId;
+      marks.push({
+        id,
+        stackLength: undoManager.undoStack.length,
+        snapshot: core.getSnapshot(),
+        wrote: false,
+      });
+      return id;
+    },
+    squash(markId, squashMeta = {}) {
+      const index = marks.findIndex((m) => m.id === markId);
+      if (index < 0) return;
+      const mark = marks[index]!;
+      marks = marks.slice(0, index);
+      if (marks.length > 0) return;
+      undoManager.captureTimeout = captureTimeout;
+      const top = undoManager.undoStack.at(-1);
+      if (mark.wrote && top && squashMeta.label !== undefined) {
+        top.meta.set('label', squashMeta.label);
+      }
+    },
+    bail(markId) {
+      const index = marks.findIndex((m) => m.id === markId);
+      if (index < 0) return [];
+      const mark = marks[index]!;
+      marks = marks.slice(0, index);
+      if (marks.length === 0) undoManager.captureTimeout = captureTimeout;
+      if (!mark.wrote) return [];
+      const before = core.getSnapshot();
+      if (undoManager.undoStack.length > mark.stackLength) {
+        // The writes since the mark are one stack item: undo it, forget it.
+        replaying = true;
+        try {
+          undoManager.undo();
+        } finally {
+          replaying = false;
+        }
+        undoManager.redoStack.pop();
+      } else {
+        // The first write merged into the step before: write the way back.
+        const revert = diffOps(before, mark.snapshot);
+        writeOrigin = untracked;
+        try {
+          core.transact(
+            (tx) => {
+              for (const op of revert) tx.apply(op);
+            },
+            { origin: 'history' },
+          );
+        } finally {
+          writeOrigin = local;
+        }
+      }
+      mergeOpen = false;
+      return diffOps(before, core.getSnapshot());
+    },
+    breakMerge() {
+      undoManager.stopCapturing();
+      mergeOpen = false;
+    },
+    clearHistory() {
+      undoManager.clear();
+      marks = [];
+      mergeOpen = false;
+    },
+    getHistory: () => ({
+      past: undoManager.undoStack.map(entryOf),
+      future: undoManager.redoStack.map(entryOf),
+    }),
     destroy() {
       ydoc.off('afterTransaction', onAfterTransaction);
       nodesMap.unobserveDeep(onDeep);
       meta.unobserve(onMeta);
+      undoManager.destroy();
     },
   };
 }

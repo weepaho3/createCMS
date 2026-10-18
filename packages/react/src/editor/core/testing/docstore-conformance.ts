@@ -163,12 +163,15 @@ export function runDocStoreConformance(
       store.transact((tx) => tx.setProp('a', ['text'], '3'), {
         origin: 'system',
       });
+      // The undone write is the latest, so the undo changes the document
+      // whether or not the store keeps undo steps after foreign writes.
+      store.transact((tx) => tx.setProp('c', ['text'], '4'));
       store.undo();
       stop();
-      store.transact((tx) => tx.setProp('a', ['text'], '4'));
+      store.transact((tx) => tx.setProp('a', ['text'], '5'));
       expect(
         check,
-        seen.join() === 'local,remote,system,history',
+        seen.join() === 'local,remote,system,local,history',
         `origins were ${seen.join()}`,
       );
     },

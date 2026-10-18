@@ -7,6 +7,8 @@ import type { DocState, EditorDocument, JsonValue, Origin } from '../core';
 import {
   canonicalJson,
   conformanceDocument,
+  createEditorStore,
+  defineEditorSchema,
   runDocStoreConformance,
   serializeSubtree,
   TxRejectedError,
@@ -154,7 +156,7 @@ describe('createYjsDocStore', () => {
     expect(children.filter((id) => id.startsWith('new'))).toHaveLength(3);
   });
 
-  it('reports peer changes as remote and drops the undo steps they conflict with', () => {
+  it('reports peer changes as remote and never undoes them', () => {
     const { stores, sync } = peers(2);
     const [p, q] = stores;
     const origins: Origin[] = [];
@@ -165,10 +167,63 @@ describe('createYjsDocStore', () => {
     sync();
     expect(origins).toContain('remote');
     expect(p!.getSnapshot().nodes.x).toBeUndefined();
-    // The step on `x` conflicts with the remote removal; the one on `a` stays.
-    expect(p!.getHistory().past).toHaveLength(1);
     p!.undo();
     expect(p!.getSnapshot().nodes.a?.props.title).toBeUndefined();
+    // The step on `x` stays, but undoing it cannot bring back what the
+    // other peer removed.
+    p!.undo();
+    expect(p!.getSnapshot().nodes.x).toBeUndefined();
+  });
+
+  it('undoes an own move after a peer changed the props: only the placement', () => {
+    const { stores, sync } = peers(2);
+    const [p, q] = stores;
+    p!.transact((tx) => tx.moveNode('x', 'a', 'children', 0), {
+      selection: { before: ['x'], after: ['x'] },
+    });
+    sync();
+    q!.transact((tx) => tx.setProp('x', ['text'], 'theirs'));
+    sync();
+    const step = p!.undo();
+    expect(step?.selection).toEqual(['x']);
+    expect(step?.ops.map((op) => op.op)).toEqual(['move']);
+    const state = p!.getSnapshot();
+    expect(state.nodes.x?.parent?.id).toBe('root');
+    expect(state.nodes.x?.props.text).toBe('theirs');
+    sync();
+    expect(json(q!.getSnapshot())).toBe(json(state));
+  });
+
+  it('restores everything after undoing many steps and redoing them all', () => {
+    const store = createYjsDocStore({ ydoc: new Y.Doc(), initialValue: doc() });
+    store.transact((tx) => tx.moveNode('x', 'a', 'children', 0));
+    store.transact((tx) => tx.setProp('a', ['title'], 'A'));
+    store.transact((tx) =>
+      tx.insertNode({ id: 'b', slot: 'children' }, 0, {
+        id: 'n',
+        type: 'text',
+        props: { text: 'N' },
+      }),
+    );
+    store.transact((tx) => tx.removeNode('x'));
+    const final = json(store.getSnapshot());
+    let undone = 0;
+    while (store.undo()) undone += 1;
+    expect(undone).toBe(4);
+    expect(json(store.getSnapshot())).toBe(
+      json(
+        createYjsDocStore({
+          ydoc: new Y.Doc(),
+          initialValue: doc(),
+        }).getSnapshot(),
+      ),
+    );
+    // Copying the old state does not touch the history.
+    const copy = yjsToDocument(store.ydoc);
+    expect(copy).not.toBeNull();
+    while (store.redo()) undone -= 1;
+    expect(undone).toBe(0);
+    expect(json(store.getSnapshot())).toBe(final);
   });
 
   it('keeps the node objects a change did not touch', () => {
@@ -383,5 +438,41 @@ describe('cycle repair', () => {
       }),
       { numRuns: 300 },
     );
+  });
+});
+
+describe('the editor store on Yjs', () => {
+  const schema = defineEditorSchema({
+    root: { label: 'Page', fields: {}, slots: { children: {} } },
+    components: {
+      box: { label: 'Box', fields: {}, slots: { children: {} } },
+      text: {
+        label: 'Text',
+        fields: { text: { type: 'text', label: 'Text' } },
+      },
+    },
+  });
+
+  it('one undo step per command, typing coalesced, failed commands leave nothing', () => {
+    const docStore = createYjsDocStore({
+      ydoc: new Y.Doc(),
+      initialValue: doc(),
+    });
+    const store = createEditorStore({ schema, docStore });
+    store.update('x', { text: 'X1' }, { coalesce: true });
+    store.update('x', { text: 'X12' }, { coalesce: true });
+    store.update('x', { text: 'X123' }, { coalesce: true });
+    store.move('x', { parent: { id: 'a', slot: 'children' }, index: 0 });
+    const failed = store.transact(() => {
+      store.update('x', { text: 'never' });
+      throw new Error('command failed');
+    });
+    expect(failed.ok).toBe(false);
+    expect(store.getDoc().nodes.x?.props.text).toBe('X123');
+    expect(store.undo()).toBe(true);
+    expect(store.getDoc().nodes.x?.parent?.id).toBe('root');
+    expect(store.undo()).toBe(true);
+    expect(store.getDoc().nodes.x?.props.text).toBe('X');
+    expect(store.undo()).toBe(false);
   });
 });

@@ -69,6 +69,20 @@ The repair rule is a reasoned conclusion, not a proven algorithm: it is
 tested against every interleaving of two and three blocks and against
 random concurrent moves on three peers, but not yet in production.
 
+## Undo
+
+Undo runs on `Y.UndoManager`, tracking only this store's own writes. An
+undo reverts just what the step changed: undoing your move restores the
+placement and keeps the text another person changed meanwhile, and an
+undo never brings back what someone else removed. Steps follow the same
+rules as in the JSON store: one step per editor command, steps with the
+same `mergeKey` merge (typing), `breakMerge` ends a merge, and selection
+and label are kept on the step (`stackItem.meta`) and restored by undo and
+redo. Writes with origin `remote` or `system` and `history: 'ignore'`
+writes outside a command are never undoable. `undo` and `redo` report
+the ops they caused, computed from the change; `getHistory()` lists the
+steps with their selection and label but without ops.
+
 ## API
 
 | Name                       | Description                                                                                                                                                       |

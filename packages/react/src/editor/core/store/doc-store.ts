@@ -214,9 +214,10 @@ export type DocStoreCore = DocStore & {
    * Publishes `next`, a state the backend received from outside
    * `transact`: drops the undo steps it conflicts with and notifies
    * subscribers with `origin` (default `remote`; `system` for a repair the
-   * backend made itself). Returns the dropped steps.
+   * backend made itself; `history` for an undo the backend ran, which drops
+   * nothing). Returns the dropped steps.
    */
-  receive(next: DocState, origin?: 'remote' | 'system'): number;
+  receive(next: DocState, origin?: 'remote' | 'system' | 'history'): number;
 };
 
 const sameList = (a: readonly string[], b: readonly string[]) =>
@@ -298,6 +299,12 @@ export type DocStoreCoreOptions = Omit<
   'initialValue'
 > & {
   initial: DocState;
+  /**
+   * `false` when the backend keeps the undo history itself (a CRDT undo
+   * manager): the core then records no steps and drops none on remote
+   * changes, and the backend overrides the history methods. Default `true`.
+   */
+  recordHistory?: boolean;
 };
 
 /**
@@ -313,6 +320,7 @@ export function createDocStoreCore(
   const now = options.now ?? Date.now;
   const mergeMs = options.mergeMs ?? MERGE_MS;
   const maxEntries = options.maxEntries ?? MAX_HISTORY;
+  const recordHistory = options.recordHistory ?? true;
   let state: DocState = options.initial;
   let past: HistoryEntry[] = [];
   let future: HistoryEntry[] = [];
@@ -463,8 +471,12 @@ export function createDocStoreCore(
       const { state: next, inverse } = applyAll(state, ops);
       state = backend.write(ops, state, next, origin);
       let invalidated = 0;
-      if (origin === 'remote') invalidated = invalidate(ops, inverse);
-      else if (origin !== 'history') record(ops, inverse, meta);
+      // Without `recordHistory` the backend's own history tracks the write.
+      if (recordHistory && origin === 'remote') {
+        invalidated = invalidate(ops, inverse);
+      } else if (recordHistory && origin !== 'history') {
+        record(ops, inverse, meta);
+      }
       notify(changesOf(ops, state.rootId), origin);
       return { ops, inverse, invalidated };
     },
@@ -599,6 +611,10 @@ export function createDocStoreCore(
       const { changes, touch } = diffStates(state, next);
       state = { ...next, version: state.version + 1 };
       if (changes.length === 0) return 0;
+      if (!recordHistory || origin === 'history') {
+        notify(changes, origin);
+        return 0;
+      }
       const keep = (entry: HistoryEntry): boolean =>
         !conflicts(touchOf(entry.inverse, touchOf(entry.ops)), touch);
       const before = past.length + future.length;

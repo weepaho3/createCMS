@@ -76,7 +76,7 @@ Tiptap.
 | `/editor/render`   | 2 KB          |
 | `/editor/cms`      | 52 KB         |
 | `/editor/richtext` | 152 KB        |
-| `/editor/collab`   | 29 KB         |
+| `/editor/collab`   | 33 KB         |
 | `/media`           | 7.5 KB        |
 
 Run `bun scripts/check-bundle-size.mjs` after `bun run build`. The CI also
