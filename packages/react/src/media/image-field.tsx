@@ -18,6 +18,7 @@ import {
   setAlt,
   setCaption,
   setDecorative,
+  canSuggestAlt,
   suggestAlt,
   toImageRef,
 } from './core/image-field';
@@ -74,7 +75,16 @@ export function ImageFieldRoot(props: ImageFieldRootProps) {
   // Read when a suggestion is asked for, so new arrays do not re-render.
   const latest = React.useRef({ value, onValueChange, suggesters, context });
   latest.current = { value, onValueChange, suggesters, context };
-  const canSuggest = suggesters.length > 0;
+  const [canSuggest, setCanSuggest] = React.useState(false);
+  React.useEffect(() => {
+    let current = true;
+    void canSuggestAlt(suggesters).then((available) => {
+      if (current) setCanSuggest(available);
+    });
+    return () => {
+      current = false;
+    };
+  }, [suggesters]);
   const state = React.useMemo<ImageFieldState>(() => {
     const ref = toImageRef(value);
     return {
@@ -192,21 +202,22 @@ export type ImageFieldSuggestAltProps = UseRenderComponentProps<'button'>;
 /**
  * A `button` that asks the suggesters for alt text. A suggestion only
  * fills an empty, non-decorative field and is marked as suggested until
- * the person edits it; `disabled` otherwise or without suggesters.
+ * the person edits it; `disabled` while the field has alt text. Not
+ * rendered when no suggester is available (no model on the device, none
+ * configured).
  */
 export function ImageFieldSuggestAlt(props: ImageFieldSuggestAltProps) {
   const { render, ...rest } = props;
   const field = useImageField();
   const { messages } = useMediaMessages();
   const announce = useMediaAnnouncer();
-  return useRender({
+  const element = useRender({
     defaultTagName: 'button',
     render,
     props: mergeProps<'button'>(
       {
         type: 'button',
-        disabled:
-          !field.canSuggest || field.suggesting || field.altState !== 'missing',
+        disabled: field.suggesting || field.altState !== 'missing',
         'aria-busy': field.suggesting || undefined,
         children: field.suggesting
           ? messages.imageField.suggesting
@@ -220,6 +231,7 @@ export function ImageFieldSuggestAlt(props: ImageFieldSuggestAltProps) {
       rest,
     ),
   });
+  return field.canSuggest ? element : null;
 }
 
 export type ImageFieldStatusProps = UseRenderComponentProps<'p'>;

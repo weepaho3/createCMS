@@ -52,8 +52,9 @@ export const cmsClient = createCMSClient<typeof cms>()({
 | [A/B testing](/docs/plugins/ab-test) | `@createcms/core/plugins/ab-test` | Deterministic variant assignment, event tracking, pluggable analytics. |
 | [Consent](/docs/plugins/consent) | `@createcms/core/plugins/consent` | Google Consent Mode v2 gating, with a `ConsentGate` for embeds. |
 | [Media optimize](/docs/plugins/media-optimize) | `@createcms/core/plugins/media-optimize` | WebP renditions, placeholders, provenance and GPS removal in the browser before upload. |
+| [Media alt AI](/docs/plugins/media-alt-ai) | `@createcms/core/plugins/media-alt-ai` | Alt text suggestions from Chrome's built-in model or your vision model, marked and never saved without a person. |
 
-The A/B testing and consent plugins have a server entry and a separate client entry (`/plugins/ab-test/client` and `/plugins/consent/client`); media optimize is client-side only.
+The A/B testing, consent and media alt AI plugins have a server entry and a separate client entry (`/plugins/ab-test/client`, `/plugins/consent/client` and `/plugins/media-alt-ai/client`); media optimize is client-side only.
 
 ## Authoring a plugin
 

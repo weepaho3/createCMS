@@ -116,6 +116,14 @@
       "types": "./dist/plugins/media-optimize/worker.d.ts",
       "default": "./dist/plugins/media-optimize/worker.js"
     },
+    "./plugins/media-alt-ai": {
+      "types": "./dist/plugins/media-alt-ai/index.d.ts",
+      "default": "./dist/plugins/media-alt-ai/index.js"
+    },
+    "./plugins/media-alt-ai/client": {
+      "types": "./dist/plugins/media-alt-ai/client.d.ts",
+      "default": "./dist/plugins/media-alt-ai/client.js"
+    },
     "./plugins/consent": {
       "types": "./dist/plugins/consent/index.d.ts",
       "default": "./dist/plugins/consent/index.js"

@@ -1,0 +1,104 @@
+---
+title: Media alt AI
+description: Alt text suggestions from Chrome's built-in model or your own vision model, never saved without a person.
+---
+
+The media alt AI plugin suggests alt text for an image in its place on the page. It tries Chrome's built-in model first (on the device, free, private), then your server's vision model, then nothing. A suggestion only fills an **empty** alt text, is copied into the block's image value as text marked `altSource: 'ai-suggested'` (not linked to the asset), shows as "Suggested, please check" until a person edits it, and is saved only with the block. It never overwrites what a person wrote.
+
+## Installation
+
+### Add the server plugin
+
+The server side adds `mediaAltAi.suggestAlt`, which describes an image asset of the caller's scope with your vision model. `describe` gets the image bytes, its MIME type and a prompt built from the context; call any model and return its text.
+
+```ts title="lib/cms.ts"
+import { mediaAltAi } from '@createcms/core/plugins/media-alt-ai';
+
+export const cms = createCMS({
+  // ...
+  plugins: [
+    mediaAltAi({
+      describe: async ({ image, prompt }) => {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'x-api-key': process.env.ANTHROPIC_API_KEY!,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'claude-haiku-5-5',
+            max_tokens: 200,
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'image',
+                    source: {
+                      type: 'base64',
+                      media_type: image.mimeType,
+                      data: Buffer.from(image.bytes).toString('base64'),
+                    },
+                  },
+                  { type: 'text', text: prompt },
+                ],
+              },
+            ],
+          }),
+        });
+        const json = await res.json();
+        return json.content?.[0]?.text ?? null;
+      },
+      rateLimit: 20, // per actor and minute, default
+    }),
+  ],
+});
+```
+
+The endpoint needs `media` / `read` from your `authMiddleware`, counts against `rateLimit` per actor (`RATE_LIMITED` with `Retry-After` past it), describes only live, scanned raster images (`ASSET_NOT_FOUND` otherwise) and writes nothing. An original larger than `maxImageBytes` (5 MiB) is described from its largest stored rendition that fits. A model error answers `{ alt: null }`.
+
+### Add the suggesters to the image field
+
+```tsx
+import {
+  chromeAltSuggester,
+  serverAltSuggester,
+} from '@createcms/core/plugins/media-alt-ai/client';
+
+const suggesters = [
+  chromeAltSuggester(),
+  serverAltSuggester((body) => cmsClient.mediaAltAi.suggestAlt({ body })),
+];
+
+<ImageField.Root
+  value={value}
+  onValueChange={onChange}
+  suggesters={suggesters}
+  context={{ fieldType: 'hero image', pageTitle, locale, surroundingText }}
+>
+  <ImageField.Alt />
+  <ImageField.SuggestAlt />
+  <ImageField.Status />
+</ImageField.Root>
+```
+
+Keep `suggesters` stable (module scope or `useMemo`): the field asks each suggester's `available()` when it changes and leaves `ImageField.SuggestAlt` out while none is available.
+
+## Chrome's built-in model
+
+`chromeAltSuggester()` uses the Prompt API (`LanguageModel`) with image input. It is available only when the model is already on the device (`availability()` answers `available`), so it never starts the multi-gigabyte download on its own; that leaves desktop Chrome with enough memory and disk, outside workers. It fetches a 640 px WebP of the asset through the asset endpoint (`imageUrl` and `basePath` change that) and answers in the context's locale when the model supports it (English, German, Spanish, French, Japanese), else in English.
+
+## Context
+
+The context describes the use, not the asset: `fieldType`, `surroundingText` (not repeated in the answer), `pageTitle`, `locale` (the root's language) and `linkTarget` (for a linked image, the answer says where the link goes). `altPrompt(context)` builds the prompt both suggesters use, and `cleanAltSuggestion(text)` keeps the first line, drops wrapping quotes and an "Image of" opening and cuts at 250 characters.
+
+## Reference
+
+| Export | Entry | Description |
+| --- | --- | --- |
+| `mediaAltAi(config)` | `/plugins/media-alt-ai` | Server plugin: `{ describe, rateLimit?, maxImageBytes? }` (`MediaAltAiConfig`); `describe` gets an `AltDescribeInput` (`image`, `prompt`, `context`, `assetId`). |
+| `chromeAltSuggester(options)` | `/plugins/media-alt-ai/client` | Suggester on Chrome's built-in model (`ChromeAltSuggesterOptions`: `imageUrl`, `basePath`, `languageModel`, `fetch`). |
+| `serverAltSuggester(call)` | `/plugins/media-alt-ai/client` | Suggester on `mediaAltAi.suggestAlt`. |
+| `altPrompt`, `cleanAltSuggestion`, `ALT_MAX_LENGTH`, `AltContext` | both | The prompt, the answer cleanup and the context type. |
+| `AltSuggester`, `LanguageModelApi`, `LanguageModelOptions` | `/plugins/media-alt-ai/client` | The suggester shape (`suggest`, `available`) and the part of the Prompt API it uses. |

@@ -306,7 +306,9 @@ text and caption when another asset is chosen and drops the revision pin
 and, unless kept, the crop. `suggestAlt(adapters, input)` asks
 `AltSuggestAdapter`s in order (`suggest({ assetId, context })` with an
 `AltSuggestContext`: field type, surrounding text, page title, locale, link
-target) and returns the first answer; adapter errors count as none.
+target) and returns the first answer, skipping adapters whose optional
+`available()` answers `false`; adapter errors count as none.
+`canSuggestAlt(adapters)` answers whether any adapter is available.
 
 ## Picker
 

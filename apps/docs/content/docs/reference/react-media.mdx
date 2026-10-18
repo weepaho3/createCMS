@@ -445,7 +445,7 @@ element.
 | `ImageField.Alt` (`ImageFieldAltProps`) | `textarea` | Typing marks the text as the person's (`altSource: 'user'`); `disabled` while decorative, `aria-invalid` while required and missing. |
 | `ImageField.Decorative` (`ImageFieldDecorativeProps`) | `input[type=checkbox]` | Decorative images render `alt=""`; the typed text is kept. |
 | `ImageField.Caption` (`ImageFieldCaptionProps`) | `input` | The visible caption. |
-| `ImageField.SuggestAlt` (`ImageFieldSuggestAltProps`) | `button` | Asks the `suggesters` in order. A suggestion only fills an empty, non-decorative field and is marked `ai-suggested`. |
+| `ImageField.SuggestAlt` (`ImageFieldSuggestAltProps`) | `button` | Asks the `suggesters` in order. A suggestion only fills an empty, non-decorative field and is marked `ai-suggested`. Not rendered while no suggester is `available()` (see the [media-alt-ai plugin](/docs/plugins/media-alt-ai)). |
 | `ImageField.Status` (`ImageFieldStatusProps`) | `p` | `imageField.missingAlt` or `imageField.suggested`; nothing otherwise. `data-alt-state`. |
 
 `useImageField()` returns `ImageFieldState`: `value`, `altState`, `valid`,

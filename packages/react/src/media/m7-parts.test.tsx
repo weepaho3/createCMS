@@ -212,6 +212,7 @@ describe('ImageField', () => {
     initial: ImageRef;
     requireAlt?: boolean;
     suggest?: () => Promise<string | null>;
+    available?: () => Promise<boolean>;
   }) {
     const [value, setValue] = React.useState<ImageRef>(props.initial);
     return (
@@ -219,7 +220,11 @@ describe('ImageField', () => {
         value={value}
         onValueChange={setValue}
         requireAlt={props.requireAlt}
-        suggesters={props.suggest ? [{ suggest: props.suggest }] : []}
+        suggesters={
+          props.suggest
+            ? [{ suggest: props.suggest, available: props.available }]
+            : []
+        }
       >
         <ImageField.Alt />
         <ImageField.Decorative />
@@ -232,15 +237,16 @@ describe('ImageField', () => {
 
   it('requires alt text or decorative and fills only empty alt with a suggestion', async () => {
     const suggest = vi.fn(async () => 'Two people');
-    const { getByRole, getByText, container } = render(
+    const { getByRole, findByRole, getByText, container } = render(
       <Field initial={{ assetId: 'a1' }} requireAlt suggest={suggest} />,
     );
+    const button = await findByRole('button', { name: 'Suggest' });
     const alt = getByRole('textbox', { name: 'Alternative text' });
     expect(alt.getAttribute('aria-invalid')).toBe('true');
     getByText('Alternative text missing');
 
     await act(async () => {
-      fireEvent.click(getByRole('button', { name: 'Suggest' }));
+      fireEvent.click(button);
     });
     expect(JSON.parse(container.querySelector('output')!.textContent!)).toEqual(
       {
@@ -261,6 +267,21 @@ describe('ImageField', () => {
 
     fireEvent.click(getByRole('checkbox'));
     expect(alt.hasAttribute('disabled')).toBe(true);
+  });
+
+  it('shows no suggest button without an available suggester', async () => {
+    const available = vi.fn(async () => false);
+    const { queryByRole } = render(
+      <Field
+        initial={{ assetId: 'a1' }}
+        suggest={async () => 'never'}
+        available={available}
+      />,
+    );
+    await waitFor(() => expect(available).toHaveBeenCalled());
+    expect(queryByRole('button', { name: 'Suggest' })).toBeNull();
+    const bare = render(<Field initial={{ assetId: 'a2' }} />);
+    expect(bare.queryByRole('button', { name: 'Suggest' })).toBeNull();
   });
 });
 

@@ -118,7 +118,23 @@ export type AltSuggestAdapter = {
     assetId: string;
     context: AltSuggestContext;
   }): Promise<string | null>;
+  /** Whether it can suggest here at all (a model on the device); absent means yes. */
+  available?(): Promise<boolean>;
 };
+
+/** Whether any adapter can suggest; adapter errors count as unavailable. */
+export async function canSuggestAlt(
+  adapters: readonly AltSuggestAdapter[],
+): Promise<boolean> {
+  for (const adapter of adapters) {
+    try {
+      if (!adapter.available || (await adapter.available())) return true;
+    } catch {
+      // Unavailable.
+    }
+  }
+  return false;
+}
 
 /**
  * Asks the adapters in order and returns the first suggestion, so a cheap
@@ -131,6 +147,7 @@ export async function suggestAlt(
 ): Promise<string | null> {
   for (const adapter of adapters) {
     try {
+      if (adapter.available && !(await adapter.available())) continue;
       const text = (await adapter.suggest(input))?.trim();
       if (text) return text;
     } catch {
