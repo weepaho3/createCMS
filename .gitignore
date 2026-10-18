@@ -47,6 +47,7 @@ coverage
 # vitest --reporter=blob output (per-shard results + coverage, merged in CI)
 .vitest-reports
 # vitest browser-mode artifacts (failure screenshots + attachments)
+.vitest/
 .vitest-attachments/
 __screenshots__/
 

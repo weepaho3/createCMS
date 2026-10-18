@@ -88,16 +88,28 @@ describe('canvas chrome parts', () => {
     );
     const c1 = host.querySelector('[data-editor-block="c1"]')!;
     await waitForLayout(c1);
-    store.hover('c2');
-    const top = rectOf(c1);
-    dispatchPointer(host, 'pointermove', {
-      x: top.x + top.width / 2,
-      y: top.y + 1,
-    });
+    // The runner's real mouse can still sit over the page and clear the
+    // hover with a pointerout: each rest restores it with the pointer.
+    const rest = () => {
+      if (store.getEphemeral().hoverId === null) store.hover('c2');
+      const top = rectOf(c1);
+      dispatchPointer(host, 'pointermove', {
+        x: top.x + top.width / 2,
+        y: top.y + 1,
+      });
+    };
+    rest();
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect(host.querySelector('[data-editor-insert-button]')).toBeNull();
-    await waitFor(() =>
-      expect(host.querySelector('[data-editor-insert-button]')).not.toBeNull(),
+    // Resting at the same point keeps the gap, so the dwell does not restart.
+    await waitFor(
+      () => {
+        rest();
+        expect(
+          host.querySelector('[data-editor-insert-button]'),
+        ).not.toBeNull();
+      },
+      { timeout: 3000 },
     );
   });
 

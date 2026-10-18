@@ -309,7 +309,8 @@ jobs:
       - name: Type-check @createcms/schema and @createcms/react
         run: bunx turbo run check-types --filter=@createcms/schema --filter=@createcms/react
 
-  # Real Chromium via Playwright (vitest browser mode). Skipped when nothing
+  # Real Chromium, Firefox and WebKit via Playwright (vitest browser mode),
+  # about a minute for the whole matrix. Skipped when nothing
   # under packages/react, packages/schema, bun.lock or this workflow changed
   # (see `changes`); `ci` allows that skip.
   browser-tests:
