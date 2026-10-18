@@ -2,7 +2,7 @@
 import type * as React from 'react';
 
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { EditorStore } from '../core/store';
 
@@ -330,6 +330,116 @@ describe('Editor.OutlineItem', () => {
       </Editor.Root>,
     );
     expect(container.querySelector('[role="treeitem"]')).toBeNull();
+  });
+});
+
+function TreeBranch({ blockId }: { blockId: string }) {
+  const nested = useChildren(blockId);
+  return (
+    <Editor.OutlineItem
+      blockId={blockId}
+      render={(props, state) => (
+        <div {...props}>
+          <span>
+            {state.blockType === 'heading' ? 'Heading' : state.blockType}
+          </span>
+          {state.expanded
+            ? nested.map((child) => (
+                <TreeBranch key={child.id} blockId={child.id} />
+              ))
+            : null}
+        </div>
+      )}
+    />
+  );
+}
+
+function Tree() {
+  const nested = useChildren('root_1');
+  return (
+    <Editor.Outline>
+      {nested.map((child) => (
+        <TreeBranch key={child.id} blockId={child.id} />
+      ))}
+    </Editor.Outline>
+  );
+}
+
+describe('Editor.Outline (APG tree)', () => {
+  const row = (container: HTMLElement, id: string) =>
+    container.querySelector<HTMLElement>(`[data-block-id="${id}"]`)!;
+
+  it('is a named tree; rows carry level, setsize and posinset', () => {
+    const { container } = mount(<Tree />);
+    const tree = container.querySelector('[role="tree"]')!;
+    expect(tree.getAttribute('aria-label')).toBe('Page structure');
+    expect(row(container, 'sec1').getAttribute('aria-posinset')).toBe('2');
+    expect(row(container, 'sec1').getAttribute('aria-setsize')).toBe('2');
+    expect(row(container, 'p1').getAttribute('aria-level')).toBe('2');
+    expect(row(container, 'h1').hasAttribute('aria-expanded')).toBe(false);
+    expect(row(container, 'sec1').getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('Left collapses, Right expands, then moves to the first child; Left goes to the parent', () => {
+    const { container, probe } = mount(<Tree />);
+    act(() => probe.store?.select('sec1'));
+    fireEvent.keyDown(row(container, 'sec1'), { key: 'ArrowLeft' });
+    expect(row(container, 'sec1').getAttribute('aria-expanded')).toBe('false');
+    expect(row(container, 'p1')).toBeNull();
+    fireEvent.keyDown(row(container, 'sec1'), { key: 'ArrowRight' });
+    expect(row(container, 'sec1').getAttribute('aria-expanded')).toBe('true');
+    fireEvent.keyDown(row(container, 'sec1'), { key: 'ArrowRight' });
+    expect(probe.store?.getSession().selection).toEqual(['p1']);
+    expect(document.activeElement).toBe(row(container, 'p1'));
+    fireEvent.keyDown(row(container, 'p1'), { key: 'ArrowLeft' });
+    expect(probe.store?.getSession().selection).toEqual(['sec1']);
+  });
+
+  it('ArrowDown skips collapsed children; Home and End jump to the ends', () => {
+    const { container, probe } = mount(<Tree />);
+    act(() => probe.store?.setCollapsed('sec1', true));
+    act(() => probe.store?.select('h1'));
+    fireEvent.keyDown(row(container, 'h1'), { key: 'End' });
+    expect(probe.store?.getSession().selection).toEqual(['sec1']);
+    fireEvent.keyDown(row(container, 'sec1'), { key: 'ArrowDown' });
+    expect(probe.store?.getSession().selection).toEqual(['sec1']);
+    fireEvent.keyDown(row(container, 'sec1'), { key: 'Home' });
+    expect(probe.store?.getSession().selection).toEqual(['h1']);
+  });
+
+  it('* expands every sibling; selecting a hidden block expands its ancestors', () => {
+    const { container, probe } = mount(<Tree />);
+    act(() => probe.store?.setCollapsed('sec1', true));
+    act(() => probe.store?.select('h1'));
+    fireEvent.keyDown(row(container, 'h1'), { key: '*' });
+    expect(probe.store?.getSession().collapsed).toEqual([]);
+    act(() => probe.store?.setCollapsed('sec1', true));
+    act(() => probe.store?.select('p1'));
+    expect(probe.store?.getSession().collapsed).toEqual([]);
+    expect(row(container, 'p1')).not.toBeNull();
+  });
+
+  it('type-ahead moves to the next row whose text starts with the typed letters', () => {
+    const { container, probe } = mount(<Tree />);
+    act(() => probe.store?.select('h1'));
+    const now = vi.spyOn(Date, 'now').mockReturnValue(10_000);
+    fireEvent.keyDown(row(container, 'h1'), { key: 's' });
+    expect(probe.store?.getSession().selection).toEqual(['sec1']);
+    // Within the buffer window the letters add up: no row starts with "sh".
+    fireEvent.keyDown(row(container, 'sec1'), { key: 'h' });
+    expect(probe.store?.getSession().selection).toEqual(['sec1']);
+    now.mockReturnValue(11_000);
+    fireEvent.keyDown(row(container, 'sec1'), { key: 'h' });
+    expect(probe.store?.getSession().selection).toEqual(['h1']);
+    now.mockRestore();
+  });
+
+  it('pointer over a row hovers its block', () => {
+    const { container, probe } = mount(<Tree />);
+    fireEvent.pointerEnter(row(container, 'h1'));
+    expect(probe.store?.getEphemeral().hoverId).toBe('h1');
+    fireEvent.pointerLeave(row(container, 'h1'));
+    expect(probe.store?.getEphemeral().hoverId).toBeNull();
   });
 });
 

@@ -864,6 +864,54 @@ describe('Editor.Form autoScroll', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
+  const tick = () =>
+    act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+  it('store focus from elsewhere moves DOM focus into the control', async () => {
+    const { getByTestId, store } = renderAutoForm();
+    act(() => {
+      store.focus({ blockId: DEMO, key: 'text' });
+    });
+    await tick();
+    const active = document.activeElement;
+    expect(active?.tagName).toBe('INPUT');
+    expect(getByTestId('form').contains(active)).toBe(true);
+  });
+
+  it('never takes focus from inline editing or another input', async () => {
+    const { getByTestId, store } = renderAutoForm();
+    act(() => {
+      store.focus({ blockId: DEMO, key: 'text' });
+      store.setEditing({ blockId: DEMO, key: 'text' });
+    });
+    await tick();
+    expect(getByTestId('form').contains(document.activeElement)).toBe(false);
+    act(() => {
+      store.setEditing(null);
+      store.focus(null);
+    });
+    const other = document.createElement('input');
+    document.body.append(other);
+    other.focus();
+    act(() => {
+      store.focus({ blockId: DEMO, key: 'text' });
+    });
+    await tick();
+    expect(document.activeElement).toBe(other);
+    other.remove();
+  });
+
+  it('pointer over a field hovers its block', () => {
+    const { getByTestId, store } = renderAutoForm();
+    const field = getByTestId('form').querySelector('[data-kind]')!;
+    fireEvent.pointerEnter(field);
+    expect(store.getEphemeral().hoverId).toBe(DEMO);
+    fireEvent.pointerLeave(field);
+    expect(store.getEphemeral().hoverId).toBeNull();
+  });
+
   it('uses behavior auto when prefers-reduced-motion is reduce', () => {
     stubMatchMedia(true);
     const { getByTestId, store } = renderAutoForm();

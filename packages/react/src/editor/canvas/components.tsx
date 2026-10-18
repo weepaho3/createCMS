@@ -2,7 +2,11 @@ import * as React from 'react';
 
 import type { UseRenderComponentProps } from '../../use-render';
 import type { Field, FieldKind } from '../core/schema';
-import type { CanvasContextValue, InlineCaretPoint } from './context';
+import type {
+  CanvasClickToEdit,
+  CanvasContextValue,
+  InlineCaretPoint,
+} from './context';
 import type { CanvasComponents } from './map';
 import type { Measurer } from './measurer';
 
@@ -38,6 +42,7 @@ import {
 } from './resolve';
 
 const subscribeNoop = () => () => {};
+const HOVER_LEAVE_MS = 100;
 
 export type CanvasInteractive = 'edit' | 'select' | 'none';
 export type CanvasSurface = 'inline' | 'frame';
@@ -67,6 +72,11 @@ export type CanvasRootProps = Omit<
   renderBlockError?: (info: BlockErrorInfo) => React.ReactNode;
   /** Replaces `Canvas.UnknownBlock` for a block type without a component. */
   renderUnknownBlock?: (info: UnknownBlockInfo) => React.ReactNode;
+  /**
+   * How a click on a text field starts editing. Default: by pointer type,
+   * `select-and-edit` for a mouse, `select-first` for touch and pen.
+   */
+  clickToEdit?: CanvasClickToEdit;
   children?: React.ReactNode;
   render?: UseRenderComponentProps<'div', CanvasRootState>['render'];
 };
@@ -79,8 +89,10 @@ export function CanvasRoot({
   chunkSize,
   renderBlockError,
   renderUnknownBlock,
+  clickToEdit,
   children,
   render,
+  style,
   ...rest
 }: CanvasRootProps) {
   const ctx = useEditorContext('Canvas.Root');
@@ -91,7 +103,13 @@ export function CanvasRoot({
   const resolveRef = React.useRef(resolve);
   const interactiveRef = React.useRef(interactive);
   const storeRef = React.useRef(ctx.store);
+  const clickToEditRef = React.useRef(clickToEdit);
+  const pointerTypeRef = React.useRef('mouse');
+  // The primary selection when the pointer went down: a select-first tap
+  // edits only a block that was already selected before it.
+  const selectedAtDownRef = React.useRef<string | null>(null);
   React.useLayoutEffect(() => {
+    clickToEditRef.current = clickToEdit;
     componentsRef.current = components;
     resolveRef.current = resolve;
     interactiveRef.current = interactive;
@@ -170,13 +188,29 @@ export function CanvasRoot({
     const onClick = (event: Event) => {
       handleCanvasClick(event, host, storeRef.current, interactiveRef.current);
     };
-    const onPointerOver = (event: Event) => {
-      handleCanvasPointerOver(
-        event,
-        host,
-        storeRef.current,
-        interactiveRef.current,
+    // Hover shows at once and clears after a short delay, so moving
+    // between blocks or onto chrome does not flicker.
+    let leaveTimer: ReturnType<typeof setTimeout> | undefined;
+    const hoverNow = (id: string | null) => {
+      clearTimeout(leaveTimer);
+      if (id !== null) {
+        storeRef.current.hover(id);
+        return;
+      }
+      leaveTimer = setTimeout(
+        () => storeRef.current.hover(null),
+        HOVER_LEAVE_MS,
       );
+    };
+    const onPointerOver = (event: Event) => {
+      if ((event as PointerEvent).pointerType === 'touch') return;
+      const next = handleCanvasPointerOver(event, host, interactiveRef.current);
+      if (next !== undefined) hoverNow(next);
+    };
+    const onPointerDown = (event: Event) => {
+      pointerTypeRef.current = (event as PointerEvent).pointerType || 'mouse';
+      selectedAtDownRef.current =
+        storeRef.current.getSession().selection[0] ?? null;
     };
     const onPointerMove = (event: Event) => {
       pointerStore.setFromEvent(event as PointerEvent, host);
@@ -184,13 +218,16 @@ export function CanvasRoot({
     const onPointerLeave = () => {
       if (sessionRef.current.dnd.getSession()) return;
       pointerStore.clear();
-      storeRef.current.hover(null);
+      hoverNow(null);
     };
+    host.addEventListener('pointerdown', onPointerDown, true);
     host.addEventListener('click', onClick, true);
     host.addEventListener('pointerover', onPointerOver);
     host.addEventListener('pointermove', onPointerMove);
     host.addEventListener('pointerleave', onPointerLeave);
     return () => {
+      clearTimeout(leaveTimer);
+      host.removeEventListener('pointerdown', onPointerDown, true);
       host.removeEventListener('click', onClick, true);
       host.removeEventListener('pointerover', onPointerOver);
       host.removeEventListener('pointermove', onPointerMove);
@@ -314,8 +351,16 @@ export function CanvasRoot({
       readResolved(kind, value, spec, resolveRef.current, cache);
   }, []);
 
+  const clickEdits = React.useCallback((blockId: string): boolean => {
+    const mode: CanvasClickToEdit =
+      clickToEditRef.current ??
+      (pointerTypeRef.current === 'mouse' ? 'select-and-edit' : 'select-first');
+    return mode === 'select-and-edit' || selectedAtDownRef.current === blockId;
+  }, []);
+
   const canvasContext = React.useMemo((): CanvasContextValue => {
     return {
+      clickEdits,
       read,
       host: hostEl,
       measurer,
@@ -326,13 +371,25 @@ export function CanvasRoot({
       editing,
       inlineCaret: inlineCaretRef,
     };
-  }, [read, hostEl, measurer, pointer, dnd, interactive, dragging, editing]);
+  }, [
+    read,
+    hostEl,
+    measurer,
+    pointer,
+    dnd,
+    interactive,
+    dragging,
+    editing,
+    clickEdits,
+  ]);
 
   const host = useRender<'div', CanvasRootState>({
     defaultTagName: 'div',
     render,
     props: {
       ...rest,
+      // No double-tap zoom delay on touch.
+      style: { touchAction: 'manipulation', ...style },
       ref: composeRefs(rest.ref, hostRef),
       children: (
         <>

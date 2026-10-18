@@ -12,7 +12,10 @@ export type DiagnosticCode =
   | 'unknown-type'
   | 'invalid-prop'
   | 'duplicate-id'
-  | 'invalid-node';
+  | 'invalid-node'
+  | 'reference-cycle'
+  | 'reference-depth'
+  | 'reference-missing';
 
 export type Diagnostic = {
   readonly code: DiagnosticCode;

@@ -302,6 +302,39 @@ describe('Editor.FramePreview in a real browser', () => {
         getByTestId('form').querySelector('[data-focused]'),
       ).not.toBeNull();
     });
+    // The click moves real focus into the field's control.
+    await waitFor(() => {
+      const active = document.activeElement;
+      expect(active?.tagName).toBe('INPUT');
+      expect(getByTestId('form').contains(active)).toBe(true);
+    });
+  });
+
+  it('keys pressed inside the frame run editor shortcuts', async () => {
+    const { host, store } = renderFrame({
+      html: HEADING_HTML,
+      selectable: true,
+    });
+    await waitFor(
+      () => {
+        expect(
+          frontFrame(host).contentDocument?.querySelector('h1'),
+        ).not.toBeNull();
+      },
+      { timeout: 5000 },
+    );
+    const doc = frontFrame(host).contentDocument!;
+    act(() => store.select('h1'));
+    act(() => {
+      doc.body.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Delete',
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    expect(store.getDoc().nodes.h1).toBeUndefined();
   });
 
   it('invoice Blob shows a blob URL on the visible iframe', async () => {

@@ -1,9 +1,11 @@
 'use client';
 
+import { EditorLiveAnnouncer } from './announcer';
 // @createcms/react/editor: schema, state, form and preview layer of the
 // editor primitive. Parts live on the `Editor` namespace (`Editor.Root`, …);
 // helpers and hooks are flat named exports next to it.
 import { EditorRoot } from './components';
+import { EditorErrorSummary } from './error-summary';
 import {
   EditorField,
   EditorFieldControl,
@@ -14,8 +16,10 @@ import {
 } from './field';
 import { EditorSlot } from './plugin-slot';
 import { EditorFramePreview, EditorPreview } from './preview';
+import { EditorShortcutHelp } from './shortcut-help';
 import {
   EditorAddBlock,
+  EditorOutline,
   EditorOutlineGroup,
   EditorOutlineItem,
 } from './structure';
@@ -28,6 +32,20 @@ export type {
 export type { EditorContextValue, EditorScrollToOptions } from './types';
 export { useEditorContext } from './context';
 export type { EditorSlotProps } from './plugin-slot';
+export type { EditorLiveAnnouncerProps } from './announcer';
+export { describeBlock, useAnnounce } from './announcer';
+export { useMessages, useShortcutLabel } from './messages';
+export type { EditorShortcutHelpProps, ShortcutEntry } from './shortcut-help';
+export { useShortcutList } from './shortcut-help';
+export type {
+  EditorErrorSummaryProps,
+  ErrorSummaryEntry,
+} from './error-summary';
+export { useSaveIssues } from './error-summary';
+export type { SectionOverrideEntry } from './sections';
+export { useSection, useSectionOverrides } from './sections';
+export type { RovingFocus, RovingFocusOptions } from './roving';
+export { useRovingFocus } from './roving';
 
 export const Editor = {
   Root: EditorRoot,
@@ -39,10 +57,14 @@ export const Editor = {
   Form: EditorForm,
   Preview: EditorPreview,
   FramePreview: EditorFramePreview,
+  Outline: EditorOutline,
   OutlineItem: EditorOutlineItem,
   OutlineGroup: EditorOutlineGroup,
   AddBlock: EditorAddBlock,
   Slot: EditorSlot,
+  LiveAnnouncer: EditorLiveAnnouncer,
+  ShortcutHelp: EditorShortcutHelp,
+  ErrorSummary: EditorErrorSummary,
 };
 
 // Field parts: context, built-in controls and their prop types.
@@ -65,7 +87,6 @@ export type {
 export {
   defaultFieldControls,
   emptyListElement,
-  formatFieldError,
   fromDatetimeLocal,
   toDatetimeLocal,
   useFieldContext,
@@ -87,6 +108,7 @@ export type {
   EditorAddBlockProps,
   EditorOutlineGroupProps,
   EditorOutlineItemProps,
+  EditorOutlineProps,
   InsertPoint,
   OutlineGroupState,
   OutlineItemState,
@@ -140,8 +162,13 @@ export {
   useSlot,
   useSlots,
 } from './hooks';
-export type { EditorKeyboardOptions } from './keyboard';
-export { combosOf, useEditorKeyboard } from './keyboard';
+export {
+  bindEditorClipboard,
+  bindEditorKeyboard,
+  combosOf,
+  handleEditorKey,
+  useEditorKeyboard,
+} from './keyboard';
 
 // Typed factory.
 export type {

@@ -5,6 +5,7 @@ import { CanvasBlockError, CanvasUnknownBlock } from './boundary';
 // layer. The only entry that needs react-dom (portals); the peer is optional
 // so form-only consumers never install it.
 import { CanvasRoot } from './components';
+import { CanvasContextMenu } from './context-menu';
 import {
   CanvasDragHandle,
   CanvasDragPreview,
@@ -28,12 +29,26 @@ export type {
   CanvasSurface,
 } from './components';
 export type { CanvasProviderProps } from './provider';
+export type { CanvasClickToEdit } from './context';
+export type { CanvasContextMenuProps, ContextMenuEntry } from './context-menu';
+export { CONTEXT_MENU_COMMANDS } from './context-menu';
+export { createSectionRefBlock } from './section-ref';
+export {
+  depthParent,
+  isSelectionClick,
+  rangeSelection,
+  toggledSelection,
+} from './interact';
 export type {
   CanvasComponent,
   CanvasComponentProps,
   CanvasComponents,
 } from './map';
 export type { CanvasReadonlySubtreeProps } from './readonly';
+export type { EditableField } from './editable-field';
+export { useEditableField } from './editable-field';
+export type { PlainTextOptions } from './plain-text';
+export { normalizePlainText } from './plain-text';
 export type {
   BlockErrorBoundaryProps,
   CanvasBlockErrorProps,
@@ -106,4 +121,5 @@ export const Canvas = {
   ReadonlySubtree: CanvasReadonlySubtree,
   BlockError: CanvasBlockError,
   UnknownBlock: CanvasUnknownBlock,
+  ContextMenu: CanvasContextMenu,
 };

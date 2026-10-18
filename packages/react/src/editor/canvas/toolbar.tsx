@@ -1,8 +1,9 @@
 import * as React from 'react';
 
 import type { UseRenderComponentProps } from '../../use-render';
+import type { FieldRef } from '../core/store';
 
-import { useRender } from '../../use-render';
+import { composeRefs, useRender } from '../../use-render';
 import {
   useDocSelector,
   useSessionSelector,
@@ -10,6 +11,8 @@ import {
 } from '../binding';
 import { useEditorContext } from '../context';
 import { canPlaceIn } from '../core/schema';
+import { isHTMLElement } from '../dom';
+import { useRovingFocus } from '../roving';
 import { useCanvasContext } from './context';
 import {
   type InsertTarget,
@@ -111,6 +114,7 @@ type BlockToolbarState = {
 };
 
 export type CanvasBlockToolbarProps = React.ComponentPropsWithRef<'div'> & {
+  /** `start` and `end` follow `Editor.Root`'s `dir`. */
   align?: 'start' | 'center' | 'end';
   side?: 'top' | 'bottom';
   offset?: number;
@@ -124,9 +128,21 @@ export function CanvasBlockToolbar({
   children,
   render,
   style,
+  ref,
+  onKeyDown,
+  onFocus,
   ...rest
 }: CanvasBlockToolbarProps) {
   const canvas = useCanvasContext('Canvas.BlockToolbar');
+  const { dir, store, schema, messages } = useEditorContext(
+    'Canvas.BlockToolbar',
+  );
+  const roving = useRovingFocus<HTMLDivElement>({ dir });
+  // Where Alt+F10 came from, so Escape can return there.
+  const returnRef = React.useRef<{
+    el: HTMLElement | null;
+    editing: FieldRef | null;
+  } | null>(null);
   const selected = useSessionSelector((s) => s.selection[0] ?? null);
   const node = useDocSelector((s) =>
     selected ? (s.nodes[selected] ?? null) : null,
@@ -143,10 +159,12 @@ export function CanvasBlockToolbar({
 
   const vis = visibleIntersection(frameRect, view) ?? frameRect;
 
+  // `start`/`end` follow the editor's text direction.
+  const rtl = dir === 'rtl';
   const alignStyle: React.CSSProperties =
     align === 'center'
       ? { left: '50%', transform: 'translateX(-50%)' }
-      : align === 'end'
+      : (align === 'end') !== rtl
         ? { right: 0 }
         : { left: 0 };
 
@@ -161,11 +179,54 @@ export function CanvasBlockToolbar({
       : { bottom: '100%', marginBottom: offset }
     : { top: offset, marginTop: 0 };
 
+  const rovingFocus = roving.focus;
+  React.useEffect(
+    () =>
+      store.on('ui', ({ action }) => {
+        if (action !== 'toolbar') return;
+        const active = canvas.host?.ownerDocument.activeElement ?? null;
+        returnRef.current = {
+          el: isHTMLElement(active) ? active : null,
+          editing: store.getSession().editing,
+        };
+        rovingFocus();
+      }),
+    [store, canvas.host, rovingFocus],
+  );
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    onKeyDown?.(event);
+    if (event.defaultPrevented) return;
+    if (event.key === 'Escape') {
+      const back = returnRef.current;
+      returnRef.current = null;
+      event.preventDefault();
+      if (back?.el?.isConnected) back.el.focus();
+      else if (back?.editing) {
+        store.focus(back.editing);
+        store.setEditing(back.editing);
+      } else canvas.host?.focus();
+      return;
+    }
+    roving.onKeyDown(event);
+  };
+
+  const blockLabel = node
+    ? (schema.components[node.type]?.label ?? node.type)
+    : '';
+
   const chrome = useRender<'div', BlockToolbarState>({
     defaultTagName: 'div',
     render,
     props: {
+      'aria-label': messages.parts.blockToolbar({ label: blockLabel }),
       ...rest,
+      ref: composeRefs(roving.ref, ref),
+      onKeyDown: handleKeyDown,
+      onFocus: (event: React.FocusEvent<HTMLDivElement>) => {
+        onFocus?.(event);
+        roving.onFocus(event);
+      },
       role: 'toolbar',
       style: {
         position: 'absolute',

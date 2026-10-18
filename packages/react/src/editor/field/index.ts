@@ -21,7 +21,6 @@ export {
   fromDatetimeLocal,
   toDatetimeLocal,
 } from './controls';
-export { formatFieldError } from './messages';
 export type {
   AnyFieldControlProps,
   FieldContextValue,

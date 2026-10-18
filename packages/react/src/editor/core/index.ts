@@ -149,6 +149,7 @@ export type {
   AddOptions,
   ApplyRemoteResult,
   BeforeCommandHandler,
+  BeforeSaveGate,
   Change,
   Command,
   CommandContext,
@@ -179,6 +180,7 @@ export type {
   NodeStatus,
   PersistenceOptions,
   SaveConflict,
+  SavePhase,
   SaveState,
   SaveStatus,
   SessionState,
@@ -187,16 +189,19 @@ export type {
   Tx,
   TxMeta,
   TxResult,
+  UiAction,
   UpdateOptions,
 } from './store/types';
 export type { ApplyResult } from './store/ops';
 export { applyOp } from './store/ops';
 export type {
   BuiltinCommandPayloads,
+  DetachPayload,
   DuplicatePayload,
   InsertNodePayload,
   InsertPayload,
   MovePayload,
+  PastePayload,
   RemovePayload,
   ReplacePayload,
   UpdatePayload,
@@ -220,13 +225,11 @@ export {
   SAVE_DEBOUNCE_MS,
   SAVE_MAX_WAIT_MS,
   SAVE_RETRY_BASE_MS,
+  requireValidDocument,
   SAVE_RETRY_MAX_MS,
 } from './store/save';
-export {
-  createEditorStore,
-  DEFAULT_SHORTCUTS,
-  PLACEMENT_PRIORITY,
-} from './store/store';
+export { createEditorStore, PLACEMENT_PRIORITY } from './store/store';
+export { DEFAULT_SHORTCUTS } from './store/builtin-commands';
 export type { SlotOrder } from './store/serde';
 export {
   denormalize,
@@ -273,3 +276,56 @@ export {
   serveWorkerTasks,
   WORKER_THRESHOLD,
 } from './worker';
+
+// Messages: the text catalog, issue and shortcut formatting.
+export type {
+  AnnouncedBlock,
+  KeyNames,
+  Messages,
+  MessagesInput,
+  Platform,
+} from './messages';
+export {
+  ariaKeyShortcut,
+  detectPlatform,
+  EN_MESSAGES,
+  formatIssue,
+  formatShortcut,
+  mergeMessages,
+} from './messages';
+export type { ClipboardPayload } from './clipboard';
+export {
+  CLIPBOARD_APP,
+  CLIPBOARD_ATTRIBUTE,
+  CLIPBOARD_MIME,
+  CLIPBOARD_VERSION,
+  copyBlocks,
+  copyProps,
+  decodeClipboard,
+  encodeClipboardHtml,
+  parseClipboardPayload,
+  pasteBlocks,
+  pasteProps,
+  pasteTarget,
+  plainTextOf,
+  readClipboard,
+  removeSelected,
+  writeClipboard,
+} from './clipboard';
+export type {
+  ResolvedSection,
+  SectionOverrides,
+  SectionRef,
+  SectionResolver,
+} from './sections';
+export {
+  applyOverrides,
+  createSectionResolver,
+  detachSection,
+  REF_MAX_DEPTH,
+  REF_TYPE,
+  sectionBlock,
+  sectionOverridesOf,
+  sectionRefOf,
+  sectionsPlugin,
+} from './sections';

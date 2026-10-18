@@ -71,7 +71,7 @@ const schema = defineEditorSchema({
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `EditorSchema`        | `{ root, components, canPlace?, aliases?, metadata? }`. `canPlace(child, parent, slot)` runs after the slot rules.        |
 | `AnyEditorSchema`     | The wide form every runtime helper accepts.                                                                               |
-| `ComponentDef`        | `label`, `description?`, `category?`, `icon?`, `previewImageUrl?`, `version?`, `fields`, `slots?`, `render?`, `resolveFields?`, `resolveData?`, `migrations?`, `validate?`, `permissions?`, `providesContext?`, `usesContext?`. |
+| `ComponentDef`        | `label`, `description?`, `category?`, `icon?`, `previewImageUrl?`, `version?`, `fields`, `slots?`, `render?`, `resolveFields?`, `resolveData?`, `migrations?`, `validate?`, `permissions?`, `providesContext?`, `usesContext?`, `exposedProps?` (props a page may override inside a section). |
 | `AnyComponentDef`     | The wide component form.                                                                                                  |
 | `ComponentPermission` | `'drag' \| 'duplicate' \| 'delete' \| 'edit' \| 'insert'`; `false` switches the action off for the component.            |
 | `SlotSpec`            | `label?`, `allow?` (wins over `disallow`), `disallow?`, `min?`, `max?`, `defaultValue?`, `accept?(ctx)`.                  |
@@ -94,7 +94,7 @@ required fields are required keys, `select` narrows to its option values,
 
 | Type             | Value                                    | Kind-specific settings                              |
 | ---------------- | ---------------------------------------- | --------------------------------------------------- |
-| `TextField`      | `string`                                 | `inline?`, `TextConstraints`                        |
+| `TextField`      | `string`                                 | `inline?` (`'glass'`, `'in-place'`, `false`), `TextConstraints` |
 | `TextareaField`  | `string`                                 | `TextConstraints`                                   |
 | `NumberField`    | `number`                                 | `min?`, `max?`, `step?`                             |
 | `BooleanField`   | `boolean`                                | none                                                |
@@ -206,8 +206,7 @@ nodes outside the subtree stay as they are. `duplicate` uses it.
 ## Validation
 
 Validation returns codes, paths and params, never text; map the codes to your
-own messages (`formatFieldError` in `@createcms/react/editor` has English
-defaults). Three layers: structure, the built-in rules of every field, then
+own messages (`formatIssue` with a `Messages` catalog, English by default). Three layers: structure, the built-in rules of every field, then
 Standard Schema validators.
 
 | Function           | Signature                                          | Notes                                                                                           |
@@ -289,6 +288,24 @@ A backend plugs in through `EditorAdapter`. Failures throw
 | `EditorAdapterError`     | `Error` with `kind` and `details`.                                                                                |
 | `EditorAdapterErrorKind` | `'validation' \| 'conflict' \| 'network' \| 'permission' \| 'not-found' \| 'unknown'`.                            |
 
+## Messages
+
+`Messages` is the text catalog of the editor: `field` and `structure` (one
+function per validation code), `schema`, `parts` (labels of the parts),
+`commands` (labels by command id), `announce` (live region texts, naming an
+`AnnouncedBlock` `{ label, excerpt }`) and `keys` (`KeyNames` per
+`Platform`, `apple` or `other`). `EN_MESSAGES` is the English catalog;
+`mergeMessages(base, ...partials)` merges `MessagesInput` catalogs deeply,
+later ones winning. A full `Messages` must name every entry, so a translation
+typed as `Messages` cannot miss one.
+
+| Function                               | Notes                                                                      |
+| -------------------------------------- | -------------------------------------------------------------------------- |
+| `formatIssue(issue, messages?)`        | A `FieldError` or `ValidationIssue` as text.                               |
+| `formatShortcut(combo, { platform?, messages? })` | `Mod+Shift+z` as `⌘⇧Z` (Apple) or `Ctrl+Shift+Z`.                |
+| `ariaKeyShortcut(combo, platform?)`    | The `aria-keyshortcuts` value (`Meta+Shift+Z`, `Control+Shift+Z`).          |
+| `detectPlatform()`                     | `apple` on macOS and iOS, `other` elsewhere and outside a browser.         |
+
 ## Loading documents
 
 `loadDocument(input, schema, { genId })` is the load pipeline the store runs
@@ -353,7 +370,7 @@ a component that reads the document:
 | Scope     | Getter / subscribe                      | Holds                                                                                         |
 | --------- | --------------------------------------- | --------------------------------------------------------------------------------------------- |
 | Document  | `getDoc()` / `subscribeDoc`             | `DocState`: `{ rootId, nodes, version, schemaVersion }`. Undoable and persisted.               |
-| Session   | `getSession()` / `subscribeSession`     | `SessionState`: `selection` (ids, first is primary), `focusedField`, `editing`, `mode`, `history` flags, `save` state, `computed` and `nodeStatus` (`resolveData`). |
+| Session   | `getSession()` / `subscribeSession`     | `SessionState`: `selection` (ids, first is primary), `focusedField`, `editing`, `mode`, `history` flags, `save` state, `computed` and `nodeStatus` (`resolveData`), `collapsed` (outline rows; selecting a block expands its ancestors). |
 | Ephemeral | `getEphemeral()` / `subscribeEphemeral` | `EphemeralState`: `hoverId`.                                                                  |
 
 Every getter returns the same object until its scope changes. Nodes keep
@@ -394,6 +411,7 @@ declares, filled from the slot's `defaultValue` with fresh ids.
 | `select(id)` / `setSelection(ids)`       | Session selection; a change ends the typing merge.                                                             |
 | `hover(id)`                              | Ephemeral; never wakes document or session readers.                                                            |
 | `focus(ref)` / `setEditing(ref)` / `setMode(mode)` | Session state; focus and editing end the typing merge.                                               |
+| `setCollapsed(id, collapsed)`            | Collapses or expands a block's outline row.                                                                    |
 | `save({ message?, force? }?)`            | Saves now when dirty (or forced); resolves when that save settled.                                             |
 | `reloadFromServer()`                     | Loads the server document of the current conflict; `false` without one.                                        |
 | `commands`                               | UI commands: `get`, `list`, `execute`, `canExecute`, `shortcuts()` (combo to command id).                      |
@@ -430,6 +448,8 @@ leaves every scope unchanged and reports an `EditorError` through
 | `node.update`                 | `UpdatePayload`: `{ id, patch }`         |
 | `node.duplicate`              | `DuplicatePayload`: `{ id }`             |
 | `node.wrap`                   | `WrapPayload`: `{ id, type, slot?, props? }` |
+| `node.detach`                 | `DetachPayload`: `{ id, nodes }`: replaces a `$ref` node with copies (fresh ids) in one step |
+| `node.paste`                  | `PastePayload`: `{ parent, index?, nodes }` (every id replaced; unknown types refused) |
 | `doc.replace`                 | `ReplacePayload`: `{ doc }`              |
 
 `BuiltinCommandPayloads` maps each type to its payload. `checkPlacement(schema,
@@ -445,14 +465,62 @@ carries its `code`.
 | `BeforeCommandHandler` | `(cmd) => Command \| false \| void`.                                                 |
 | `EditorError`          | `{ kind: EditorErrorKind, message, code?, cmd?, cause? }`.                          |
 | `EditorErrorKind`      | `'command' \| 'unknown-command' \| 'placement' \| 'rejected' \| 'cancelled'`.          |
-| `EditorEvents`         | `change`, `afterCommand`, `opRejected`, `historyInvalidated`, `diagnostic`, `select`, `beforeSave`, `afterSave`, `saveError`, `error`. |
+| `EditorEvents`         | `change`, `afterCommand`, `opRejected`, `historyInvalidated`, `diagnostic`, `select`, `beforeSave`, `afterSave`, `saveError`, `error`, `diagnostics`, `history` (undo or redo applied), `ui` (`{ action: UiAction }` from a `ui.*` command). |
+| `UiAction`             | `'commandPalette' \| 'quickInsert' \| 'toolbar' \| 'shortcutHelp'`.              |
 | `EditorEventName`      | A key of `EditorEvents`.                                                            |
 | `EditorChange`         | The `change` payload: `{ ops, origin, version, getDocument }`.                      |
-| `EditorCommand`        | A UI command: `{ id, label?, run(store, args?), canExecute? }`.                     |
+| `EditorCommand`        | A UI command: `{ id, label?, editable?, native?, run(store, args?), canExecute? }`. `editable`: its shortcuts also fire inside inputs and editable text. `native`: the browser's own event runs it from the keyboard. |
 
-Built-in UI commands: `history.undo`, `history.redo`, `block.remove` and
-`block.duplicate` (both act on the primary selection). `DEFAULT_SHORTCUTS`
-binds `Mod+z`, `Mod+Shift+z` and `Ctrl+y`.
+Built-in UI commands (labels from the catalog's `commands`):
+
+| Command                                     | Does                                                                                     |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `history.undo`, `history.redo`              | Undo, redo (`editable`).                                                                 |
+| `block.remove`                              | Removes the primary selection and selects its neighbour.                                 |
+| `block.duplicate`                           | Duplicates the primary selection and selects the copy.                                   |
+| `block.moveUp`, `block.moveDown`            | Moves the primary selection among its siblings.                                          |
+| `block.wrap`                                | Wraps the primary selection in `args.type`, else the first type that fits and takes it.  |
+| `selection.parent`                          | Selects the parent; clears at the top level.                                             |
+| `selection.firstChild`                      | Selects the first child (declared slots first).                                          |
+| `selection.next`, `selection.previous`      | Selects the next or previous sibling.                                                    |
+| `selection.siblings`                        | Selects the primary selection and all its siblings.                                      |
+| `clipboard.copy`, `.cut`, `.paste`          | Blocks through the async Clipboard API; `native`, so the keyboard uses clipboard events. |
+| `clipboard.copyProps`, `clipboard.pasteProps` | Props of one block onto selected blocks of the same type.                              |
+| `ui.commandPalette`, `ui.quickInsert`, `ui.toolbar`, `ui.shortcutHelp` | Emit the `ui` event for the editor chrome (`ui.toolbar` is `editable`). |
+
+`DEFAULT_SHORTCUTS` binds them: `Mod+z`, `Mod+Shift+z`, `Ctrl+y`, `Mod+c`,
+`Mod+x`, `Mod+v`, `Mod+Alt+c`, `Mod+Alt+v`, `Mod+d`, `Mod+Shift+d`,
+`Delete`, `Backspace`, `Alt+ArrowUp`, `Alt+ArrowDown`, `Mod+g`, `Escape`,
+`Shift+Enter`, `Enter`, `Tab`, `Shift+Tab`, `Mod+a`, `Mod+k`, `/`,
+`Alt+F10`, `?` and `Mod+/`. A plugin's `shortcuts` replace a default
+binding; an empty id unbinds it.
+
+## Clipboard
+
+Blocks travel as a `ClipboardPayload` (`{ app: CLIPBOARD_APP, version:
+CLIPBOARD_VERSION, kind: 'blocks', blocks }` or `kind: 'props'` with `type`
+and `props`). Copy writes `text/html` that carries the payload base64-encoded
+in a `CLIPBOARD_ATTRIBUTE` attribute around readable text, plus
+`text/plain`; that path works in every engine without a permission prompt.
+The async path also writes `CLIPBOARD_MIME` where `ClipboardItem.supports`
+accepts it. Paste reads the custom format, then the HTML attribute, then
+hands foreign content to the plugins' `convertForeignPaste`. Pasted blocks
+always get fresh ids and pass the schema and placement rules; a refused
+paste emits `opRejected`.
+
+| Function                                  | Notes                                                                                   |
+| ----------------------------------------- | --------------------------------------------------------------------------------------- |
+| `copyBlocks(store)`                       | The selected blocks (outermost only, document order) as a payload, or `null`.            |
+| `copyProps(store)`                        | The primary selection's props as a payload, or `null`.                                   |
+| `removeSelected(store)`                   | Removes the selected blocks in one undo step (the cut half).                             |
+| `pasteTarget(store)`                      | Into the selected block when its first slot is empty, else after it, else the root end.  |
+| `pasteBlocks(store, payload)`             | Inserts with fresh ids at `pasteTarget`; returns the new ids, empty when refused.        |
+| `pasteProps(store, payload)`              | Applies copied props to selected blocks of the same type.                                |
+| `encodeClipboardHtml(payload, text?)`     | The `text/html` carrier.                                                                 |
+| `decodeClipboard({ json?, html? })`       | The payload from the custom format or the HTML attribute, else `null`.                   |
+| `parseClipboardPayload(value)`            | `value` when it is a well-formed payload, else `null`.                                   |
+| `plainTextOf(blocks)`                     | The blocks' string props, depth first, one per line.                                    |
+| `writeClipboard(payload)` / `readClipboard()` | The async Clipboard API path; `false` / `null` without the API or permission.       |
 
 ## Document store and history
 
@@ -495,7 +563,9 @@ History rules of `JsonDocStore`:
 ## Saving
 
 With `persistence`, the store saves through `persistence.save(doc, { ops,
-baseVersion?, force?, message? })`, which resolves `{ version }`. Autosave
+baseVersion?, force?, message?, phase })`, which resolves `{ version }`.
+`phase` is a `SavePhase`: `autosave`, `save` (`store.save()`) or `publish`
+(`store.save({ phase: 'publish' })`). Autosave
 (on unless `autosave: false`) waits `SAVE_DEBOUNCE_MS` (1500) after the last
 change and saves at least every `SAVE_MAX_WAIT_MS` (10000). Never two saves at
 once: a save requested during one runs right after it. `ops` are the local ops
@@ -509,6 +579,15 @@ with `SaveConflict` `{ serverDoc, serverVersion }` from the error's
 doubling up to `SAVE_RETRY_MAX_MS`; anything else sets `error` without a
 retry. Local changes are never lost.
 
+Before every save the `beforeSave` gates run (`createEditorStore`'s or
+`Editor.Root`'s, then each plugin's): a `BeforeSaveGate` receives `{ doc,
+ops, phase, schema }` and returns issues, or a promise of them. Any issue
+blocks the save: status `invalid`, `SaveState.issues` holds them (shown by
+`Editor.ErrorSummary`), nothing is sent and the changes stay dirty.
+`requireValidDocument({ phases? })` is the gate that blocks on
+`validateDocument` errors (warnings pass) for `save` and `publish`, so
+autosave keeps storing drafts; `publish` validates with the publish phase.
+
 `mergeByNode(base, local, server, { slotOrder }?)` merges three documents per
 node id: a node changed on one side takes that side, the same change on both
 is fine, different changes on both are conflicts. It returns `MergeResult`:
@@ -517,10 +596,34 @@ is fine, different changes on both are conflicts. It returns `MergeResult`:
 | Type                 | Description                                                                 |
 | -------------------- | --------------------------------------------------------------------------- |
 | `PersistenceOptions` | `{ save, baseVersion?, autosave? }`.                                        |
-| `SaveState`          | `{ status: SaveStatus, dirty, error, conflict, version }`.                  |
-| `SaveStatus`         | `'idle' \| 'saving' \| 'error' \| 'conflict'`.                              |
+| `SaveState`          | `{ status: SaveStatus, dirty, error, conflict, version, issues }`.          |
+| `SaveStatus`         | `'idle' \| 'saving' \| 'error' \| 'conflict' \| 'invalid'`.                 |
+| `SavePhase`          | `'autosave' \| 'save' \| 'publish'`.                                        |
+| `BeforeSaveGate`     | `({ doc, ops, phase, schema }) => issues \| void`, or a promise of that.    |
 | `SaveConflict`       | `{ serverDoc, serverVersion }`.                                             |
 | `Timers`             | `{ setTimeout, clearTimeout }`.                                             |
+
+## Sections
+
+A reusable section is a `$ref` node (`REF_TYPE`) with props `ref` (a
+`SectionRef` `{ collection, id }`) and `overrides` (`SectionOverrides`:
+props per node id of the referenced document). Overrides apply only to the
+props a component lists in `exposedProps`; everything else stays as the
+section has it. `sectionsPlugin({ resolver, label? })` adds the `$ref`
+block (`sectionBlock`) and the `block.detach` command.
+
+`createSectionResolver({ resolveReference, schema, maxDepth? })` returns a
+`SectionResolver`: `resolve(ref, overrides?)` fetches through
+`resolveReference` (an adapter's, cached per reference), returns the
+referenced root's children as a `ResolvedSection` `{ nodes, diagnostics }`
+and expands nested references up to `maxDepth` (`REF_MAX_DEPTH`, 3). A
+cycle, the depth limit or a failed fetch ends that branch with a
+`reference-cycle`, `reference-depth` or `reference-missing` diagnostic;
+`invalidate(ref?)` drops cached documents.
+`detachSection(store, id, resolver)` replaces a `$ref` node with an
+editable copy of its section (fresh ids, overrides applied) as one undo
+step. `applyOverrides(nodes, overrides, schema)`, `sectionRefOf(node)` and
+`sectionOverridesOf(node)` are the pieces it uses.
 
 ## Plugins
 
@@ -530,7 +633,9 @@ is fine, different changes on both are conflicts. It returns `MergeResult`:
 components win), `commands` (`PluginCommand`: `label?`, `run`,
 `canExecute?`), `shortcuts` (combo to command id), `on`
 (`PluginEventHandlers`: any `EditorEvents` handler plus `beforeCommand`),
-`slots` (UI outlets, rendered by `Editor.Slot`), `priority` (higher first).
+`slots` (UI outlets, rendered by `Editor.Slot`), `messages` (catalog
+entries), `beforeSave` (a save gate), `convertForeignPaste` (pasted foreign `html`/`text` to blocks),
+`priority` (higher first).
 Pass plugins to `createEditorStore` or `Editor.Root`.
 
 | Function                                       | Notes                                                                                   |

@@ -75,10 +75,14 @@ describe('namespace shape', () => {
       'Form',
       'Preview',
       'FramePreview',
+      'Outline',
       'OutlineItem',
       'OutlineGroup',
       'AddBlock',
       'Slot',
+      'LiveAnnouncer',
+      'ShortcutHelp',
+      'ErrorSummary',
     ]);
   });
 
@@ -100,6 +104,7 @@ describe('namespace shape', () => {
       'ReadonlySubtree',
       'BlockError',
       'UnknownBlock',
+      'ContextMenu',
     ]);
   });
 });

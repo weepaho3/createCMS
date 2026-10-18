@@ -43,7 +43,7 @@ re-exports of the old form.
   the document; `EditorOp` carries `NodeData` (`add`) and `EditorDocument`
   (`load`). `propertiesOf` is `fieldsOf`, `PaletteItem.group` is
   `category` (`PaletteGroup.category`), `FieldError` is
-  `{ code, path, params? }` without `message` (use `formatFieldError`), and
+  `{ code, path, params? }` without `message` (use `formatIssue`), and
   the factory's `TreeOf` / `BlocksOf` are `DocumentOf` / `ComponentsOf`. A
   root without a `children` slot holds no children.
   → **Migration:** for a createcms collection, build the schema with
@@ -189,6 +189,48 @@ index })`. `getPlacement` / `canPlace` / `PlacementIndex` are replaced by
   → **Migration:** update fakes and idle states to
   `{ isUploading, files: [], progress: { loaded: 0, total: 0, fraction: 0 }, error, upload: async () => [], abort, reset }`
   and any UI that read `totalProgress` or `status === 'done'`.
+
+- **Editor texts come from a message catalog; `formatFieldError` is
+  removed.** `formatIssue(issue, messages?)` from
+  `@createcms/react/editor/core` formats field and document findings, and
+  every built-in part reads its texts from `Editor.Root`'s `messages`
+  (merged over `EN_MESSAGES` and plugin `messages`).
+  → **Migration:** replace `formatFieldError(error)` with
+  `formatIssue(error)` (or `formatIssue(error, useMessages())` for a
+  localized editor).
+
+- **`TextField.inline` takes `'glass' | 'in-place' | false`.** `true` is no
+  longer accepted; `'glass'` (the default) keeps the overlay, `'in-place'`
+  hands the field to `useEditableField`.
+  → **Migration:** drop `inline: true` (it is the default) or write
+  `inline: 'glass'`.
+
+- **`useEditorKeyboard(scopeRef)` takes no options and binds the full
+  shortcut set.** Delete/Backspace, Escape, Enter, Tab, Alt+Arrow, Mod+D,
+  Mod+A, Mod+G, the clipboard and the `ui.*` combos are on by default
+  (`DEFAULT_SHORTCUTS`); plain keys never fire inside inputs, editable text
+  or widgets, and a combo whose command cannot run leaves the key to the
+  browser. A plugin's `shortcuts` now replace a default binding (an empty
+  id unbinds it) instead of being ignored. `block.remove` selects the
+  neighbour of the removed block.
+  → **Migration:** drop the `{ delete, escape }` options; to keep a key for
+  your own handler, unbind it in a plugin (`shortcuts: { Tab: '' }`) or
+  `preventDefault` it in an `onKeyDown` inside the scope.
+
+- **Saves pass gates and carry a phase.** `persistence.save` receives
+  `ctx.phase` (`autosave`, `save` or `publish`); `SaveStatus` gains
+  `invalid` and `SaveState` gains `issues` for a save a `beforeSave` gate
+  blocked.
+  → **Migration:** handle `status === 'invalid'` where a switch over
+  `SaveStatus` must be exhaustive; fakes of `SaveState` add `issues: []`.
+
+- **Canvas clicks with modifiers select instead of editing.** Shift+click
+  selects a range, Mod+click toggles a block in the selection, Alt+click
+  selects the parent; on touch the first tap selects and a second tap
+  edits (`clickToEdit`). `Editor.Field` moves DOM focus into its control
+  when the store focus is set from the canvas or a preview.
+  → **Migration:** none for plain clicks; pass
+  `clickToEdit="select-and-edit"` to keep one-tap editing on touch.
 
 ---
 

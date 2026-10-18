@@ -19,7 +19,16 @@ export function isInlineEditableKind(kind: string): boolean {
 
 /** A field the inline glass may edit: an inline-editable kind that is not `readOnly`. */
 export function isInlineEditableField(field: Field): boolean {
-  return isInlineEditableKind(field.type) && field.readOnly !== true;
+  return (
+    isInlineEditableKind(field.type) &&
+    field.readOnly !== true &&
+    !(field.type === 'text' && field.inline === false)
+  );
+}
+
+/** Whether the field is edited in place by `useEditableField` instead of the glass. */
+export function isInPlaceField(field: Field): boolean {
+  return field.type === 'text' && field.inline === 'in-place';
 }
 
 export function applyTextEdit(

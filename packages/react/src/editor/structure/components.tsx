@@ -5,19 +5,25 @@ import type {
   AddBlockState,
   EditorAddBlockProps,
   EditorOutlineGroupProps,
+  EditorOutlineProps,
   EditorOutlineItemProps,
   OutlineGroupState,
   OutlineItemState,
 } from './types';
 
 import { useRender } from '../../use-render';
-import { useDocSelector, useSessionSelector } from '../binding';
+import {
+  useDocSelector,
+  useEphemeralSelector,
+  useSessionSelector,
+} from '../binding';
 import { useEditorContext } from '../context';
 import { canPlaceIn, DEFAULT_SLOT, slotsOf } from '../core/schema';
 import { useBlockActions } from '../hooks';
 import { insertPointFor } from './insert-point';
 
 const TREE_ITEM = '[role="treeitem"]';
+const TYPEAHEAD_MS = 500;
 
 /** Every tree item of the enclosing tree (or document) in DOM order. */
 function treeItemsAround(el: HTMLElement): HTMLElement[] {
@@ -25,12 +31,43 @@ function treeItemsAround(el: HTMLElement): HTMLElement[] {
   return Array.from(scope.querySelectorAll<HTMLElement>(TREE_ITEM));
 }
 
+/** The item's nearest ancestor item, or `null` at the top level. */
+function parentItemOf(el: HTMLElement): HTMLElement | null {
+  return el.parentElement?.closest<HTMLElement>(TREE_ITEM) ?? null;
+}
+
+/** Items not hidden inside a collapsed ancestor item. */
+function visibleItemsAround(el: HTMLElement): HTMLElement[] {
+  return treeItemsAround(el).filter((item) => {
+    for (let up = parentItemOf(item); up; up = parentItemOf(up)) {
+      if (up.getAttribute('aria-expanded') === 'false') return false;
+    }
+    return true;
+  });
+}
+
+/** The item's own text: its `aria-label`, else its text outside nested items. */
+function itemText(el: HTMLElement): string {
+  const label = el.getAttribute('aria-label');
+  if (label) return label;
+  let text = '';
+  const walker = el.ownerDocument.createTreeWalker(el, 4);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.parentElement?.closest(TREE_ITEM) === el) {
+      text += node.textContent ?? '';
+    }
+  }
+  return text.trim();
+}
+
+const typeahead = new WeakMap<object, { text: string; at: number }>();
+
 /**
  * The item to land on after removing `el`: the next item outside `el`'s
  * subtree, else the previous one.
  */
 function neighbourOf(el: HTMLElement): HTMLElement | null {
-  const items = treeItemsAround(el);
+  const items = visibleItemsAround(el);
   const at = items.indexOf(el);
   if (at === -1) return null;
   for (let i = at + 1; i < items.length; i++) {
@@ -54,27 +91,75 @@ function depthOf(nodes: EditorNodes, id: string): number {
   return depth;
 }
 
+/**
+ * The outline's tree container: `role="tree"` named from the catalog (or
+ * `aria-label`). Render the root's rows inside it.
+ */
+export function EditorOutline(props: EditorOutlineProps) {
+  const { render, ...rest } = props;
+  const { messages } = useEditorContext('Editor.Outline');
+  return useRender<'div'>({
+    defaultTagName: 'div',
+    props: {
+      role: 'tree',
+      'aria-label': messages.parts.outline,
+      'aria-multiselectable': true,
+      ...rest,
+    },
+    render,
+  });
+}
+
 export function EditorOutlineItem(props: EditorOutlineItemProps) {
-  const { blockId, onDelete, render, onClick, onKeyDown, ...rest } = props;
+  const {
+    blockId,
+    onDelete,
+    render,
+    onClick,
+    onKeyDown,
+    onPointerEnter,
+    onPointerLeave,
+    ...rest
+  } = props;
   const ctx = useEditorContext('Editor.OutlineItem');
   const actions = useBlockActions(blockId);
-  const selected = useSessionSelector((state) => state.selection[0] ?? null);
-  const slice = useDocSelector((state) => {
-    const node = state.nodes[blockId];
-    const rootChildren = state.nodes[state.rootId]?.slots[DEFAULT_SLOT] ?? [];
-    return {
-      type: node?.type ?? null,
-      hasChildren: node
-        ? Object.values(node.slots).some((ids) => ids.length > 0)
-        : false,
-      depth: node ? depthOf(state.nodes, blockId) : 0,
-      selected: selected === blockId,
-      nothingSelected: selected === null,
-      firstOfRoot: rootChildren[0] === blockId,
-    };
-  });
-  const tabStop =
-    slice.selected || (slice.nothingSelected && slice.firstOfRoot);
+  const selection = useSessionSelector((state) => state.selection);
+  const collapsed = useSessionSelector((state) =>
+    state.collapsed.includes(blockId),
+  );
+  const hovered = useEphemeralSelector((state) => state.hoverId === blockId);
+  const slice = useDocSelector(
+    (state) => {
+      const node = state.nodes[blockId];
+      const rootChildren = state.nodes[state.rootId]?.slots[DEFAULT_SLOT] ?? [];
+      const siblings = node?.parent
+        ? (state.nodes[node.parent.id]?.slots[node.parent.slot] ?? [])
+        : [];
+      return {
+        type: node?.type ?? null,
+        parentId: node?.parent?.id ?? null,
+        hasChildren: node
+          ? Object.values(node.slots).some((ids) => ids.length > 0)
+          : false,
+        depth: node ? depthOf(state.nodes, blockId) : 0,
+        posInSet: siblings.indexOf(blockId) + 1,
+        setSize: siblings.length,
+        firstOfRoot: rootChildren[0] === blockId,
+      };
+    },
+    (a, b) =>
+      a.type === b.type &&
+      a.parentId === b.parentId &&
+      a.hasChildren === b.hasChildren &&
+      a.depth === b.depth &&
+      a.posInSet === b.posInSet &&
+      a.setSize === b.setSize &&
+      a.firstOfRoot === b.firstOfRoot,
+  );
+  const selected = selection.includes(blockId);
+  const primary = selection[0] === blockId;
+  const tabStop = primary || (selection.length === 0 && slice.firstOfRoot);
+  const expanded = slice.hasChildren && !collapsed;
 
   /**
    * True when the event originates in THIS row, not in a nested row (rows
@@ -106,13 +191,33 @@ export function EditorOutlineItem(props: EditorOutlineItemProps) {
     }
   });
 
+  // A selection made elsewhere (canvas, preview) scrolls the row into view
+  // without taking focus from where the user is.
+  React.useEffect(() => {
+    const el = elRef.current;
+    if (!primary || !el) return;
+    const tree = el.closest('[role="tree"]');
+    const active = el.ownerDocument.activeElement;
+    if (tree && active && tree.contains(active)) return;
+    el.scrollIntoView?.({ block: 'nearest' });
+  }, [primary]);
+
+  const land = (target: HTMLElement | null | undefined) => {
+    const targetId = target?.dataset.blockId;
+    if (!target || !targetId) return;
+    ctx.store.select(targetId);
+    target.focus();
+  };
+
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     onKeyDown?.(event);
     if (event.defaultPrevented || !ownsEvent(event)) return;
     const el = event.currentTarget;
+    const mod = event.metaKey || event.ctrlKey;
     switch (event.key) {
       case 'ArrowUp':
       case 'ArrowDown': {
+        if (mod) return;
         event.preventDefault();
         if (event.altKey) {
           const moved =
@@ -120,14 +225,48 @@ export function EditorOutlineItem(props: EditorOutlineItemProps) {
           if (moved) refocus.current = true;
           return;
         }
-        const items = treeItemsAround(el);
+        const items = visibleItemsAround(el);
         const at = items.indexOf(el);
-        const target = items[event.key === 'ArrowUp' ? at - 1 : at + 1];
-        const targetId = target?.dataset.blockId;
-        if (target && targetId) {
-          ctx.store.select(targetId);
-          target.focus();
+        land(items[event.key === 'ArrowUp' ? at - 1 : at + 1]);
+        return;
+      }
+      case 'ArrowRight':
+      case 'ArrowLeft': {
+        if (mod || event.altKey) return;
+        event.preventDefault();
+        const rtl = ctx.dir === 'rtl';
+        const opening = (event.key === 'ArrowRight') !== rtl;
+        if (opening) {
+          if (!slice.hasChildren) return;
+          if (collapsed) {
+            ctx.store.setCollapsed(blockId, false);
+            return;
+          }
+          const items = visibleItemsAround(el);
+          const next = items[items.indexOf(el) + 1];
+          if (next && el.contains(next)) land(next);
+          return;
         }
+        if (expanded) {
+          ctx.store.setCollapsed(blockId, true);
+          return;
+        }
+        land(parentItemOf(el));
+        return;
+      }
+      case 'Home':
+      case 'End': {
+        event.preventDefault();
+        const items = visibleItemsAround(el);
+        land(event.key === 'Home' ? items[0] : items[items.length - 1]);
+        return;
+      }
+      case '*': {
+        event.preventDefault();
+        const nodes = ctx.store.getDoc().nodes;
+        const at = nodes[blockId]?.parent ?? null;
+        const siblings = at ? (nodes[at.id]?.slots[at.slot] ?? []) : [];
+        for (const id of siblings) ctx.store.setCollapsed(id, false);
         return;
       }
       case 'Delete':
@@ -146,8 +285,29 @@ export function EditorOutlineItem(props: EditorOutlineItemProps) {
         ctx.store.select(null);
         return;
       }
-      default:
-        return;
+      default: {
+        if (mod || event.altKey || event.key.length !== 1) return;
+        if (event.key === ' ') return;
+        const tree = el.closest('[role="tree"]') ?? el.ownerDocument;
+        const now = Date.now();
+        const last = typeahead.get(tree);
+        const text =
+          (last && now - last.at < TYPEAHEAD_MS ? last.text : '') +
+          event.key.toLowerCase();
+        typeahead.set(tree, { text, at: now });
+        const items = visibleItemsAround(el);
+        const at = items.indexOf(el);
+        // A repeated first letter cycles; a longer prefix keeps the match.
+        const start = text.length === 1 ? at + 1 : at;
+        const ordered = [...items.slice(start), ...items.slice(0, start)];
+        const match = ordered.find((item) =>
+          itemText(item).toLowerCase().startsWith(text),
+        );
+        if (match) {
+          event.preventDefault();
+          land(match);
+        }
+      }
     }
   };
 
@@ -155,20 +315,34 @@ export function EditorOutlineItem(props: EditorOutlineItemProps) {
     defaultTagName: 'div',
     props: {
       role: 'treeitem',
-      'aria-selected': slice.selected,
+      'aria-selected': selected,
       'aria-level': Math.max(slice.depth, 1),
-      'aria-expanded': slice.hasChildren ? true : undefined,
+      'aria-expanded': slice.hasChildren ? expanded : undefined,
+      'aria-setsize': slice.setSize || undefined,
+      'aria-posinset': slice.posInSet || undefined,
       tabIndex: tabStop ? 0 : -1,
       ref: elRef,
       onClick: handleClick,
       onKeyDown: handleKeyDown,
+      onPointerEnter: (event: React.PointerEvent<HTMLDivElement>) => {
+        onPointerEnter?.(event);
+        if (ownsEvent(event)) ctx.store.hover(blockId);
+      },
+      onPointerLeave: (event: React.PointerEvent<HTMLDivElement>) => {
+        onPointerLeave?.(event);
+        if (ctx.store.getEphemeral().hoverId === blockId) {
+          ctx.store.hover(null);
+        }
+      },
       ...rest,
     },
     render,
     state: {
-      selected: slice.selected,
+      selected,
       depth: slice.depth,
       hasChildren: slice.hasChildren,
+      expanded,
+      hovered,
       blockId,
       blockType: slice.type ?? 'unknown',
     },

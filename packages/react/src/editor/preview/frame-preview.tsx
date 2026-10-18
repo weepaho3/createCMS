@@ -7,6 +7,7 @@ import type { FramePreviewIssue } from './frame-issues';
 import { useRender } from '../../use-render';
 import { useDocSelector, useSessionSelector } from '../binding';
 import { useEditorContext } from '../context';
+import { bindEditorClipboard, bindEditorKeyboard } from '../keyboard';
 import { scrollElementIntoView } from '../scroll';
 import { PREVIEW_DEBOUNCE_MS } from './components';
 import { frameClickAnchor } from './frame-anchor';
@@ -80,11 +81,12 @@ export function EditorFramePreview({
   onIssues,
   onError,
   sandbox,
-  title = 'Preview',
+  title,
   style,
   ...rest
 }: EditorFramePreviewProps) {
   const ctx = useEditorContext('Editor.FramePreview');
+  const frameTitle = title ?? ctx.messages.parts.framePreview;
   const version = useDocSelector((s) => s.version);
   const highlightId = useSessionSelector(
     (s) => s.focusedField?.blockId ?? s.selection[0] ?? null,
@@ -149,8 +151,13 @@ export function EditorFramePreview({
       );
     };
     doc.addEventListener('click', onClick, true);
+    // Key and clipboard events inside the frame never reach the host document.
+    const unbindKeys = bindEditorKeyboard(storeRef.current, doc);
+    const unbindClipboard = bindEditorClipboard(storeRef.current, doc);
     unbindClicksRef.current = () => {
       doc.removeEventListener('click', onClick, true);
+      unbindKeys();
+      unbindClipboard();
     };
   }, []);
 
@@ -308,7 +315,7 @@ export function EditorFramePreview({
         ref={(el) => {
           if (el) iframeRefs.current[index] = el;
         }}
-        title={title}
+        title={frameTitle}
         sandbox={sandboxAttr}
         srcDoc={slot.srcDoc}
         src={slot.src}

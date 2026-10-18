@@ -96,6 +96,47 @@ editable: the glass edits plain text and would drop the value's markup. A
 click on a `richText` field selects the block and focuses its form control,
 and a development build logs `[editor:E001]` once.
 
+Plain-text rules apply to the glass and to `useEditableField`: a `text`
+field is single-line, so Enter ends editing and pasted or dropped line
+breaks turn into spaces, `maxLength` cuts typed and pasted text, paste and drop insert
+plain text only, and nothing commits while an IME composition runs. The
+glass takes its `aria-label` from the field label and its
+`aria-placeholder` from the field placeholder.
+
+A `text` field's `inline` option picks the editing mode: `'glass'` (the
+default) overlays the glass, `'in-place'` leaves the field to
+`useEditableField` in the component, and `false` keeps it in the form only.
+In-place editing fits text the glass cannot copy (gradients with
+`background-clip: text`, balanced wrapping, columns, transforms):
+
+```tsx
+function Hero({ id, props, edit }: CanvasComponentProps<'hero'>) {
+  const title = useEditableField(id, 'title');
+  return (
+    <h1 {...edit.field.title} {...title.props}>
+      {title.editable ? null : props.title}
+    </h1>
+  );
+}
+```
+
+A click selects the deepest block under the pointer. Shift+click selects
+the range from the primary selection to the clicked block's ancestor in the
+same slot, Mod+click toggles a block in the selection, and Alt+click selects
+the parent (one level further up on each repeat); none of them start
+editing. `clickToEdit` picks how a click on a text field starts editing:
+`select-and-edit` (a mouse by default) selects and edits at once,
+`select-first` (touch and pen by default) selects on the first tap and edits
+on a tap on the selected block. The host sets `touch-action: manipulation`.
+Hover shows at once and clears 100 ms after the pointer leaves a block.
+
+`Canvas.ContextMenu` opens on a right click on a block: the block commands
+(`CONTEXT_MENU_COMMANDS` or `commands`), a row per ancestor to select it,
+and the block behind the pointer. `Canvas.BlockToolbar` is one tab stop
+(`useRovingFocus`): arrows move between its controls, Alt+F10 enters it
+from the canvas or inline text without changing the selection, and Escape
+returns to where focus was.
+
 ## Sessions and surfaces
 
 `Canvas.Provider` (optional) owns the drag session, the shared dnd and
@@ -131,12 +172,12 @@ session itself and provides it to its children.
 | Part                   | Default element | Props                                                                                                                          | Data attributes                                                                                           |
 | ---------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
 | `Canvas.Provider`      | none            | `children`. Renders no element; owns the drag session shared by every part and `Canvas.Root` below it. Optional.               | none                                                                                                      |
-| `Canvas.Root`          | `div`           | `components` (required), `surface`, `interactive`, `resolve`, `chunkSize`, `renderBlockError`, `renderUnknownBlock`, `children` (overlay), `render`, div props | `data-editor-canvas`, `data-interactive`, `data-dragging`, `data-editing`                                 |
+| `Canvas.Root`          | `div`           | `components` (required), `surface`, `interactive`, `resolve`, `chunkSize`, `renderBlockError`, `renderUnknownBlock`, `clickToEdit`, `children` (overlay), `render`, div props | `data-editor-canvas`, `data-interactive`, `data-dragging`, `data-editing`                                 |
 | `Canvas.Overlay`       | `div`           | `render`, div props. Portals into the canvas host.                                                                             | `data-editor-overlay`                                                                                     |
 | `Canvas.SelectionRing` | `div`           | `render`, div props. Sized from the selected block rect.                                                                       | `data-editor-selection-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`    |
 | `Canvas.HoverRing`     | `div`           | `render`, div props. Hidden while dragging, editing, or when hovered equals selected.                                          | `data-editor-hover-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
 | `Canvas.FieldRing`     | `div`           | `render`, div props. Sized from the focused field rect (own-block only).                                                       | `data-editor-field-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
-| `Canvas.BlockToolbar`  | `div`           | `align`, `side`, `offset`, `render`, div props. Consumer supplies buttons. Shown in `edit` and `select`. Pins inside the visible block when `side="top"` would clip. | `data-editor-block-toolbar`, `data-side`, `data-block-type`                                               |
+| `Canvas.BlockToolbar`  | `div`           | `align`, `side`, `offset`, `render`, div props. Consumer supplies buttons. Shown in `edit` and `select`. Pins inside the visible block when `side="top"` would clip. Named from the catalog (`parts.blockToolbar`), one tab stop, Alt+F10 entry. | `data-editor-block-toolbar`, `data-side`, `data-block-type`                                               |
 | `Canvas.InsertButton`  | `button`        | `placement` (`between` \| `container`), optional `type`, optional `onInsert`, `render`, button props. Shown only in `edit`.    | `data-editor-insert-button`, `data-orientation`, `data-empty-container`                                   |
 | `Canvas.DragHandle`    | `button`        | `blockId` (required), `render`, button props. Move an existing block by pointer drag. Overlay siblings inset into the visible block; inside `Canvas.BlockToolbar` the handle stays in flow. | `data-editor-drag-handle`, `data-dragging` on the handle while its block is the move session              |
 | `Canvas.PaletteItem`   | `button`        | `type` (required), optional `properties`, `render`, button props. Click inserts like `Editor.AddBlock`; drag adds by geometry. | `data-editor-palette-item`, `data-block-type`, `data-dragging` while this item starts a new-block session |
@@ -146,6 +187,7 @@ session itself and provides it to its children.
 | `Canvas.ReadonlySubtree` | `div`         | `render`, div props. `inert`, `display: contents`; wraps embedded trees that are shown but not edited.                         | `data-editor-readonly`                                                                                    |
 | `Canvas.BlockError`    | `div`           | `blockId`, `blockType`, `error` (all set by the canvas), `render`, div props; `role="alert"`, carries the block anchor so the block stays selectable and deletable | `data-editor-block`, `data-block-error`, `data-block-id`, `data-block-type`                               |
 | `Canvas.UnknownBlock`  | `div`           | `blockId`, `blockType`, `props`, `slots` (set by the canvas), `render`, div props; renders every slot below its label          | `data-editor-block`, `data-unknown-block`, `data-block-id`, `data-block-type`                             |
+| `Canvas.ContextMenu`   | `div` with `role="menu"` | `commands`, `renderItem(entry, run)`, `render`, div props; fixed at the pointer, focus returns on close | `data-open` |
 
 ## Hooks
 
@@ -154,6 +196,7 @@ session itself and provides it to its children.
 | `useResolved`     | `T \| undefined`       | Reads the canvas resolve cache. Throws outside `Canvas.Root`. `undefined` is miss or pending.                                                                |
 | `useBlockRect`    | `CanvasRect \| null`   | Content coordinates of a block id (union of same-id nodes). Throws outside `Canvas.Root`.                                                                    |
 | `useFieldRect`    | `CanvasRect \| null`   | Content coordinates of a field on its own block. Throws outside `Canvas.Root`.                                                                               |
+| `useEditableField` | `EditableField`        | `(blockId, key)`: in-place plain-text editing of the component's own element. `editable` is false outside an editing canvas; spread `props` onto the element. |
 | `useInsertTarget` | `InsertTarget \| null` | Resolved line or box from pointer and hover. Throws outside `Canvas.Root`. Null in `select` / `none`, while dragging or editing, or without pointer / hover. |
 
 ## Types
@@ -175,6 +218,9 @@ session itself and provides it to its children.
 | `UnknownBlockInfo`           | What `renderUnknownBlock` receives: `{ blockId, blockType, props, slots }`.                       |
 | `CanvasBlockErrorProps`      | Props of `Canvas.BlockError`.                                                                     |
 | `CanvasUnknownBlockProps`    | Props of `Canvas.UnknownBlock`.                                                                   |
+| `CanvasContextMenuProps`     | Props of `Canvas.ContextMenu`.                                                                    |
+| `ContextMenuEntry`           | A menu row: `{ kind: 'command', id, label, disabled }` or `{ kind: 'select', role, blockId, label }`. |
+| `CanvasClickToEdit`          | `'select-and-edit' \| 'select-first'`.                                                            |
 | `BlockErrorBoundaryProps`    | Props of `BlockErrorBoundary`: `resetKey`, `fallback(error)`, `onError?`, `onReset?`.             |
 | `CanvasResolve`              | Field kind to `FieldResolver`.                                                                    |
 | `FieldResolver`              | `(value, field) => resolved \| Promise<resolved> \| undefined`.                                   |
@@ -194,6 +240,8 @@ session itself and provides it to its children.
 | `PointerStore`               | External pointer snapshot store on the canvas context.                                            |
 | `PointerSnapshot`            | One pointer sample (client coordinates and target block id).                                      |
 | `DragSession`                | Active pointer drag state (new block or move).                                                    |
+| `EditableField`              | What `useEditableField` returns: `editable`, `editing`, `props`.                                  |
+| `PlainTextOptions`           | `{ multiline, maxLength }`: the plain-text rules of a field.                                      |
 | `CanvasInlineTextProps`      | Props of `Canvas.InlineText`.                                                                     |
 | `InlineSuggest`              | Optional `$`-anchored suggest config: `pattern`, `getItems`, `render`.                            |
 | `InlineSuggestItem`          | Suggest row: `insertText` plus consumer fields for `render`.                                      |
@@ -215,9 +263,16 @@ client component.
 | `INSERT_LINE_THICKNESS`  | Hit thickness for line insert targets.                                      |
 | `adjustMoveIndex`        | `(nodes, id, parent: SlotRef, index)`: index adjustment when moving a block within the same slot. |
 | `blockIdAtPoint`         | Block id under a client point from measured rects.                          |
+| `createSectionRefBlock`  | `({ resolver, components, schema? })`: the canvas component for `$ref` blocks. The block selects as a whole (`data-kind="ref"`, `data-loading` until resolved); its section renders read-only with `components`. |
+| `CONTEXT_MENU_COMMANDS`  | The default command ids of `Canvas.ContextMenu`.                            |
+| `rangeSelection`         | `(store, id)`: the Shift+click selection.                                   |
+| `toggledSelection`       | `(store, id)`: the Mod+click selection.                                     |
+| `depthParent`            | `(store, id)`: the Alt+click target, `null` at the top level.               |
+| `isSelectionClick`       | Whether a click's modifiers select without editing.                         |
 | `DND_THRESHOLD_PX`       | Pointer distance before a drag session starts.                              |
 | `applyTextEdit`          | Apply a DOM text edit to a string value.                                    |
 | `EMPTY_FIELD_PLACEHOLDER`| Zero-width placeholder injected for empty inline fields.                    |
+| `normalizePlainText`     | `(text, multiline)`: line endings normalised; line breaks become spaces when single-line. |
 | `isInlineEditableKind`   | Whether a field kind supports `Canvas.InlineText`.                          |
 
 ## Data attributes

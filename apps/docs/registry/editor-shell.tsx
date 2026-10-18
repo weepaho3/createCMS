@@ -13,8 +13,10 @@ import {
   useEditorKeyboard,
   useHistory,
   usePalette,
+  useCommand,
   useSave,
   useSelection,
+  useShortcutLabel,
   useSlot,
   useSlots,
 } from '@createcms/react/editor';
@@ -409,6 +411,9 @@ function EditorToolbar({
     setSaveOpen,
   } = useEditorChrome();
   const { isMobile } = useSidebar();
+  const undo = useCommand('history.undo');
+  const redo = useCommand('history.redo');
+  const shortcutLabel = useShortcutLabel();
 
   const handleSave = () => {
     if (requireCommitMessage) {
@@ -429,16 +434,16 @@ function EditorToolbar({
     >
       {mode === 'form' ? null : <SidebarTrigger className="md:inline-flex" />}
       <ToolbarHintButton
-        label="Undo"
-        shortcut="⌘Z"
+        label={undo?.label ?? 'Undo'}
+        shortcut={undo?.shortcutLabel}
         disabled={!history.canUndo}
         onClick={() => history.undo()}
       >
         <Undo2Icon />
       </ToolbarHintButton>
       <ToolbarHintButton
-        label="Redo"
-        shortcut="⌘⇧Z"
+        label={redo?.label ?? 'Redo'}
+        shortcut={redo?.shortcutLabel}
         disabled={!history.canRedo}
         onClick={() => history.redo()}
       >
@@ -476,7 +481,7 @@ function EditorToolbar({
           <Separator orientation="vertical" className="mx-1 h-5" />
           <ToolbarHintButton
             label="Add block"
-            shortcut="⌘K"
+            shortcut={shortcutLabel('Mod+k')}
             onClick={() => setAddOpen(true)}
           >
             <PlusIcon />
@@ -527,7 +532,7 @@ function EditorToolbar({
           </TooltipTrigger>
           <TooltipContent className="flex items-center gap-1.5">
             Save
-            <Kbd>⌘S</Kbd>
+            <Kbd>{shortcutLabel('Mod+s')}</Kbd>
           </TooltipContent>
         </Tooltip>
       </div>

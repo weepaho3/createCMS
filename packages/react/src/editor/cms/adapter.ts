@@ -107,6 +107,11 @@ export function createCmsAdapter(options: CreateCmsAdapterOptions): CmsAdapter {
     async load(rootId) {
       return (await loadSnapshot(rootId)).doc;
     },
+    // Sections (`$ref`) resolve in this adapter's collection; references
+    // into another collection use an adapter on that collection's client.
+    async resolveReference(ref) {
+      return (await loadSnapshot(ref.id)).doc;
+    },
     async save(rootId, doc, ctx) {
       try {
         const result = await client.updateBlocks({

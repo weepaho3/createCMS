@@ -11,8 +11,8 @@ import {
 import { useRef } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import type { EditorPlugin } from './core';
 import type { EditorStore } from './core/store';
-import type { EditorKeyboardOptions } from './keyboard';
 
 import { useEditorContext } from './context';
 import { counterGenId, makeDoc, storeSchema } from './core/store/fixtures';
@@ -28,15 +28,9 @@ function StoreProbe({ probe }: { probe: Probe }) {
   return null;
 }
 
-function Harness({
-  options,
-  children,
-}: {
-  options?: EditorKeyboardOptions;
-  children?: React.ReactNode;
-}) {
+function Harness({ children }: { children?: React.ReactNode }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  useEditorKeyboard(ref, options);
+  useEditorKeyboard(ref);
   return (
     <div ref={ref} data-testid="scope">
       {children}
@@ -44,16 +38,17 @@ function Harness({
   );
 }
 
-function mount(options?: EditorKeyboardOptions, children?: React.ReactNode) {
+function mount(children?: React.ReactNode, plugins?: readonly EditorPlugin[]) {
   const probe: Probe = { store: null };
   const utils = render(
     <Editor.Root
       schema={storeSchema}
       defaultValue={makeDoc()}
       genId={counterGenId()}
+      plugins={plugins}
     >
       <StoreProbe probe={probe} />
-      <Harness options={options}>{children}</Harness>
+      <Harness>{children}</Harness>
     </Editor.Root>,
   );
   return { ...utils, probe };
@@ -97,7 +92,7 @@ describe('useEditorKeyboard', () => {
   });
 
   it('undo still runs when focus is inside an input', () => {
-    const { getByTestId, probe } = mount(undefined, <input data-testid="in" />);
+    const { getByTestId, probe } = mount(<input data-testid="in" />);
     act(() => {
       probe.store?.add('heading', { parent: { id: 'root_1' } });
     });
@@ -135,41 +130,135 @@ describe('useEditorKeyboard', () => {
     expect(probe.store?.getDoc().nodes.n1).toBeDefined();
   });
 
-  it('without options, Delete on the scope with h1 selected does not remove h1', () => {
+  it('Delete removes the selected block and selects its neighbour', () => {
     const { getByTestId, probe } = mount();
-    act(() => {
-      probe.store?.select('h1');
-    });
-    fireEvent.keyDown(getByTestId('scope'), { key: 'Delete' });
-    expect(probe.store?.getDoc().nodes.h1).toBeDefined();
-  });
-
-  it('with delete: true, Delete removes h1 unless the target is an input', () => {
-    const { getByTestId, probe } = mount(
-      { delete: true },
-      <input data-testid="in" />,
-    );
-    act(() => {
-      probe.store?.select('h1');
-    });
-    fireEvent.keyDown(getByTestId('in'), { key: 'Delete' });
-    expect(probe.store?.getDoc().nodes.h1).toBeDefined();
+    act(() => probe.store?.select('h1'));
     fireEvent.keyDown(getByTestId('scope'), { key: 'Delete' });
     expect(probe.store?.getDoc().nodes.h1).toBeUndefined();
+    expect(probe.store?.getSession().selection).toEqual(['sec1']);
   });
 
-  it('with escape: true, Escape clears the selection unless the target is an input', () => {
-    const { getByTestId, probe } = mount(
-      { escape: true },
-      <input data-testid="in" />,
-    );
-    act(() => {
-      probe.store?.select('h1');
-    });
-    fireEvent.keyDown(getByTestId('in'), { key: 'Escape' });
-    expect(probe.store?.getSession().selection[0] ?? null).toBe('h1');
+  it('Escape walks up to the parent, then clears', () => {
+    const { getByTestId, probe } = mount();
+    act(() => probe.store?.select('p1'));
     fireEvent.keyDown(getByTestId('scope'), { key: 'Escape' });
-    expect(probe.store?.getSession().selection[0] ?? null).toBeNull();
+    expect(probe.store?.getSession().selection).toEqual(['sec1']);
+    fireEvent.keyDown(getByTestId('scope'), { key: 'Escape' });
+    expect(probe.store?.getSession().selection).toEqual([]);
+  });
+
+  it('Enter, Tab, Shift+Tab and Mod+a move the selection', () => {
+    const { getByTestId, probe } = mount();
+    const scope = getByTestId('scope');
+    act(() => probe.store?.select('h1'));
+    fireEvent.keyDown(scope, { key: 'Tab' });
+    expect(probe.store?.getSession().selection).toEqual(['sec1']);
+    fireEvent.keyDown(scope, { key: 'Enter' });
+    expect(probe.store?.getSession().selection).toEqual(['p1']);
+    fireEvent.keyDown(scope, { key: 'Enter', shiftKey: true });
+    expect(probe.store?.getSession().selection).toEqual(['sec1']);
+    fireEvent.keyDown(scope, { key: 'Tab', shiftKey: true });
+    expect(probe.store?.getSession().selection).toEqual(['h1']);
+    fireEvent.keyDown(scope, { key: 'a', ctrlKey: true });
+    expect(probe.store?.getSession().selection).toEqual(['h1', 'sec1']);
+  });
+
+  it('Tab with nothing to select next leaves the key to the browser', () => {
+    const { getByTestId, probe } = mount();
+    act(() => probe.store?.select('sec1'));
+    const event = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      bubbles: true,
+      cancelable: true,
+    });
+    getByTestId('scope').dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('Mod+d duplicates and Alt+Arrow moves', () => {
+    const { getByTestId, probe } = mount();
+    const scope = getByTestId('scope');
+    act(() => probe.store?.select('h1'));
+    fireEvent.keyDown(scope, { key: 'ArrowDown', altKey: true });
+    const root = () => probe.store?.getDoc().nodes.root_1?.slots.children;
+    expect(root()).toEqual(['sec1', 'h1']);
+    fireEvent.keyDown(scope, { key: 'd', metaKey: true });
+    expect(root()).toHaveLength(3);
+    expect(probe.store?.getSession().selection[0]).not.toBe('h1');
+  });
+
+  it.each([
+    ['input', <input key="t" data-testid="target" />],
+    ['textarea', <textarea key="t" data-testid="target" />],
+    ['contenteditable', <div key="t" data-testid="target" contentEditable />],
+    ['button', <button key="t" data-testid="target" type="button" />],
+    [
+      'treeitem',
+      <div key="t" data-testid="target" role="treeitem" tabIndex={0} />,
+    ],
+  ])('plain keys never fire from a focused %s', (_, target) => {
+    const { getByTestId, probe } = mount(target);
+    act(() => probe.store?.select('sec1'));
+    for (const key of ['Delete', 'Backspace', 'Escape', 'Enter', 'Tab', '/']) {
+      fireEvent.keyDown(getByTestId('target'), { key });
+    }
+    expect(probe.store?.getDoc().nodes.sec1).toBeDefined();
+    expect(probe.store?.getSession().selection).toEqual(['sec1']);
+  });
+
+  it('Mod+d does not fire in an input, but does from a button', () => {
+    const { getByTestId, probe } = mount(
+      <>
+        <input data-testid="in" />
+        <button data-testid="btn" type="button" />
+      </>,
+    );
+    act(() => probe.store?.select('h1'));
+    const count = () => probe.store?.getDoc().nodes.root_1?.slots.children;
+    fireEvent.keyDown(getByTestId('in'), { key: 'd', ctrlKey: true });
+    expect(count()).toHaveLength(2);
+    fireEvent.keyDown(getByTestId('btn'), { key: 'd', ctrlKey: true });
+    expect(count()).toHaveLength(3);
+  });
+
+  it('keys during an IME composition never fire', () => {
+    const { getByTestId, probe } = mount();
+    act(() => probe.store?.select('h1'));
+    fireEvent.keyDown(getByTestId('scope'), {
+      key: 'Delete',
+      isComposing: true,
+    });
+    expect(probe.store?.getDoc().nodes.h1).toBeDefined();
+  });
+
+  it('ui commands emit the ui event', () => {
+    const { getByTestId, probe } = mount();
+    const actions: string[] = [];
+    probe.store?.on('ui', (event) => actions.push(event.action));
+    const scope = getByTestId('scope');
+    fireEvent.keyDown(scope, { key: 'k', metaKey: true });
+    fireEvent.keyDown(scope, { key: '/' });
+    fireEvent.keyDown(scope, { key: 'F10', altKey: true });
+    fireEvent.keyDown(scope, { key: '?', shiftKey: true });
+    expect(actions).toEqual([
+      'commandPalette',
+      'quickInsert',
+      'toolbar',
+      'shortcutHelp',
+    ]);
+  });
+
+  it('a plugin rebinds and unbinds default combos', () => {
+    const { getByTestId, probe } = mount(undefined, [
+      { name: 'keys', shortcuts: { Delete: '', 'Mod+d': 'history.undo' } },
+    ]);
+    act(() => probe.store?.select('h1'));
+    fireEvent.keyDown(getByTestId('scope'), { key: 'Delete' });
+    expect(probe.store?.getDoc().nodes.h1).toBeDefined();
+    expect(probe.store?.commands.shortcuts()['mod+d']).toBe('history.undo');
+    expect(probe.store?.commands.shortcuts()['mod+shift+d']).toBe(
+      'block.duplicate',
+    );
   });
 
   it('throws outside Editor.Root', () => {

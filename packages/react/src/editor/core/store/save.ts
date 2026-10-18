@@ -1,7 +1,15 @@
 import type { EditorDocument, Op } from '../document';
-import type { PersistenceOptions, SaveState, Timers } from './types';
+import type { ValidationIssue } from '../schema';
+import type {
+  BeforeSaveGate,
+  PersistenceOptions,
+  SavePhase,
+  SaveState,
+  Timers,
+} from './types';
 
 import { EditorAdapterError } from '../adapter';
+import { validateDocument } from '../schema';
 
 /** Autosave waits this long after the last change. */
 export const SAVE_DEBOUNCE_MS = 1500;
@@ -17,6 +25,7 @@ export const INITIAL_SAVE_STATE: SaveState = {
   error: null,
   conflict: null,
   version: null,
+  issues: [],
 };
 
 export type SaveScheduler = {
@@ -24,7 +33,11 @@ export type SaveScheduler = {
   noteChange(ops: readonly Op[]): void;
   /** A new baseline: nothing unsaved, `version` as the base. */
   reset(version: string | null): void;
-  save(options?: { message?: string; force?: boolean }): Promise<void>;
+  save(options?: {
+    message?: string;
+    force?: boolean;
+    phase?: 'save' | 'publish';
+  }): Promise<void>;
   destroy(): void;
 };
 
@@ -41,6 +54,12 @@ export function createSaveScheduler(options: {
   getDocument: () => EditorDocument;
   setState: (patch: Partial<SaveState>) => void;
   getState: () => SaveState;
+  /** Issues that block this save (a promise when a gate is async). */
+  gate: (
+    doc: EditorDocument,
+    ops: readonly Op[],
+    phase: SavePhase,
+  ) => readonly ValidationIssue[] | Promise<readonly ValidationIssue[]>;
   onBeforeSave: (doc: EditorDocument, ops: readonly Op[]) => void;
   onAfterSave: (version: string) => void;
   onError: (error: Error) => void;
@@ -80,17 +99,21 @@ export function createSaveScheduler(options: {
     debounce = clear(debounce);
     debounce = timers.setTimeout(() => {
       debounce = null;
-      void run({});
+      void run({ phase: 'autosave' });
     }, debounceMs);
     if (maxWait === null) {
       maxWait = timers.setTimeout(() => {
         maxWait = null;
-        void run({});
+        void run({ phase: 'autosave' });
       }, maxWaitMs);
     }
   };
 
-  const run = (opts: { message?: string; force?: boolean }): Promise<void> => {
+  const run = (opts: {
+    message?: string;
+    force?: boolean;
+    phase: SavePhase;
+  }): Promise<void> => {
     if (!persistence || destroyed) return Promise.resolve();
     if (inFlight) {
       again = true;
@@ -101,13 +124,40 @@ export function createSaveScheduler(options: {
     const rev = localRev;
     const ops = unsaved.slice();
     const doc = options.getDocument();
-    setState({ status: 'saving', error: null });
+    const proceed = (issues: readonly ValidationIssue[]): Promise<void> => {
+      if (issues.length > 0) {
+        again = false;
+        setState({ status: 'invalid', error: null, issues });
+        return Promise.resolve();
+      }
+      return send(rev, ops, doc, opts);
+    };
+    const gated = options.gate(doc, ops, opts.phase);
+    if (!('then' in gated)) return proceed(gated);
+    // An async gate holds the slot, so no second save starts meanwhile.
+    const waiting = gated.then((issues) => {
+      inFlight = null;
+      return proceed(issues);
+    });
+    inFlight = waiting;
+    return waiting;
+  };
+
+  const send = (
+    rev: number,
+    ops: Op[],
+    doc: EditorDocument,
+    opts: { message?: string; force?: boolean; phase: SavePhase },
+  ): Promise<void> => {
+    if (!persistence) return Promise.resolve();
+    setState({ status: 'saving', error: null, issues: [] });
     options.onBeforeSave(doc, ops);
     const ctx: Parameters<PersistenceOptions['save']>[1] = {
       ops,
       baseVersion: version !== null && !opts.force ? version : undefined,
       force: opts.force === true ? true : undefined,
       message: opts.message,
+      phase: opts.phase,
     };
     inFlight = persistence
       .save(doc, ctx)
@@ -159,7 +209,7 @@ export function createSaveScheduler(options: {
             attempt += 1;
             retry = timers.setTimeout(() => {
               retry = null;
-              void run({});
+              void run({ phase: opts.phase });
             }, delay);
           }
           again = false;
@@ -169,7 +219,7 @@ export function createSaveScheduler(options: {
         inFlight = null;
         if (again && !destroyed) {
           again = false;
-          void run({});
+          void run({ phase: 'autosave' });
         }
       });
     return inFlight;
@@ -190,10 +240,28 @@ export function createSaveScheduler(options: {
       version = next;
       setState({ ...INITIAL_SAVE_STATE, version });
     },
-    save: (opts = {}) => run(opts),
+    save: (opts = {}) => run({ ...opts, phase: opts.phase ?? 'save' }),
     destroy() {
       destroyed = true;
       clearAll();
     },
+  };
+}
+
+/**
+ * A `beforeSave` gate that blocks on `validateDocument` errors (warnings
+ * pass). Runs for `save` and `publish` by default, so autosave keeps
+ * storing drafts; `publish` validates with the publish phase.
+ */
+export function requireValidDocument(
+  options: { phases?: readonly SavePhase[] } = {},
+): BeforeSaveGate {
+  const phases = options.phases ?? ['save', 'publish'];
+  return async ({ doc, schema, phase }) => {
+    if (!phases.includes(phase)) return [];
+    const issues = await validateDocument(doc, schema, {
+      phase: phase === 'publish' ? 'publish' : 'edit',
+    });
+    return issues.filter((issue) => issue.severity === 'error');
   };
 }

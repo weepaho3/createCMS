@@ -28,10 +28,10 @@ createcms `createBlocksMap` result, pass `cmsCanvasComponents(blocksMap)` from
 import { Editor } from '@createcms/react/editor';
 import { Canvas } from '@createcms/react/editor/canvas';
 
-function PageCanvas({ schema, doc, components }) {
+function PageCanvas({ schema, tree, pageBlocks }) {
   return (
-    <Editor.Root schema={schema} defaultValue={doc}>
-      <Canvas.Root components={components} style={{ position: 'relative' }}>
+    <Editor.Root schema={schema} defaultValue={tree}>
+      <Canvas.Root components={pageBlocks} style={{ position: 'relative' }}>
         <Canvas.Overlay>
           <Canvas.SelectionRing />
           <Canvas.HoverRing />
@@ -52,78 +52,114 @@ function PageCanvas({ schema, doc, components }) {
 }
 ```
 
-Spread `edit.block` on each block's root element and `edit.field.<key>` on
-the element that shows that property. Leftover missing anchors are a dev
-warning because measurement cannot see a block without `data-editor-block`.
-A `display: contents` wrapper is the documented escape when the component
-has no single root.
+Spread `edit.block` on each block's root element, `edit.field.<key>` on the
+element that shows that field and `edit.slot.<name>` on the element that
+holds that slot's children (`EditProps` from
+[`@createcms/react/editor/core`](/docs/reference/react-editor-core)).
+Leftover missing anchors are a dev warning because measurement cannot see a
+block without `data-editor-block`.
 
 `resolve` and `components` must be referentially stable: an inline object
-literal re-runs every resolver. `surface="frame"` throws
-(`Canvas.Root: surface "frame" is not implemented`).
+literal re-runs every resolver. `surface` defaults to `'inline'`.
+`surface="frame"` throws (`Canvas.Root: surface "frame" is not implemented`).
+
+`interactive` is `'edit' | 'select' | 'none'` (default `'edit'`). Optional
+`resolve` maps a field kind to a `FieldResolver` `(value, field)` that returns
+what the component renders (a referenced document, a link's href, text with
+variables filled in), a promise of it, or `undefined`. Results are cached per
+kind and value. Kinds without a resolver, and empty values, render as stored.
+While a resolution is pending or missing, the stored value is rendered and
+the block's anchor carries `data-unresolved`.
+
+Wrap an embedded tree that is shown but never edited (a referenced document,
+a preview of a reusable section) in `Canvas.ReadonlySubtree`: it is `inert`
+and `display: contents`, and anchors inside it are skipped by measurement,
+selection, rings and drop targets.
 
 The canvas host needs a positioning context (`position: relative` or
 similar) so `Canvas.Overlay`'s `absolute; inset: 0` covers the surface.
-The primitive does not set `position` on the host. Overlay is
-`pointer-events: none` and is not `aria-hidden`. Rings set
-`aria-hidden`. A child that must receive pointer input sets
-`pointer-events: auto` on itself.
+Overlay portals into the host. Overlay is `pointer-events: none` and is not
+`aria-hidden`. Rings set `aria-hidden`. A child that must receive pointer
+input sets `pointer-events: auto` on itself.
 
-`Canvas.Provider` (optional) owns the drag session; each `Canvas.Root`
-below it registers itself as a surface. `Canvas.PaletteItem` and
-`Canvas.DragHandle` then work anywhere under the provider, for example a
-shell sidebar outside the canvas host; the surface under the pointer
-resolves the drop against its own host, and only the hovered canvas
-auto-scrolls. `Canvas.DragPreview` follows the pointer with `translate3d` on
-the DOM node (no React re-render per move) and renders only inside a
-`Canvas.Root`. Without a provider, `Canvas.Root`
-creates the session itself and provides it to its children.
+DnD is pointer-based (not HTML5 drag). `Canvas.InlineText` is the GLASS
+overlay for `string` fields in `edit`. `richText` fields are not inline
+editable: the glass edits plain text and would drop the value's markup. A
+click on a `richText` field selects the block and focuses its form control,
+and a development build logs `[editor:E001]` once.
+
+Plain-text rules apply to the glass and to `useEditableField`: a `text`
+field is single-line, so Enter ends editing and pasted or dropped line
+breaks turn into spaces, `maxLength` cuts typed and pasted text, paste and drop insert
+plain text only, and nothing commits while an IME composition runs. The
+glass takes its `aria-label` from the field label and its
+`aria-placeholder` from the field placeholder.
+
+A `text` field's `inline` option picks the editing mode: `'glass'` (the
+default) overlays the glass, `'in-place'` leaves the field to
+`useEditableField` in the component, and `false` keeps it in the form only.
+In-place editing fits text the glass cannot copy (gradients with
+`background-clip: text`, balanced wrapping, columns, transforms):
 
 ```tsx
-<Editor.Root schema={schema} defaultValue={tree}>
-  <Canvas.Provider>
-    <aside>
-      <Canvas.PaletteItem type="paragraph" />
-    </aside>
-    <Canvas.Root components={pageBlocks} style={{ position: 'relative' }}>
-      <Canvas.Overlay>
-        <Canvas.DropIndicator />
-        <Canvas.DragPreview />
-      </Canvas.Overlay>
-    </Canvas.Root>
-  </Canvas.Provider>
-</Editor.Root>
+function Hero({ id, props, edit }: CanvasComponentProps<'hero'>) {
+  const title = useEditableField(id, 'title');
+  return (
+    <h1 {...edit.field.title} {...title.props}>
+      {title.editable ? null : props.title}
+    </h1>
+  );
+}
 ```
+
+A click selects the deepest block under the pointer. Shift+click selects
+the range from the primary selection to the clicked block's ancestor in the
+same slot, Mod+click toggles a block in the selection, and Alt+click selects
+the parent (one level further up on each repeat); none of them start
+editing. `clickToEdit` picks how a click on a text field starts editing:
+`select-and-edit` (a mouse by default) selects and edits at once,
+`select-first` (touch and pen by default) selects on the first tap and edits
+on a tap on the selected block. The host sets `touch-action: manipulation`.
+Hover shows at once and clears 100 ms after the pointer leaves a block.
+
+`Canvas.ContextMenu` opens on a right click on a block: the block commands
+(`CONTEXT_MENU_COMMANDS` or `commands`), a row per ancestor to select it,
+and the block behind the pointer. `Canvas.BlockToolbar` is one tab stop
+(`useRovingFocus`): arrows move between its controls, Alt+F10 enters it
+from the canvas or inline text without changing the selection, and Escape
+returns to where focus was.
 
 ## Parts
 
-| Part                     | Default element | Props                                                                                                                                                                                                                                                                    | Data attributes                                                                                           |
-| ------------------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| `Canvas.Provider`        | none            | `children`. Renders no element; owns the drag session shared by every part and `Canvas.Root` below it. Optional.                                                                                                                                                         | none                                                                                                      |
-| `Canvas.Root`            | `div`           | `components` (required), `surface`, `interactive`, `resolve`, `chunkSize`, `renderBlockError`, `renderUnknownBlock`, `children` (overlay), `render`, div props                                                                                                           | `data-editor-canvas`, `data-interactive`, `data-dragging`, `data-editing`                                 |
-| `Canvas.Overlay`         | `div`           | `render`, div props. Portals into the canvas host.                                                                                                                                                                                                                       | `data-editor-overlay`                                                                                     |
-| `Canvas.SelectionRing`   | `div`           | `render`, div props. Sized from the selected block rect.                                                                                                                                                                                                                 | `data-editor-selection-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`    |
-| `Canvas.HoverRing`       | `div`           | `render`, div props. Hidden while dragging, editing, or when hovered equals selected.                                                                                                                                                                                    | `data-editor-hover-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
-| `Canvas.FieldRing`       | `div`           | `render`, div props. Sized from the focused field rect (own-block only).                                                                                                                                                                                                 | `data-editor-field-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
-| `Canvas.BlockToolbar`    | `div`           | `align`, `side`, `offset`, `render`, div props. Consumer supplies buttons. Shown in `edit` and `select`. When `side="top"` would paint above the overlay clip (`overflow: hidden`), the toolbar pins inside the visible block instead.                                   | `data-editor-block-toolbar`, `data-side`, `data-block-type`                                               |
-| `Canvas.InsertButton`    | `button`        | `placement` (`between` \| `container`), optional `type`, optional `onInsert`, `render`, button props. Shown only in `edit`.                                                                                                                                              | `data-editor-insert-button`, `data-orientation`, `data-empty-container`                                   |
-| `Canvas.DragHandle`      | `button`        | `blockId` (required), `render`, button props. Move an existing block by pointer drag. Shown only in `edit`. Overlay siblings inset into the visible block so overlay `overflow: hidden` does not clip the handle; inside `Canvas.BlockToolbar` the handle stays in flow. | `data-editor-drag-handle`, `data-dragging` on the handle while its block is the move session              |
-| `Canvas.PaletteItem`     | `button`        | `type` (required), optional `properties`, `render`, button props. Click inserts like `Editor.AddBlock` when the current selection can host the type; drag is always available.                                                                                           | `data-editor-palette-item`, `data-block-type`, `data-dragging` while this item starts a new-block session |
-| `Canvas.DropIndicator`   | `div`           | `render`, div props. Line or box from the active drop target. Presentational.                                                                                                                                                                                            | `data-editor-drop-indicator`, `data-orientation`, `data-variant`, `data-kind` (`new` \| `move`)           |
-| `Canvas.DragPreview`     | `div`           | `render`, div props, optional children. Follows the pointer during a session. Presentational.                                                                                                                                                                            | `data-editor-drag-preview`, `data-kind` (`new` \| `move`)                                                 |
-| `Canvas.InlineText`      | `div`           | `suggest`, `discardOnEscape`, `render`, div props. Overlays a contentEditable glass on `text` fields in `edit` (not `readOnly` ones); a richText or readOnly click selects the block and focuses its form control.                                                       | `data-editor-inline-text`, `data-editing`, `data-block-type`, `data-field`                                |
-| `Canvas.ReadonlySubtree` | `div`           | `render`, div props. `inert`, `display: contents`; wraps embedded trees that are shown but not edited.                                                                                                                                                                   | `data-editor-readonly`                                                                                    |
-| `Canvas.BlockError`      | `div`           | `blockId`, `blockType`, `error` (all set by the canvas), `render`, div props; `role="alert"`, carries the block anchor so the block stays selectable and deletable                                                                                                       | `data-editor-block`, `data-block-error`, `data-block-id`, `data-block-type`                               |
-| `Canvas.UnknownBlock`    | `div`           | `blockId`, `blockType`, `props`, `slots` (set by the canvas), `render`, div props; renders every slot below its label                                                                                                                                                    | `data-editor-block`, `data-unknown-block`, `data-block-id`, `data-block-type`                             |
+| Part                     | Default element          | Props                                                                                                                                                                                                                                            | Data attributes                                                                                           |
+| ------------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `Canvas.Provider`        | none                     | `children`. Renders no element; owns the drag session shared by every part and `Canvas.Root` below it. Optional.                                                                                                                                 | none                                                                                                      |
+| `Canvas.Root`            | `div`                    | `components` (required), `surface`, `interactive`, `resolve`, `chunkSize`, `renderBlockError`, `renderUnknownBlock`, `clickToEdit`, `children` (overlay), `render`, div props                                                                    | `data-editor-canvas`, `data-interactive`, `data-dragging`, `data-editing`                                 |
+| `Canvas.Overlay`         | `div`                    | `render`, div props. Portals into the canvas host.                                                                                                                                                                                               | `data-editor-overlay`                                                                                     |
+| `Canvas.SelectionRing`   | `div`                    | `render`, div props. Sized from the selected block rect.                                                                                                                                                                                         | `data-editor-selection-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`    |
+| `Canvas.HoverRing`       | `div`                    | `render`, div props. Hidden while dragging, editing, or when hovered equals selected.                                                                                                                                                            | `data-editor-hover-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
+| `Canvas.FieldRing`       | `div`                    | `render`, div props. Sized from the focused field rect (own-block only).                                                                                                                                                                         | `data-editor-field-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
+| `Canvas.BlockToolbar`    | `div`                    | `align`, `side`, `offset`, `render`, div props. Consumer supplies buttons. Shown in `edit` and `select`. Pins inside the visible block when `side="top"` would clip. Named from the catalog (`parts.blockToolbar`), one tab stop, Alt+F10 entry. | `data-editor-block-toolbar`, `data-side`, `data-block-type`                                               |
+| `Canvas.InsertButton`    | `button`                 | `placement` (`between` \| `container`), optional `type`, optional `onInsert`, `render`, button props. Shown only in `edit`.                                                                                                                      | `data-editor-insert-button`, `data-orientation`, `data-empty-container`                                   |
+| `Canvas.DragHandle`      | `button`                 | `blockId` (required), `render`, button props. Move an existing block by pointer drag. Overlay siblings inset into the visible block; inside `Canvas.BlockToolbar` the handle stays in flow.                                                      | `data-editor-drag-handle`, `data-dragging` on the handle while its block is the move session              |
+| `Canvas.PaletteItem`     | `button`                 | `type` (required), optional `properties`, `render`, button props. Click inserts like `Editor.AddBlock`; drag adds by geometry.                                                                                                                   | `data-editor-palette-item`, `data-block-type`, `data-dragging` while this item starts a new-block session |
+| `Canvas.DropIndicator`   | `div`                    | `render`, div props. Line or box from the active drop target. Presentational.                                                                                                                                                                    | `data-editor-drop-indicator`, `data-orientation`, `data-variant`, `data-kind` (`new` \| `move`)           |
+| `Canvas.DragPreview`     | `div`                    | `render`, div props, optional children. Follows the pointer during a session. Presentational.                                                                                                                                                    | `data-editor-drag-preview`, `data-kind` (`new` \| `move`)                                                 |
+| `Canvas.InlineText`      | `div`                    | `suggest`, `discardOnEscape`, `render`, div props. Overlays a contentEditable glass on `text` fields in `edit`; not on `readOnly` fields.                                                                                                        | `data-editor-inline-text`, `data-editing`, `data-block-type`, `data-field`                                |
+| `Canvas.ReadonlySubtree` | `div`                    | `render`, div props. `inert`, `display: contents`; wraps embedded trees that are shown but not edited.                                                                                                                                           | `data-editor-readonly`                                                                                    |
+| `Canvas.BlockError`      | `div`                    | `blockId`, `blockType`, `error` (all set by the canvas), `render`, div props; `role="alert"`, carries the block anchor so the block stays selectable and deletable                                                                               | `data-editor-block`, `data-block-error`, `data-block-id`, `data-block-type`                               |
+| `Canvas.UnknownBlock`    | `div`                    | `blockId`, `blockType`, `props`, `slots` (set by the canvas), `render`, div props; renders every slot below its label                                                                                                                            | `data-editor-block`, `data-unknown-block`, `data-block-id`, `data-block-type`                             |
+| `Canvas.ContextMenu`     | `div` with `role="menu"` | `commands`, `renderItem(entry, run)`, `render`, div props; fixed at the pointer, focus returns on close                                                                                                                                          | `data-open`                                                                                               |
 
 ## Hooks
 
-| Hook              | Returns                | Notes                                                                                                                                                        |
-| ----------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `useResolved`     | `T \| undefined`       | Reads the canvas resolve cache. Throws outside `Canvas.Root`. `undefined` is miss or pending.                                                                |
-| `useBlockRect`    | `CanvasRect \| null`   | Content coordinates of a block id (union of same-id nodes). Throws outside `Canvas.Root`.                                                                    |
-| `useFieldRect`    | `CanvasRect \| null`   | Content coordinates of a field on its own block. Throws outside `Canvas.Root`.                                                                               |
-| `useInsertTarget` | `InsertTarget \| null` | Resolved line or box from pointer and hover. Throws outside `Canvas.Root`. Null in `select` / `none`, while dragging or editing, or without pointer / hover. |
+| Hook               | Returns                | Notes                                                                                                                                                         |
+| ------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `useResolved`      | `T \| undefined`       | Reads the canvas resolve cache. Throws outside `Canvas.Root`. `undefined` is miss or pending.                                                                 |
+| `useBlockRect`     | `CanvasRect \| null`   | Content coordinates of a block id (union of same-id nodes). Throws outside `Canvas.Root`.                                                                     |
+| `useFieldRect`     | `CanvasRect \| null`   | Content coordinates of a field on its own block. Throws outside `Canvas.Root`.                                                                                |
+| `useEditableField` | `EditableField`        | `(blockId, key)`: in-place plain-text editing of the component's own element. `editable` is false outside an editing canvas; spread `props` onto the element. |
+| `useInsertTarget`  | `InsertTarget \| null` | Resolved line or box from pointer and hover. Throws outside `Canvas.Root`. Null in `select` / `none`, while dragging or editing, or without pointer / hover.  |
 
 ## Types
 
@@ -137,8 +173,20 @@ creates the session itself and provides it to its children.
 | `CanvasFieldRingProps`       | Props of `Canvas.FieldRing`.                                                                                                                     |
 | `CanvasRingState`            | `blockType`, `canMove`, `canDelete`, `unresolved` on every ring.                                                                                 |
 | `CanvasRect`                 | `{ x, y, width, height }` in canvas content coordinates.                                                                                         |
-| `CanvasComponents`           | Component type to `CanvasComponent` (props: `id`, `type`, `props`, `children`, `node`, `edit`).                                                  |
-| `CanvasResolve`              | Field kind to `FieldResolver` `(value, field)`; results are cached per kind and value.                                                           |
+| `CanvasComponents`           | Component type to `CanvasComponent`.                                                                                                             |
+| `CanvasComponent`            | One component in a `CanvasComponents` map.                                                                                                       |
+| `CanvasComponentProps`       | What a canvas component receives: `id`, `type`, `props`, `children`, `slots`, `edit`.                                                            |
+| `BlockErrorInfo`             | What `renderBlockError` receives: `{ blockId, blockType, error }`.                                                                               |
+| `UnknownBlockInfo`           | What `renderUnknownBlock` receives: `{ blockId, blockType, props, slots }`.                                                                      |
+| `CanvasBlockErrorProps`      | Props of `Canvas.BlockError`.                                                                                                                    |
+| `CanvasUnknownBlockProps`    | Props of `Canvas.UnknownBlock`.                                                                                                                  |
+| `CanvasContextMenuProps`     | Props of `Canvas.ContextMenu`.                                                                                                                   |
+| `ContextMenuEntry`           | A menu row: `{ kind: 'command', id, label, disabled }` or `{ kind: 'select', role, blockId, label }`.                                            |
+| `CanvasClickToEdit`          | `'select-and-edit' \| 'select-first'`.                                                                                                           |
+| `BlockErrorBoundaryProps`    | Props of `BlockErrorBoundary`: `resetKey`, `fallback(error)`, `onError?`, `onReset?`.                                                            |
+| `CanvasResolve`              | Field kind to `FieldResolver`.                                                                                                                   |
+| `FieldResolver`              | `(value, field) => resolved \| Promise<resolved> \| undefined`.                                                                                  |
+| `CanvasReadonlySubtreeProps` | Props of `Canvas.ReadonlySubtree`.                                                                                                               |
 | `CanvasInteractive`          | `'edit' \| 'select' \| 'none'`. Default `'edit'`.                                                                                                |
 | `CanvasSurface`              | `'inline' \| 'frame'`. Default `'inline'`. `'frame'` throws.                                                                                     |
 | `InsertTarget`               | Resolved insert: `parent` (`{ id, slot }`), `index`, `orientation`, `variant`, `rect`, `allowedTypes`, `nested`.                                 |
@@ -147,11 +195,47 @@ creates the session itself and provides it to its children.
 | `ResolveInsertAtOptions`     | Injected block rects, slot rects (`getSlotRect(id, slot)`, the element carrying `edit.slot.<name>`) and the row-flow stub for `resolveInsertAt`. |
 | `CanvasBlockToolbarProps`    | Props of `Canvas.BlockToolbar`.                                                                                                                  |
 | `CanvasInsertButtonProps`    | Props of `Canvas.InsertButton`.                                                                                                                  |
+| `CanvasDragHandleProps`      | Props of `Canvas.DragHandle`.                                                                                                                    |
+| `CanvasDragPreviewProps`     | Props of `Canvas.DragPreview`.                                                                                                                   |
+| `CanvasDropIndicatorProps`   | Props of `Canvas.DropIndicator`.                                                                                                                 |
+| `CanvasPaletteItemProps`     | Props of `Canvas.PaletteItem`.                                                                                                                   |
 | `PointerStore`               | External pointer snapshot store on the canvas context.                                                                                           |
+| `PointerSnapshot`            | One pointer sample (client coordinates and target block id).                                                                                     |
+| `DragSession`                | Active pointer drag state (new block or move).                                                                                                   |
+| `EditableField`              | What `useEditableField` returns: `editable`, `editing`, `props`.                                                                                 |
+| `PlainTextOptions`           | `{ multiline, maxLength }`: the plain-text rules of a field.                                                                                     |
 | `CanvasInlineTextProps`      | Props of `Canvas.InlineText`.                                                                                                                    |
 | `InlineSuggest`              | Optional `$`-anchored suggest config: `pattern`, `getItems`, `render`.                                                                           |
 | `InlineSuggestItem`          | Suggest row: `insertText` plus consumer fields for `render`.                                                                                     |
 | `InlineSuggestRenderContext` | Suggest UI context: items, highlight, query, anchor rect, `accept`.                                                                              |
+
+## Helpers
+
+`BlockErrorBoundary` is the class boundary every canvas block sits in: it
+shows `fallback(error)` after its children threw and renders them again when
+`resetKey` changes (`onReset({ reason: 'keys' })`). Use it around blocks
+rendered with `renderDocument` from
+[`@createcms/react/editor/render`](/docs/reference/react-editor-render) in a
+client component.
+
+| Export                    | Description                                                                                                                                                                                                      |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `resolveInsertAt`         | Pure insert geometry: `(schema, nodes, rootId, startBlockId, x, y, options)`; walks the ancestors and every declared slot that admits the dragged type.                                                          |
+| `INSERT_BOX_PAD`          | Padding around an empty container insert box.                                                                                                                                                                    |
+| `INSERT_LINE_THICKNESS`   | Hit thickness for line insert targets.                                                                                                                                                                           |
+| `adjustMoveIndex`         | `(nodes, id, parent: SlotRef, index)`: index adjustment when moving a block within the same slot.                                                                                                                |
+| `blockIdAtPoint`          | Block id under a client point from measured rects.                                                                                                                                                               |
+| `createSectionRefBlock`   | `({ resolver, components, schema? })`: the canvas component for `$ref` blocks. The block selects as a whole (`data-kind="ref"`, `data-loading` until resolved); its section renders read-only with `components`. |
+| `CONTEXT_MENU_COMMANDS`   | The default command ids of `Canvas.ContextMenu`.                                                                                                                                                                 |
+| `rangeSelection`          | `(store, id)`: the Shift+click selection.                                                                                                                                                                        |
+| `toggledSelection`        | `(store, id)`: the Mod+click selection.                                                                                                                                                                          |
+| `depthParent`             | `(store, id)`: the Alt+click target, `null` at the top level.                                                                                                                                                    |
+| `isSelectionClick`        | Whether a click's modifiers select without editing.                                                                                                                                                              |
+| `DND_THRESHOLD_PX`        | Pointer distance before a drag session starts.                                                                                                                                                                   |
+| `applyTextEdit`           | Apply a DOM text edit to a string value.                                                                                                                                                                         |
+| `EMPTY_FIELD_PLACEHOLDER` | Zero-width placeholder injected for empty inline fields.                                                                                                                                                         |
+| `normalizePlainText`      | `(text, multiline)`: line endings normalised; line breaks become spaces when single-line.                                                                                                                        |
+| `isInlineEditableKind`    | Whether a field kind supports `Canvas.InlineText`.                                                                                                                                                               |
 
 ## Data attributes
 
@@ -162,9 +246,10 @@ creates the session itself and provides it to its children.
 | `data-dragging`              | host, drag handle, palette item      | Present on the host while any canvas drag session is active; on a handle or palette item while that part owns the session. |
 | `data-editing`               | host, inline glass                   | Present while the local selection has an inline-editing target.                                                            |
 | `data-editor-block`          | block root via `edit.block`          | Document-tree block id.                                                                                                    |
-| `data-editor-field`          | field element via `edit.field.<key>` | Property key, counted only inside its own block.                                                                           |
+| `data-editor-field`          | field element via `edit.field.<key>` | Field key, counted only inside its own block.                                                                              |
+| `data-editor-slot`           | slot element via `edit.slot.<name>`  | Slot name; the slot's children render inside this element.                                                                 |
 | `data-unresolved`            | block root via `edit.block`; rings   | Present when a resolved value is pending or missing. On a ring: any measured block element for that id has the attribute.  |
-| `data-editor-readonly`       | wrapper around referenced children   | Together with `inert`, excludes the subtree from click-select and measurement.                                             |
+| `data-editor-readonly`       | `Canvas.ReadonlySubtree`             | Together with `inert`, excludes the subtree from click-select and measurement.                                             |
 | `data-editor-overlay`        | Overlay host                         | Presence marker. `pointer-events: none`; not `aria-hidden`.                                                                |
 | `data-editor-block-toolbar`  | `Canvas.BlockToolbar` inner chrome   | Presence marker. `role="toolbar"`.                                                                                         |
 | `data-editor-insert-button`  | `Canvas.InsertButton`                | Presence marker.                                                                                                           |
@@ -185,11 +270,6 @@ creates the session itself and provides it to its children.
 | `data-can-delete`            | rings                                | Present when the block is not the root.                                                                                    |
 | `data-editor-inline-text`    | `Canvas.InlineText` glass            | Presence marker. `role="textbox"`.                                                                                         |
 | `data-field`                 | `Canvas.InlineText` glass            | Property key being edited.                                                                                                 |
-
-During an inline session the origin field element gets
-`visibility: hidden` so `getComputedStyle(origin).color` stays real. Empty
-string and richText display properties may carry a zero-width placeholder in
-the canvas renderer; neither value is stored.
 
 ## Tests
 

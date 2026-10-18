@@ -13,14 +13,21 @@ import { composeRefs, useRender } from '../../use-render';
 import { useDocSelector, useSessionSelector } from '../binding';
 import { useEditorContext } from '../context';
 import { warnOnce } from '../core/codes';
+import { formatIssue } from '../core/messages';
 import { groupFields, validateField } from '../core/schema';
+import { isHTMLElement } from '../dom';
 import { useAnyField, useFields } from '../hooks';
+import { useMessages } from '../messages';
 import { scrollElementIntoView } from '../scroll';
 import { FieldContext, useFieldContext } from './context';
 import { defaultFieldControls } from './controls';
-import { formatFieldError } from './messages';
 
 // --- Editor.Field -----------------------------------------------------------
+
+const EDITABLE =
+  'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
+const FOCUSABLE =
+  'input, textarea, select, button, [contenteditable], [tabindex]:not([tabindex="-1"])';
 
 type FieldState = {
   kind: string;
@@ -48,7 +55,17 @@ export type EditorFieldProps = UseRenderComponentProps<'div', FieldState> & {
  * block's type does not declare.
  */
 export function EditorField(props: EditorFieldProps) {
-  const { blockId, name, disabled = false, render, onFocus, ...rest } = props;
+  const {
+    blockId,
+    name,
+    disabled = false,
+    render,
+    onFocus,
+    onPointerEnter,
+    onPointerLeave,
+    ref,
+    ...rest
+  } = props;
   const ctx = useEditorContext('Editor.Field');
   const field = useAnyField(blockId, name);
   const focused = useSessionSelector((state) => {
@@ -129,9 +146,48 @@ export function EditorField(props: EditorFieldProps) {
     // focus actually moves to this field, never on every keystroke.
     if (!focused) ctx.store.focus({ blockId, key: name });
   };
+  const elRef = React.useRef<HTMLDivElement | null>(null);
+  const store = ctx.store;
+  // Focus set elsewhere (a click in the canvas or a preview) moves DOM focus
+  // into the control. It waits until every listener of the click ran (one
+  // of them may start inline editing), and never takes focus from inline
+  // editing or from another text input.
+  React.useEffect(() => {
+    if (!focused) return;
+    const timer = setTimeout(() => {
+      const el = elRef.current;
+      if (!el || store.getSession().editing !== null) return;
+      const doc = el.ownerDocument;
+      const active = doc.activeElement;
+      if (active && el.contains(active)) return;
+      if (active?.closest(EDITABLE)) return;
+      const control =
+        doc.getElementById(id) ?? el.querySelector<HTMLElement>(FOCUSABLE);
+      if (!isHTMLElement(control) || !el.contains(control)) return;
+      // Focus inside a preview frame stays there until the host window
+      // takes it back.
+      if (active?.tagName === 'IFRAME') doc.defaultView?.focus();
+      control.focus({ preventScroll: true });
+      scrollElementIntoView(control);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [focused, store, id]);
   const element = useRender<'div', FieldState>({
     defaultTagName: 'div',
-    props: { ...rest, onFocus: handleFocus },
+    props: {
+      ...rest,
+      ref: composeRefs(elRef, ref),
+      onFocus: handleFocus,
+      // Pointing at a field highlights its block in the canvas and previews.
+      onPointerEnter: (event: React.PointerEvent<HTMLDivElement>) => {
+        onPointerEnter?.(event);
+        store.hover(blockId);
+      },
+      onPointerLeave: (event: React.PointerEvent<HTMLDivElement>) => {
+        onPointerLeave?.(event);
+        if (store.getEphemeral().hoverId === blockId) store.hover(null);
+      },
+    },
     render,
     state: {
       kind: spec?.type ?? 'unknown',
@@ -245,6 +301,7 @@ export function EditorFieldError({
   ...rest
 }: EditorFieldErrorProps) {
   const field = useFieldContext('Editor.FieldError');
+  const messages = useMessages();
   const { registerDescribedBy, errorId } = field;
   React.useLayoutEffect(
     () => registerDescribedBy(errorId),
@@ -255,7 +312,9 @@ export function EditorFieldError({
     props: {
       id: errorId,
       role: 'alert',
-      children: children ?? field.errors.map(formatFieldError).join(' '),
+      children:
+        children ??
+        field.errors.map((error) => formatIssue(error, messages)).join(' '),
       ...rest,
     },
     render,

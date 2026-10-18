@@ -1,3 +1,5 @@
+import type { NodeData } from './document';
+import type { MessagesInput } from './messages';
 import type {
   AnyComponentDef,
   AnyEditorSchema,
@@ -6,6 +8,7 @@ import type {
 } from './schema';
 import type {
   BeforeCommandHandler,
+  BeforeSaveGate,
   EditorCommand,
   EditorEventName,
   EditorEvents,
@@ -49,11 +52,24 @@ export type EditorPlugin = {
   readonly blocks?: Readonly<Record<string, AnyComponentDef>>;
   /** UI commands by id. */
   readonly commands?: Readonly<Record<string, PluginCommand>>;
-  /** Key combo (`Mod+Shift+d`) to command id. */
+  /** Key combo (`Mod+Shift+d`) to command id; replaces a default binding, `''` unbinds it. */
   readonly shortcuts?: Readonly<Record<string, string>>;
   readonly on?: PluginEventHandlers;
   /** Components for named UI outlets (`block-toolbar`, ...); typed by the rendering layer. */
   readonly slots?: Readonly<Record<string, unknown>>;
+  /** Catalog entries (command labels, texts); `Editor.Root`'s `messages` win. */
+  readonly messages?: MessagesInput;
+  /** Blocks a save with issues (after `Editor.Root`'s `beforeSave`). */
+  readonly beforeSave?: BeforeSaveGate;
+  /**
+   * Turns pasted content from outside the editor (`text/html`,
+   * `text/plain`) into blocks; the first plugin that returns blocks wins.
+   * Ids are replaced on insert.
+   */
+  readonly convertForeignPaste?: (
+    data: { readonly html: string; readonly text: string },
+    store: EditorStore,
+  ) => readonly NodeData[] | null | undefined;
   readonly priority?: number;
 };
 
@@ -180,27 +196,35 @@ export function normalizeCombo(combo: string): string {
 }
 
 /**
- * Combo to command id over `plugins` (earlier plugins win). Reports each
- * combo bound twice to `onConflict`.
+ * Combo to command id: `base` with `plugins` on top (a plugin combo
+ * replaces a default; an empty id unbinds it; earlier plugins win over
+ * later ones). Reports each combo two plugins bind differently to
+ * `onConflict`.
  */
 export function pluginShortcuts(
   plugins: readonly EditorPlugin[],
   base: Readonly<Record<string, string>>,
   onConflict: (combo: string, kept: string, dropped: string) => void,
 ): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [combo, id] of Object.entries(base))
-    out[normalizeCombo(combo)] = id;
+  const bound: Record<string, string> = {};
   for (const plugin of sortPlugins(plugins)) {
     for (const [combo, id] of Object.entries(plugin.shortcuts ?? {})) {
       const key = normalizeCombo(combo);
-      const kept = out[key];
+      const kept = bound[key];
       if (kept !== undefined) {
         if (kept !== id) onConflict(key, kept, id);
         continue;
       }
-      out[key] = id;
+      bound[key] = id;
     }
+  }
+  const out: Record<string, string> = {};
+  for (const [combo, id] of Object.entries(base)) {
+    out[normalizeCombo(combo)] = id;
+  }
+  for (const [combo, id] of Object.entries(bound)) {
+    if (id === '') delete out[combo];
+    else out[combo] = id;
   }
   return out;
 }

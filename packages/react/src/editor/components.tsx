@@ -2,9 +2,11 @@ import * as React from 'react';
 
 import type { EditorDocument } from './core/document';
 import type { Diagnostic } from './core/load';
+import type { MessagesInput, Platform } from './core/messages';
 import type { EditorPlugin } from './core/plugin';
 import type { AnyEditorSchema } from './core/schema';
 import type {
+  BeforeSaveGate,
   EditorChange,
   EditorError,
   EditorStore,
@@ -14,7 +16,9 @@ import type { FieldControlProps, FieldControls } from './field/types';
 import type { EditorScrollToOptions } from './scroll';
 import type { EditorContextValue } from './types';
 
+import { createAnnouncer, startAnnouncing } from './announcer';
 import { EditorContext } from './context';
+import { detectPlatform, EN_MESSAGES, mergeMessages } from './core/messages';
 import { createEditorStore } from './core/store';
 import { isHTMLElement } from './dom';
 import { scrollElementIntoView } from './scroll';
@@ -33,6 +37,12 @@ type EditorRootCommonProps = {
    * when `persistence` is given.
    */
   guardUnload?: boolean;
+  /** Text overrides on top of English and plugin entries (nested, partial). Read once at mount. */
+  messages?: MessagesInput;
+  /** Text direction of the editor UI (toolbar alignment, announcements). Default `ltr`. */
+  dir?: 'ltr' | 'rtl';
+  /** Keyboard label style; detected from the browser by default. */
+  platform?: Platform;
   children?: React.ReactNode;
 };
 
@@ -46,6 +56,11 @@ export type EditorRootOwnStoreProps = EditorRootCommonProps & {
   genId?: () => string;
   /** Saving: the save function, the base version, autosave timing. Read once at mount. */
   persistence?: PersistenceOptions;
+  /**
+   * Blocks a save with issues (`requireValidDocument()` blocks on
+   * validation errors); plugin gates run after it. Read fresh on every save.
+   */
+  beforeSave?: BeforeSaveGate;
   /** Read once at mount. */
   plugins?: readonly EditorPlugin[];
   /** Policy for remote ops that break placement. Read once at mount. */
@@ -63,6 +78,7 @@ export type EditorRootStoreProps = EditorRootCommonProps & {
   defaultValue?: undefined;
   genId?: undefined;
   persistence?: undefined;
+  beforeSave?: undefined;
   plugins?: undefined;
   remotePlacement?: undefined;
   onDiagnostics?: undefined;
@@ -102,9 +118,15 @@ function withPluginControls(
 export function EditorRoot(props: EditorRootProps) {
   const { onChange, onError, fields = EMPTY_FIELDS, children } = props;
   const onDiagnostics = props.onDiagnostics;
-  const callbacksRef = React.useRef({ onChange, onError, onDiagnostics });
+  const beforeSave = props.beforeSave;
+  const callbacksRef = React.useRef({
+    onChange,
+    onError,
+    onDiagnostics,
+    beforeSave,
+  });
   React.useLayoutEffect(() => {
-    callbacksRef.current = { onChange, onError, onDiagnostics };
+    callbacksRef.current = { onChange, onError, onDiagnostics, beforeSave };
   });
 
   const ctxRef = React.useRef<EditorContextValue | null>(null);
@@ -116,6 +138,7 @@ export function EditorRoot(props: EditorRootProps) {
         initialValue: props.defaultValue,
         genId: props.genId,
         persistence: props.persistence,
+        beforeSave: (ctx) => callbacksRef.current.beforeSave?.(ctx),
         plugins: props.plugins,
         remotePlacement: props.remotePlacement,
         onDiagnostics: (diagnostics) =>
@@ -151,6 +174,14 @@ export function EditorRoot(props: EditorRootProps) {
     ctxRef.current = {
       schema: store.schema,
       store,
+      messages: mergeMessages(
+        EN_MESSAGES,
+        ...store.plugins.map((plugin) => plugin.messages),
+        props.messages,
+      ),
+      dir: props.dir ?? 'ltr',
+      announcer: createAnnouncer(),
+      platform: props.platform ?? detectPlatform(),
       fields: withPluginControls(fields, store.plugins),
       registerScrollTarget,
       scrollTo,
@@ -171,6 +202,12 @@ export function EditorRoot(props: EditorRootProps) {
       offError();
     };
   }, [store]);
+
+  const { announcer, messages } = ctxRef.current;
+  React.useEffect(
+    () => startAnnouncing(store, announcer, messages),
+    [store, announcer, messages],
+  );
 
   React.useEffect(() => {
     if (typeof document === 'undefined') return;

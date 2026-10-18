@@ -31,6 +31,7 @@ import {
   useStoreSessionSelector,
 } from './binding';
 import { useEditorContext } from './context';
+import { ariaKeyShortcut, formatShortcut } from './core/messages';
 import {
   allowedChildTypes,
   DEFAULT_SLOT,
@@ -515,10 +516,15 @@ export function useSaveConflict(): SaveConflictApi | null {
 /** A UI command with its availability; re-renders when the session or document changes. */
 export type CommandApi = {
   readonly id: string;
+  /** From the catalog's `commands`, else the command's own label. */
   readonly label: string | undefined;
   readonly canExecute: boolean;
-  /** The bound key combo, if any. */
+  /** The bound key combo, if any (`mod+shift+z`). */
   readonly shortcut: string | undefined;
+  /** The combo as shown on this platform (`⌘⇧Z`, `Ctrl+Shift+Z`). */
+  readonly shortcutLabel: string | undefined;
+  /** The combo as an `aria-keyshortcuts` value. */
+  readonly ariaKeyShortcuts: string | undefined;
   run(args?: unknown): unknown;
 };
 
@@ -539,19 +545,28 @@ export function useCommand(id: string): CommandApi | null {
   useStoreSessionSelector(store, (state) => state);
   useStoreDocSelector(store, (state) => state.version);
   const canExecute = command ? store.commands.canExecute(id) : false;
-  return React.useMemo(
-    () =>
-      command
-        ? {
-            id,
-            label: command.label,
-            canExecute,
-            shortcut: shortcutFor(store, id),
-            run: (args?: unknown) => store.commands.execute(id, args),
-          }
-        : null,
-    [store, id, command, canExecute],
-  );
+  return React.useMemo(() => {
+    if (!command) return null;
+    const shortcut = shortcutFor(store, id);
+    return {
+      id,
+      label: ctx.messages.commands[id] ?? command.label,
+      canExecute,
+      shortcut,
+      shortcutLabel:
+        shortcut === undefined
+          ? undefined
+          : formatShortcut(shortcut, {
+              platform: ctx.platform,
+              messages: ctx.messages,
+            }),
+      ariaKeyShortcuts:
+        shortcut === undefined
+          ? undefined
+          : ariaKeyShortcut(shortcut, ctx.platform),
+      run: (args?: unknown) => store.commands.execute(id, args),
+    };
+  }, [ctx, store, id, command, canExecute]);
 }
 
 /** Every UI command of the editor (built-ins, then plugins). */

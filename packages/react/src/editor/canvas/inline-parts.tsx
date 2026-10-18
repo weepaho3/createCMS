@@ -18,10 +18,17 @@ import {
   caretRangeAtPoint,
   fieldOf,
   isInlineEditableField,
+  isInPlaceField,
   placeCaret,
   RICH_TEXT_INLINE_WARNING,
   stripPlaceholder,
 } from './inline-text';
+import { isSelectionClick } from './interact';
+import {
+  bindPlainText,
+  normalizePlainText,
+  type PlainTextOptions,
+} from './plain-text';
 import { canvasRectOf } from './rect';
 import { useFieldRect } from './rects';
 
@@ -30,6 +37,12 @@ function warnRichTextInlineOnce(): void {
     warnOnce('E001', RICH_TEXT_INLINE_WARNING);
   }
 }
+
+/** While a drag runs the glass shows no caret and takes no selection. */
+const DRAGGING_GLASS: React.CSSProperties = {
+  caretColor: 'transparent',
+  userSelect: 'none',
+};
 
 export type InlineSuggestItem = {
   insertText: string;
@@ -158,11 +171,28 @@ export function CanvasInlineText({
   const editedNode = useDocSelector((s) =>
     current === null ? null : (s.nodes[current.blockId] ?? null),
   );
+  const editedField =
+    current === null || editedNode === null
+      ? undefined
+      : fieldsOf(ctx.schema, editedNode.type)[current.key];
   const editing = React.useMemo(() => {
-    if (current === null || editedNode === null) return null;
-    const field = fieldsOf(ctx.schema, editedNode.type)[current.key];
-    return field !== undefined && isInlineEditableField(field) ? current : null;
-  }, [ctx.schema, editedNode, current]);
+    if (current === null || editedField === undefined) return null;
+    return isInlineEditableField(editedField) && !isInPlaceField(editedField)
+      ? current
+      : null;
+  }, [editedField, current]);
+  const plainOptionsRef = React.useRef<PlainTextOptions>({
+    multiline: false,
+    maxLength: undefined,
+  });
+  plainOptionsRef.current = {
+    multiline: false,
+    maxLength:
+      editedField && 'maxLength' in editedField
+        ? editedField.maxLength
+        : undefined,
+  };
+  const composingRef = React.useRef<() => boolean>(() => false);
   const glassRef = React.useRef<HTMLDivElement | null>(null);
   const seededFor = React.useRef<string | null>(null);
   const sessionStart = React.useRef<string>('');
@@ -200,6 +230,7 @@ export function CanvasInlineText({
   }, [canvas.host, editing, syncedFieldRect, editedNode]);
 
   const fieldRect = syncedFieldRect ?? fallbackRect;
+  const glassShown = editing !== null && fieldRect !== null;
 
   const storeRaw = editing === null ? '' : editedNode?.props[editing.key];
   const storeValue = typeof storeRaw === 'string' ? storeRaw : '';
@@ -255,6 +286,7 @@ export function CanvasInlineText({
     [suggestState, editing, ctx.store],
   );
 
+  const clickEdits = canvas.clickEdits;
   React.useLayoutEffect(() => {
     const host = canvas.host;
     if (!host) return;
@@ -265,6 +297,8 @@ export function CanvasInlineText({
       if (isInsideReadonly(target, host)) return;
 
       const pointer = event as MouseEvent | PointerEvent;
+      // Modifier clicks select (range, toggle, parent) and never edit.
+      if (isSelectionClick(pointer)) return;
 
       const overlay = target.closest('[data-editor-overlay]');
       if (overlay && insideHost(host, overlay)) {
@@ -325,6 +359,12 @@ export function CanvasInlineText({
         return;
       }
 
+      if (!clickEdits(anchor.blockId)) {
+        ctx.store.select(anchor.blockId);
+        ctx.store.focus({ blockId: anchor.blockId, key: anchor.key });
+        return;
+      }
+
       canvas.inlineCaret.current = {
         x: pointer.clientX,
         y: pointer.clientY,
@@ -343,6 +383,7 @@ export function CanvasInlineText({
     canvas.interactive,
     canvas.dragging,
     canvas.inlineCaret,
+    clickEdits,
     ctx.schema,
     ctx.store,
   ]);
@@ -438,6 +479,7 @@ export function CanvasInlineText({
     el.style.paddingBottom = computed.paddingBottom;
     el.style.paddingLeft = computed.paddingLeft;
     el.style.whiteSpace = computed.whiteSpace;
+    el.style.overflowWrap = computed.overflowWrap;
   }, [canvas.host, editing, fieldRect, storeValue]);
 
   React.useLayoutEffect(() => {
@@ -456,7 +498,10 @@ export function CanvasInlineText({
     (coalesce: boolean) => {
       const el = glassRef.current;
       if (!el || editing === null) return;
-      const text = stripPlaceholder(el.textContent ?? '');
+      const text = normalizePlainText(
+        stripPlaceholder(el.textContent ?? ''),
+        plainOptionsRef.current.multiline,
+      );
       ctx.store.update(editing.blockId, { [editing.key]: text }, { coalesce });
     },
     [editing, ctx.store],
@@ -470,15 +515,31 @@ export function CanvasInlineText({
   React.useLayoutEffect(() => {
     const el = glassRef.current;
     if (!el || editing === null) return;
+    const plain = bindPlainText(
+      el,
+      () => plainOptionsRef.current,
+      () => commit(true),
+    );
+    composingRef.current = plain.isComposing;
     const onNativeInput = () => {
+      // A composition commits once, on `compositionend`.
+      if (plain.isComposing()) return;
       commit(true);
       refreshSuggest();
     };
     el.addEventListener('input', onNativeInput);
     return () => {
       el.removeEventListener('input', onNativeInput);
+      plain.unbind();
+      composingRef.current = () => false;
     };
-  }, [commit, editing, refreshSuggest]);
+    // The glass mounts once its field is measured: bind to that element.
+  }, [commit, editing, refreshSuggest, glassShown]);
+
+  // A drag must never type into the glass: end the session when one starts.
+  React.useEffect(() => {
+    if (canvas.dragging && editing !== null) glassRef.current?.blur();
+  }, [canvas.dragging, editing]);
 
   const onBlur = React.useCallback(() => {
     if (editing === null) return;
@@ -494,6 +555,8 @@ export function CanvasInlineText({
 
   const onKeyDown = React.useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
+      // Enter and Escape confirm or cancel an IME candidate, not the session.
+      if (event.nativeEvent.isComposing || composingRef.current()) return;
       if (isModKey(event.nativeEvent)) {
         if (event.key === 'z' && !event.shiftKey) {
           event.preventDefault();
@@ -587,8 +650,15 @@ export function CanvasInlineText({
       ...rest,
       ref: glassRef,
       role: 'textbox',
-      'aria-label': rest['aria-label'] ?? 'Edit text',
+      'aria-label':
+        rest['aria-label'] ??
+        editedField?.label ??
+        ctx.messages.parts.inlineText,
       'aria-multiline': 'false',
+      'aria-placeholder':
+        editedField && 'placeholder' in editedField
+          ? editedField.placeholder
+          : undefined,
       contentEditable: 'plaintext-only',
       suppressContentEditableWarning: true,
       onBlur,
@@ -606,7 +676,9 @@ export function CanvasInlineText({
         }
         refreshSuggest();
       },
-      style: { outline: 'none', ...style },
+      style: canvas.dragging
+        ? { outline: 'none', ...DRAGGING_GLASS, ...style }
+        : { outline: 'none', ...style },
     },
     state: {
       editorInlineText: true,

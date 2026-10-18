@@ -144,6 +144,18 @@ export type WrapPayload = {
   props?: Record<string, unknown>;
 };
 export type ReplacePayload = { doc: EditorDocument };
+export type DetachPayload = {
+  /** The `$ref` node to replace. */
+  id: string;
+  /** Its resolved section; every id is replaced. */
+  nodes: readonly NodeData[];
+};
+export type PastePayload = {
+  parent: SlotTarget;
+  index?: number;
+  /** Subtrees from elsewhere; every id is replaced. */
+  nodes: readonly NodeData[];
+};
 
 const insert: CommandHandler<InsertPayload> = (payload, ctx) => {
   const state = ctx.getState();
@@ -235,6 +247,55 @@ const wrap: CommandHandler<WrapPayload> = (payload, ctx) => {
   ];
 };
 
+function requireKnownTypes(schema: AnyEditorSchema, node: NodeData): void {
+  if (!(node.type in schema.components)) {
+    throw new Error(`unknown block type "${node.type}"`);
+  }
+  for (const children of Object.values(node.slots ?? {})) {
+    for (const child of children) requireKnownTypes(schema, child);
+  }
+}
+
+const paste: CommandHandler<PastePayload> = (payload, ctx) => {
+  const state = ctx.getState();
+  const target = slotRef(payload.parent);
+  const parent = requireNode(state, target.id);
+  const start = payload.index ?? parent.slots[target.slot]?.length ?? 0;
+  const copies = payload.nodes.map((node) => {
+    requireKnownTypes(ctx.schema, node);
+    return remapIds(node, () => ctx.genId(), { schema: ctx.schema }).node;
+  });
+  ctx.select(copies.map((copy) => copy.id));
+  return copies.map((node, offset) => ({
+    op: 'insert' as const,
+    parent: target,
+    index: start + offset,
+    node,
+  }));
+};
+
+const detach: CommandHandler<DetachPayload> = ({ id, nodes }, ctx) => {
+  const state = ctx.getState();
+  const parent = requireNode(state, id).parent;
+  if (parent === null) throw new Error('the root cannot be detached');
+  const siblings = state.nodes[parent.id]?.slots[parent.slot] ?? [];
+  const index = siblings.indexOf(id);
+  const copies = nodes.map((child) => {
+    requireKnownTypes(ctx.schema, child);
+    return remapIds(child, () => ctx.genId(), { schema: ctx.schema }).node;
+  });
+  ctx.select(copies.map((copy) => copy.id));
+  return [
+    { op: 'remove', id },
+    ...copies.map((copy, offset) => ({
+      op: 'insert' as const,
+      parent,
+      index: index + offset,
+      node: copy,
+    })),
+  ];
+};
+
 const replace: CommandHandler<ReplacePayload> = ({ doc }) => [
   { op: 'replace', doc },
 ];
@@ -248,6 +309,8 @@ export const BUILTIN_COMMANDS = {
   'node.update': update,
   'node.duplicate': duplicate,
   'node.wrap': wrap,
+  'node.paste': paste,
+  'node.detach': detach,
   'doc.replace': replace,
 } as const satisfies Record<string, CommandHandler>;
 
@@ -260,6 +323,8 @@ export type BuiltinCommandPayloads = {
   'node.update': UpdatePayload;
   'node.duplicate': DuplicatePayload;
   'node.wrap': WrapPayload;
+  'node.paste': PastePayload;
+  'node.detach': DetachPayload;
   'doc.replace': ReplacePayload;
 };
 

@@ -1,6 +1,7 @@
 import type { EditorDocument, Op, Origin } from '../document';
 import type { Diagnostic } from '../load';
 import type { EditorPlugin } from '../plugin';
+import type { ValidationIssue } from '../schema';
 import type {
   BeforeCommandHandler,
   Command,
@@ -30,6 +31,7 @@ import {
   sortPlugins,
 } from '../plugin';
 import { slotsOf } from '../schema';
+import { builtinCommands, DEFAULT_SHORTCUTS } from './builtin-commands';
 import {
   BUILTIN_COMMANDS,
   checkPlacement,
@@ -56,11 +58,6 @@ const GLOBAL_TIMERS: Timers = {
 };
 
 /** Default key bindings of the built-in UI commands. */
-export const DEFAULT_SHORTCUTS: Readonly<Record<string, string>> = {
-  'Mod+z': 'history.undo',
-  'Mod+Shift+z': 'history.redo',
-  'Ctrl+y': 'history.redo',
-};
 
 type Channel<T> = {
   get(): T;
@@ -175,6 +172,7 @@ export function createEditorStore(
     save: INITIAL_SAVE_STATE,
     computed: {},
     nodeStatus: {},
+    collapsed: NO_SELECTION,
   });
   const ephemeral = createChannel<EphemeralState>({ hoverId: null });
 
@@ -235,6 +233,22 @@ export function createEditorStore(
     setState: (patch: Partial<SaveState>) => {
       session.set({ save: { ...session.get().save, ...patch } });
     },
+    gate: (document, ops, phase) => {
+      const results = [
+        options.beforeSave,
+        ...plugins.map((plugin) => plugin.beforeSave),
+      ].map((gate) => gate?.({ doc: document, ops, phase, schema }));
+      const flat = (
+        found: readonly (readonly ValidationIssue[] | void)[],
+      ): ValidationIssue[] => found.flatMap((issues) => issues ?? []);
+      // Synchronous gates keep the save synchronous.
+      if (results.some((result) => result instanceof Promise)) {
+        return Promise.all(
+          results.map((result) => Promise.resolve(result)),
+        ).then(flat);
+      }
+      return flat(results as (readonly ValidationIssue[] | void)[]);
+    },
     onBeforeSave: (document, ops) => emit('beforeSave', { doc: document, ops }),
     onAfterSave: (version) => emit('afterSave', { version }),
     onError: (error) => emit('saveError', { error }),
@@ -248,12 +262,32 @@ export function createEditorStore(
     return kept.length === 0 ? NO_SELECTION : kept;
   };
 
+  /** The collapsed rows without the ancestors of `ids` (same reference when unchanged). */
+  const expandedFor = (ids: readonly string[]): readonly string[] => {
+    const collapsed = session.get().collapsed;
+    if (collapsed.length === 0) return collapsed;
+    const nodes = doc.getSnapshot().nodes;
+    const open = new Set<string>();
+    for (const id of ids) {
+      let parent = nodes[id]?.parent ?? null;
+      while (parent !== null) {
+        open.add(parent.id);
+        parent = nodes[parent.id]?.parent ?? null;
+      }
+    }
+    const kept = collapsed.filter((id) => !open.has(id));
+    return kept.length === collapsed.length ? collapsed : kept;
+  };
+
   const setSelection = (ids: readonly string[]): void => {
     const current = session.get().selection;
     const next = pruned(ids);
     if (sameIds(current, next)) return;
     doc.breakMerge();
-    session.set({ selection: next.length === 0 ? NO_SELECTION : next });
+    session.set({
+      selection: next.length === 0 ? NO_SELECTION : next,
+      collapsed: expandedFor(next),
+    });
     emit('select', { selection: session.get().selection });
   };
 
@@ -438,57 +472,13 @@ export function createEditorStore(
     return { ok: true, ops };
   };
 
-  const builtinCommands = new Map<string, EditorCommand>([
-    [
-      'history.undo',
-      {
-        id: 'history.undo',
-        label: 'Undo',
-        run: (s) => s.undo(),
-        canExecute: (s) => s.getSession().history.canUndo,
-      },
-    ],
-    [
-      'history.redo',
-      {
-        id: 'history.redo',
-        label: 'Redo',
-        run: (s) => s.redo(),
-        canExecute: (s) => s.getSession().history.canRedo,
-      },
-    ],
-    [
-      'block.remove',
-      {
-        id: 'block.remove',
-        label: 'Delete',
-        run: (s) => {
-          const [id] = s.getSession().selection;
-          return id === undefined ? false : s.remove(id);
-        },
-        canExecute: (s) => {
-          const [id] = s.getSession().selection;
-          return id !== undefined && s.getDoc().nodes[id]?.parent != null;
-        },
-      },
-    ],
-    [
-      'block.duplicate',
-      {
-        id: 'block.duplicate',
-        label: 'Duplicate',
-        run: (s) => {
-          const [id] = s.getSession().selection;
-          return id === undefined ? null : s.duplicate(id);
-        },
-        canExecute: (s) => {
-          const [id] = s.getSession().selection;
-          return id !== undefined && s.getDoc().nodes[id]?.parent != null;
-        },
-      },
-    ],
-  ]);
-  const commandMap = new Map(builtinCommands);
+  const builtinCommandMap = new Map<string, EditorCommand>(
+    builtinCommands((action) => emit('ui', { action })).map((command) => [
+      command.id,
+      command,
+    ]),
+  );
+  const commandMap = new Map(builtinCommandMap);
   for (const [id, command] of pluginCommands(plugins)) {
     if (!commandMap.has(id)) commandMap.set(id, command);
   }
@@ -697,6 +687,7 @@ export function createEditorStore(
         return false;
       }
       afterChange(step.ops, 'history', step.selection);
+      emit('history', { direction: 'undo', label: step.label });
       return true;
     },
     redo() {
@@ -708,6 +699,7 @@ export function createEditorStore(
         return false;
       }
       afterChange(step.ops, 'history', step.selection);
+      emit('history', { direction: 'redo', label: step.label });
       return true;
     },
     mark: () => doc.mark(),
@@ -745,6 +737,15 @@ export function createEditorStore(
     },
     setMode(mode) {
       session.set({ mode });
+    },
+    setCollapsed(id, collapsed) {
+      const current = session.get().collapsed;
+      if (current.includes(id) === collapsed) return;
+      session.set({
+        collapsed: collapsed
+          ? [...current, id]
+          : current.filter((entry) => entry !== id),
+      });
     },
 
     save: (saveOptions) => saveScheduler.save(saveOptions),

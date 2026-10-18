@@ -374,9 +374,9 @@ export function createEditor<const S extends AnyEditorSchema>(
       useSchemaGuard('useHistory');
       return useHistory();
     },
-    useEditorKeyboard(scopeRef, options) {
+    useEditorKeyboard(scopeRef) {
       useSchemaGuard('useEditorKeyboard');
-      return useEditorKeyboard(scopeRef, options);
+      return useEditorKeyboard(scopeRef);
     },
     useSave() {
       useSchemaGuard('useSave');

@@ -105,7 +105,16 @@ export type TextConstraints = {
  * Single-line text.
  * @example { type: 'text', label: 'Title', required: true, maxLength: 80 }
  */
-export type TextField = { type: 'text'; inline?: boolean } & TextConstraints &
+export type TextField = {
+  type: 'text';
+  /**
+   * How the canvas edits the value in place: `glass` (default) overlays an
+   * editable copy, `in-place` edits the rendered element itself (for
+   * gradients, balanced wrapping, transforms; see `useEditableField`),
+   * `false` keeps it form-only.
+   */
+  inline?: 'glass' | 'in-place' | false;
+} & TextConstraints &
   FieldBase<string>;
 
 /**
@@ -433,6 +442,11 @@ export type ComponentDef<
   slots?: S;
   /** The component's renderer; typed by the rendering layer. */
   render?: unknown;
+  /**
+   * Props a page may override where this component appears inside a
+   * reusable section (`$ref`); every other prop stays as the section has it.
+   */
+  exposedProps?: readonly (keyof F & string)[];
   resolveFields?(
     data: { props: InferProps<F> },
     ctx: FieldContext,

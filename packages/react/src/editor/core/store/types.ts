@@ -9,7 +9,7 @@ import type {
 } from '../document';
 import type { Diagnostic } from '../load';
 import type { EditorPlugin } from '../plugin';
-import type { AnyEditorSchema } from '../schema';
+import type { AnyEditorSchema, ValidationIssue } from '../schema';
 import type { EditorNodes } from './serde';
 
 export type { EditorNodes } from './serde';
@@ -26,7 +26,26 @@ export type DocState = NormalizedDoc & {
 };
 
 /** Save state as the editor shows it. */
-export type SaveStatus = 'idle' | 'saving' | 'error' | 'conflict';
+/** `invalid`: a `beforeSave` gate blocked the save (see `SaveState.issues`). */
+export type SaveStatus = 'idle' | 'saving' | 'error' | 'conflict' | 'invalid';
+
+/** What started a save: autosave, `save()`, or `save({ phase: 'publish' })`. */
+export type SavePhase = 'autosave' | 'save' | 'publish';
+
+/**
+ * Runs before every save; returned issues block it (status `invalid`). May
+ * be async (`validateDocument` is). On `Editor.Root`, `createEditorStore`
+ * and plugins.
+ */
+export type BeforeSaveGate = (ctx: {
+  readonly doc: EditorDocument;
+  readonly ops: readonly Op[];
+  readonly phase: SavePhase;
+  readonly schema: AnyEditorSchema;
+}) =>
+  | readonly ValidationIssue[]
+  | void
+  | Promise<readonly ValidationIssue[] | void>;
 
 /** A save the server refused because the document moved on. */
 export type SaveConflict = {
@@ -45,6 +64,8 @@ export type SaveState = {
   readonly conflict: SaveConflict | null;
   /** The version the next save builds on (`baseVersion`). */
   readonly version: string | null;
+  /** What the `beforeSave` gates reported for the last blocked save. */
+  readonly issues: readonly ValidationIssue[];
 };
 
 /** The session scope: local to this editor, never undoable or persisted. */
@@ -62,6 +83,8 @@ export type SessionState = {
   >;
   /** Nodes whose `resolveData` is loading or failed. */
   readonly nodeStatus: Readonly<Record<string, NodeStatus>>;
+  /** Outline rows the user collapsed; selecting a block expands its ancestors. */
+  readonly collapsed: readonly string[];
 };
 
 /** Load state of one node's `resolveData`. */
@@ -305,7 +328,18 @@ export type EditorEvents = {
   error: EditorError;
   /** What the load pipeline migrated or repaired on `load`. */
   diagnostics: { readonly diagnostics: readonly Diagnostic[] };
+  /** After an undo or redo applied. */
+  history: { readonly direction: 'undo' | 'redo'; readonly label?: string };
+  /** A `ui.*` command asked the editor chrome to open or focus something. */
+  ui: { readonly action: UiAction };
 };
+
+/** What the `ui.*` commands ask of the editor chrome. */
+export type UiAction =
+  | 'commandPalette'
+  | 'quickInsert'
+  | 'toolbar'
+  | 'shortcutHelp';
 
 export type EditorEventName = keyof EditorEvents;
 
@@ -324,6 +358,7 @@ export type PersistenceOptions = {
       readonly baseVersion?: string;
       readonly force?: boolean;
       readonly message?: string;
+      readonly phase: SavePhase;
     },
   ): Promise<{ version: string }>;
   /** The version the loaded document has on the server. */
@@ -353,6 +388,8 @@ export type CreateEditorStoreOptions = {
   /** What happens to a remote op that breaks the placement rules. Default `accept-and-warn`. */
   remotePlacement?: 'reject' | 'accept-and-warn';
   persistence?: PersistenceOptions;
+  /** Blocks a save with issues; plugin gates run after it. */
+  beforeSave?: BeforeSaveGate;
   plugins?: readonly EditorPlugin[];
   timers?: Timers;
   /** What the load pipeline migrated or repaired in `initialValue` and every `load`. */
@@ -390,6 +427,16 @@ export type ApplyRemoteResult = {
 export type EditorCommand = {
   readonly id: string;
   readonly label?: string;
+  /**
+   * Its shortcuts also fire while focus is in an input or editable text
+   * (undo and redo do, so form edits undo through the store).
+   */
+  readonly editable?: boolean;
+  /**
+   * The browser's own event runs it from the keyboard (copy, cut, paste):
+   * its shortcut is listed but never routed.
+   */
+  readonly native?: boolean;
   run(store: EditorStore, args?: unknown): unknown;
   canExecute?(store: EditorStore, args?: unknown): boolean;
 };
@@ -462,9 +509,18 @@ export type EditorStore = {
   focus(target: FieldRef | null): void;
   setEditing(target: FieldRef | null): void;
   setMode(mode: EditorMode): void;
+  /** Collapses or expands a block's outline row. */
+  setCollapsed(id: string, collapsed: boolean): void;
 
-  /** Saves now (when dirty or forced); resolves when this save settled. */
-  save(options?: { message?: string; force?: boolean }): Promise<void>;
+  /**
+   * Saves now (when dirty or forced); resolves when this save settled.
+   * `phase` (default `save`) reaches the gates and `persistence.save`.
+   */
+  save(options?: {
+    message?: string;
+    force?: boolean;
+    phase?: 'save' | 'publish';
+  }): Promise<void>;
   /** Loads the server's document from the current conflict. */
   reloadFromServer(): boolean;
   /** Runs the node's `resolveData` again (`trigger: 'force'`). */

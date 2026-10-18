@@ -7,6 +7,7 @@ import { composeRefs, useRender } from '../../use-render';
 import { useDocSelector, useSessionSelector } from '../binding';
 import { useEditorContext } from '../context';
 import { isHTMLElement } from '../dom';
+import { useMessages } from '../messages';
 import { insertPointFor } from '../structure/insert-point';
 import { blockElements, isInsideReadonly } from './anchors';
 import { CanvasContext, useCanvasContext } from './context';
@@ -417,6 +418,7 @@ export function CanvasDragHandle({
   ...rest
 }: CanvasDragHandleProps) {
   useCanvasSession('Canvas.DragHandle');
+  const messages = useMessages();
   const inToolbar = React.useContext(BlockToolbarContext);
   const canvas = React.useContext(CanvasContext);
   const measurer = canvas?.measurer ?? null;
@@ -450,7 +452,7 @@ export function CanvasDragHandle({
     render,
     props: {
       type: 'button',
-      'aria-label': rest['aria-label'] ?? 'Drag to move',
+      'aria-label': rest['aria-label'] ?? messages.parts.dragHandle,
       ...rest,
       style: {
         touchAction: 'none',

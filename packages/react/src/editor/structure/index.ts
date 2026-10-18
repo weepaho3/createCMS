@@ -3,11 +3,13 @@ export type {
   EditorAddBlockProps,
   EditorOutlineGroupProps,
   EditorOutlineItemProps,
+  EditorOutlineProps,
   OutlineGroupState,
   OutlineItemState,
 } from './types';
 export {
   EditorAddBlock,
+  EditorOutline,
   EditorOutlineGroup,
   EditorOutlineItem,
 } from './components';

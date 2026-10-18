@@ -4,6 +4,7 @@ import type { UseRenderComponentProps } from '../../use-render';
 import type { EditorError } from '../core/store';
 
 import { useRender } from '../../use-render';
+import { useMessages } from '../messages';
 
 export type BlockErrorBoundaryProps = {
   /** When this value changes while showing the fallback, the children render again. */
@@ -118,6 +119,7 @@ export function CanvasBlockError({
   children,
   ...rest
 }: CanvasBlockErrorProps) {
+  const messages = useMessages().parts;
   const anchors = { 'data-editor-block': blockId, 'data-block-error': '' };
   return useRender<'div', BlockErrorState>({
     defaultTagName: 'div',
@@ -126,7 +128,8 @@ export function CanvasBlockError({
       role: 'alert',
       ...rest,
       ...anchors,
-      children: children ?? `${blockType} (${blockId}) failed to render`,
+      children:
+        children ?? messages.blockError({ type: blockType, id: blockId }),
     },
     state: { blockId, blockType },
   });
@@ -157,6 +160,7 @@ export function CanvasUnknownBlock({
   children,
   ...rest
 }: CanvasUnknownBlockProps) {
+  const messages = useMessages().parts;
   const anchors = { 'data-editor-block': blockId, 'data-unknown-block': '' };
   return useRender<'div', BlockErrorState>({
     defaultTagName: 'div',
@@ -166,7 +170,7 @@ export function CanvasUnknownBlock({
       ...anchors,
       children: (
         <>
-          {children ?? `Unknown block type "${blockType}"`}
+          {children ?? messages.unknownBlock({ type: blockType })}
           {Object.entries(slots).map(([name, slot]) => (
             <div key={name} data-editor-slot={name}>
               {slot}

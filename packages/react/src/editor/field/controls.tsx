@@ -2,6 +2,7 @@ import type { Field } from '../core/schema';
 import type { FieldControlProps, FieldControls } from './types';
 
 import { defaultValuesFor } from '../core/schema';
+import { useMessages } from '../messages';
 
 /** ISO-8601 datetime to the `datetime-local` input format (local time, minutes precision); `''` for missing/invalid input. */
 export function toDatetimeLocal(iso: string | undefined): string {
@@ -252,6 +253,7 @@ export function ListControl(props: FieldControlProps<'list'>) {
   const { min = 0, max = Number.POSITIVE_INFINITY } = props.spec;
   const label = props.spec.label ?? props.name;
   const locked = props.disabled || props.readOnly;
+  const messages = useMessages().parts;
   const update = (next: unknown[]) => props.onChange(next);
   const swap = (from: number, to: number) => {
     const next = [...items];
@@ -285,38 +287,38 @@ export function ListControl(props: FieldControlProps<'list'>) {
             })}
             <button
               type="button"
-              aria-label={`Move ${label} ${index + 1} up`}
+              aria-label={messages.listMoveUp({ label, position: index + 1 })}
               disabled={locked || index === 0}
               onClick={() => swap(index, index - 1)}
             >
-              Move up
+              {messages.listMoveUpText}
             </button>
             <button
               type="button"
-              aria-label={`Move ${label} ${index + 1} down`}
+              aria-label={messages.listMoveDown({ label, position: index + 1 })}
               disabled={locked || index === items.length - 1}
               onClick={() => swap(index, index + 1)}
             >
-              Move down
+              {messages.listMoveDownText}
             </button>
             <button
               type="button"
-              aria-label={`Remove ${label} ${index + 1}`}
+              aria-label={messages.listRemove({ label, position: index + 1 })}
               disabled={locked || items.length <= min}
               onClick={() => update(items.filter((_, i) => i !== index))}
             >
-              Remove
+              {messages.listRemoveText}
             </button>
           </li>
         ))}
       </ol>
       <button
         type="button"
-        aria-label={`Add ${label}`}
+        aria-label={messages.listAdd({ label })}
         disabled={locked || items.length >= max}
         onClick={() => update([...items, emptyListElement(props.spec.of)])}
       >
-        Add
+        {messages.listAddText}
       </button>
     </div>
   );

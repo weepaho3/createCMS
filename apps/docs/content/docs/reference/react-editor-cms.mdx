@@ -103,7 +103,9 @@ returns an `EditorAdapter`: `load(rootId)` reads the raw tree and the branch
 head, `save(rootId, doc, { baseVersion, message })` writes with
 `expectedHeadCommitId` set to `baseVersion` and returns the new commit id as
 `version`. `loadSnapshot(rootId)` also returns the raw tree, the head commit
-and the reference sidecar. Failures throw `EditorAdapterError`
+and the reference sidecar. `resolveReference({ collection, id })` loads root
+`id` of the adapter's collection, for `createSectionResolver`; references
+into another collection use an adapter on that collection's client. Failures throw `EditorAdapterError`
 (`toAdapterError` wraps a client error): `HEAD_MISMATCH` is `conflict`,
 `TYPE_MISMATCH` and the placement and message codes are `validation`,
 `PROTECTED_BRANCH` is `permission`; `details.code` keeps the server code and

@@ -2,6 +2,7 @@ export type {
   AddOptions,
   ApplyRemoteResult,
   BeforeCommandHandler,
+  BeforeSaveGate,
   Change,
   Command,
   CommandContext,
@@ -32,6 +33,7 @@ export type {
   NodeStatus,
   PersistenceOptions,
   SaveConflict,
+  SavePhase,
   SaveState,
   SaveStatus,
   SessionState,
@@ -40,16 +42,19 @@ export type {
   Tx,
   TxMeta,
   TxResult,
+  UiAction,
   UpdateOptions,
 } from './types';
 export type { ApplyResult } from './ops';
 export { applyOp } from './ops';
 export type {
   BuiltinCommandPayloads,
+  DetachPayload,
   DuplicatePayload,
   InsertNodePayload,
   InsertPayload,
   MovePayload,
+  PastePayload,
   RemovePayload,
   ReplacePayload,
   UpdatePayload,
@@ -73,13 +78,11 @@ export {
   SAVE_DEBOUNCE_MS,
   SAVE_MAX_WAIT_MS,
   SAVE_RETRY_BASE_MS,
+  requireValidDocument,
   SAVE_RETRY_MAX_MS,
 } from './save';
-export {
-  createEditorStore,
-  DEFAULT_SHORTCUTS,
-  PLACEMENT_PRIORITY,
-} from './store';
+export { createEditorStore, PLACEMENT_PRIORITY } from './store';
+export { DEFAULT_SHORTCUTS } from './builtin-commands';
 export type { SlotOrder } from './serde';
 export {
   denormalize,

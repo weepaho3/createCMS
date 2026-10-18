@@ -54,8 +54,25 @@ out of `useFields` and `Editor.Form`; `readOnly` fields render read-only
 controls (`readOnly`, `aria-readonly`) and the field carries
 `data-read-only`. Built-in controls: `text`, `textarea`, `richText` (the HTML
 source), `number`, `boolean`, `date`, `color`, `select` (with `multiple`),
-`list` and `object`. `Editor.FieldError` shows `formatFieldError(error)` for
-each finding: plain English for the codes the core validation returns.
+`list` and `object`. `Editor.FieldError` shows each finding through the
+editor's catalog (`formatIssue`).
+
+## Messages and announcements
+
+Every text of the parts comes from a catalog (`Messages` in
+[Editor core](/docs/reference/react-editor-core#messages)): English by
+default, then each plugin's `messages`, then `Editor.Root`'s `messages`
+(partial, merged deeply). `useMessages()` returns the catalog (English outside
+a root), `useShortcutLabel()` a formatter for combos on the editor's
+`platform` (`⌘⇧Z` on Apple, `Ctrl+Shift+Z` elsewhere, translated key names
+from the catalog). `dir="rtl"` mirrors `start`/`end` alignment.
+
+`Editor.LiveAnnouncer` renders a visually hidden `role="status"`
+`aria-live="polite"` region. The editor announces each insert, move and
+removal (type label, the block's first text up to 40 characters, 1-based
+position and parent), each undo and redo, and start and end of inline
+editing. `useAnnounce()` sends your own messages; `describeBlock(schema,
+node)` names a block the same way.
 
 The same form by hand, for a custom layout: map over `useFields(blockId)`
 and compose the parts yourself.
@@ -90,7 +107,7 @@ also saves when the page is hidden.
 
 | Part                      | Default element                                 | Props                                                                                                                                  | Data attributes                                                                                  |
 | ------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `Editor.Root`             | none (provider)                                 | `schema` + `defaultValue`, or `store`; `onChange`, `onError`, `onDiagnostics`, `persistence`, `plugins`, `genId`, `remotePlacement`, `fields`, `guardUnload`, `children` | none                                                                                             |
+| `Editor.Root`             | none (provider)                                 | `schema` + `defaultValue`, or `store`; `messages`, `dir`, `platform`, `onChange`, `onError`, `onDiagnostics`, `persistence`, `beforeSave`, `plugins`, `genId`, `remotePlacement`, `fields`, `guardUnload`, `children` | none                                                                                             |
 | `Editor.Field`            | `div`                                           | `blockId` (required), `name` (required), `disabled`, `render`, div props                                                               | `data-kind`, `data-required`, `data-invalid`, `data-disabled`, `data-focused`                    |
 | `Editor.FieldLabel`       | `label`                                         | `render`, label props (`children` replaces the spec's `label`)                                                                         | `data-required`, `data-invalid`, `data-disabled`                                                 |
 | `Editor.FieldControl`     | the resolved control (see below)                | `render`                                                                                                                               | none                                                                                             |
@@ -99,9 +116,13 @@ also saves when the page is hidden.
 | `Editor.Form`             | `div`                                           | `blockId` (required), `disabled`, `autoScroll`, `render`, div props                                                                    | `data-block-type`, `data-block-id`; each named group is a `fieldset[data-group]` with a `legend` |
 | `Editor.Preview`          | `div`                                           | `render` (required, document callback), `debounceMs`, div props                                                                            | `data-stale` while a version change is pending                                                   |
 | `Editor.FramePreview`     | `div` wrapping two iframes                      | `render` (required, async compiler), `debounceMs`, `selectable`, `resolveAnchor`, `onIssues`, `onError`, `sandbox`, `title`, div props | `data-loading`, `data-stale`, `data-error`, `data-kind` (`html` or `blob`)                       |
-| `Editor.OutlineItem`      | `div` with `role="treeitem"`                    | `blockId` (required), `onDelete`, `render`, div props                                                                                  | `data-selected`, `data-depth`, `data-has-children`, `data-block-id`, `data-block-type`           |
+| `Editor.OutlineItem`      | `div` with `role="treeitem"`                    | `blockId` (required), `onDelete`, `render`, div props. Render the children only while `expanded` (render state). | `data-selected`, `data-depth`, `data-has-children`, `data-expanded`, `data-hovered`, `data-block-id`, `data-block-type` |
+| `Editor.Outline`          | `div` with `role="tree"`                        | `render`, div props; named from the catalog (`parts.outline`), `aria-multiselectable` | none |
 | `Editor.OutlineGroup`     | `div` with `role="group"`                       | `blockId` and `slot` (required), `render`, div props. Wraps one slot's rows; `aria-label` is the slot's `label`, else its name          |                                                                                                  |
 | `Editor.AddBlock`         | `button`                                        | `type` (required), `parentId`, `slot`, `index`, `render`, button props (`children` replaces the palette label). Disabled while `canPlaceIn` refuses the target | `data-block-type`                                                                                |
+| `Editor.LiveAnnouncer`    | `div` with `role="status"`                      | div props; visually hidden, `aria-live="polite"`, one per editor                                                                        | `data-editor-live-announcer`                                                                     |
+| `Editor.ErrorSummary`     | `div` with `role="alert"`                       | `render`, div props; children replace the list. Shown while a `beforeSave` gate blocked the last save: takes focus on appear; each entry selects its block and focuses the field's control. | `data-count` |
+| `Editor.ShortcutHelp`     | `div` with `role="dialog"`                      | `open`, `defaultOpen`, `onOpenChange`, `render`, div props; children replace the list. Opens on `ui.shortcutHelp` (`?`, `Mod+/`), Escape closes and returns focus. | `data-open` |
 | `Editor.Slot`             | none (fragment)                                 | `name` (required), `fallback`, `props`: renders each plugin's `slots[name]` in plugin order                                            | none                                                                                             |
 
 `Editor.Preview` subscribes to the store `version` and passes the raw store
@@ -127,10 +148,21 @@ document (`getDocument()`) to `render` after a delay (default `PREVIEW_DEBOUNCE_
 | `useBlockActions`    | `BlockActions`                                 | Placement-gated `add`/`remove`/`duplicate`/`moveUp`/`moveDown` plus `canMoveUp`, `canMoveDown`, `canHaveChildren`, `allowedChildTypes`.                                                                                                                                                                                  |
 | `useSelection`       | `SelectionState`                               | `{ selected, selection, focus, editing }` from the session scope.                                                                                                                                                                                                                                                          |
 | `useHovered`         | `string \| null`                               | The hovered block; re-renders only on hover changes.                                                                                                                                                                                                                                                                       |
+| `useMessages`        | `Messages`                                     | The merged catalog of the enclosing root; English outside one.                                                                                                                                                                                                                                                             |
+| `useShortcutLabel`   | `(combo) => string`                            | Formats `Mod+Shift+z` for the root's platform and catalog.                                                                                                                                                                                                                                                                 |
+| `useAnnounce`        | `(message) => void`                            | Speaks a message through `Editor.LiveAnnouncer`.                                                                                                                                                                                                                                                                           |
 | `useNodeStatus`      | `NodeStatus`                                   | `useNodeStatus(id)`: the block's `resolveData` state `{ loading, error }`. `Editor.Form` mirrors it as `data-loading` / `data-error`.                                                                                                                                                                                    |
 | `useComputed`        | `Record<string, JsonValue>`                    | `useComputed(id)`: the block's `resolveData` result (`{}` before the first one); never part of the document.                                                                                                                                                                                                              |
 | `useHistory`         | `HistoryApi`                                   | `{ canUndo, canRedo, undo, redo }`.                                                                                                                                                                                                                                                                                        |
-| `useEditorKeyboard`  | `void`                                         | `useEditorKeyboard(scopeRef, { delete?, escape? })`. Bubbling `keydown` on the document, ignored unless the target is inside `scopeRef.current`; a consumer `onKeyDown` that `preventDefault`s skips the built-in handling. Runs every bound shortcut (`store.commands.shortcuts()`: undo/redo and plugin combos); Delete/Escape opt-in. `combosOf(event)` lists the combos a `keydown` matches. Throws outside `Editor.Root`.                          |
+| `useEditorKeyboard`  | `void`                                         | `useEditorKeyboard(scopeRef)`: binds `bindEditorKeyboard` and `bindEditorClipboard` on the scope's document for events inside `scopeRef.current`. A consumer `onKeyDown` that `preventDefault`s skips the built-in handling. Throws outside `Editor.Root`. |
+| `bindEditorKeyboard` | `() => void`                                  | `(store, doc, scope?)`: routes `keydown` on `doc` through `handleEditorKey`; bind it once per document (host page, each same-origin preview frame: `Editor.FramePreview` does this for its frame). Returns the unbind function. |
+| `handleEditorKey`    | `boolean`                                      | `(store, event)`: runs the command bound to the event's combo (`combosOf`). Skips composition, prevented events, plain keys from widgets (buttons, tree items, menus, toolbars, dialogs) and every command not marked `editable` while focus is in an input or editable text; a command that cannot run leaves the key to the browser. |
+| `bindEditorClipboard`| `() => void`                                   | `(store, doc, scope?)`: handles `copy`, `cut` and `paste` for blocks (see Clipboard in the core reference). Inputs, editable text and selected text stay with the browser. |
+| `useRovingFocus`     | `RovingFocus`                                  | One tab stop for a group of controls (APG toolbar and menu): `ref`, `onKeyDown`, `onFocus`, `focus()`. Arrows (mirrored for `rtl`), Home and End; items are buttons, links, form controls, menu items and `data-roving-item` elements. |
+| `useSaveIssues`      | `readonly ErrorSummaryEntry[]`                 | The findings of the last blocked save, formatted from the catalog (block, field, message). |
+| `useSection`         | `ResolvedSection \| null`                      | `(resolver, ref, overrides?)`: a `$ref` block's resolved section, `null` while loading. |
+| `useSectionOverrides`| `readonly SectionOverrideEntry[]`              | `(blockId, resolver)`: the section props its components expose, with the current override and `set(value)` (`undefined` removes it): what an inspector offers for a `$ref` block. |
+| `useShortcutList`    | `readonly ShortcutEntry[]`                     | Every bound command with its platform labels, for a custom help dialog or command palette. |
 | `useSave`            | `SaveApi`                                      | `{ status, dirty, saving, error, conflict, save }`.                                                                                                                                                                                                                                                                        |
 | `useSaveConflict`    | `SaveConflictApi \| null`                      | During a save conflict: `{ serverDoc, localDoc, reload(), overwrite(), copyMine() }`; `null` otherwise.                                                                                                                                                                                                                    |
 | `useCommand`         | `CommandApi \| null`                           | `useCommand(id)`: a UI command with `label`, `canExecute`, `shortcut`, `run(args?)`; `null` for an unknown id.                                                                                                                                                                                                             |
@@ -189,7 +221,7 @@ parent uses: into the selected block's `children` slot when it accepts the
 type, else right after the selected block in its slot, else the end of the
 root.
 
-Field helpers: `formatFieldError`, `defaultFieldControls`, `emptyListElement`, `toDatetimeLocal`,
+Field helpers: `defaultFieldControls`, `emptyListElement`, `toDatetimeLocal`,
 `fromDatetimeLocal`.
 
 ## Types
@@ -199,9 +231,9 @@ Field helpers: `formatFieldError`, `defaultFieldControls`, `emptyListElement`, `
 | `EditorRootProps`             | Props of `Editor.Root`: `EditorRootOwnStoreProps` or `EditorRootStoreProps`.                                                                                          |
 | `EditorRootOwnStoreProps`     | `Editor.Root` creating its store from `schema` and `defaultValue`.                                                                                                    |
 | `EditorRootStoreProps`        | `Editor.Root` using an injected `store`.                                                                                                                              |
+| `EditorLiveAnnouncerProps`    | Props of `Editor.LiveAnnouncer`: div props.                                                                                                                           |
 | `EditorSlotProps`             | Props of `Editor.Slot`: `name`, `fallback?`, `props?`.                                                                                                                |
 | `EditorContextValue`          | What `Editor.Root` shares with its parts (`schema`, `store`, `fields`, `registerScrollTarget`, `scrollTo`).                                                           |
-| `EditorKeyboardOptions`       | Options for `useEditorKeyboard`: `{ delete?, escape? }`.                                                                                                              |
 | `DocSelector`                 | A `useDocSelector` selector: `(state: DocState, store) => T`.                                                                                                         |
 | `SessionSelector`             | A `useSessionSelector` selector: `(state: SessionState, store) => T`.                                                                                                 |
 | `EphemeralSelector`           | A `useEphemeralSelector` selector: `(state: EphemeralState, store) => T`.                                                                                             |
@@ -236,6 +268,14 @@ Field helpers: `formatFieldError`, `defaultFieldControls`, `emptyListElement`, `
 | `ChildRef`                    | One child of a block: `{ id, type, index }`.                                                                                                                          |
 | `BlockActions`                | Structural actions of one block (`add`/`remove`/`duplicate`/`moveUp`/`moveDown`).                                                                                     |
 | `EditorOutlineItemProps`      | Props of `Editor.OutlineItem`: `blockId`, `onDelete?`, `render?`, div props.                                                                                          |
+| `EditorOutlineProps`          | Props of `Editor.Outline`: div props.                                                                                                                                  |
+| `EditorShortcutHelpProps`     | Props of `Editor.ShortcutHelp`.                                                                                                                                        |
+| `ShortcutEntry`               | `{ id, label, keys }` of `useShortcutList`.                                                                                                                            |
+| `RovingFocus`                 | What `useRovingFocus` returns.                                                                                                                                         |
+| `EditorErrorSummaryProps`     | Props of `Editor.ErrorSummary`.                                                                                                                                        |
+| `ErrorSummaryEntry`           | `{ id, label, blockId, field }` of `useSaveIssues`.                                                                                                                    |
+| `SectionOverrideEntry`        | `{ nodeId, key, field, blockLabel, value, overridden, set }` of `useSectionOverrides`.                                                                                 |
+| `RovingFocusOptions`          | `{ orientation?, loop?, dir? }` of `useRovingFocus`.                                                                                                                   |
 | `EditorAddBlockProps`         | Props of `Editor.AddBlock`: `type`, `parentId?`, `slot?`, `index?`, `render?`, button props.                                                                          |
 | `EditorOutlineGroupProps`     | Props of `Editor.OutlineGroup`: `blockId`, `slot`, `render?`, div props.                                                                                              |
 | `InsertPoint`                 | `insertPointFor`'s result: `{ parent: SlotRef, index, allowed }`.                                                                                                     |
@@ -261,6 +301,8 @@ Field helpers: `formatFieldError`, `defaultFieldControls`, `emptyListElement`, `
 | `data-selected`     | `Editor.OutlineItem`                                     | Present while this row is the local user's selected block.                                                       |
 | `data-depth`        | `Editor.OutlineItem`                                     | Hops from the root (root children are `1`).                                                                      |
 | `data-has-children` | `Editor.OutlineItem`                                     | Present when the block has a child in any slot.                                                                  |
+| `data-expanded`     | `Editor.OutlineItem`                                     | Present while the row has children and is not collapsed.                                                         |
+| `data-hovered`      | `Editor.OutlineItem`                                     | Present while the pointer is over this block (here, in the canvas or a preview).                                 |
 
 ## Keyboard
 
@@ -268,15 +310,27 @@ Field helpers: `formatFieldError`, `defaultFieldControls`, `emptyListElement`, `
 | ----------------------------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | Field controls                                  | Tab / Shift+Tab                        | Native tab order. Typing edits the value (one undo step via `coalesce`).                                                         |
 | `Editor.OutlineItem`                            | Click                                  | Select the row.                                                                                                                  |
-| `Editor.OutlineItem`                            | ArrowUp / ArrowDown                    | Select and focus the previous/next `[role="treeitem"]` in DOM order inside the closest `[role="tree"]` (fallback: the document). |
+| `Editor.OutlineItem`                            | ArrowUp / ArrowDown                    | Select and focus the previous/next visible row (rows inside a collapsed row are skipped).                                         |
 | `Editor.OutlineItem`                            | Alt+ArrowUp / Alt+ArrowDown            | Move among siblings.                                                                                                             |
+| `Editor.OutlineItem`                            | ArrowRight / ArrowLeft                 | Expand, then move to the first child; collapse, then move to the parent row (mirrored for `rtl`).                               |
+| `Editor.OutlineItem`                            | Home / End                             | First / last visible row.                                                                                                       |
+| `Editor.OutlineItem`                            | `*`                                    | Expand every sibling.                                                                                                           |
+| `Editor.OutlineItem`                            | Printable characters                   | Type-ahead: the next row whose text starts with the letters typed within 500 ms.                                                |
 | `Editor.OutlineItem`                            | Delete / Backspace                     | Remove after `onDelete` (return `false` to keep).                                                                                |
 | `Editor.OutlineItem`                            | Escape                                 | Clear the selection.                                                                                                             |
-| `useEditorKeyboard(scopeRef)`                   | Ctrl/Cmd+Z                             | Undo (`history.undo`).                                                                                                           |
-| `useEditorKeyboard(scopeRef)`                   | Ctrl/Cmd+Shift+Z or Ctrl+Y             | Redo (`history.redo`).                                                                                                           |
-| `useEditorKeyboard(scopeRef)`                   | Plugin combos                          | The bound UI command.                                                                                                            |
-| `useEditorKeyboard(scopeRef, { delete: true })` | Delete / Backspace                     | Remove the selected block when the target is not an editable field.                                                              |
-| `useEditorKeyboard(scopeRef, { escape: true })` | Escape                                 | Clear the selection when the target is not an editable field.                                                                    |
+| `useEditorKeyboard(scopeRef)`                   | Mod+Z / Mod+Shift+Z or Ctrl+Y          | Undo / redo (also inside inputs).                                                                                               |
+| `useEditorKeyboard(scopeRef)`                   | Mod+C / Mod+X / Mod+V                  | Copy, cut, paste blocks through the browser's clipboard events.                                                                 |
+| `useEditorKeyboard(scopeRef)`                   | Mod+Alt+C / Mod+Alt+V                  | Copy props, paste them onto selected blocks of the same type.                                                                   |
+| `useEditorKeyboard(scopeRef)`                   | Mod+D (or Mod+Shift+D)                 | Duplicate the selected block.                                                                                                   |
+| `useEditorKeyboard(scopeRef)`                   | Delete / Backspace                     | Remove the selected block, select its neighbour.                                                                                |
+| `useEditorKeyboard(scopeRef)`                   | Alt+ArrowUp / Alt+ArrowDown            | Move the selected block among its siblings.                                                                                     |
+| `useEditorKeyboard(scopeRef)`                   | Mod+G                                  | Wrap the selected block in the first container type that fits.                                                                  |
+| `useEditorKeyboard(scopeRef)`                   | Escape / Shift+Enter                   | Select the parent; at the top level clear the selection.                                                                        |
+| `useEditorKeyboard(scopeRef)`                   | Enter                                  | Select the first child.                                                                                                         |
+| `useEditorKeyboard(scopeRef)`                   | Tab / Shift+Tab                        | Select the next / previous sibling; at the ends the key moves focus as usual.                                                   |
+| `useEditorKeyboard(scopeRef)`                   | Mod+A                                  | Select the selected block and all its siblings.                                                                                 |
+| `useEditorKeyboard(scopeRef)`                   | Mod+K, `/`, Alt+F10, `?` or Mod+/      | `ui` event: command palette, quick insert, block toolbar (also from inline text), shortcut help.                                |
+| `useEditorKeyboard(scopeRef)`                   | Plugin combos                          | The bound command. A plugin combo replaces a default; `''` unbinds it.                                                          |
 
 ## ARIA
 
@@ -289,7 +343,8 @@ Field helpers: `formatFieldError`, `defaultFieldControls`, `emptyListElement`, `
 | `htmlFor` / `id`   | `Editor.FieldLabel` / control       | Label points at the control id from `useId`.                                                                 |
 | `aria-selected`    | `Editor.OutlineItem`                | Follows the local user's selected block.                                                                     |
 | `aria-level`       | `Editor.OutlineItem`                | Depth; root children are 1.                                                                                  |
-| `aria-expanded`    | `Editor.OutlineItem`                | `"true"` when the block has children. No collapse state; a consumer overrides the attribute through props.   |
+| `aria-expanded`    | `Editor.OutlineItem`                | Only on rows with children: `"false"` while collapsed (`store.setCollapsed`); selecting a block expands its ancestors. |
+| `aria-setsize`, `aria-posinset` | `Editor.OutlineItem`  | The row's siblings in its slot and its position among them.                                                  |
 | `role="treeitem"`  | `Editor.OutlineItem`                | Default. Wrap the tree in `[role="tree"]`.                                                                   |
 | `data-required`    | `Editor.Field`, `Editor.FieldLabel` | Present when the spec is `required` (styling hook; not a substitute for `aria-required`).                    |
 
@@ -302,5 +357,8 @@ Field helpers: `formatFieldError`, `defaultFieldControls`, `emptyListElement`, `
 | `Editor.Form autoScroll`                                       | The form host scrolls into view (`block: 'nearest'`) on each store focus change that targets that form.                       |
 | Delete/Backspace on `Editor.OutlineItem`                       | Neighbour row (next treeitem outside this subtree, else previous) is selected and focused; no neighbour clears the selection. |
 | Alt+Arrow reorder on `Editor.OutlineItem`                      | Focus is restored on the moved row after the DOM move.                                                                        |
-| `useEditorKeyboard` Delete/Escape                              | Store only; the hook does not move DOM focus.                                                                                 |
+| `useEditorKeyboard` commands                                   | Store only; the router does not move DOM focus.                                                                               |
+| Store focus set by a click in the canvas or a preview          | `Editor.Field` moves DOM focus into its control after the click, unless inline editing started or another input has focus.    |
+| Pointer over `Editor.Field`                                    | Hovers its block, so the canvas and preview highlight it.                                                                     |
+| A selection made outside the outline                           | The row scrolls into view (`block: 'nearest'`) without taking focus.                                                          |
 | Escape on `Editor.OutlineItem`                                 | Selection cleared; focus stays.                                                                                               |

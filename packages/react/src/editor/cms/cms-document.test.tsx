@@ -14,6 +14,7 @@ import type { CmsDocumentClient } from './types';
 
 import { counterGenId } from '../core/store/fixtures';
 import { Editor, useEditor, useSave } from '../index';
+import { createCmsAdapter } from './adapter';
 import {
   BLOCK_NOT_ALLOWED_IN_PARENT,
   COMMIT_MESSAGE_REQUIRED,
@@ -179,7 +180,7 @@ describe('useCmsDocument persistence', () => {
       try {
         const saved = await result.current.persistence.save(
           result.current.doc!,
-          { ops: [], ...ctx },
+          { ops: [], phase: 'save', ...ctx },
         );
         version = saved.version;
       } catch (err) {
@@ -550,5 +551,24 @@ describe('useCmsDocument Editor.Root integration', () => {
 
     expect(client.updateBlocks).toHaveBeenCalled();
     expect(probe.save!.dirty).toBe(false);
+  });
+});
+
+describe('createCmsAdapter.resolveReference', () => {
+  it('loads a referenced root of the collection as a document', async () => {
+    const client = makeClient();
+    const adapter = createCmsAdapter({
+      client,
+      definition: cmsSchema,
+      branchId: defaultBranchId,
+    });
+    const doc = await adapter.resolveReference!({
+      collection: 'pages',
+      id: 'root_2',
+    });
+    expect(doc.root.type).toBe('root');
+    expect(client.getBlockTree).toHaveBeenCalledWith({
+      query: expect.objectContaining({ rootId: 'root_2' }),
+    });
   });
 });

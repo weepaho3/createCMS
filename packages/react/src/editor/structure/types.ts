@@ -4,6 +4,10 @@ export type OutlineItemState = {
   selected: boolean;
   depth: number;
   hasChildren: boolean;
+  /** Has children and is not collapsed: render the children only then. */
+  expanded: boolean;
+  /** The pointer is over this block (here, in the canvas or a preview). */
+  hovered: boolean;
   blockId: string;
   blockType: string;
 };
@@ -21,6 +25,9 @@ export type EditorOutlineItemProps = UseRenderComponentProps<
    */
   onDelete?: (blockId: string) => boolean | void;
 };
+
+/** Props of `Editor.Outline`, the `role="tree"` container. */
+export type EditorOutlineProps = UseRenderComponentProps<'div'>;
 
 export type AddBlockState = { blockType: string };
 

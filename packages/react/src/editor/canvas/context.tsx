@@ -21,7 +21,19 @@ export type CanvasContextValue = CanvasResolveContextValue & {
   dragging: boolean;
   editing: boolean;
   inlineCaret: React.RefObject<InlineCaretPoint | null>;
+  /**
+   * Whether a click on a text field of `blockId` starts editing under the
+   * click model (see `CanvasRootProps.clickToEdit`).
+   */
+  clickEdits: (blockId: string) => boolean;
 };
+
+/**
+ * `select-and-edit`: a click on a text field selects the block and starts
+ * editing. `select-first`: the first tap selects, a tap on the selected
+ * block edits.
+ */
+export type CanvasClickToEdit = 'select-and-edit' | 'select-first';
 
 export const CanvasContext = React.createContext<CanvasContextValue | null>(
   null,
