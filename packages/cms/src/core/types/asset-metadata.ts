@@ -62,6 +62,21 @@ export interface AssetMetadata {
   description?: string;
   /** Note on a revision row, set by the replace that created it. */
   revisionNote?: string;
+  /**
+   * The copy of a video at `media.video.provider`, written by the pruning
+   * pass only (never by `updateAsset` or upload hints).
+   */
+  stream?: {
+    provider: string;
+    providerAssetId: string;
+    playbackId: string | null;
+    state: 'processing' | 'ready' | 'errored';
+    /** HLS URL once `ready`. */
+    playbackUrl: string | null;
+    posterUrl: string | null;
+    /** The object the provider copied; another key means new bytes. */
+    sourceKey: string;
+  };
 }
 
 const fraction = z.number().min(0).max(1);
@@ -128,6 +143,17 @@ export const assetMetadataSchema: z.ZodType<AssetMetadata> = z.strictObject({
     .optional(),
   description: z.string().max(2000).optional(),
   revisionNote: z.string().max(2000).optional(),
+  stream: z
+    .strictObject({
+      provider: shortText,
+      providerAssetId: shortText,
+      playbackId: shortText.nullable(),
+      state: z.enum(['processing', 'ready', 'errored']),
+      playbackUrl: z.string().max(2048).nullable(),
+      posterUrl: z.string().max(2048).nullable(),
+      sourceKey: z.string().max(2048),
+    })
+    .optional(),
 });
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

@@ -246,6 +246,19 @@ export {
   TRANSFORM_WIDTHS,
   TransformNotAllowedError,
 } from './core/media/transform';
+export {
+  muxVideo,
+  needsVideoProvider,
+  VIDEO_MIN_BYTES,
+  VIDEO_MIN_DURATION_MS,
+} from './core/media/video-provider';
+export type {
+  MuxVideoOptions,
+  VideoConfig,
+  VideoProviderAdapter,
+  VideoProviderStatus,
+  VideoStream,
+} from './core/media/video-provider';
 export type {
   ImgproxyTransformOptions,
   TransformAdapter,

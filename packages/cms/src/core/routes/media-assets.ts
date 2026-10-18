@@ -37,6 +37,7 @@ import { purgeAssetPaths, setAssetsVisibility } from '../media/placement';
 import { createRateWindow } from '../media/rate-window';
 import { assertFolderExists } from '../media/uploads';
 import { assetUsageCounts } from '../media/usage';
+import { deleteVideoStreams } from '../media/video-provider';
 import { crossScopeColumns } from '../scope';
 import { requireCapability } from '../storage/adapter';
 import { getStorage } from '../storage/get-storage';
@@ -304,6 +305,12 @@ export function createMediaAssetEndpoints<TItem>(
           if (row.updatedAt.getTime() !== expected.getTime()) {
             throw new CMSError('ASSET_CONFLICT', {
               data: { asset: toItem(row) },
+            });
+          }
+          if (patch.metadata && 'stream' in patch.metadata) {
+            throw new APIError(400, {
+              code: 'VALIDATION_ERROR',
+              message: 'metadata.stream is written by the server only',
             });
           }
           const metadata = patch.metadata
@@ -767,6 +774,7 @@ export function createMediaAssetEndpoints<TItem>(
                   objectKey: assets.objectKey,
                   variantOf: assets.variantOf,
                   revisionOf: assets.revisionOf,
+                  metadata: assets.metadata,
                 })
                 .from(assets)
                 .where(
@@ -799,6 +807,10 @@ export function createMediaAssetEndpoints<TItem>(
               await storage.delete(row.objectKey);
               objectsDeleted++;
             }
+            await deleteVideoStreams(
+              mediaConfig,
+              rows.map((row) => row.metadata),
+            );
           } catch (err) {
             console.error(`[cms] purging the objects of ${id} failed:`, err);
             skipped.push({ id, reason: 'STORAGE_ERROR' });

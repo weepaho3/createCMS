@@ -42,6 +42,7 @@ import {
 import { assetsUsedExternally } from '../media/archive';
 import { scanPendingAssets } from '../media/scan';
 import { richTextReferenceExists } from '../media/usage';
+import { deleteVideoStreams, syncVideoStreams } from '../media/video-provider';
 import { processZipExports } from '../media/zip-export';
 import { getStorage } from '../storage/get-storage';
 import { MEDIA_DEFAULTS } from '../types/s3';
@@ -663,6 +664,10 @@ export type PruningPassResult = PruningResult & {
   scannedAssets: string[];
   /** Pending assets the scanner found infected: object deleted, `failed`. */
   failedAssets: string[];
+  /** Videos handed to `media.video.provider` this pass. */
+  ingestedVideos: string[];
+  /** Videos the provider finished processing this pass; they play from it now. */
+  streamedVideos: string[];
   /** Archive exports (`createZipExport`) finished this pass. */
   finishedExports: string[];
   /** Expired archive exports deleted this pass, with their archives. */
@@ -733,6 +738,8 @@ export async function runPruningPass(
   const sweptObjects: string[] = [];
   const scannedAssets: string[] = [];
   const failedAssets: string[] = [];
+  const ingestedVideos: string[] = [];
+  const streamedVideos: string[] = [];
   const finishedExports: string[] = [];
   const expiredExports: string[] = [];
   let sweepCursor: string | null = null;
@@ -755,6 +762,8 @@ export async function runPruningPass(
     sweptObjects,
     scannedAssets,
     failedAssets,
+    ingestedVideos,
+    streamedVideos,
     finishedExports,
     expiredExports,
     sweepCursor,
@@ -877,7 +886,11 @@ export async function runPruningPass(
   //    Usage sources are asked last. DB row first (its content_usages rows
   //    cascade by block_version_id), then S3 best-effort.
   const reclaimable = await db
-    .select({ id: assets.id, objectKey: assets.objectKey })
+    .select({
+      id: assets.id,
+      objectKey: assets.objectKey,
+      metadata: assets.metadata,
+    })
     .from(assets)
     .where(
       and(
@@ -919,6 +932,7 @@ export async function runPruningPass(
       await db.delete(assets).where(eq(assets.id, asset.id));
       try {
         await getStorage(mediaConfig).delete(asset.objectKey);
+        await deleteVideoStreams(mediaConfig, [asset.metadata]);
       } catch {
         // Best-effort: an orphaned S3 object is recoverable garbage; never let
         // a storage error block reclamation (the DB row is already gone).
@@ -940,7 +954,19 @@ export async function runPruningPass(
   failedAssets.push(...scanned.failed);
   if (scanned.more) return finish('budget');
 
-  // 5) Continue unfinished archive exports at their last stored part and
+  // 5) Hand long public videos to the video provider and poll the ones it
+  //    is still processing.
+  if (Date.now() >= deadline) return finish('budget');
+  const videos = await syncVideoStreams(db, mediaConfig, {
+    limit: maxAssets,
+    deadline,
+    dryRun,
+  });
+  ingestedVideos.push(...videos.ingested);
+  streamedVideos.push(...videos.ready);
+  if (videos.more) return finish('budget');
+
+  // 6) Continue unfinished archive exports at their last stored part and
   //    delete expired archives.
   if (Date.now() >= deadline) return finish('budget');
   const exported = await processZipExports(db, mediaConfig, cmsCtx.realtime, {

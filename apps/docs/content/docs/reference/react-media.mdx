@@ -472,6 +472,32 @@ toolbar button. It needs one mounted `MediaPickerHost`
 (`MediaPickerHostProps`), whose `children(request)` renders the picker for
 a `MediaPickerRequest` (`{ constraints, resolve, cancel }`).
 
+### `Media.Video`
+
+`Media.Video` (`MediaVideoProps`) renders a `<video>` (with `controls` and
+`preload="metadata"` by default) for a `VideoAsset` (`id`, `deliveryUrl`,
+optional `status`, `metadata` and `mimeType`). Once the CMS handed the video
+to its [video provider](/docs/concepts/media#video-providers) and the
+stream is ready (`metadata.stream`, a `MediaVideoStream`) and the asset is
+public, it plays the provider's HLS stream with its poster; otherwise the
+file through `deliveryUrl`. Browsers other than Safari cannot play HLS
+themselves: pass `attachHls(video, url)` (for example with hls.js, returning
+its cleanup) and it is called instead of setting `src`. `data-source` is
+`stream` or `file`. `videoSource(asset)` returns the same decision as a
+`VideoSource` (`{ kind, src, poster }`).
+
+```tsx
+<Media.Video
+  asset={asset}
+  attachHls={(video, url) => {
+    const hls = new Hls();
+    hls.loadSource(url);
+    hls.attachMedia(video);
+    return () => hls.destroy();
+  }}
+/>
+```
+
 ### `Media.Image` and `Media.Picture`
 
 Render an asset (`ImageAsset`: an `AssetListItem` with `variants`) as a

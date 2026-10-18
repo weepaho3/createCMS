@@ -133,6 +133,7 @@ import {
   UsageRoot,
   UsageScopeSwitch,
 } from './usage';
+import { MediaVideo } from './video';
 
 export const Media = {
   Root: MediaRoot,
@@ -153,6 +154,7 @@ export const Media = {
   MutationError: MediaMutationError,
   Image: MediaImage,
   Picture: MediaPicture,
+  Video: MediaVideo,
 };
 
 /** The selection: checkbox, count, bar, select all matching, hidden notice, clear. */
@@ -329,6 +331,13 @@ export type {
 } from './usage';
 export { useAssetImage } from './image-components';
 export type { MediaImageProps } from './image-components';
+export { videoSource } from './video';
+export type {
+  MediaVideoProps,
+  MediaVideoStream,
+  VideoAsset,
+  VideoSource,
+} from './video';
 export type { AssetImage, AssetImageOptions, ImageAsset } from './image';
 
 export type { MediaRootProps } from './root';

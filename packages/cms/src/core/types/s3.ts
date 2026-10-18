@@ -1,6 +1,7 @@
 import type { AwsClient } from 'aws4fetch';
 
 import type { TransformAdapter } from '../media/transform';
+import type { VideoConfig } from '../media/video-provider';
 import type { StorageAdapter } from '../storage/adapter';
 import type {
   StorageCapabilitiesOverride,
@@ -142,6 +143,13 @@ type BaseMediaConfig = {
    * the widths the endpoint snaps to.
    */
   transform?: TransformAdapter;
+
+  /**
+   * Hands long public videos to a streaming provider (see `muxVideo`): the
+   * pruning pass ingests them and stores the playback URL in
+   * `metadata.stream`; `Media.Video` plays it. Short clips stay files.
+   */
+  video?: VideoConfig;
 
   /**
    * Usages outside the CMS that integrations push through
