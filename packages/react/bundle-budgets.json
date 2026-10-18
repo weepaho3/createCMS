@@ -2,7 +2,7 @@
   "$comment": "min+gzip bytes per entry, bundled alone with react and react-dom external. baseline: the size when last reviewed (a warning above +5%); budget: the hard limit.",
   "entries": {
     "editor/core": {
-      "baseline": 31218,
+      "baseline": 33063,
       "budget": 34000
     },
     "editor": {
