@@ -139,7 +139,10 @@ export type MediaEvent =
       from: string | null;
       to: string | null;
     }
-  | { type: 'asset:archived' | 'asset:restored'; ids: string[] }
+  | {
+      type: 'asset:archived' | 'asset:restored' | 'asset:purged';
+      ids: string[];
+    }
   | { type: 'folder:changed'; folderId: string | null }
   | { type: 'selection:changed'; count: number };
 
@@ -181,6 +184,8 @@ export type MediaCommand =
   | { type: 'move'; ids?: string[]; folderId: string | null }
   | { type: 'archive'; ids?: string[]; force?: boolean }
   | { type: 'restore'; ids: string[] }
+  /** Erases assets for good (`purgeAssets`); `reason` is a code, not text. */
+  | { type: 'purge'; ids: string[]; reason: string }
   | { type: 'setVisibility'; ids?: string[]; status: MediaAssetStatus }
   | {
       type: 'setProvenance';
@@ -866,6 +871,36 @@ export function createMediaStore(options: CreateMediaStoreOptions): MediaStore {
     };
   };
 
+  const purge = async (
+    ids: string[],
+    reason: string,
+  ): Promise<CommandResult> => {
+    if (!client.purgeAssets) {
+      return { ok: false, code: 'UNSUPPORTED', error: null };
+    }
+    const order = state.collection.ids;
+    const outcome = await mutate(
+      removeFromCollection(ids),
+      () => client.purgeAssets!({ body: { assetIds: ids, reason } }),
+      (r) => ({
+        skipped: r.skipped.map((item) => item.id),
+        reasons: Object.fromEntries(
+          r.skipped.map((item) => [item.id, item.reason]),
+        ),
+      }),
+    );
+    if (!outcome.ok) return fail(outcome.error);
+    const purged = outcome.result.purgedIds;
+    afterRemoval(order, purged);
+    emit({ type: 'asset:purged', ids: purged });
+    void reloadFolderLevels(state.folders.currentId);
+    return {
+      ok: true,
+      value: outcome.result,
+      skipped: outcome.result.skipped.map((item) => item.id),
+    };
+  };
+
   const archive = async (
     ids: string[] | undefined,
     force?: boolean,
@@ -1189,14 +1224,19 @@ export function createMediaStore(options: CreateMediaStoreOptions): MediaStore {
         case 'media.asset.purged':
           if (
             state.collection.byId[assetId] &&
-            !state.collection.query.archived
+            (event.type === 'media.asset.purged' ||
+              !state.collection.query.archived)
           ) {
             setCollection(removeFromCollection([assetId])(state.collection));
             setSelection(state.selection);
           }
-          if (event.type === 'media.asset.archived') {
-            emit({ type: 'asset:archived', ids: [assetId] });
-          }
+          emit({
+            type:
+              event.type === 'media.asset.archived'
+                ? 'asset:archived'
+                : 'asset:purged',
+            ids: [assetId],
+          });
           return;
         case 'media.asset.created':
           await assetUploaded(assetId);
@@ -1361,6 +1401,8 @@ export function createMediaStore(options: CreateMediaStoreOptions): MediaStore {
         return archive(command.ids, command.force);
       case 'restore':
         return restore(command.ids);
+      case 'purge':
+        return purge(command.ids, command.reason);
       case 'setVisibility':
         return setVisibility(command.ids, command.status);
       case 'setProvenance':

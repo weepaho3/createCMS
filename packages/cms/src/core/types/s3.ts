@@ -121,6 +121,25 @@ type BaseMediaConfig = {
   }) => void | Promise<void>;
 
   /**
+   * Called after `purgeAssets` erased assets, for an audit log. Carries ids
+   * and the reason code only, no personal data. Errors are logged, never
+   * thrown.
+   */
+  onAssetPurge?: (purge: {
+    assetIds: string[];
+    reason: string;
+  }) => void | Promise<void>;
+
+  /**
+   * Malware scanner. With one, new bytes (uploads, replaces, renditions)
+   * land under the private prefix as `processingState: 'pending'`; the
+   * pruning pass scans them, makes clean ones `ready` (and public where the
+   * asset is), and deletes infected objects, marking the asset `failed`.
+   * Only `ready` assets are delivered or made public.
+   */
+  scan?: ScanAdapter;
+
+  /**
    * Origins besides the CMS's own that may call the state-changing media
    * endpoints with cookies (an admin UI on another domain). Cookie requests
    * from any other origin answer `ORIGIN_NOT_ALLOWED`; requests without
@@ -255,6 +274,24 @@ export type CustomMediaConfig = BaseMediaConfig & {
 };
 
 /** Discriminated union of all media provider configurations */
+/** The verdict of a malware scan; `unsupported` counts as clean. */
+export type ScanVerdict = 'clean' | 'infected' | 'unsupported';
+
+/**
+ * Scans one stored object (ClamAV over clamd `INSTREAM`, a GuardDuty
+ * result tag, a vendor API). Read the bytes through `storage`. A thrown
+ * error leaves the asset `pending` for the next pass.
+ */
+export type ScanAdapter = {
+  scan(object: {
+    assetId: string;
+    objectKey: string;
+    mimeType: string;
+    size: number;
+    storage: StorageAdapter;
+  }): Promise<ScanVerdict>;
+};
+
 export type MediaConfig =
   | AWSMediaConfig
   | DigitalOceanMediaConfig

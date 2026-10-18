@@ -82,6 +82,8 @@ export type MediaAssetFilterQuery = {
   kinds?: string;
   mime?: string;
   provenance?: string;
+  /** Comma separated processing states (`pending`, `ready`, `failed`). */
+  processingState?: string;
   visibility?: string;
   uploadedBy?: string;
   createdFrom?: string;
@@ -269,6 +271,15 @@ export type MediaClient = {
   setFocalPoint?(args: {
     body: { assetId: string; focal: { x: number; y: number } | null };
   }): Promise<{ asset: MediaAsset }>;
+  /** Erases assets with their revisions and renditions (operation `purge`). */
+  purgeAssets?(args: {
+    body: { assetIds: string[]; reason: string };
+  }): Promise<{
+    purgedIds: string[];
+    skipped: { id: string; reason: string }[];
+    objectsDeleted: number;
+    danglingUsages: { assetId: string; live: number; history: number }[];
+  }>;
   /** Short-lived signed URLs for downloads, checked per asset. */
   downloadIntent?(args: {
     body: { assetIds: string[]; variantKey?: string; bulkJobId?: string };

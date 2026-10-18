@@ -14,7 +14,7 @@ import { defineAuthMiddleware } from '@createcms/core';
 
 const authMiddleware = defineAuthMiddleware(async (ctx) => {
   ctx.permissionResource; // 'block', 'branch', 'mergeRequest', ... (see below)
-  ctx.operation;          // 'read' | 'create' | 'update' | 'delete'
+  ctx.operation;          // 'read' | 'create' | 'update' | 'delete' | 'purge'
   ctx.scope;              // 'collection' | 'system'
   ctx.collection?.name;   // the collection, on collection-scoped calls only
   ctx.branchName;         // the target branch, when the call names one
@@ -28,7 +28,7 @@ The extra fields you return (beyond `userId`) extend the context available to sc
 
 ### Resources and operations
 
-`ctx.operation` is always one of four values:
+`ctx.operation` is always one of five values:
 
 | Operation | Meaning |
 | --- | --- |
@@ -36,6 +36,7 @@ The extra fields you return (beyond `userId`) extend the context available to sc
 | `create` | Add a new record. |
 | `update` | Modify an existing record. |
 | `delete` | Remove or archive a record. |
+| `purge` | Erase for good, beyond recovery (`media.purgeAssets`). Grant it separately: whoever may archive should not automatically be able to destroy history. |
 
 `ctx.permissionResource` names the kind of thing being touched. These are the real values the source assigns:
 
@@ -68,17 +69,17 @@ The extra fields you return (beyond `userId`) extend the context available to sc
 
 An access policy is a decision for each resource and operation: the minimum role that may perform it. This example uses four ranked roles, `viewer` < `editor` < `reviewer` < `admin`, and reads `publishedContent` publicly:
 
-| Resource | `read` | `create` | `update` | `delete` |
-| --- | --- | --- | --- | --- |
-| `root` | viewer | editor | editor | admin |
-| `block` | viewer | editor | editor | editor |
-| `branch` | viewer | editor | editor | admin |
-| `mergeRequest` | viewer | editor | editor | reviewer |
-| `approval` | viewer | reviewer | reviewer | reviewer |
-| `comment` | viewer | editor | editor | reviewer |
-| `publication` | viewer | admin | admin | admin |
-| `redirect` | viewer | admin | admin | admin |
-| `media` | viewer | editor | editor | admin |
+| Resource | `read` | `create` | `update` | `delete` | `purge` |
+| --- | --- | --- | --- | --- | --- |
+| `root` | viewer | editor | editor | admin | admin |
+| `block` | viewer | editor | editor | editor | admin |
+| `branch` | viewer | editor | editor | admin | admin |
+| `mergeRequest` | viewer | editor | editor | reviewer | admin |
+| `approval` | viewer | reviewer | reviewer | reviewer | admin |
+| `comment` | viewer | editor | editor | reviewer | admin |
+| `publication` | viewer | admin | admin | admin | admin |
+| `redirect` | viewer | admin | admin | admin | admin |
+| `media` | viewer | editor | editor | admin | admin |
 
 Editors draft content and open merge requests; only reviewers approve; only admins publish, manage redirects, and delete pages.
 
@@ -101,6 +102,7 @@ const DEFAULT: Required<OpMatrix> = {
   create: 'admin',
   update: 'admin',
   delete: 'admin',
+  purge: 'admin',
 };
 
 const POLICY: Record<string, OpMatrix> = {

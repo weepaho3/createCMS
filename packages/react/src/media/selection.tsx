@@ -414,6 +414,8 @@ export function BulkActionButton(props: BulkActionProps) {
         return messages.bulk.archived({ count }, format);
       case 'restore':
         return messages.bulk.restored({ count }, format);
+      case 'purge':
+        return messages.bulk.purged({ count }, format);
       case 'makePublic':
       case 'makePrivate':
         return messages.bulk.visibility(

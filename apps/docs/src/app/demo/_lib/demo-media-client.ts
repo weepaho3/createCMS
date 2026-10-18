@@ -309,6 +309,25 @@ export function demoMediaClient(): MediaClient {
       asset.updatedAt = new Date().toISOString();
       return { asset: structuredClone(asset) };
     },
+    async purgeAssets({ body }) {
+      const purgedIds = assets
+        .filter((asset) => body.assetIds.includes(asset.id))
+        .map((asset) => asset.id);
+      for (const id of purgedIds) {
+        assets.splice(
+          assets.findIndex((asset) => asset.id === id),
+          1,
+        );
+      }
+      return {
+        purgedIds,
+        skipped: body.assetIds
+          .filter((id) => !purgedIds.includes(id))
+          .map((id) => ({ id, reason: 'ASSET_NOT_FOUND' })),
+        objectsDeleted: purgedIds.length,
+        danglingUsages: [],
+      };
+    },
     async listRevisions() {
       return { revisions: [] };
     },

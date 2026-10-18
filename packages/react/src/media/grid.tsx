@@ -780,6 +780,8 @@ type ItemState = {
   assetStatus: string;
   type: MediaType;
   provenance: string;
+  /** `pending` while the malware scan runs, `failed` after it found malware. */
+  processingState: 'pending' | 'ready' | 'failed';
 };
 
 export type ItemContextValue = { asset: MediaAsset; selected: boolean };
@@ -902,6 +904,7 @@ export function MediaItem(props: MediaItemProps) {
       assetStatus: asset.status,
       type: mediaTypeOf(asset.mimeType),
       provenance: asset.provenance ?? 'unknown',
+      processingState: asset.processingState ?? 'ready',
     } satisfies ItemState,
     props: mergeProps<'div'>(
       {

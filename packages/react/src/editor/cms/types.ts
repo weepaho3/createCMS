@@ -134,6 +134,8 @@ export type CmsAssetListItem = {
   width?: number | null;
   height?: number | null;
   provenance?: 'unknown' | 'captured' | 'ai_generated' | 'ai_edited';
+  /** `pending` until the malware scan cleared it, `failed` when it did not. */
+  processingState?: 'pending' | 'ready' | 'failed';
   /** `AssetMetadata` from `@createcms/core`. */
   metadata?: Record<string, unknown>;
   /** Live variants, read instead of guessing sizes. */

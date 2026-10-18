@@ -199,6 +199,7 @@ export const mediaMessagesDe: MediaMessages = {
       download: 'Herunterladen',
       archive: 'Archivieren',
       restore: 'Wiederherstellen',
+      purge: 'Endgültig löschen',
     },
     disabled: {
       empty: 'Zuerst Dateien auswählen.',
@@ -222,6 +223,26 @@ export const mediaMessagesDe: MediaMessages = {
     archiveInUse: ({ count }, format) =>
       `${format.number(count)} ${plural(count, format, 'Datei wird', 'Dateien werden')} noch verwendet. Trotzdem archivieren? Inhalte verweisen weiter darauf.`,
     archiveAnyway: 'Trotzdem archivieren',
+    purged: ({ count }, format) =>
+      plural(
+        count,
+        format,
+        `${format.number(count)} Datei endgültig gelöscht.`,
+        `${format.number(count)} Dateien endgültig gelöscht.`,
+      ),
+    purgeTitle: 'Endgültig löschen?',
+    purgeDescription: ({ count }, format) =>
+      plural(
+        count,
+        format,
+        'Die Datei wird mit allen früheren Versionen und Renditionen gelöscht. Das lässt sich nicht rückgängig machen; Seiten, die sie noch verwenden, zeigen einen Platzhalter.',
+        `${format.number(count)} Dateien werden mit allen früheren Versionen und Renditionen gelöscht. Das lässt sich nicht rückgängig machen; Seiten, die sie noch verwenden, zeigen einen Platzhalter.`,
+      ),
+    purgeTyping: ({ word }) => `Zum Bestätigen "${word}" eingeben.`,
+  },
+  processing: {
+    pending: 'Wird auf Schadsoftware geprüft',
+    failed: 'Gesperrt: Schadsoftware gefunden',
   },
   type: {
     image: 'Bild',

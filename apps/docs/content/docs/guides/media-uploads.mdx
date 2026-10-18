@@ -125,6 +125,30 @@ media: {
 },
 ```
 
+### Malware scanning
+
+Scanning is optional, because it needs a scanner: ClamAV runs as a daemon (`clamd`) next to your app, Amazon GuardDuty Malware Protection for S3 tags objects in AWS buckets (with a free tier of 1,000 requests and 1 GB per month and region). Plug one in as `media.scan`:
+
+```ts title="cms.ts"
+media: {
+  // ...
+  scan: {
+    async scan({ objectKey, storage }) {
+      const bytes = await storage.getRange(objectKey, 0, 64 * 1024 * 1024 - 1);
+      const res = await fetch(process.env.SCANNER_URL!, { method: 'POST', body: bytes });
+      const { infected } = (await res.json()) as { infected: boolean };
+      return infected ? 'infected' : 'clean';
+    },
+  },
+},
+```
+
+With a scanner, every upload, replace and rendition is stored privately as `processingState: 'pending'` and is delivered to no one (`ASSET_NOT_READY`) and cannot be made public. The [pruning pass](/docs/reference/admin) scans pending assets: clean ones become `ready` and move to the public prefix if their asset is public; infected objects are deleted and the asset is marked `failed`. A scanner error leaves the asset pending for the next pass. The library shows the state on each item (`data-processing-state`), and `listAssets` filters by it (`processingState=pending`). Without a scanner every asset is `ready`.
+
+### Erasing assets
+
+`archiveAssets` moves assets to the trash, and the pruning pass reclaims them later. For a right-to-erasure request, `purgeAssets({ assetIds, reason })` deletes an asset with all its earlier revisions and renditions right away, objects first. It needs the separate `purge` operation (see [Permissions](/docs/guides/permissions)), records only ids and a reason code, and returns the pages that still reference the asset; they render a placeholder. The library offers it as the bulk action **Delete permanently**, confirmed by typing `purge`.
+
 ### Optimize before upload
 
 Add the [media optimize plugin](/docs/plugins/media-optimize) and `upload` removes GPS, reads the provenance and computes a placeholder in the browser, then uploads WebP renditions at 320, 640, 1280 and 1920 px as variants of the new asset. Each rendition is its own entry (`kind: 'rendition'`, `parentId`, `variantKey`); the parent finishes when they did, and `Upload.List` lists the parent only. See [Media optimize: Usage](/docs/plugins/media-optimize#usage).

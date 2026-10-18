@@ -207,6 +207,7 @@ List the original assets of the library (never variants or revisions), filtered 
     status: { type: "'private' | 'public'", description: 'One visibility.' },
     visibility: { type: 'string', description: 'Comma separated visibilities (`private,public`).' },
     provenance: { type: 'string', description: 'Comma separated provenances (`ai_generated,unknown`).' },
+    processingState: { type: 'string', description: 'Comma separated scan states (`pending,ready,failed`); see `media.scan`.' },
     uploadedBy: { type: 'string', description: 'Comma separated user ids.' },
     createdFrom: { type: 'string', description: 'ISO date or date-time, inclusive.' },
     createdTo: { type: 'string', description: 'ISO date (the whole day) or date-time, inclusive.' },
@@ -842,6 +843,35 @@ Set whether an asset is captured, AI-generated or AI-edited by hand; `metadata.p
   params={{
     assetId: { type: 'string', required: true, description: 'The asset.' },
     provenance: { type: "'unknown' | 'captured' | 'ai_generated' | 'ai_edited'", required: true, description: 'The provenance.' },
+  }}
+/>
+
+### Erase Assets [#purgeassets]
+
+Erases assets for good, for a right-to-erasure request: the objects and rows of each asset, its earlier revisions and its renditions, whether live or in the trash. It needs the `purge` operation, which your `authMiddleware` grants separately from `delete` (archiving). Objects are deleted first; when one cannot be deleted, the asset keeps its rows and is reported under `skipped` with `STORAGE_ERROR`, so the call can be repeated. `reason` is a code, never free text, because it is recorded in the `media.asset.purged` event and in `media.onAssetPurge`.
+
+<APIMethod
+  method="POST"
+  path="/media/purgeAssets"
+  fn="purgeAssets"
+  collection="media"
+  resource="media"
+  operation="purge"
+  args={`{
+  body: {
+    assetIds: ['ast_1'], // required
+    reason: 'gdpr-erasure', // required
+  },
+}`}
+  returns={{
+    purgedIds: { type: 'string[]', description: 'The erased assets.' },
+    skipped: { type: '{ id: string; reason: string }[]', description: '`ASSET_NOT_FOUND` for ids that are not originals in scope, `STORAGE_ERROR` when an object could not be deleted.' },
+    objectsDeleted: { type: 'number', description: 'Objects deleted from storage (originals, revisions, renditions).' },
+    danglingUsages: { type: '{ assetId: string; live: number; history: number }[]', description: 'Roots that still reference an erased asset, per scope; renderers show a placeholder for them.' },
+  }}
+  params={{
+    assetIds: { type: 'string[]', required: true, description: '1 to 100 asset ids (originals).' },
+    reason: { type: 'string', required: true, description: 'A reason code of letters, digits, `-` and `_` (up to 64), such as `gdpr-erasure`.' },
   }}
 />
 

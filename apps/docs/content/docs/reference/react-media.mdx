@@ -75,7 +75,7 @@ without glue code. Required: `listAssets`, `listFolders`, `createFolder`,
 that need them: `getAssets`, `getAssetFacets`, `updateAsset`,
 `restoreAssets`, `renameFolder`, `moveFolder`, `getFolderPath`,
 `deleteFolder`, `getAssetUsages`, `getAssetUsageCounts`, `listRevisions`,
-`setCurrentRevision`, `setFocalPoint`, `downloadIntent`,
+`setCurrentRevision`, `setFocalPoint`, `downloadIntent`, `purgeAssets`,
 `createSignedReplace`, `commitReplace` and `subscribe(onEvent)`, which feeds
 `MediaServerEvent`s (the `media.*` realtime events) to the store.
 
@@ -171,8 +171,10 @@ Shift-click replaces the previous range from the anchor (Finder), Shift with
 Cmd/Ctrl adds a range. On touch, a long press (500 ms, cancelled by more
 than 10 px of movement so scrolling never selects) toggles the item into
 the selection with a short vibration where available. State: `data-selected`, `data-focused`,
-`data-asset-status`, `data-type` (`MediaType` from `mediaTypeOf`) and
-`data-provenance`. It provides `ItemContextValue` (`{ asset, selected }`)
+`data-asset-status`, `data-type` (`MediaType` from `mediaTypeOf`),
+`data-provenance` and `data-processing-state` (`pending` while the malware
+scan runs, `failed` after it found malware; label them with
+`messages.processing`). It provides `ItemContextValue` (`{ asset, selected }`)
 through `useMediaItemContext(name)`. Items are draggable (see
 [Drag and drop](#drag-and-drop)).
 

@@ -171,7 +171,8 @@ export type MediaMessages = {
       | 'setProvenance'
       | 'download'
       | 'archive'
-      | 'restore',
+      | 'restore'
+      | 'purge',
       string
     >;
     /** Why an action is disabled, by `data-disabled-reason`. */
@@ -184,7 +185,15 @@ export type MediaMessages = {
     undone: string;
     archiveInUse: MediaMessageFn<{ count: number }>;
     archiveAnyway: string;
+    purged: MediaMessageFn<{ count: number }>;
+    purgeTitle: string;
+    /** What a permanent deletion does; shown before confirming. */
+    purgeDescription: MediaMessageFn<{ count: number }>;
+    /** Asks to type `word` (the descriptor's `requireTyping`). */
+    purgeTyping: MediaMessageFn<{ word: string }>;
   };
+  /** The malware scan state of an asset (`processingState`). */
+  processing: Record<'pending' | 'failed', string>;
   type: Record<MediaTypeLabel, string>;
   upload: {
     title: string;
@@ -570,6 +579,7 @@ export const defaultMediaMessages: MediaMessages = {
       download: 'Download',
       archive: 'Archive',
       restore: 'Restore',
+      purge: 'Delete permanently',
     },
     disabled: {
       empty: 'Select assets first.',
@@ -593,6 +603,16 @@ export const defaultMediaMessages: MediaMessages = {
     archiveInUse: ({ count }, format) =>
       `${format.number(count)} ${pluralize(count, format, 'asset is', 'assets are')} still in use. Archive anyway? Content keeps pointing at them.`,
     archiveAnyway: 'Archive anyway',
+    purged: ({ count }, format) =>
+      `${format.number(count)} ${pluralize(count, format, 'asset', 'assets')} deleted permanently.`,
+    purgeTitle: 'Delete permanently?',
+    purgeDescription: ({ count }, format) =>
+      `${format.number(count)} ${pluralize(count, format, 'asset is', 'assets are')} erased with every earlier version and rendition. This cannot be undone; pages that still use ${pluralize(count, format, 'it', 'them')} show a placeholder.`,
+    purgeTyping: ({ word }) => `Type "${word}" to confirm.`,
+  },
+  processing: {
+    pending: 'Checking for malware',
+    failed: 'Blocked: malware found',
   },
   type: {
     image: 'Image',

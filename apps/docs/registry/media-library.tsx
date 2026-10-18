@@ -511,6 +511,16 @@ function MediaAssetCard({
             {t.visibility.private}
           </Badge>
         ) : null}
+        {asset.processingState && asset.processingState !== 'ready' ? (
+          <Badge
+            variant={
+              asset.processingState === 'failed' ? 'destructive' : 'secondary'
+            }
+            data-slot="media-asset-processing"
+          >
+            {t.processing[asset.processingState]}
+          </Badge>
+        ) : null}
       </div>
       <Picker.Reason className="text-muted-foreground text-xs" />
     </Media.Item>
@@ -963,31 +973,59 @@ function useConfirmDialog() {
     setPending(null);
   };
   const inUse = pending?.descriptor.kind === 'archiveInUse';
+  const purge = pending?.descriptor.kind === 'purge';
+  const word = pending?.descriptor.requireTyping;
+  const count = pending?.descriptor.count ?? 0;
+  const [typed, setTyped] = React.useState('');
+  const confirmed = !word || typed.trim() === word;
   const dialog = (
     <AlertDialog
       open={pending !== null}
-      onOpenChange={(open) => (open ? null : close(false))}
+      onOpenChange={(open) => {
+        if (open) return;
+        setTyped('');
+        close(false);
+      }}
     >
       <AlertDialogContent data-slot="media-confirm">
         <AlertDialogHeader>
-          <AlertDialogTitle>{t.action.archiveTitle}</AlertDialogTitle>
+          <AlertDialogTitle>
+            {purge ? t.bulk.purgeTitle : t.action.archiveTitle}
+          </AlertDialogTitle>
           <AlertDialogDescription>
-            {inUse
-              ? t.bulk.archiveInUse(
-                  { count: pending?.descriptor.count ?? 0 },
-                  format,
-                )
-              : t.action.archiveDescription}
+            {purge
+              ? t.bulk.purgeDescription({ count }, format)
+              : inUse
+                ? t.bulk.archiveInUse({ count }, format)
+                : t.action.archiveDescription}
           </AlertDialogDescription>
         </AlertDialogHeader>
+        {word ? (
+          <label className="flex flex-col gap-1 text-sm">
+            <span>{t.bulk.purgeTyping({ word }, format)}</span>
+            <Input
+              value={typed}
+              autoComplete="off"
+              onChange={(event) => setTyped(event.currentTarget.value)}
+            />
+          </label>
+        ) : null}
         <AlertDialogFooter>
           <AlertDialogCancel type="button">{t.action.cancel}</AlertDialogCancel>
           <AlertDialogAction
             type="button"
             variant="destructive"
-            onClick={() => close(true)}
+            disabled={!confirmed}
+            onClick={() => {
+              setTyped('');
+              close(true);
+            }}
           >
-            {inUse ? t.bulk.archiveAnyway : t.action.archive}
+            {purge
+              ? t.bulk.action.purge
+              : inUse
+                ? t.bulk.archiveAnyway
+                : t.action.archive}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

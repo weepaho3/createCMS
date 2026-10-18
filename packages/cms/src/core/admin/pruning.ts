@@ -40,6 +40,7 @@ import {
   searchIndex,
 } from '../db/schema.generated';
 import { assetsUsedExternally } from '../media/archive';
+import { scanPendingAssets } from '../media/scan';
 import { richTextReferenceExists } from '../media/usage';
 import { getStorage } from '../storage/get-storage';
 import { MEDIA_DEFAULTS } from '../types/s3';
@@ -657,6 +658,10 @@ export type PruningPassResult = PruningResult & {
   processedLiveRoots: number;
   /** Storage keys deleted by the orphan sweep: objects without an asset row. */
   sweptObjects: string[];
+  /** Pending assets the scanner cleared this pass (`media.scan`). */
+  scannedAssets: string[];
+  /** Pending assets the scanner found infected: object deleted, `failed`. */
+  failedAssets: string[];
   /**
    * Pass to the next pass as `sweepCursor`; `null` once the sweep reached
    * the end of the bucket (the next pass starts over), or when the storage
@@ -721,6 +726,8 @@ export async function runPruningPass(
   const deletedRoots: string[] = [];
   const deletedAssets: string[] = [];
   const sweptObjects: string[] = [];
+  const scannedAssets: string[] = [];
+  const failedAssets: string[] = [];
   let sweepCursor: string | null = null;
   let processedLiveRoots = 0;
   let budget = maxRoots;
@@ -739,6 +746,8 @@ export async function runPruningPass(
     deletedAssets,
     processedLiveRoots,
     sweptObjects,
+    scannedAssets,
+    failedAssets,
     sweepCursor,
     stoppedReason: reason,
     done: reason === 'idle',
@@ -909,6 +918,18 @@ export async function runPruningPass(
     deletedAssets.push(asset.id);
   }
   if (reclaimable.length === maxAssets) return finish('maxRoots');
+
+  // 4) Scan pending uploads when a scanner is configured; clean ones become
+  //    ready (and public where their asset is), infected objects are deleted.
+  if (Date.now() >= deadline) return finish('budget');
+  const scanned = await scanPendingAssets(db, mediaConfig, {
+    limit: maxAssets,
+    deadline,
+    dryRun,
+  });
+  scannedAssets.push(...scanned.ready);
+  failedAssets.push(...scanned.failed);
+  if (scanned.more) return finish('budget');
 
   if (Date.now() >= deadline) return finish('budget');
   sweepCursor = await sweepOrphanedObjects(db, mediaConfig, {

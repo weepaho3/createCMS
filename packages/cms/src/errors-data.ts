@@ -316,6 +316,11 @@ export const CMS_ERRORS = {
     status: 409 as const,
     message: 'The asset already has a live variant with this variant key',
   },
+  ASSET_NOT_READY: {
+    status: 409 as const,
+    message:
+      'The asset is not delivered: it awaits its malware scan or failed it',
+  },
   ASSET_CONFLICT: {
     status: 409 as const,
     message: 'The asset changed since it was read; reload it and retry',

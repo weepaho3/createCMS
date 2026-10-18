@@ -24,6 +24,9 @@ import { ASSET_SEARCH_VECTOR_SQL } from './search-vector';
 import { assetHasUsage } from './usage';
 
 /** Asset kinds derived from the MIME type. */
+/** The values of `assets.processing_state`. */
+export const PROCESSING_STATES = ['pending', 'ready', 'failed'] as const;
+
 export const ASSET_KINDS = [
   'image',
   'video',
@@ -66,6 +69,7 @@ export const assetFilterFields = {
   kinds: csvEnum(ASSET_KINDS).optional(),
   mime: csvList().optional(),
   provenance: csvEnum(ASSET_PROVENANCES).optional(),
+  processingState: csvEnum(PROCESSING_STATES).optional(),
   uploadedBy: csvList().optional(),
   createdFrom: dateParam.optional(),
   createdTo: dateParam.optional(),
@@ -104,6 +108,8 @@ export type AssetFilterInput = {
   mime?: string;
   /** Comma separated provenances. */
   provenance?: string;
+  /** Comma separated processing states: `pending,ready,failed`. */
+  processingState?: string;
   /** Comma separated user ids. */
   uploadedBy?: string;
   createdFrom?: string;
@@ -258,6 +264,9 @@ export function assetFilterConditions(
   ) {
     conditions.push(inArray(assets.provenance, filter.provenance));
   }
+  if (filter.processingState && filter.processingState.length > 0) {
+    conditions.push(inArray(assets.processingState, filter.processingState));
+  }
   if (filter.uploadedBy && filter.uploadedBy.length > 0) {
     conditions.push(inArray(assets.uploadedBy, filter.uploadedBy));
   }
@@ -331,6 +340,7 @@ function normalizeLists(input: ParsedFilter | AssetFilterInput) {
     kinds: listOf(input.kinds, ASSET_KINDS),
     mime: listOf<string>(input.mime),
     provenance: listOf(input.provenance, ASSET_PROVENANCES),
+    processingState: listOf(input.processingState, PROCESSING_STATES),
     uploadedBy: listOf<string>(input.uploadedBy),
   };
 }

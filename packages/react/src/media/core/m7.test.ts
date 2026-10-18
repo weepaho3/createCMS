@@ -662,3 +662,37 @@ describe('long press', () => {
     expect(fired).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('purge', () => {
+  it('removes purged assets, keeps skipped ones and offers no undo', async () => {
+    const purgeAssets = vi.fn(async () => ({
+      purgedIds: ['a1'],
+      skipped: [{ id: 'a2', reason: 'STORAGE_ERROR' }],
+      objectsDeleted: 3,
+      danglingUsages: [],
+    }));
+    const client = {
+      listAssets: vi.fn(async () => ({
+        assets: [asset(), asset({ id: 'a2' })],
+        total: 2,
+        hasMore: false,
+        nextCursor: null,
+      })),
+      listFolders: vi.fn(async () => ({ folders: [] })),
+      purgeAssets,
+    } as unknown as MediaClient;
+    const store = createMediaStore({ client });
+    await store.dispatch({ type: 'load' });
+    const result = await store.dispatch({
+      type: 'purge',
+      ids: ['a1', 'a2'],
+      reason: 'gdpr-erasure',
+    });
+    expect(purgeAssets).toHaveBeenCalledWith({
+      body: { assetIds: ['a1', 'a2'], reason: 'gdpr-erasure' },
+    });
+    expect(result).toMatchObject({ ok: true, skipped: ['a2'] });
+    expect(result.ok && result.undo).toBeFalsy();
+    expect(store.getState().collection.ids).toEqual(['a2']);
+  });
+});

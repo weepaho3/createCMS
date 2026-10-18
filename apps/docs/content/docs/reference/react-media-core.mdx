@@ -53,7 +53,7 @@ for typing, `silent` for history navigation), `openFolder`, `loadFolders`,
 changed fields with `expectedUpdatedAt`; an `ASSET_CONFLICT` keeps the
 draft and sets `conflict`), `resolveDetailConflict` (`keep: 'mine'` saves
 over the newer version, `'theirs'` drops the draft), `setFocalPoint`,
-`loadRevisions`, `setCurrentRevision`, `setLayout`, `setViewport`,
+`loadRevisions`, `setCurrentRevision`, `purge` (`ids`, `reason`), `setLayout`, `setViewport`,
 `clearMutationError`.
 
 List requests are aborted when a newer one starts; a filter change keeps the
@@ -70,7 +70,7 @@ subscription; `init` resumes, so a React StrictMode remount works.
 
 `on(type, listener)` subscribes to a `MediaEvent` (`MediaEventType`):
 `asset:uploaded`, `asset:updated`, `asset:replaced`, `asset:moved`,
-`asset:archived`, `asset:restored`, `folder:changed`, `selection:changed`.
+`asset:archived`, `asset:restored`, `asset:purged`, `folder:changed`, `selection:changed`.
 
 `receive` queues files through `setUploader(upload)` (a `MediaUploader`,
 the client's `upload`): file hooks run first, and with `recreateFolders` the
@@ -102,12 +102,14 @@ A `BulkAction` is `{ id, label, scope?, canExecute(context), confirm?(context), 
 `ConfirmDescriptor` (`{ kind, count, destructive?, items?, requireTyping? }`).
 `bulkContext(store, itemId?, state?)` builds the `BulkContext`
 (`{ store, state, ids, count, assets, target }`); `BulkInput` carries
-`folderId`, `force`, `provenance`, `open` and `name`. Built-ins:
+`folderId`, `force`, `provenance`, `open`, `name` and `reason`. Built-ins:
 `moveAction`, `makePublicAction`, `makePrivateAction`, `setProvenanceAction`,
 `downloadAction` (one asset through `?download=true` on the asset endpoint,
 several as one archive through `downloadQueueOf(store)`, the queue every
 surface of a store shares, `null` without `downloadIntent`), `archiveAction`
-and `restoreAction`, in `builtInBulkActions`;
+`restoreAction` and `purgeAction` (erases the selection with
+`purgeAssets`; its confirmation asks to type `purge`, `input.reason` is
+the reason code, default `erasure`), in `builtInBulkActions`;
 `registerBuiltInBulkActions(store)` adds them. `archiveInUseConfirm(reasons)`
 describes the confirmation for assets an archive skipped because they are in
 use.

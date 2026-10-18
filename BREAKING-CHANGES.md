@@ -517,6 +517,20 @@ refresh }` and `useMediaSelection()` the new `MediaSelection`.
   breadcrumbs; complete full catalogs typed as `MediaMessages` with the new
   keys (a partial `MediaMessagesInput` falls back to English).
 
+- **`assets` gains `processing_state`, and `CMSOperation` gains `purge`.**
+  A new enum `asset_processing_state` and the column
+  `assets.processing_state` (`NOT NULL DEFAULT 'ready'`, with a partial
+  index on pending rows) back the optional malware scanner; existing rows
+  become `ready`. `CMSOperation` is now
+  `'read' | 'create' | 'update' | 'delete' | 'purge'`; `purgeAssets` asks
+  your `authMiddleware` for `purge` on `media`. `MediaMessages` gains
+  `processing` and new `bulk` keys (`action.purge`, `purged`, `purgeTitle`,
+  `purgeDescription`, `purgeTyping`).
+  → **Migration:** run `createcms generate` and apply the migration (no
+  backfill). Give `purge` a rule in your access policy (an exhaustive
+  `Record<CMSOperation, …>` no longer compiles until you do); without one,
+  deny it. Complete full catalogs typed as `MediaMessages`.
+
 - **Media uploads are checked more strictly.** SVG (`image/svg+xml` or a
   `.svg` name) is refused even when `allowedMimeTypes` lists it or a
   wildcard covers it. Every upload is sniffed from its first 4,100 bytes,

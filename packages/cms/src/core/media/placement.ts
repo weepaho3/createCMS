@@ -165,11 +165,6 @@ export async function setAssetsVisibility(
       .where(and(...conditions));
   };
 
-  if (!config || visibilityMode(config) === 'legacy') {
-    await updateStatus(db, assetIds);
-    return { changed: assetIds, failed: [] };
-  }
-
   const rowConditions: SQL[] = [
     or(inArray(assets.id, assetIds), inArray(assets.variantOf, assetIds))!,
   ];
@@ -180,13 +175,30 @@ export async function setAssetsVisibility(
       variantOf: assets.variantOf,
       objectKey: assets.objectKey,
       mimeType: assets.mimeType,
+      processingState: assets.processingState,
     })
     .from(assets)
     .where(and(...rowConditions));
 
-  const requested = new Set(assetIds);
+  // Unscanned or infected bytes are never published: such an asset keeps
+  // its status (reported as failed), such a variant stays private.
+  const unready = new Set(
+    visibility === 'public'
+      ? rows.filter((row) => row.processingState !== 'ready').map((r) => r.id)
+      : [],
+  );
+  const blocked = assetIds.filter((id) => unready.has(id));
+  const allowed = assetIds.filter((id) => !unready.has(id));
+
+  if (!config || visibilityMode(config) === 'legacy') {
+    await updateStatus(db, allowed);
+    return { changed: allowed, failed: blocked };
+  }
+
+  const requested = new Set(allowed);
   const movesByAsset = new Map<string, Move[]>();
   for (const row of rows) {
+    if (unready.has(row.id)) continue;
     const owner =
       row.variantOf && requested.has(row.variantOf) ? row.variantOf : row.id;
     if (!requested.has(owner)) continue;
@@ -234,6 +246,7 @@ export async function setAssetsVisibility(
     }
   }
 
+  failed.push(...blocked);
   const failedSet = new Set(failed);
   const changed = assetIds.filter((id) => !failedSet.has(id));
   await db.transaction(async (tx) => {

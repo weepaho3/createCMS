@@ -48,6 +48,8 @@ export type BulkInput = {
   open?: (url: string) => void;
   /** `download` of several assets: the archive name (default `media`). */
   name?: string;
+  /** `purge`: the reason code sent with the erasure (default `erasure`). */
+  reason?: string;
 };
 
 export type BulkAction = {
@@ -128,6 +130,33 @@ export const archiveAction: BulkAction = {
       type: 'archive',
       ids: commandIds(context),
       force: input?.force,
+    }),
+};
+
+/**
+ * Erases the selection for good (`purgeAssets`): asks for the typed word
+ * `messages.bulk.purgeWord`-style confirmation through `requireTyping`
+ * and sends `input.reason` (default `erasure`) as the reason code.
+ */
+export const purgeAction: BulkAction = {
+  id: 'purge',
+  label: 'purge',
+  canExecute: (context) => {
+    if (!hasMethod(context, 'purgeAssets')) return 'unsupported';
+    if (context.state.selection.allMatching) return 'too-many';
+    return needsSelection(context);
+  },
+  confirm: (context) => ({
+    kind: 'purge',
+    count: context.count,
+    destructive: true,
+    requireTyping: 'purge',
+  }),
+  run: (context, input) =>
+    context.store.dispatch({
+      type: 'purge',
+      ids: context.ids,
+      reason: input?.reason ?? 'erasure',
     }),
 };
 
@@ -273,6 +302,7 @@ export const builtInBulkActions: readonly BulkAction[] = [
   downloadAction,
   archiveAction,
   restoreAction,
+  purgeAction,
 ];
 
 /** Registers the built-in actions on `store` (ids already registered are kept). */

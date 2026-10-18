@@ -40,6 +40,7 @@ import {
 } from '../media/asset-filter';
 import { contentDisposition } from '../media/content-disposition';
 import { readImageDimensions } from '../media/dimensions';
+import { normalizeDisplayName } from '../media/display-name';
 import { emitMediaEvents } from '../media/events';
 import {
   assetObjectKey,
@@ -50,6 +51,7 @@ import {
 } from '../media/placement';
 import { PROVENANCE_SCAN_BYTES, readProvenance } from '../media/provenance';
 import { createRateWindow } from '../media/rate-window';
+import { initialProcessingState, uploadVisibility } from '../media/scan';
 import { checkDeclaredType, SNIFF_BYTES, sniffType } from '../media/sniff';
 import {
   deriveUploadKey,
@@ -283,6 +285,7 @@ function toAssetListItem(
     deliveryUrl: urls.delivery(asset.id),
     status: asset.status,
     provenance: asset.provenance,
+    processingState: asset.processingState,
     metadata: asset.metadata as AssetMetadata,
     variants,
     folderId: asset.folderId ?? null,
@@ -486,7 +489,13 @@ export function createMediaEndpoints(
         slug: assets.slug,
       })
       .from(assets)
-      .where(and(eq(assets.variantOf, asset.id), isNull(assets.archivedAt)));
+      .where(
+        and(
+          eq(assets.variantOf, asset.id),
+          isNull(assets.archivedAt),
+          eq(assets.processingState, 'ready'),
+        ),
+      );
 
     const legacySlug = buildVariantSlug(asset.slug, format, requestedWidth);
     const exact =
@@ -805,6 +814,7 @@ export function createMediaEndpoints(
             metadata: JSON.stringify(extra.metadata ?? {}),
             variant_key: payload.variantKey ?? null,
             original_name: payload.name,
+            processing_state: initialProcessingState(mediaConfig),
             sha256: payload.sha256 ? base64ToHex(payload.sha256) : null,
             uploaded_by: payload.actor,
           },
@@ -1204,6 +1214,7 @@ export function createMediaEndpoints(
               mimeType: assets.mimeType,
               slug: assets.slug,
               originalName: assets.originalName,
+              processingState: assets.processingState,
             })
             .from(assets)
             .where(and(...conditions));
@@ -1216,6 +1227,10 @@ export function createMediaEndpoints(
 
         const asset = await lookup();
         if (!asset) throw notFound();
+        // Unscanned or infected bytes are delivered to no one.
+        if (asset.processingState !== 'ready') {
+          throw new CMSError('ASSET_NOT_READY');
+        }
 
         const isPrivate = asset.status === 'private';
         if (isPrivate || gate.hasScopeConditions) {
@@ -1238,6 +1253,7 @@ export function createMediaEndpoints(
               and(
                 eq(assets.id, ctx.query.rev),
                 eq(assets.revisionOf, asset.id),
+                eq(assets.processingState, 'ready'),
               ),
             );
           if (!revision) throw notFound();
@@ -1859,10 +1875,10 @@ export function createMediaEndpoints(
         if (!slug) {
           throw new CMSError('SLUG_GENERATION_FAILED');
         }
-        const objectKey = newObjectKey(scope, target.status)(
-          newId('asset'),
-          slug,
-        );
+        const objectKey = newObjectKey(
+          scope,
+          uploadVisibility(mediaConfig, target.status),
+        )(newId('asset'), slug);
 
         const storage = getStorage(mediaConfig);
         requireSignedUploadCapability(storage, [file.type]);
@@ -2080,6 +2096,7 @@ export function createMediaEndpoints(
                 mimeType,
                 size,
                 originalName: slug,
+                processingState: initialProcessingState(mediaConfig),
                 width: null,
                 height: null,
                 sha256: null,
@@ -2428,7 +2445,7 @@ export function createMediaEndpoints(
         const objectKey = assetObjectKey(mediaConfig, {
           id,
           fileName: name,
-          visibility: original.status,
+          visibility: uploadVisibility(mediaConfig, original.status),
           scope,
         });
         await guardSignedBatch({
@@ -2689,6 +2706,7 @@ export function createMediaEndpoints(
                 variant_of: p.file.variantOf ?? null,
                 variant_key: p.file.variantKey ?? null,
                 original_name: p.file.name,
+                processing_state: initialProcessingState(mediaConfig),
                 uploaded_by: actor ?? null,
               })),
               scope.assets,
@@ -2854,10 +2872,10 @@ export function createMediaEndpoints(
         if (!slug) {
           throw new CMSError('SLUG_GENERATION_FAILED');
         }
-        const objectKey = newObjectKey(scope, target.status)(
-          newId('asset'),
-          slug,
-        );
+        const objectKey = newObjectKey(
+          scope,
+          uploadVisibility(mediaConfig, target.status),
+        )(newId('asset'), slug);
 
         // 5. PUT the new object FIRST — on failure the row is untouched, so the
         //    asset keeps serving its existing (still-present) object.
@@ -2963,7 +2981,8 @@ export function createMediaEndpoints(
                 objectKey,
                 mimeType: file.type,
                 size: measuredSize,
-                originalName: file.name,
+                originalName: normalizeDisplayName(file.name, file.type),
+                processingState: initialProcessingState(mediaConfig),
                 width: null,
                 height: null,
                 sha256: null,

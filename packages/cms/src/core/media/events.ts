@@ -20,6 +20,8 @@ export type MediaAssetEventPayload = {
   tenant: string | null;
   assetId: string;
   revisionId?: string;
+  /** `media.asset.purged`: the caller's reason code, never free text. */
+  reason?: string;
   updatedAt: string;
 };
 
@@ -45,7 +47,12 @@ export async function emitMediaEvents(
   realtime: RealtimeRuntime | undefined,
   scope: Pick<ResolvedScope, 'channelKey'> | undefined,
   events: (
-    | { event: MediaAssetEvent; assetId: string; revisionId?: string }
+    | {
+        event: MediaAssetEvent;
+        assetId: string;
+        revisionId?: string;
+        reason?: string;
+      }
     | { event: MediaFolderEvent; folderId: string }
   )[],
 ): Promise<void> {
@@ -62,6 +69,7 @@ export async function emitMediaEvents(
         updatedAt,
       };
       if (item.revisionId) assetPayload.revisionId = item.revisionId;
+      if (item.reason) assetPayload.reason = item.reason;
       payload = assetPayload;
     } else {
       payload = { tenant, folderId: item.folderId, updatedAt };

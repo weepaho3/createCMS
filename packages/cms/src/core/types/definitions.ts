@@ -269,7 +269,11 @@ export type ScopeConditionFactory = (
 // Utility Types
 // ============================================================================
 
-export type CMSOperation = 'read' | 'create' | 'update' | 'delete';
+/**
+ * What an endpoint does. `purge` is an irreversible erasure (media
+ * `purgeAssets`) and is granted separately from `delete`, which archives.
+ */
+export type CMSOperation = 'read' | 'create' | 'update' | 'delete' | 'purge';
 
 // ============================================================================
 // Read Response Types (typed by the collection definition)

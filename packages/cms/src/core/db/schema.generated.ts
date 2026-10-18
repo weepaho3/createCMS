@@ -17,6 +17,8 @@ const tsvectorColumn = customType<{ data: string }>({
 });
 export const approvalStatusEnum = cmsSchema.enum("approval_status", ["pending", "approved", "rejected"]);
 
+export const assetProcessingStateEnum = cmsSchema.enum("asset_processing_state", ["pending", "ready", "failed"]);
+
 export const assetProvenanceEnum = cmsSchema.enum("asset_provenance", ["unknown", "captured", "ai_generated", "ai_edited"]);
 
 export const assetStatusEnum = cmsSchema.enum("asset_status", ["private", "public"]);
@@ -108,6 +110,7 @@ export const assets = cmsSchema.table(
     sha256: text("sha256"),
     provenance: assetProvenanceEnum("provenance").notNull().default("unknown"),
     objectKey: text("object_key").notNull(),
+    processingState: assetProcessingStateEnum("processing_state").notNull().default("ready"),
     status: assetStatusEnum("status").notNull().default("private"),
     folderId: text("folder_id").references(() => assetFolders.id, { onDelete: "set null" }),
     variantOf: text("variant_of").references((): AnyPgColumn => assets.id, { onDelete: "set null" }),
@@ -129,6 +132,7 @@ export const assets = cmsSchema.table(
     index("assets_revision_idx").on(table.revisionOf, table.createdAt).where(sql`revision_of IS NOT NULL`),
     index("assets_sha_idx").on(table.sha256),
     index("assets_provenance_idx").on(table.provenance).where(sql`archived_at IS NULL`),
+    index("assets_pending_idx").on(table.createdAt).where(sql`processing_state = 'pending'`),
     index("assets_list_idx").on(table.folderId, table.createdAt, table.id).where(sql`archived_at IS NULL AND variant_of IS NULL AND revision_of IS NULL`),
     index("assets_search_gin").using("gin", sql`(setweight(to_tsvector('simple', coalesce(original_name, '')), 'A') || setweight(to_tsvector('simple', coalesce(metadata->>'description', '')), 'B') || setweight(to_tsvector('simple', coalesce(metadata->'rights'->>'credit', '') || ' ' || coalesce(metadata->'rights'->>'copyright', '')), 'C'))`),
   ],
@@ -609,6 +613,7 @@ export const schema = {
   templateVariableUsages,
   variables,
   approvalStatusEnum,
+  assetProcessingStateEnum,
   assetProvenanceEnum,
   assetStatusEnum,
   commentMessageTypeEnum,

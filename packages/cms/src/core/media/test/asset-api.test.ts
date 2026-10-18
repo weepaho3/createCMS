@@ -1,3 +1,4 @@
+import { APIError } from 'better-call';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -706,5 +707,84 @@ describe('upload hardening', () => {
       },
     });
     expect(asset.originalName).toBe('photognp.exe.png');
+  });
+});
+
+describe('purgeAssets', () => {
+  it('erases the asset with its revisions and renditions, objects first', async () => {
+    const { cms, db, storage, asset } = await setup();
+    await db.insert(assets).values({
+      slug: 'v.webp',
+      mimeType: 'image/webp',
+      size: 1,
+      objectKey: 'v.webp',
+      variantOf: asset.id,
+      variantKey: 'w320.webp',
+    });
+    await storage.put('v.webp', new Uint8Array([1]), {
+      contentType: 'image/webp',
+      contentLength: 1,
+    });
+    await cms.api.media.replaceAsset({
+      body: { assetId: asset.id, file: png('team-v2.png') },
+    });
+    expect(storage.objects.size).toBeGreaterThanOrEqual(3);
+
+    const result = await cms.api.media.purgeAssets({
+      body: { assetIds: [asset.id, 'missing'], reason: 'gdpr-erasure' },
+    });
+    expect(result).toMatchObject({
+      purgedIds: [asset.id],
+      skipped: [{ id: 'missing', reason: 'ASSET_NOT_FOUND' }],
+      danglingUsages: [],
+    });
+    expect(result.objectsDeleted).toBe(3);
+    expect(storage.objects.size).toBe(0);
+    expect(await db.select().from(assets)).toEqual([]);
+    expect(emitted).toContainEqual(
+      expect.objectContaining({
+        event: 'media.asset.purged',
+        assetId: asset.id,
+        reason: 'gdpr-erasure',
+      }),
+    );
+  });
+
+  it('keeps the rows when an object cannot be deleted', async () => {
+    const { cms, db, storage, asset } = await setup();
+    vi.spyOn(storage, 'delete').mockRejectedValueOnce(new Error('denied'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const result = await cms.api.media.purgeAssets({
+      body: { assetIds: [asset.id], reason: 'gdpr-erasure' },
+    });
+    expect(result.skipped).toEqual([{ id: asset.id, reason: 'STORAGE_ERROR' }]);
+    expect(await db.select().from(assets)).toHaveLength(1);
+  });
+
+  it('asks the middleware for the purge operation', async () => {
+    const seen: string[] = [];
+    const storage = createMemoryStorage();
+    const { cms } = await setupTestCMS({
+      media: { storage },
+      authMiddleware: async (ctx) => {
+        seen.push(`${ctx.permissionResource}:${ctx.operation}`);
+        if (ctx.operation === 'purge')
+          throw new APIError(403, { message: 'No' });
+        return {};
+      },
+    });
+    await expect(
+      cms.api.media.purgeAssets({ body: { assetIds: ['a'], reason: 'gdpr' } }),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(seen).toContain('media:purge');
+  });
+
+  it('takes a reason code, not free text that could hold personal data', async () => {
+    const { cms } = await setup();
+    await expect(
+      cms.api.media.purgeAssets({
+        body: { assetIds: ['a'], reason: 'Jane Doe asked' },
+      }),
+    ).rejects.toMatchObject({ statusCode: 400 });
   });
 });

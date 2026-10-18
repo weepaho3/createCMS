@@ -16,6 +16,10 @@ export const coreSchema = defineCoreSchema({
       enumName: 'asset_provenance',
       values: ['unknown', 'captured', 'ai_generated', 'ai_edited'],
     },
+    assetProcessingState: {
+      enumName: 'asset_processing_state',
+      values: ['pending', 'ready', 'failed'],
+    },
     mergeRequestStatus: {
       enumName: 'merge_request_status',
       values: ['open', 'merged', 'closed'],
@@ -620,6 +624,16 @@ export const coreSchema = defineCoreSchema({
           default: { kind: 'literal', value: 'unknown' },
         },
         objectKey: { type: 'text', notNull: true },
+        /**
+         * `pending` until `media.scan` cleared the bytes, `failed` when it
+         * found malware (the object is deleted). Only `ready` assets are
+         * delivered or made public. Without a scanner every row is `ready`.
+         */
+        processingState: {
+          type: { enum: 'assetProcessingState' },
+          notNull: true,
+          default: { kind: 'literal', value: 'ready' },
+        },
         status: {
           type: { enum: 'assetStatus' },
           notNull: true,
@@ -687,6 +701,11 @@ export const coreSchema = defineCoreSchema({
         provenanceIdx: {
           columns: ['provenance'],
           where: 'archived_at IS NULL',
+        },
+        // The scan sweeper's queue: small, drains as assets are scanned.
+        pendingIdx: {
+          columns: ['createdAt'],
+          where: "processing_state = 'pending'",
         },
         listIdx: {
           columns: ['folderId', 'createdAt', 'id'],

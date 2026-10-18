@@ -6,6 +6,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  or,
   type SQL,
   sql,
 } from 'drizzle-orm';
@@ -35,6 +36,8 @@ import { emitMediaEvents } from '../media/events';
 import { purgeAssetPaths, setAssetsVisibility } from '../media/placement';
 import { createRateWindow } from '../media/rate-window';
 import { assertFolderExists } from '../media/uploads';
+import { assetUsageCounts } from '../media/usage';
+import { crossScopeColumns } from '../scope';
 import { requireCapability } from '../storage/adapter';
 import { getStorage } from '../storage/get-storage';
 import {
@@ -50,6 +53,9 @@ const MEDIA_META = {
 
 /** Upper bound of ids per `batchAssets` call. */
 export const MEDIA_BATCH_LIMIT = 500;
+
+/** Upper bound of ids per `purgeAssets` call. */
+export const PURGE_LIMIT = 100;
 
 /** Lifetime of a `downloadIntent` signature. */
 export const DOWNLOAD_URL_SECONDS = 300;
@@ -617,6 +623,7 @@ export function createMediaAssetEndpoints<TItem>(
                 scope,
                 inArray(assets.id, assetIds),
                 isNull(assets.variantOf),
+                eq(assets.processingState, 'ready'),
               ),
             ),
           );
@@ -632,6 +639,7 @@ export function createMediaAssetEndpoints<TItem>(
                   ),
                   eq(assets.variantKey, variantKey),
                   isNull(assets.archivedAt),
+                  eq(assets.processingState, 'ready'),
                 ),
               )
           : [];
@@ -705,6 +713,134 @@ export function createMediaAssetEndpoints<TItem>(
           items,
           skipped: assetIds.filter((id) => !signed.has(id)),
           expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString(),
+        };
+      },
+    ),
+
+    /**
+     * Erases assets for good (right to erasure): the objects and rows of each
+     * asset, its revisions and its renditions, live or archived. Needs the
+     * `purge` operation, which is granted separately from `delete`. Objects
+     * are deleted first; an asset whose objects cannot all be deleted keeps
+     * its rows and is reported under `skipped` so the call can be retried.
+     * Content that still references a purged asset renders a placeholder;
+     * `danglingUsages` counts those roots per asset.
+     *
+     * @param assetIds - 1 to 100 asset ids (originals).
+     * @param reason - A reason code such as `gdpr-erasure` (letters, digits, `-`, `_`), recorded in the event and `onAssetPurge`.
+     * @returns `{ purgedIds, skipped, objectsDeleted, danglingUsages }`; `skipped` is `{ id, reason }[]` with `ASSET_NOT_FOUND` or `STORAGE_ERROR`, `danglingUsages` is `{ assetId, live, history }[]` (roots per scope).
+     * @example await cmsClient.media.purgeAssets({ assetIds: ['ast_1'], reason: 'gdpr-erasure' })
+     */
+    purgeAssets: createCMSEndpoint(
+      '/media/purgeAssets',
+      {
+        method: 'POST',
+        body: z.object({
+          assetIds: z.array(z.string()).min(1).max(PURGE_LIMIT),
+          reason: z
+            .string()
+            .regex(/^[A-Za-z0-9_-]{1,64}$/, 'A reason code, not free text'),
+        }),
+        metadata: cmsMeta({}, { operation: 'purge', ...MEDIA_META }),
+      },
+      async (ctx) => {
+        const { scope } = ctx.context;
+        const { assetIds, reason } = ctx.body;
+        const inScope: SQL[] = [
+          inArray(assets.id, assetIds),
+          isNull(assets.variantOf),
+          isNull(assets.revisionOf),
+        ];
+        if (scope.assets?.where) inScope.push(scope.assets.where);
+        const originals = (
+          await db
+            .select({ id: assets.id })
+            .from(assets)
+            .where(and(...inScope))
+        ).map((row) => row.id);
+        const family =
+          originals.length === 0
+            ? []
+            : await db
+                .select({
+                  id: assets.id,
+                  objectKey: assets.objectKey,
+                  variantOf: assets.variantOf,
+                  revisionOf: assets.revisionOf,
+                })
+                .from(assets)
+                .where(
+                  or(
+                    inArray(assets.id, originals),
+                    inArray(assets.variantOf, originals),
+                    inArray(assets.revisionOf, originals),
+                  ),
+                );
+
+        const scopeColumns = crossScopeColumns(scope.roots);
+        const [live, history] = await Promise.all([
+          assetUsageCounts(db, originals, 'live', scopeColumns),
+          assetUsageCounts(db, originals, 'history', scopeColumns),
+        ]);
+
+        const storage = getStorage(mediaConfig);
+        const purgedIds: string[] = [];
+        const skipped: { id: string; reason: string }[] = assetIds
+          .filter((id) => !originals.includes(id))
+          .map((id) => ({ id, reason: 'ASSET_NOT_FOUND' }));
+        let objectsDeleted = 0;
+        for (const id of originals) {
+          const rows = family.filter(
+            (row) =>
+              row.id === id || row.variantOf === id || row.revisionOf === id,
+          );
+          try {
+            for (const row of rows) {
+              await storage.delete(row.objectKey);
+              objectsDeleted++;
+            }
+          } catch (err) {
+            console.error(`[cms] purging the objects of ${id} failed:`, err);
+            skipped.push({ id, reason: 'STORAGE_ERROR' });
+            continue;
+          }
+          await db.transaction(async (tx) => {
+            await tx
+              .delete(assets)
+              .where(or(eq(assets.variantOf, id), eq(assets.revisionOf, id)));
+            await tx.delete(assets).where(eq(assets.id, id));
+          });
+          purgedIds.push(id);
+        }
+
+        await purgeAssetPaths(mediaConfig, purgedIds);
+        await emitMediaEvents(
+          cmsCtx.realtime,
+          scope,
+          purgedIds.map((assetId) => ({
+            event: 'media.asset.purged' as const,
+            assetId,
+            reason,
+          })),
+        );
+        if (mediaConfig.onAssetPurge && purgedIds.length > 0) {
+          try {
+            await mediaConfig.onAssetPurge({ assetIds: purgedIds, reason });
+          } catch (err) {
+            console.error('[cms] media onAssetPurge failed:', err);
+          }
+        }
+        return {
+          purgedIds,
+          skipped,
+          objectsDeleted,
+          danglingUsages: purgedIds
+            .map((assetId) => ({
+              assetId,
+              live: live[assetId]?.roots ?? 0,
+              history: history[assetId]?.roots ?? 0,
+            }))
+            .filter((usage) => usage.live > 0 || usage.history > 0),
         };
       },
     ),
@@ -795,6 +931,7 @@ export function createMediaAssetEndpoints<TItem>(
             sha256: row.sha256,
             originalName: row.originalName,
             provenance: row.provenance,
+            processingState: row.processingState,
           });
           // objectKey is unique: free the revision's key before the swap.
           await tx
