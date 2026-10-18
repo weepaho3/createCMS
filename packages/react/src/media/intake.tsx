@@ -23,6 +23,7 @@ import {
   normalizePaste,
   validateBatch,
 } from './core/intake';
+import { cameraAccept } from './core/touch';
 import { useDropOverlay } from './dnd';
 import { useSelector } from './use-store';
 
@@ -470,6 +471,59 @@ export function IntakeInput(props: IntakeInputProps) {
         type: 'button',
         onClick: open,
         children: children ?? messages.intake.files,
+      },
+      rest,
+    ),
+  });
+  return (
+    <>
+      {button}
+      {input}
+    </>
+  );
+}
+
+export type IntakeCameraProps = Omit<IntakeInputProps, 'accept' | 'capture'> & {
+  /** `photo` (default) or `video`. */
+  kind?: 'photo' | 'video';
+  /** `environment` (default, rear camera) or `user`. */
+  facing?: 'environment' | 'user';
+};
+
+/**
+ * A `button` that opens the device camera and uploads the shot through the
+ * same intake as `Intake.Input`. Browsers without a camera show their file
+ * picker instead.
+ */
+export function IntakeCamera(props: IntakeCameraProps) {
+  const {
+    kind = 'photo',
+    facing = 'environment',
+    maxSize,
+    folderId,
+    intake,
+    onUploaded,
+    onRejected,
+    render,
+    children,
+    ...rest
+  } = props;
+  const { messages } = useMediaMessages();
+  const accept = cameraAccept(kind);
+  const { open, input } = useHiddenInput(
+    { accept, maxSize, maxFiles: 1, folderId, intake, onUploaded, onRejected },
+    { accept, multiple: false, capture: facing },
+  );
+  const button = useRender({
+    defaultTagName: 'button',
+    render,
+    props: mergeProps<'button'>(
+      {
+        type: 'button',
+        onClick: open,
+        children:
+          children ??
+          (kind === 'photo' ? messages.upload.camera : messages.upload.video),
       },
       rest,
     ),

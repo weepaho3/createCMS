@@ -641,6 +641,8 @@ export function createUploadQueue(
         const signed = await sign(item, signal);
         if (!signed) return;
         item.signed = signed;
+        if (item.entry.kind === 'create')
+          patch(id, { assetId: signed.assetId });
       }
       dispatch(id, 'uploading', { phase: null });
       try {

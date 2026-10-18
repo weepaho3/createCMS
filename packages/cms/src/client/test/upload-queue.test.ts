@@ -219,6 +219,7 @@ describe('createUploadQueue', () => {
       status: 'uploading',
       kind: 'create',
       folderId: 'fld_1',
+      assetId: 'ast_a.png',
     });
     expect(state().isUploading).toBe(true);
     openXHRs()[0].fireLoad();

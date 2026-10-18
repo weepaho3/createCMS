@@ -26,9 +26,15 @@ import {
   bulkTargetFields,
   hasBulkTarget,
 } from '../media/asset-filter';
+import {
+  contentDisposition,
+  safeDownloadName,
+} from '../media/content-disposition';
 import { emitMediaEvents } from '../media/events';
 import { purgeAssetPaths, setAssetsVisibility } from '../media/placement';
 import { assertFolderExists } from '../media/uploads';
+import { requireCapability } from '../storage/adapter';
+import { getStorage } from '../storage/get-storage';
 import {
   ASSET_PROVENANCES,
   assetMetadataSchema,
@@ -42,6 +48,48 @@ const MEDIA_META = {
 
 /** Upper bound of ids per `batchAssets` call. */
 export const MEDIA_BATCH_LIMIT = 500;
+
+/** Lifetime of a `downloadIntent` signature. */
+export const DOWNLOAD_URL_SECONDS = 300;
+/** Upper bound of ids per `downloadIntent` call. */
+export const DOWNLOAD_INTENT_LIMIT = 100;
+const DOWNLOAD_RATE_DEFAULT = 60;
+const RATE_WINDOW_MS = 60_000;
+
+/**
+ * Counts signatures per actor over a sliding minute. Returns the seconds to
+ * wait when `count` more would exceed `limit`, else records them and
+ * returns 0.
+ */
+export function createRateWindow(now: () => number = Date.now) {
+  const hits = new Map<string, number[]>();
+  return (key: string, count: number, limit: number): number => {
+    const at = now();
+    const recent = (hits.get(key) ?? []).filter((t) => at - t < RATE_WINDOW_MS);
+    if (recent.length + count > limit) {
+      hits.set(key, recent);
+      if (count > limit) return RATE_WINDOW_MS / 1000;
+      // The oldest hits that must expire before `count` more fit.
+      const freeAt = recent[recent.length + count - limit - 1];
+      return Math.max(1, Math.ceil((freeAt + RATE_WINDOW_MS - at) / 1000));
+    }
+    for (let i = 0; i < count; i++) recent.push(at);
+    hits.set(key, recent);
+    return 0;
+  };
+}
+
+async function hashAddress(address: string | null | undefined) {
+  const ip = address?.split(',')[0]?.trim();
+  if (!ip) return null;
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(ip),
+  );
+  return Array.from(new Uint8Array(digest).slice(0, 8), (b) =>
+    b.toString(16).padStart(2, '0'),
+  ).join('');
+}
 
 type AssetRow = typeof assets.$inferSelect;
 
@@ -92,6 +140,7 @@ export function createMediaAssetEndpoints<TItem>(
   toItem: (row: AssetRow) => TItem,
 ) {
   const { db } = cmsCtx;
+  const rateWindow = createRateWindow();
 
   async function loadLive(
     tx: DrizzleInstance,
@@ -546,6 +595,139 @@ export function createMediaAssetEndpoints<TItem>(
                   error: failures.get(id) ?? 'ASSET_NOT_FOUND',
                 },
           ),
+        };
+      },
+    ),
+
+    /**
+     * Signs short-lived download URLs (5 minutes) for assets the caller can
+     * read, each bound to an attachment disposition named after the asset's
+     * original name. With `variantKey` the matching live rendition is signed
+     * instead; assets without one are skipped. Each signature counts against
+     * `media.downloadRateLimit` per actor and minute; `media.onAssetDownload`
+     * receives the signed ids.
+     *
+     * @param assetIds - 1 to 100 asset ids.
+     * @param variantKey - Sign this rendition instead of the original.
+     * @param bulkJobId - Groups the calls of one archive download in the audit hook.
+     * @returns `{ items: { id, url, size, name }[], skipped, expiresAt }`; `skipped` lists ids with nothing to sign.
+     * @throws RATE_LIMITED (429) with a `Retry-After` header when the actor signed too many files in the last minute.
+     * @throws STORAGE_UNSUPPORTED when the storage cannot sign reads with a disposition.
+     * @example const { items } = await cmsClient.media.downloadIntent({ assetIds: ['ast_1', 'ast_2'] })
+     */
+    downloadIntent: createCMSEndpoint(
+      '/media/downloadIntent',
+      {
+        method: 'POST',
+        body: z.object({
+          assetIds: z.array(z.string()).min(1).max(DOWNLOAD_INTENT_LIMIT),
+          variantKey: z.string().min(1).optional(),
+          bulkJobId: z.string().min(1).max(100).optional(),
+        }),
+        metadata: cmsMeta({}, { operation: 'read', ...MEDIA_META }),
+      },
+      async (ctx) => {
+        const { scope, userId } = ctx.context;
+        const { assetIds, variantKey, bulkJobId } = ctx.body;
+        const actorId = userId ?? null;
+
+        const rows = await db
+          .select()
+          .from(assets)
+          .where(
+            and(
+              ...liveAssetConditions(
+                scope,
+                inArray(assets.id, assetIds),
+                isNull(assets.variantOf),
+              ),
+            ),
+          );
+        const variants = variantKey
+          ? await db
+              .select()
+              .from(assets)
+              .where(
+                and(
+                  inArray(
+                    assets.variantOf,
+                    rows.map((r) => r.id),
+                  ),
+                  eq(assets.variantKey, variantKey),
+                  isNull(assets.archivedAt),
+                ),
+              )
+          : [];
+        const byId = new Map(rows.map((r) => [r.id, r]));
+        const variantOf = new Map(variants.map((v) => [v.variantOf, v]));
+        const targets = assetIds.flatMap((id) => {
+          const original = byId.get(id);
+          if (!original) return [];
+          const file = variantKey ? variantOf.get(id) : original;
+          return file ? [{ id, original, file }] : [];
+        });
+
+        const limit = mediaConfig.downloadRateLimit ?? DOWNLOAD_RATE_DEFAULT;
+        if (limit > 0 && targets.length > 0) {
+          const wait = rateWindow(
+            actorId ?? 'anonymous',
+            targets.length,
+            limit,
+          );
+          if (wait > 0) {
+            throw new CMSError('RATE_LIMITED', {
+              headers: { 'retry-after': String(wait) },
+              data: { retryAfter: wait },
+            });
+          }
+        }
+
+        const storage = getStorage(mediaConfig);
+        requireCapability(
+          storage,
+          (c) => c.signedGet.supported && c.signedGet.disposition,
+          'signed URLs with a bound content disposition',
+        );
+        const expiresIn = Math.min(
+          DOWNLOAD_URL_SECONDS,
+          storage.capabilities.signedGet.maxExpiresIn,
+        );
+        const items = await Promise.all(
+          targets.map(async ({ id, original, file }) => {
+            const name = original.originalName ?? original.slug;
+            return {
+              id,
+              url: await storage.signGet(file.objectKey, {
+                expiresIn,
+                responseContentDisposition: contentDisposition(
+                  name,
+                  file.mimeType,
+                ),
+              }),
+              size: file.size,
+              name: safeDownloadName(name, file.mimeType),
+            };
+          }),
+        );
+
+        if (mediaConfig.onAssetDownload && items.length > 0) {
+          try {
+            await mediaConfig.onAssetDownload({
+              assetIds: items.map((item) => item.id),
+              actorId,
+              variantKey: variantKey ?? null,
+              bulkJobId: bulkJobId ?? null,
+              ipHash: await hashAddress(ctx.headers?.get('x-forwarded-for')),
+            });
+          } catch (err) {
+            console.error('[cms] media onAssetDownload failed:', err);
+          }
+        }
+        const signed = new Set(items.map((item) => item.id));
+        return {
+          items,
+          skipped: assetIds.filter((id) => !signed.has(id)),
+          expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString(),
         };
       },
     ),

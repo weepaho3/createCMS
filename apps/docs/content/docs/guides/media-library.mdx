@@ -93,7 +93,9 @@ import {
 | `MediaFolderList`, `MediaFolderCard` | `Media.FolderList`, `Media.Folder` | Drop targets for assets, folders and files |
 | `MediaGrid`, `MediaAssetCard`, `MediaUploadTile` | `Media.Grid`, `Media.Item`, `Media.Thumbnail`, `Selection.Checkbox`, `Media.UploadTile` | Cells are placed by the layout engine; the card fills its cell |
 | `MediaDropzone`, `MediaDropOverlay`, `MediaFolderPrompt` | `Intake.Dropzone`, `Intake.Input`, `Intake.FolderInput`, `Intake.Overlay`, `Intake.FolderPrompt` | Dashed zone, full-window overlay, recreate-or-flatten dialog |
-| `MediaUploadList` | `Media.UploadList` + shadcn `Progress` | One abort and one clear button per list |
+| `MediaUploadList` | `Upload.*` + shadcn `Progress` | Retry and cancel per file, retry all, cancel all, clear, and the duplicate decision |
+| `MediaDownloadList` | `Download.*` + shadcn `Progress` | Archive downloads with progress and cancel |
+| `MediaPreview` | `Preview.*` | Full-screen preview opened by Enter or double click: zoom, rotate, step, swipe on touch |
 | `MediaEmpty`, `MediaError`, `MediaMutationError`, `MediaLoadMore` | the matching parts | Errors render a destructive `Alert` with Retry or Dismiss |
 | `MediaBulkBar`, `MediaMoveDialog`, `MediaOutcome` | `Selection.*`, `Bulk.Bar`, `Bulk.Action`, `Bulk.Outcome` | See below |
 
@@ -109,11 +111,30 @@ import { mediaMessagesDe } from '@/lib/media-messages-de';
 
 `apps/docs/src/lib/media-messages-de.ts` is a complete German catalog, typed as `MediaMessages` so the compiler flags any untranslated key.
 
-`MediaUploadList` passes the shadcn `Progress` as the `render` element of `Media.UploadProgress`. Both set `role="progressbar"` and `aria-value*`; the part's attributes win, so the bar announces the file name and, on an error, `upload.failed` with the translated error code (never the server message).
+`MediaUploadList` passes the shadcn `Progress` as the `render` element of `Upload.Progress`. Both set `role="progressbar"` and `aria-value*`; the part's attributes win, so the bar announces the file name and, on an error, `upload.failed` with the translated error code (never the server message).
 
 ### Selection actions
 
 `MediaBulkBar` appears once something is selected: the count, **Select all 312** when more assets match than are loaded, the registered bulk actions (**Move to...**, **Make public**, **Make private**, **Download**, **Archive**) and **Clear**. Disabled actions say why in their tooltip ("All selected assets are public."). **Archive** asks first; when the server skips assets because they are in use, a second dialog lists them and **Archive anyway** archives them with `force`. **Move to...** opens `MediaMoveDialog`, a folder tree in pick mode where Enter moves. Results show in `MediaOutcome`, a toast with **Undo** ("4 assets moved to Products. Undo"), and are announced to screen readers; after a removal the focus moves to the next asset. Register your own actions with `store.registries.assetActions.register(...)`.
+
+### Details, focal point and versions
+
+The `media-detail` item adds `MediaDetailPanel`, the detail form of the one selected asset: file name, description, rights, origin, the facts, a focal point editor with previews in three aspect ratios, the earlier versions and a download button. It saves only what changed; when someone else saved the asset in the meantime it shows both choices (keep my changes, use their version) instead of overwriting. Render it next to the layout inside the same `Media.Root`:
+
+```tsx
+import { MediaDetailPanel, MediaLibraryLayout } from '@/components/media-library';
+
+<Media.Root client={cmsClient.media} selection="multiple">
+  <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
+    <MediaLibraryLayout />
+    <MediaDetailPanel />
+  </div>
+</Media.Root>
+```
+
+### Downloads
+
+**Download** in the bulk bar saves one asset directly and several as one ZIP archive built in the browser: the files are signed in small batches through `downloadIntent` and streamed into the archive, to a file the user picks where the browser can, else in memory up to 2 GB (500 MB on iOS). `MediaDownloadList` shows the progress in bytes.
 
 ### Thumbnails
 
@@ -121,7 +142,9 @@ import { mediaMessagesDe } from '@/lib/media-messages-de';
 
 ## The picker in a field control
 
-`MediaPicker` owns a `Dialog` and a `Media.Root` with `selection="single"`. Its content is a reduced layout (breadcrumbs, search, dropzone, grid, load more, upload list, error) with **Select** and **Cancel** in the footer; **Select** calls `onChange(id)` and closes. When a drop or pick uploads exactly one file, that asset is selected right away.
+`MediaPicker` owns a `Dialog` and a `Media.Root` with `selection="single"`. Its content is a reduced layout (breadcrumbs, search, dropzone, grid, load more, upload list, error) with **Select** and **Cancel** in the footer; **Select** calls `onChange(id)` and closes. When a drop or pick uploads exactly one file, that asset is selected right away. `constraints` (`minWidth`, `minHeight`, `maxBytes`, `aspect`) lock unsuitable assets with a reason ("Needs at least 1,200 × 630 px") instead of hiding them.
+
+`MediaImageField` wraps the picker for an image use: after the choice it shows the alt text, the decorative switch and the caption, which belong to this use and not to the asset. With `requireAlt` the alt field is marked invalid until it has text or the image is decorative; `suggesters` add a **Suggest** button whose suggestion only fills an empty field and stays marked until edited.
 
 ```tsx
 import type { FieldControlProps } from '@createcms/react/editor';

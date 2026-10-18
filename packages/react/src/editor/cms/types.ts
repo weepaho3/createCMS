@@ -249,6 +249,8 @@ export type CmsMediaUploadFileState = {
   nextRetryAt: number | null;
   folderId: string | null;
   targetAssetId?: string;
+  /** The id the asset will have, known once the upload is signed. */
+  assetId?: string;
   sha256?: string;
   duplicateOf?: { assetId: string; folderId: string | null }[];
   error?: {

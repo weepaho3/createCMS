@@ -1,6 +1,7 @@
 import type { CommandResult, MediaStore, MediaStoreState } from './store';
 import type { MediaAsset, MediaAssetStatus } from './types';
 
+import { createDownloadQueue, type DownloadQueue } from './downloads';
 import { selectionCount } from './selection';
 
 /**
@@ -45,6 +46,8 @@ export type BulkInput = {
   provenance?: NonNullable<MediaAsset['provenance']>;
   /** `download`: opens a URL (defaults to `window.open`). */
   open?: (url: string) => void;
+  /** `download` of several assets: the archive name (default `media`). */
+  name?: string;
 };
 
 export type BulkAction = {
@@ -188,7 +191,32 @@ export const setProvenanceAction: BulkAction = {
       : Promise.resolve({ ok: false, code: 'MISSING_INPUT', error: null }),
 };
 
-/** Opens each asset's download (`?download=true` on the asset endpoint). */
+const downloadQueues = new WeakMap<MediaStore, DownloadQueue>();
+
+/**
+ * The archive download queue of `store`, shared by every surface of the
+ * library; `null` when the client has no `downloadIntent`.
+ */
+export function downloadQueueOf(store: MediaStore): DownloadQueue | null {
+  const { client } = store;
+  if (!client.downloadIntent) return null;
+  let queue = downloadQueues.get(store);
+  if (!queue) {
+    const intent = client.downloadIntent.bind(client);
+    queue = createDownloadQueue({
+      sign: (assetIds) => intent({ body: { assetIds } }),
+    });
+    downloadQueues.set(store, queue);
+  }
+  return queue;
+}
+
+/**
+ * Downloads the assets: one file opens the asset endpoint with
+ * `?download=true`; several are streamed into one ZIP archive through
+ * `downloadQueueOf` when the client signs downloads (`input.name` names
+ * the archive), else each opens on its own.
+ */
 export const downloadAction: BulkAction = {
   id: 'download',
   label: 'download',
@@ -199,6 +227,29 @@ export const downloadAction: BulkAction = {
     return context.assets.length > 0 ? true : 'empty';
   },
   run: async (context, input) => {
+    const queue =
+      context.assets.length > 1 ? downloadQueueOf(context.store) : null;
+    if (queue) {
+      const job = await queue.download(
+        context.assets.map((asset) => ({
+          id: asset.id,
+          name: asset.originalName ?? asset.slug,
+          size: asset.size,
+        })),
+        { name: input?.name ?? 'media' },
+      );
+      return job.status === 'success'
+        ? {
+            ok: true,
+            value: job.items
+              .filter((item) => item.status === 'success')
+              .map((item) => item.id),
+            skipped: job.items
+              .filter((item) => item.status !== 'success')
+              .map((item) => item.id),
+          }
+        : { ok: false, code: job.error ?? 'DOWNLOAD_FAILED', error: job.error };
+    }
     const open =
       input?.open ??
       ((url: string) => {

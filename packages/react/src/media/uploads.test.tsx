@@ -8,11 +8,14 @@ import type { MediaUploadState } from './types';
 import { MediaRoot } from './root';
 import { makeClient, makeEntry, makeUploadState } from './test-fixtures';
 import {
-  MediaUploadAbort,
-  MediaUploadClear,
-  MediaUploadItem,
-  MediaUploadList,
-  MediaUploadProgress,
+  UploadCancel,
+  UploadClear,
+  UploadDuplicate,
+  UploadItem,
+  UploadList,
+  UploadProgress,
+  UploadRetry,
+  UploadRetryAll,
 } from './uploads';
 
 afterEach(cleanup);
@@ -20,17 +23,17 @@ afterEach(cleanup);
 function Harness({ client }: { client: ReturnType<typeof makeClient> }) {
   return (
     <MediaRoot client={client}>
-      <MediaUploadProgress data-testid="all" />
-      <MediaUploadList data-testid="list">
+      <UploadProgress data-testid="all" />
+      <UploadList data-testid="list">
         {(entry) => (
-          <MediaUploadItem key={entry.id} entry={entry}>
+          <UploadItem key={entry.id} entry={entry}>
             {entry.name}
-            <MediaUploadProgress />
-          </MediaUploadItem>
+            <UploadProgress />
+          </UploadItem>
         )}
-      </MediaUploadList>
-      <MediaUploadAbort>Abort</MediaUploadAbort>
-      <MediaUploadClear>Clear</MediaUploadClear>
+      </UploadList>
+      <UploadCancel>Abort</UploadCancel>
+      <UploadClear>Clear</UploadClear>
     </MediaRoot>
   );
 }
@@ -49,7 +52,7 @@ function setup(initial: MediaUploadState) {
   };
 }
 
-describe('Media.UploadProgress', () => {
+describe('Upload.Progress', () => {
   it('exposes progressbar attributes for an uploading entry', () => {
     const entry = makeEntry({
       id: 'up_1',
@@ -196,7 +199,7 @@ describe('Media.Root upload announcements', () => {
   });
 });
 
-describe('Media.UploadAbort / Media.UploadClear', () => {
+describe('Upload.Cancel / Upload.Clear', () => {
   it('abort is disabled while idle and calls abort() while uploading', () => {
     const abort = vi.fn();
     const reset = vi.fn();
@@ -209,12 +212,91 @@ describe('Media.UploadAbort / Media.UploadClear', () => {
     fireEvent.click(abortButton);
     expect(abort).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(getByRole('button', { name: 'Clear' }));
+    const clear = getByRole('button', { name: 'Clear' });
+    expect(clear.hasAttribute('disabled')).toBe(true);
+    update(
+      makeUploadState({
+        files: [makeEntry({ id: 'up_1', status: 'success' })],
+        abort,
+        reset,
+      }),
+    );
+    fireEvent.click(clear);
     expect(reset).toHaveBeenCalledTimes(1);
   });
 });
 
-describe('Media.UploadList renditions', () => {
+describe('Upload.Retry / Upload.Duplicate', () => {
+  function Panel({ client }: { client: ReturnType<typeof makeClient> }) {
+    return (
+      <MediaRoot client={client}>
+        <UploadRetryAll />
+        <UploadList>
+          {(entry) => (
+            <UploadItem key={entry.id} entry={entry}>
+              <UploadRetry />
+              <UploadCancel />
+              <UploadDuplicate>
+                {({ uploadAnyway, keepExisting }) => (
+                  <>
+                    <button type="button" onClick={() => keepExisting()}>
+                      existing
+                    </button>
+                    <button type="button" onClick={uploadAnyway}>
+                      copy
+                    </button>
+                  </>
+                )}
+              </UploadDuplicate>
+            </UploadItem>
+          )}
+        </UploadList>
+      </MediaRoot>
+    );
+  }
+
+  it('retries failed entries and resolves duplicates', () => {
+    const retry = vi.fn();
+    const abort = vi.fn();
+    const resolveDuplicate = vi.fn();
+    const state = makeUploadState({
+      retry,
+      abort,
+      resolveDuplicate,
+      files: [
+        makeEntry({ id: 'up_1', name: 'a.png', status: 'error' }),
+        makeEntry({
+          id: 'up_2',
+          name: 'b.png',
+          status: 'paused',
+          duplicateOf: [{ assetId: 'ast_9', folderId: null }],
+        }),
+      ],
+    });
+    const client = makeClient({ useUploadAssets: vi.fn(() => state) });
+    const { getByRole } = render(<Panel client={client} />);
+    fireEvent.click(getByRole('button', { name: 'Retry failed' }));
+    expect(retry).toHaveBeenLastCalledWith();
+    fireEvent.click(getByRole('button', { name: 'Retry: a.png' }));
+    expect(retry).toHaveBeenLastCalledWith('up_1');
+    expect(
+      getByRole('button', { name: 'Retry: b.png' }).hasAttribute('disabled'),
+    ).toBe(true);
+    fireEvent.click(getByRole('button', { name: 'Cancel: b.png' }));
+    expect(abort).toHaveBeenCalledWith('up_2');
+    fireEvent.click(getByRole('button', { name: 'existing' }));
+    expect(resolveDuplicate).toHaveBeenCalledWith('up_2', {
+      action: 'use-existing',
+      assetId: 'ast_9',
+    });
+    fireEvent.click(getByRole('button', { name: 'copy' }));
+    expect(resolveDuplicate).toHaveBeenLastCalledWith('up_2', {
+      action: 'upload-copy',
+    });
+  });
+});
+
+describe('Upload.List renditions', () => {
   it('lists rendition entries only through their parent', () => {
     const parent = makeEntry({
       id: 'up_1',
@@ -232,9 +314,7 @@ describe('Media.UploadList renditions', () => {
     });
     const { getAllByRole } = render(
       <MediaRoot client={client}>
-        <MediaUploadList>
-          {(entry) => <li key={entry.id}>{entry.id}</li>}
-        </MediaUploadList>
+        <UploadList>{(entry) => <li key={entry.id}>{entry.id}</li>}</UploadList>
       </MediaRoot>,
     );
     expect(getAllByRole('listitem').map((li) => li.textContent)).toEqual([

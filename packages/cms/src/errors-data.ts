@@ -333,6 +333,11 @@ export const CMS_ERRORS = {
     status: 404 as const,
     message: 'No rendition of this asset matches the request',
   },
+  RATE_LIMITED: {
+    status: 429 as const,
+    message:
+      'Too many requests; retry after the number of seconds in Retry-After',
+  },
   REVISION_NOT_FOUND: {
     status: 404 as const,
     message: 'Revision not found for this asset',

@@ -593,7 +593,7 @@ Swap the bytes behind an existing asset while keeping its `id` (and `folderId`/`
   }}
 />
 
-Returns `{ asset }` with the same fields a `listAssets` row carries. Throws `CANNOT_REPLACE_VARIANT` (target is itself a variant), `ASSET_NOT_FOUND`, `FILE_TOO_LARGE` / `INVALID_FILE_TYPE`, or `UPLOAD_FAILED` (asset left unchanged).
+Returns `{ asset }` with the same fields a `listAssets` row carries. Throws `CANNOT_REPLACE_VARIANT` (target is itself a variant), `ASSET_NOT_FOUND`, `FILE_TOO_LARGE` / `INVALID_FILE_TYPE` (also when `media.allowReplaceWithDifferentType` is `false` and the type changes), or `UPLOAD_FAILED` (asset left unchanged).
 
 ### Create a Signed Replace [#createsignedreplace]
 
@@ -939,6 +939,40 @@ Roll an asset back to one of its revisions. The asset keeps its id; its current 
     revisionId: { type: 'string', required: true, description: 'One of its revisions; `REVISION_NOT_FOUND` otherwise.' },
   }}
 />
+
+## Downloads
+
+### Sign Downloads [#downloadintent]
+
+Signs short-lived download URLs for assets the caller can read. Each URL is valid for 5 minutes and bound to an attachment disposition named after the asset's original name, so the browser saves the file under that name. With `variantKey` the matching live rendition is signed instead; assets without one are skipped. The React media library uses it to stream several assets into one ZIP archive in the browser, signing small batches just before fetching them.
+
+<APIMethod
+  method="POST"
+  path="/media/downloadIntent"
+  fn="downloadIntent"
+  collection="media"
+  resource="media"
+  operation="read"
+  args={`{
+  body: {
+    assetIds: ['ast_1', 'ast_2'], // required
+    variantKey: 'w1280.webp',
+    bulkJobId: 'dl_42',
+  },
+}`}
+  returns={{
+    items: { type: '{ id: string; url: string; size: number; name: string }[]', description: 'One signed URL per asset that could be signed, in input order, with the stored size and the download name.' },
+    skipped: { type: 'string[]', description: 'Ids that are not live in scope or have no rendition with `variantKey`.' },
+    expiresAt: { type: 'string', description: 'When the URLs expire (ISO date-time).' },
+  }}
+  params={{
+    assetIds: { type: 'string[]', required: true, description: '1 to 100 asset ids.' },
+    variantKey: { type: 'string', description: 'Sign this rendition (e.g. `w1280.webp`) instead of the original.' },
+    bulkJobId: { type: 'string', description: 'Groups the calls of one archive download in `onAssetDownload`.' },
+  }}
+/>
+
+Every signed asset counts against `media.downloadRateLimit` (default 60 per actor and minute, counted per server process); past it the endpoint answers `RATE_LIMITED` (429) with a `Retry-After` header. `media.onAssetDownload` receives `{ assetIds, actorId, variantKey, bulkJobId, ipHash }` after each call. Throws `STORAGE_UNSUPPORTED` when the storage cannot sign reads with a content disposition.
 
 ## Public delivery
 

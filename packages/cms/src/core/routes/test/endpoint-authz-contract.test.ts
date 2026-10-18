@@ -208,6 +208,7 @@ const EXPECTED: Record<string, Record<string, Expected>> = {
     commitReplace: { permissionResource: 'media', operation: 'update' },
     updateAsset: { permissionResource: 'media', operation: 'update' },
     setFocalPoint: { permissionResource: 'media', operation: 'update' },
+    downloadIntent: { permissionResource: 'media', operation: 'read' },
     setProvenance: { permissionResource: 'media', operation: 'update' },
     restoreAssets: { permissionResource: 'media', operation: 'update' },
     batchAssets: { permissionResource: 'media', operation: 'update' },

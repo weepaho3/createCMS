@@ -29,6 +29,7 @@ import {
 } from './core/marquee';
 import { dragIds, isSelected } from './core/selection';
 import { collectionAssets } from './core/store';
+import { createLongPress, vibrateTick } from './core/touch';
 import {
   createTypeAhead,
   isTypeAheadKey,
@@ -829,7 +830,22 @@ export function MediaItem(props: MediaItemProps) {
   const focused = grid?.focusId === asset.id;
   const name = assetName(asset);
 
+  // A touch long press toggles the item into the selection; the click that
+  // follows the release must not replace that selection again.
+  const [longPress] = React.useState(() =>
+    createLongPress(() => {
+      vibrateTick();
+      void store.dispatch({
+        type: 'select',
+        id: asset.id,
+        modifiers: { range: false, toggle: true },
+      });
+    }),
+  );
+  React.useEffect(() => () => longPress.cancel(), [longPress]);
+
   const onClick = (event: React.MouseEvent) => {
+    if (longPress.consumeClick()) return;
     void store.dispatch({
       type: 'select',
       id: asset.id,
@@ -900,6 +916,16 @@ export function MediaItem(props: MediaItemProps) {
         draggable: grid?.draggable ?? false,
         onDragStart: grid?.draggable ? onDragStart : undefined,
         onClick,
+        onPointerDown: (event: React.PointerEvent) =>
+          longPress.down(event.clientX, event.clientY, event.pointerType),
+        onPointerMove: (event: React.PointerEvent) =>
+          longPress.move(event.clientX, event.clientY),
+        onPointerUp: () => longPress.up(),
+        onPointerCancel: () => longPress.cancel(),
+        onContextMenu: (event: React.MouseEvent) => {
+          // Touch browsers open the context menu on the same long press.
+          if (longPress.fired()) event.preventDefault();
+        },
         onDoubleClick: () => grid?.onAction?.(asset),
         onFocus: () => {
           if (store.getState().selection.focus !== asset.id) {

@@ -125,9 +125,10 @@ const KIND_PREFIX: Record<string, string> = {
 };
 
 /**
- * In-memory `MediaClient` for the media demo: folders, asset status and
- * folder membership live in the closure; `brand-guide` counts as in use, so
- * archiving it reports it under `skipped`. Uploads stay idle.
+ * In-memory `MediaClient` for the media demo: folders, asset status, folder
+ * membership, details and focal points live in the closure; `brand-guide`
+ * counts as in use, so archiving it reports it under `skipped`. Downloads
+ * are signed as the files under `/demo`. Uploads stay idle.
  */
 export function demoMediaClient(): MediaClient {
   const folders = structuredClone(DEMO_FOLDERS);
@@ -286,8 +287,71 @@ export function demoMediaClient(): MediaClient {
       }
       return { updated: updatedIds.length, updatedIds, skipped: [] };
     },
+    async updateAsset({ body }) {
+      const asset = assets.find((a) => a.id === body.assetId);
+      if (!asset) throw { body: { code: 'ASSET_NOT_FOUND' } };
+      if (String(asset.updatedAt) !== body.expectedUpdatedAt) {
+        throw { body: { code: 'ASSET_CONFLICT', data: { asset } } };
+      }
+      const { metadata, ...rest } = body.patch;
+      Object.assign(asset, rest, {
+        metadata: mergeMetadata(asset.metadata ?? {}, metadata ?? {}),
+        updatedAt: new Date().toISOString(),
+      });
+      return { asset: structuredClone(asset) };
+    },
+    async setFocalPoint({ body }) {
+      const asset = assets.find((a) => a.id === body.assetId);
+      if (!asset) throw { body: { code: 'ASSET_NOT_FOUND' } };
+      asset.metadata = mergeMetadata(asset.metadata ?? {}, {
+        focal: body.focal,
+      });
+      asset.updatedAt = new Date().toISOString();
+      return { asset: structuredClone(asset) };
+    },
+    async listRevisions() {
+      return { revisions: [] };
+    },
+    async downloadIntent({ body }) {
+      const items = assets
+        .filter((asset) => body.assetIds.includes(asset.id))
+        .map((asset) => ({
+          id: asset.id,
+          url: asset.deliveryUrl,
+          size: asset.size,
+          name: asset.originalName ?? asset.slug,
+        }));
+      return {
+        items,
+        skipped: body.assetIds.filter((id) => !items.some((i) => i.id === id)),
+        expiresAt: new Date(Date.now() + 300_000).toISOString(),
+      };
+    },
     useUploadAssets: idleUploadState,
   };
+}
+
+/** `patch` merged key by key into `base`; `null` removes a key. */
+function mergeMetadata(
+  base: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === null) delete out[key];
+    else if (
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      typeof out[key] === 'object' &&
+      out[key] !== null
+    ) {
+      out[key] = mergeMetadata(
+        out[key] as Record<string, unknown>,
+        value as Record<string, unknown>,
+      );
+    } else out[key] = value;
+  }
+  return out;
 }
 
 /** The one client the demo media page uses, so its mutations survive remounts. */

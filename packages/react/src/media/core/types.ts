@@ -10,6 +10,19 @@ export type MediaAsset = CmsAssetListItem;
 
 export type MediaUsageScope = 'live' | 'published' | 'history';
 
+/** An earlier version of an asset's bytes (`listRevisions`). */
+export type MediaRevision = {
+  id: string;
+  originalName: string;
+  mimeType?: string;
+  size: number;
+  width?: number | null;
+  height?: number | null;
+  note: string | null;
+  uploadedBy?: string | null;
+  createdAt: Date | string;
+};
+
 export type MediaUsageOccurrence = {
   branchId: string | null;
   branchName: string | null;
@@ -235,13 +248,7 @@ export type MediaClient = {
     body: { assetIds: string[]; scope?: 'live' | 'published' | 'history' };
   }): Promise<{ counts: Record<string, { roots: number; published: number }> }>;
   listRevisions?(args: { query: { assetId: string } }): Promise<{
-    revisions: {
-      id: string;
-      originalName: string;
-      size: number;
-      note: string | null;
-      createdAt: Date | string;
-    }[];
+    revisions: MediaRevision[];
   }>;
   setCurrentRevision?(args: {
     body: { assetId: string; revisionId: string };
@@ -259,6 +266,17 @@ export type MediaClient = {
   commitReplace?(args: {
     body: { token: string; revisionNote?: string };
   }): Promise<{ asset: MediaAsset }>;
+  setFocalPoint?(args: {
+    body: { assetId: string; focal: { x: number; y: number } | null };
+  }): Promise<{ asset: MediaAsset }>;
+  /** Short-lived signed URLs for downloads, checked per asset. */
+  downloadIntent?(args: {
+    body: { assetIds: string[]; variantKey?: string; bulkJobId?: string };
+  }): Promise<{
+    items: { id: string; url: string; size: number; name: string }[];
+    skipped: string[];
+    expiresAt: string;
+  }>;
   /** Server events (`media.*`), e.g. from the realtime client; returns the unsubscribe. */
   subscribe?(onEvent: (event: MediaServerEvent) => void): () => void;
 };

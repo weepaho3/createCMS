@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { assetFolders, assets } from '../../../schema';
 import { setupTestCMS } from '../../../test-utils/cms';
 import { createMemoryStorage } from '../../../test-utils/storage';
+import { createRateWindow } from '../../routes/media-assets';
 
 const emitted: { event: string; assetId?: string; folderId?: string }[] = [];
 vi.mock('../events', async (importOriginal) => {
@@ -475,5 +476,101 @@ describe('media events', () => {
       }),
     ).rejects.toThrow();
     expect(emitted).toEqual([]);
+  });
+});
+
+describe('downloadIntent', () => {
+  it('signs readable assets, reports the rest and calls the audit hook', async () => {
+    const onAssetDownload = vi.fn();
+    const storage = createMemoryStorage({
+      signedGet: { supported: true, disposition: true, maxExpiresIn: 3600 },
+    });
+    const signGet = vi.spyOn(storage, 'signGet');
+    const { cms } = await setupTestCMS({ media: { storage, onAssetDownload } });
+    const {
+      assets: [asset],
+    } = await cms.api.media.uploadAssets({
+      body: { files: [png('team.png')] },
+    });
+    const result = await cms.api.media.downloadIntent({
+      body: { assetIds: [asset.id, 'missing'], bulkJobId: 'job_1' },
+    });
+    expect(result.items).toEqual([
+      {
+        id: asset.id,
+        url: expect.stringMatching(/^memory:\/\//),
+        size: PNG.byteLength,
+        name: 'team.png',
+      },
+    ]);
+    expect(result.skipped).toEqual(['missing']);
+    expect(signGet.mock.calls[0][1]).toMatchObject({
+      expiresIn: 300,
+      responseContentDisposition: expect.stringContaining('attachment'),
+    });
+    expect(onAssetDownload).toHaveBeenCalledWith({
+      assetIds: [asset.id],
+      actorId: null,
+      variantKey: null,
+      bulkJobId: 'job_1',
+      ipHash: null,
+    });
+  });
+
+  it('answers 429 with Retry-After past the per-minute limit', async () => {
+    const storage = createMemoryStorage({
+      signedGet: { supported: true, disposition: true, maxExpiresIn: 3600 },
+    });
+    const { cms } = await setupTestCMS({
+      media: { storage, downloadRateLimit: 2 },
+    });
+    const { assets: uploaded } = await cms.api.media.uploadAssets({
+      body: { files: [png('a.png'), png('b.png'), png('c.png')] },
+    });
+    const ids = uploaded.map((a) => a.id);
+    await cms.api.media.downloadIntent({ body: { assetIds: ids.slice(0, 2) } });
+    const error = await cms.api.media
+      .downloadIntent({ body: { assetIds: [ids[2]] } })
+      .catch((e: unknown) => e);
+    expect(error).toMatchObject({ cmsCode: 'RATE_LIMITED', statusCode: 429 });
+    const headers = new Headers((error as { headers: HeadersInit }).headers);
+    expect(Number(headers.get('retry-after'))).toBeGreaterThan(0);
+  });
+});
+
+describe('allowReplaceWithDifferentType', () => {
+  it('rejects a replace of another type when turned off', async () => {
+    const storage = createMemoryStorage({
+      signedGet: { supported: true, disposition: true, maxExpiresIn: 3600 },
+    });
+    const { cms } = await setupTestCMS({
+      media: { storage, allowReplaceWithDifferentType: false },
+    });
+    const {
+      assets: [asset],
+    } = await cms.api.media.uploadAssets({ body: { files: [png('a.png')] } });
+    await expect(
+      cms.api.media.createSignedReplace({
+        body: {
+          assetId: asset.id,
+          file: { name: 'a.jpg', size: 10, type: 'image/jpeg' },
+        },
+      }),
+    ).rejects.toMatchObject({ cmsCode: 'INVALID_FILE_TYPE' });
+  });
+});
+
+describe('createRateWindow', () => {
+  it('frees capacity as hits leave the minute', () => {
+    let now = 0;
+    const take = createRateWindow(() => now);
+    expect(take('u', 2, 3)).toBe(0);
+    now = 30_000;
+    expect(take('u', 1, 3)).toBe(0);
+    expect(take('u', 2, 3)).toBe(30);
+    now = 60_000;
+    expect(take('u', 2, 3)).toBe(0);
+    expect(take('other', 3, 3)).toBe(0);
+    expect(take('u', 5, 3)).toBe(60);
   });
 });

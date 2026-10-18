@@ -31,8 +31,8 @@ selectors compare by reference.
 | `collection` | `CollectionSlice` | `query` (a `FilterState`), `ids`, `byId`, `cursor`, `total`, `status` (`CollectionStatus`: `idle`, `loading`, `refreshing`, `appending`, `error`), `error`. |
 | `selection` | `SelectionSlice` | A `SelectionState` plus `hidden`. |
 | `folders` | `FolderTreeState` | `nodes` (`FolderNode`), `roots`, `expanded`, `loading`, `currentId`, `path`. |
-| `preview` | | `openId`, `zoom`, `rotation`. |
-| `detail` | | `assetId`, `draft` (`AssetPatch`), `dirty`, `baseUpdatedAt`, `saving`, `error`. |
+| `preview` | | `openId`, `ids` (the collection order when it opened), `zoom`, `pan`, `rotation`. |
+| `detail` | | `assetId`, `asset`, `draft` (`DetailDraft`), `dirty`, `baseUpdatedAt`, `saving`, `error`, `conflict` (the newer server asset), `revisions` (`MediaRevision[]`). |
 | `ui` | | `layout` (`LayoutMode`), `viewport`. |
 | `mutation` | | `status`, `error`, `skipped`, `skippedReasons` of the last bulk change. |
 
@@ -47,8 +47,14 @@ for typing, `silent` for history navigation), `openFolder`, `loadFolders`,
 `selectAllMatching`, `clearSelection`, `move`, `archive`, `restore`,
 `setVisibility`, `setProvenance`, `updateAsset`, `createFolder`,
 `renameFolder`, `moveFolder`, `deleteFolder`, `receive`, `assetUploaded`,
-`openPreview`, `closePreview`, `openDetail`, `closeDetail`, `setLayout`,
-`setViewport`, `clearMutationError`.
+`openPreview`, `closePreview`, `previewStep`, `previewZoom`,
+`previewRotate`, `openDetail` (fetches the asset when it is not loaded),
+`closeDetail`, `setDetailField`, `resetDetail`, `saveDetail` (sends the
+changed fields with `expectedUpdatedAt`; an `ASSET_CONFLICT` keeps the
+draft and sets `conflict`), `resolveDetailConflict` (`keep: 'mine'` saves
+over the newer version, `'theirs'` drops the draft), `setFocalPoint`,
+`loadRevisions`, `setCurrentRevision`, `setLayout`, `setViewport`,
+`clearMutationError`.
 
 List requests are aborted when a newer one starts; a filter change keeps the
 old results visible as `refreshing`; typing waits `SEARCH_DEBOUNCE_MS` (250).
@@ -96,9 +102,11 @@ A `BulkAction` is `{ id, label, scope?, canExecute(context), confirm?(context), 
 `ConfirmDescriptor` (`{ kind, count, destructive?, items?, requireTyping? }`).
 `bulkContext(store, itemId?, state?)` builds the `BulkContext`
 (`{ store, state, ids, count, assets, target }`); `BulkInput` carries
-`folderId`, `force`, `provenance` and `open`. Built-ins:
+`folderId`, `force`, `provenance`, `open` and `name`. Built-ins:
 `moveAction`, `makePublicAction`, `makePrivateAction`, `setProvenanceAction`,
-`downloadAction` (`?download=true` on the asset endpoint), `archiveAction`
+`downloadAction` (one asset through `?download=true` on the asset endpoint,
+several as one archive through `downloadQueueOf(store)`, the queue every
+surface of a store shares, `null` without `downloadIntent`), `archiveAction`
 and `restoreAction`, in `builtInBulkActions`;
 `registerBuiltInBulkActions(store)` adds them. `archiveInUseConfirm(reasons)`
 describes the confirmation for assets an archive skipped because they are in
@@ -225,6 +233,146 @@ for one asset with a URL, `DownloadURL`. A drop target checks
 `hasAssetDrag(types)` in `dragover` and reads `readAssetDrag(dataTransfer)` in
 `drop` (`parseAssetDragPayload` validates).
 
+## Preview
+
+`previewKindOf(mimeType)` returns the `PreviewKind` renderer: `image`,
+`svg` (through `img`, where scripts and external resources are off),
+`video`, `audio`, `pdf` or `fallback`. Zoom stays within `PREVIEW_MIN_ZOOM`
+(1) and `PREVIEW_MAX_ZOOM` (8): `clampZoom(zoom)`, `stepZoom(zoom, 'in' |
+'out' | 'reset')` by `PREVIEW_ZOOM_STEP` (1.25) and `toggleZoom(zoom,
+natural)` between fit and the natural size. `previewStep(ids, id, delta)`
+is the next or previous id without wrapping (`null` at the ends) and
+`previewNeighbours(ids, id)` the ids to preload. `swipeOf(dx, dy, ms,
+{ rtl, zoomed })` returns a `SwipeResult` (`next`, `prev`, `close` for a
+downward swipe, or `null`): a swipe travels `SWIPE_DISTANCE_PX` (50) or
+moves faster than `SWIPE_VELOCITY_PX_MS` (0.5), is mirrored in right-to-left
+layouts and never counts while zoomed. `rotateQuarter(rotation)` turns by
+90 degrees.
+
+## Detail
+
+`detailValues(asset)` reads the form values (`DetailValues`: `originalName`,
+`description`, `rights` as `AssetRights`, `provenance` as
+`AssetProvenanceValue`, and `custom`, the project's own metadata keys).
+A `DetailDraft` holds only what changed: `setDraftField(draft, field,
+value)` sets a `DetailField` (`originalName`, `description`, `provenance`,
+`rights.<key>`, `custom.<key>`), `draftValue(values, draft, field)` reads
+the current value and `isDirty(values, draft)` compares (an empty string
+equals a missing value). `assetPatch(asset, draft)` turns the draft into an
+`updateAsset` patch (an `AssetPatch`: `originalName`, `metadata`,
+`provenance`) or `null`: cleared values become `null`, which removes
+the key on the server, and rights carry only the changed keys.
+`assetFacts(asset)` returns the read-only `AssetFacts` (type, size,
+dimensions, name, uploader, date, `provenanceSource`, `c2pa`). A
+`DetailSuggestion` (`{ field, value, source }`) is shown next to a field
+until accepted.
+
+## Focal point and crop
+
+A `FocalPoint` is `{ x, y }` in fractions of the width and height; `CENTER`
+is the middle. `clampFocal(point)` keeps it inside the image,
+`nudgeFocal(point, direction, large)` moves it 1 or 10 percent,
+`focalFromPointer(clientX, clientY, box)` places it under a pointer,
+`focalPercent(point)` rounds to whole percents for labels and
+`focalObjectPosition(point)` is the CSS `object-position`.
+
+A `UsageCrop` is `{ x, y, width, height }` in fractions of the original,
+stored with each use. `defaultCrop(aspect, width, height, focal)` is the
+largest crop of an aspect ratio centered on the focal point and kept inside
+the image; `normalizeCrop(crop)` clamps and rounds; `isFullCrop(crop)` is
+true for the whole image; `cropAspect(crop, width, height)` is its aspect in
+pixels; `zoomCrop(base, zoom, center)` shrinks a crop for a zoom from 1 to
+3. `cropStyles(crop, image)` returns the CSS to show a crop:
+`objectViewBox` (`inset(...)`) where `object-view-box` is supported, else
+`image` styles for an absolutely placed image in a clipping wrapper, plus
+the `aspectRatio`. `DEFAULT_CROP_PRESETS` lists `CropPreset`s
+(`{ id, label, aspect, minWidth }`): Open Graph (1200 wide), square, 16:9,
+4:3 and 4:5.
+
+## Image field
+
+An `ImageFieldValue` is a bare asset id or an `ImageRef` (`assetId`, `alt`,
+`decorative`, `altSource`, `caption`, `revisionId`, `crop`, `focal`), the
+`AssetRef` stored on a block. `toImageRef(value)` normalizes it.
+`altStateOf(value)` is the `AltState`: `present`, `decorative` or
+`missing`; `satisfiesAlt(value, requireAlt)` gates saving. `setAlt`
+records typed text as the person's (`altSource: 'user'`), `setDecorative`
+and `setCaption` change the other fields. `acceptAltSuggestion(value,
+text)` only fills an empty, non-decorative alt text and marks it
+`ai-suggested`. `replaceImageAsset(value, assetId, { keepCrop })` keeps alt
+text and caption when another asset is chosen and drops the revision pin
+and, unless kept, the crop. `suggestAlt(adapters, input)` asks
+`AltSuggestAdapter`s in order (`suggest({ assetId, context })` with an
+`AltSuggestContext`: field type, surrounding text, page title, locale, link
+target) and returns the first answer; adapter errors count as none.
+
+## Picker
+
+`PickerConstraints`: `mode`, `min`, `max`, `accept`, `maxBytes`,
+`minWidth`, `minHeight`, `aspect` (`{ ratio, tolerance }`), `allowUpload`,
+`folderId`, `filters`, `cropPreset`, `requireAlt`.
+`pickerDisabledReason(asset, constraints, selected)` returns the
+`PickerDisabledReason` (`type`, `size`, `dimensions`, `aspect` or `max`,
+the same codes as intake rejections) or `null`; `canConfirmPicker
+(constraints, selected)` checks the count. `pickerFilter(constraints)` is
+the listing `FilterState` (MIME types, folder, minimum dimensions) and
+`intakeConstraintsOf(constraints)` the `IntakeConstraints` for uploads in
+the picker.
+
+Before a replace, `replaceWarnings(asset, file, usage)` lists
+`ReplaceWarning`s: `type` when the MIME type changes, `aspect` when the
+aspect ratio differs by more than `REPLACE_ASPECT_TOLERANCE` (2 percent),
+`usage` when pages use the asset. `aspectLabel(aspect)` formats a ratio
+(`4:3`, `1.85:1`).
+
+## Downloads
+
+`createDownloadQueue({ sign, fetch, sink, concurrency })` returns a
+`DownloadQueue` (`getState`, `subscribe`, `download(assets, options)`,
+`cancel(jobId?)`, `clear`). `download` takes `DownloadAsset`s (`id`,
+`name`, `size`, `folderPath`) and `DownloadOptions` (`name`, `flatten`,
+`manifest`, `usage`) and resolves with the finished `DownloadJob`
+(`status` a `DownloadJobStatus`, `items` of `DownloadItem` with a
+`DownloadItemStatus`, `loaded`, `total`, `sink`, `error`); the state is a
+`DownloadState`. Files are signed in batches of `DOWNLOAD_SIGN_BATCH` (20)
+just before they are fetched (a `DownloadSigner` returning
+`SignedDownload`s), fetched `DOWNLOAD_CONCURRENCY` (3) ahead and written in
+order; a file that is missing or fails is skipped and the archive shrinks
+accordingly. Archive paths keep the folder path unless `flatten`, are made
+safe and unique, and `manifest` adds `manifest.csv`.
+
+A `DownloadSink` is `{ kind, writable, finish }`: `fileSink(name)` streams
+to a file the user picks (`showSaveFilePicker`, `null` where unsupported),
+`blobSink(name, size)` collects in memory and saves through a link, refused
+above `BLOB_DOWNLOAD_LIMIT` (2 GB) or `BLOB_DOWNLOAD_LIMIT_IOS` (500 MB),
+and `chooseSink(name, size)` takes the first that works. Failures are a
+`DownloadError` with the code `DOWNLOAD_TOO_LARGE`, `DOWNLOAD_UNSUPPORTED`
+or `DOWNLOAD_FAILED`.
+
+## ZIP
+
+`makeZip(entries)` streams a ZIP of `ZipInput`s (`name`, `lastModified`,
+`input` as bytes, a `Blob`, a stream or a function returning one). Entries
+are stored uncompressed (media is compressed already) with UTF-8 names and
+data descriptors, and ZIP64 records where a size, an offset or the count
+needs them, so `predictZipLength(entries)` knows the exact length up front.
+`crc32(bytes, crc)` continues a CRC-32. `sanitizeZipPath(path)` drops `..`
+and `.` segments, leading slashes, control characters, the characters
+Windows rejects and trailing dots, and prefixes reserved Windows names;
+`uniqueZipPaths(paths)` appends ` (2)`, ` (3)` per folder,
+case-insensitively; `manifestCsv(rows)` writes a CSV that spreadsheet apps
+do not evaluate as formulas.
+
+## Touch
+
+`createLongPress(onLongPress, { delay, tolerance })` returns a `LongPress`
+(`down`, `move`, `up`, `cancel`, `consumeClick`, `fired`) that fires for
+touch and pen after `LONG_PRESS_MS` (500) unless the pointer moved more
+than `LONG_PRESS_TOLERANCE_PX` (10). `vibrateTick()` gives a short haptic
+tick where available. `cameraAccept(kind)` is the `accept` of a camera
+input with the explicit type first, which Android needs to offer the
+camera.
+
 ## Announcements
 
 An `Announce` is `(message, politeness?)` with `Politeness` `polite` or
@@ -254,5 +402,5 @@ an aborted request.
 `MediaAssetListResult`, `MediaAssetStatus`, `MediaSortBy`,
 `MediaSortDirection`, `MediaAllMatching`, `MediaBulkTarget`, `MediaFacets`,
 `MediaServerEvent`, `MediaUploadState`, `MediaUploadEntry`,
-`MediaUploadedAsset`, and the usage types `MediaUsagePage`, `MediaUsageItem`,
+`MediaUploadedAsset`, `MediaRevision`, and the usage types `MediaUsagePage`, `MediaUsageItem`,
 `MediaUsageOccurrence` and `MediaUsageScope`.

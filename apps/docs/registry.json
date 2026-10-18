@@ -141,7 +141,7 @@
       "name": "media-library",
       "type": "registry:ui",
       "title": "Media Library",
-      "description": "Styled wrappers for the Media.* parts (grid, folder tree, filters, bulk bar, intake) plus MediaLibraryLayout. Does not wrap Media.Root.",
+      "description": "Styled wrappers for the Media.* parts (grid, folder tree, filters, bulk bar, intake, uploads, downloads, preview) plus MediaLibraryLayout. Does not wrap Media.Root.",
       "dependencies": ["@createcms/react", "lucide-react"],
       "registryDependencies": [
         "button",
@@ -172,12 +172,32 @@
       "name": "media-picker",
       "type": "registry:ui",
       "title": "Media Picker",
-      "description": "Dialog control that owns its own Media.Root and returns one selected asset id.",
+      "description": "Dialog control that owns its own Media.Root and returns one selected asset id under picker constraints, plus MediaImageField with alt text, decorative switch and caption.",
       "dependencies": ["@createcms/react"],
-      "registryDependencies": ["media-library", "dialog", "button"],
+      "registryDependencies": [
+        "media-library",
+        "dialog",
+        "button",
+        "input",
+        "textarea"
+      ],
       "files": [
         {
           "path": "registry/media-picker.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "media-detail",
+      "type": "registry:ui",
+      "title": "Media Detail",
+      "description": "Detail panel of the selected asset (Detail.*, FocalPoint.*, versions, download) for a Media.Root. Does not wrap Media.Root.",
+      "dependencies": ["@createcms/react"],
+      "registryDependencies": ["alert", "button", "input", "textarea"],
+      "files": [
+        {
+          "path": "registry/media-detail.tsx",
           "type": "registry:ui"
         }
       ]

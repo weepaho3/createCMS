@@ -603,6 +603,21 @@ export function createMediaEndpoints(
       assetObjectKey(mediaConfig, { id, fileName, visibility, scope });
 
   /**
+   * Throws INVALID_FILE_TYPE when `allowReplaceWithDifferentType` is `false`
+   * and the new file's MIME type (parameters stripped) differs from the
+   * asset's.
+   */
+  function assertReplaceType(current: string, next: string): void {
+    if (mediaConfig.allowReplaceWithDifferentType !== false) return;
+    const base = (type: string) => type.split(';')[0].trim().toLowerCase();
+    if (base(current) !== base(next)) {
+      throw new CMSError('INVALID_FILE_TYPE', {
+        message: `A replace must keep the asset's type ${base(current)}; got ${base(next)}`,
+      });
+    }
+  }
+
+  /**
    * Throws STORAGE_UNSUPPORTED unless the adapter signs uploads and, when any
    * declared type is `image/*`, can read byte ranges: an image that cannot be
    * sniffed afterwards would never pass `completeUpload` / `commitReplace`.
@@ -1800,6 +1815,7 @@ export function createMediaEndpoints(
             id: assets.id,
             variantOf: assets.variantOf,
             status: assets.status,
+            mimeType: assets.mimeType,
           })
           .from(assets)
           .where(and(...loadConditions));
@@ -1818,6 +1834,7 @@ export function createMediaEndpoints(
 
         // 3. Validate the declared file (size / MIME type). The bytes are
         //    checked by commitReplace once they have landed.
+        assertReplaceType(target.mimeType, file.type);
         validateFiles([{ name: file.name, size: file.size, type: file.type }], {
           maxFiles,
           maxFileSize,
@@ -2770,6 +2787,7 @@ export function createMediaEndpoints(
             id: assets.id,
             variantOf: assets.variantOf,
             status: assets.status,
+            mimeType: assets.mimeType,
           })
           .from(assets)
           .where(and(...loadConditions));
@@ -2789,6 +2807,7 @@ export function createMediaEndpoints(
         // 3. Validate the new file (size / declared mime type), then sniff its
         //    magic bytes — we hold the buffer, so reject a declared-image spoof
         //    (e.g. SVG-as-PNG stored XSS) before minting a new object.
+        assertReplaceType(target.mimeType, file.type);
         validateFiles(
           [{ name: file.name, size: measuredSize, type: file.type }],
           { maxFiles, maxFileSize, allowedMimeTypes },

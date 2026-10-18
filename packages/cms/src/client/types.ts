@@ -108,6 +108,12 @@ export type CMSMediaUploadFileState = {
   folderId: string | null;
   /** The asset a `replace` entry swaps, or a `rendition` entry belongs to. */
   targetAssetId?: string;
+  /**
+   * The id the asset will have, known once the upload is signed (before the
+   * bytes land). A form can store it while the upload runs; it resolves to
+   * an asset only after `success`.
+   */
+  assetId?: string;
   /** Base64 SHA-256 of the bytes, once hashed. */
   sha256?: string;
   /** Existing assets with the same bytes; the entry waits `paused` for `resolveDuplicate`. */

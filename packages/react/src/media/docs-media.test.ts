@@ -19,18 +19,26 @@ const CORE_MDX = 'reference/react-media-core.mdx';
 const CORE_MODULES = [
   'announcer',
   'bulk',
+  'detail',
+  'downloads',
   'drag',
   'errors',
   'filter',
   'folders',
+  'image-edit',
+  'image-field',
   'intake',
   'layout',
   'marquee',
+  'picker',
+  'preview',
   'registry',
   'selection',
   'store',
+  'touch',
   'typeahead',
   'types',
+  'zip',
 ];
 
 /** Names a module declares with `export` (functions, constants, types). */

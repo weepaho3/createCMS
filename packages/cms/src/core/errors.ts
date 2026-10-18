@@ -61,7 +61,11 @@ export class CMSError extends APIError {
 
   constructor(
     code: CMSErrorCode,
-    overrides?: { message?: string; data?: Record<string, unknown> },
+    overrides?: {
+      message?: string;
+      data?: Record<string, unknown>;
+      headers?: HeadersInit;
+    },
   ) {
     // On purpose: index so a code absent from this module's map (a plugin
     // code, or a bundler stub of CMS_ERRORS) becomes a 500 CMSError instead
@@ -84,7 +88,7 @@ export class CMSError extends APIError {
     // better-call serializes the whole body to the wire, so structured
     // `data` reaches the client (read back via `CMSClientError.data`).
     if (overrides?.data) body.data = overrides.data;
-    super(def?.status ?? (500 as CmsErrorStatus), body);
+    super(def?.status ?? (500 as CmsErrorStatus), body, overrides?.headers);
     this.cmsCode = code;
   }
 }

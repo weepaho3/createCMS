@@ -75,9 +75,9 @@ without glue code. Required: `listAssets`, `listFolders`, `createFolder`,
 that need them: `getAssets`, `getAssetFacets`, `updateAsset`,
 `restoreAssets`, `renameFolder`, `moveFolder`, `getFolderPath`,
 `deleteFolder`, `getAssetUsages`, `getAssetUsageCounts`, `listRevisions`,
-`setCurrentRevision`, `createSignedReplace`, `commitReplace` and
-`subscribe(onEvent)`, which feeds `MediaServerEvent`s (the `media.*` realtime
-events) to the store.
+`setCurrentRevision`, `setFocalPoint`, `downloadIntent`,
+`createSignedReplace`, `commitReplace` and `subscribe(onEvent)`, which feeds
+`MediaServerEvent`s (the `media.*` realtime events) to the store.
 
 | Type | Meaning |
 | --- | --- |
@@ -89,7 +89,8 @@ events) to the store.
 | `MediaFacets` | `{ kinds, provenance, visibility }` counts of `getAssetFacets`. |
 | `MediaServerEvent` | `{ type: 'media.asset.updated', assetId }` and the other `media.*` events. |
 | `MediaAssetStatus`, `MediaSortBy`, `MediaSortDirection`, `MediaSelectionMode` | `'private' \| 'public'`, the sort keys, `'asc' \| 'desc'`, `'none' \| 'single' \| 'multiple'`. |
-| `MediaUploadState`, `MediaUploadEntry`, `MediaUploadedAsset` | The upload queue state, one entry, and the `result` of a finished entry. |
+| `MediaUploadState`, `MediaUploadEntry`, `MediaUploadedAsset` | The upload queue state, one entry, and the `result` of a finished entry. An entry carries `assetId` once its upload is signed. |
+| `MediaRevision` | One earlier version of an asset (`listRevisions`): `{ id, originalName, mimeType, size, width, height, note, uploadedBy, createdAt }`. |
 
 ## Parts
 
@@ -167,7 +168,9 @@ selected too, scrolls in an edge band of `min(25%, 180 px)` that ramps up over
 name is the file name (`assetName(asset)`), its description the type,
 dimensions and size. A click replaces the selection, Cmd/Ctrl-click toggles,
 Shift-click replaces the previous range from the anchor (Finder), Shift with
-Cmd/Ctrl adds a range. State: `data-selected`, `data-focused`,
+Cmd/Ctrl adds a range. On touch, a long press (500 ms, cancelled by more
+than 10 px of movement so scrolling never selects) toggles the item into
+the selection with a short vibration where available. State: `data-selected`, `data-focused`,
 `data-asset-status`, `data-type` (`MediaType` from `mediaTypeOf`) and
 `data-provenance`. It provides `ItemContextValue` (`{ asset, selected }`)
 through `useMediaItemContext(name)`. Items are draggable (see
@@ -291,6 +294,7 @@ to search every folder.
 | `Intake.Overlay` (`IntakeOverlayProps`) | `div` | Full-window drop target while OS files are dragged over the page (an enter/leave counter keeps it from flickering). |
 | `Intake.Input` (`IntakeInputProps`) | `button` | Opens the file picker ("Upload files"); `capture` opens the camera on mobile. |
 | `Intake.FolderInput` | `button` | Opens a folder picker ("Upload folder", `webkitdirectory`). |
+| `Intake.Camera` (`IntakeCameraProps`) | `button` | Opens the device camera (`kind`: `photo` or `video`, `facing`: `environment` or `user`) and uploads the shot; browsers without a camera show their file picker. |
 | `Intake.Paste` (`IntakePasteProps`) | `button` | Reads images from the clipboard (`navigator.clipboard.read`); rendered only where available. |
 | `Intake.FolderPrompt` (`IntakeFolderPromptProps`) | none | `children(prompt)` while a folder drop asks "Recreate the folder structure (12 folders, 340 files)" or "Put everything in the current folder" (`IntakeFolderPromptState`). |
 | `Intake.Reading` (`IntakeReadingProps`) | `div[role=status]` | "Reading folder… 340 files" while a dropped folder is traversed. |
@@ -305,22 +309,166 @@ are skipped and counted. `useIntake(options)` returns the `IntakeHandler`
 element ref or `'document'`) has the paste, renaming screenshots to
 `pasted-YYYY-MM-DD-HHmmss.png` and leaving text fields alone.
 
-### `Media.UploadList`, `Media.UploadItem`, `Media.UploadProgress`
+### `Upload.*`
 
-`Media.UploadList` (`MediaUploadListProps`) is a `ul` of the queue (rendition
-entries are part of their parent); `children(entry)` renders one entry.
-`Media.UploadItem` (`MediaUploadItemProps`, `entry` required) is a `li`
-with `data-status`. `Media.UploadProgress` (`MediaUploadProgressProps`) is a
-`div[role="progressbar"]`: `aria-valuenow` in 10 percent steps,
-`aria-valuetext` with the exact value (`45%`, `Failed: <message>`,
-`Cancelled`) and `aria-label` (the file name); outside an item it shows the
-whole queue (`upload.all`).
+The upload panel of `Media.Root`'s client. Inside an `Upload.Item` the
+actions act on that entry and are labelled with its name; outside one they
+act on the whole queue.
 
-### `Media.UploadAbort` and `Media.UploadClear`
+| Part | Element | Description |
+| --- | --- | --- |
+| `Upload.List` (`UploadListProps`) | `ul` | The queue (rendition entries are part of their parent); `children(entry)` renders one entry. |
+| `Upload.Item` (`UploadItemProps`, `entry` required) | `li` | `data-status`, and `data-duplicate` while the entry waits for a duplicate decision. |
+| `Upload.Progress` (`UploadProgressProps`) | `div[role=progressbar]` | `aria-valuenow` in 10 percent steps, `aria-valuetext` with the exact value (`45%`, `Failed: <message>`, `Cancelled`), `aria-label` the file name; outside an item the whole queue (`upload.all`). |
+| `Upload.Cancel` (`UploadCancelProps`) | `button` | Cancels the entry, or every upload in flight; `disabled` when nothing runs. |
+| `Upload.Retry` (`UploadRetryProps`) | `button` | Retries a failed or cancelled entry. |
+| `Upload.RetryAll` (`UploadRetryAllProps`) | `button` | Retries every failed entry; `disabled` while none failed. |
+| `Upload.Pause` (`UploadPauseProps`) | `button` | Pauses the entry (or the queue) and resumes it when paused. |
+| `Upload.Clear` (`UploadClearProps`) | `button` | Clears the ledger; `disabled` while uploads run or nothing is listed. |
+| `Upload.Duplicate` (`UploadDuplicateProps`) | none | Inside an item waiting for a duplicate decision: `children(UploadDuplicateRenderProps)` with `existing`, `keepExisting(assetId?)` and `uploadAnyway()`. |
 
-`Media.UploadAbort` (`MediaUploadAbortProps`) is a `button` that calls
-`abort()`, `disabled` while nothing is in flight. `Media.UploadClear`
-(`MediaUploadClearProps`) is a `button` that calls `reset()`.
+`useUploadEntry()` returns the entry of the enclosing `Upload.Item`.
+`isUploadActive(entry)` and `isUploadDuplicate(entry)` classify entries.
+`useUploadsPending(assetIds)` returns the entries of those asset ids still
+in flight: a form stores `entry.assetId` as soon as the upload is signed
+and waits for this list to be empty before it saves (`upload.waiting`).
+
+### `Download.*`
+
+`Download.Button` (`DownloadButtonProps`: `assets`, `name`) downloads one
+asset through the asset endpoint (`?download=true`) and several as one ZIP
+archive. Archives are written in the browser: files are signed in batches
+through `downloadIntent`, fetched three at a time and stored uncompressed
+into the archive, which streams to a file the user picks where the browser
+can (`showSaveFilePicker`) and is assembled in memory up to 2 GB otherwise
+(500 MB on iOS). The bulk `download` action uses the same queue for more
+than one asset.
+
+`Download.List` (`DownloadListProps`) is a `ul` of the jobs with
+`children(job)`; `Download.Item` (`DownloadItemProps`, `job` required) a
+`li` with `data-status`; `Download.Progress` (`DownloadProgressProps`) a
+progress bar of the archive's bytes, exact because nothing is compressed;
+`Download.Cancel` (`DownloadCancelProps`) cancels the job or every running
+one. `useDownloads()` returns `MediaDownloads`: the jobs, `supported`
+(`false` without `downloadIntent`), `download(assets, options)`, `cancel`
+and `clear`.
+
+### `Preview.*`
+
+`Preview.Root` (`PreviewRootProps`) is a modal `div[role="dialog"]`
+rendered while an asset is open (`usePreview().open(id)`, usually from
+`Media.Grid`'s `onAction`). It moves focus into the dialog, traps Tab,
+returns focus to the opener and maps keys: Escape closes, the arrows step
+(mirrored in right-to-left layouts, panning instead while zoomed), `+`,
+`-` and `0` zoom, `r` rotates. Neighbouring images are preloaded. Stepping
+follows the collection order at the time the preview opened and stops at
+both ends.
+
+`Preview.Stage` (`PreviewStageProps`) renders the asset by kind: images
+and SVG as `img` (double click toggles between fit and natural size, drag
+pans while zoomed, a swipe steps or closes on touch), video and audio with
+native controls, PDF in an `object`, anything else as
+`preview.unavailable`. `children({ asset, kind, src })` replaces the
+renderer for a kind; return `undefined` to keep the default.
+
+`Preview.Prev`, `Preview.Next`, `Preview.Close`, `Preview.ZoomIn`,
+`Preview.ZoomOut`, `Preview.ZoomReset` and `Preview.Rotate` are buttons
+(`PreviewButtonProps`) labelled from `preview.*` and disabled where they do
+nothing. `Preview.Position` (`PreviewPositionProps`) reads "3 of 40".
+`usePreview()` returns `MediaPreview`: `asset`, `kind`, `index`, `total`,
+`zoom`, `pan`, `rotation`, `canPrev`, `canNext` and the commands.
+
+### `Detail.*`
+
+The detail form of one asset: file name, description, rights, origin, facts
+and versions. Alt text is not part of it; it belongs to each use of the
+image (`ImageField.*`).
+
+| Part | Element | Description |
+| --- | --- | --- |
+| `Detail.Root` (`DetailRootProps`) | `form` | Rendered while an asset is open (`useAssetDetail().open(id)`); submitting saves. `data-dirty`, `data-saving`, `data-conflict`. |
+| `Detail.Field` (`DetailFieldProps`, `field` required) | `input` | One field of the draft: `originalName`, `description`, `rights.credit`, `rights.copyright`, `rights.license`, `rights.licenseUrl`, `rights.sourceUrl`, `rights.expiresAt` or `custom.<key>`. Render a `textarea` through `render`. |
+| `Detail.Provenance` (`DetailProvenanceProps`) | `select` | The origin, labelled from `filter.provenance`. |
+| `Detail.Facts` (`DetailFactsProps`) | `dl` | Type, size, dimensions, upload and change dates, uploader; `children(facts)` replaces the list. |
+| `Detail.Save` (`DetailSaveProps`) | `button[type=submit]` | `disabled` without changes or while saving. |
+| `Detail.Reset` (`DetailResetProps`) | `button` | Discards the draft. |
+| `Detail.Error` (`DetailErrorProps`) | `p[role=alert]` | The translated error of the last save, except conflicts. |
+| `Detail.Conflict` (`DetailConflictProps`) | none | While a save conflicts: `children({ theirs, keepMine, takeTheirs })`. |
+| `Detail.Revisions` (`DetailRevisionsProps`) | none | Loads the earlier versions on mount: `children({ revisions, restore })`. |
+
+Saving sends only the changed fields with `expectedUpdatedAt`; an
+`ASSET_CONFLICT` keeps the draft and offers to save it over the newer
+version or to take that version. `useAssetDetail()` returns `AssetDetail`:
+`asset`, `values`, `draft`, `facts`, `dirty`, `saving`, `error`,
+`conflict`, `revisions` and the commands (`open`, `close`, `set`,
+`reset`, `save`, `resolveConflict`, `loadRevisions`, `restoreRevision`).
+
+### `FocalPoint.*` and `Crop.*`
+
+`FocalPoint.Root` (`FocalPointRootProps`: `image`, `value` or
+`defaultValue`, `onValueChange`, `onValueCommit`) is a `div` on which a
+click or drag places the focal point. `FocalPoint.Handle`
+(`FocalPointHandleProps`) is the marker as a focusable `role="slider"`:
+arrows move it 1 percent, with Shift 10 percent, Home centers it, and
+`aria-valuetext` reads "42% from the left, 30% from the top".
+`FocalPoint.Preview` (`FocalPointPreviewProps`) is the image cropped with
+`object-fit: cover` at the point; render several with different aspect
+ratios. Save on `onValueCommit` with the `setFocalPoint` command. The image
+is an `EditableImage`: `{ src, width, height }`.
+
+`Crop.Root` (`CropRootProps`: `image`, `value`, `onValueChange`,
+`presets`, `defaultAspect`, `focal`) holds the crop of one image use in
+fractions of the original; it is stored in the reference, never in the
+asset, so every use keeps its own. `onValueChange` receives `null` for the
+whole image. `Crop.Area` (`CropAreaProps`) shows the image with the crop
+box (`data-crop-box`), moved by drag or arrows; `Crop.Zoom`
+(`CropZoomProps`) is a range from 1 to 3; `Crop.Aspect` (`CropAspectProps`)
+a radio group of `free`, `original` and the presets, each choice setting
+the largest crop around the focal point; `Crop.Input` (`CropInputProps`,
+`field`: `x`, `y`, `width` or `height`) edits one value in pixels;
+`Crop.Reset` (`CropResetProps`) returns to the whole image; `Crop.Preview`
+(`CropPreviewProps`) shows the result. `useCropEditor()` returns the state
+with `tooSmall`, true while the crop is narrower than the preset's
+`minWidth`.
+
+### `ImageField.*`
+
+The alt text, decorative switch and caption of one use of an image, stored
+in the reference (`AssetRef`). `ImageField.Root` (`ImageFieldRootProps`:
+`value`, `onValueChange`, `requireAlt`, `suggesters`, `context`) renders no
+element.
+
+| Part | Element | Description |
+| --- | --- | --- |
+| `ImageField.Alt` (`ImageFieldAltProps`) | `textarea` | Typing marks the text as the person's (`altSource: 'user'`); `disabled` while decorative, `aria-invalid` while required and missing. |
+| `ImageField.Decorative` (`ImageFieldDecorativeProps`) | `input[type=checkbox]` | Decorative images render `alt=""`; the typed text is kept. |
+| `ImageField.Caption` (`ImageFieldCaptionProps`) | `input` | The visible caption. |
+| `ImageField.SuggestAlt` (`ImageFieldSuggestAltProps`) | `button` | Asks the `suggesters` in order. A suggestion only fills an empty, non-decorative field and is marked `ai-suggested`. |
+| `ImageField.Status` (`ImageFieldStatusProps`) | `p` | `imageField.missingAlt` or `imageField.suggested`; nothing otherwise. `data-alt-state`. |
+
+`useImageField()` returns `ImageFieldState`: `value`, `altState`, `valid`,
+`suggesting`, `canSuggest`, `onValueChange` and `suggest()`.
+
+### `Picker.*` and `openMediaPicker`
+
+`Picker.Root` (`PickerRootProps`, `constraints` required) applies
+`PickerConstraints` to the `Media.Root` it sits in. Pass
+`pickerFilter(constraints)` to the root's filter and
+`intakeConstraintsOf(constraints)` to its uploads, so the listing, the
+uploads and the choice follow the same rules. `Picker.Reason`
+(`PickerReasonProps`) inside `Media.Item` shows why the asset is locked
+("Needs at least 1,200 × 630 px"); `usePickerItem(asset)` returns
+`{ disabled, reason, text }` for `aria-disabled` and styling, and
+`pickerReasonText(reason, constraints, catalog)` translates a reason
+yourself. `Picker.Confirm` (`PickerConfirmProps`, `onConfirm(assets)`) is
+`disabled` until the choice meets `min` and `max` and every chosen asset
+passes. `usePickerConstraints()` reads the constraints.
+
+`openMediaPicker(constraints)` resolves with the chosen assets, or `null`
+when cancelled, from anywhere: a field control, a canvas drop target, a
+toolbar button. It needs one mounted `MediaPickerHost`
+(`MediaPickerHostProps`), whose `children(request)` renders the picker for
+a `MediaPickerRequest` (`{ constraints, resolve, cancel }`).
 
 ### `Media.Image` and `Media.Picture`
 
@@ -499,6 +647,13 @@ A detail panel reloads on `asset:replaced` without knowing the usage panel.
 Returns the `MediaUploadState` of the client (`client.useUploadAssets()`).
 It lives in its own context so progress ticks re-render only the upload
 parts.
+
+### `usePreview`, `useAssetDetail`, `useDownloads`
+
+`usePreview()`, `useAssetDetail()` and `useDownloads()` expose the preview,
+the detail form and the archive downloads of the nearest `Media.Root`
+(see `Preview.*`, `Detail.*` and `Download.*`). `useImageField()` and
+`useCropEditor()` read the enclosing `ImageField.Root` and `Crop.Root`.
 
 ### `useMediaContext`, `useMediaAnnouncer`
 

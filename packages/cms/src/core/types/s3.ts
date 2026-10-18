@@ -118,6 +118,31 @@ type BaseMediaConfig = {
   }) => void | Promise<void>;
 
   /**
+   * Called after `downloadIntent` signed downloads, for an audit log.
+   * `ipHash` is a SHA-256 prefix of the client address when the request
+   * carries one. Errors are logged, never thrown.
+   */
+  onAssetDownload?: (download: {
+    assetIds: string[];
+    actorId: string | null;
+    variantKey: string | null;
+    bulkJobId: string | null;
+    ipHash: string | null;
+  }) => void | Promise<void>;
+
+  /**
+   * Signatures `downloadIntent` hands one actor per minute (one per asset).
+   * Counted per server process. Default 60; `0` turns the limit off.
+   */
+  downloadRateLimit?: number;
+
+  /**
+   * Whether `replaceAsset` accepts a file of another MIME type than the
+   * asset's. Default `true`; `false` answers `INVALID_FILE_TYPE`.
+   */
+  allowReplaceWithDifferentType?: boolean;
+
+  /**
    * Overrides single capability flags of the provider preset (see
    * `providerCapabilities`). Ignored when `storage` is set.
    */

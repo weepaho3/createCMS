@@ -201,6 +201,19 @@ export type MediaMessages = {
     entryDone: MediaMessageFn<{ name: string }>;
     entryFailed: MediaMessageFn<{ name: string; reason: string }>;
     entryCancelled: MediaMessageFn<{ name: string }>;
+    cancel: string;
+    retry: string;
+    retryAll: string;
+    pause: string;
+    resume: string;
+    /** A duplicate of an existing asset waits for a decision. */
+    duplicate: MediaMessageFn<{ name: string }>;
+    useExisting: string;
+    uploadAnyway: string;
+    /** Saving waits until the uploads of the form finished. */
+    waiting: MediaMessageFn<{ count: number }>;
+    camera: string;
+    video: string;
   };
   image: {
     /** Labels `useAssetImage` returns as `provenanceLabel`. */
@@ -221,9 +234,124 @@ export type MediaMessages = {
     title: string;
     choose: string;
     select: string;
+    /** Why an asset cannot be picked (`PickerDisabledReason`). */
     disabled: {
       dimensions: MediaMessageFn<{ minWidth: number; minHeight: number }>;
+      type: MediaMessageFn<{ accepted: string }>;
+      size: MediaMessageFn<{ max: number }>;
+      aspect: MediaMessageFn<{ ratio: string }>;
+      max: MediaMessageFn<{ max: number }>;
     };
+    /** The confirm button with the number of picked assets. */
+    confirm: MediaMessageFn<{ count: number }>;
+  };
+  preview: {
+    label: MediaMessageFn<{ name: string }>;
+    close: string;
+    prev: string;
+    next: string;
+    zoomIn: string;
+    zoomOut: string;
+    zoomReset: string;
+    rotate: string;
+    /** `index` is 1-based. */
+    position: MediaMessageFn<{ index: number; total: number }>;
+    /** For files the browser cannot show. */
+    unavailable: string;
+  };
+  detail: {
+    title: string;
+    name: string;
+    description: string;
+    rights: Record<
+      | 'credit'
+      | 'copyright'
+      | 'license'
+      | 'licenseUrl'
+      | 'sourceUrl'
+      | 'expiresAt',
+      string
+    >;
+    provenance: string;
+    save: string;
+    saving: string;
+    reset: string;
+    saved: string;
+    /** Shown when someone else saved the asset in the meantime. */
+    conflict: MediaMessageFn<{ name: string }>;
+    keepMine: string;
+    takeTheirs: string;
+    revisions: string;
+    noRevisions: string;
+    restoreRevision: string;
+    revisionRestored: MediaMessageFn<{ name: string }>;
+    facts: Record<
+      | 'type'
+      | 'size'
+      | 'dimensions'
+      | 'created'
+      | 'updated'
+      | 'uploadedBy'
+      | 'provenanceSource',
+      string
+    >;
+    dimensions: MediaMessageFn<{ width: number; height: number }>;
+  };
+  focal: {
+    label: string;
+    /** The handle's value, `x` and `y` in percent. */
+    value: MediaMessageFn<{ x: number; y: number }>;
+    reset: string;
+    saved: string;
+  };
+  crop: {
+    label: string;
+    zoom: string;
+    aspect: string;
+    free: string;
+    original: string;
+    x: string;
+    y: string;
+    width: string;
+    height: string;
+    reset: string;
+    /** The crop is smaller than the preset needs. */
+    tooSmall: MediaMessageFn<{ minWidth: number }>;
+  };
+  imageField: {
+    alt: string;
+    altHint: string;
+    decorative: string;
+    caption: string;
+    suggest: string;
+    suggesting: string;
+    /** Marks an accepted AI suggestion until it is edited. */
+    suggested: string;
+    missingAlt: string;
+    replace: string;
+    remove: string;
+    choose: string;
+  };
+  replace: {
+    title: string;
+    confirm: string;
+    type: MediaMessageFn<{ from: string; to: string }>;
+    aspect: MediaMessageFn<{ from: string; to: string }>;
+    usage: MediaMessageFn<{ roots: number }>;
+  };
+  download: {
+    button: string;
+    title: string;
+    cancel: string;
+    clear: string;
+    status: Record<
+      'pending' | 'downloading' | 'success' | 'error' | 'aborted',
+      string
+    >;
+    progress: MediaMessageFn<{ loaded: number; total: number }>;
+    started: MediaMessageFn<{ count: number }>;
+    finished: MediaMessageFn<{ name: string; skipped: number }>;
+    failed: MediaMessageFn<{ reason: string }>;
   };
   /** A keyboard shortcut label for `key` with the platform modifier. */
   shortcut: MediaMessageFn<{ key: string }>;
@@ -503,6 +631,18 @@ export const defaultMediaMessages: MediaMessages = {
     entryDone: ({ name }) => `${name} uploaded`,
     entryFailed: ({ name, reason }) => `${name} failed: ${reason}`,
     entryCancelled: ({ name }) => `${name} cancelled`,
+    cancel: 'Cancel',
+    retry: 'Retry',
+    retryAll: 'Retry failed',
+    pause: 'Pause',
+    resume: 'Resume',
+    duplicate: ({ name }) => `${name} is already in the library`,
+    useExisting: 'Use existing',
+    uploadAnyway: 'Upload anyway',
+    waiting: ({ count }, format) =>
+      `Waiting for ${format.number(count)} ${pluralize(count, format, 'upload', 'uploads')}`,
+    camera: 'Take photo',
+    video: 'Record video',
   },
   image: {
     provenance: { ai_generated: 'AI-generated', ai_edited: 'AI-edited' },
@@ -535,7 +675,127 @@ export const defaultMediaMessages: MediaMessages = {
     disabled: {
       dimensions: ({ minWidth, minHeight }, format) =>
         `Needs at least ${format.number(minWidth)} × ${format.number(minHeight)} px`,
+      type: ({ accepted }) => `Only ${accepted}`,
+      size: ({ max }, format) => `Larger than ${format.bytes(max)}`,
+      aspect: ({ ratio }) => `Needs the aspect ratio ${ratio}`,
+      max: ({ max }, format) => `At most ${format.number(max)} can be chosen`,
     },
+    confirm: ({ count }, format) =>
+      count > 1 ? `Choose ${format.number(count)}` : 'Choose',
+  },
+  preview: {
+    label: ({ name }) => `Preview of ${name}`,
+    close: 'Close preview',
+    prev: 'Previous',
+    next: 'Next',
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
+    zoomReset: 'Fit to screen',
+    rotate: 'Rotate',
+    position: ({ index, total }, format) =>
+      `${format.number(index)} of ${format.number(total)}`,
+    unavailable: 'No preview for this file type.',
+  },
+  detail: {
+    title: 'Details',
+    name: 'File name',
+    description: 'Description',
+    rights: {
+      credit: 'Credit',
+      copyright: 'Copyright',
+      license: 'License',
+      licenseUrl: 'License URL',
+      sourceUrl: 'Source URL',
+      expiresAt: 'Rights expire',
+    },
+    provenance: 'Origin',
+    save: 'Save',
+    saving: 'Saving',
+    reset: 'Discard changes',
+    saved: 'Changes saved',
+    conflict: ({ name }) =>
+      `${name} was changed by someone else while you edited it.`,
+    keepMine: 'Keep my changes',
+    takeTheirs: 'Use their version',
+    revisions: 'Versions',
+    noRevisions: 'No earlier versions',
+    restoreRevision: 'Restore this version',
+    revisionRestored: ({ name }) => `${name} restored`,
+    facts: {
+      type: 'Type',
+      size: 'Size',
+      dimensions: 'Dimensions',
+      created: 'Uploaded',
+      updated: 'Changed',
+      uploadedBy: 'Uploaded by',
+      provenanceSource: 'Origin from',
+    },
+    dimensions: ({ width, height }, format) =>
+      `${format.number(width)} × ${format.number(height)} px`,
+  },
+  focal: {
+    label: 'Focal point',
+    value: ({ x, y }) => `${x}% from the left, ${y}% from the top`,
+    reset: 'Center focal point',
+    saved: 'Focal point saved',
+  },
+  crop: {
+    label: 'Crop',
+    zoom: 'Zoom',
+    aspect: 'Aspect ratio',
+    free: 'Free',
+    original: 'Original',
+    x: 'Left',
+    y: 'Top',
+    width: 'Width',
+    height: 'Height',
+    reset: 'Reset crop',
+    tooSmall: ({ minWidth }, format) =>
+      `The crop is narrower than ${format.number(minWidth)} px`,
+  },
+  imageField: {
+    alt: 'Alternative text',
+    altHint: 'Describe what the image shows for people who cannot see it.',
+    decorative: 'Decorative image (no alternative text)',
+    caption: 'Caption',
+    suggest: 'Suggest',
+    suggesting: 'Suggesting',
+    suggested: 'Suggested, please check',
+    missingAlt: 'Alternative text missing',
+    replace: 'Replace image',
+    remove: 'Remove image',
+    choose: 'Choose image',
+  },
+  replace: {
+    title: 'Replace file',
+    confirm: 'Replace',
+    type: ({ from, to }) => `The type changes from ${from} to ${to}.`,
+    aspect: ({ from, to }) =>
+      `The aspect ratio changes from ${from} to ${to}; crops may shift.`,
+    usage: ({ roots }, format) =>
+      `Used on ${format.number(roots)} ${pluralize(roots, format, 'page', 'pages')}; all of them change.`,
+  },
+  download: {
+    button: 'Download',
+    title: 'Downloads',
+    cancel: 'Cancel download',
+    clear: 'Clear finished',
+    status: {
+      pending: 'Waiting',
+      downloading: 'Downloading',
+      success: 'Done',
+      error: 'Failed',
+      aborted: 'Cancelled',
+    },
+    progress: ({ loaded, total }, format) =>
+      `${format.bytes(loaded)} of ${format.bytes(total)}`,
+    started: ({ count }, format) =>
+      `Downloading ${format.number(count)} ${pluralize(count, format, 'file', 'files')}`,
+    finished: ({ name, skipped }, format) =>
+      skipped > 0
+        ? `${name} is ready, ${format.number(skipped)} skipped`
+        : `${name} is ready`,
+    failed: ({ reason }) => `Download failed: ${reason}`,
   },
   shortcut: ({ key }, format) => (format.apple ? `⌘${key}` : `Ctrl+${key}`),
   error: {
@@ -543,11 +803,15 @@ export const defaultMediaMessages: MediaMessages = {
     size: ({ max }, format) => `The file is larger than ${format.bytes(max)}.`,
     type: ({ accepted }) => `Only these file types are allowed: ${accepted}.`,
     ASSET_ACCESS_DENIED: 'This asset is not available.',
+    ASSET_CONFLICT: 'Someone else changed this asset.',
     ASSET_NOT_FOUND: 'The asset no longer exists.',
     CANNOT_MOVE_INTO_DESCENDANT:
       'A folder cannot be moved into its own subfolder.',
     CANNOT_MOVE_INTO_SELF: 'A folder cannot be moved into itself.',
     CANNOT_REPLACE_VARIANT: 'A generated variant cannot be replaced.',
+    DOWNLOAD_FAILED: 'The download failed.',
+    DOWNLOAD_TOO_LARGE: 'The download is too large for this browser.',
+    DOWNLOAD_UNSUPPORTED: 'This browser cannot save the download.',
     FILE_TOO_LARGE: 'The file is too large.',
     FOLDER_HAS_CONTENT: 'The folder is not empty.',
     FOLDER_NAME_TAKEN: 'A folder with this name already exists here.',
@@ -555,6 +819,7 @@ export const defaultMediaMessages: MediaMessages = {
     INVALID_FILE_TYPE: 'This file type is not allowed.',
     NETWORK_ERROR: 'The connection was lost.',
     PARENT_NOT_FOUND: 'The target folder no longer exists.',
+    RATE_LIMITED: 'Too many requests. Wait a moment and try again.',
     SLUG_GENERATION_FAILED: 'No free file name could be found.',
     STORAGE_UNSUPPORTED: 'The storage backend does not support this upload.',
     TOO_MANY_FILES: 'Too many files at once.',

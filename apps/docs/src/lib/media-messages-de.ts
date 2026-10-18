@@ -260,6 +260,23 @@ export const mediaMessagesDe: MediaMessages = {
     entryDone: ({ name }) => `${name} hochgeladen`,
     entryFailed: ({ name, reason }) => `${name} fehlgeschlagen: ${reason}`,
     entryCancelled: ({ name }) => `${name} abgebrochen`,
+    cancel: 'Abbrechen',
+    retry: 'Erneut versuchen',
+    retryAll: 'Fehlgeschlagene wiederholen',
+    pause: 'Anhalten',
+    resume: 'Fortsetzen',
+    duplicate: ({ name }) => `${name} ist schon in der Mediathek`,
+    useExisting: 'Vorhandene verwenden',
+    uploadAnyway: 'Trotzdem hochladen',
+    waiting: ({ count }, format) =>
+      plural(
+        count,
+        format,
+        `Warte auf ${format.number(count)} Upload`,
+        `Warte auf ${format.number(count)} Uploads`,
+      ),
+    camera: 'Foto aufnehmen',
+    video: 'Video aufnehmen',
   },
   image: {
     provenance: { ai_generated: 'KI-generiert', ai_edited: 'KI-bearbeitet' },
@@ -292,7 +309,138 @@ export const mediaMessagesDe: MediaMessages = {
     disabled: {
       dimensions: ({ minWidth, minHeight }, format) =>
         `Mindestens ${format.number(minWidth)} × ${format.number(minHeight)} px nötig`,
+      type: ({ accepted }) => `Nur ${accepted}`,
+      size: ({ max }, format) => `Größer als ${format.bytes(max)}`,
+      aspect: ({ ratio }) => `Seitenverhältnis ${ratio} nötig`,
+      max: ({ max }, format) => `Höchstens ${format.number(max)} auswählbar`,
     },
+    confirm: ({ count }, format) =>
+      count > 1 ? `${format.number(count)} übernehmen` : 'Übernehmen',
+  },
+  preview: {
+    label: ({ name }) => `Vorschau von ${name}`,
+    close: 'Vorschau schließen',
+    prev: 'Zurück',
+    next: 'Weiter',
+    zoomIn: 'Vergrößern',
+    zoomOut: 'Verkleinern',
+    zoomReset: 'Einpassen',
+    rotate: 'Drehen',
+    position: ({ index, total }, format) =>
+      `${format.number(index)} von ${format.number(total)}`,
+    unavailable: 'Für diesen Dateityp gibt es keine Vorschau.',
+  },
+  detail: {
+    title: 'Details',
+    name: 'Dateiname',
+    description: 'Beschreibung',
+    rights: {
+      credit: 'Bildnachweis',
+      copyright: 'Copyright',
+      license: 'Lizenz',
+      licenseUrl: 'Lizenz-URL',
+      sourceUrl: 'Quell-URL',
+      expiresAt: 'Rechte enden am',
+    },
+    provenance: 'Herkunft',
+    save: 'Speichern',
+    saving: 'Speichert',
+    reset: 'Änderungen verwerfen',
+    saved: 'Änderungen gespeichert',
+    conflict: ({ name }) =>
+      `${name} wurde inzwischen von jemand anderem geändert.`,
+    keepMine: 'Meine Änderungen behalten',
+    takeTheirs: 'Andere Version übernehmen',
+    revisions: 'Versionen',
+    noRevisions: 'Keine früheren Versionen',
+    restoreRevision: 'Diese Version wiederherstellen',
+    revisionRestored: ({ name }) => `${name} wiederhergestellt`,
+    facts: {
+      type: 'Typ',
+      size: 'Größe',
+      dimensions: 'Abmessungen',
+      created: 'Hochgeladen',
+      updated: 'Geändert',
+      uploadedBy: 'Hochgeladen von',
+      provenanceSource: 'Herkunft laut',
+    },
+    dimensions: ({ width, height }, format) =>
+      `${format.number(width)} × ${format.number(height)} px`,
+  },
+  focal: {
+    label: 'Fokuspunkt',
+    value: ({ x, y }) => `${x} % von links, ${y} % von oben`,
+    reset: 'Fokuspunkt zentrieren',
+    saved: 'Fokuspunkt gespeichert',
+  },
+  crop: {
+    label: 'Zuschnitt',
+    zoom: 'Zoom',
+    aspect: 'Seitenverhältnis',
+    free: 'Frei',
+    original: 'Original',
+    x: 'Links',
+    y: 'Oben',
+    width: 'Breite',
+    height: 'Höhe',
+    reset: 'Zuschnitt zurücksetzen',
+    tooSmall: ({ minWidth }, format) =>
+      `Der Zuschnitt ist schmaler als ${format.number(minWidth)} px`,
+  },
+  imageField: {
+    alt: 'Alternativtext',
+    altHint:
+      'Beschreibe, was das Bild zeigt, für Menschen, die es nicht sehen.',
+    decorative: 'Dekoratives Bild (ohne Alternativtext)',
+    caption: 'Bildunterschrift',
+    suggest: 'Vorschlagen',
+    suggesting: 'Schlägt vor',
+    suggested: 'Vorschlag, bitte prüfen',
+    missingAlt: 'Alternativtext fehlt',
+    replace: 'Bild ersetzen',
+    remove: 'Bild entfernen',
+    choose: 'Bild auswählen',
+  },
+  replace: {
+    title: 'Datei ersetzen',
+    confirm: 'Ersetzen',
+    type: ({ from, to }) => `Der Typ ändert sich von ${from} zu ${to}.`,
+    aspect: ({ from, to }) =>
+      `Das Seitenverhältnis ändert sich von ${from} zu ${to}; Zuschnitte können sich verschieben.`,
+    usage: ({ roots }, format) =>
+      plural(
+        roots,
+        format,
+        `Verwendet auf ${format.number(roots)} Seite; sie ändert sich mit.`,
+        `Verwendet auf ${format.number(roots)} Seiten; alle ändern sich mit.`,
+      ),
+  },
+  download: {
+    button: 'Herunterladen',
+    title: 'Downloads',
+    cancel: 'Download abbrechen',
+    clear: 'Fertige entfernen',
+    status: {
+      pending: 'Wartet',
+      downloading: 'Lädt herunter',
+      success: 'Fertig',
+      error: 'Fehlgeschlagen',
+      aborted: 'Abgebrochen',
+    },
+    progress: ({ loaded, total }, format) =>
+      `${format.bytes(loaded)} von ${format.bytes(total)}`,
+    started: ({ count }, format) =>
+      plural(
+        count,
+        format,
+        `${format.number(count)} Datei wird heruntergeladen`,
+        `${format.number(count)} Dateien werden heruntergeladen`,
+      ),
+    finished: ({ name, skipped }, format) =>
+      skipped > 0
+        ? `${name} ist fertig, ${format.number(skipped)} übersprungen`
+        : `${name} ist fertig`,
+    failed: ({ reason }) => `Download fehlgeschlagen: ${reason}`,
   },
   shortcut: ({ key }, format) => (format.apple ? `⌘${key}` : `Strg+${key}`),
   error: {
@@ -300,12 +448,16 @@ export const mediaMessagesDe: MediaMessages = {
     size: ({ max }, format) => `Die Datei ist größer als ${format.bytes(max)}.`,
     type: ({ accepted }) => `Erlaubt sind nur diese Dateitypen: ${accepted}.`,
     ASSET_ACCESS_DENIED: 'Diese Datei ist nicht verfügbar.',
+    ASSET_CONFLICT: 'Jemand anderes hat diese Datei geändert.',
     ASSET_NOT_FOUND: 'Die Datei existiert nicht mehr.',
     CANNOT_MOVE_INTO_DESCENDANT:
       'Ein Ordner kann nicht in einen eigenen Unterordner verschoben werden.',
     CANNOT_MOVE_INTO_SELF:
       'Ein Ordner kann nicht in sich selbst verschoben werden.',
     CANNOT_REPLACE_VARIANT: 'Eine erzeugte Variante kann nicht ersetzt werden.',
+    DOWNLOAD_FAILED: 'Der Download ist fehlgeschlagen.',
+    DOWNLOAD_TOO_LARGE: 'Der Download ist für diesen Browser zu groß.',
+    DOWNLOAD_UNSUPPORTED: 'Dieser Browser kann den Download nicht speichern.',
     FILE_TOO_LARGE: 'Die Datei ist zu groß.',
     FOLDER_HAS_CONTENT: 'Der Ordner ist nicht leer.',
     FOLDER_NAME_TAKEN: 'Hier gibt es bereits einen Ordner mit diesem Namen.',
@@ -313,6 +465,7 @@ export const mediaMessagesDe: MediaMessages = {
     INVALID_FILE_TYPE: 'Dieser Dateityp ist nicht erlaubt.',
     NETWORK_ERROR: 'Die Verbindung wurde unterbrochen.',
     PARENT_NOT_FOUND: 'Der Zielordner existiert nicht mehr.',
+    RATE_LIMITED: 'Zu viele Anfragen. Bitte kurz warten und erneut versuchen.',
     SLUG_GENERATION_FAILED: 'Es wurde kein freier Dateiname gefunden.',
     STORAGE_UNSUPPORTED: 'Der Speicher unterstützt diesen Upload nicht.',
     TOO_MANY_FILES: 'Zu viele Dateien auf einmal.',

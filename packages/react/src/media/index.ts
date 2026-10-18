@@ -2,7 +2,9 @@
 
 // @createcms/react/media: headless media library. Parts live on namespaces
 // (`Media.*`, `Selection.*`, `Bulk.*`, `Folder.*`, `Filter.*`, `Intake.*`,
-// `Usage.*`); hooks and types are flat named exports. The framework-free
+// `Upload.*`, `Download.*`, `Preview.*`, `Detail.*`, `FocalPoint.*`,
+// `Crop.*`, `ImageField.*`, `Picker.*`, `Usage.*`); hooks and types are
+// flat named exports. The framework-free
 // store, layout, selection, filter and intake logic is
 // `@createcms/react/media/core`.
 import {
@@ -12,6 +14,24 @@ import {
   MediaMutationError,
   MediaSearch,
 } from './collection';
+import {
+  DetailConflict,
+  DetailError,
+  DetailFacts,
+  DetailFieldInput,
+  DetailProvenance,
+  DetailReset,
+  DetailRevisions,
+  DetailRoot,
+  DetailSave,
+} from './detail';
+import {
+  DownloadButton,
+  DownloadCancel,
+  DownloadItem,
+  DownloadList,
+  DownloadProgress,
+} from './downloads';
 import { FilterChip, FilterClear, FilterScope } from './filter';
 import {
   FolderCreate,
@@ -35,6 +55,27 @@ import {
 } from './grid';
 import { MediaImage, MediaPicture } from './image-components';
 import {
+  CropArea,
+  CropAspect,
+  CropInput,
+  CropPreview,
+  CropReset,
+  CropRoot,
+  CropZoom,
+  FocalPointHandle,
+  FocalPointPreview,
+  FocalPointRoot,
+} from './image-edit';
+import {
+  ImageFieldAlt,
+  ImageFieldCaption,
+  ImageFieldDecorative,
+  ImageFieldRoot,
+  ImageFieldStatus,
+  ImageFieldSuggestAlt,
+} from './image-field';
+import {
+  IntakeCamera,
   IntakeDropzone,
   IntakeFolderInput,
   IntakeFolderPrompt,
@@ -43,6 +84,19 @@ import {
   IntakePaste,
   IntakeReading,
 } from './intake';
+import { PickerConfirm, PickerReason, PickerRoot } from './picker';
+import {
+  PreviewClose,
+  PreviewNext,
+  PreviewPosition,
+  PreviewPrev,
+  PreviewRoot,
+  PreviewRotate,
+  PreviewStage,
+  PreviewZoomIn,
+  PreviewZoomOut,
+  PreviewZoomReset,
+} from './preview';
 import { MediaRoot } from './root';
 import {
   BulkActionButton,
@@ -56,11 +110,15 @@ import {
   SelectionSelectAllMatching,
 } from './selection';
 import {
-  MediaUploadAbort,
-  MediaUploadClear,
-  MediaUploadItem,
-  MediaUploadList,
-  MediaUploadProgress,
+  UploadCancel,
+  UploadClear,
+  UploadDuplicate,
+  UploadItem,
+  UploadList,
+  UploadPause,
+  UploadProgress,
+  UploadRetry,
+  UploadRetryAll,
 } from './uploads';
 import {
   UsageCount,
@@ -91,11 +149,6 @@ export const Media = {
   Empty: MediaEmpty,
   Error: MediaError,
   MutationError: MediaMutationError,
-  UploadList: MediaUploadList,
-  UploadItem: MediaUploadItem,
-  UploadProgress: MediaUploadProgress,
-  UploadAbort: MediaUploadAbort,
-  UploadClear: MediaUploadClear,
   Image: MediaImage,
   Picture: MediaPicture,
 };
@@ -141,8 +194,93 @@ export const Intake = {
   Input: IntakeInput,
   FolderInput: IntakeFolderInput,
   Paste: IntakePaste,
+  Camera: IntakeCamera,
   FolderPrompt: IntakeFolderPrompt,
   Reading: IntakeReading,
+};
+
+/** The upload panel: list, progress and per-entry or global actions. */
+export const Upload = {
+  List: UploadList,
+  Item: UploadItem,
+  Progress: UploadProgress,
+  Cancel: UploadCancel,
+  Retry: UploadRetry,
+  RetryAll: UploadRetryAll,
+  Pause: UploadPause,
+  Clear: UploadClear,
+  Duplicate: UploadDuplicate,
+};
+
+/** Archive downloads streamed in the browser. */
+export const Download = {
+  Button: DownloadButton,
+  List: DownloadList,
+  Item: DownloadItem,
+  Progress: DownloadProgress,
+  Cancel: DownloadCancel,
+};
+
+/** The full-screen preview with zoom, rotation and stepping. */
+export const Preview = {
+  Root: PreviewRoot,
+  Stage: PreviewStage,
+  Prev: PreviewPrev,
+  Next: PreviewNext,
+  Close: PreviewClose,
+  ZoomIn: PreviewZoomIn,
+  ZoomOut: PreviewZoomOut,
+  ZoomReset: PreviewZoomReset,
+  Rotate: PreviewRotate,
+  Position: PreviewPosition,
+};
+
+/** The detail form: name, description, rights, origin, facts and versions. */
+export const Detail = {
+  Root: DetailRoot,
+  Field: DetailFieldInput,
+  Provenance: DetailProvenance,
+  Facts: DetailFacts,
+  Save: DetailSave,
+  Reset: DetailReset,
+  Error: DetailError,
+  Conflict: DetailConflict,
+  Revisions: DetailRevisions,
+};
+
+/** The asset's focal point. */
+export const FocalPoint = {
+  Root: FocalPointRoot,
+  Handle: FocalPointHandle,
+  Preview: FocalPointPreview,
+};
+
+/** The crop of one image use. */
+export const Crop = {
+  Root: CropRoot,
+  Area: CropArea,
+  Zoom: CropZoom,
+  Aspect: CropAspect,
+  Input: CropInput,
+  Reset: CropReset,
+  Preview: CropPreview,
+};
+
+/** Alt text, decorative switch and caption of one image use. */
+export const ImageField = {
+  Root: ImageFieldRoot,
+  Alt: ImageFieldAlt,
+  Decorative: ImageFieldDecorative,
+  Caption: ImageFieldCaption,
+  SuggestAlt: ImageFieldSuggestAlt,
+  Status: ImageFieldStatus,
+};
+
+/** Picker constraints inside a `Media.Root`. */
+export const Picker = {
+  Root: PickerRoot,
+  Reason: PickerReason,
+  Confirm: PickerConfirm,
 };
 
 /** Where an asset is used: `Usage.Root` and its parts. */
@@ -313,6 +451,7 @@ export type {
   MediaClient,
   MediaFacets,
   MediaFolder as MediaFolderRecord,
+  MediaRevision,
   MediaSelectionMode,
   MediaServerEvent,
   MediaSortBy,
@@ -322,11 +461,91 @@ export type {
   MediaUploadState,
 } from './types';
 export type {
-  MediaUploadAbortProps,
-  MediaUploadClearProps,
-  MediaUploadItemProps,
-  MediaUploadListProps,
-  MediaUploadProgressProps,
+  UploadCancelProps,
+  UploadClearProps,
+  UploadDuplicateProps,
+  UploadDuplicateRenderProps,
+  UploadItemProps,
+  UploadListProps,
+  UploadPauseProps,
+  UploadProgressProps,
+  UploadRetryAllProps,
+  UploadRetryProps,
 } from './uploads';
+export {
+  isUploadActive,
+  isUploadDuplicate,
+  useUploadEntry,
+  useUploadsPending,
+} from './uploads';
+export type {
+  DownloadButtonProps,
+  DownloadCancelProps,
+  DownloadItemProps,
+  DownloadListProps,
+  DownloadProgressProps,
+  MediaDownloads,
+} from './downloads';
+export { useDownloads } from './downloads';
+export type {
+  MediaPreview,
+  PreviewButtonProps,
+  PreviewPositionProps,
+  PreviewRootProps,
+  PreviewStageProps,
+} from './preview';
+export { usePreview } from './preview';
+export type {
+  AssetDetail,
+  DetailConflictProps,
+  DetailErrorProps,
+  DetailFactsProps,
+  DetailFieldProps,
+  DetailProvenanceProps,
+  DetailResetProps,
+  DetailRevisionsProps,
+  DetailRootProps,
+  DetailSaveProps,
+} from './detail';
+export { useAssetDetail } from './detail';
+export type {
+  CropAreaProps,
+  CropAspectProps,
+  CropInputProps,
+  CropPreviewProps,
+  CropResetProps,
+  CropRootProps,
+  CropZoomProps,
+  EditableImage,
+  FocalPointHandleProps,
+  FocalPointPreviewProps,
+  FocalPointRootProps,
+} from './image-edit';
+export { useCropEditor } from './image-edit';
+export type {
+  ImageFieldAltProps,
+  ImageFieldCaptionProps,
+  ImageFieldDecorativeProps,
+  ImageFieldRootProps,
+  ImageFieldState,
+  ImageFieldStatusProps,
+  ImageFieldSuggestAltProps,
+} from './image-field';
+export { useImageField } from './image-field';
+export type {
+  MediaPickerHostProps,
+  MediaPickerRequest,
+  PickerConfirmProps,
+  PickerReasonProps,
+  PickerRootProps,
+} from './picker';
+export {
+  MediaPickerHost,
+  openMediaPicker,
+  pickerReasonText,
+  usePickerConstraints,
+  usePickerItem,
+} from './picker';
+export type { IntakeCameraProps } from './intake';
 export type { ReadableStore } from './use-store';
 export { useMediaStore, useSelector } from './use-store';

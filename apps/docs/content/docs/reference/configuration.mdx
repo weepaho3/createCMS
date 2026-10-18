@@ -59,6 +59,9 @@ export const cms = createCMS({
 | `onPurge`            | `(paths: string[]) => void \| Promise<void>` | | Called with the gate paths (`/media/asset/<id>`) to purge from a CDN after an object moved, a replace, an archive or a new rendition. Errors are logged. |
 | `renditionWidths` | `number[]` | `[320, 640, 1280, 1920]` | Rendition widths. The gate snaps `?w=` up to the next one and rejects a larger `w` with `RENDITION_WIDTH_UNSUPPORTED`. |
 | `onRenditionMiss` | `(miss: { assetId, variantKey }) => void \| Promise<void>` | | Called when the gate has no exact or larger rendition and serves the original. Errors are logged. |
+| `onAssetDownload` | `(download: { assetIds, actorId, variantKey, bulkJobId, ipHash }) => void \| Promise<void>` | | Called after `downloadIntent` signed downloads, for an audit log. `ipHash` is a SHA-256 prefix of the client address. Errors are logged. |
+| `downloadRateLimit` | `number` | `60` | Signatures `downloadIntent` hands one actor per minute, counted per server process; `0` turns the limit off. |
+| `allowReplaceWithDifferentType` | `boolean` | `true` | `false` rejects a replace whose file has another MIME type than the asset with `INVALID_FILE_TYPE`. |
 | `preset`             | `StoragePreset` | `'generic'` | `provider: 'custom'` only: the capability preset (`aws`, `r2`, `b2`, `doSpaces`, `hetzner`, `bunny`, `supabase`, `generic`). |
 | `capabilities`       | `StorageCapabilitiesOverride` | | Overrides single capability flags of the provider preset. |
 | `usageSources` | `MediaUsageSource[]` | `[]` | Usages outside content, each `{ kind, assetsInUse(assetIds) }` returning the ids it uses (asset ids in plugin tables or settings). `archiveAssets` skips such an asset with `external` unless called with `force`; pruning never reclaims it. |

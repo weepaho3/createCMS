@@ -520,6 +520,19 @@ refresh }` and `useMediaSelection()` the new `MediaSelection`.
   breadcrumbs; complete full catalogs typed as `MediaMessages` with the new
   keys (a partial `MediaMessagesInput` falls back to English).
 
+- **`@createcms/react`: the upload parts moved to `Upload.*`.**
+  `Media.UploadList`, `Media.UploadItem`, `Media.UploadProgress`,
+  `Media.UploadAbort` and `Media.UploadClear` are gone, and so are their
+  `MediaUpload*Props` types. They are `Upload.List`, `Upload.Item`,
+  `Upload.Progress`, `Upload.Cancel` (cancels the enclosing entry, or every
+  upload outside an item) and `Upload.Clear` (now `disabled` while uploads
+  run or nothing is listed), with `Upload*Props` types. `MediaMessages`
+  gains the `preview`, `detail`, `focal`, `crop`, `imageField`, `replace`
+  and `download` groups and new keys under `picker`, `upload` and `error`.
+  → **Migration:** rename the parts (`Media.UploadAbort` becomes
+  `Upload.Cancel`); complete full catalogs typed as `MediaMessages` with the
+  new keys.
+
 ---
 
 ## 0.6.0 — 2026-08-14

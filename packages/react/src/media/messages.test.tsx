@@ -15,11 +15,7 @@ import {
 } from './messages';
 import { MediaRoot } from './root';
 import { makeClient, makeEntry, makeUploadState } from './test-fixtures';
-import {
-  MediaUploadItem,
-  MediaUploadList,
-  MediaUploadProgress,
-} from './uploads';
+import { UploadItem, UploadList, UploadProgress } from './uploads';
 
 afterEach(cleanup);
 
@@ -148,14 +144,14 @@ describe('Media.Root messages', () => {
           {() => <MediaCrumb folder={null} />}
         </MediaBreadcrumbs>
         <MediaSearch />
-        <MediaUploadProgress />
-        <MediaUploadList>
+        <UploadProgress />
+        <UploadList>
           {(entry) => (
-            <MediaUploadItem key={entry.id} entry={entry}>
-              <MediaUploadProgress />
-            </MediaUploadItem>
+            <UploadItem key={entry.id} entry={entry}>
+              <UploadProgress />
+            </UploadItem>
           )}
-        </MediaUploadList>
+        </UploadList>
       </MediaRoot>,
     );
 

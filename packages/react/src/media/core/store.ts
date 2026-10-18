@@ -1,6 +1,8 @@
 import type { BulkAction } from './bulk';
+import type { DetailDraft, DetailField } from './detail';
 import type { FilterState } from './filter';
 import type { FolderTreeState } from './folders';
+import type { FocalPoint } from './image-edit';
 import type { IntakeFile } from './intake';
 import type { LayoutMode } from './layout';
 import type { Registry } from './registry';
@@ -12,10 +14,12 @@ import type {
   MediaBulkTarget,
   MediaClient,
   MediaFolder,
+  MediaRevision,
   MediaServerEvent,
   MediaUploadEntry,
 } from './types';
 
+import { assetPatch, detailValues, isDirty, setDraftField } from './detail';
 import { errorCodeOf, isAbortError } from './errors';
 import {
   DEFAULT_FILTER,
@@ -32,6 +36,7 @@ import {
   setFolderChildren,
 } from './folders';
 import { folderOfPath } from './intake';
+import { clampZoom, previewStep, rotateQuarter } from './preview';
 import { createRegistry } from './registry';
 import {
   clearSelection,
@@ -87,16 +92,24 @@ export type MediaStoreState = {
   folders: FolderTreeState;
   preview: {
     openId: string | null;
+    /** The collection order when the preview opened (`n of total`). */
+    ids: string[];
     zoom: number;
+    pan: { x: number; y: number };
     rotation: 0 | 90 | 180 | 270;
   };
   detail: {
     assetId: string | null;
-    draft: AssetPatch;
+    /** The asset as last loaded or saved; the draft applies over it. */
+    asset: MediaAsset | null;
+    draft: DetailDraft;
     dirty: boolean;
     baseUpdatedAt: string | null;
     saving: boolean;
     error: unknown;
+    /** The server's newer asset after a conflicting save. */
+    conflict: MediaAsset | null;
+    revisions: MediaRevision[] | null;
   };
   ui: {
     layout: LayoutMode;
@@ -194,8 +207,19 @@ export type MediaCommand =
   | { type: 'assetUploaded'; id: string }
   | { type: 'openPreview'; id: string }
   | { type: 'closePreview' }
+  | { type: 'previewStep'; delta: 1 | -1 }
+  | { type: 'previewZoom'; zoom: number; pan?: { x: number; y: number } }
+  | { type: 'previewRotate' }
   | { type: 'openDetail'; id: string }
   | { type: 'closeDetail' }
+  | { type: 'setDetailField'; field: DetailField; value: unknown }
+  | { type: 'resetDetail' }
+  | { type: 'saveDetail' }
+  /** After a conflict: `mine` saves the draft over the newer asset, `theirs` drops it. */
+  | { type: 'resolveDetailConflict'; keep: 'mine' | 'theirs' }
+  | { type: 'setFocalPoint'; id: string; focal: FocalPoint | null }
+  | { type: 'loadRevisions'; id: string }
+  | { type: 'setCurrentRevision'; id: string; revisionId: string }
   | { type: 'setLayout'; layout: LayoutMode }
   | { type: 'setViewport'; width: number; height: number }
   | { type: 'clearMutationError' };
@@ -291,6 +315,18 @@ export type CreateMediaStoreOptions = {
   onFilterChange?: (filter: FilterState, mode: 'replace' | 'push') => void;
 };
 
+const EMPTY_DETAIL: MediaStoreState['detail'] = {
+  assetId: null,
+  asset: null,
+  draft: {},
+  dirty: false,
+  baseUpdatedAt: null,
+  saving: false,
+  error: null,
+  conflict: null,
+  revisions: null,
+};
+
 const IDLE_MUTATION: MediaStoreState['mutation'] = {
   status: 'idle',
   error: null,
@@ -344,15 +380,14 @@ export function createMediaStore(options: CreateMediaStoreOptions): MediaStore {
       ...createFolderTree(initialFolder),
       expanded: loadExpanded(options.expandedStorage?.storage, expandedKey),
     },
-    preview: { openId: null, zoom: 1, rotation: 0 },
-    detail: {
-      assetId: null,
-      draft: {},
-      dirty: false,
-      baseUpdatedAt: null,
-      saving: false,
-      error: null,
+    preview: {
+      openId: null,
+      ids: [],
+      zoom: 1,
+      pan: { x: 0, y: 0 },
+      rotation: 0,
     },
+    detail: EMPTY_DETAIL,
     ui: { layout: options.layout ?? 'grid', viewport: { width: 0, height: 0 } },
     mutation: IDLE_MUTATION,
   };
@@ -939,6 +974,115 @@ export function createMediaStore(options: CreateMediaStoreOptions): MediaStore {
     return { ok: true, value: updated };
   };
 
+  // --- detail -------------------------------------------------------------------
+
+  /** Replaces a loaded asset everywhere the store holds it. */
+  const patchCollectionAsset = (asset: MediaAsset) => {
+    if (state.collection.byId[asset.id]) {
+      setCollection({ byId: { ...state.collection.byId, [asset.id]: asset } });
+    }
+    if (state.detail.asset?.id === asset.id && !state.detail.dirty) {
+      set({
+        detail: {
+          ...state.detail,
+          asset,
+          baseUpdatedAt: new Date(asset.updatedAt).toISOString(),
+        },
+      });
+    }
+  };
+
+  const openDetail = async (id: string): Promise<CommandResult> => {
+    let asset = state.collection.byId[id] ?? null;
+    set({
+      detail: {
+        ...EMPTY_DETAIL,
+        assetId: id,
+        asset,
+        baseUpdatedAt: asset ? new Date(asset.updatedAt).toISOString() : null,
+      },
+    });
+    if (!asset && client.getAssets) {
+      try {
+        const { assets } = await client.getAssets({ query: { ids: [id] } });
+        asset = assets[0] ?? null;
+      } catch (error) {
+        if (state.detail.assetId === id)
+          set({ detail: { ...state.detail, error } });
+        return fail(error);
+      }
+      if (state.detail.assetId === id) {
+        set({
+          detail: {
+            ...state.detail,
+            asset,
+            baseUpdatedAt: asset
+              ? new Date(asset.updatedAt).toISOString()
+              : null,
+          },
+        });
+      }
+    }
+    return asset
+      ? { ok: true, value: asset }
+      : { ok: false, code: 'ASSET_NOT_FOUND', error: null };
+  };
+
+  /** The newer asset a conflict response carries (`data.asset`). */
+  const conflictAsset = (error: unknown): MediaAsset | null => {
+    const top = error as {
+      data?: { asset?: MediaAsset };
+      body?: { data?: { asset?: MediaAsset } };
+    } | null;
+    return top?.data?.asset ?? top?.body?.data?.asset ?? null;
+  };
+
+  const saveDetail = async (): Promise<CommandResult<MediaAsset>> => {
+    const { asset, draft, baseUpdatedAt } = state.detail;
+    if (!asset || !client.updateAsset)
+      return { ok: false, code: 'UNSUPPORTED', error: null };
+    const patch = assetPatch(asset, draft);
+    if (!patch) {
+      set({ detail: { ...state.detail, draft: {}, dirty: false } });
+      return { ok: true, value: asset };
+    }
+    set({ detail: { ...state.detail, saving: true, error: null } });
+    try {
+      const { asset: saved } = await client.updateAsset({
+        body: {
+          assetId: asset.id,
+          patch,
+          expectedUpdatedAt:
+            baseUpdatedAt ?? new Date(asset.updatedAt).toISOString(),
+        },
+      });
+      set({
+        detail: {
+          ...state.detail,
+          asset: saved,
+          draft: {},
+          dirty: false,
+          saving: false,
+          baseUpdatedAt: new Date(saved.updatedAt).toISOString(),
+        },
+      });
+      patchCollectionAsset(saved);
+      emit({ type: 'asset:updated', assetId: saved.id });
+      return { ok: true, value: saved };
+    } catch (error) {
+      const code = errorCodeOf(error);
+      set({
+        detail: {
+          ...state.detail,
+          saving: false,
+          error,
+          conflict: code === 'ASSET_CONFLICT' ? conflictAsset(error) : null,
+        },
+      });
+      return fail(error);
+    }
+  };
+
   // --- intake -------------------------------------------------------------------
 
   const receive = async (
@@ -1061,16 +1205,16 @@ export function createMediaStore(options: CreateMediaStoreOptions): MediaStore {
         case 'media.asset.replaced':
         case 'media.asset.restored':
         case 'media.rendition.created': {
-          if (state.collection.byId[assetId] && client.getAssets) {
+          if (
+            (state.collection.byId[assetId] ||
+              state.detail.asset?.id === assetId) &&
+            client.getAssets
+          ) {
             try {
               const { assets } = await client.getAssets({
                 query: { ids: [assetId] },
               });
-              if (assets[0] && state.collection.byId[assetId]) {
-                setCollection({
-                  byId: { ...state.collection.byId, [assetId]: assets[0] },
-                });
-              }
+              if (assets[0]) patchCollectionAsset(assets[0]);
             } catch {
               // The next refresh catches up.
             }
@@ -1332,32 +1476,162 @@ export function createMediaStore(options: CreateMediaStoreOptions): MediaStore {
       case 'assetUploaded':
         return assetUploaded(command.id);
       case 'openPreview':
-        set({ preview: { openId: command.id, zoom: 1, rotation: 0 } });
+        set({
+          preview: {
+            openId: command.id,
+            ids: state.collection.ids.includes(command.id)
+              ? [...state.collection.ids]
+              : [command.id],
+            zoom: 1,
+            pan: { x: 0, y: 0 },
+            rotation: 0,
+          },
+        });
         return { ok: true };
       case 'closePreview':
         set({ preview: { ...state.preview, openId: null } });
         return { ok: true };
-      case 'openDetail': {
-        const asset = state.collection.byId[command.id];
+      case 'previewStep': {
+        const { openId, ids } = state.preview;
+        const next = openId ? previewStep(ids, openId, command.delta) : null;
+        if (!next) return { ok: false, code: 'END', error: null };
         set({
-          detail: {
-            assetId: command.id,
-            draft: {},
-            dirty: false,
-            baseUpdatedAt: asset
-              ? new Date(asset.updatedAt).toISOString()
-              : null,
-            saving: false,
-            error: null,
+          preview: {
+            ...state.preview,
+            openId: next,
+            zoom: 1,
+            pan: { x: 0, y: 0 },
+            rotation: 0,
+          },
+        });
+        return { ok: true, value: next };
+      }
+      case 'previewZoom': {
+        const zoom = clampZoom(command.zoom);
+        set({
+          preview: {
+            ...state.preview,
+            zoom,
+            pan:
+              zoom === 1 ? { x: 0, y: 0 } : (command.pan ?? state.preview.pan),
           },
         });
         return { ok: true };
       }
-      case 'closeDetail':
+      case 'previewRotate':
         set({
-          detail: { ...state.detail, assetId: null, draft: {}, dirty: false },
+          preview: {
+            ...state.preview,
+            rotation: rotateQuarter(state.preview.rotation),
+          },
         });
         return { ok: true };
+      case 'openDetail':
+        return openDetail(command.id);
+      case 'closeDetail':
+        set({ detail: EMPTY_DETAIL });
+        return { ok: true };
+      case 'setDetailField': {
+        const { asset } = state.detail;
+        if (!asset) return { ok: false, code: 'ASSET_NOT_FOUND', error: null };
+        const draft = setDraftField(
+          state.detail.draft,
+          command.field,
+          command.value,
+        );
+        set({
+          detail: {
+            ...state.detail,
+            draft,
+            dirty: isDirty(detailValues(asset), draft),
+          },
+        });
+        return { ok: true };
+      }
+      case 'resetDetail':
+        set({
+          detail: { ...state.detail, draft: {}, dirty: false, error: null },
+        });
+        return { ok: true };
+      case 'saveDetail':
+        return saveDetail();
+      case 'resolveDetailConflict': {
+        const newer = state.detail.conflict;
+        if (!newer) return { ok: true };
+        if (command.keep === 'theirs') {
+          set({
+            detail: {
+              ...state.detail,
+              asset: newer,
+              draft: {},
+              dirty: false,
+              conflict: null,
+              error: null,
+              baseUpdatedAt: new Date(newer.updatedAt).toISOString(),
+            },
+          });
+          patchCollectionAsset(newer);
+          return { ok: true };
+        }
+        set({
+          detail: {
+            ...state.detail,
+            asset: newer,
+            conflict: null,
+            error: null,
+            baseUpdatedAt: new Date(newer.updatedAt).toISOString(),
+          },
+        });
+        return saveDetail();
+      }
+      case 'setFocalPoint': {
+        if (!client.setFocalPoint)
+          return { ok: false, code: 'UNSUPPORTED', error: null };
+        try {
+          const { asset } = await client.setFocalPoint({
+            body: { assetId: command.id, focal: command.focal },
+          });
+          patchCollectionAsset(asset);
+          emit({ type: 'asset:updated', assetId: command.id });
+          return { ok: true, value: asset };
+        } catch (error) {
+          return fail(error);
+        }
+      }
+      case 'loadRevisions': {
+        if (!client.listRevisions)
+          return { ok: false, code: 'UNSUPPORTED', error: null };
+        try {
+          const { revisions } = await client.listRevisions({
+            query: { assetId: command.id },
+          });
+          if (state.detail.assetId === command.id)
+            set({ detail: { ...state.detail, revisions } });
+          return { ok: true, value: revisions };
+        } catch (error) {
+          return fail(error);
+        }
+      }
+      case 'setCurrentRevision': {
+        if (!client.setCurrentRevision)
+          return { ok: false, code: 'UNSUPPORTED', error: null };
+        try {
+          const { asset } = await client.setCurrentRevision({
+            body: { assetId: command.id, revisionId: command.revisionId },
+          });
+          patchCollectionAsset(asset);
+          emit({
+            type: 'asset:replaced',
+            assetId: command.id,
+            revisionId: command.revisionId,
+          });
+          if (state.detail.assetId === command.id)
+            void dispatch({ type: 'loadRevisions', id: command.id });
+          return { ok: true, value: asset };
+        } catch (error) {
+          return fail(error);
+        }
+      }
       case 'setLayout':
         if (state.ui.layout !== command.layout) {
           set({ ui: { ...state.ui, layout: command.layout } });

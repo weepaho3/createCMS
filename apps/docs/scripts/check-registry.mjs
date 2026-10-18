@@ -12,6 +12,7 @@ const UI_ITEM_NAMES = [
   'editor-email',
   'media-library',
   'media-picker',
+  'media-detail',
 ];
 
 const BLOCK_ITEM_NAMES = ['editor-app'];
@@ -106,16 +107,16 @@ if (
   process.exit(1);
 }
 
-const mediaLibraryContents = itemContents(
-  uiItems.find((item) => item.name === 'media-library'),
-);
 const mediaPickerContents = itemContents(
   uiItems.find((item) => item.name === 'media-picker'),
 );
 
-if (mediaLibraryContents.includes('<Media.Root')) {
-  console.error('check-registry: media-library must not render Media.Root');
-  process.exit(1);
+for (const name of ['media-library', 'media-detail']) {
+  const contents = itemContents(uiItems.find((item) => item.name === name));
+  if (contents.includes('<Media.Root')) {
+    console.error(`check-registry: ${name} must not render Media.Root`);
+    process.exit(1);
+  }
 }
 
 if (!mediaPickerContents.includes('<Media.Root')) {

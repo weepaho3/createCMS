@@ -9,6 +9,7 @@ export type {
   MediaClient,
   MediaFacets,
   MediaFolder,
+  MediaRevision,
   MediaServerEvent,
   MediaSortBy,
   MediaSortDirection,

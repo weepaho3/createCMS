@@ -15,19 +15,28 @@ import type {
 
 import {
   Bulk,
+  Download,
   Filter,
   Folder,
   Intake,
   Media,
+  Picker,
+  Preview,
   Selection,
+  Upload,
   mediaErrorMessage,
   mediaTypeOf,
+  useDownloads,
   useMediaFacets,
   useMediaFilter,
   useMediaMessages,
   useMediaUploads,
+  usePickerItem,
+  usePreview,
 } from '@createcms/react/media';
 import {
+  CameraIcon,
+  ChevronLeftIcon,
   ChevronRightIcon,
   CircleAlertIcon,
   CircleCheckIcon,
@@ -41,7 +50,11 @@ import {
   ImageIcon,
   LoaderCircleIcon,
   MusicIcon,
+  RotateCwIcon,
   UploadIcon,
+  XIcon,
+  ZoomInIcon,
+  ZoomOutIcon,
 } from 'lucide-react';
 import * as React from 'react';
 
@@ -462,13 +475,16 @@ function MediaAssetCard({
   const { messages: t } = useMediaMessages();
   const type = mediaTypeOf(asset.mimeType);
   const Icon = TYPE_ICONS[type];
+  const picker = usePickerItem(asset);
   return (
     <Media.Item
       asset={asset}
       data-slot="media-asset-card"
+      aria-disabled={picker.disabled || undefined}
       className={cn(
         'bg-card focus-visible:ring-ring/50 flex min-w-0 flex-col gap-2 rounded-lg border p-2 outline-none focus-visible:ring-[3px]',
         'data-selected:ring-media-selection data-selected:ring-2 data-selected:ring-offset-1',
+        'aria-disabled:opacity-50',
         className,
       )}
       {...props}
@@ -496,6 +512,7 @@ function MediaAssetCard({
           </Badge>
         ) : null}
       </div>
+      <Picker.Reason className="text-muted-foreground text-xs" />
     </Media.Item>
   );
 }
@@ -529,6 +546,13 @@ function MediaDropzone({
           <Intake.FolderInput
             render={<Button type="button" variant="ghost" size="sm" />}
           />
+          <Intake.Camera
+            className="md:hidden"
+            render={<Button type="button" variant="ghost" size="sm" />}
+          >
+            <CameraIcon aria-hidden="true" />
+            {t.upload.camera}
+          </Intake.Camera>
         </>
       )}
     </Intake.Dropzone>
@@ -617,7 +641,7 @@ function UploadStatusIcon({ status }: { status: MediaUploadEntry['status'] }) {
 }
 
 function MediaUploadList({ className }: { className?: string }) {
-  const { messages: t } = useMediaMessages();
+  const { messages: t, format } = useMediaMessages();
   const { files } = useMediaUploads();
   if (files.length === 0) return null;
   return (
@@ -632,21 +656,22 @@ function MediaUploadList({ className }: { className?: string }) {
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-medium">{t.upload.title}</h3>
         <div className="flex gap-1">
-          <Media.UploadAbort
+          <Upload.RetryAll
+            render={<Button type="button" variant="ghost" size="sm" />}
+          />
+          <Upload.Cancel
             render={<Button type="button" variant="ghost" size="sm" />}
           >
             {t.upload.abort}
-          </Media.UploadAbort>
-          <Media.UploadClear
+          </Upload.Cancel>
+          <Upload.Clear
             render={<Button type="button" variant="ghost" size="sm" />}
-          >
-            {t.upload.clear}
-          </Media.UploadClear>
+          />
         </div>
       </div>
-      <Media.UploadList className="flex flex-col gap-2">
+      <Upload.List className="flex flex-col gap-2">
         {(entry) => (
-          <Media.UploadItem
+          <Upload.Item
             key={entry.id}
             entry={entry}
             data-slot="media-upload-item"
@@ -662,15 +687,168 @@ function MediaUploadList({ className }: { className?: string }) {
                   ? mediaErrorMessage(t, entry.error?.code)
                   : t.upload.status[entry.status]}
               </span>
+              {entry.status === 'error' || entry.status === 'aborted' ? (
+                <Upload.Retry
+                  render={<Button type="button" variant="ghost" size="sm" />}
+                />
+              ) : null}
+              {entry.status !== 'success' &&
+              entry.status !== 'error' &&
+              entry.status !== 'aborted' ? (
+                <Upload.Cancel
+                  render={
+                    <Button type="button" variant="ghost" size="icon-sm" />
+                  }
+                >
+                  <XIcon aria-hidden="true" />
+                </Upload.Cancel>
+              ) : null}
             </div>
-            <Media.UploadProgress
+            <Upload.Duplicate>
+              {({ keepExisting, uploadAnyway }) => (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-muted-foreground mr-auto">
+                    {t.upload.duplicate({ name: entry.name }, format)}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => keepExisting()}
+                  >
+                    {t.upload.useExisting}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={uploadAnyway}
+                  >
+                    {t.upload.uploadAnyway}
+                  </Button>
+                </div>
+              )}
+            </Upload.Duplicate>
+            <Upload.Progress
               className="data-[status=aborted]:opacity-50 data-[status=error]:[&_[data-slot=progress-indicator]]:bg-destructive"
               render={<Progress value={Math.round(entry.progress * 100)} />}
             />
-          </Media.UploadItem>
+          </Upload.Item>
         )}
-      </Media.UploadList>
+      </Upload.List>
     </section>
+  );
+}
+
+// --- Downloads -----------------------------------------------------------------
+
+function MediaDownloadList({ className }: { className?: string }) {
+  const { messages: t } = useMediaMessages();
+  const { jobs, clear } = useDownloads();
+  if (jobs.length === 0) return null;
+  return (
+    <section
+      data-slot="media-download-list"
+      aria-label={t.download.title}
+      className={cn(
+        'bg-card flex flex-col gap-3 rounded-lg border p-3',
+        className,
+      )}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-medium">{t.download.title}</h3>
+        <Button type="button" variant="ghost" size="sm" onClick={clear}>
+          {t.download.clear}
+        </Button>
+      </div>
+      <Download.List className="flex flex-col gap-2">
+        {(job) => (
+          <Download.Item
+            key={job.id}
+            job={job}
+            className="flex flex-col gap-1 text-sm"
+          >
+            <div className="flex items-center gap-2">
+              <span className="min-w-0 flex-1 truncate">{job.name}</span>
+              <span className="text-muted-foreground text-xs">
+                {job.status === 'error'
+                  ? mediaErrorMessage(t, job.error ?? undefined)
+                  : t.download.status[job.status]}
+              </span>
+              <Download.Cancel
+                render={<Button type="button" variant="ghost" size="sm" />}
+              />
+            </div>
+            <Download.Progress
+              render={
+                <Progress
+                  value={
+                    job.total > 0
+                      ? Math.round((job.loaded / job.total) * 100)
+                      : 0
+                  }
+                />
+              }
+            />
+          </Download.Item>
+        )}
+      </Download.List>
+    </section>
+  );
+}
+
+// --- Preview -------------------------------------------------------------------
+
+function MediaPreview() {
+  const preview = usePreview();
+  const icon = 'icon-sm' as const;
+  return (
+    <Preview.Root
+      data-slot="media-preview"
+      className="bg-background/95 fixed inset-0 z-50 flex flex-col outline-none backdrop-blur"
+    >
+      <div className="flex items-center gap-1 border-b p-2">
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+          {preview.asset?.originalName ?? preview.asset?.slug}
+        </span>
+        <Preview.Position className="text-muted-foreground px-2 text-xs" />
+        <Preview.ZoomOut
+          render={<Button type="button" variant="ghost" size={icon} />}
+        >
+          <ZoomOutIcon aria-hidden="true" />
+        </Preview.ZoomOut>
+        <Preview.ZoomIn
+          render={<Button type="button" variant="ghost" size={icon} />}
+        >
+          <ZoomInIcon aria-hidden="true" />
+        </Preview.ZoomIn>
+        <Preview.Rotate
+          render={<Button type="button" variant="ghost" size={icon} />}
+        >
+          <RotateCwIcon aria-hidden="true" />
+        </Preview.Rotate>
+        <Preview.Close
+          render={<Button type="button" variant="ghost" size={icon} />}
+        >
+          <XIcon aria-hidden="true" />
+        </Preview.Close>
+      </div>
+      <div className="relative flex min-h-0 flex-1 items-center justify-center">
+        <Preview.Prev
+          className="absolute left-2 z-10"
+          render={<Button type="button" variant="outline" size="icon" />}
+        >
+          <ChevronLeftIcon aria-hidden="true" />
+        </Preview.Prev>
+        <Preview.Stage className="flex size-full items-center justify-center overflow-hidden p-6 [&_video]:max-h-full [&_video]:max-w-full" />
+        <Preview.Next
+          className="absolute right-2 z-10"
+          render={<Button type="button" variant="outline" size="icon" />}
+        >
+          <ChevronRightIcon aria-hidden="true" />
+        </Preview.Next>
+      </div>
+    </Preview.Root>
   );
 }
 
@@ -988,6 +1166,7 @@ function MediaOutcome() {
 
 /** Default composition of every wrapper above; must be rendered inside Media.Root. */
 function MediaLibraryLayout({ className }: { className?: string }) {
+  const preview = usePreview();
   return (
     <div
       data-slot="media-library"
@@ -1013,12 +1192,14 @@ function MediaLibraryLayout({ className }: { className?: string }) {
         <MediaFolderList>
           {(folder) => <MediaFolderCard key={folder.id} folder={folder} />}
         </MediaFolderList>
-        <MediaGrid>
+        <MediaGrid onAction={(asset) => preview.open(asset.id)}>
           {(asset) => <MediaAssetCard key={asset.id} asset={asset} />}
         </MediaGrid>
         <MediaEmpty />
         <MediaLoadMore />
         <MediaUploadList />
+        <MediaDownloadList />
+        <MediaPreview />
         <MediaBulkBar />
         <MediaOutcome />
         <MediaDropOverlay />
@@ -1034,6 +1215,7 @@ export {
   MediaBreadcrumbs,
   MediaBulkBar,
   MediaCrumb,
+  MediaDownloadList,
   MediaDropOverlay,
   MediaDropzone,
   MediaEmpty,
@@ -1050,6 +1232,7 @@ export {
   MediaMutationError,
   MediaNewFolder,
   MediaOutcome,
+  MediaPreview,
   MediaSearch,
   MediaSortSelect,
   MediaUploadList,

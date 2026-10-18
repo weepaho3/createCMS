@@ -59,16 +59,16 @@ function MediaLibrary({ onPick }: { onPick: (ids: string[]) => void }) {
               : 'Drop or pick files'
         }
       </Media.Dropzone>
-      <Media.UploadList>
+      <Upload.List>
         {(entry) => (
-          <Media.UploadItem key={entry.id} entry={entry}>
+          <Upload.Item key={entry.id} entry={entry}>
             {entry.name}
-            <Media.UploadProgress />
-          </Media.UploadItem>
+            <Upload.Progress />
+          </Upload.Item>
         )}
-      </Media.UploadList>
-      <Media.UploadAbort>Cancel</Media.UploadAbort>
-      <Media.UploadClear>Clear</Media.UploadClear>
+      </Upload.List>
+      <Upload.Cancel>Cancel</Upload.Cancel>
+      <Upload.Clear>Clear</Upload.Clear>
     </Media.Root>
   );
 }
@@ -105,27 +105,27 @@ no get-folder-by-id endpoint.
 
 ## Parts
 
-| Part                   | Default element                                | Props                                                                                                                 | Data attributes / ARIA                                                                                                |
-| ---------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `Media.Root`           | none (provider)                                | `client` (required), `defaultFolderId`, `selection`, `pageSize`, `onSelectionChange`, `assetUrl`, `children`          | none                                                                                                                  |
-| `Media.Grid`           | `ul`                                           | `children(asset)` (required), `render`, ul props                                                                      | `data-status`, `data-empty`; `role="listbox"` + `aria-multiselectable` with a selection mode, `role="list"` otherwise |
-| `Media.Item`           | `li`                                           | `asset` (required), `render`, li props                                                                                | `data-selected`, `data-asset-status`, `data-type`; in a listbox `role="option"`, `aria-selected`, roving `tabIndex`   |
-| `Media.Thumbnail`      | `img` (`loading="lazy"`, `decoding="async"`)   | `fallback`, `render`, img props (`alt` defaults to the slug)                                                          | `data-loaded`, `data-error`; renders `fallback` for non-images                                                        |
-| `Media.Breadcrumbs`    | `nav[aria-label="Folder path"]`                | `children(path)` (required), `render`, nav props                                                                      | none                                                                                                                  |
-| `Media.Crumb`          | `button`                                       | `folder` (required, `null` = root), `render`, button props (`children` defaults to the name or `Root`)                | `data-current`, `aria-current="page"` on the current folder                                                           |
-| `Media.FolderList`     | `ul`                                           | `children(folder)` (required), `render`, ul props                                                                     | `data-empty`                                                                                                          |
-| `Media.Folder`         | `button`                                       | `folder` (required), `render`, button props (`children` defaults to the name)                                         | none                                                                                                                  |
-| `Media.Search`         | `input[type="search"]`                         | `render`, input props (`aria-label` defaults to `Search assets`)                                                      | none                                                                                                                  |
-| `Media.LoadMore`       | `button`                                       | `render`, button props                                                                                                | `data-has-more`, `data-loading`; `disabled` without a cursor or while loading                                         |
-| `Media.Empty`          | `div`, rendered while idle with nothing listed | `render`, div props                                                                                                   | none                                                                                                                  |
-| `Media.Error`          | `div[role="alert"]`, rendered on a list error  | `children({ error, retry })` (required), `render`, div props                                                          | none                                                                                                                  |
-| `Media.MutationError`  | `div[role="alert"]`, rendered on a failed bulk | `children({ error, dismiss })` (required), `render`, div props                                                        | none                                                                                                                  |
-| `Media.Dropzone`       | `button` + hidden file input + polite `output` | `accept`, `maxFiles` (10), `maxSize`, `folderId`, `onUploaded`, `onRejected`, `children` (node or function), `render` | `data-drag-active`, `data-uploading`, `data-disabled`; `aria-disabled` while uploading, `aria-describedby` summary    |
-| `Media.UploadList`     | `ul` + hidden `role="log"`                     | `children(entry)` (required), `render`, ul props                                                                      | `data-empty`                                                                                                          |
-| `Media.UploadItem`     | `li`                                           | `entry` (required), `render`, li props                                                                                | `data-status`                                                                                                         |
-| `Media.UploadProgress` | `div[role="progressbar"]`                      | `render`, div props                                                                                                   | `data-status`; `aria-valuenow`, `aria-valuetext`, `aria-label` (file name or `All uploads`)                           |
-| `Media.UploadAbort`    | `button`                                       | `render`, button props                                                                                                | `disabled` while nothing is in flight                                                                                 |
-| `Media.UploadClear`    | `button`                                       | `render`, button props                                                                                                | none                                                                                                                  |
+| Part                  | Default element                                | Props                                                                                                                 | Data attributes / ARIA                                                                                                |
+| --------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `Media.Root`          | none (provider)                                | `client` (required), `defaultFolderId`, `selection`, `pageSize`, `onSelectionChange`, `assetUrl`, `children`          | none                                                                                                                  |
+| `Media.Grid`          | `ul`                                           | `children(asset)` (required), `render`, ul props                                                                      | `data-status`, `data-empty`; `role="listbox"` + `aria-multiselectable` with a selection mode, `role="list"` otherwise |
+| `Media.Item`          | `li`                                           | `asset` (required), `render`, li props                                                                                | `data-selected`, `data-asset-status`, `data-type`; in a listbox `role="option"`, `aria-selected`, roving `tabIndex`   |
+| `Media.Thumbnail`     | `img` (`loading="lazy"`, `decoding="async"`)   | `fallback`, `render`, img props (`alt` defaults to the slug)                                                          | `data-loaded`, `data-error`; renders `fallback` for non-images                                                        |
+| `Media.Breadcrumbs`   | `nav[aria-label="Folder path"]`                | `children(path)` (required), `render`, nav props                                                                      | none                                                                                                                  |
+| `Media.Crumb`         | `button`                                       | `folder` (required, `null` = root), `render`, button props (`children` defaults to the name or `Root`)                | `data-current`, `aria-current="page"` on the current folder                                                           |
+| `Media.FolderList`    | `ul`                                           | `children(folder)` (required), `render`, ul props                                                                     | `data-empty`                                                                                                          |
+| `Media.Folder`        | `button`                                       | `folder` (required), `render`, button props (`children` defaults to the name)                                         | none                                                                                                                  |
+| `Media.Search`        | `input[type="search"]`                         | `render`, input props (`aria-label` defaults to `Search assets`)                                                      | none                                                                                                                  |
+| `Media.LoadMore`      | `button`                                       | `render`, button props                                                                                                | `data-has-more`, `data-loading`; `disabled` without a cursor or while loading                                         |
+| `Media.Empty`         | `div`, rendered while idle with nothing listed | `render`, div props                                                                                                   | none                                                                                                                  |
+| `Media.Error`         | `div[role="alert"]`, rendered on a list error  | `children({ error, retry })` (required), `render`, div props                                                          | none                                                                                                                  |
+| `Media.MutationError` | `div[role="alert"]`, rendered on a failed bulk | `children({ error, dismiss })` (required), `render`, div props                                                        | none                                                                                                                  |
+| `Media.Dropzone`      | `button` + hidden file input + polite `output` | `accept`, `maxFiles` (10), `maxSize`, `folderId`, `onUploaded`, `onRejected`, `children` (node or function), `render` | `data-drag-active`, `data-uploading`, `data-disabled`; `aria-disabled` while uploading, `aria-describedby` summary    |
+| `Upload.List`         | `ul` + hidden `role="log"`                     | `children(entry)` (required), `render`, ul props                                                                      | `data-empty`                                                                                                          |
+| `Upload.Item`         | `li`                                           | `entry` (required), `render`, li props                                                                                | `data-status`                                                                                                         |
+| `Upload.Progress`     | `div[role="progressbar"]`                      | `render`, div props                                                                                                   | `data-status`; `aria-valuenow`, `aria-valuetext`, `aria-label` (file name or `All uploads`)                           |
+| `Upload.Cancel`       | `button`                                       | `render`, button props                                                                                                | `disabled` while nothing is in flight                                                                                 |
+| `Upload.Clear`        | `button`                                       | `render`, button props                                                                                                | none                                                                                                                  |
 
 Keyboard in a listbox grid: ArrowRight/ArrowDown and ArrowLeft/ArrowUp move
 focus to the next and previous option, Home/End to the first and last;

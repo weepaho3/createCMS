@@ -107,7 +107,7 @@ The vanilla client exposes the same queue as the nanostores atom `client.media.u
 
 ### Optimize before upload
 
-Add the [media optimize plugin](/docs/plugins/media-optimize) and `upload` removes GPS, reads the provenance and computes a placeholder in the browser, then uploads WebP renditions at 320, 640, 1280 and 1920 px as variants of the new asset. Each rendition is its own entry (`kind: 'rendition'`, `parentId`, `variantKey`); the parent finishes when they did, and `Media.UploadList` lists the parent only. See [Media optimize: Usage](/docs/plugins/media-optimize#usage).
+Add the [media optimize plugin](/docs/plugins/media-optimize) and `upload` removes GPS, reads the provenance and computes a placeholder in the browser, then uploads WebP renditions at 320, 640, 1280 and 1920 px as variants of the new asset. Each rendition is its own entry (`kind: 'rendition'`, `parentId`, `variantKey`); the parent finishes when they did, and `Upload.List` lists the parent only. See [Media optimize: Usage](/docs/plugins/media-optimize#usage).
 
 ### Serve an asset
 
