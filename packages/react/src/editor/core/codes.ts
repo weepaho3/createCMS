@@ -10,7 +10,8 @@ export const EDITOR_CODES_URL =
 export const EDITOR_CODES = {
   E001: {
     level: 'warning',
-    summary: 'A richText field cannot be edited inline.',
+    summary:
+      'A richText field cannot be edited inline without a rich text editor.',
   },
   E002: { level: 'error', summary: 'Two plugins share a name.' },
   E003: {

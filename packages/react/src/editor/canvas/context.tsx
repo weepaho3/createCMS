@@ -3,6 +3,7 @@ import * as React from 'react';
 import type { Field, FieldKind } from '../core/schema';
 import type { CanvasInteractive } from './components';
 import type { DndStore } from './dnd';
+import type { InlineRichTextStore } from './inline-rich-text';
 import type { Measurer } from './measurer';
 import type { PointerStore } from './pointer';
 import type { PreviewSurface } from './surface';
@@ -22,6 +23,8 @@ export type CanvasContextValue = CanvasResolveContextValue & {
   dragging: boolean;
   editing: boolean;
   inlineCaret: React.RefObject<InlineCaretPoint | null>;
+  /** The running in-place rich text session (toolbar parts read it). */
+  inlineRichText: InlineRichTextStore;
   /** Where the canvas renders; `null` until the host mounted. */
   surface: PreviewSurface | null;
   /**

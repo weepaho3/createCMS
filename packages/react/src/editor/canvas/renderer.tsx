@@ -3,6 +3,7 @@ import * as React from 'react';
 import type { AnyEditorSchema } from '../core/schema';
 import type { EditorStore } from '../core/store';
 import type { EditCache } from './edit';
+import type { InlineRichTextStore } from './inline-rich-text';
 import type { CanvasComponent } from './map';
 import type { CanvasResolve, ResolveCache } from './resolve';
 
@@ -61,6 +62,8 @@ export type CanvasRenderDeps = {
   readonly deferUpdates: boolean;
   /** Top-level blocks per `content-visibility` chunk; `undefined` renders no chunks. */
   readonly chunkSize: number | undefined;
+  /** An in-place rich text session freezes its field's rendered value. */
+  readonly inlineRichText: InlineRichTextStore;
   /** Whether a drag runs: chunks then render fully so every target measures. */
   isDragging(): boolean;
   subscribeDragging(listener: () => void): () => void;
@@ -284,6 +287,35 @@ export const BlockView = React.memo(function BlockView({ id }: { id: string }) {
     };
   }, [slice, schema, deps, tick, computed]);
 
+  // While an in-place rich text session edits one of this block's fields,
+  // the editor owns that element's DOM: keep rendering the value it started
+  // from, so React never reconciles the children the session set aside.
+  const frozenKey = React.useSyncExternalStore(
+    deps.inlineRichText.subscribe,
+    () => {
+      const state = deps.inlineRichText.get();
+      return state?.blockId === id ? state.key : null;
+    },
+    () => null,
+  );
+  const renderedRef = React.useRef<Readonly<Record<string, unknown>> | null>(
+    null,
+  );
+  const frozenRef = React.useRef<{ key: string; value: unknown } | null>(null);
+  if (frozenKey === null) frozenRef.current = null;
+  else if (frozenRef.current?.key !== frozenKey) {
+    frozenRef.current = {
+      key: frozenKey,
+      value: renderedRef.current?.[frozenKey],
+    };
+  }
+  const frozen = frozenRef.current;
+  const props =
+    resolved && frozen
+      ? { ...resolved.props, [frozen.key]: frozen.value }
+      : (resolved?.props ?? null);
+  renderedRef.current = props;
+
   const blockTypeForFallback = slice?.type ?? '';
   const renderFallback = React.useCallback(
     (error: unknown): React.ReactNode =>
@@ -353,7 +385,7 @@ export const BlockView = React.memo(function BlockView({ id }: { id: string }) {
       <Component
         id={id}
         type={blockType}
-        props={resolved.props}
+        props={props ?? resolved.props}
         edit={deps.edits.get(
           id,
           blockType,

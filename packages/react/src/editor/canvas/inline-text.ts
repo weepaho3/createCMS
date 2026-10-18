@@ -6,12 +6,12 @@ import { fieldsOf } from '../core/schema';
 export const EMPTY_FIELD_PLACEHOLDER = '\u200B';
 
 export const RICH_TEXT_INLINE_WARNING =
-  'richText is not inline editable until the rich text adapter is configured';
+  'richText is edited inline through Editor.Root richText; without it a click focuses the form field';
 
 /**
  * Only single-line `text` fields get the inline glass. `richText` is
  * excluded: the glass writes back `textContent`, which would drop the value's
- * markup.
+ * markup; it edits in place through the rich text editor instead.
  */
 export function isInlineEditableKind(kind: string): boolean {
   return kind === 'text';

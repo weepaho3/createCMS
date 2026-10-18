@@ -17,14 +17,15 @@ import { useRovingFocus } from '../roving';
 import { useFieldContext } from './context';
 import { useRichTextEditor } from './rich-text';
 
-type RichTextFieldContextValue = {
+/** What the toolbar parts read: the mounted editor and the field's schema. */
+export type RichTextFieldContextValue = {
   handle: RichTextHandle | null;
   schema: RichTextSchema;
   selectionVersion: number;
   editable: boolean;
 };
 
-const RichTextFieldContext =
+export const RichTextFieldContext =
   React.createContext<RichTextFieldContextValue | null>(null);
 
 function useRichTextFieldContext(part: string): RichTextFieldContextValue {
@@ -346,7 +347,7 @@ const DEFAULT_NODES = [
 ] as const;
 
 /** The default control's toolbar: every mark and node the field allows. */
-function DefaultRichTextToolbar() {
+export function DefaultRichTextToolbar() {
   const field = useRichTextFieldContext('Editor.RichTextToolbar');
   const format = useMessages().parts.richTextFormat;
   const marks = DEFAULT_MARKS.filter((m) => field.schema.marks.includes(m));

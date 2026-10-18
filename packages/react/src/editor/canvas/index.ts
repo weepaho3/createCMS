@@ -15,6 +15,7 @@ import {
   CanvasPaletteItem,
 } from './dnd-parts';
 import { CanvasInlineText } from './inline-parts';
+import { CanvasInlineRichTextToolbar } from './inline-rich-text';
 import {
   CanvasFieldRing,
   CanvasHoverRing,
@@ -97,6 +98,7 @@ export type {
   CanvasDropTargetRingProps,
   CanvasPaletteItemProps,
 } from './dnd-parts';
+export type { CanvasInlineRichTextToolbarProps } from './inline-rich-text';
 export type {
   CanvasInlineTextProps,
   InlineSuggest,
@@ -144,6 +146,7 @@ export const Canvas = {
   DropTargetRing: CanvasDropTargetRing,
   DragPreview: CanvasDragPreview,
   InlineText: CanvasInlineText,
+  InlineRichTextToolbar: CanvasInlineRichTextToolbar,
   ReadonlySubtree: CanvasReadonlySubtree,
   BlockError: CanvasBlockError,
   UnknownBlock: CanvasUnknownBlock,

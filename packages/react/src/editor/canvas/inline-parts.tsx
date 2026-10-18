@@ -13,6 +13,7 @@ import { isHTMLElement } from '../dom';
 import { frameClickAnchor } from '../preview/frame-anchor';
 import { fieldElements, blockElements, isInsideReadonly } from './anchors';
 import { useCanvasContext } from './context';
+import { useInlineRichTextSession } from './inline-rich-text';
 import {
   applyTextEdit,
   caretOffsetWithin,
@@ -188,6 +189,7 @@ export function CanvasInlineText({
       ? current
       : null;
   }, [editedField, current]);
+  useInlineRichTextSession(current, editedField);
   const plainOptionsRef = React.useRef<PlainTextOptions>({
     multiline: false,
     maxLength: undefined,
@@ -339,9 +341,12 @@ export function CanvasInlineText({
         anchor.key,
       );
       if (!field) return;
-      if (!isInlineEditableField(field)) {
-        // A richText or readOnly field: select the block and focus its form
-        // control instead of opening the glass.
+      // A richText field edits in place through `Editor.Root richText`.
+      const richEdit =
+        field.type === 'richText' && ctx.richText !== null && !field.readOnly;
+      if (!isInlineEditableField(field) && !richEdit) {
+        // A richText field without an editor, or a readOnly field: select
+        // the block and focus its form control instead of editing inline.
         if (field.type === 'richText') warnRichTextInlineOnce();
         if (field.type === 'richText' || field.readOnly === true) {
           ctx.store.select(anchor.blockId);
@@ -391,6 +396,7 @@ export function CanvasInlineText({
     canvas.dragging,
     canvas.inlineCaret,
     clickEdits,
+    ctx.richText,
     ctx.schema,
     ctx.store,
   ]);

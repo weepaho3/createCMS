@@ -91,10 +91,23 @@ Overlay portals into the host. Overlay is `pointer-events: none` and is not
 input sets `pointer-events: auto` on itself.
 
 DnD is pointer-based (not HTML5 drag). `Canvas.InlineText` is the GLASS
-overlay for `string` fields in `edit`. `richText` fields are not inline
-editable: the glass edits plain text and would drop the value's markup. A
-click on a `richText` field selects the block and focuses its form control,
-and a development build logs `[editor:E001]` once.
+overlay for `string` fields in `edit`. `richText` fields edit in place
+instead, through `Editor.Root richText`: a click selects the block and
+mounts the editor on the field element itself, with the caret at the click
+point and the formatting kept; the block keeps rendering the value it
+started from, so the editor owns that element until the session ends.
+Edits write the field live (one undo step per typing run), undo and redo
+inside the editor run the store's history, Escape or moving the focus
+elsewhere ends the session, a drag ends it, and hovering a field starts
+loading a `lazyRichTextAdapter`. Give rich text fields a block element as
+their anchor (`div`, `section`): the editor renders paragraphs inside it.
+`Canvas.InlineRichTextToolbar` shows the formatting buttons of the running
+session (by default every format the field allows; `Editor.RichTextToolbar`
+and `Editor.RichTextToolbarButton` as children) and renders nothing
+otherwise; inside `Canvas.BlockToolbar` its buttons keep the editor's
+focus, also over a frame. Without `Editor.Root richText`, a click on a
+`richText` field selects the block and focuses its form control, and a
+development build logs `[editor:E001]` once.
 
 Plain-text rules apply to the glass and to `useEditableField`: a `text`
 field is single-line, so Enter ends editing and pasted or dropped line
@@ -330,6 +343,7 @@ below 1 ms either way); a browser test keeps it under 1.5 times inline.
 | `Canvas.SpacingOverlay` | `div`          | `blockId?` (default: the hovered block while Alt and Shift are held), `render`, div props. Padding and margin as strips. | `data-box` (`padding`, `margin`), `data-side` |
 | `Canvas.DragPreview`   | `div`           | `render`, div props, optional children (default: block label, text excerpt, and the count of a multi-selection). At most 280 px square, 16 px right and 8 px below the pointer. Follows the pointer during a session. Presentational.                                  | `data-editor-drag-preview`, `data-kind` (`new` \| `move`)                                                 |
 | `Canvas.InlineText`    | `div`           | `suggest`, `discardOnEscape`, `render`, div props. Overlays a contentEditable glass on `text` fields in `edit`; not on `readOnly` fields. | `data-editor-inline-text`, `data-editing`, `data-block-type`, `data-field`                                |
+| `Canvas.InlineRichTextToolbar` | none (renders its children) | `children` (default: a button per format the field allows). The toolbar of the running in-place rich text session; renders nothing without one. | none |
 | `Canvas.ReadonlySubtree` | `div`         | `render`, div props. `inert`, `display: contents`; wraps embedded trees that are shown but not edited.                         | `data-editor-readonly`                                                                                    |
 | `Canvas.BlockError`    | `div`           | `blockId`, `blockType`, `error` (all set by the canvas), `render`, div props; `role="alert"`, carries the block anchor so the block stays selectable and deletable | `data-editor-block`, `data-block-error`, `data-block-id`, `data-block-type`                               |
 | `Canvas.UnknownBlock`  | `div`           | `blockId`, `blockType`, `props`, `slots` (set by the canvas), `render`, div props; renders every slot below its label          | `data-editor-block`, `data-unknown-block`, `data-block-id`, `data-block-type`                             |
@@ -401,6 +415,7 @@ below 1 ms either way); a browser test keeps it under 1.5 times inline.
 | `EditableField`              | What `useEditableField` returns: `editable`, `editing`, `props`.                                  |
 | `PlainTextOptions`           | `{ multiline, maxLength }`: the plain-text rules of a field.                                      |
 | `CanvasInlineTextProps`      | Props of `Canvas.InlineText`.                                                                     |
+| `CanvasInlineRichTextToolbarProps` | Props of `Canvas.InlineRichTextToolbar`: `children`.                                          |
 | `InlineSuggest`              | Optional `$`-anchored suggest config: `pattern`, `getItems`, `render`.                            |
 | `InlineSuggestItem`          | Suggest row: `insertText` plus consumer fields for `render`.                                      |
 | `InlineSuggestRenderContext` | Suggest UI context: items, highlight, query, anchor rect, `accept`.                               |
@@ -478,4 +493,5 @@ client component.
 | `data-can-move`              | rings                                | Present when the block is not the root.                                                                                                                 |
 | `data-can-delete`            | rings                                | Present when the block is not the root.                                                                                                                 |
 | `data-editor-inline-text`    | `Canvas.InlineText` glass            | Presence marker. `role="textbox"`.                                                                                                                      |
+| `data-editor-inline-richtext` | in-place rich text editor           | Presence marker on the editable element of a running session.                                                                                          |
 | `data-field`                 | `Canvas.InlineText` glass            | Property key being edited.                                                                                                                              |

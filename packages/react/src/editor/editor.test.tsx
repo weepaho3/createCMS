@@ -106,6 +106,7 @@ describe('namespace shape', () => {
       'DropTargetRing',
       'DragPreview',
       'InlineText',
+      'InlineRichTextToolbar',
       'ReadonlySubtree',
       'BlockError',
       'UnknownBlock',

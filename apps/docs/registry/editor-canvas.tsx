@@ -1,6 +1,6 @@
 'use client';
 
-import { useBlockActions, useSelection } from '@createcms/react/editor';
+import { Editor, useBlockActions, useSelection } from '@createcms/react/editor';
 import { Canvas } from '@createcms/react/editor/canvas';
 import {
   ArrowDownIcon,
@@ -153,9 +153,41 @@ function DefaultBlockToolbarActions() {
       <CanvasIconButton label="Delete" onClick={() => actions.remove()}>
         <Trash2Icon />
       </CanvasIconButton>
+      <Canvas.InlineRichTextToolbar>
+        <Separator orientation="vertical" className="h-4" />
+        <Editor.RichTextToolbar className="flex items-center gap-0.5">
+          {RICH_TEXT_FORMATS.map((format) => (
+            <Editor.RichTextToolbarButton
+              key={format.mark}
+              mark={format.mark}
+              aria-label={format.label}
+              title={format.label}
+              className={cn(
+                'hover:bg-accent aria-pressed:bg-accent pointer-events-auto inline-flex size-7 items-center justify-center rounded-sm text-xs disabled:hidden',
+                format.className,
+              )}
+            >
+              {format.text}
+            </Editor.RichTextToolbarButton>
+          ))}
+        </Editor.RichTextToolbar>
+      </Canvas.InlineRichTextToolbar>
     </>
   );
 }
+
+/** Formats the block toolbar offers while a rich text field is edited in place. */
+const RICH_TEXT_FORMATS = [
+  { mark: 'bold', label: 'Bold', text: 'B', className: 'font-bold' },
+  { mark: 'italic', label: 'Italic', text: 'I', className: 'italic' },
+  { mark: 'underline', label: 'Underline', text: 'U', className: 'underline' },
+  {
+    mark: 'strike',
+    label: 'Strikethrough',
+    text: 'S',
+    className: 'line-through',
+  },
+] as const;
 
 function BlockToolbar({
   className,

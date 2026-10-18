@@ -9,9 +9,10 @@ builds; errors throw in every build.
 
 ## E001
 
-**Warning.** A `richText` field cannot be edited inline. A click on it selects
-the block and focuses its form control instead. Edit rich text through
-`Editor.Field`.
+**Warning.** A `richText` field cannot be edited inline without a rich text
+editor. A click on it selects the block and focuses its form control
+instead. Pass an adapter as `Editor.Root richText` (the Tiptap one from
+`@createcms/react/editor/richtext`) to edit rich text in place.
 
 ## E002
 

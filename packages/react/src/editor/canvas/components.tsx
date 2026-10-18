@@ -25,6 +25,7 @@ import { CanvasDndEffects } from './dnd-parts';
 import { createEditCache, type EditCache } from './edit';
 import { bindFileDrop, type CanvasFileDrop } from './file-drop';
 import { CanvasFrameShell } from './frame/frame-shell';
+import { createInlineRichTextStore } from './inline-rich-text';
 import { handleCanvasClick, handleCanvasPointerOver } from './interact';
 import { createMeasurer } from './measurer';
 import { type PointerStore } from './pointer';
@@ -174,6 +175,7 @@ export function CanvasRoot({
   const [hostLayer, setHostLayer] = React.useState<HTMLElement | null>(null);
   const [stylesLoading, setStylesLoading] = React.useState(false);
   const inlineCaretRef = React.useRef<InlineCaretPoint | null>(null);
+  const [inlineRichText] = React.useState(createInlineRichTextStore);
   const measurerRef = React.useRef<Measurer | null>(null);
   const [hostEl, setHostEl] = React.useState<HTMLElement | null>(null);
   const [measurer, setMeasurer] = React.useState<Measurer | null>(null);
@@ -370,6 +372,7 @@ export function CanvasRoot({
       renderBlockError,
       renderUnknownBlock,
       chunkSize,
+      inlineRichText,
       deferUpdates: interactive === 'none',
       isDragging: () => sessionRef.current.dnd.getSession() !== null,
       subscribeDragging: (listener) =>
@@ -402,6 +405,7 @@ export function CanvasRoot({
     renderUnknownBlock,
     chunkSize,
     interactive,
+    inlineRichText,
   ]);
 
   const read = React.useMemo(() => {
@@ -429,6 +433,7 @@ export function CanvasRoot({
       dragging,
       editing,
       inlineCaret: inlineCaretRef,
+      inlineRichText,
       surface: previewSurface,
       hostLayer: framed ? hostLayer : null,
     };
@@ -445,6 +450,7 @@ export function CanvasRoot({
     previewSurface,
     framed,
     hostLayer,
+    inlineRichText,
   ]);
 
   const { ref: outerRef, ...hostRest } = rest;
