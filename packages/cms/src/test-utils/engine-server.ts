@@ -18,10 +18,20 @@ declare module 'vitest' {
  * the S3 server per object name (engines run in parallel against this one
  * server): `POST /__test/slow-down?name=x&count=n` makes the next n PUTs of
  * `x` answer 503, `POST /__test/put-delay?name=x&ms=n` delays them,
- * `GET /__test/keys` lists the stored keys.
+ * `GET /__test/parts?name=x` lists the multipart parts stored for `x`,
+ * `GET /__test/keys` lists the stored keys. Files above 3 MiB upload in
+ * 1 MiB parts.
  */
 export default async function setup(project: TestProject) {
-  const { cms, s3 } = await setupTestCMS({ withS3: true });
+  const { cms, s3 } = await setupTestCMS({
+    withS3: true,
+    // Files above 3 MiB upload in 1 MiB parts.
+    media: {
+      maxFileSize: 16 * 1024 * 1024,
+      multipart: { threshold: 3 * 1024 * 1024, partSize: 1024 * 1024 },
+      capabilities: { multipart: { minPartSize: 1024 * 1024 } },
+    },
+  });
   if (!('keys' in s3))
     throw new Error('The engine tests need the test S3 server');
 
@@ -51,6 +61,15 @@ export default async function setup(project: TestProject) {
         Number(url.searchParams.get('ms') ?? 0),
       );
       res.writeHead(204).end();
+      return;
+    }
+    if (url.pathname === '/__test/parts') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(
+        JSON.stringify(
+          s3.storedParts.get(url.searchParams.get('name') ?? '') ?? [],
+        ),
+      );
       return;
     }
     if (url.pathname === '/__test/keys') {

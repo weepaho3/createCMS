@@ -31,7 +31,10 @@ The cms engine tests start a test CMS on PGlite with an in-memory S3 server in a
 | --- | --- |
 | `POST /__test/slow-down?name=x&count=n` | The next `n` PUTs of `x` answer 503 SlowDown. |
 | `POST /__test/put-delay?name=x&ms=n` | PUTs of `x` answer after `n` milliseconds. |
+| `GET /__test/parts?name=x` | The multipart part numbers stored for `x`, in arrival order. |
 | `GET /__test/keys` | The stored object keys. |
+
+Files above 3 MiB upload in 1 MiB parts on this server, so the multipart tests stay small.
 
 In CI the `media-engines` job runs both suites once per engine and uploads failure screenshots as artifacts. It is skipped when no media code changed.
 

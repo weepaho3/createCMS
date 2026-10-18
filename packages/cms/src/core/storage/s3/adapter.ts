@@ -3,6 +3,13 @@ import type { StorageAdapter, StorageCapabilities } from '../adapter';
 
 import { createS3Client } from './client';
 import {
+  abortMultipartUpload,
+  completeMultipartUpload,
+  createMultipartUpload,
+  listUploadParts,
+  signUploadPart,
+} from './multipart';
+import {
   mergeCapabilities,
   providerCapabilities,
   type StoragePreset,
@@ -110,6 +117,18 @@ export function createS3StorageAdapter(config: MediaConfig): StorageAdapter {
     },
     async deleteMany(keys) {
       await deleteObjects(s3(), { bucket, keys });
+    },
+    multipart: {
+      create: (key, opts) =>
+        createMultipartUpload(s3(), { bucket, key, ...opts }),
+      signPart: (key, uploadId, opts) =>
+        signUploadPart(s3(), { bucket, key, uploadId, ...opts }),
+      listParts: (key, uploadId, opts) =>
+        listUploadParts(s3(), { bucket, key, uploadId, marker: opts?.marker }),
+      complete: (key, uploadId, parts) =>
+        completeMultipartUpload(s3(), { bucket, key, uploadId, parts }),
+      abort: (key, uploadId) =>
+        abortMultipartUpload(s3(), { bucket, key, uploadId }),
     },
     async list(prefix, opts) {
       return listObjects(s3(), {

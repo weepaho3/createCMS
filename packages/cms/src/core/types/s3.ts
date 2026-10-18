@@ -140,6 +140,14 @@ type BaseMediaConfig = {
   scan?: ScanAdapter;
 
   /**
+   * Multipart uploads for large files, where the storage supports them:
+   * files above `threshold` (default 64 MiB) upload in parts of `partSize`
+   * (default 8 MiB, at least the storage's minimum, raised so a file needs
+   * at most 9,000 parts) that resume after an interruption.
+   */
+  multipart?: { threshold?: number; partSize?: number };
+
+  /**
    * Origins besides the CMS's own that may call the state-changing media
    * endpoints with cookies (an admin UI on another domain). Cookie requests
    * from any other origin answer `ORIGIN_NOT_ALLOWED`; requests without

@@ -55,6 +55,17 @@ on, schema changes are picked up with `createcms generate` + a Drizzle migration
 
 ## Unreleased
 
+- **`createSignedUpload` entries can have `signedUrl: null`.** A file above
+  `media.multipart.threshold` (64 MiB) on a storage with the `multipart`
+  capability starts a multipart upload: its entry carries
+  `multipart: { uploadId, partSize, partCount }` instead of a single PUT
+  URL, and the parts are signed with `signUploadParts`. Every entry now has
+  `multipart` (`null` for a single PUT).
+  → **Migration:** callers of the raw protocol that accept files above
+  64 MiB check `multipart` and upload the parts (or set
+  `media.multipart.threshold` above `maxFileSize` to keep single PUTs). The
+  browser upload queue and the React hooks need no change.
+
 - **Browser uploads are a presign/complete protocol.** `createSignedUpload`
   no longer creates rows: it returns
   `{ uploads: [{ id, objectKey, url, signedUrl, headers, token }], expiresAt }`

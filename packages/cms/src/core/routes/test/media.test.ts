@@ -34,11 +34,14 @@ function bytesFor(type: string): Uint8Array<ArrayBuffer> {
   }
 }
 
-type SignedPut = { signedUrl: string; headers: Record<string, string> };
+type SignedPut = {
+  signedUrl: string | null;
+  headers: Record<string, string>;
+};
 
 /** The browser's PUT to a presigned URL. */
 async function putSigned(target: SignedPut, body: Uint8Array<ArrayBuffer>) {
-  const res = await fetch(target.signedUrl, {
+  const res = await fetch(target.signedUrl!, {
     method: 'PUT',
     headers: {
       'content-type': target.headers['Content-Type'],
@@ -930,7 +933,7 @@ describe('media.createSignedUpload', () => {
     });
     expect(uploads[0].headers).not.toHaveProperty('x-amz-acl');
     expect(
-      new URL(uploads[0].signedUrl).searchParams.get('X-Amz-SignedHeaders'),
+      new URL(uploads[0].signedUrl!).searchParams.get('X-Amz-SignedHeaders'),
     ).not.toContain('x-amz-acl');
   });
 
@@ -994,7 +997,7 @@ describe('media.createSignedUpload', () => {
     });
     expect(uploads[0].headers).not.toHaveProperty('x-amz-acl');
     expect(
-      new URL(uploads[0].signedUrl).searchParams.get('X-Amz-SignedHeaders'),
+      new URL(uploads[0].signedUrl!).searchParams.get('X-Amz-SignedHeaders'),
     ).not.toContain('x-amz-acl');
   });
 
@@ -1390,7 +1393,7 @@ async function putWithHeaders(
   target: SignedPut,
   body: Uint8Array<ArrayBuffer>,
 ) {
-  const res = await fetch(target.signedUrl, {
+  const res = await fetch(target.signedUrl!, {
     method: 'PUT',
     headers: {
       ...target.headers,

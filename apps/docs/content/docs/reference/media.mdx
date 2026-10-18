@@ -378,7 +378,7 @@ Hand the browser presigned PUT URLs so it can upload files straight to your buck
   },
 }`}
   returns={{
-    uploads: { type: '{ id, objectKey, url, signedUrl, headers, token }[]', description: 'One entry per file: the asset id and object key it will get, its presigned `signedUrl`, the `headers` to send with the PUT, and the `token` to pass to `completeUpload`.' },
+    uploads: { type: '{ id, objectKey, url, signedUrl, headers, multipart, token }[]', description: 'One entry per file: the asset id and object key it will get, its presigned `signedUrl` (`null` for a multipart upload), the `headers` to send with the PUT, the `multipart` plan (`{ uploadId, partSize, partCount }` or `null`), and the `token` to pass to `completeUpload`.' },
     expiresAt: { type: 'Date', description: 'When the signed URLs expire.' },
   }}
   params={{
@@ -387,13 +387,15 @@ Hand the browser presigned PUT URLs so it can upload files straight to your buck
   }}
 />
 
-Returns `{ uploads: { id, objectKey, url, deliveryUrl, signedUrl, headers, token }[], expiresAt }`. `url` is `null` (new assets are private); `deliveryUrl` is the gate path. PUT each file to its `signedUrl` with the returned `headers` (`Content-Type`, `Cache-Control`); `expiresAt` is when the signed URLs expire. The token stays valid for one hour past `expiresAt`, so a PUT that started before expiry can still be completed. Throws `TOO_MANY_FILES`, `FILE_TOO_LARGE`, `INVALID_FILE_TYPE`, `FOLDER_NOT_FOUND`, or `ASSET_NOT_FOUND` (unknown `variantOf`).
+Returns `{ uploads: { id, objectKey, url, deliveryUrl, signedUrl, headers, multipart, token }[], expiresAt }`. `url` is `null` (new assets are private); `deliveryUrl` is the gate path. PUT each file to its `signedUrl` with the returned `headers` (`Content-Type`, `Cache-Control`); `expiresAt` is when the signed URLs expire. The token stays valid for one hour past `expiresAt`, so a PUT that started before expiry can still be completed. Throws `TOO_MANY_FILES`, `FILE_TOO_LARGE`, `INVALID_FILE_TYPE`, `FOLDER_NOT_FOUND`, or `ASSET_NOT_FOUND` (unknown `variantOf`).
+
+A file larger than `media.multipart.threshold` (64 MiB) on a storage with the `multipart` capability starts a multipart upload instead: its entry has `signedUrl: null` and `multipart: { uploadId, partSize, partCount }`. Upload part `n` (1-based, `partSize` bytes, the last one shorter) to a URL from [`signUploadParts`](#signuploadparts) and pass the same `token` to `completeUpload`, which assembles the parts. The token of a multipart upload stays valid for 24 hours, so an interrupted upload can be resumed with [`listUploadParts`](#listuploadparts). Parts are 8 MiB unless the file needs larger ones to stay below 9,000 parts.
 
 Before signing, the CMS normalizes each file name (see [Upload security](/docs/guides/media-uploads#upload-security)), checks `media.uploadRateLimit` per actor (`RATE_LIMITED`, 429 with `Retry-After`) and `media.quota` (`QUOTA_EXCEEDED`, 413), and refuses SVG with `INVALID_FILE_TYPE`. Each `token` redeems only at `completeUpload` and only on the host that signed it.
 
 ### Complete an Upload [#completeupload]
 
-Create the asset rows for the files the browser PUT to the URLs from `createSignedUpload`. For each token the CMS checks the signature, the calling user and scope, that the token was signed for `completeUpload` on this host, `HEAD`s the object (its length must equal and its content type must match the declared file), sniffs its first 4,100 bytes (markup is refused, image, video, audio and PDF types must match their signature), mints the slug, and inserts the row as `private`. An object that fails the length, type, or sniff check is deleted from the bucket. Completing the same token twice returns the existing asset. One file's failure never fails the call: it is reported per entry in `errors`.
+Create the asset rows for the files the browser PUT to the URLs from `createSignedUpload`. For a multipart upload the CMS first lists the parts the storage holds, checks that every planned part is there with its exact length (`UPLOAD_NOT_FOUND` otherwise) and assembles them. For each token the CMS checks the signature, the calling user and scope, that the token was signed for `completeUpload` on this host, `HEAD`s the object (its length must equal and its content type must match the declared file), sniffs its first 4,100 bytes (markup is refused, image, video, audio and PDF types must match their signature), mints the slug, and inserts the row as `private`. An object that fails the length, type, or sniff check is deleted from the bucket. Completing the same token twice returns the existing asset. One file's failure never fails the call: it is reported per entry in `errors`.
 
 <APIMethod
   method="POST"
@@ -435,9 +437,66 @@ const { assets, errors } = await cmsClient.media.completeUpload({
 });
 ```
 
+### Sign Upload Parts [#signuploadparts]
+
+Sign PUT URLs for parts of a multipart upload (an entry of `createSignedUpload` with `multipart`). Each URL is valid for 15 minutes and binds the part's exact length, so the bucket refuses a part of another size. Send the part as the request body with no extra headers.
+
+<APIMethod
+  method="POST"
+  path="/media/signUploadParts"
+  fn="signUploadParts"
+  collection="media"
+  resource="media"
+  operation="create"
+  args={`{
+  body: {
+    token: signed.uploads[0].token, // required
+    partNumbers: [1, 2, 3, 4], // required
+  },
+}`}
+  returns={{
+    parts: { type: '{ partNumber: number; url: string }[]', description: 'One presigned PUT URL per requested part (duplicates are signed once).' },
+    expiresAt: { type: 'Date', description: 'When the part URLs expire.' },
+  }}
+  params={{
+    token: { type: 'string', required: true, description: 'The token of a multipart entry from `createSignedUpload`.' },
+    partNumbers: { type: 'number[]', required: true, description: '1 to 50 part numbers, each from 1 to the planned `partCount`.' },
+  }}
+/>
+
+Throws `UPLOAD_TOKEN_INVALID` for a malformed or expired token, a token of another user, tenant or host, or a token without a multipart upload, and `VALIDATION_ERROR` for a part number beyond `partCount`.
+
+### List Uploaded Parts [#listuploadparts]
+
+List the parts a multipart upload already holds, so an interrupted upload continues without sending a finished part again. A part counts as held only when its `size` equals the planned length; upload any other part again.
+
+<APIMethod
+  method="POST"
+  path="/media/listUploadParts"
+  fn="listUploadParts"
+  collection="media"
+  resource="media"
+  operation="create"
+  args={`{
+  body: {
+    token: signed.uploads[0].token, // required
+  },
+}`}
+  returns={{
+    parts: { type: '{ partNumber: number; size: number }[]', description: 'Held parts in part-number order, up to 1,000 per page.' },
+    marker: { type: 'number | null', description: 'Pass as `marker` for the next page; `null` on the last page.' },
+  }}
+  params={{
+    token: { type: 'string', required: true, description: 'The token of a multipart entry from `createSignedUpload`.' },
+    marker: { type: 'number | null', description: 'The `marker` of the previous page.' },
+  }}
+/>
+
+Throws `UPLOAD_TOKEN_INVALID` like `signUploadParts`, and `UPLOAD_NOT_FOUND` when the storage no longer knows the upload (completed, aborted, or removed by the bucket's lifecycle rule).
+
 ### Abort an Upload [#abortupload]
 
-Cancel a signed upload or replace that will not be completed: the object its PUT may have written is deleted. A token whose upload was already completed, or whose replace was committed, is left alone. Idempotent. Objects of uploads that are neither completed nor aborted are removed later by the [pruning sweep](/docs/concepts/data-retention).
+Cancel a signed upload or replace that will not be completed: the object its PUT may have written is deleted, and a multipart upload is aborted with its parts. A token whose upload was already completed, or whose replace was committed, is left alone. Idempotent. Objects of uploads that are neither completed nor aborted are removed later by the [pruning sweep](/docs/concepts/data-retention).
 
 <APIMethod
   method="POST"

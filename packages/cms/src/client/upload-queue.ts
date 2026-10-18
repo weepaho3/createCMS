@@ -45,6 +45,9 @@ const SPEED_ALPHA = 0.2;
 /** The ETA stays hidden this long after the first byte moved. */
 const ETA_WARMUP_MS = 2500;
 const PENDING_STORAGE_KEY = 'createcms:uploads:interrupted';
+const RESUME_STORAGE_KEY = 'createcms:uploads:multipart';
+/** Lifetime of a multipart upload token on the server. */
+const RESUME_TTL_MS = 24 * 60 * 60 * 1000;
 
 const ACTIVE: ReadonlySet<CMSMediaUploadStatus> = new Set([
   'queued',
@@ -109,15 +112,27 @@ const TRANSITIONS: Readonly<
 /** Why an entry is paused: by the user, by going offline, or on a duplicate. */
 type PauseReason = 'user' | 'offline' | 'duplicate';
 
+/** The part plan of a multipart upload (`createSignedUpload` above the threshold). */
+type MultipartPlan = { uploadId: string; partSize: number; partCount: number };
+
 type Signed = {
   token: string;
-  signedUrl: string;
+  /** `null` for a multipart upload, whose parts are signed separately. */
+  signedUrl: string | null;
   headers: Record<string, string>;
   assetId: string;
+  multipart?: MultipartPlan | null;
 };
+
+/** Parts of one file in flight at once. */
+export const PARTS_PER_FILE = 4;
+/** Part URLs signed per request (the server's limit). */
+const PARTS_PER_SIGN = 50;
 
 type Internal = {
   entry: CMSMediaUploadFileState;
+  /** The file as picked; `entry.file` is the optimizer's output. */
+  source: File;
   controller: AbortController | null;
   pausedBy: PauseReason | null;
   signed: Signed | null;
@@ -166,7 +181,66 @@ export type UploadQueueOptions = {
   browserEvents?: boolean;
   /** Downloads an asset's original for `regenerateRenditions`. Default: `fetch` with credentials. */
   fetchBlob?: (url: string) => Promise<Blob>;
+  /**
+   * Where unfinished multipart uploads are recorded, so picking the same
+   * file after a reload resumes them; `null` records nothing. Default:
+   * `localStorage` when available.
+   */
+  resumeStorage?: ResumeStorage | null;
 };
+
+/** The subset of `Storage` the resume records need. */
+export type ResumeStorage = Pick<Storage, 'getItem' | 'setItem'>;
+
+/** A multipart upload that can be resumed by picking the same file again. */
+type ResumeRecord = {
+  fingerprint: string;
+  folderId: string | null;
+  signed: Signed;
+  expiresAt: number;
+};
+
+/** Identifies a picked file across reloads; the bytes are not read. */
+function fingerprintOf(file: File): string {
+  return JSON.stringify([file.name, file.size, file.lastModified]);
+}
+
+function defaultResumeStorage(): ResumeStorage | null {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/** Unexpired records; storage errors read as none. */
+function readResumeRecords(
+  storage: ResumeStorage | null,
+  now: number,
+): ResumeRecord[] {
+  if (!storage) return [];
+  try {
+    const raw = storage.getItem(RESUME_STORAGE_KEY);
+    const records = raw ? (JSON.parse(raw) as ResumeRecord[]) : [];
+    return Array.isArray(records)
+      ? records.filter((r) => r.expiresAt > now)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeResumeRecords(
+  storage: ResumeStorage | null,
+  records: ResumeRecord[],
+) {
+  if (!storage) return;
+  try {
+    storage.setItem(RESUME_STORAGE_KEY, JSON.stringify(records));
+  } catch {
+    // Storage can be unavailable (private mode, quota); the upload still runs.
+  }
+}
 
 function defaultSchedule(flush: () => void): void {
   if (typeof requestAnimationFrame === 'function') {
@@ -277,6 +351,10 @@ export function createUploadQueue(
   const now = options.now ?? (() => Date.now());
   const sleep = options.sleep ?? defaultSleep;
   const scheduleUpdate = options.scheduleUpdate ?? defaultSchedule;
+  const resumeStorage =
+    options.resumeStorage === undefined
+      ? defaultResumeStorage()
+      : options.resumeStorage;
   const items = new Map<string, Internal>();
   const order: string[] = [];
   let budget = CONNECTION_BUDGET;
@@ -633,6 +711,52 @@ export function createUploadQueue(
     return { ...upload, assetId: upload.id };
   }
 
+  // --- resume records -------------------------------------------------------
+
+  /** Records a multipart upload of an unchanged file for a later resume. */
+  function remember(item: Internal) {
+    const { signed } = item;
+    if (
+      item.entry.kind !== 'create' ||
+      !signed?.multipart ||
+      item.entry.file !== item.source ||
+      item.renditions.length > 0
+    ) {
+      return;
+    }
+    const fingerprint = fingerprintOf(item.source);
+    const records = readResumeRecords(resumeStorage, now()).filter(
+      (r) => r.fingerprint !== fingerprint,
+    );
+    records.push({
+      fingerprint,
+      folderId: item.entry.folderId ?? null,
+      signed,
+      expiresAt: now() + RESUME_TTL_MS,
+    });
+    writeResumeRecords(resumeStorage, records);
+  }
+
+  function forget(item: Internal) {
+    if (item.entry.kind !== 'create') return;
+    const fingerprint = fingerprintOf(item.source);
+    const records = readResumeRecords(resumeStorage, now());
+    const kept = records.filter((r) => r.fingerprint !== fingerprint);
+    if (kept.length !== records.length) writeResumeRecords(resumeStorage, kept);
+  }
+
+  /** The recorded upload of this file into the same folder, if any. */
+  function recalled(item: Internal): Signed | null {
+    if (item.entry.kind !== 'create' || item.signed) return null;
+    const fingerprint = fingerprintOf(item.source);
+    const folderId = item.entry.folderId ?? null;
+    return (
+      readResumeRecords(resumeStorage, now()).find(
+        (r) => r.fingerprint === fingerprint && r.folderId === folderId,
+      )?.signed ?? null
+    );
+  }
+
   async function put(item: Internal, signal: AbortSignal) {
     const id = item.entry.id;
     let resigned = false;
@@ -643,11 +767,17 @@ export function createUploadQueue(
         item.signed = signed;
         if (item.entry.kind === 'create')
           patch(id, { assetId: signed.assetId });
+        remember(item);
+      }
+      if (item.signed.multipart) {
+        await putParts(item, item.signed.multipart, signal);
+        item.landed = true;
+        return;
       }
       dispatch(id, 'uploading', { phase: null });
       try {
         await uploadWithXHR(
-          item.signed.signedUrl,
+          item.signed.signedUrl!,
           item.entry.file,
           item.signed.headers,
           (loaded, total) => {
@@ -675,6 +805,136 @@ export function createUploadQueue(
         await waitBeforeRetry(item, attempt, err.retryAfterMs, signal);
       }
     }
+  }
+
+  /**
+   * Uploads the parts a multipart upload does not hold yet. The server's
+   * part list is the source of truth: a part it reports with the right
+   * length is never uploaded again (some providers drop the old part when
+   * a repeated upload fails). Up to `PARTS_PER_FILE` parts run at once,
+   * each retried on its own; an upload the storage no longer knows is
+   * dropped so a retry starts over.
+   */
+  async function putParts(
+    item: Internal,
+    plan: MultipartPlan,
+    signal: AbortSignal,
+  ) {
+    const id = item.entry.id;
+    const { file } = item.entry;
+    const token = item.signed!.token;
+    const lengthOf = (n: number) =>
+      Math.min(plan.partSize, file.size - (n - 1) * plan.partSize);
+
+    // A resumed upload arrives from `preparing`, which only moves on to `signing`.
+    if (item.entry.status === 'preparing')
+      dispatch(id, 'signing', { phase: null });
+    dispatch(id, 'uploading', { phase: null });
+    const held = new Map<number, number>();
+    let marker: number | null = null;
+    do {
+      const page = (await request(
+        item,
+        () =>
+          $fetch('/media/listUploadParts', {
+            method: 'POST',
+            body: { token, marker },
+          }),
+        signal,
+      )) as {
+        parts: { partNumber: number; size: number }[];
+        marker: number | null;
+      };
+      for (const part of page.parts) held.set(part.partNumber, part.size);
+      marker = page.marker;
+    } while (marker !== null);
+
+    const missing: number[] = [];
+    let doneBytes = 0;
+    for (let n = 1; n <= plan.partCount; n++) {
+      if (held.get(n) === lengthOf(n)) doneBytes += lengthOf(n);
+      else missing.push(n);
+    }
+    const inFlightBytes = new Map<number, number>();
+    const report = () => {
+      let loaded = doneBytes;
+      for (const bytes of inFlightBytes.values()) loaded += bytes;
+      setProgress(id, loaded, file.size);
+    };
+    report();
+
+    const urls = new Map<number, string>();
+    const signParts = async (numbers: number[]) => {
+      const res = (await request(
+        item,
+        () =>
+          $fetch('/media/signUploadParts', {
+            method: 'POST',
+            body: { token, partNumbers: numbers },
+          }),
+        signal,
+      )) as { parts: { partNumber: number; url: string }[] };
+      for (const part of res.parts) urls.set(part.partNumber, part.url);
+    };
+
+    const queue = [...missing];
+    const worker = async () => {
+      for (;;) {
+        const n = queue.shift();
+        if (n === undefined) return;
+        if (!urls.has(n))
+          await signParts([n, ...queue.slice(0, PARTS_PER_SIGN - 1)]);
+        const start = (n - 1) * plan.partSize;
+        const body = file.slice(start, start + lengthOf(n));
+        let resigned = false;
+        for (let attempt = 0; ; attempt++) {
+          try {
+            await uploadWithXHR(
+              urls.get(n)!,
+              body,
+              {},
+              (loaded) => {
+                inFlightBytes.set(n, loaded);
+                report();
+              },
+              signal,
+            );
+            inFlightBytes.delete(n);
+            doneBytes += body.size;
+            report();
+            break;
+          } catch (err) {
+            inFlightBytes.delete(n);
+            report();
+            if (signal.aborted || isAbortError(err)) throw signal.reason ?? err;
+            if (!(err instanceof UploadRequestError)) throw err;
+            if (err.s3Code === 'NoSuchUpload') {
+              forget(item);
+              item.signed = null;
+              throw err;
+            }
+            if (err.code === 'UPLOAD_EXPIRED' && !resigned) {
+              resigned = true;
+              await signParts([n]);
+              continue;
+            }
+            if (!err.retryable || attempt + 1 >= UPLOAD_ATTEMPTS) throw err;
+            if (err.throttled) throttle();
+            await sleep(
+              err.retryAfterMs ?? retryDelay(attempt, {}, options.random),
+              signal,
+            );
+          }
+        }
+      }
+    };
+    await Promise.all(
+      Array.from(
+        { length: Math.min(PARTS_PER_FILE, Math.max(1, missing.length)) },
+        worker,
+      ),
+    );
+    if (item.entry.phase !== 'finalizing') patch(id, { phase: 'finalizing' });
   }
 
   async function complete(item: Internal): Promise<UploadResult> {
@@ -740,6 +1000,7 @@ export function createUploadQueue(
 
   /** Deletes the object of a signature that will never be completed. */
   async function abandon(item: Internal) {
+    forget(item);
     const token = item.signed?.token;
     item.signed = null;
     item.landed = false;
@@ -758,6 +1019,14 @@ export function createUploadQueue(
 
   async function prepare(item: Internal, signal: AbortSignal) {
     const id = item.entry.id;
+    const resumed = recalled(item);
+    if (resumed) {
+      // The recorded upload holds this file's unchanged bytes: no hashing,
+      // no optimizer, the parts it holds are kept.
+      item.signed = resumed;
+      patch(id, { assetId: resumed.assetId });
+      return true;
+    }
     if (item.dedupe && item.entry.kind === 'create' && !item.entry.sha256) {
       if (item.entry.file.size <= HASH_LIMIT_BYTES) {
         patch(id, { phase: 'hashing' });
@@ -834,6 +1103,7 @@ export function createUploadQueue(
       if (!(await prepare(item, signal))) return;
       await put(item, signal);
       const result = await complete(item);
+      forget(item);
       if (item.renditions.length > 0) {
         // The asset exists; the entry finishes once its renditions did.
         dispatch(id, 'completing', { result, phase: 'renditions' });
@@ -850,6 +1120,11 @@ export function createUploadQueue(
     } catch (err) {
       const reason = signal.aborted ? signal.reason : err;
       if (reason instanceof PauseSignal) {
+        // A multipart upload keeps its parts; resume uploads the rest.
+        if (item.signed?.multipart) {
+          dispatch(id, 'paused', { phase: null, nextRetryAt: null });
+          return;
+        }
         await abandon(item);
         dispatch(id, 'paused', {
           phase: null,
@@ -862,6 +1137,13 @@ export function createUploadQueue(
         dispatch(id, 'aborted', { phase: null, nextRetryAt: null });
       } else {
         const error = errorOf(err);
+        // A token or upload the server no longer accepts cannot be resumed.
+        if (
+          error.code === 'UPLOAD_EXPIRED' ||
+          error.code === 'UPLOAD_NOT_FOUND'
+        ) {
+          forget(item);
+        }
         lastError = err;
         dispatch(id, 'error', { error, phase: null, nextRetryAt: null });
       }
@@ -905,6 +1187,7 @@ export function createUploadQueue(
   ): Internal {
     const { runOptimizer, dedupe, ...fields } = extra;
     const item: Internal = {
+      source: file,
       entry: {
         id: `upl_${++entrySequence}`,
         kind,
@@ -1022,7 +1305,8 @@ export function createUploadQueue(
       const { status } = item.entry;
       if (status !== 'error' && !(status === 'aborted' && id !== undefined))
         continue;
-      item.signed = null;
+      // A failed multipart upload resumes from the parts it holds.
+      if (!(status === 'error' && item.signed?.multipart)) item.signed = null;
       item.landed = false;
       dispatch(item.entry.id, 'queued', {
         error: undefined,
@@ -1196,9 +1480,18 @@ export function createUploadQueue(
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState !== 'hidden') return;
-        const pending = entries()
-          .filter((e) => ACTIVE.has(e.status) || e.status === 'paused')
-          .map((e) => ({ name: e.name, size: e.size, kind: e.kind }));
+        const pending = [...items.values()]
+          .filter(
+            ({ entry }) =>
+              entry.kind !== 'rendition' &&
+              (ACTIVE.has(entry.status) || entry.status === 'paused'),
+          )
+          .map((item) => ({
+            name: item.source.name,
+            size: item.source.size,
+            kind: item.entry.kind,
+            resumable: recalled({ ...item, signed: null }) !== null,
+          }));
         try {
           if (pending.length > 0) {
             sessionStorage.setItem(
@@ -1233,18 +1526,27 @@ export function createUploadQueue(
 /**
  * Uploads that were unfinished when the page was last hidden (name, size,
  * kind), so an app can ask the user to pick them again after a reload.
- * Reading clears the record.
+ * `resumable` marks a multipart upload that continues where it stopped
+ * when the same file (name, size, modification time) is uploaded into the
+ * same folder within 24 hours. Reading clears the list, not the resume
+ * records.
  */
 export function takeInterruptedUploads(): {
   name: string;
   size: number;
   kind: 'create' | 'replace';
+  resumable: boolean;
 }[] {
   try {
     const raw = sessionStorage.getItem(PENDING_STORAGE_KEY);
     sessionStorage.removeItem(PENDING_STORAGE_KEY);
     return raw
-      ? (JSON.parse(raw) as ReturnType<typeof takeInterruptedUploads>)
+      ? (
+          JSON.parse(raw) as (Omit<
+            ReturnType<typeof takeInterruptedUploads>[number],
+            'resumable'
+          > & { resumable?: boolean })[]
+        ).map((upload) => ({ ...upload, resumable: upload.resumable ?? false }))
       : [];
   } catch {
     return [];

@@ -27,7 +27,7 @@ async function upload(cms: Cms, name = 'hero.png') {
     body: { files: [{ name, size: PNG.byteLength, type: 'image/png' }] },
   });
   const [target] = signed.uploads;
-  const res = await fetch(target.signedUrl, {
+  const res = await fetch(target.signedUrl!, {
     method: 'PUT',
     headers: target.headers,
     body: PNG,
@@ -125,7 +125,7 @@ describe("visibility: 'prefix'", () => {
         ],
       },
     });
-    await fetch(variantSigned.uploads[0].signedUrl, {
+    await fetch(variantSigned.uploads[0].signedUrl!, {
       method: 'PUT',
       headers: variantSigned.uploads[0].headers,
       body: PNG,

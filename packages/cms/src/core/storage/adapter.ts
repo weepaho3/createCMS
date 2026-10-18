@@ -103,11 +103,48 @@ export type StorageAdapter = {
   ): Promise<void>;
   /** Deletes up to 1000 keys per call; missing keys are not an error. */
   deleteMany?(keys: string[]): Promise<void>;
+  /** S3 multipart uploads; present when `capabilities.multipart.supported`. */
+  multipart?: StorageMultipart;
   /** Keys under `prefix`, in key order, paged by `cursor`. */
   list?(
     prefix: string,
     opts?: { cursor?: string | null; limit?: number },
   ): Promise<StorageListResult>;
+};
+
+/** One part a multipart upload already holds. */
+export type StoragePart = { partNumber: number; size: number; etag: string };
+
+export type StorageMultipart = {
+  /** Starts an upload to `key`; returns its upload id. */
+  create(
+    key: string,
+    opts: {
+      contentType: string;
+      acl?: StorageObjectAcl;
+      cacheControl?: string;
+    },
+  ): Promise<string>;
+  /** A presigned PUT for one part, bound to its exact `contentLength`. */
+  signPart(
+    key: string,
+    uploadId: string,
+    opts: { partNumber: number; contentLength: number; expiresIn: number },
+  ): Promise<string>;
+  /** One page of uploaded parts after `marker` (a part number). */
+  listParts(
+    key: string,
+    uploadId: string,
+    opts?: { marker?: number | null },
+  ): Promise<{ parts: StoragePart[]; marker: number | null }>;
+  /** Assembles the object from `parts` in order. */
+  complete(
+    key: string,
+    uploadId: string,
+    parts: { partNumber: number; etag: string }[],
+  ): Promise<void>;
+  /** Discards the upload and its parts; an unknown upload is not an error. */
+  abort(key: string, uploadId: string): Promise<void>;
 };
 
 /** Thrown by adapters for backend failures; routes map it to status 500. */

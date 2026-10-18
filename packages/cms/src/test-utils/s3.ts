@@ -33,6 +33,10 @@ export type TestS3 = {
   putDelay: Map<string, number>;
   /** Object keys (without bucket prefix) currently stored. */
   keys: () => string[];
+  /** Multipart uploads in progress, by upload id. */
+  pendingUploads: () => string[];
+  /** Per object name: the part numbers stored, in arrival order. */
+  storedParts: Map<string, number[]>;
   /** The stored object at `key` (without bucket prefix). */
   object: (key: string) => StoredObject | undefined;
   cleanup: () => Promise<void>;
@@ -55,8 +59,8 @@ function readBody(req: import('node:http').IncomingMessage): Promise<Buffer> {
  * Implements what the media tests exercise: PUT (store, with
  * `x-amz-copy-source` as CopyObject), GET (serve, single-range `Range` as
  * 206), HEAD, DELETE, POST `?delete` (DeleteObjects) and GET `?list-type=2`
- * (ListObjectsV2), keyed by the request path. No SigV4 verification, no
- * multipart or ACLs. `Content-Type` and `Cache-Control` are stored and
+ * (ListObjectsV2) and the multipart calls (create, part, list, complete,
+ * abort), keyed by the request path. No SigV4 verification, no ACLs. `Content-Type` and `Cache-Control` are stored and
  * returned. Every response allows any origin, so browser tests can PUT to
  * presigned URLs.
  */
@@ -66,6 +70,17 @@ export async function setupTestS3(): Promise<TestS3> {
   const failCopyFrom = new Set<string>();
   const publicRead = { allows: (_key: string) => true };
   const slowDown = new Map<string, number>();
+  const uploads = new Map<
+    string,
+    {
+      key: string;
+      contentType?: string;
+      cacheControl?: string;
+      parts: Map<number, Buffer>;
+    }
+  >();
+  let nextUploadId = 1;
+  const storedParts = new Map<string, number[]>();
   const putDelay = new Map<string, number>();
   const bucketPrefix = `/${TEST_BUCKET}/`;
   const bare = (path: string) =>
@@ -92,6 +107,113 @@ export async function setupTestS3(): Promise<TestS3> {
       });
       res.end();
       return;
+    }
+
+    // Multipart: CreateMultipartUpload, UploadPart, ListParts,
+    // CompleteMultipartUpload, AbortMultipartUpload.
+    const uploadId = url.searchParams.get('uploadId');
+    if (method === 'POST' && url.searchParams.has('uploads')) {
+      const id = `upload-${nextUploadId++}`;
+      uploads.set(id, {
+        key,
+        contentType: req.headers['content-type'],
+        cacheControl: req.headers['cache-control'],
+        parts: new Map(),
+      });
+      res.writeHead(200, { 'content-type': 'application/xml' });
+      res.end(
+        `<?xml version="1.0" encoding="UTF-8"?><InitiateMultipartUploadResult><Key>${bare(key)}</Key><UploadId>${id}</UploadId></InitiateMultipartUploadResult>`,
+      );
+      return;
+    }
+    if (uploadId !== null) {
+      const upload = uploads.get(uploadId);
+      if (!upload || upload.key !== key) {
+        if (method === 'DELETE') {
+          res.writeHead(204).end();
+          return;
+        }
+        res.writeHead(404, { 'content-type': 'application/xml' });
+        res.end(
+          xmlError('NoSuchUpload', 'The specified upload does not exist.'),
+        );
+        return;
+      }
+      if (method === 'PUT') {
+        const partNumber = Number(url.searchParams.get('partNumber'));
+        const name = key.slice(key.lastIndexOf('/') + 1);
+        const failures = slowDown.get(name) ?? 0;
+        void readBody(req).then(async (body) => {
+          if (failures > 0) {
+            slowDown.set(name, failures - 1);
+            res.writeHead(503, { 'content-type': 'application/xml' });
+            res.end(xmlError('SlowDown', 'Please reduce your request rate.'));
+            return;
+          }
+          const delay = putDelay.get(name) ?? 0;
+          if (delay > 0) {
+            await new Promise((resolve) => setTimeout(resolve, delay));
+          }
+          upload.parts.set(partNumber, body);
+          storedParts.set(name, [...(storedParts.get(name) ?? []), partNumber]);
+          res.writeHead(200, { ETag: `"part-${partNumber}-${body.length}"` });
+          res.end();
+        });
+        return;
+      }
+      if (method === 'GET') {
+        const marker = Number(url.searchParams.get('part-number-marker') ?? 0);
+        const max = Number(url.searchParams.get('max-parts') ?? 1000);
+        const numbers = [...upload.parts.keys()]
+          .filter((n) => n > marker)
+          .sort((a, b) => a - b);
+        const page = numbers.slice(0, max);
+        const truncated = numbers.length > page.length;
+        res.writeHead(200, { 'content-type': 'application/xml' });
+        res.end(
+          `<?xml version="1.0" encoding="UTF-8"?><ListPartsResult><UploadId>${uploadId}</UploadId>` +
+            page
+              .map(
+                (n) =>
+                  `<Part><PartNumber>${n}</PartNumber><ETag>"part-${n}-${upload.parts.get(n)!.length}"</ETag><Size>${upload.parts.get(n)!.length}</Size></Part>`,
+              )
+              .join('') +
+            `<IsTruncated>${truncated}</IsTruncated>${truncated ? `<NextPartNumberMarker>${page[page.length - 1]}</NextPartNumberMarker>` : ''}</ListPartsResult>`,
+        );
+        return;
+      }
+      if (method === 'POST') {
+        void readBody(req).then((body) => {
+          const numbers = [
+            ...body
+              .toString('utf8')
+              .matchAll(/<PartNumber>(\d+)<\/PartNumber>/g),
+          ].map((match) => Number(match[1]));
+          if (numbers.some((n) => !upload.parts.has(n))) {
+            res.writeHead(400, { 'content-type': 'application/xml' });
+            res.end(
+              xmlError('InvalidPart', 'One or more parts were not found.'),
+            );
+            return;
+          }
+          store.set(key, {
+            body: Buffer.concat(numbers.map((n) => upload.parts.get(n)!)),
+            contentType: upload.contentType,
+            cacheControl: upload.cacheControl,
+          });
+          uploads.delete(uploadId);
+          res.writeHead(200, { 'content-type': 'application/xml' });
+          res.end(
+            `<?xml version="1.0" encoding="UTF-8"?><CompleteMultipartUploadResult><Key>${bare(key)}</Key></CompleteMultipartUploadResult>`,
+          );
+        });
+        return;
+      }
+      if (method === 'DELETE') {
+        uploads.delete(uploadId);
+        res.writeHead(204).end();
+        return;
+      }
     }
 
     if (method === 'POST' && url.searchParams.has('delete')) {
@@ -279,6 +401,8 @@ export async function setupTestS3(): Promise<TestS3> {
     slowDown,
     putDelay,
     keys: () => [...store.keys()].map(bare),
+    pendingUploads: () => [...uploads.keys()],
+    storedParts,
     object: (k) => store.get(`${bucketPrefix}${k}`),
     cleanup,
   };

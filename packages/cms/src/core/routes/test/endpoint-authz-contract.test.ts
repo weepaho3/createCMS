@@ -210,6 +210,8 @@ const EXPECTED: Record<string, Record<string, Expected>> = {
     setFocalPoint: { permissionResource: 'media', operation: 'update' },
     downloadIntent: { permissionResource: 'media', operation: 'read' },
     purgeAssets: { permissionResource: 'media', operation: 'purge' },
+    signUploadParts: { permissionResource: 'media', operation: 'create' },
+    listUploadParts: { permissionResource: 'media', operation: 'create' },
     setProvenance: { permissionResource: 'media', operation: 'update' },
     restoreAssets: { permissionResource: 'media', operation: 'update' },
     batchAssets: { permissionResource: 'media', operation: 'update' },

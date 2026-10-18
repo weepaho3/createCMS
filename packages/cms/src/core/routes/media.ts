@@ -43,6 +43,14 @@ import { readImageDimensions } from '../media/dimensions';
 import { normalizeDisplayName } from '../media/display-name';
 import { emitMediaEvents } from '../media/events';
 import {
+  MAX_PARTS_PER_SIGN,
+  MULTIPART_THRESHOLD,
+  MULTIPART_TOKEN_SECONDS,
+  PART_URL_SECONDS,
+  partLength,
+  planParts,
+} from '../media/multipart-plan';
+import {
   assetObjectKey,
   cacheControlFor,
   purgeAssetPaths,
@@ -552,6 +560,95 @@ export function createMediaEndpoints(
         message: `A replace must keep the asset's type ${base(current)}; got ${base(next)}`,
       });
     }
+  }
+
+  type MultipartPayload = Extract<UploadTokenPayload, { kind: 'upload' }> & {
+    multipart: { uploadId: string; partSize: number; partCount: number };
+  };
+
+  /** The verified multipart token of this caller and host, or UPLOAD_TOKEN_INVALID. */
+  async function multipartPayload(
+    ctx: {
+      context: { userId?: string; scope: ResolvedScope };
+      headers?: Headers;
+      request?: Request;
+    },
+    token: string,
+  ): Promise<MultipartPayload> {
+    const payload = await verifyUploadToken(
+      await deriveUploadKey(mediaConfig),
+      token,
+    );
+    if (
+      !payload ||
+      payload.kind !== 'upload' ||
+      !payload.multipart ||
+      !isTokenBoundTo(payload, 'completeUpload', requestHost(ctx)) ||
+      payload.scope !==
+        (await scopeFingerprint(ctx.context.scope.assets?.insertColumns)) ||
+      payload.actor !== (ctx.context.userId ?? null)
+    ) {
+      throw new CMSError('UPLOAD_TOKEN_INVALID');
+    }
+    requireCapability(
+      getStorage(mediaConfig),
+      (c) => c.multipart.supported,
+      'multipart uploads',
+    );
+    return payload as MultipartPayload;
+  }
+
+  /**
+   * Assembles a multipart upload from the parts the storage holds: every
+   * planned part must be there with its exact length. Returns an error to
+   * report, or `null` once the object exists (also when an earlier
+   * completion already assembled it).
+   */
+  async function assembleMultipart(
+    payload: Extract<UploadTokenPayload, { kind: 'upload' }>,
+  ): Promise<APIError | null> {
+    const plan = payload.multipart;
+    if (!plan) return null;
+    const multipart = getStorage(mediaConfig).multipart!;
+    const parts: { partNumber: number; size: number; etag: string }[] = [];
+    let marker: number | null = null;
+    try {
+      do {
+        const page = await multipart.listParts(
+          payload.objectKey,
+          plan.uploadId,
+          {
+            marker,
+          },
+        );
+        parts.push(...page.parts);
+        marker = page.marker;
+      } while (marker !== null);
+    } catch (err) {
+      if (err instanceof StorageError && /NoSuchUpload/.test(err.message)) {
+        return null;
+      }
+      throw err;
+    }
+    parts.sort((a, b) => a.partNumber - b.partNumber);
+    const complete =
+      parts.length === plan.partCount &&
+      parts.every(
+        (part, i) =>
+          part.partNumber === i + 1 &&
+          part.size === partLength(payload.size, plan.partSize, i + 1),
+      );
+    if (!complete) {
+      return new CMSError('UPLOAD_NOT_FOUND', {
+        message: `The upload of "${payload.name}" holds ${parts.length} of ${plan.partCount} parts`,
+      });
+    }
+    await multipart.complete(
+      payload.objectKey,
+      plan.uploadId,
+      parts.map(({ partNumber, etag }) => ({ partNumber, etag })),
+    );
+    return null;
   }
 
   const uploadRateWindow = createRateWindow();
@@ -1636,14 +1733,37 @@ export function createMediaEndpoints(
             const sha256 = storage.capabilities.checksum.sha256Put
               ? p.file.sha256
               : undefined;
-            const signed = await storage.signPut(p.objectKey, {
-              contentType: p.file.type,
-              contentLength: p.file.size,
-              expiresIn: signedUrlExpiresIn,
-              acl: objectAcl,
-              cacheControl: cacheControlFor(mediaConfig, 'private'),
-              sha256,
-            });
+            const multipart =
+              p.file.size >
+                (mediaConfig.multipart?.threshold ?? MULTIPART_THRESHOLD) &&
+              storage.multipart &&
+              storage.capabilities.multipart.supported
+                ? {
+                    uploadId: await storage.multipart.create(p.objectKey, {
+                      contentType: p.file.type,
+                      acl: objectAcl,
+                      cacheControl: cacheControlFor(mediaConfig, 'private'),
+                    }),
+                    ...planParts(
+                      p.file.size,
+                      storage.capabilities.multipart.minPartSize,
+                      mediaConfig.multipart?.partSize,
+                    ),
+                  }
+                : undefined;
+            const signed: {
+              url: string | null;
+              headers: Record<string, string>;
+            } = multipart
+              ? { url: null, headers: {} }
+              : await storage.signPut(p.objectKey, {
+                  contentType: p.file.type,
+                  contentLength: p.file.size,
+                  expiresIn: signedUrlExpiresIn,
+                  acl: objectAcl,
+                  cacheControl: cacheControlFor(mediaConfig, 'private'),
+                  sha256,
+                });
             const token = await mintUploadToken(key, {
               kind: 'upload',
               aud: 'completeUpload',
@@ -1656,14 +1776,18 @@ export function createMediaEndpoints(
               folderId: folderId ?? null,
               variantOf: p.file.variantOf ?? null,
               variantKey: p.file.variantKey ?? null,
-              sha256: sha256 ?? null,
+              sha256: multipart ? null : (sha256 ?? null),
+              multipart,
               actor: actor ?? null,
               scope: scopeId,
-              exp,
+              exp: multipart
+                ? Date.now() + MULTIPART_TOKEN_SECONDS * 1000
+                : exp,
             });
             return {
               id: p.id,
               objectKey: p.objectKey,
+              multipart: multipart ?? null,
               // New assets are private, so there is no direct object URL.
               url: urls.object('private', p.objectKey),
               deliveryUrl: urls.delivery(p.id),
@@ -1675,6 +1799,109 @@ export function createMediaEndpoints(
         );
 
         return { uploads, expiresAt };
+      },
+    ),
+
+    /**
+     * Signs part URLs of a multipart upload (a `createSignedUpload` entry
+     * with `multipart`). Each URL is valid for 15 minutes and binds the
+     * part's exact length; part numbers above the planned `partCount` are
+     * refused.
+     *
+     * @param token - The entry's token from `createSignedUpload`.
+     * @param partNumbers - 1 to 50 part numbers (1-based).
+     * @returns `{ parts: { partNumber, url }[], expiresAt }`.
+     * @throws UPLOAD_TOKEN_INVALID if the token is not a multipart token of this caller.
+     * @example await cmsClient.media.signUploadParts({ token, partNumbers: [1, 2, 3] })
+     */
+    signUploadParts: createCMSEndpoint(
+      '/media/signUploadParts',
+      {
+        method: 'POST',
+        body: z.object({
+          token: z.string().min(1),
+          partNumbers: z
+            .array(z.number().int().min(1))
+            .min(1)
+            .max(MAX_PARTS_PER_SIGN),
+        }),
+        metadata: cmsMeta({}, { operation: 'create', ...MEDIA_META }),
+      },
+      async (ctx) => {
+        const payload = await multipartPayload(ctx, ctx.body.token);
+        const { uploadId, partSize, partCount } = payload.multipart;
+        const outOfRange = ctx.body.partNumbers.find((n) => n > partCount);
+        if (outOfRange !== undefined) {
+          throw new APIError(400, {
+            code: 'VALIDATION_ERROR',
+            message: `Part ${outOfRange} is beyond the ${partCount} planned parts`,
+          });
+        }
+        const storage = getStorage(mediaConfig);
+        const parts = await Promise.all(
+          [...new Set(ctx.body.partNumbers)].map(async (partNumber) => ({
+            partNumber,
+            url: await storage.multipart!.signPart(
+              payload.objectKey,
+              uploadId,
+              {
+                partNumber,
+                contentLength: partLength(payload.size, partSize, partNumber),
+                expiresIn: PART_URL_SECONDS,
+              },
+            ),
+          })),
+        );
+        return {
+          parts,
+          expiresAt: new Date(Date.now() + PART_URL_SECONDS * 1000),
+        };
+      },
+    ),
+
+    /**
+     * The parts a multipart upload already holds, for resuming without
+     * uploading a finished part again. Paged by part number.
+     *
+     * @param token - The entry's token from `createSignedUpload`.
+     * @param marker - The `marker` of the previous page.
+     * @returns `{ parts: { partNumber, size }[], marker }`; `marker` is `null` on the last page.
+     * @throws UPLOAD_TOKEN_INVALID if the token is not a multipart token of this caller.
+     * @throws UPLOAD_NOT_FOUND when the upload no longer exists (completed, aborted or expired).
+     */
+    listUploadParts: createCMSEndpoint(
+      '/media/listUploadParts',
+      {
+        method: 'POST',
+        body: z.object({
+          token: z.string().min(1),
+          marker: z.number().int().min(1).nullable().optional(),
+        }),
+        metadata: cmsMeta({}, { operation: 'create', ...MEDIA_META }),
+      },
+      async (ctx) => {
+        const payload = await multipartPayload(ctx, ctx.body.token);
+        try {
+          const page = await getStorage(mediaConfig).multipart!.listParts(
+            payload.objectKey,
+            payload.multipart.uploadId,
+            { marker: ctx.body.marker ?? null },
+          );
+          return {
+            parts: page.parts.map(({ partNumber, size }) => ({
+              partNumber,
+              size,
+            })),
+            marker: page.marker,
+          };
+        } catch (err) {
+          if (err instanceof StorageError && /NoSuchUpload/.test(err.message)) {
+            throw new CMSError('UPLOAD_NOT_FOUND', {
+              message: 'The multipart upload no longer exists',
+            });
+          }
+          throw err;
+        }
       },
     ),
 
@@ -1745,6 +1972,11 @@ export function createMediaEndpoints(
           }
 
           try {
+            const incomplete = await assembleMultipart(payload);
+            if (incomplete) {
+              fail(i, incomplete);
+              continue;
+            }
             const rejected = await inspectUploadedObject(payload);
             if (rejected) {
               fail(i, rejected);
@@ -2260,6 +2492,12 @@ export function createMediaEndpoints(
         if (committed) return { aborted: false, committed: true };
 
         try {
+          if (payload.kind === 'upload' && payload.multipart) {
+            await getStorage(mediaConfig).multipart?.abort(
+              payload.objectKey,
+              payload.multipart.uploadId,
+            );
+          }
           await getStorage(mediaConfig).delete(payload.objectKey);
         } catch (err) {
           // A missing object is the goal; anything else is left to the sweeper.

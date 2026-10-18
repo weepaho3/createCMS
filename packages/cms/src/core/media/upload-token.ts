@@ -36,6 +36,8 @@ export type UploadTokenPayload = TokenBinding &
         sha256?: string | null;
         /** Status of the new row; renditions take their original's. */
         status?: 'public' | 'private';
+        /** Set for a multipart upload (files above `MULTIPART_THRESHOLD`). */
+        multipart?: { uploadId: string; partSize: number; partCount: number };
         actor: string | null;
         scope: string;
         exp: number;
