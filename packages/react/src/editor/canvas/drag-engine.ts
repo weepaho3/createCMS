@@ -49,6 +49,17 @@ function focusBlock(host: HTMLElement, id: string): void {
   if (isHTMLElement(el)) el.focus({ preventScroll: true });
 }
 
+/** How long dropped blocks carry `data-dropped` (the drop flash). */
+export const DROP_FLASH_MS = 700;
+
+function flashDropped(host: HTMLElement, ids: readonly string[]): void {
+  const els = ids.flatMap((id) => blockElements(host, id));
+  for (const el of els) el.setAttribute('data-dropped', '');
+  setTimeout(() => {
+    for (const el of els) el.removeAttribute('data-dropped');
+  }, DROP_FLASH_MS);
+}
+
 function containsClientPoint(el: HTMLElement, client: Point): boolean {
   const rect = el.getBoundingClientRect();
   return (
@@ -235,7 +246,10 @@ export function createDragEngine(deps: {
       }
       if (landed.length > 0) {
         store.setSelection(landed);
-        if (dropHost) focusBlock(dropHost, landed[0]!);
+        if (dropHost) {
+          focusBlock(dropHost, landed[0]!);
+          flashDropped(dropHost, landed);
+        }
       }
       dnd.end();
       return landed;

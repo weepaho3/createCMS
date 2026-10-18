@@ -1,5 +1,6 @@
 import * as React from 'react';
 
+import type { SlotRef } from '../core/document';
 import type { EditorNodes } from '../core/store';
 import type {
   AddBlockState,
@@ -11,7 +12,8 @@ import type {
   OutlineItemState,
 } from './types';
 
-import { useRender } from '../../use-render';
+import { composeRefs, useRender } from '../../use-render';
+import { describeBlock } from '../announcer';
 import {
   useDocSelector,
   useEphemeralSelector,
@@ -21,6 +23,7 @@ import { useEditorContext } from '../context';
 import { canPlaceIn, DEFAULT_SLOT, slotsOf } from '../core/schema';
 import { useBlockActions } from '../hooks';
 import { insertPointFor } from './insert-point';
+import { instructionTarget, treeInstruction } from './outline-drag';
 
 const TREE_ITEM = '[role="treeitem"]';
 const TYPEAHEAD_MS = 500;
@@ -95,9 +98,206 @@ function depthOf(nodes: EditorNodes, id: string): number {
  * The outline's tree container: `role="tree"` named from the catalog (or
  * `aria-label`). Render the root's rows inside it.
  */
+const DRAG_START_PX = 5;
+const DWELL_MS = 500;
+const NO_ROW_DRAG =
+  'input, textarea, select, button, a[href], [contenteditable]:not([contenteditable="false"])';
+
+type OutlineIndicator = {
+  readonly kind: 'line' | 'box';
+  readonly top: number;
+  readonly left: number;
+  readonly height: number;
+};
+
+/** The row's own box, without the rows nested inside it. */
+function ownRect(row: HTMLElement): DOMRect {
+  const rect = row.getBoundingClientRect();
+  const nested = row.querySelector(TREE_ITEM);
+  if (!nested) return rect;
+  const bottom = nested.getBoundingClientRect().top;
+  return new DOMRect(rect.x, rect.y, rect.width, Math.max(0, bottom - rect.y));
+}
+
+/**
+ * The outline's tree container: `role="tree"` named from the catalog (or
+ * `aria-label`). Rows drag to reorder, nest (middle of a row) and move
+ * out (left of the last row of a group, by `indent` per level); a
+ * collapsed row opens after hovering it for 500 ms. Render the root's
+ * rows inside it.
+ */
 export function EditorOutline(props: EditorOutlineProps) {
-  const { render, ...rest } = props;
-  const { messages } = useEditorContext('Editor.Outline');
+  const { render, indent = 16, style, ref, ...rest } = props;
+  const { messages, store, schema, announcer } =
+    useEditorContext('Editor.Outline');
+  const treeRef = React.useRef<HTMLDivElement | null>(null);
+  const [indicator, setIndicator] = React.useState<OutlineIndicator | null>(
+    null,
+  );
+
+  const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    rest.onPointerDown?.(event);
+    if (event.defaultPrevented || event.button !== 0) return;
+    const tree = treeRef.current;
+    const target = event.target as Element;
+    const row = target.closest<HTMLElement>(TREE_ITEM);
+    if (!tree || !row || !tree.contains(row)) return;
+    if (target.closest(NO_ROW_DRAG)) return;
+    const draggedId = row.dataset.blockId;
+    if (!draggedId) return;
+    const doc = tree.ownerDocument;
+    const view = doc.defaultView;
+    const origin = { x: event.clientX, y: event.clientY };
+    let active = false;
+    let drop: { parent: SlotRef; index: number } | null = null;
+    let dwell: { id: string; timer: ReturnType<typeof setTimeout> } | null =
+      null;
+
+    const clearDwell = () => {
+      if (dwell) clearTimeout(dwell.timer);
+      dwell = null;
+    };
+
+    const onMove = (move: PointerEvent) => {
+      if (!active) {
+        if (
+          Math.hypot(move.clientX - origin.x, move.clientY - origin.y) <
+          DRAG_START_PX
+        ) {
+          return;
+        }
+        active = true;
+        row.setAttribute('data-dragging', '');
+      }
+      const over = doc
+        .elementFromPoint(move.clientX, move.clientY)
+        ?.closest<HTMLElement>(TREE_ITEM);
+      const overId = over?.dataset.blockId;
+      if (!over || !overId || !tree.contains(over)) {
+        drop = null;
+        clearDwell();
+        setIndicator(null);
+        return;
+      }
+      const { nodes } = store.getDoc();
+      const node = nodes[overId];
+      const parent = node?.parent ?? null;
+      const siblings = parent
+        ? (nodes[parent.id]?.slots[parent.slot] ?? [])
+        : [];
+      const level = Number(over.getAttribute('aria-level') ?? '1');
+      const rect = ownRect(over);
+      const treeRect = tree.getBoundingClientRect();
+      const instruction = treeInstruction(
+        { x: treeRect.x, y: rect.y, width: rect.width, height: rect.height },
+        { x: move.clientX, y: move.clientY },
+        {
+          level,
+          indent,
+          canMakeChild: node
+            ? Object.keys(slotsOf(schema, node.type)).length > 0
+            : false,
+          isLastInGroup: siblings[siblings.length - 1] === overId,
+        },
+      );
+      drop = instructionTarget(schema, nodes, overId, draggedId, instruction);
+      // A collapsed row opens when the pointer rests on its middle.
+      if (
+        instruction.type === 'make-child' &&
+        over.getAttribute('aria-expanded') === 'false'
+      ) {
+        if (dwell?.id !== overId) {
+          clearDwell();
+          dwell = {
+            id: overId,
+            timer: setTimeout(
+              () => store.setCollapsed(overId, false),
+              DWELL_MS,
+            ),
+          };
+        }
+      } else {
+        clearDwell();
+      }
+      if (!drop) {
+        setIndicator(null);
+        return;
+      }
+      const top = rect.y - treeRect.y + tree.scrollTop;
+      const depth =
+        instruction.type === 'make-child'
+          ? level
+          : instruction.type === 'reparent'
+            ? instruction.level - 1
+            : level - 1;
+      setIndicator(
+        instruction.type === 'make-child'
+          ? { kind: 'box', top, left: depth * indent, height: rect.height }
+          : {
+              kind: 'line',
+              top:
+                instruction.type === 'reorder-above'
+                  ? top
+                  : over.getBoundingClientRect().bottom -
+                    treeRect.y +
+                    tree.scrollTop,
+              left: depth * indent,
+              height: 2,
+            },
+      );
+    };
+
+    const end = (commit: boolean) => {
+      doc.removeEventListener('pointermove', onMove, true);
+      doc.removeEventListener('pointerup', onUp, true);
+      doc.removeEventListener('keydown', onKey, true);
+      view?.removeEventListener('blur', onBlur);
+      clearDwell();
+      row.removeAttribute('data-dragging');
+      setIndicator(null);
+      if (!commit || !active || !drop) return;
+      const { nodes, rootId } = store.getDoc();
+      const from = nodes[draggedId]?.parent;
+      const fromIndex = from
+        ? (nodes[from.id]?.slots[from.slot]?.indexOf(draggedId) ?? -1)
+        : -1;
+      const sameSlot =
+        from?.id === drop.parent.id && from?.slot === drop.parent.slot;
+      const index =
+        sameSlot && fromIndex >= 0 && fromIndex < drop.index
+          ? drop.index - 1
+          : drop.index;
+      if (!store.move(draggedId, { parent: drop.parent, index })) return;
+      store.select(draggedId);
+      const moved = nodes[draggedId];
+      const parentNode = nodes[drop.parent.id];
+      if (moved) {
+        announcer.announce(
+          messages.announce.dragDropped({
+            block: describeBlock(schema, moved),
+            position: index + 1,
+            parent:
+              drop.parent.id === rootId || !parentNode
+                ? messages.announce.root
+                : describeBlock(schema, parentNode).label,
+          }),
+        );
+      }
+    };
+    const onUp = () => end(true);
+    const onBlur = () => end(false);
+    const onKey = (key: KeyboardEvent) => {
+      if (key.key !== 'Escape' || !active) return;
+      key.preventDefault();
+      key.stopPropagation();
+      end(false);
+    };
+    doc.addEventListener('pointermove', onMove, true);
+    doc.addEventListener('pointerup', onUp, true);
+    doc.addEventListener('keydown', onKey, true);
+    view?.addEventListener('blur', onBlur);
+  };
+
   return useRender<'div'>({
     defaultTagName: 'div',
     props: {
@@ -105,6 +305,29 @@ export function EditorOutline(props: EditorOutlineProps) {
       'aria-label': messages.parts.outline,
       'aria-multiselectable': true,
       ...rest,
+      ref: composeRefs(treeRef, ref),
+      style: { position: 'relative', ...style },
+      onPointerDown,
+      children: (
+        <>
+          {rest.children}
+          {indicator ? (
+            <div
+              aria-hidden
+              data-editor-outline-drop-indicator=""
+              data-variant={indicator.kind}
+              style={{
+                position: 'absolute',
+                pointerEvents: 'none',
+                top: indicator.top,
+                left: indicator.left,
+                right: 0,
+                height: indicator.height,
+              }}
+            />
+          ) : null}
+        </>
+      ),
     },
     render,
   });

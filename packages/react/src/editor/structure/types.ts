@@ -27,7 +27,10 @@ export type EditorOutlineItemProps = UseRenderComponentProps<
 };
 
 /** Props of `Editor.Outline`, the `role="tree"` container. */
-export type EditorOutlineProps = UseRenderComponentProps<'div'>;
+export type EditorOutlineProps = UseRenderComponentProps<'div'> & {
+  /** Pixels per nesting level; dragging left by this much moves a block out one level. Default 16. */
+  indent?: number;
+};
 
 export type AddBlockState = { blockType: string };
 

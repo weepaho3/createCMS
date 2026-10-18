@@ -984,14 +984,78 @@ export function CanvasDropIndicator({
   return element;
 }
 
+type DropTargetRingState = {
+  editorDropTargetRing: boolean;
+  nested: boolean;
+};
+
+export type CanvasDropTargetRingProps = React.ComponentPropsWithRef<'div'> & {
+  render?: UseRenderComponentProps<'div', DropTargetRingState>['render'];
+};
+
+/**
+ * Outlines the container a drag would drop into (the target slot's
+ * element, else its block), in the overlay; style it with
+ * `data-editor-drop-target-ring` (`data-nested` is absent at the root).
+ */
+export function CanvasDropTargetRing({
+  render,
+  style,
+  ...rest
+}: CanvasDropTargetRingProps) {
+  const canvas = useCanvasContext('Canvas.DropTargetRing');
+  const session = useDragSessionSnapshot();
+  const target = useDropTargetSnapshot();
+  const measurer = canvas.measurer;
+  const rect = React.useSyncExternalStore(
+    measurer ? measurer.subscribe : subscribeNoop,
+    () =>
+      measurer && target
+        ? (measurer.getSlotRect(target.parent.id, target.parent.slot) ??
+          measurer.getBlockRect(target.parent.id))
+        : null,
+    () => null,
+  );
+  const element = useRender<'div', DropTargetRingState>({
+    defaultTagName: 'div',
+    render,
+    props: {
+      ...rest,
+      'aria-hidden': true,
+      style: {
+        position: 'absolute',
+        left: rect?.x,
+        top: rect?.y,
+        width: rect?.width,
+        height: rect?.height,
+        boxSizing: 'border-box',
+        pointerEvents: 'none',
+        ...style,
+      },
+    },
+    state: {
+      editorDropTargetRing: true,
+      nested: target?.nested ?? false,
+    },
+  });
+  if (session === null || target === null || rect === null) return null;
+  return element;
+}
+
 type DragPreviewState = {
   editorDragPreview: boolean;
+  /** Blocks the drag moves (a multi-selection shows as a stack). */
+  count: number;
   kind: 'new' | 'move';
 };
 
 export type CanvasDragPreviewProps = React.ComponentPropsWithRef<'div'> & {
   render?: UseRenderComponentProps<'div', DragPreviewState>['render'];
 };
+
+const PREVIEW_OFFSET = { x: 16, y: 8 } as const;
+/** The preview never grows past this square. */
+export const DRAG_PREVIEW_MAX_PX = 280;
 
 function applyPreviewTransform(
   node: HTMLElement,
@@ -1002,7 +1066,8 @@ function applyPreviewTransform(
     return;
   }
   node.style.visibility = '';
-  node.style.transform = `translate3d(${snap.x}px, ${snap.y}px, 0) translate(-50%, -50%)`;
+  // Beside the pointer, never under it: 16 px right, 8 px down.
+  node.style.transform = `translate3d(${snap.x + PREVIEW_OFFSET.x}px, ${snap.y + PREVIEW_OFFSET.y}px, 0)`;
 }
 
 function previewSnap(
@@ -1075,8 +1140,27 @@ export function CanvasDragPreview({
     };
   }, [canvas, dnd, host, pointer, session]);
 
-  const width = session?.kind === 'move' && moveRect ? moveRect.width : 80;
-  const height = session?.kind === 'move' && moveRect ? moveRect.height : 40;
+  const width = Math.min(
+    DRAG_PREVIEW_MAX_PX,
+    session?.kind === 'move' && moveRect ? moveRect.width : 80,
+  );
+  const height = Math.min(
+    DRAG_PREVIEW_MAX_PX,
+    session?.kind === 'move' && moveRect ? moveRect.height : 40,
+  );
+  const ctx = useEditorContext('Canvas.DragPreview');
+  const count = session?.kind === 'move' ? (session.ids?.length ?? 1) : 1;
+  const summary = React.useMemo(() => {
+    if (!session) return null;
+    if (session.kind === 'new') {
+      return {
+        label: ctx.schema.components[session.type]?.label ?? session.type,
+        excerpt: '',
+      };
+    }
+    const node = ctx.store.getDoc().nodes[session.id];
+    return node ? describeBlock(ctx.schema, node) : null;
+  }, [session, ctx.schema, ctx.store]);
 
   const element = useRender<'div', DragPreviewState>({
     defaultTagName: 'div',
@@ -1091,13 +1175,29 @@ export function CanvasDragPreview({
         top: 0,
         width,
         height,
+        overflow: 'hidden',
         pointerEvents: 'none',
         ...style,
       },
-      children,
+      // At most three things: the label, an excerpt, and the count of a
+      // multi-selection.
+      children:
+        children ??
+        (summary ? (
+          <>
+            <span data-editor-drag-preview-label="">{summary.label}</span>
+            {summary.excerpt ? (
+              <span data-editor-drag-preview-excerpt="">{summary.excerpt}</span>
+            ) : null}
+            {count > 1 ? (
+              <span data-editor-drag-preview-count="">{count}</span>
+            ) : null}
+          </>
+        ) : null),
     },
     state: {
       editorDragPreview: true,
+      count,
       kind: session?.kind ?? 'new',
     },
   });

@@ -100,6 +100,7 @@ describe('namespace shape', () => {
       'DragHandle',
       'PaletteItem',
       'DropIndicator',
+      'DropTargetRing',
       'DragPreview',
       'InlineText',
       'ReadonlySubtree',

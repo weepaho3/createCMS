@@ -16,38 +16,57 @@
   min-height: var(--editor-slot-min-empty-height, 128px);
 }
 
-[data-slot='editor-drop-indicator'][data-variant='line']::before,
-[data-slot='editor-drop-indicator'][data-variant='line']::after {
+/* One end mark at the start of the line, 4 px past the gap. */
+[data-slot='editor-drop-indicator'][data-variant='line']::before {
   content: '';
   position: absolute;
-  width: 0.375rem;
-  height: 0.375rem;
+  width: var(--editor-drop-mark, 8px);
+  height: var(--editor-drop-mark, 8px);
+  border: 2px solid var(--editor-drop);
   border-radius: 999px;
-  background: var(--editor-drop);
-}
-
-[data-slot='editor-drop-indicator'][data-variant='line'][data-orientation='vertical']::before {
-  top: 50%;
-  left: 0;
-  transform: translate(-50%, -50%);
-}
-
-[data-slot='editor-drop-indicator'][data-variant='line'][data-orientation='vertical']::after {
-  top: 50%;
-  right: 0;
-  transform: translate(50%, -50%);
+  background: var(--background, #fff);
+  box-sizing: border-box;
 }
 
 [data-slot='editor-drop-indicator'][data-variant='line'][data-orientation='horizontal']::before {
-  top: 0;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  top: 50%;
+  left: -4px;
+  transform: translateY(-50%);
 }
 
-[data-slot='editor-drop-indicator'][data-variant='line'][data-orientation='horizontal']::after {
-  bottom: 0;
+[data-slot='editor-drop-indicator'][data-variant='line'][data-orientation='vertical']::before {
   left: 50%;
-  transform: translate(-50%, 50%);
+  top: -4px;
+  transform: translateX(-50%);
+}
+
+/* The container a drag drops into. */
+[data-editor-drop-target-ring][data-nested] {
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--editor-drop) 8%, transparent);
+  animation: editor-drop-target 350ms cubic-bezier(0.15, 1, 0.3, 1);
+}
+
+@keyframes editor-drop-target {
+  from {
+    background: transparent;
+  }
+}
+
+/* The dragged block stays in place, dimmed. */
+[data-editor-canvas] [data-editor-block][data-dragging] {
+  opacity: 0.4;
+}
+
+/* Dropped blocks flash once. */
+[data-editor-canvas] [data-editor-block][data-dropped] {
+  animation: editor-dropped 700ms cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+@keyframes editor-dropped {
+  from {
+    background-color: color-mix(in oklab, var(--editor-drop) 20%, transparent);
+  }
 }
 
 [data-slot='editor-selection-ring'],
@@ -59,7 +78,9 @@
   [data-slot='editor-selection-ring'],
   [data-slot='editor-hover-ring'],
   [data-slot='editor-drop-indicator'],
-  [data-slot='editor-block-toolbar'] {
+  [data-slot='editor-block-toolbar'],
+  [data-editor-drop-target-ring],
+  [data-editor-canvas] [data-editor-block][data-dropped] {
     animation: none !important;
     transition: none !important;
   }

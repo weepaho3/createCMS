@@ -10,6 +10,7 @@ import {
   CanvasDragHandle,
   CanvasDragPreview,
   CanvasDropIndicator,
+  CanvasDropTargetRing,
   CanvasPaletteItem,
 } from './dnd-parts';
 import { CanvasInlineText } from './inline-parts';
@@ -85,6 +86,7 @@ export type {
   CanvasDragHandleProps,
   CanvasDragPreviewProps,
   CanvasDropIndicatorProps,
+  CanvasDropTargetRingProps,
   CanvasPaletteItemProps,
 } from './dnd-parts';
 export type {
@@ -131,6 +133,7 @@ export const Canvas = {
   DragHandle: CanvasDragHandle,
   PaletteItem: CanvasPaletteItem,
   DropIndicator: CanvasDropIndicator,
+  DropTargetRing: CanvasDropTargetRing,
   DragPreview: CanvasDragPreview,
   InlineText: CanvasInlineText,
   ReadonlySubtree: CanvasReadonlySubtree,

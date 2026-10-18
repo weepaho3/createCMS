@@ -260,3 +260,62 @@ describe('files dropped from the desktop', () => {
     });
   });
 });
+
+describe('drop feedback', () => {
+  it('overlay-only feedback: ring, preview with count, flash; block markup untouched', async () => {
+    const { host, store } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.DragHandle blockId="c1">grip</Canvas.DragHandle>
+        <Canvas.DropIndicator />
+        <Canvas.DropTargetRing />
+        <Canvas.DragPreview />
+      </Canvas.Overlay>,
+      {
+        schema: insertStackSchema,
+        tree: sixCells(),
+        components: columnStackBlocks,
+      },
+    );
+    const c6 = host.querySelector('[data-editor-block="c6"]')!;
+    await waitForLayout(c6);
+    act(() => store.setSelection(['c1', 'c3']));
+    const blocks = [...host.querySelectorAll('[data-editor-block]')];
+    const inserted: Node[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const record of records) inserted.push(...record.addedNodes);
+    });
+    for (const block of blocks)
+      observer.observe(block, { childList: true, subtree: true });
+    const handle = host.querySelector('[data-editor-drag-handle]')!;
+    const from = center(handle.getBoundingClientRect());
+    const r6 = rectOf(c6);
+    const to = { x: r6.x + r6.width / 2, y: r6.y + r6.height - 2 };
+    dispatchPointer(handle, 'pointerdown', from);
+    dispatchPointer(handle, 'pointermove', { x: from.x + 6, y: from.y + 6 });
+    dispatchPointer(handle, 'pointermove', to);
+    await waitFor(() => {
+      expect(
+        host.querySelector('[data-editor-drop-target-ring]'),
+      ).not.toBeNull();
+      expect(
+        host.querySelector('[data-editor-drag-preview-count]')?.textContent,
+      ).toBe('2');
+    });
+    expect(
+      host.querySelector('[data-editor-drag-preview-label]')?.textContent,
+    ).toBe('Cell');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    observer.disconnect();
+    expect(inserted).toEqual([]);
+    dispatchPointer(handle, 'pointerup', to);
+    await waitFor(() => {
+      expect(
+        host.querySelectorAll('[data-editor-block][data-dropped]'),
+      ).toHaveLength(2);
+    });
+    await waitFor(
+      () => expect(host.querySelector('[data-dropped]')).toBeNull(),
+      { timeout: 2000 },
+    );
+  });
+});
