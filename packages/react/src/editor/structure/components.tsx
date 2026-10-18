@@ -20,7 +20,12 @@ import {
   useSessionSelector,
 } from '../binding';
 import { useEditorContext } from '../context';
-import { canPlaceIn, DEFAULT_SLOT, slotsOf } from '../core/schema';
+import {
+  canPlaceIn,
+  DEFAULT_SLOT,
+  isSelfOrDescendant,
+  slotsOf,
+} from '../core/schema';
 import { useBlockActions } from '../hooks';
 import { insertPointFor } from './insert-point';
 import { instructionTarget, treeInstruction } from './outline-drag';
@@ -126,8 +131,17 @@ function ownRect(row: HTMLElement): DOMRect {
  * collapsed row opens after hovering it for 500 ms. Render the root's
  * rows inside it.
  */
+/** Navigation over a flat outline's rows, for rows that are not mounted. */
+type OutlineNav = {
+  readonly rows: readonly string[];
+  readonly reveal: ((id: string) => void) | undefined;
+  readonly tree: React.RefObject<HTMLDivElement | null>;
+};
+
+const OutlineNavContext = React.createContext<OutlineNav | null>(null);
+
 export function EditorOutline(props: EditorOutlineProps) {
-  const { render, indent = 16, style, ref, ...rest } = props;
+  const { render, indent = 16, style, ref, rows, reveal, ...rest } = props;
   const { messages, store, schema, announcer } =
     useEditorContext('Editor.Outline');
   const treeRef = React.useRef<HTMLDivElement | null>(null);
@@ -298,7 +312,12 @@ export function EditorOutline(props: EditorOutlineProps) {
     view?.addEventListener('blur', onBlur);
   };
 
-  return useRender<'div'>({
+  const nav = React.useMemo<OutlineNav | null>(
+    () => (rows ? { rows, reveal, tree: treeRef } : null),
+    [rows, reveal],
+  );
+
+  const tree = useRender<'div'>({
     defaultTagName: 'div',
     props: {
       role: 'tree',
@@ -331,6 +350,9 @@ export function EditorOutline(props: EditorOutlineProps) {
     },
     render,
   });
+  return (
+    <OutlineNavContext.Provider value={nav}>{tree}</OutlineNavContext.Provider>
+  );
 }
 
 export function EditorOutlineItem(props: EditorOutlineItemProps) {
@@ -425,11 +447,32 @@ export function EditorOutlineItem(props: EditorOutlineItemProps) {
     el.scrollIntoView?.({ block: 'nearest' });
   }, [primary]);
 
+  const nav = React.useContext(OutlineNavContext);
   const land = (target: HTMLElement | null | undefined) => {
     const targetId = target?.dataset.blockId;
     if (!target || !targetId) return;
     ctx.store.select(targetId);
     target.focus();
+  };
+  /** Flat outlines: select `id`, scroll it in, focus its row once mounted. */
+  const landId = (id: string | undefined) => {
+    if (!id || !nav) return;
+    ctx.store.select(id);
+    nav.reveal?.(id);
+    let tries = 0;
+    const focus = () => {
+      const row = nav.tree.current?.querySelector<HTMLElement>(
+        `[role="treeitem"][data-block-id="${CSS.escape(id)}"]`,
+      );
+      if (row) row.focus();
+      else if ((tries += 1) < 10) requestAnimationFrame(focus);
+    };
+    focus();
+  };
+  /** Flat outlines: the visible row ids, with this row's index. */
+  const flat = () => {
+    const ids = nav?.rows ?? [];
+    return { ids, at: ids.indexOf(blockId) };
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -446,6 +489,11 @@ export function EditorOutlineItem(props: EditorOutlineItemProps) {
           const moved =
             event.key === 'ArrowUp' ? actions.moveUp() : actions.moveDown();
           if (moved) refocus.current = true;
+          return;
+        }
+        if (nav) {
+          const { ids, at } = flat();
+          landId(ids[event.key === 'ArrowUp' ? at - 1 : at + 1]);
           return;
         }
         const items = visibleItemsAround(el);
@@ -465,6 +513,17 @@ export function EditorOutlineItem(props: EditorOutlineItemProps) {
             ctx.store.setCollapsed(blockId, false);
             return;
           }
+          if (nav) {
+            const { ids, at } = flat();
+            const next = ids[at + 1];
+            if (
+              next &&
+              ctx.store.getDoc().nodes[next]?.parent?.id === blockId
+            ) {
+              landId(next);
+            }
+            return;
+          }
           const items = visibleItemsAround(el);
           const next = items[items.indexOf(el) + 1];
           if (next && el.contains(next)) land(next);
@@ -474,12 +533,23 @@ export function EditorOutlineItem(props: EditorOutlineItemProps) {
           ctx.store.setCollapsed(blockId, true);
           return;
         }
+        if (nav) {
+          const doc = ctx.store.getDoc();
+          const parent = doc.nodes[blockId]?.parent?.id;
+          if (parent && parent !== doc.rootId) landId(parent);
+          return;
+        }
         land(parentItemOf(el));
         return;
       }
       case 'Home':
       case 'End': {
         event.preventDefault();
+        if (nav) {
+          const { ids } = flat();
+          landId(event.key === 'Home' ? ids[0] : ids[ids.length - 1]);
+          return;
+        }
         const items = visibleItemsAround(el);
         land(event.key === 'Home' ? items[0] : items[items.length - 1]);
         return;
@@ -496,6 +566,19 @@ export function EditorOutlineItem(props: EditorOutlineItemProps) {
       case 'Backspace': {
         event.preventDefault();
         if (onDelete?.(blockId) === false) return;
+        if (nav) {
+          const { ids, at } = flat();
+          const nodes = ctx.store.getDoc().nodes;
+          const outside = (id: string) =>
+            !isSelfOrDescendant(nodes, blockId, id);
+          const next =
+            ids.slice(at + 1).find(outside) ??
+            ids.slice(0, at).reverse().find(outside);
+          if (!actions.remove()) return;
+          if (next) landId(next);
+          else ctx.store.select(null);
+          return;
+        }
         const neighbour = neighbourOf(el);
         const neighbourId = neighbour?.dataset.blockId ?? null;
         if (!actions.remove()) return;
@@ -518,6 +601,25 @@ export function EditorOutlineItem(props: EditorOutlineItemProps) {
           (last && now - last.at < TYPEAHEAD_MS ? last.text : '') +
           event.key.toLowerCase();
         typeahead.set(tree, { text, at: now });
+        if (nav) {
+          const { ids, at } = flat();
+          const doc = ctx.store.getDoc();
+          const start = text.length === 1 ? at + 1 : at;
+          const ordered = [...ids.slice(start), ...ids.slice(0, start)];
+          const match = ordered.find((id) => {
+            const node = doc.nodes[id];
+            return node
+              ? describeBlock(ctx.schema, node)
+                  .label.toLowerCase()
+                  .startsWith(text)
+              : false;
+          });
+          if (match) {
+            event.preventDefault();
+            landId(match);
+          }
+          return;
+        }
         const items = visibleItemsAround(el);
         const at = items.indexOf(el);
         // A repeated first letter cycles; a longer prefix keeps the match.

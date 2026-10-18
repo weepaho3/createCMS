@@ -30,6 +30,14 @@ export type EditorOutlineItemProps = UseRenderComponentProps<
 export type EditorOutlineProps = UseRenderComponentProps<'div'> & {
   /** Pixels per nesting level; dragging left by this much moves a block out one level. Default 16. */
   indent?: number;
+  /**
+   * Flat (virtualized) outlines: the block ids of every visible row in
+   * order (`useFlatOutline`). Keyboard navigation then follows this list
+   * instead of the rendered rows, so it reaches rows that are not mounted.
+   */
+  rows?: readonly string[];
+  /** Brings a row into view (scroll the virtualizer to it); with `rows`. */
+  reveal?: (id: string) => void;
 };
 
 export type AddBlockState = { blockType: string };

@@ -1,27 +1,34 @@
 'use client';
 
+// Plugins add UI through the named outlets (`Editor.Slot`): toolbar-start,
+// toolbar-end, block-toolbar, inspector-header, inspector-footer,
+// palette-footer, outline-row-actions and status-bar.
+//
 // Composes shadcn Sidebar, Tooltip, Command, ToggleGroup, Tabs, Separator,
-// Kbd, Sheet, Button, Dialog, Input, and Collapsible. Do not replace those
-// primitives with custom chrome.
+// Kbd, Sheet, Button, Dialog and Input. Do not replace those primitives with
+// custom chrome.
+
+import type { FlatOutlineNodeRow } from '@createcms/react/editor';
 
 import {
   Editor,
   useAnyBlock,
   useBlockActions,
-  useChildren,
   useEditor,
   useEditorKeyboard,
+  useEditorStore,
+  useFlatOutline,
   useHistory,
   usePalette,
   useCommand,
+  useCommands,
   useSave,
   useSelection,
   useShortcutLabel,
-  useSlot,
-  useSlots,
 } from '@createcms/react/editor';
 import { Canvas } from '@createcms/react/editor/canvas';
 import { groupPaletteItems } from '@createcms/react/editor/core';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   BoxIcon,
   CopyIcon,
@@ -30,6 +37,7 @@ import {
   LayoutGridIcon,
   ListIcon,
   ChevronRightIcon,
+  CommandIcon,
   LoaderCircleIcon,
   MonitorIcon,
   PanelRightIcon,
@@ -46,11 +54,6 @@ import {
 import * as React from 'react';
 
 import { Button } from '@/components/ui/button';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
 import {
   Command,
   CommandDialog,
@@ -88,7 +91,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
   SidebarProvider,
   SidebarRail,
   SidebarTrigger,
@@ -123,6 +125,8 @@ type EditorChromeContextValue = {
   requireCommitMessage: boolean;
   addOpen: boolean;
   setAddOpen: (open: boolean) => void;
+  commandsOpen: boolean;
+  setCommandsOpen: (open: boolean) => void;
   saveOpen: boolean;
   setSaveOpen: (open: boolean) => void;
 };
@@ -207,11 +211,24 @@ function EditorProvider({
 }: EditorProviderProps) {
   const [device, setDevice] = React.useState<Device>('desktop');
   const [addOpen, setAddOpen] = React.useState(false);
+  const [commandsOpen, setCommandsOpen] = React.useState(false);
   const [saveOpen, setSaveOpen] = React.useState(false);
   const scopeRef = React.useRef<HTMLDivElement | null>(null);
   const { dirty, saving, save } = useSave();
+  const store = useEditorStore();
 
   useEditorKeyboard(scopeRef);
+
+  // Mod+K and `/` run the `ui.commandPalette` and `ui.quickInsert` commands,
+  // so rebinding them in the editor's shortcuts moves these dialogs too.
+  React.useEffect(
+    () =>
+      store.on('ui', ({ action }) => {
+        if (action === 'commandPalette') setCommandsOpen(true);
+        if (action === 'quickInsert' && mode === 'canvas') setAddOpen(true);
+      }),
+    [store, mode],
+  );
 
   React.useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -225,30 +242,15 @@ function EditorProvider({
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey)) return;
-      const key = event.key.toLowerCase();
-      if (key === 's') {
-        event.preventDefault();
-        if (!dirty || saving) return;
-        if (requireCommitMessage) setSaveOpen(true);
-        else void save();
-        return;
-      }
-      if (key === 'k') {
-        if (mode === 'form') return;
-        const target = event.target;
-        if (
-          target instanceof HTMLElement &&
-          target.closest('input, textarea, select, [contenteditable="true"]')
-        ) {
-          return;
-        }
-        event.preventDefault();
-        setAddOpen(true);
-      }
+      if (event.key.toLowerCase() !== 's') return;
+      event.preventDefault();
+      if (!dirty || saving) return;
+      if (requireCommitMessage) setSaveOpen(true);
+      else void save();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [dirty, mode, requireCommitMessage, save, saving]);
+  }, [dirty, requireCommitMessage, save, saving]);
 
   return (
     <TooltipProvider>
@@ -275,6 +277,8 @@ function EditorProvider({
               requireCommitMessage,
               addOpen,
               setAddOpen,
+              commandsOpen,
+              setCommandsOpen,
               saveOpen,
               setSaveOpen,
             }}
@@ -288,6 +292,7 @@ function EditorProvider({
               {children}
             </div>
             <EditorAddBlockDialog />
+            <EditorCommandPalette />
             <EditorSaveDialog />
           </EditorChromeContext.Provider>
         </Canvas.Provider>
@@ -356,6 +361,67 @@ function EditorAddBlockDialog() {
   );
 }
 
+/** One command of the palette, disabled while it cannot run. */
+function CommandPaletteItem({
+  id,
+  onRun,
+}: {
+  id: string;
+  onRun: (run: () => void) => void;
+}) {
+  const command = useCommand(id);
+  if (!command) return null;
+  const label = command.label ?? id;
+  return (
+    <CommandItem
+      value={`${label} ${id}`}
+      disabled={!command.canExecute}
+      onSelect={() => onRun(() => command.run())}
+    >
+      <span className="flex-1 truncate">{label}</span>
+      {command.shortcutLabel ? <Kbd>{command.shortcutLabel}</Kbd> : null}
+    </CommandItem>
+  );
+}
+
+/** Every command of the editor (built-ins, then plugins), searchable. */
+function EditorCommandPalette() {
+  const { commandsOpen, setCommandsOpen } = useEditorChrome();
+  const commands = useCommands();
+  const ids = commands
+    .map((command) => command.id)
+    .filter((id) => id !== 'ui.commandPalette');
+
+  return (
+    <CommandDialog
+      open={commandsOpen}
+      onOpenChange={setCommandsOpen}
+      title="Commands"
+      description="Search and run an editor command"
+    >
+      <Command>
+        <CommandInput placeholder="Search commands…" />
+        <CommandList>
+          <CommandEmpty>No commands found.</CommandEmpty>
+          <CommandGroup heading="Commands">
+            {ids.map((id) => (
+              <CommandPaletteItem
+                key={id}
+                id={id}
+                onRun={(run) => {
+                  setCommandsOpen(false);
+                  // After the dialog closed: a command may open another one.
+                  queueMicrotask(run);
+                }}
+              />
+            ))}
+          </CommandGroup>
+        </CommandList>
+      </Command>
+    </CommandDialog>
+  );
+}
+
 function EditorSaveDialog() {
   const { requireCommitMessage, saveOpen, setSaveOpen } = useEditorChrome();
   const { saving, save } = useSave();
@@ -409,11 +475,14 @@ function EditorToolbar({
     mode,
     requireCommitMessage,
     setAddOpen,
+    setCommandsOpen,
     setSaveOpen,
   } = useEditorChrome();
   const { isMobile } = useSidebar();
   const undo = useCommand('history.undo');
   const redo = useCommand('history.redo');
+  const quickInsert = useCommand('ui.quickInsert');
+  const palette = useCommand('ui.commandPalette');
   const shortcutLabel = useShortcutLabel();
 
   const handleSave = () => {
@@ -434,6 +503,7 @@ function EditorToolbar({
       {...props}
     >
       {mode === 'form' ? null : <SidebarTrigger className="md:inline-flex" />}
+      <Editor.Slot name="toolbar-start" />
       <ToolbarHintButton
         label={undo?.label ?? 'Undo'}
         shortcut={undo?.shortcutLabel}
@@ -482,7 +552,7 @@ function EditorToolbar({
           <Separator orientation="vertical" className="mx-1 h-5" />
           <ToolbarHintButton
             label="Add block"
-            shortcut={shortcutLabel('Mod+k')}
+            shortcut={quickInsert?.shortcutLabel}
             onClick={() => setAddOpen(true)}
           >
             <PlusIcon />
@@ -490,6 +560,14 @@ function EditorToolbar({
         </>
       ) : null}
       <div className="ml-auto flex items-center gap-1">
+        <Editor.Slot name="toolbar-end" />
+        <ToolbarHintButton
+          label={palette?.label ?? 'Commands'}
+          shortcut={palette?.shortcutLabel}
+          onClick={() => setCommandsOpen(true)}
+        >
+          <CommandIcon />
+        </ToolbarHintButton>
         {mode === 'canvas' && isMobile ? (
           <Sheet>
             <SheetTrigger
@@ -580,125 +658,130 @@ function EditorPalette({ className, ...props }: React.ComponentProps<'div'>) {
             </SidebarMenu>
           </div>
         ))}
+        <Editor.Slot name="palette-footer" />
       </SidebarGroupContent>
     </SidebarGroup>
   );
 }
 
-function OutlineSlot({
-  blockId,
-  slot,
-  labelled,
+const OUTLINE_ROW_PX = 32;
+
+/** One block row: the APG tree item, a collapse toggle, icon and label. */
+function OutlineRow({
+  row,
+  start,
 }: {
-  blockId: string;
-  slot: string;
-  labelled: boolean;
+  row: FlatOutlineNodeRow;
+  start: number;
 }) {
-  const children = useSlot(blockId, slot);
-  const nodes = children.map((child) => (
-    <OutlineNode key={child.id} blockId={child.id} />
-  ));
-  if (!labelled) return nodes;
-  return (
-    <Editor.OutlineGroup blockId={blockId} slot={slot}>
-      <span
-        aria-hidden
-        className="text-muted-foreground block px-2 pt-1 text-xs"
-      >
-        {slot}
-      </span>
-      {nodes}
-    </Editor.OutlineGroup>
-  );
-}
-
-function OutlineNode({ blockId }: { blockId: string }) {
-  const slots = useSlots(blockId);
-  const block = useAnyBlock(blockId);
-  const selected = useSelection().selected === blockId;
+  const store = useEditorStore();
+  const selected = useSelection().selected === row.id;
   const palette = usePalette();
-  const [open, setOpen] = React.useState(true);
-  const hasChildren = Object.values(block?.slots ?? {}).some(
-    (ids) => ids.length > 0,
-  );
-  const labelled = slots.length > 1 || (slots[0] ?? 'children') !== 'children';
   const label =
-    palette.find((item) => item.type === block?.type)?.label ??
-    block?.type ??
-    blockId;
-  const Icon = blockTypeIcon(block?.type ?? '');
-
+    palette.find((item) => item.type === row.type)?.label ?? row.type;
+  const Icon = blockTypeIcon(row.type);
   return (
-    <Collapsible
-      open={open}
-      onOpenChange={setOpen}
-      className="group/collapsible"
+    <Editor.OutlineItem
+      blockId={row.id}
+      data-active={selected || undefined}
+      className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[active]:bg-sidebar-accent focus-visible:ring-sidebar-ring absolute left-0 flex w-full items-center gap-2 rounded-md pr-2 text-sm outline-none focus-visible:ring-2 data-[active]:font-medium"
+      style={{
+        top: 0,
+        height: OUTLINE_ROW_PX,
+        transform: `translateY(${start}px)`,
+        paddingLeft: 8 + (row.level - 1) * 12,
+      }}
     >
-      <SidebarMenuItem>
-        <SidebarMenuButton
-          isActive={selected}
-          tooltip={label}
-          className="h-auto items-stretch overflow-visible py-0"
-          render={
-            <Editor.OutlineItem
-              blockId={blockId}
-              aria-expanded={hasChildren ? open : undefined}
-            />
-          }
+      {row.hasChildren ? (
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-hidden
+          className="flex size-4 shrink-0 items-center justify-center"
+          onClick={(event) => {
+            event.stopPropagation();
+            store.setCollapsed(row.id, row.expanded);
+          }}
         >
-          <span className="flex h-8 w-full min-w-0 items-center gap-2">
-            {hasChildren ? (
-              <CollapsibleTrigger
-                className="pointer-events-auto size-4 shrink-0"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <ChevronRightIcon
-                  className={cn(
-                    'size-3.5 transition-transform',
-                    open && 'rotate-90',
-                  )}
-                />
-                <span className="sr-only">Toggle</span>
-              </CollapsibleTrigger>
-            ) : (
-              <span className="size-3.5 shrink-0" />
+          <ChevronRightIcon
+            className={cn(
+              'size-3.5 transition-transform',
+              row.expanded && 'rotate-90',
             )}
-            <Icon />
-            <span>{label}</span>
-          </span>
-          {hasChildren ? (
-            <CollapsibleContent className="w-full">
-              <SidebarMenuSub className="mx-0 mr-0 border-l-0 px-0 pr-0">
-                {slots.map((slot) => (
-                  <OutlineSlot
-                    key={slot}
-                    blockId={blockId}
-                    slot={slot}
-                    labelled={labelled}
-                  />
-                ))}
-              </SidebarMenuSub>
-            </CollapsibleContent>
-          ) : null}
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    </Collapsible>
+          />
+        </button>
+      ) : (
+        <span className="size-4 shrink-0" />
+      )}
+      <Icon className="size-4 shrink-0" />
+      <span className="flex-1 truncate">{label}</span>
+      <Editor.Slot name="outline-row-actions" props={{ blockId: row.id }} />
+    </Editor.OutlineItem>
   );
 }
 
+/**
+ * The block tree as a virtualized APG tree: only the rows in view mount,
+ * keyboard navigation reaches every row (`Editor.Outline rows`), rows drag
+ * to reorder and nest.
+ */
 function EditorOutline({ className, ...props }: React.ComponentProps<'div'>) {
-  const rootId = useEditor((state) => state.rootId);
-  const children = useChildren(rootId);
+  const rows = useFlatOutline();
+  const ids = React.useMemo(
+    () => rows.flatMap((row) => (row.kind === 'node' ? [row.id] : [])),
+    [rows],
+  );
+  const scrollRef = React.useRef<HTMLDivElement | null>(null);
+  // on purpose: the virtualizer's functions change every render; this
+  // component re-renders with it, nothing below memoizes them.
+  // oxlint-disable-next-line react/incompatible-library
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => OUTLINE_ROW_PX,
+    overscan: 8,
+  });
+  const reveal = React.useCallback(
+    (id: string) => {
+      const index = rows.findIndex((row) => row.id === id);
+      if (index >= 0) virtualizer.scrollToIndex(index, { align: 'auto' });
+    },
+    [rows, virtualizer],
+  );
 
   return (
     <SidebarGroup data-slot="editor-outline" className={className} {...props}>
       <SidebarGroupLabel>Outline</SidebarGroupLabel>
-      <SidebarGroupContent>
-        <SidebarMenu role="tree">
-          {children.map((child) => (
-            <OutlineNode key={child.id} blockId={child.id} />
-          ))}
-        </SidebarMenu>
+      <SidebarGroupContent
+        ref={scrollRef}
+        className="max-h-[50vh] overflow-y-auto"
+      >
+        <Editor.Outline
+          rows={ids}
+          reveal={reveal}
+          style={{ height: virtualizer.getTotalSize() }}
+        >
+          {virtualizer.getVirtualItems().map((item) => {
+            const row = rows[item.index]!;
+            return row.kind === 'node' ? (
+              <OutlineRow key={row.id} row={row} start={item.start} />
+            ) : (
+              <span
+                key={row.id}
+                aria-hidden
+                className="text-muted-foreground absolute left-0 flex w-full items-end pb-1 text-xs"
+                style={{
+                  top: 0,
+                  height: OUTLINE_ROW_PX,
+                  transform: `translateY(${item.start}px)`,
+                  paddingLeft: 8 + (row.level - 1) * 12,
+                }}
+              >
+                {row.slot}
+              </span>
+            );
+          })}
+        </Editor.Outline>
       </SidebarGroupContent>
     </SidebarGroup>
   );
@@ -731,6 +814,10 @@ function EditorInspector({ className, ...props }: React.ComponentProps<'div'>) {
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">
                   {label}
                 </span>
+                <Editor.Slot
+                  name="inspector-header"
+                  props={{ blockId: selected }}
+                />
                 {actions.parent !== null ? (
                   <div className="flex items-center gap-1">
                     <ToolbarHintButton
@@ -777,6 +864,15 @@ function EditorInspector({ className, ...props }: React.ComponentProps<'div'>) {
           <Form blockId={rootId} />
         </TabsContent>
       </Tabs>
+      <div
+        data-slot="editor-inspector-footer"
+        className="border-t p-3 empty:hidden"
+      >
+        <Editor.Slot
+          name="inspector-footer"
+          props={{ blockId: selected ?? rootId }}
+        />
+      </div>
     </div>
   );
 }
@@ -860,6 +956,12 @@ function EditorShell({
       <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
         <EditorToolbar />
         <EditorSurface>{children}</EditorSurface>
+        <footer
+          data-slot="editor-status-bar"
+          className="border-border text-muted-foreground flex h-8 shrink-0 items-center gap-2 border-t px-3 text-xs empty:hidden"
+        >
+          <Editor.Slot name="status-bar" />
+        </footer>
       </SidebarInset>
       {mode === 'canvas' ? <EditorRightSidebar /> : null}
     </EditorProvider>

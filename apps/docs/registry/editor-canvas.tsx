@@ -22,7 +22,7 @@ import {
 import { cn } from '@/lib/utils';
 
 const ringMotion =
-  'motion-safe:transition-[opacity] motion-safe:duration-150 motion-safe:ease-out motion-reduce:transition-none';
+  'motion-safe:transition-[opacity] motion-safe:duration-(--editor-duration) motion-safe:ease-out motion-reduce:transition-none';
 
 function Overlay({
   className,
@@ -153,6 +153,7 @@ function DefaultBlockToolbarActions() {
       <CanvasIconButton label="Delete" onClick={() => actions.remove()}>
         <Trash2Icon />
       </CanvasIconButton>
+      <Editor.Slot name="block-toolbar" props={{ blockId: selected }} />
       <Canvas.InlineRichTextToolbar>
         <Separator orientation="vertical" className="h-4" />
         <Editor.RichTextToolbar className="flex items-center gap-0.5">
@@ -273,7 +274,7 @@ function DragHandle({
     <Canvas.DragHandle
       data-slot="editor-drag-handle"
       className={cn(
-        'bg-background border-border pointer-events-auto cursor-grab rounded border p-1 select-none active:cursor-grabbing',
+        'bg-background border-border pointer-events-auto flex size-6 cursor-grab items-center justify-center rounded border select-none active:cursor-grabbing',
         className,
       )}
       {...props}

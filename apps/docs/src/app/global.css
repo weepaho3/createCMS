@@ -15,10 +15,25 @@
   --editor-ring: var(--ring);
   --editor-invalid: var(--destructive);
   --editor-muted: var(--muted-foreground);
-  --editor-selection: color-mix(in oklab, var(--primary) 55%, transparent);
-  --editor-hover: color-mix(in oklab, var(--muted-foreground) 40%, transparent);
+  --editor-accent: var(--primary);
+  --editor-accent-secondary: var(--muted-foreground);
+  --editor-selection: oklch(from var(--editor-accent) l c h / 0.7);
+  --editor-hover: color-mix(
+    in oklab,
+    var(--editor-accent-secondary) 40%,
+    transparent
+  );
+  --editor-hover-fill: color-mix(
+    in oklab,
+    var(--editor-accent) 12%,
+    transparent
+  );
   --editor-focus: var(--ring);
-  --editor-drop: var(--primary);
+  --editor-drop: var(--editor-accent);
+  --editor-slot-min-empty-height: 128px;
+  --editor-duration-fast: 50ms;
+  --editor-duration: 150ms;
+  --editor-duration-slow: 250ms;
   --media-selection: var(--ring);
   --media-drop: var(--primary);
 }
@@ -32,10 +47,25 @@
   --editor-ring: var(--ring);
   --editor-invalid: var(--destructive);
   --editor-muted: var(--muted-foreground);
-  --editor-selection: color-mix(in oklab, var(--primary) 55%, transparent);
-  --editor-hover: color-mix(in oklab, var(--muted-foreground) 40%, transparent);
+  --editor-accent: var(--primary);
+  --editor-accent-secondary: var(--muted-foreground);
+  --editor-selection: oklch(from var(--editor-accent) l c h / 0.7);
+  --editor-hover: color-mix(
+    in oklab,
+    var(--editor-accent-secondary) 40%,
+    transparent
+  );
+  --editor-hover-fill: color-mix(
+    in oklab,
+    var(--editor-accent) 12%,
+    transparent
+  );
   --editor-focus: var(--ring);
-  --editor-drop: var(--primary);
+  --editor-drop: var(--editor-accent);
+  --editor-slot-min-empty-height: 128px;
+  --editor-duration-fast: 50ms;
+  --editor-duration: 150ms;
+  --editor-duration-slow: 250ms;
   --media-selection: var(--ring);
   --media-drop: var(--primary);
 }
@@ -92,6 +122,9 @@ body {
   --color-editor-muted: var(--editor-muted);
   --color-editor-selection: var(--editor-selection);
   --color-editor-hover: var(--editor-hover);
+  --color-editor-hover-fill: var(--editor-hover-fill);
+  --color-editor-accent: var(--editor-accent);
+  --color-editor-accent-secondary: var(--editor-accent-secondary);
   --color-editor-focus: var(--editor-focus);
   --color-editor-drop: var(--editor-drop);
   --color-media-selection: var(--media-selection);

@@ -105,7 +105,9 @@ export function handleEditorKey(
  * Routes `keydown` on `doc` to the editor's shortcuts (`handleEditorKey`),
  * for keys whose target is inside `scope` (the whole document without
  * one). Bind it once per document: the host page and each same-origin
- * preview frame, whose key events never reach the host. Returns the unbind
+ * preview frame, whose key events never reach the host. A key the editor
+ * handled stops at the document, so a `window` hotkey on the same combo
+ * (an app's search on Mod+K) does not fire as well. Returns the unbind
  * function.
  */
 export function bindEditorKeyboard(
@@ -116,7 +118,7 @@ export function bindEditorKeyboard(
   const onKeyDown = (event: KeyboardEvent) => {
     const target = event.target;
     if (scope && (!isNode(target) || !scope.contains(target))) return;
-    handleEditorKey(store, event);
+    if (handleEditorKey(store, event)) event.stopPropagation();
   };
   doc.addEventListener('keydown', onKeyDown);
   return () => doc.removeEventListener('keydown', onKeyDown);

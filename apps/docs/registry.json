@@ -55,10 +55,17 @@
       ],
       "cssVars": {
         "theme": {
-          "editor-selection": "color-mix(in oklab, var(--primary) 55%, transparent)",
-          "editor-hover": "color-mix(in oklab, var(--muted-foreground) 40%, transparent)",
+          "editor-accent": "var(--primary)",
+          "editor-accent-secondary": "var(--muted-foreground)",
+          "editor-selection": "oklch(from var(--editor-accent) l c h / 0.7)",
+          "editor-hover": "color-mix(in oklab, var(--editor-accent-secondary) 40%, transparent)",
+          "editor-hover-fill": "color-mix(in oklab, var(--editor-accent) 12%, transparent)",
           "editor-focus": "var(--ring)",
-          "editor-drop": "var(--primary)"
+          "editor-drop": "var(--editor-accent)",
+          "editor-slot-min-empty-height": "128px",
+          "editor-duration-fast": "50ms",
+          "editor-duration": "150ms",
+          "editor-duration-slow": "250ms"
         }
       },
       "css": {
@@ -77,7 +84,11 @@
       "type": "registry:ui",
       "title": "Editor Shell",
       "description": "Sidebar-grade editor chrome with palette, outline, inspector, and toolbar. Use inside Editor.Root.",
-      "dependencies": ["@createcms/react", "lucide-react"],
+      "dependencies": [
+        "@createcms/react",
+        "lucide-react",
+        "@tanstack/react-virtual@3.14.21"
+      ],
       "registryDependencies": [
         "editor-form",
         "editor-canvas",
@@ -91,8 +102,7 @@
         "tabs",
         "separator",
         "kbd",
-        "sheet",
-        "collapsible"
+        "sheet"
       ],
       "files": [
         {

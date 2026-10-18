@@ -20,6 +20,7 @@
     "@radix-ui/react-collapsible": "^1.1.20",
     "@react-email/components": "^1.0.12",
     "@react-email/render": "^2.1.0",
+    "@tanstack/react-virtual": "3.14.21",
     "@tiptap/core": "3.32.0",
     "@tiptap/extension-link": "3.32.0",
     "@tiptap/extensions": "3.32.0",

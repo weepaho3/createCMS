@@ -9,14 +9,22 @@ export type EditorSlotProps = {
   fallback?: React.ReactNode;
   /** Passed to every contributed component. */
   props?: Readonly<Record<string, unknown>>;
+  /** The outlet's own content, rendered before the contributions. */
+  children?: React.ReactNode;
 };
 
 /**
- * A named outlet: renders each plugin's `slots[name]` component in plugin
- * order, so plugins add UI without forking the shell. Renders `fallback`
- * (default nothing) when no plugin contributes.
+ * A named outlet: renders `children`, then each plugin's `slots[name]`
+ * component in plugin order, so plugins add UI without forking the shell.
+ * Renders `fallback` (default nothing) in place of the contributions when
+ * no plugin contributes.
  */
-export function EditorSlot({ name, fallback = null, props }: EditorSlotProps) {
+export function EditorSlot({
+  name,
+  fallback = null,
+  props,
+  children,
+}: EditorSlotProps) {
   const ctx = useEditorContext('Editor.Slot');
   const parts = ctx.store.plugins.flatMap((plugin) => {
     const Component = plugin.slots?.[name] as
@@ -24,9 +32,10 @@ export function EditorSlot({ name, fallback = null, props }: EditorSlotProps) {
       | undefined;
     return Component ? [{ key: plugin.name, Component }] : [];
   });
-  if (parts.length === 0) return <>{fallback}</>;
   return (
     <>
+      {children}
+      {parts.length === 0 ? fallback : null}
       {parts.map(({ key, Component }) => (
         <Component key={key} {...props} />
       ))}

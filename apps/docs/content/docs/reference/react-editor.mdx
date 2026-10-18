@@ -118,7 +118,7 @@ also saves when the page is hidden.
 | `Editor.Preview`          | `div`                                           | `render` (required, document callback), `debounceMs`, div props                                                                            | `data-stale` while a version change is pending                                                   |
 | `Editor.FramePreview`     | `div` wrapping two iframes                      | `render` (required, async compiler), `debounceMs`, `selectable`, `resolveAnchor`, `onIssues`, `onError`, `sandbox`, `title`, div props. With `selectable`, a frame whose listeners do not run (WebKit without `allow-scripts`) takes clicks through a transparent shield in the host page (`data-editor-frame-shield`); its keys then stay in the host page. | `data-loading`, `data-stale`, `data-error`, `data-kind` (`html` or `blob`)                       |
 | `Editor.OutlineItem`      | `div` with `role="treeitem"`                    | `blockId` (required), `onDelete`, `render`, div props. Render the children only while `expanded` (render state). | `data-selected`, `data-depth`, `data-has-children`, `data-expanded`, `data-hovered`, `data-block-id`, `data-block-type` |
-| `Editor.Outline`          | `div` with `role="tree"`                        | `indent` (16), `render`, div props; named from the catalog (`parts.outline`), `aria-multiselectable`. Rows drag: the top or bottom quarter of a row reorders, its middle nests (a collapsed row opens after 500 ms), left of the last row of a group by whole indents moves out; invalid places show no indicator (`data-editor-outline-drop-indicator`, `data-variant` line or box) | none |
+| `Editor.Outline`          | `div` with `role="tree"`                        | `indent` (16), `rows` and `reveal` (flat, virtualized outlines: keyboard navigation follows `rows` and calls `reveal(id)` before focusing a row that is not mounted), `render`, div props; named from the catalog (`parts.outline`), `aria-multiselectable`. Rows drag: the top or bottom quarter of a row reorders, its middle nests (a collapsed row opens after 500 ms), left of the last row of a group by whole indents moves out; invalid places show no indicator (`data-editor-outline-drop-indicator`, `data-variant` line or box) | none |
 | `Editor.OutlineGroup`     | `div` with `role="group"`                       | `blockId` and `slot` (required), `render`, div props. Wraps one slot's rows; `aria-label` is the slot's `label`, else its name          |                                                                                                  |
 | `Editor.AddBlock`         | `button`                                        | `type` (required), `parentId`, `slot`, `index`, `render`, button props (`children` replaces the palette label). Disabled while `canPlaceIn` refuses the target | `data-block-type`                                                                                |
 | `Editor.LiveAnnouncer`    | `div` with `role="status"`                      | div props; visually hidden, `aria-live="polite"`, one per editor                                                                        | `data-editor-live-announcer`                                                                     |
@@ -128,7 +128,7 @@ also saves when the page is hidden.
 | `Editor.RichTextToolbar`  | `div` with `role="toolbar"`                    | `render`, div props; one tab stop, arrows move between buttons (APG toolbar); named from the catalog (`parts.richTextToolbar`). | `data-disabled` |
 | `Editor.RichTextToolbarButton` | `button`                                 | `mark` or `node` (+ `attrs`, e.g. `{ level: 2 }`), `render`, button props; `aria-pressed` while active, keeps the editor's focus, disabled for formatting the field does not allow; an active heading turns back into a paragraph. | `data-active`, `data-disabled` |
 | `Editor.ShortcutHelp`     | `div` with `role="dialog"`                      | `open`, `defaultOpen`, `onOpenChange`, `render`, div props; children replace the list. Opens on `ui.shortcutHelp` (`?`, `Mod+/`), Escape closes and returns focus. | `data-open` |
-| `Editor.Slot`             | none (fragment)                                 | `name` (required), `fallback`, `props`: renders each plugin's `slots[name]` in plugin order                                            | none                                                                                             |
+| `Editor.Slot`             | none (fragment)                                 | `name` (required), `fallback`, `props`, `children`: renders `children`, then each plugin's `slots[name]` in plugin order   | none                                                                                             |
 
 `Editor.Preview` subscribes to the store `version` and passes the raw store
 document (`getDocument()`) to `render` after a delay (default `PREVIEW_DEBOUNCE_MS`,
@@ -168,6 +168,7 @@ document (`getDocument()`) to `render` after a delay (default `PREVIEW_DEBOUNCE_
 | `useSection`         | `ResolvedSection \| null`                      | `(resolver, ref, overrides?)`: a `$ref` block's resolved section, `null` while loading. |
 | `useSectionOverrides`| `readonly SectionOverrideEntry[]`              | `(blockId, resolver)`: the section props its components expose, with the current override and `set(value)` (`undefined` removes it): what an inspector offers for a `$ref` block. |
 | `useMoveTargets`     | `{ targets, moveTo }`                          | `(blockId)`: every slot the block may move into (document order, with label, depth and count) and `moveTo(parent, index)`: the logic of a move-to dialog. |
+| `useFlatOutline`     | `readonly FlatOutlineRow[]`                    | `({ slotRows? })`: the visible outline rows in document order (blocks in collapsed blocks left out): `FlatOutlineNodeRow` (`id`, `type`, `level`, `posInSet`, `setSize`, `parentId`, `slot`, `hasChildren`, `expanded`) and, with `slotRows: 'labelled'` (default), `FlatOutlineSlotRow` labels for named slots. `flatOutlineRows(schema, nodes, rootId, collapsed, options)` is the pure form. |
 | `useShortcutList`    | `readonly ShortcutEntry[]`                     | Every bound command with its platform labels, for a custom help dialog or command palette. |
 | `useSave`            | `SaveApi`                                      | `{ status, dirty, saving, error, conflict, save }`.                                                                                                                                                                                                                                                                        |
 | `useSaveConflict`    | `SaveConflictApi \| null`                      | During a save conflict: `{ serverDoc, localDoc, reload(), overwrite(), copyMine() }`; `null` otherwise.                                                                                                                                                                                                                    |
@@ -178,6 +179,28 @@ document (`getDocument()`) to `render` after a delay (default `PREVIEW_DEBOUNCE_
 | `useMissingRequired` | `MissingRequiredField[]`                       | Every `required` property left empty across the document (blocks and root); memoised per `nodes` identity.                                                                                                                                                                                                                 |
 | `useFieldContext`    | `FieldContextValue`                            | The enclosing `Editor.Field`'s spec, value, `setValue`, ids, `errors`, flags; throws outside `Editor.Field`.                                                                                                                                                                                                               |
 | `useRichTextEditor`  | `UseRichTextEditorResult`                      | `(UseRichTextEditorOptions: value, schema, onChange, editable?, placeholder?, attributes?, caretFrom?, onFocus?, onBlur?)`: mounts `Editor.Root`'s rich text adapter into `ref`'s element; edits go to `onChange`, a value changed elsewhere (undo, remote) replaces the content. Returns `{ ref, handle, available, selectionVersion }` (`selectionVersion` changes with the selection, for toolbars). |
+
+## Virtualized outline
+
+For large documents render only the rows in view: `useFlatOutline()` lists
+the visible rows, a virtualizer picks the slice, and `Editor.Outline rows`
+(the block ids in order) with `reveal` keeps keyboard navigation (arrows,
+Home, End, Left to the parent, type-ahead, Delete) working across rows that
+are not mounted. Rows render flat, indented by their `level`.
+
+```tsx
+const rows = useFlatOutline();
+const ids = rows.flatMap((row) => (row.kind === 'node' ? [row.id] : []));
+const virtualizer = useVirtualizer({ count: rows.length, ... });
+
+<Editor.Outline
+  rows={ids}
+  reveal={(id) => virtualizer.scrollToIndex(rows.findIndex((r) => r.id === id))}
+  style={{ height: virtualizer.getTotalSize() }}
+>
+  {virtualizer.getVirtualItems().map((item) => /* Editor.OutlineItem */)}
+</Editor.Outline>
+```
 
 ## Rich text
 
@@ -268,7 +291,7 @@ Field helpers: `defaultFieldControls`, `emptyListElement`, `toDatetimeLocal`,
 | `EditorRootOwnStoreProps`     | `Editor.Root` creating its store from `schema` and `defaultValue`.                                                                                                    |
 | `EditorRootStoreProps`        | `Editor.Root` using an injected `store`.                                                                                                                              |
 | `EditorLiveAnnouncerProps`    | Props of `Editor.LiveAnnouncer`: div props.                                                                                                                           |
-| `EditorSlotProps`             | Props of `Editor.Slot`: `name`, `fallback?`, `props?`.                                                                                                                |
+| `EditorSlotProps`             | Props of `Editor.Slot`: `name`, `fallback?`, `props?`, `children?`.                                                                                                    |
 | `EditorContextValue`          | What `Editor.Root` shares with its parts (`schema`, `store`, `fields`, `registerScrollTarget`, `scrollTo`).                                                           |
 | `DocSelector`                 | A `useDocSelector` selector: `(state: DocState, store) => T`.                                                                                                         |
 | `SessionSelector`             | A `useSessionSelector` selector: `(state: SessionState, store) => T`.                                                                                                 |
@@ -316,6 +339,10 @@ Field helpers: `defaultFieldControls`, `emptyListElement`, `toDatetimeLocal`,
 | `EditorRichTextToolbarProps`  | Props of `Editor.RichTextToolbar`.                                                                                                                                     |
 | `EditorRichTextToolbarButtonProps` | Props of `Editor.RichTextToolbarButton`: `mark`, `node`, `attrs`, button props.                                                                                  |
 | `MoveToTarget`                | `{ parent, label, depth, count }` of `useMoveTargets`.                                                                                                                 |
+| `FlatOutlineRow` | A row of `useFlatOutline`: `FlatOutlineNodeRow` or `FlatOutlineSlotRow`. |
+| `FlatOutlineNodeRow` | A block row with its level, position and expansion. |
+| `FlatOutlineSlotRow` | A slot label row (`id` is `<parent id>:<slot>`). |
+| `FlatOutlineOptions` | `{ slotRows?: 'labelled' | 'none' }`. |
 | `RovingFocusOptions`          | `{ orientation?, loop?, dir? }` of `useRovingFocus`.                                                                                                                   |
 | `EditorAddBlockProps`         | Props of `Editor.AddBlock`: `type`, `parentId?`, `slot?`, `index?`, `render?`, button props.                                                                          |
 | `EditorOutlineGroupProps`     | Props of `Editor.OutlineGroup`: `blockId`, `slot`, `render?`, div props.                                                                                              |

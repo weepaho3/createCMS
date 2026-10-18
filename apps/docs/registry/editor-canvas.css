@@ -50,7 +50,8 @@
 [data-editor-drop-target-ring][data-nested] {
   border-radius: 4px;
   background: color-mix(in oklab, var(--editor-drop) 8%, transparent);
-  animation: editor-drop-target 350ms cubic-bezier(0.15, 1, 0.3, 1);
+  animation: editor-drop-target var(--editor-duration-slow, 250ms)
+    cubic-bezier(0.15, 1, 0.3, 1);
 }
 
 @keyframes editor-drop-target {
@@ -80,7 +81,7 @@
 [data-slot='editor-selection-ring'],
 [data-slot='editor-hover-ring'] {
   transition-property: opacity;
-  transition-duration: 100ms;
+  transition-duration: var(--editor-duration, 150ms);
   transition-timing-function: ease-out;
   border-radius: var(--el-radius, 0);
 }
@@ -138,5 +139,29 @@
   [data-editor-canvas] [data-editor-block][data-dropped] {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+/*
+ * Target sizes (WCAG 2.5.8): overlay buttons are at least 24 px; drag
+ * handles get a 44 px hit area around their icon, and every primary
+ * control grows to 44 px under a coarse pointer.
+ */
+[data-slot='editor-drag-handle'] {
+  position: relative;
+}
+
+[data-slot='editor-drag-handle']::after {
+  content: '';
+  position: absolute;
+  inset: -10px;
+}
+
+@media (pointer: coarse) {
+  [data-slot='editor-drag-handle'],
+  [data-slot='editor-insert-button'],
+  [data-slot='editor-block-toolbar'] button {
+    min-width: 44px;
+    min-height: 44px;
   }
 }

@@ -132,6 +132,13 @@ export type {
   OutlineItemState,
 } from './structure';
 export { insertPointFor, useMoveTargets } from './structure';
+export type {
+  FlatOutlineNodeRow,
+  FlatOutlineOptions,
+  FlatOutlineRow,
+  FlatOutlineSlotRow,
+} from './structure';
+export { flatOutlineRows, useFlatOutline } from './structure';
 export type { EditorMoveToDialogProps, MoveToTarget } from './structure';
 
 // React binding and untyped hooks.

@@ -172,7 +172,7 @@ The assembled `EditorShell` is a default composition of shadcn `Sidebar` (left p
 | `EditorProvider`  | `TooltipProvider` + `SidebarProvider` + `Canvas.Provider` + keyboard (⌘S, ⌘K, undo/redo)     | shadcn `sidebar`, `tooltip`                        |
 | `EditorToolbar`   | Icon buttons with `Tooltip` + `Kbd`, device `ToggleGroup` (canvas mode), save dirty-dot + spinner | `button`, `tooltip`, `kbd`, `toggle-group`, `separator` |
 | `EditorPalette`   | `SidebarGroup` of `Canvas.PaletteItem` rows with grip affordance                              | `sidebar`, `editor-canvas`                         |
-| `EditorOutline`   | Tree rows on `SidebarMenuButton` + `Editor.OutlineItem`, chevron collapse, type icon          | `sidebar`, `collapsible`                           |
+| `EditorOutline`   | Virtualized tree (`useFlatOutline` + `@tanstack/react-virtual`): `Editor.Outline` rows on `Editor.OutlineItem`, chevron collapse, type icon, slot labels; keyboard reaches every row | `sidebar`                                          |
 | `EditorInspector` | `Tabs` (Block / Page), empty state, sticky header with Duplicate / Delete                     | `tabs`, `editor-form`                              |
 | `EditorSurface`   | Scrolling canvas column, or a scrolling form column in `mode="form"`                          | none                                                |
 | `EditorShell`     | Default assembly. `mode="form"` hides palette, outline, inspector, and device toggles.        | all of the above                                   |
@@ -235,3 +235,66 @@ import {
 | `PaletteItem`   | Draggable palette row (used by `EditorPalette`)                      |
 | `DragPreview`   | Pointer-following preview during a drag                              |
 | `InlineText`    | Inline text editing glass                                            |
+
+## Theme tokens
+
+`editor-canvas` installs its colors and timings as CSS variables mapped onto
+your shadcn theme, so light and dark mode follow it. Change
+`--editor-accent` and every selection, hover fill and drop color follows.
+
+| Token | Default | Used for |
+| --- | --- | --- |
+| `--editor-accent` | `var(--primary)` | The base of selection, hover fill and drop colors. |
+| `--editor-accent-secondary` | `var(--muted-foreground)` | The base of hover rings. |
+| `--editor-selection` | `oklch(from var(--editor-accent) l c h / 0.7)` | Selection ring and chip. |
+| `--editor-hover` | `color-mix(in oklab, var(--editor-accent-secondary) 40%, transparent)` | Hover ring. |
+| `--editor-hover-fill` | `color-mix(in oklab, var(--editor-accent) 12%, transparent)` | Hovered rows and targets. |
+| `--editor-focus` | `var(--ring)` | Field ring. |
+| `--editor-drop` | `var(--editor-accent)` | Drop indicator, drop target ring, dropped flash. |
+| `--editor-slot-min-empty-height` | `128px` | Minimum height of an empty slot while editing. |
+| `--editor-duration-fast`, `--editor-duration`, `--editor-duration-slow` | `50ms`, `150ms`, `250ms` | Chrome transitions (off under reduced motion). |
+
+Overlay buttons are at least 24 by 24 px (WCAG 2.5.8); drag handles have a
+44 px hit area around their icon, and under a coarse pointer the handle,
+insert button and block toolbar buttons grow to 44 px.
+
+## Outlets for plugin UI
+
+The shell and the block toolbar render named `Editor.Slot` outlets, so a
+plugin adds a button, a panel or a status line without forking the shell:
+register a component under the outlet name in `defineEditorPlugin({ slots })`.
+
+| Outlet | Where | Props |
+| --- | --- | --- |
+| `toolbar-start` | Top toolbar, after the sidebar toggle | none |
+| `toolbar-end` | Top toolbar, before the command and save buttons | none |
+| `block-toolbar` | Block toolbar on the canvas, after the built-in actions | `blockId` |
+| `inspector-header` | Inspector header, next to the block name | `blockId` |
+| `inspector-footer` | Below the inspector tabs (hidden while empty) | `blockId` (the page root when nothing is selected) |
+| `palette-footer` | Below the palette groups | none |
+| `outline-row-actions` | End of each outline row | `blockId` |
+| `status-bar` | Bar below the canvas (hidden while empty) | none |
+
+```tsx
+const comments = defineEditorPlugin({
+  name: 'comments',
+  commands: {
+    'comments.open': { label: 'Open comments', run: (store) => openPanel() },
+  },
+  slots: {
+    'toolbar-end': function CommentsButton() {
+      const command = useCommand('comments.open');
+      return <Button onClick={() => command?.run()}>{command?.label}</Button>;
+    },
+  },
+});
+```
+
+## Command palette and quick insert
+
+Mod+K opens a command palette that lists every registered command, the
+built-ins and those of plugins, with its shortcut as shown on the user's
+platform (`⌘⇧Z` on Apple, `Ctrl+Shift+Z` elsewhere); commands that cannot
+run right now are disabled. `/` opens the add-block dialog. Both keys run
+the `ui.commandPalette` and `ui.quickInsert` commands, so rebinding those in
+the editor's shortcuts moves the dialogs with them.

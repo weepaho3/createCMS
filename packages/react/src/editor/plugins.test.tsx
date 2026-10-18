@@ -166,6 +166,26 @@ describe('plugins end to end', () => {
     ).toHaveLength(1);
   });
 
+  it("renders an outlet's own children before the contributions", () => {
+    const { container } = render(
+      <Editor.Root schema={schema} defaultValue={doc} plugins={[plugin]}>
+        <div data-testid="outlet">
+          <Editor.Slot name="block-toolbar">
+            <b data-testid="own">own</b>
+          </Editor.Slot>
+        </div>
+        <Editor.Slot name="status-bar" fallback={<i data-testid="none" />}>
+          <b data-testid="status">status</b>
+        </Editor.Slot>
+      </Editor.Root>,
+    );
+    const outlet = container.querySelector('[data-testid="outlet"]')!;
+    expect(outlet.firstElementChild?.getAttribute('data-testid')).toBe('own');
+    expect(outlet.querySelector('button')).not.toBeNull();
+    expect(container.querySelector('[data-testid="status"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="none"]')).not.toBeNull();
+  });
+
   it('runs a plugin shortcut', () => {
     const probe: { count: number } = { count: 0 };
     function Count() {
