@@ -6,6 +6,7 @@ export {
   EditorShell,
   EditorSurface,
   EditorToolbar,
+  useDeviceFrame,
   useEditorChrome,
 } from '../../registry/editor-shell';
 export type {

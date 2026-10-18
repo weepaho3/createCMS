@@ -51,7 +51,7 @@ import {
   SelectionRing,
 } from './editor-canvas';
 import { CmsSourcesProvider, cmsFields, FormSurface } from './editor-form';
-import { EditorShell, useEditorChrome } from './editor-shell';
+import { EditorShell, useDeviceFrame, useEditorChrome } from './editor-shell';
 
 const RESERVED_COLLECTIONS = new Set(['media', 'variables', 'templates']);
 
@@ -393,13 +393,13 @@ function CmsEditor({
               <FormSurface>{mode === 'form' ? children : null}</FormSurface>
             </React.Activity>
             <React.Activity mode={mode === 'form' ? 'hidden' : 'visible'}>
-              <Canvas.Root
+              <DeviceCanvas
                 components={components}
                 resolve={doc.resolve}
                 className="relative"
               >
                 <CanvasOverlays />
-              </Canvas.Root>
+              </DeviceCanvas>
             </React.Activity>
           </EditorShell>
           {mode === 'form' ? null : children}
@@ -407,6 +407,26 @@ function CmsEditor({
         <ConflictDialog onReloadDocument={retry} />
       </Editor.Root>
     </div>
+  );
+}
+
+/** `Canvas.Root` in a frame as wide as the shell's device toggle. */
+function DeviceCanvas(
+  props: Omit<React.ComponentProps<typeof Canvas.Root>, 'surface' | 'frame'>,
+) {
+  const frame = useDeviceFrame();
+  // A device frame narrower than the column sits centered in it.
+  return (
+    <Canvas.Root
+      surface="frame"
+      frame={frame}
+      {...props}
+      style={{
+        marginInline: 'auto',
+        maxWidth: frame.width === 'full' ? undefined : frame.width,
+        ...props.style,
+      }}
+    />
   );
 }
 

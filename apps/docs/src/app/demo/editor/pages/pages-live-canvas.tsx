@@ -23,7 +23,7 @@ import {
   SelectionRing,
 } from '@/components/editor-canvas';
 import { CmsSourcesProvider, cmsFields } from '@/components/editor-form';
-import { EditorShell } from '@/components/editor-shell';
+import { EditorShell, useDeviceFrame } from '@/components/editor-shell';
 import {
   Collapsible,
   CollapsibleContent,
@@ -53,6 +53,25 @@ function DocumentJson() {
   );
 }
 
+function DeviceCanvas(
+  props: Omit<React.ComponentProps<typeof Canvas.Root>, 'surface' | 'frame'>,
+) {
+  const frame = useDeviceFrame();
+  // A device frame narrower than the column sits centered in it.
+  return (
+    <Canvas.Root
+      surface="frame"
+      frame={frame}
+      {...props}
+      style={{
+        marginInline: 'auto',
+        maxWidth: frame.width === 'full' ? undefined : frame.width,
+        ...props.style,
+      }}
+    />
+  );
+}
+
 export function PagesLiveCanvas() {
   const sources = useDemoFieldSources();
   const { onChange, persistence } = useLocalDocument(PAGES_DOC);
@@ -68,7 +87,7 @@ export function PagesLiveCanvas() {
       >
         <CmsSourcesProvider sources={sources}>
           <EditorShell>
-            <Canvas.Root
+            <DeviceCanvas
               components={pagesComponents}
               style={{ position: 'relative' }}
             >
@@ -82,7 +101,7 @@ export function PagesLiveCanvas() {
                 <DragPreview />
                 <InlineText />
               </Overlay>
-            </Canvas.Root>
+            </DeviceCanvas>
           </EditorShell>
           <DocumentJson />
         </CmsSourcesProvider>

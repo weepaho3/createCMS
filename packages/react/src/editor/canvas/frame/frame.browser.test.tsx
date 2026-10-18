@@ -343,4 +343,44 @@ describe('frame size', () => {
     expect(hit).toBe(frame);
     expect(outer.querySelector('[data-editor-host-layer]')).not.toBeNull();
   });
+
+  it.each(['sticky', 'fixed'])(
+    'a %s block stays put in the frame and keeps its ring while it scrolls',
+    async (position) => {
+      const { frame, store } = renderFrame({
+        frame: {
+          styles: 'none',
+          width: 600,
+          height: 200,
+          scale: 1,
+          head: `<style>body { margin: 0 } [data-editor-block="h1"] { position: ${position} !important; top: 0; height: 30px; margin: 0; background: white; z-index: 1 } [data-editor-block="sec1"] { margin-top: 60px; height: 900px }</style>`,
+        },
+        overlay: (
+          <Canvas.Overlay>
+            <Canvas.SelectionRing data-testid="ring" />
+          </Canvas.Overlay>
+        ),
+      });
+      const canvas = await canvasIn(frame);
+      const view = frame.contentWindow!;
+      const block = canvas.querySelector('[data-editor-block="h1"]')!;
+      act(() => store().select('h1'));
+      const ring = () =>
+        canvas.ownerDocument.querySelector<HTMLElement>(
+          '[data-editor-selection-ring]',
+        );
+      await waitFor(() => expect(ring()).not.toBeNull());
+      view.scrollTo(0, 300);
+      await waitFor(() => expect(view.scrollY).toBeGreaterThan(200));
+      // The frame is the viewport: the block pins to its top edge.
+      expect(Math.abs(block.getBoundingClientRect().top)).toBeLessThan(1);
+      await waitFor(() => {
+        const a = ring()!.getBoundingClientRect();
+        const b = block.getBoundingClientRect();
+        expect(Math.abs(a.top - b.top)).toBeLessThan(1);
+        expect(Math.abs(a.left - b.left)).toBeLessThan(1);
+        expect(Math.abs(a.height - b.height)).toBeLessThan(1);
+      });
+    },
+  );
 });

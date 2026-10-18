@@ -1,9 +1,15 @@
-[data-editor-canvas] .sticky,
-[data-editor-canvas] .fixed {
+/*
+ * Opt-in for an inline canvas (no frame): sticky and fixed elements would
+ * pin to the editor window, and a backdrop filter would trap fixed
+ * descendants, so `editor-canvas-static` lays them out in flow. A frame
+ * surface needs none of this.
+ */
+[data-editor-canvas].editor-canvas-static .sticky,
+[data-editor-canvas].editor-canvas-static .fixed {
   position: static;
 }
 
-[data-editor-canvas] {
+[data-editor-canvas].editor-canvas-static {
   backdrop-filter: none;
 }
 

@@ -174,10 +174,12 @@ The assembled `EditorShell` is a default composition of shadcn `Sidebar` (left p
 | `EditorPalette`   | `SidebarGroup` of `Canvas.PaletteItem` rows with grip affordance                              | `sidebar`, `editor-canvas`                         |
 | `EditorOutline`   | Tree rows on `SidebarMenuButton` + `Editor.OutlineItem`, chevron collapse, type icon          | `sidebar`, `collapsible`                           |
 | `EditorInspector` | `Tabs` (Block / Page), empty state, sticky header with Duplicate / Delete                     | `tabs`, `editor-form`                              |
-| `EditorSurface`   | Device-width canvas column, or a scrolling form column in `mode="form"`                       | —                                                  |
+| `EditorSurface`   | Scrolling canvas column, or a scrolling form column in `mode="form"`                          | none                                                |
 | `EditorShell`     | Default assembly. `mode="form"` hides palette, outline, inspector, and device toggles.        | all of the above                                   |
 
-`useEditorChrome()` reads device preview, add-block dialog, and save-dialog state from `EditorProvider`.
+`useEditorChrome()` reads device preview, add-block dialog, and save-dialog state from `EditorProvider`. `useDeviceFrame()` returns the `frame` options for the chosen device (375, 768 or full width): pass them to `Canvas.Root surface="frame"` so media queries, sticky and fixed elements behave as on the site, as `editor-app` does.
+
+An inline `Canvas.Root` (no frame) has no viewport of its own: sticky and fixed elements pin to the editor window. Add the class `editor-canvas-static` to it to lay them out in flow (`editor-canvas.css`).
 
 Compose a custom layout from the same parts:
 

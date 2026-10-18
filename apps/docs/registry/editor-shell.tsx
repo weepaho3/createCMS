@@ -109,10 +109,11 @@ import { Form } from './editor-form';
 
 type Device = 'desktop' | 'tablet' | 'mobile';
 
-const deviceMaxWidth: Record<Device, string> = {
-  desktop: 'max-w-none',
-  tablet: 'max-w-[768px]',
-  mobile: 'max-w-[375px]',
+/** Frame width per device: media queries in the canvas see this width. */
+const deviceWidth: Record<Device, number | 'full'> = {
+  desktop: 'full',
+  tablet: 768,
+  mobile: 375,
 };
 
 type EditorChromeContextValue = {
@@ -785,8 +786,7 @@ function EditorSurface({
   children,
   ...props
 }: React.ComponentProps<'div'>) {
-  const { device, mode } = useEditorChrome();
-  const framed = mode === 'canvas' && device !== 'desktop';
+  const { mode } = useEditorChrome();
 
   return (
     <div
@@ -796,8 +796,6 @@ function EditorSurface({
         mode === 'form'
           ? 'flex flex-col overflow-hidden p-0'
           : 'overflow-auto p-3',
-        mode === 'canvas' && deviceMaxWidth[device],
-        framed && 'mx-auto w-full',
         className,
       )}
       {...props}
@@ -805,6 +803,17 @@ function EditorSurface({
       {children}
     </div>
   );
+}
+
+/**
+ * Frame options for `Canvas.Root surface="frame"` sized to the chosen
+ * device, so the page's breakpoints, sticky and fixed elements behave as
+ * on the site.
+ */
+function useDeviceFrame(): { width: number | 'full' } {
+  const { device } = useEditorChrome();
+  const width = deviceWidth[device];
+  return React.useMemo(() => ({ width }), [width]);
 }
 
 function EditorRightSidebar() {
@@ -865,6 +874,7 @@ export {
   EditorShell,
   EditorSurface,
   EditorToolbar,
+  useDeviceFrame,
   useEditorChrome,
 };
 export type { Device, EditorProviderProps, EditorShellProps };
