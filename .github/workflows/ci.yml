@@ -466,6 +466,11 @@ jobs:
       # `/editor/render` entry imports only `react` and has no directive.
       - name: Check React-free editor core
         run: node packages/react/scripts/check-core-dist.mjs
+      # Client entries carry 'use client', every React context exists once in
+      # dist (shared between /editor and /editor/canvas), and /editor and
+      # /editor/canvas never reach Tiptap, Yjs or happy-dom.
+      - name: Check editor subpaths
+        run: node packages/react/scripts/check-subpaths.mjs
       # Production bundles of the editor entries keep no dev warning text.
       - name: Check editor dev warnings are stripped
         run: bun packages/react/scripts/check-dev-warnings.mjs
