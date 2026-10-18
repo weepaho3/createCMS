@@ -1,0 +1,33 @@
+{
+  "$comment": "min+gzip bytes per entry, bundled alone with react and react-dom external. baseline: the size when last reviewed (a warning above +5%); budget: the hard limit.",
+  "entries": {
+    "editor/core": {
+      "baseline": 31218,
+      "budget": 34000
+    },
+    "editor": {
+      "baseline": 42912,
+      "budget": 47000
+    },
+    "editor/canvas": {
+      "baseline": 39965,
+      "budget": 44000
+    },
+    "editor/render": {
+      "baseline": 1597,
+      "budget": 2048
+    },
+    "editor/cms": {
+      "baseline": 47035,
+      "budget": 52000
+    },
+    "editor/richtext": {
+      "baseline": 139470,
+      "budget": 152000
+    },
+    "media": {
+      "baseline": 6456,
+      "budget": 7500
+    }
+  }
+}

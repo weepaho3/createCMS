@@ -7,7 +7,9 @@
 //   bundling its own copy;
 // - the import graphs of `/editor` and `/editor/canvas` never reach an
 //   optional peer (Tiptap, Yjs) or the server-only HTML parser, so an app
-//   without them builds and its bundle carries none of them.
+//   without them builds and its bundle carries none of them;
+// - no editor entry reaches a UI kit (Base UI, Radix, Floating UI): those
+//   belong to the copied registry layer, the package stays headless.
 // The React-free `/editor/core` and `/editor/render` entries are covered by
 // check-core-dist.mjs.
 import * as fs from 'node:fs';
@@ -29,6 +31,15 @@ const CLIENT_ENTRIES = [
 const DIRECTIVE_FREE_ENTRIES = ['editor/richtext/index.js'];
 const PEER_FREE_ENTRIES = ['editor/index.js', 'editor/canvas/index.js'];
 const FORBIDDEN = [/^@tiptap\//, /^yjs$/, /^y-protocols(\/|$)/, /^happy-dom$/];
+const HEADLESS_ENTRIES = [
+  'editor/index.js',
+  'editor/canvas/index.js',
+  'editor/cms/index.js',
+  'editor/core/index.js',
+  'editor/render/index.js',
+  'editor/richtext/index.js',
+];
+const UI_KITS = [/^@base-ui\//, /^@radix-ui\//, /^@floating-ui\//];
 
 const SPECIFIER =
   /(?:^|[\s;}])(?:import|export)\s[^'"]*?from\s*['"]([^'"]+)['"]|import\(\s*(?:\/\*[^*]*\*\/\s*)*['"]([^'"]+)['"]\s*\)|^\s*import\s*['"]([^'"]+)['"]/gm;
@@ -84,7 +95,9 @@ if (!declaredIn.has('EditorContext')) {
   problems.push('EditorContext not found in dist (pattern out of date?)');
 }
 
-for (const entry of PEER_FREE_ENTRIES) {
+/** Bare specifiers in the import graph of `entry`, with the importing file. */
+function bareImports(entry) {
+  const found = [];
   const seen = new Set();
   const queue = [path.join(DIST, entry)];
   while (queue.length > 0) {
@@ -96,11 +109,26 @@ for (const entry of PEER_FREE_ENTRIES) {
       const spec = match[1] ?? match[2] ?? match[3];
       if (spec.startsWith('.')) {
         queue.push(path.resolve(path.dirname(file), spec));
-      } else if (FORBIDDEN.some((pattern) => pattern.test(spec))) {
-        problems.push(
-          `${entry}: reaches "${spec}" via ${path.relative(DIST, file)}`,
-        );
+      } else {
+        found.push({ spec, file: path.relative(DIST, file) });
       }
+    }
+  }
+  return found;
+}
+
+for (const entry of HEADLESS_ENTRIES) {
+  for (const { spec, file } of bareImports(entry)) {
+    if (UI_KITS.some((pattern) => pattern.test(spec))) {
+      problems.push(`${entry}: reaches the UI kit "${spec}" via ${file}`);
+    }
+  }
+}
+
+for (const entry of PEER_FREE_ENTRIES) {
+  for (const { spec, file } of bareImports(entry)) {
+    if (FORBIDDEN.some((pattern) => pattern.test(spec))) {
+      problems.push(`${entry}: reaches "${spec}" via ${file}`);
     }
   }
 }
@@ -111,5 +139,5 @@ if (problems.length > 0) {
   process.exit(1);
 }
 console.log(
-  `check-subpaths: ok (${CLIENT_ENTRIES.length} client entries, ${declaredIn.size} contexts, ${PEER_FREE_ENTRIES.length} peer-free graphs)`,
+  `check-subpaths: ok (${CLIENT_ENTRIES.length} client entries, ${declaredIn.size} contexts, ${PEER_FREE_ENTRIES.length} peer-free graphs, ${HEADLESS_ENTRIES.length} headless graphs)`,
 );

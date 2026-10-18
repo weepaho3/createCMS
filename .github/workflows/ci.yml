@@ -485,10 +485,18 @@ jobs:
       - name: Check React-free editor core
         run: node packages/react/scripts/check-core-dist.mjs
       # Client entries carry 'use client', every React context exists once in
-      # dist (shared between /editor and /editor/canvas), and /editor and
-      # /editor/canvas never reach Tiptap, Yjs or happy-dom.
+      # dist (shared between /editor and /editor/canvas), /editor and
+      # /editor/canvas never reach Tiptap, Yjs or happy-dom, and no editor
+      # entry reaches Base UI, Radix or Floating UI.
       - name: Check editor subpaths
         run: node packages/react/scripts/check-subpaths.mjs
+      # The render entry evaluated under the react-server condition (the
+      # React build Server Components get).
+      - name: Check RSC rendering
+        run: node --conditions=react-server packages/react/scripts/check-rsc.mjs
+      # min+gzip per entry against packages/react/bundle-budgets.json.
+      - name: Check bundle budgets
+        run: bun packages/react/scripts/check-bundle-size.mjs
       # Production bundles of the editor entries keep no dev warning text.
       - name: Check editor dev warnings are stripped
         run: bun packages/react/scripts/check-dev-warnings.mjs
