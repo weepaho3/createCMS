@@ -1,0 +1,56 @@
+---
+title: Editor accessibility
+description: How keyboard, screen reader and touch users reach every editor action, and what to keep when you restyle the chrome.
+---
+
+Everything the editor does with a pointer it also does with the keyboard,
+and every drag has a single-pointer alternative (WCAG 2.5.7). The
+headless parts carry the roles, states and announcements; the registry
+chrome adds visible focus, contrast and target sizes. CI runs axe and
+scripted keyboard flows on `editor-app` in Chromium, Firefox and WebKit.
+
+## Keyboard map
+
+The shortcuts are commands: `useShortcutList()` lists them with labels for
+the user's platform, and `Editor.ShortcutHelp` (`?` or Mod+/) shows them.
+
+| Where           | Keys                                                                                             |
+| --------------- | ------------------------------------------------------------------------------------------------ |
+| Anywhere        | Mod+Z / Mod+Shift+Z undo and redo, Mod+K command palette, `/` add block (Mod+S saves in `editor-shell`). |
+| Selection       | Enter selects the first child, Escape or Shift+Enter the parent, Tab and Shift+Tab the next and previous block, Alt+Arrow moves, Mod+D duplicates, Delete removes, Mod+G wraps. |
+| Outline         | An APG tree: arrows move and expand, Home and End, typing jumps to a block, Delete removes.       |
+| Block toolbar   | Alt+F10 moves into it, arrows move between buttons, Escape returns to where focus was.           |
+| Drag handle     | Space picks the block up, arrows move it, Space or Enter drops, Escape or Tab cancels.           |
+
+## Moving blocks without dragging
+
+- **Keyboard move:** Space on a drag handle, then arrows; each step is
+  announced with the position and the parent.
+- **Toolbar buttons:** Move up and Move down on the block toolbar, or
+  Alt+ArrowUp and Alt+ArrowDown on the selection.
+- **Move to:** the toolbar's More menu (or the handle as a menu) opens
+  `Editor.MoveToDialog`, which lists every slot the block may go to.
+- **Phones:** the outline sheet shows move buttons on the selected row; the
+  bottom bar reaches add, outline and properties.
+
+## Announcements and errors
+
+`Editor.LiveAnnouncer` is a polite live region: inserts, moves and
+deletes, undo and redo, entering and leaving edit mode, and every step of
+a keyboard or pointer drag are announced from the message catalog
+(translatable through `Editor.Root messages`). When a save is blocked,
+`Editor.ErrorSummary` lists the issues and each link moves focus to the
+field.
+
+## When you restyle the chrome
+
+- Keep a visible focus style on every interactive part (`focus-visible`).
+- Keep targets at least 24 by 24 px, 44 px under a coarse pointer; the
+  registry's `editor-canvas.css` does this for the handle, the insert
+  button and the toolbar.
+- Keep text contrast at 4.5:1, also on highlighted rows (use
+  `CommandShortcut` in command lists, not muted text on a muted row).
+- Respect `prefers-reduced-motion`; the registry turns transitions off.
+
+Test with the [device runbook](https://github.com/weepaho3/createCMS/blob/main/packages/react/DEVICE-RUNBOOK.md):
+it lists the screen reader checks to run before a release.

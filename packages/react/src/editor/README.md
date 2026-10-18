@@ -543,7 +543,7 @@ Schema helpers and the store are the React-free subpath
 | `AdapterDocumentError`             | `{ kind, message }` of a failed load (`kind` from `EditorAdapterError`, else `unknown`).                                                                              |
 | `FlatOutlineNodeRow`               | A block row with its level, position and expansion.                                                                                                                   |
 | `FlatOutlineSlotRow`               | A slot label row (`id` is `<parent id>:<slot>`).                                                                                                                      |
-| `FlatOutlineOptions`               | `{ slotRows?: 'labelled'                                                                                                                                              | 'none' }`. |
+| `FlatOutlineOptions`               | `{ slotRows?: 'labelled' \| 'none' }`.                                                                                                                                |
 
 ## Data attributes
 

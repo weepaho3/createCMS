@@ -1,0 +1,128 @@
+---
+title: Connect your own backend
+description: Load and save editor documents through an EditorAdapter, starting from the in-memory adapter.
+---
+
+The editor does not know where documents live. A `PersistenceAdapter`
+loads and saves whole documents; an `EditorAdapter` adds optional field
+data and media uploads. `@createcms/react/editor/cms` is the adapter for a
+createCMS backend; this guide covers any other backend.
+
+## Start in memory
+
+`createMemoryAdapter` keeps documents in memory and behaves like a server:
+it versions every save and rejects a save against a stale version with a
+`conflict` error. Use it to build the editor UI before the backend exists:
+
+```tsx
+'use client';
+
+import { createMemoryAdapter } from '@createcms/react/editor/core';
+
+import { EditorApp } from '@/components/editor-app';
+
+const adapter = createMemoryAdapter({ home: homeDocument }, { latencyMs: 300 });
+
+export function PageEditor() {
+  return (
+    <EditorApp
+      adapter={adapter}
+      documentId="home"
+      baseVersion={adapter.version('home')}
+      schema={schema}
+      components={canvasComponents}
+    />
+  );
+}
+```
+
+`EditorApp` comes from the `editor-app` registry item ([Editor UI](/docs/guides/editor-ui)).
+The [in-memory demo](/demo/editor/app) runs exactly this.
+
+## Write the adapter
+
+Replace the memory adapter with one that talks to your API. `load` returns
+the document; `save` returns the new version and throws an
+`EditorAdapterError` whose `kind` the editor reacts to (`conflict` opens
+the conflict dialog, `validation` shows the field findings):
+
+```ts
+import type { EditorAdapter } from '@createcms/react/editor/core';
+
+import { EditorAdapterError } from '@createcms/react/editor/core';
+
+export function createApiAdapter(base: string): EditorAdapter {
+  return {
+    async load(id) {
+      const res = await fetch(`${base}/documents/${id}`);
+      if (res.status === 404) {
+        throw new EditorAdapterError('not-found', `No document ${id}`);
+      }
+      return res.json();
+    },
+    async save(id, doc, { baseVersion, message }) {
+      const res = await fetch(`${base}/documents/${id}`, {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+          ...(baseVersion ? { 'if-match': baseVersion } : {}),
+        },
+        body: JSON.stringify({ doc, message }),
+      });
+      if (res.status === 412) {
+        throw new EditorAdapterError('conflict', 'Changed on the server');
+      }
+      if (!res.ok) throw new EditorAdapterError('network', res.statusText);
+      return { version: res.headers.get('etag') ?? '' };
+    },
+  };
+}
+```
+
+The document is the editor's JSON (`EditorDocument`): store it as it is,
+or map it to your own format in `load` and `save`. `ctx.ops` lists the
+operations since the last save if your backend stores changes instead of
+snapshots.
+
+## Wire it without the registry app
+
+`useAdapterDocument` is what `EditorApp` uses. It loads the document and
+returns everything `Editor.Root` needs:
+
+```tsx
+import { Editor, useAdapterDocument } from '@createcms/react/editor';
+
+function MyEditor({ adapter }: { adapter: EditorAdapter }) {
+  const doc = useAdapterDocument({ adapter, id: 'home' });
+  if (doc.status === 'error') return <p role="alert">{doc.error?.message}</p>;
+  if (!doc.doc) return <p>Loading…</p>;
+  return (
+    <Editor.Root
+      key={doc.key}
+      schema={schema}
+      defaultValue={doc.doc}
+      persistence={doc.persistence}
+    >
+      {/* your chrome */}
+    </Editor.Root>
+  );
+}
+```
+
+Pass `baseVersion` when your `load` knows the stored version, so the first
+save already checks for conflicts. Autosave is on by default; pass
+`autosave: false` to save only on `save()`.
+
+## Optional adapter parts
+
+| Member             | Use                                                                                     |
+| ------------------ | --------------------------------------------------------------------------------------- |
+| `publish`          | Make a saved version live.                                                              |
+| `resolveReference` | Load a referenced document for display.                                                 |
+| `resolveField`     | Display resolvers per field kind (links to hrefs, variables filled in).                 |
+| `fieldSources`     | Data for field controls (assets, documents, variables).                                 |
+| `uploadMedia`      | Upload a file and return the `MediaValue` a media field stores.                         |
+| `canPlace`         | A server-side placement rule on top of the schema's.                                    |
+
+For a collaborative backend that syncs operations instead of documents,
+implement a `DocStore` instead: see [Write your own DocStore](/docs/guides/custom-doc-store).

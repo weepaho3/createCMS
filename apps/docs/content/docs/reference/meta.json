@@ -35,6 +35,7 @@
     "react-editor-canvas",
     "react-editor-cms",
     "react-editor-render",
+    "react-editor-richtext",
     "editor-errors",
     "react-media",
     "edge",
