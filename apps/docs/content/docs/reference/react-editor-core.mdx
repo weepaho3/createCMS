@@ -568,6 +568,19 @@ child's own slots follow the gap before it. With `movingId`, places inside
 that block are left out and its own slot counts it as gone. Keyboard drags
 step through this list; `useMoveTargets` groups it by slot.
 
+## Puck interop
+
+`fromPuckData(data, options)` turns Puck's `Data` (`PuckData`: `root`,
+`content` of `PuckComponentData`, legacy `zones`) into an editor document,
+for teams moving from Puck. `PuckInteropOptions`: `schema` (props named
+like a slot the schema declares become that slot's children), `rootSlot`
+(default `children`, where `content` goes), `genId` and `keepIds` (by
+default every node gets a fresh id, since Puck ids carry the type name),
+`schemaVersion`. Legacy zones keyed `"<id>:<zone>"` become slots of their
+component, `"root:<zone>"` slots of the root; `readOnly` flags are dropped.
+`toPuckData(doc, { rootSlot? })` writes the inverse: the root slot becomes
+`content`, other slots props holding the children, node ids `props.id`.
+
 ## Clipboard
 
 Blocks travel as a `ClipboardPayload` (`{ app: CLIPBOARD_APP, version:

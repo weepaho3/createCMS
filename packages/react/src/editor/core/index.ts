@@ -144,6 +144,14 @@ export type {
 } from './schema/json-schema';
 export { exportJsonSchema } from './schema/json-schema';
 
+// Interop: Puck's `Data` in and out (tree-shaken when unused).
+export type {
+  PuckComponentData,
+  PuckData,
+  PuckInteropOptions,
+} from './interop/puck';
+export { fromPuckData, toPuckData } from './interop/puck';
+
 // Rich text: ProseMirror (Tiptap) JSON values, validation, conversions.
 export type {
   HtmlToRichTextOptions,
