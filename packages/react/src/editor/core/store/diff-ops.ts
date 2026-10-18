@@ -1,6 +1,9 @@
-import type { DocState, EditorDocument, JsonValue, Op } from '../core';
+import type { EditorDocument, JsonValue, Op } from '../document';
+import type { DocState } from './types';
 
-import { applyOp, canonicalJson, serializeSubtree } from '../core';
+import { canonicalJson } from '../document';
+import { applyOp } from './ops';
+import { serializeSubtree } from './serde';
 
 const sameList = (a: readonly string[], b: readonly string[]) =>
   a.length === b.length && a.every((id, i) => id === b[i]);

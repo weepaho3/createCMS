@@ -14,8 +14,8 @@ import { richTextSchemaOf } from '../core/richtext/schema';
 import { useMessages } from '../messages';
 import { RichTextStatic } from '../render/rich-text';
 import { useRovingFocus } from '../roving';
-import { useFieldContext } from './context';
-import { useRichTextEditor } from './rich-text';
+import { FieldContext, useFieldContext } from './context';
+import { useRichTextEditor, useTextBinding } from './rich-text';
 
 /** What the toolbar parts read: the mounted editor and the field's schema. */
 export type RichTextFieldContextValue = {
@@ -73,7 +73,10 @@ function useRichTextView(props: RichTextViewProps) {
   if (props.required) attributes['aria-required'] = 'true';
   if (props.readOnly) attributes['aria-readonly'] = 'true';
   const editable = !props.readOnly && !props.disabled;
+  const field = React.useContext(FieldContext);
+  const binding = useTextBinding(field?.blockId, field?.name);
   const editor = useRichTextEditor({
+    binding,
     value: props.value,
     schema,
     onChange: props.onChange,

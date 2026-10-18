@@ -47,6 +47,7 @@ export type {
 } from './types';
 export type { ApplyResult } from './ops';
 export { applyOp } from './ops';
+export { diffOps } from './diff-ops';
 export type {
   BuiltinCommandPayloads,
   DetachPayload,

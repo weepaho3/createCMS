@@ -38,6 +38,7 @@ import {
   PlacementError,
   placementMiddleware,
 } from './commands';
+import { diffOps } from './diff-ops';
 import { createJsonDocStore, TxRejectedError } from './doc-store';
 import { createBlockId } from './id';
 import { applyOp } from './ops';
@@ -160,6 +161,16 @@ export function createEditorStore(
     });
   }
   const doc = docStore;
+  /** Nonzero while the store writes to `doc` itself. */
+  let writing = 0;
+  const own = <T>(fn: () => T): T => {
+    writing += 1;
+    try {
+      return fn();
+    } finally {
+      writing -= 1;
+    }
+  };
   const slotOrder = (type: string): readonly string[] =>
     Object.keys(slotsOf(schema, type));
 
@@ -337,6 +348,18 @@ export function createEditorStore(
     });
   };
 
+  // Changes the doc store received on its own (peers, a bound rich text
+  // editor) take the same path as the store's writes: session, data
+  // resolver, autosave and the `change` event.
+  let seen = doc.getSnapshot();
+  const unsubscribeReceived = doc.subscribe((_changes, origin) => {
+    const prev = seen;
+    seen = doc.getSnapshot();
+    if (writing > 0) return;
+    const ops = diffOps(prev, seen);
+    if (ops.length > 0) afterChange(ops, origin, null);
+  });
+
   let transactDepth = 0;
   let transactOps: Op[] = [];
   let remoteRejected: Op[] = [];
@@ -449,17 +472,19 @@ export function createEditorStore(
     const history = cmd.meta?.history;
     let invalidated: number;
     try {
-      const result = doc.transact(
-        (tx) => {
-          for (const op of ops) tx.apply(op);
-        },
-        {
-          origin,
-          history: history === 'ignore' ? 'ignore' : 'record',
-          mergeKey: cmd.meta?.mergeKey,
-          label: cmd.meta?.label,
-          selection: { before, after },
-        },
+      const result = own(() =>
+        doc.transact(
+          (tx) => {
+            for (const op of ops) tx.apply(op);
+          },
+          {
+            origin,
+            history: history === 'ignore' ? 'ignore' : 'record',
+            mergeKey: cmd.meta?.mergeKey,
+            label: cmd.meta?.label,
+            selection: { before, after },
+          },
+        ),
       );
       invalidated = result.invalidated;
     } catch (error) {
@@ -502,6 +527,7 @@ export function createEditorStore(
     plugins,
 
     getDoc: () => doc.getSnapshot(),
+    getTextBinding: (blockId, key) => doc.getText?.(blockId, key) ?? null,
     subscribeDoc(listener) {
       docListeners.add(listener);
       return () => {
@@ -534,7 +560,11 @@ export function createEditorStore(
         fn();
       } catch (error) {
         transactDepth = 0;
-        afterChange(doc.bail(mark), 'history', null);
+        afterChange(
+          own(() => doc.bail(mark)),
+          'history',
+          null,
+        );
         const err: EditorError = {
           kind: 'command',
           message: error instanceof Error ? error.message : String(error),
@@ -602,10 +632,12 @@ export function createEditorStore(
       });
       reportDiagnostics(diagnostics);
       if (diagnostics.length > 0) emit('diagnostics', { diagnostics });
-      doc.transact((tx) => tx.replaceDocument(next), {
-        origin: 'system',
-        history: 'ignore',
-      });
+      own(() =>
+        doc.transact((tx) => tx.replaceDocument(next), {
+          origin: 'system',
+          history: 'ignore',
+        }),
+      );
       doc.clearHistory();
       session.set({
         selection: NO_SELECTION,
@@ -679,7 +711,7 @@ export function createEditorStore(
     },
 
     undo() {
-      const step = doc.undo();
+      const step = own(() => doc.undo());
       if (!step) {
         session.set({
           history: { canUndo: doc.canUndo(), canRedo: doc.canRedo() },
@@ -691,7 +723,7 @@ export function createEditorStore(
       return true;
     },
     redo() {
-      const step = doc.redo();
+      const step = own(() => doc.redo());
       if (!step) {
         session.set({
           history: { canUndo: doc.canUndo(), canRedo: doc.canRedo() },
@@ -710,7 +742,7 @@ export function createEditorStore(
       });
     },
     bail(mark) {
-      const reverted = doc.bail(mark);
+      const reverted = own(() => doc.bail(mark));
       if (reverted.length > 0) {
         afterChange(reverted, 'history', null);
       } else {
@@ -791,6 +823,7 @@ export function createEditorStore(
       dataResolver.destroy();
       saveScheduler.destroy();
       unsubscribeDoc();
+      unsubscribeReceived();
       docListeners.clear();
       session.clear();
       ephemeral.clear();

@@ -18,8 +18,19 @@ import type {
   TxMeta,
 } from '../core';
 
-import { applyOp, createDocStoreCore, DEFAULT_SLOT, MERGE_MS } from '../core';
-import { diffOps } from './diff-ops';
+import {
+  applyOp,
+  createDocStoreCore,
+  DEFAULT_SLOT,
+  diffOps,
+  isRichTextDoc,
+  MERGE_MS,
+} from '../core';
+import {
+  fragmentToRichText,
+  sameRichText,
+  writeRichText,
+} from './rich-text-fragment';
 
 /**
  * Where a node sits: one atomic value, so concurrent moves of the same node
@@ -167,9 +178,14 @@ export function createYjsDocStore(
   /** The fresh (uncached) fields of one node; parent and slots come later. */
   function readNode(id: string, node: YNode) {
     const props = node.get('props') as Y.Map<JsonValue> | undefined;
+    const values = (props?.toJSON() ?? {}) as Record<string, JsonValue>;
+    const text = node.get('text') as Y.Map<Y.XmlFragment> | undefined;
+    text?.forEach((fragment, key) => {
+      values[key] = fragmentToRichText(fragment);
+    });
     return {
       type: node.get('type') as string,
-      props: (props?.toJSON() ?? {}) as Record<string, JsonValue>,
+      props: values,
       slotNames: (node.get('slots') as string[] | undefined) ?? [],
       v: node.get('v') as number | undefined,
       meta: node.get('meta') as NodeData['meta'] | undefined,
@@ -325,6 +341,15 @@ export function createYjsDocStore(
     return keyBetween(prev, next);
   }
 
+  /** A new fragment holding `value`. */
+  function fragmentOf(
+    value: Parameters<typeof writeRichText>[1],
+  ): Y.XmlFragment {
+    const fragment = new Y.XmlFragment();
+    writeRichText(fragment, value);
+    return fragment;
+  }
+
   /** Writes a nested subtree; the top node gets `placement`, children fresh keys. */
   function writeSubtree(
     node: NodeData,
@@ -335,9 +360,13 @@ export function createYjsDocStore(
     nodesMap.set(node.id, ynode);
     ynode.set('type', node.type);
     const props = new Y.Map<JsonValue>();
-    for (const [key, value] of Object.entries(node.props))
-      props.set(key, value);
+    const text = new Y.Map<Y.XmlFragment>();
+    for (const [key, value] of Object.entries(node.props)) {
+      if (isRichTextDoc(value)) text.set(key, fragmentOf(value));
+      else props.set(key, value);
+    }
     ynode.set('props', props);
+    ynode.set('text', text);
     ynode.set(
       'placement',
       parent && order !== null
@@ -418,11 +447,29 @@ export function createYjsDocStore(
         return;
       }
       case 'update': {
-        const props = nodesMap.get(op.id)?.get('props') as
-          | Y.Map<JsonValue>
-          | undefined;
-        if (!props) return;
+        const node = nodesMap.get(op.id);
+        const props = node?.get('props') as Y.Map<JsonValue> | undefined;
+        if (!node || !props) return;
+        let text = node.get('text') as Y.Map<Y.XmlFragment> | undefined;
         for (const [key, value] of Object.entries(op.patch)) {
+          const fragment = text?.get(key);
+          if (isRichTextDoc(value)) {
+            props.delete(key);
+            if (fragment) {
+              // A bound editor already wrote the same content.
+              if (!sameRichText(fragmentToRichText(fragment), value)) {
+                writeRichText(fragment, value);
+              }
+            } else {
+              if (!text) {
+                text = new Y.Map<Y.XmlFragment>();
+                node.set('text', text);
+              }
+              text.set(key, fragmentOf(value));
+            }
+            continue;
+          }
+          if (fragment) text?.delete(key);
           if (value === null) props.delete(key);
           else props.set(key, value);
         }
@@ -598,6 +645,9 @@ export function createYjsDocStore(
     stackItem.meta.set('after', pending.after);
   });
 
+  /** Origins of bound editors on this client: their writes are local edits. */
+  const bound = new Set<unknown>();
+
   const onAfterTransaction = (tr: Y.Transaction) => {
     if (tr.origin === local || tr.origin === untracked) {
       moved.clear();
@@ -609,7 +659,9 @@ export function createYjsDocStore(
         ? 'system'
         : tr.origin === undoManager
           ? 'history'
-          : 'remote';
+          : bound.has(tr.origin)
+            ? 'local'
+            : 'remote';
     core.receive(derive(core.getSnapshot().version + 1), origin);
     const candidates = [...moved];
     moved.clear();
@@ -706,6 +758,19 @@ export function createYjsDocStore(
     undo: () => replay(() => undoManager.undo(), 'before'),
     redo: () => replay(() => undoManager.redo(), 'after'),
     canUndo: () => undoManager.canUndo(),
+    getText(blockId, key) {
+      const fragment = (
+        nodesMap.get(blockId)?.get('text') as Y.Map<Y.XmlFragment> | undefined
+      )?.get(key);
+      if (!fragment) return null;
+      return {
+        fragment,
+        track(origin) {
+          bound.add(origin);
+          undoManager.trackedOrigins.add(origin);
+        },
+      };
+    },
     canRedo: () => undoManager.canRedo(),
     mark() {
       const id = nextMark++ as MarkId;

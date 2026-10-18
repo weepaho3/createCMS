@@ -1,6 +1,7 @@
 import * as React from 'react';
 
 import type {
+  RichTextBinding,
   RichTextHandle,
   RichTextSuggestionItem,
   RichTextSuggestionState,
@@ -29,6 +30,12 @@ export type UseRichTextEditorOptions = {
     char?: string;
     items: (query: string) => readonly RichTextSuggestionItem[];
   };
+  /**
+   * The shared text the editor edits in place of `value`
+   * (`useTextBinding`). A new binding applies once the editor has no focus,
+   * so typing is never remounted away.
+   */
+  binding?: RichTextBinding | null;
 };
 
 export type UseRichTextEditorResult = {
@@ -64,6 +71,14 @@ export function useRichTextEditor(
   React.useLayoutEffect(() => {
     latest.current = options;
   });
+  const [binding, setBinding] = React.useState(options.binding ?? null);
+  const [blurs, setBlurs] = React.useState(0);
+  const wanted = options.binding ?? null;
+  React.useEffect(() => {
+    if (wanted?.fragment === binding?.fragment) return;
+    if (el?.contains(el.ownerDocument.activeElement)) return;
+    setBinding(wanted);
+  }, [wanted, binding, el, blurs]);
 
   React.useEffect(() => {
     if (!el || !richText) return;
@@ -88,7 +103,11 @@ export function useRichTextEditor(
           }
         : undefined,
       onFocus: () => latest.current.onFocus?.(),
-      onBlur: () => latest.current.onBlur?.(),
+      onBlur: () => {
+        setBlurs((n) => n + 1);
+        latest.current.onBlur?.();
+      },
+      binding: binding ?? undefined,
     });
     emitted.current = current.value;
     setHandle(mounted);
@@ -96,7 +115,7 @@ export function useRichTextEditor(
       mounted.destroy();
       setHandle(null);
     };
-  }, [el, richText, suggests]);
+  }, [el, richText, suggests, binding]);
 
   // The editor keeps no history: undo and redo inside it run the store's
   // commands even where no editor keyboard binding covers the page.
@@ -134,4 +153,34 @@ export function useRichTextEditor(
     selectionVersion,
     suggestion,
   };
+}
+
+/**
+ * The shared text of a block's rich text prop (`store.getTextBinding`),
+ * `null` for a store without one. Follows the store: a text created or
+ * replaced elsewhere yields a new binding.
+ */
+export function useTextBinding(
+  blockId: string | undefined,
+  key: string | undefined,
+): RichTextBinding | null {
+  const { store } = useEditorContext('useTextBinding');
+  const read = React.useCallback(
+    () =>
+      blockId === undefined || key === undefined
+        ? null
+        : store.getTextBinding(blockId, key),
+    [store, blockId, key],
+  );
+  const [binding, setBinding] = React.useState(read);
+  React.useEffect(() => {
+    const sync = () =>
+      setBinding((prev) => {
+        const next = read();
+        return next?.fragment === prev?.fragment ? prev : next;
+      });
+    sync();
+    return store.subscribeDoc(sync);
+  }, [store, read]);
+  return binding;
 }

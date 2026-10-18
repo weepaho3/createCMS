@@ -9,6 +9,7 @@ import type {
 } from '../document';
 import type { Diagnostic } from '../load';
 import type { EditorPlugin } from '../plugin';
+import type { RichTextBinding } from '../richtext/adapter';
 import type { AnyEditorSchema, ValidationIssue } from '../schema';
 import type { EditorNodes } from './serde';
 
@@ -214,6 +215,12 @@ export type DocStore = {
     readonly past: readonly HistoryEntry[];
     readonly future: readonly HistoryEntry[];
   };
+  /**
+   * The shared text of a rich text prop, for collaborative stores that keep
+   * it as a text type; rich text editors bind to it. `null` (or no method)
+   * keeps the prop a plain value.
+   */
+  getText?(blockId: string, key: string): RichTextBinding | null;
 };
 
 export type CreateJsonDocStoreOptions = {
@@ -454,6 +461,8 @@ export type EditorStore = {
   readonly docStore: DocStore;
 
   getDoc(): DocState;
+  /** The document store's shared text of a rich text prop (`DocStore.getText`), or `null`. */
+  getTextBinding(blockId: string, key: string): RichTextBinding | null;
   subscribeDoc(listener: () => void): () => void;
   getSession(): SessionState;
   subscribeSession(listener: () => void): () => void;

@@ -112,6 +112,7 @@ export {
   toDatetimeLocal,
   useFieldContext,
   useRichTextEditor,
+  useTextBinding,
 } from './field';
 
 // Rich text: the static renderer (no editor, no raw HTML).

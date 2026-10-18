@@ -33,6 +33,7 @@ Every block is one `Y.Map` in the `Y.Doc`'s `nodes` map:
 | `type`      | The block type.                                                                                         |
 | `placement` | `YjsPlacement`: `{ parentId, slot, order }`, written as one value. `null` for the root.                 |
 | `props`     | A `Y.Map` of the props; concurrent writes to the same prop resolve by last writer wins, per key.        |
+| `text`      | A `Y.Map` of `Y.XmlFragment`s, one per rich text prop (see below).                                      |
 | `slots`     | The slot names the block holds (empty slots included).                                                  |
 | `v`, `meta` | As in the document.                                                                                     |
 
@@ -68,6 +69,36 @@ conflict with are dropped.
 The repair rule is a reasoned conclusion, not a proven algorithm: it is
 tested against every interleaving of two and three blocks and against
 random concurrent moves on three peers, but not yet in production.
+
+## Rich text
+
+A rich text prop (a `RichTextDoc` value) lives in a `Y.XmlFragment` under
+the block's `text` map instead of in `props`, in the encoding of Tiptap's
+Collaboration extension (`@tiptap/y-tiptap`). An editor bound to the
+fragment edits it character by character, so two people typing in the same
+paragraph both keep their text. Bind the Tiptap adapter by passing the
+extension and its sync origin:
+
+```tsx
+import { Collaboration } from '@tiptap/extension-collaboration';
+import { ySyncPluginKey } from '@tiptap/y-tiptap';
+import { createTiptapAdapter } from '@createcms/react/editor/richtext';
+
+const richText = createTiptapAdapter({
+  collaboration: { extension: Collaboration, syncOrigin: ySyncPluginKey },
+});
+
+<Editor.Root store={store} richText={richText}>{/* chrome */}</Editor.Root>;
+```
+
+`Editor.RichTextField`, the default rich text control and inline canvas
+editing then bind to `store.getTextBinding(blockId, key)` on their own.
+Edits a bound editor writes reach subscribers with origin `local`, so
+autosave sees them, and are undoable through the editor store like any
+other edit. A field whose prop has no fragment yet (still empty) edits
+the value as before; it binds once the editor loses focus. A write of the
+whole value (a form, a paste into the inspector) replaces the fragment's
+content only when it differs; mark order does not count.
 
 ## Undo
 

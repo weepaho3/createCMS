@@ -13,6 +13,16 @@ export type TiptapExtensionOptions = {
   /** The URL an image shows while editing; without it images show their alt text. */
   resolveAsset?: (assetId: string) => string | null;
   placeholder?: string;
+  /**
+   * Binds fields with a collaborative text (`store.getTextBinding`) to it:
+   * the `Collaboration` extension of `@tiptap/extension-collaboration` and
+   * the origin its sync plugin writes with (`ySyncPluginKey` of
+   * `@tiptap/y-tiptap`). Fields without a binding stay unbound.
+   */
+  collaboration?: {
+    readonly extension: AnyExtension;
+    readonly syncOrigin: unknown;
+  };
 };
 
 /** The document node of an `inline` field: exactly one paragraph. */

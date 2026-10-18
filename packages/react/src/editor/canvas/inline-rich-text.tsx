@@ -131,6 +131,7 @@ export function useInlineRichTextSession(
       value: isRichTextDoc(start) ? start : EMPTY_RICH_TEXT,
       schema,
       caretFrom: caret ?? undefined,
+      binding: store.getTextBinding(blockId, key) ?? undefined,
       attributes: {
         'aria-label': field.label ?? key,
         'data-editor-inline-richtext': '',

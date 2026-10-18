@@ -1,4 +1,4 @@
-import type { JSONContent } from '@tiptap/core';
+import type { Extension, JSONContent } from '@tiptap/core';
 
 import { Editor } from '@tiptap/core';
 
@@ -9,63 +9,21 @@ import type {
   RichTextMountOptions,
 } from '../core/richtext/adapter';
 import type { ParsedHtmlDocument } from '../core/richtext/parse-html';
-import type {
-  RichTextDoc,
-  RichTextJsonValue,
-  RichTextNode,
-} from '../core/richtext/types';
+import type { RichTextDoc, RichTextJsonValue } from '../core/richtext/types';
 import type { TiptapExtensionOptions } from './extensions';
 
+import { normalizeRichTextJson } from '../core/rich-text-json';
 import { htmlToRichText } from '../core/richtext/parse-html';
 import { linkMarkHref } from '../core/richtext/schema';
 import { richTextExtensions } from './extensions';
 import { suggestionExtension } from './suggestion';
-
-/** Tiptap attributes that only carry rendering defaults. */
-const DROPPED_ATTRS = new Set(['rel', 'class']);
-
-function cleanAttrs(
-  attrs: Record<string, unknown> | undefined,
-): Record<string, RichTextJsonValue> | undefined {
-  if (!attrs) return undefined;
-  const out: Record<string, RichTextJsonValue> = {};
-  for (const [key, value] of Object.entries(attrs)) {
-    if (value === null || value === undefined || DROPPED_ATTRS.has(key)) {
-      continue;
-    }
-    out[key] = value as RichTextJsonValue;
-  }
-  return Object.keys(out).length > 0 ? out : undefined;
-}
-
-function cleanNode(node: JSONContent): RichTextNode {
-  const out: RichTextNode = { type: node.type ?? 'paragraph' };
-  const attrs = cleanAttrs(node.attrs);
-  if (attrs) out.attrs = attrs;
-  if (node.text !== undefined) out.text = node.text;
-  if (node.marks && node.marks.length > 0) {
-    out.marks = node.marks.map((mark) => {
-      const markAttrs = cleanAttrs(mark.attrs);
-      return markAttrs
-        ? { type: mark.type, attrs: markAttrs }
-        : { type: mark.type };
-    });
-  }
-  if (node.content && node.content.length > 0) {
-    out.content = node.content.map(cleanNode);
-  }
-  return out;
-}
 
 /**
  * Tiptap's JSON without its rendering defaults (null attributes, `rel`,
  * `class`), so an unchanged value round-trips unchanged.
  */
 export function fromTiptapJson(json: JSONContent): RichTextDoc {
-  return {
-    type: 'doc',
-    content: (json.content ?? []).map(cleanNode),
-  };
+  return normalizeRichTextJson(json);
 }
 
 function commandsOf(editor: Editor): RichTextCommands {
@@ -144,10 +102,25 @@ function mount(
   if (options.suggestion) {
     extensions.push(suggestionExtension(options.suggestion));
   }
+  const collaboration = extensionOptions.collaboration;
+  const binding = collaboration ? options.binding : undefined;
+  if (collaboration && binding) {
+    // Undo runs through the editor store, whose history tracks the sync
+    // plugin's writes; the extension's own undo keys would bypass it.
+    const extension = collaboration.extension as Extension<{
+      fragment?: unknown;
+    }>;
+    extensions.push(
+      extension
+        .extend({ addKeyboardShortcuts: () => ({}) })
+        .configure({ fragment: binding.fragment }),
+    );
+    binding.track?.(collaboration.syncOrigin);
+  }
   const editor = new Editor({
     element: el,
     extensions,
-    content: options.value as JSONContent,
+    content: binding ? undefined : (options.value as JSONContent),
     editable: options.editable ?? true,
     injectCSS: false,
     editorProps: {
@@ -166,6 +139,8 @@ function mount(
       },
     },
     onUpdate: ({ editor: current }) => {
+      // A bound editor writes the text itself; the store already holds it.
+      if (binding) return;
       options.onChange(fromTiptapJson(current.getJSON()));
     },
     onSelectionUpdate: () => options.onSelectionChange?.(),
@@ -184,6 +159,7 @@ function mount(
 
   return {
     setValue: (value) => {
+      if (binding) return;
       editor.commands.setContent(value as JSONContent, { emitUpdate: false });
     },
     setEditable: (editable) => {

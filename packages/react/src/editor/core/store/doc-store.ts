@@ -214,10 +214,12 @@ export type DocStoreCore = DocStore & {
    * Publishes `next`, a state the backend received from outside
    * `transact`: drops the undo steps it conflicts with and notifies
    * subscribers with `origin` (default `remote`; `system` for a repair the
-   * backend made itself; `history` for an undo the backend ran, which drops
-   * nothing). Returns the dropped steps.
+   * backend made itself; `history` for an undo the backend ran and `local`
+   * for an edit this client wrote straight into the backend, such as a
+   * bound rich text editor; these two drop nothing). Returns the dropped
+   * steps.
    */
-  receive(next: DocState, origin?: 'remote' | 'system' | 'history'): number;
+  receive(next: DocState, origin?: Origin): number;
 };
 
 const sameList = (a: readonly string[], b: readonly string[]) =>
@@ -611,7 +613,7 @@ export function createDocStoreCore(
       const { changes, touch } = diffStates(state, next);
       state = { ...next, version: state.version + 1 };
       if (changes.length === 0) return 0;
-      if (!recordHistory || origin === 'history') {
+      if (!recordHistory || origin === 'history' || origin === 'local') {
         notify(changes, origin);
         return 0;
       }

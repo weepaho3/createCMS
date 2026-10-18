@@ -87,11 +87,13 @@
     "@testing-library/dom": "^10",
     "@testing-library/react": "^16",
     "@tiptap/core": "3.32.0",
+    "@tiptap/extension-collaboration": "3.32.0",
     "@tiptap/extension-link": "3.32.0",
     "@tiptap/extensions": "3.32.0",
     "@tiptap/pm": "3.32.0",
     "@tiptap/starter-kit": "3.32.0",
     "@tiptap/suggestion": "3.32.0",
+    "@tiptap/y-tiptap": "3.0.10",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitest/browser": "5.0.5",
@@ -113,11 +115,13 @@
   },
   "peerDependencies": {
     "@tiptap/core": "~3.32.0",
+    "@tiptap/extension-collaboration": "~3.32.0",
     "@tiptap/extension-link": "~3.32.0",
     "@tiptap/extensions": "~3.32.0",
     "@tiptap/pm": "~3.32.0",
     "@tiptap/starter-kit": "~3.32.0",
     "@tiptap/suggestion": "~3.32.0",
+    "@tiptap/y-tiptap": "^3.0.10",
     "react": ">=19",
     "react-dom": ">=19",
     "y-protocols": "^1.0.7",
@@ -149,6 +153,12 @@
       "optional": true
     },
     "y-protocols": {
+      "optional": true
+    },
+    "@tiptap/extension-collaboration": {
+      "optional": true
+    },
+    "@tiptap/y-tiptap": {
       "optional": true
     }
   },

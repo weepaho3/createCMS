@@ -418,6 +418,7 @@ declares, filled from the slot's `defaultValue` with fresh ids.
 | `save({ message?, force? }?)`            | Saves now when dirty (or forced); resolves when that save settled.                                             |
 | `reloadFromServer()`                     | Loads the server document of the current conflict; `false` without one.                                        |
 | `commands`                               | UI commands: `get`, `list`, `execute`, `canExecute`, `shortcuts()` (combo to command id).                      |
+| `getTextBinding(blockId, key)`           | The doc store's shared text of a rich text prop (`RichTextBinding`), or `null`.                                |
 | `destroy()`                              | Stops timers and drops every listener.                                                                         |
 
 `createBlockId` mints ids. `applyOp` applies one op purely and returns
@@ -427,6 +428,10 @@ declares, filled from the slot's `defaultValue` with fresh ids.
 do the same for one subtree. Serialised slots come in `slotOrder` order
 (declared slots first, then the rest alphabetically), and empty slots are
 kept.
+`diffOps(prev, next)` returns the ops that turn one `DocState` into
+another (removes, inserts, moves, prop updates; one `replace` when the root
+differs). The store uses it for changes a doc store received on its own,
+such as a peer's edit.
 
 ## Commands and middleware
 
@@ -543,6 +548,17 @@ it. `validateRichText` returns `RichTextIssue[]` (`{ code, path, params? }`,
 `setNode(type, attrs?)` and `isActive(name, attrs?)`. The editor keeps no
 history of its own; undo runs through the store.
 
+`RichTextMountOptions.binding` (a `RichTextBinding`: `fragment`, the
+store's shared text, and `track(origin)`, which adds the editor's write
+origin to the store's undo history) makes the editor edit that text in
+place of `value`; `setValue` then does nothing and `onChange` stays quiet.
+`store.getTextBinding(blockId, key)` returns the binding of a rich text
+prop, or `null` when the doc store has no `getText`.
+
+`normalizeRichTextJson(json)` turns editor JSON (a `ProseMirrorJson`) into
+a `RichTextDoc` without rendering defaults: no null attributes, no `rel`
+or `class` on links, so an unchanged value round-trips unchanged.
+
 `RichTextMountOptions.suggestion` (a `RichTextSuggestion`: `char`, default
 `{{`, `items(query)` returning `RichTextSuggestionItem`s with `label`,
 `insertText`, `description?`, and `onState`) completes after a trigger: the
@@ -621,7 +637,9 @@ paste emits `opRejected`.
 transaction that fails throws `TxRejectedError` and changes nothing.
 `createJsonDocStore(options)` is the single-user implementation
 (`CreateJsonDocStoreOptions`: `initialValue`, `now?`, `mergeMs?`,
-`maxEntries?`); a collaborative store implements the same interface.
+`maxEntries?`); a collaborative store implements the same interface, plus
+an optional `getText(blockId, key)` returning a `RichTextBinding` for a
+rich text prop it keeps as shared text.
 
 History rules of `JsonDocStore`:
 
@@ -656,7 +674,7 @@ A store with another backend (a CRDT, a server) reuses the history logic:
 | --- | --- |
 | `createDocStoreCore`   | `(options, backend) => DocStoreCore`: the history and transaction logic of every store over a `DocStoreBackend`; `createJsonDocStore` and `createYjsDocStore` are built on it. |
 | `DocStoreBackend`      | `{ write(ops, from, to, origin) }`: stores validated writes and returns the state to publish.                                                    |
-| `DocStoreCore`         | `DocStore` plus `receive(next)`: publishes a change from another peer with origin `remote` and drops conflicting undo steps.                     |
+| `DocStoreCore`         | `DocStore` plus `receive(next, origin?)`: publishes a change from another peer with origin `remote` and drops conflicting undo steps; `local` (an edit a bound editor wrote) and `history` drop none. |
 | `DocStoreCoreOptions`  | `{ initial, now?, mergeMs?, maxEntries? }`.                                                                                                      |
 
 ### Conformance

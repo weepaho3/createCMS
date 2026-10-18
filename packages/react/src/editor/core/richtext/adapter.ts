@@ -67,11 +67,30 @@ export type RichTextMountOptions = {
   /** Attributes for the editable element (`id`, `aria-*`). */
   attributes?: Record<string, string>;
   suggestion?: RichTextSuggestion;
+  /**
+   * The field's shared text (`DocStore.getText`): the editor edits it in
+   * place of `value`, so several people type in it at once.
+   */
+  binding?: RichTextBinding;
+};
+
+/**
+ * A collaborative store's shared text of one field. `fragment` is the
+ * store's text type (a `Y.XmlFragment` for the Yjs store); `track` lets the
+ * store's undo history include the edits a binding writes under its own
+ * origin.
+ */
+export type RichTextBinding = {
+  readonly fragment: unknown;
+  track?(origin: unknown): void;
 };
 
 /** A mounted editor. */
 export type RichTextHandle = {
-  /** Replaces the content without an `onChange` (undo, remote edits). */
+  /**
+   * Replaces the content without an `onChange` (undo, remote edits). Does
+   * nothing for a bound editor: its shared text is the content.
+   */
   setValue(value: RichTextDoc): void;
   setEditable(editable: boolean): void;
   focus(): void;

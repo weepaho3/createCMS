@@ -1,9 +1,9 @@
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
-import type { DocState, EditorDocument, JsonValue } from '../core';
+import type { DocState, EditorDocument, JsonValue } from '..';
 
-import { applyOp, canonicalJson, normalize, serializeSubtree } from '../core';
+import { applyOp, canonicalJson, normalize, serializeSubtree } from '..';
 import { diffOps } from './diff-ops';
 
 const base: EditorDocument = {

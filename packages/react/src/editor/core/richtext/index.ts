@@ -35,6 +35,7 @@ export type {
 export { htmlToRichText, isLossless } from './parse-html';
 export type {
   RichTextAdapter,
+  RichTextBinding,
   RichTextCommands,
   RichTextHandle,
   RichTextMountOptions,

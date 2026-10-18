@@ -35,7 +35,7 @@ export type {
   UseRichTextEditorOptions,
   UseRichTextEditorResult,
 } from './rich-text';
-export { useRichTextEditor } from './rich-text';
+export { useRichTextEditor, useTextBinding } from './rich-text';
 export type {
   EditorRichTextFieldProps,
   EditorRichTextToolbarButtonProps,

@@ -161,12 +161,15 @@ export type {
 export { fromPuckData, toPuckData } from './interop/puck';
 
 // Rich text: ProseMirror (Tiptap) JSON values, validation, conversions.
+export type { ProseMirrorJson } from './rich-text-json';
+export { normalizeRichTextJson } from './rich-text-json';
 export type {
   HtmlToRichTextOptions,
   LazyRichTextAdapter,
   ParsedHtmlDocument,
   ParsedHtmlNode,
   RichTextAdapter,
+  RichTextBinding,
   RichTextCommands,
   RichTextDoc,
   RichTextHandle,
@@ -253,6 +256,7 @@ export type {
 } from './store/types';
 export type { ApplyResult } from './store/ops';
 export { applyOp } from './store/ops';
+export { diffOps } from './store/diff-ops';
 export type {
   BuiltinCommandPayloads,
   DetachPayload,
