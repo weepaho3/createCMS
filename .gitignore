@@ -50,6 +50,10 @@ coverage
 .vitest/
 .vitest-attachments/
 __screenshots__/
+# Visual references come only from the CI container (linux); a local run
+# writes platform-named files that must never be committed.
+**/__visual__/**/*-darwin.png
+**/__visual__/**/*-win32.png
 
 # Misc
 *.tgz

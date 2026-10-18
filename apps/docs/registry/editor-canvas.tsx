@@ -396,7 +396,10 @@ function DragPreview({
     <Canvas.DragPreview
       data-slot="editor-drag-preview"
       className={cn(
-        'bg-background border-border rounded-md border px-2 py-1 text-sm shadow-md',
+        'bg-background border-border flex flex-col gap-0.5 rounded-md border px-2 py-1 text-sm shadow-md',
+        '[&_[data-editor-drag-preview-label]]:font-medium',
+        '[&_[data-editor-drag-preview-excerpt]]:text-muted-foreground [&_[data-editor-drag-preview-excerpt]]:truncate [&_[data-editor-drag-preview-excerpt]]:text-xs',
+        '[&_[data-editor-drag-preview-count]]:bg-primary [&_[data-editor-drag-preview-count]]:text-primary-foreground [&_[data-editor-drag-preview-count]]:absolute [&_[data-editor-drag-preview-count]]:top-1 [&_[data-editor-drag-preview-count]]:right-1 [&_[data-editor-drag-preview-count]]:rounded-full [&_[data-editor-drag-preview-count]]:px-1.5 [&_[data-editor-drag-preview-count]]:text-[10px]',
         'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-150 motion-reduce:animate-none',
         className,
       )}

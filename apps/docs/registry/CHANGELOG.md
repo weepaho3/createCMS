@@ -43,5 +43,7 @@ between the two `@createcms/react` tags, for example
   (`https://createcms.dev/r/<item>.json`); bare names resolved against the
   shadcn registry and failed to install.
 - Every item carries the version stamp and pins `@createcms/react`.
+- `editor-canvas`: the drag preview shows the block label above a muted
+  excerpt and the selection count as a badge.
 - `editor-toolbar`: command palette shortcuts use `CommandShortcut`, so
   the highlighted row keeps enough contrast (WCAG 1.4.3).

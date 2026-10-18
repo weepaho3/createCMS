@@ -35,6 +35,8 @@
     "node_modules",
     "registry-fixture",
     "vitest.config.ts",
-    "vitest.browser.config.ts"
+    "vitest.browser.config.ts",
+    "vitest.visual.config.ts",
+    "src/**/*.visual.test.tsx"
   ]
 }
