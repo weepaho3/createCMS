@@ -216,6 +216,8 @@ const EXPECTED: Record<string, Record<string, Expected>> = {
     getZipExport: { permissionResource: 'media', operation: 'read' },
     listZipExports: { permissionResource: 'media', operation: 'read' },
     deleteZipExport: { permissionResource: 'media', operation: 'read' },
+    registerExternalUsage: { permissionResource: 'media', operation: 'update' },
+    removeExternalUsage: { permissionResource: 'media', operation: 'update' },
     setProvenance: { permissionResource: 'media', operation: 'update' },
     restoreAssets: { permissionResource: 'media', operation: 'update' },
     batchAssets: { permissionResource: 'media', operation: 'update' },

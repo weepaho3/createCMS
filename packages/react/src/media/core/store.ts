@@ -121,6 +121,8 @@ export type MediaStoreState = {
     error: unknown;
     skipped: string[];
     skippedReasons: Record<string, string>;
+    /** Archived ids still used outside the CMS (a warning, not a skip). */
+    externalUsages: Record<string, number>;
   };
 };
 
@@ -337,6 +339,7 @@ const IDLE_MUTATION: MediaStoreState['mutation'] = {
   error: null,
   skipped: [],
   skippedReasons: {},
+  externalUsages: {},
 };
 
 function fail(error: unknown, fallback = 'UNKNOWN'): CommandResult<never> {
@@ -749,8 +752,7 @@ export function createMediaStore(options: CreateMediaStoreOptions): MediaStore {
       }
       set({
         mutation: {
-          status: 'idle',
-          error: null,
+          ...IDLE_MUTATION,
           skipped,
           skippedReasons: reasons,
         },
@@ -916,6 +918,12 @@ export function createMediaStore(options: CreateMediaStoreOptions): MediaStore {
     );
     if (!outcome.ok) return fail(outcome.error);
     const archived = outcome.result.archivedIds;
+    set({
+      mutation: {
+        ...state.mutation,
+        externalUsages: outcome.result.externalUsages ?? {},
+      },
+    });
     afterRemoval(order, archived);
     emit({ type: 'asset:archived', ids: archived });
     void reloadFolderLevels(state.folders.currentId);

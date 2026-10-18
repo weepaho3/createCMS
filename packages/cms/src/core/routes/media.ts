@@ -963,7 +963,7 @@ export function createMediaEndpoints(
 
   return {
     ...createMediaFolderEndpoints(cmsCtx),
-    ...createMediaUsageEndpoints(cmsCtx),
+    ...createMediaUsageEndpoints(cmsCtx, mediaConfig),
     ...createMediaExportEndpoints(cmsCtx, mediaConfig),
     ...createMediaAssetEndpoints(cmsCtx, mediaConfig, (row) =>
       toAssetListItem(row, urls),
@@ -1602,7 +1602,7 @@ export function createMediaEndpoints(
      *
      * @param assetIds - Array of asset ids to archive (at least one).
      * @param force - Archive assets that are in use too (after the caller confirmed the usage list).
-     * @returns Count of archived assets, their ids, the skipped ids, why each was skipped (`in_use`, `external` or `richtext_suspect`), `usage` root counts for the `in_use` ones, and `usedByArchivedRoots` (archived ids that roots in the trash still use).
+     * @returns Count of archived assets, their ids, the skipped ids, why each was skipped (`in_use`, `external` or `richtext_suspect`), `usage` root counts for the `in_use` ones, `usedByArchivedRoots` (archived ids that roots in the trash still use), and `externalUsages` (archived ids with their count of registered external usages, a warning only).
      * @throws ASSET_NOT_FOUND if none of the asset ids exist.
      * @example await cmsClient.media.archiveAssets({ assetIds: ['ast_...'] })
      */
@@ -1639,6 +1639,16 @@ export function createMediaEndpoints(
           });
         }
         const archivedFound = archivedIds.filter((id) => found.includes(id));
+        // External usages only warn: the assets are archived regardless.
+        const externalUsages: Record<string, number> = {};
+        if (mediaConfig.externalUsage && archivedFound.length > 0) {
+          for (const usage of await mediaConfig.externalUsage.list(
+            archivedFound,
+          )) {
+            externalUsages[usage.assetId] =
+              (externalUsages[usage.assetId] ?? 0) + 1;
+          }
+        }
         await purgeAssetPaths(mediaConfig, archivedFound);
         await emitMediaEvents(
           cmsCtx.realtime,
@@ -1655,6 +1665,7 @@ export function createMediaEndpoints(
           skippedReasons,
           usage,
           usedByArchivedRoots,
+          externalUsages,
         };
       },
     ),

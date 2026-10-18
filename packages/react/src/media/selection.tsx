@@ -410,8 +410,15 @@ export function BulkActionButton(props: BulkActionProps) {
               messages.folder.root);
         return messages.bulk.moved({ count, folder }, format);
       }
-      case 'archive':
-        return messages.bulk.archived({ count }, format);
+      case 'archive': {
+        const external = Object.keys(
+          store.getState().mutation.externalUsages,
+        ).length;
+        const archived = messages.bulk.archived({ count }, format);
+        return external > 0
+          ? `${archived} ${messages.bulk.archivedExternal({ count: external }, format)}`
+          : archived;
+      }
       case 'restore':
         return messages.bulk.restored({ count }, format);
       case 'purge':

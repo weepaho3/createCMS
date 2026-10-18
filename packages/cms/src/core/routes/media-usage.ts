@@ -3,7 +3,7 @@ import * as z from 'zod';
 
 import type { ChangedVersion } from '../blocks/commit-writer';
 import type { UsageScope } from '../media/usage';
-import type { CMSProcedureContext } from '../types';
+import type { CMSProcedureContext, MediaConfig } from '../types';
 
 import { writeCommit } from '../blocks/commit-writer';
 import { lockWritableBranch } from '../blocks/guards';
@@ -18,6 +18,7 @@ import {
 } from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError, errorMessages } from '../errors';
+import { assetsUsedExternally } from '../media/archive';
 import { rewriteUsages } from '../media/extract-usages';
 import { assetUsageCounts, scopedUsages } from '../media/usage';
 import { crossScopeColumns } from '../scope';
@@ -97,8 +98,74 @@ function decodeCursor(cursor: string): [string, string] | null {
   }
 }
 
-export function createMediaUsageEndpoints(cmsCtx: CMSProcedureContext) {
+export type ExternalUsageItem = {
+  consumer: string;
+  /** `null` for a `usageSources` entry, which names no place. */
+  url: string | null;
+  registeredAt: string | null;
+  /** `true` for a `usageSources` entry, which keeps the asset from being archived. */
+  blocking: boolean;
+};
+
+/** A registered usage URL: http(s), without credentials. */
+const externalUrl = z
+  .string()
+  .max(2048)
+  .refine((value) => {
+    try {
+      const url = new URL(value);
+      return (
+        (url.protocol === 'https:' || url.protocol === 'http:') &&
+        !url.username &&
+        !url.password
+      );
+    } catch {
+      return false;
+    }
+  }, 'An http(s) URL without credentials');
+
+export function createMediaUsageEndpoints(
+  cmsCtx: CMSProcedureContext,
+  mediaConfig?: MediaConfig,
+) {
   const { db } = cmsCtx;
+
+  /** Registered usages and usage sources of `assetId`, sources first. */
+  async function externalUsagesOf(
+    assetId: string,
+  ): Promise<ExternalUsageItem[]> {
+    const items: ExternalUsageItem[] = [];
+    for (const source of mediaConfig?.usageSources ?? []) {
+      const used = await assetsUsedExternally(
+        { ...mediaConfig!, usageSources: [source] },
+        [assetId],
+      );
+      if (used.has(assetId)) {
+        items.push({
+          consumer: source.kind,
+          url: null,
+          registeredAt: null,
+          blocking: true,
+        });
+      }
+    }
+    for (const usage of (await mediaConfig?.externalUsage?.list([assetId])) ??
+      []) {
+      items.push({
+        consumer: usage.consumer,
+        url: usage.url,
+        registeredAt: usage.registeredAt.toISOString(),
+        blocking: false,
+      });
+    }
+    return items;
+  }
+
+  function registry() {
+    const registry = mediaConfig?.externalUsage;
+    if (!registry) throw new CMSError('EXTERNAL_USAGE_NOT_CONFIGURED');
+    return registry;
+  }
 
   async function assertAssetsInScope(
     assetIds: string[],
@@ -164,7 +231,7 @@ export function createMediaUsageEndpoints(cmsCtx: CMSProcedureContext) {
      * @param missingAlt - Only image usages without alt text.
      * @param cursor - The `nextCursor` of the previous page.
      * @param limit - Roots per page, 1 to 100 (default 20).
-     * @returns `{ total: { roots, occurrences, hiddenRoots }, items, nextCursor }`; each item is `{ rootId, collection, title, storedSlug, status, via, occurrences }` with `status` `published`, `scheduled` or `draft`.
+     * @returns `{ total: { roots, occurrences, hiddenRoots }, items, nextCursor, external }`; each item is `{ rootId, collection, title, storedSlug, status, via, occurrences }` with `status` `published`, `scheduled` or `draft`. `external` (first page only) lists usages outside content: `usageSources` hits (`blocking: true`, no `url`) and registered external usages (`blocking: false`).
      * @throws ASSET_NOT_FOUND if the asset is not in the caller's scope.
      * @example await cmsClient.media.getAssetUsages({ query: { assetId: 'ast_...', scope: 'published' } })
      */
@@ -329,6 +396,7 @@ export function createMediaUsageEndpoints(cmsCtx: CMSProcedureContext) {
           items,
           nextCursor:
             more && last ? encodeCursor(last.collection, last.rootId) : null,
+          external: query.cursor ? [] : await externalUsagesOf(asset),
         };
       },
     ),
@@ -535,6 +603,94 @@ export function createMediaUsageEndpoints(cmsCtx: CMSProcedureContext) {
             crossScopeColumns(scope.roots),
           ),
         };
+      },
+    ),
+
+    /**
+     * Registers a use of an asset outside the CMS, pushed by the integration
+     * that uses it (a newsletter, another site). The entry shows in the
+     * external group of `getAssetUsages` and warns when the asset is
+     * archived; it never blocks archiving. Integrations remove their own
+     * entries with `removeExternalUsage`.
+     *
+     * @param assetId - An asset in the caller's scope.
+     * @param consumer - Names the integration, 1 to 100 characters.
+     * @param url - Where the asset is used: an http(s) URL without credentials.
+     * @returns `{ registered: true }`; registering the same usage again keeps one entry.
+     * @throws EXTERNAL_USAGE_NOT_CONFIGURED without `media.externalUsage`.
+     * @throws ASSET_NOT_FOUND if the asset is not in the caller's scope.
+     * @example await cmsClient.media.registerExternalUsage({ assetId: 'ast_...', consumer: 'newsletter', url: 'https://news.example.com/2026-10' })
+     */
+    registerExternalUsage: createCMSEndpoint(
+      '/media/registerExternalUsage',
+      {
+        method: 'POST',
+        body: z.object({
+          assetId: z.string(),
+          consumer: z.string().trim().min(1).max(100),
+          url: externalUrl,
+        }),
+        metadata: cmsMeta({}, { operation: 'update', ...MEDIA_META }),
+      },
+      async (ctx) => {
+        const store = registry();
+        const [asset] = await assertAssetsInScope(
+          [ctx.body.assetId],
+          ctx.context.scope.assets?.where,
+        );
+        if (!asset) {
+          throw new CMSError('ASSET_NOT_FOUND', {
+            message: errorMessages.assetNotFound(ctx.body.assetId),
+          });
+        }
+        await store.register({
+          assetId: asset,
+          consumer: ctx.body.consumer,
+          url: ctx.body.url,
+        });
+        return { registered: true as const };
+      },
+    ),
+
+    /**
+     * Removes external usages registered by `registerExternalUsage`: one
+     * usage, or every usage of `consumer` for the asset without `url`.
+     *
+     * @param assetId - An asset in the caller's scope.
+     * @param consumer - The integration that registered the usage.
+     * @param url - The usage to remove; omitted removes all of `consumer`.
+     * @returns `{ removed }`, the number of entries removed.
+     * @throws EXTERNAL_USAGE_NOT_CONFIGURED without `media.externalUsage`.
+     * @throws ASSET_NOT_FOUND if the asset is not in the caller's scope.
+     */
+    removeExternalUsage: createCMSEndpoint(
+      '/media/removeExternalUsage',
+      {
+        method: 'POST',
+        body: z.object({
+          assetId: z.string(),
+          consumer: z.string().trim().min(1).max(100),
+          url: z.string().max(2048).optional(),
+        }),
+        metadata: cmsMeta({}, { operation: 'update', ...MEDIA_META }),
+      },
+      async (ctx) => {
+        const store = registry();
+        const [asset] = await assertAssetsInScope(
+          [ctx.body.assetId],
+          ctx.context.scope.assets?.where,
+        );
+        if (!asset) {
+          throw new CMSError('ASSET_NOT_FOUND', {
+            message: errorMessages.assetNotFound(ctx.body.assetId),
+          });
+        }
+        const removed = await store.remove({
+          assetId: asset,
+          consumer: ctx.body.consumer,
+          url: ctx.body.url,
+        });
+        return { removed };
       },
     ),
   };

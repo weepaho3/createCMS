@@ -5,6 +5,7 @@ import * as React from 'react';
 import type { UseRenderComponentProps } from '../use-render';
 import type {
   MediaClient,
+  MediaExternalUsage,
   MediaUsageItem,
   MediaUsageOccurrence,
   MediaUsagePage,
@@ -12,6 +13,7 @@ import type {
 } from './core/types';
 
 export type {
+  MediaExternalUsage,
   MediaUsageItem,
   MediaUsageOccurrence,
   MediaUsagePage,
@@ -56,6 +58,8 @@ export type UseAssetUsagesState = {
   error: unknown;
   total: MediaUsagePage['total'] | null;
   items: MediaUsageItem[];
+  /** Usages outside content (`getAssetUsages` `external`). */
+  external: MediaExternalUsage[];
   hasMore: boolean;
   scope: MediaUsageScope;
   missingAlt: boolean;
@@ -91,8 +95,16 @@ export function useAssetUsages(
     error: unknown;
     total: MediaUsagePage['total'] | null;
     items: MediaUsageItem[];
+    external: MediaExternalUsage[];
     cursor: string | null;
-  }>({ status: 'idle', error: null, total: null, items: [], cursor: null });
+  }>({
+    status: 'idle',
+    error: null,
+    total: null,
+    items: [],
+    external: [],
+    cursor: null,
+  });
   const request = React.useRef(0);
   const { assetId, limit } = options;
 
@@ -121,6 +133,7 @@ export function useAssetUsages(
       error: null,
       total: null,
       items: [],
+      external: [],
       cursor: null,
     });
     fetchPage(null).then(
@@ -131,6 +144,7 @@ export function useAssetUsages(
           error: null,
           total: page.total,
           items: page.items,
+          external: page.external ?? [],
           cursor: page.nextCursor,
         });
       },
@@ -153,6 +167,7 @@ export function useAssetUsages(
           error: null,
           total: page.total,
           items: [...s.items, ...page.items],
+          external: s.external,
           cursor: page.nextCursor,
         }));
       },
@@ -168,6 +183,7 @@ export function useAssetUsages(
     error: state.error,
     total: state.total,
     items: state.items,
+    external: state.external,
     hasMore: state.cursor !== null,
     scope,
     missingAlt,
@@ -543,6 +559,71 @@ export function UsageOccurrence(props: UsageOccurrenceProps) {
   });
 }
 
+export type UsageExternalListProps = RenderProps<
+  'ul',
+  Record<string, never>
+> & {
+  children: (usage: MediaExternalUsage) => React.ReactNode;
+};
+
+/**
+ * The usages outside content as a `ul` named by the catalog; absent when
+ * there are none. Registered usages only warn, usage sources block
+ * archiving (`Usage.ExternalItem` carries `data-blocking`).
+ */
+export function UsageExternalList(props: UsageExternalListProps) {
+  const { render, children, ...rest } = props;
+  const { external } = useUsageContext('Usage.ExternalList');
+  const { messages } = useMediaMessages();
+  const element = useRender({
+    defaultTagName: 'ul',
+    render,
+    props: mergeProps<'ul'>({ 'aria-label': messages.usage.external }, rest, {
+      children: external.map((usage) => children(usage)),
+    }),
+  });
+  return external.length > 0 ? element : null;
+}
+
+export type UsageExternalItemProps = RenderProps<
+  'li',
+  Record<string, never>
+> & {
+  usage: MediaExternalUsage;
+  children?: React.ReactNode;
+};
+
+/**
+ * One usage outside content as an `li`: the consumer, linked to its `url`
+ * when there is one. `data-blocking` marks a usage source that keeps the
+ * asset from being archived, which the catalog also reads out.
+ */
+export function UsageExternalItem(props: UsageExternalItemProps) {
+  const { render, usage, children, ...rest } = props;
+  const { messages } = useMediaMessages();
+  const content = children ?? (
+    <>
+      {usage.url ? (
+        <a href={usage.url} rel="noopener noreferrer" target="_blank">
+          {usage.consumer}
+        </a>
+      ) : (
+        usage.consumer
+      )}
+      {usage.blocking ? ` (${messages.usage.externalBlocking})` : null}
+    </>
+  );
+  return useRender({
+    defaultTagName: 'li',
+    render,
+    props: mergeProps<'li'>(
+      { 'data-blocking': usage.blocking ? '' : undefined },
+      rest,
+      { children: content },
+    ),
+  });
+}
+
 export type UsageEmptyProps = RenderProps<'p', Record<string, never>> & {
   children?: React.ReactNode;
 };
@@ -550,7 +631,7 @@ export type UsageEmptyProps = RenderProps<'p', Record<string, never>> & {
 /** Renders once the query finished without any usage. */
 export function UsageEmpty(props: UsageEmptyProps) {
   const { render, children, ...rest } = props;
-  const { status, items } = useUsageContext('Usage.Empty');
+  const { status, items, external } = useUsageContext('Usage.Empty');
   const { messages } = useMediaMessages();
   const element = useRender({
     defaultTagName: 'p',
@@ -559,7 +640,9 @@ export function UsageEmpty(props: UsageEmptyProps) {
       children: children ?? messages.usage.empty,
     }),
   });
-  return status === 'idle' && items.length === 0 ? element : null;
+  return status === 'idle' && items.length === 0 && external.length === 0
+    ? element
+    : null;
 }
 
 export type UsageLoadMoreProps = RenderProps<

@@ -214,6 +214,8 @@ export const mediaMessagesDe: MediaMessages = {
       `${format.number(count)} ${plural(count, format, 'Datei', 'Dateien')} nach ${folder} verschoben.`,
     archived: ({ count }, format) =>
       `${format.number(count)} ${plural(count, format, 'Datei', 'Dateien')} archiviert.`,
+    archivedExternal: ({ count }, format) =>
+      `${format.number(count)} davon ${plural(count, format, 'wird', 'werden')} noch außerhalb des CMS verwendet.`,
     restored: ({ count }, format) =>
       `${format.number(count)} ${plural(count, format, 'Datei', 'Dateien')} wiederhergestellt.`,
     visibility: ({ count, status }, format) =>
@@ -315,6 +317,8 @@ export const mediaMessagesDe: MediaMessages = {
     missingAlt: 'Nur ohne Alt-Text',
     empty: 'Nirgends verwendet',
     loadMore: 'Mehr zeigen',
+    external: 'Außerhalb des CMS verwendet',
+    externalBlocking: 'Verhindert das Archivieren',
     hiddenRoots: ({ count }, format) =>
       plural(
         count,

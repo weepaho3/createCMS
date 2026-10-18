@@ -28,6 +28,38 @@ export type MediaUsageSource = {
   assetsInUse: (assetIds: string[]) => Promise<Iterable<string>>;
 };
 
+/** A registered use of an asset outside the CMS (a site, a campaign tool). */
+export type ExternalUsage = {
+  assetId: string;
+  /** Names the integration, e.g. `newsletter`. */
+  consumer: string;
+  /** Where the asset is used. */
+  url: string;
+  registeredAt: Date;
+};
+
+/**
+ * Stores external usages for `registerExternalUsage` (see
+ * `MediaConfig.externalUsage`). Integrations register and remove their own
+ * entries; the CMS only reads them for usage reports and archive warnings.
+ */
+export type ExternalUsageRegistry = {
+  /** Adds the usage; registering the same `assetId`, `consumer` and `url` again keeps one entry. */
+  register(usage: {
+    assetId: string;
+    consumer: string;
+    url: string;
+  }): Promise<void>;
+  /** Removes one usage, or every usage of `consumer` for the asset without `url`. Returns how many were removed. */
+  remove(usage: {
+    assetId: string;
+    consumer: string;
+    url?: string;
+  }): Promise<number>;
+  /** The usages of these assets. */
+  list(assetIds: string[]): Promise<ExternalUsage[]>;
+};
+
 // ============================================================================
 // Media Configuration
 // ============================================================================
@@ -101,6 +133,14 @@ type BaseMediaConfig = {
    * `archiveAssets` (unless `force`) and never reclaimed by pruning.
    */
   usageSources?: MediaUsageSource[];
+
+  /**
+   * Usages outside the CMS that integrations push through
+   * `registerExternalUsage` and `removeExternalUsage`. They show as the
+   * external group of `getAssetUsages` and only warn: `archiveAssets`
+   * archives such assets and reports them in `externalUsages`.
+   */
+  externalUsage?: ExternalUsageRegistry;
 
   /**
    * Rendition widths, ascending. The asset endpoint snaps `?w=` up to the

@@ -228,6 +228,9 @@ export type {
   DigitalOceanMediaConfig,
   CloudflareMediaConfig,
   CustomMediaConfig,
+  ExternalUsage,
+  ExternalUsageRegistry,
+  MediaUsageSource,
 } from './core/types/s3';
 export type {
   StorageAdapter,

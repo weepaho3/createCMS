@@ -14,6 +14,8 @@ import type { MediaUsagePage } from './usage';
 import {
   UsageCount,
   UsageEmpty,
+  UsageExternalItem,
+  UsageExternalList,
   UsageItem,
   UsageList,
   UsageLoadMore,
@@ -145,6 +147,52 @@ describe('Usage parts', () => {
         query: expect.objectContaining({ missingAlt: 'true' }),
       }),
     );
+  });
+});
+
+describe('Usage external group', () => {
+  it('lists usages outside content and marks the blocking ones', async () => {
+    const c = client([
+      {
+        total: { roots: 0, occurrences: 0, hiddenRoots: 0 },
+        items: [],
+        nextCursor: null,
+        external: [
+          {
+            consumer: 'seo-settings',
+            url: null,
+            registeredAt: null,
+            blocking: true,
+          },
+          {
+            consumer: 'newsletter',
+            url: 'https://news.example.com/october',
+            registeredAt: '2026-10-18T10:00:00.000Z',
+            blocking: false,
+          },
+        ],
+      },
+    ]);
+    const view = render(
+      <UsageRoot client={c} assetId="ast_1">
+        <UsageExternalList>
+          {(usage) => <UsageExternalItem key={usage.consumer} usage={usage} />}
+        </UsageExternalList>
+        <UsageEmpty />
+      </UsageRoot>,
+    );
+    const list = await view.findByRole('list', {
+      name: 'Used outside the CMS',
+    });
+    const entries = list.querySelectorAll('li');
+    expect(entries[0].hasAttribute('data-blocking')).toBe(true);
+    expect(entries[0].textContent).toBe(
+      'seo-settings (Keeps the asset from being archived)',
+    );
+    expect(
+      view.getByRole('link', { name: 'newsletter' }).getAttribute('href'),
+    ).toBe('https://news.example.com/october');
+    expect(view.queryByText('Not used anywhere')).toBeNull();
   });
 });
 

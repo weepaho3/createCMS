@@ -565,7 +565,9 @@ import { Usage, createEditorHrefAdapter } from '@createcms/react/media';
 | `Usage.List` (`UsageListProps`) | `ul` | Calls `children(item)` for every `MediaUsageItem`. |
 | `Usage.Item` (`UsageItemProps`) | `li` | One root; `data-status` is `published`, `scheduled` or `draft`. |
 | `Usage.Occurrence` (`UsageOccurrenceProps`) | `a` | Links into the editor at one `MediaUsageOccurrence`; an image usage without alt text opens with the alt field focused (`focus=alt`). `data-alt-state` carries the alt-text state. |
-| `Usage.Empty` (`UsageEmptyProps`) | `p` | Renders once the query finished without any usage (`usage.empty`). |
+| `Usage.ExternalList` (`UsageExternalListProps`) | `ul` | Calls `children(usage)` for every `MediaExternalUsage` of the first page; `aria-label` is `usage.external`. Absent when there are none. |
+| `Usage.ExternalItem` (`UsageExternalItemProps`) | `li` | One usage outside content: the consumer, linked to its `url` (new tab) when it has one, and `usage.externalBlocking` for a usage source. `data-blocking` marks a usage source, which keeps the asset from being archived; registered usages only warn. |
+| `Usage.Empty` (`UsageEmptyProps`) | `p` | Renders once the query finished without any usage, inside or outside content (`usage.empty`). |
 | `Usage.LoadMore` (`UsageLoadMoreProps`) | `button` | Loads the next page; absent when there is none (`usage.loadMore`). |
 
 `EditorHrefAdapter` (`{ build(target) }`) turns an occurrence
@@ -574,9 +576,12 @@ import { Usage, createEditorHrefAdapter } from '@createcms/react/media';
 `<base>/<collection>/<rootId>?block=...&path=...&branch=...&focus=alt`; pass
 your own adapter for another editor.
 
-The response types are `MediaUsagePage` (`{ total, items, nextCursor }`),
-`MediaUsageItem`, `MediaUsageOccurrence` and `MediaUsageScope`
-(`'live' | 'published' | 'history'`).
+The response types are `MediaUsagePage` (`{ total, items, nextCursor,
+external }`), `MediaUsageItem`, `MediaUsageOccurrence`, `MediaExternalUsage`
+(`{ consumer, url, registeredAt, blocking }`) and `MediaUsageScope`
+(`'live' | 'published' | 'history'`). After an archive, the store's
+`mutation.externalUsages` lists archived ids that are still used outside
+the CMS, and the bulk outcome appends `bulk.archivedExternal`.
 
 ## Drag and drop
 

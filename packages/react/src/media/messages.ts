@@ -179,6 +179,8 @@ export type MediaMessages = {
     disabled: Record<string, string>;
     moved: MediaMessageFn<{ count: number; folder: string }>;
     archived: MediaMessageFn<{ count: number }>;
+    /** Appended to `archived` when archived assets are still used outside the CMS. */
+    archivedExternal: MediaMessageFn<{ count: number }>;
     restored: MediaMessageFn<{ count: number }>;
     visibility: MediaMessageFn<{ count: number; status: 'private' | 'public' }>;
     undo: string;
@@ -238,6 +240,10 @@ export type MediaMessages = {
     missingAlt: string;
     empty: string;
     loadMore: string;
+    /** The group of usages outside content. */
+    external: string;
+    /** Marks a usage source that keeps the asset from being archived. */
+    externalBlocking: string;
   };
   picker: {
     title: string;
@@ -594,6 +600,8 @@ export const defaultMediaMessages: MediaMessages = {
       `${format.number(count)} ${pluralize(count, format, 'asset', 'assets')} moved to ${folder}.`,
     archived: ({ count }, format) =>
       `${format.number(count)} ${pluralize(count, format, 'asset', 'assets')} archived.`,
+    archivedExternal: ({ count }, format) =>
+      `${format.number(count)} of them ${pluralize(count, format, 'is', 'are')} still used outside the CMS.`,
     restored: ({ count }, format) =>
       `${format.number(count)} ${pluralize(count, format, 'asset', 'assets')} restored.`,
     visibility: ({ count, status }, format) =>
@@ -680,6 +688,8 @@ export const defaultMediaMessages: MediaMessages = {
     missingAlt: 'Only without alt text',
     empty: 'Not used anywhere',
     loadMore: 'Show more',
+    external: 'Used outside the CMS',
+    externalBlocking: 'Keeps the asset from being archived',
     hiddenRoots: ({ count }, format) =>
       pluralize(
         count,

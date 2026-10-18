@@ -52,6 +52,12 @@ on, schema changes are picked up with `createcms generate` + a Drizzle migration
 
 ## Unreleased
 
+- **`MediaMessages` gains `usage.external`, `usage.externalBlocking` and
+  `bulk.archivedExternal`** for the external usage group and the archive
+  warning.
+  → **Migration:** add the three keys to your own catalogs; the English and
+  German catalogs have them.
+
 - **New table `media_exports` for server-written ZIP archives.** The
   enum `media_export_status` and the table `media_exports` hold the
   exports of `createZipExport`. `PruningPassResult` gains

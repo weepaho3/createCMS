@@ -123,6 +123,8 @@ import {
 import {
   UsageCount,
   UsageEmpty,
+  UsageExternalItem,
+  UsageExternalList,
   UsageItem,
   UsageList,
   UsageLoadMore,
@@ -294,6 +296,8 @@ export const Usage = {
   Occurrence: UsageOccurrence,
   Empty: UsageEmpty,
   LoadMore: UsageLoadMore,
+  ExternalList: UsageExternalList,
+  ExternalItem: UsageExternalItem,
 };
 
 export {
@@ -305,6 +309,7 @@ export {
 } from './usage';
 export type {
   EditorHrefAdapter,
+  MediaExternalUsage,
   MediaUsageItem,
   MediaUsageOccurrence,
   MediaUsagePage,
@@ -312,6 +317,8 @@ export type {
   UseAssetUsagesState,
   UsageCountProps,
   UsageEmptyProps,
+  UsageExternalItemProps,
+  UsageExternalListProps,
   UsageItemProps,
   UsageListProps,
   UsageLoadMoreProps,

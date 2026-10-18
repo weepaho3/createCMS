@@ -204,6 +204,10 @@ export const CMS_ERRORS = {
     status: 400 as const,
     message: 'dataRetention is not configured for this CMS instance',
   },
+  EXTERNAL_USAGE_NOT_CONFIGURED: {
+    status: 400 as const,
+    message: 'media.externalUsage is not configured for this CMS instance',
+  },
   MISSING_REQUIRED_S3_PARAMETERS: {
     status: 400 as const,
     message:

@@ -297,6 +297,7 @@ Check where an asset is used before you touch it. Usage comes from an index writ
     total: { type: '{ roots, occurrences, hiddenRoots }', description: 'Counts over every page of the result.' },
     items: { type: '{ rootId, collection, title, storedSlug, status, via, occurrences }[]', description: "One entry per root. `status` is `published`, `scheduled` or `draft`; `via` is the reusable block the asset sits in; `occurrences` is `{ branchId, branchName, blockId, propertyKey, path, matchedBy, altState, revisionId }[]`, `path` a JSON pointer into the block's properties." },
     nextCursor: { type: 'string | null', description: 'Pass as `cursor` for the next page.' },
+    external: { type: '{ consumer, url, registeredAt, blocking }[]', description: 'Usages outside content, on the first page only (empty with `cursor`): every `media.usageSources` entry that reports the asset (`blocking: true`, `url` and `registeredAt` `null`), then the usages registered with [`registerExternalUsage`](#registerexternalusage) (`blocking: false`).' },
   }}
   params={{
     assetId: { type: 'string', required: true, description: 'The asset. Throws `ASSET_NOT_FOUND` outside your scope.' },
@@ -308,6 +309,64 @@ Check where an asset is used before you touch it. Usage comes from an index writ
     limit: { type: 'number', description: 'Roots per page, 1 to 100 (default 20).' },
   }}
 />
+
+### Register an External Usage [#registerexternalusage]
+
+Record that an asset is used outside the CMS: in a newsletter, on a partner site, in a campaign tool. Only the integration that uses the asset knows this, so it pushes the usage here and removes it again when it stops using the asset; CDN logs cannot tell. Registered usages show in the `external` group of `getAssetUsages` and only warn: `archiveAssets` archives such an asset and lists it in `externalUsages`. The entries live in your `media.externalUsage` registry (see [Configuration](/docs/reference/configuration#media)), not in a CMS table. An asset copied into another tenant gets a new id, so its usages do not follow it.
+
+<APIMethod
+  method="POST"
+  path="/media/registerExternalUsage"
+  fn="registerExternalUsage"
+  collection="media"
+  resource="media"
+  operation="update"
+  args={`{
+  body: {
+    assetId: 'ast_123', // required
+    consumer: 'newsletter', // required
+    url: 'https://news.example.com/2026-10', // required
+  },
+}`}
+  returns={{
+    registered: { type: 'true', description: 'The usage is stored; registering the same asset, consumer and URL again keeps one entry.' },
+  }}
+  params={{
+    assetId: { type: 'string', required: true, description: 'An asset in your scope.' },
+    consumer: { type: 'string', required: true, description: 'Names the integration, 1 to 100 characters.' },
+    url: { type: 'string', required: true, description: 'Where the asset is used: an `http` or `https` URL without credentials, at most 2,048 characters.' },
+  }}
+/>
+
+Throws `EXTERNAL_USAGE_NOT_CONFIGURED` without `media.externalUsage`, `ASSET_NOT_FOUND` outside your scope, and `VALIDATION_ERROR` for another URL.
+
+### Remove an External Usage [#removeexternalusage]
+
+<APIMethod
+  method="POST"
+  path="/media/removeExternalUsage"
+  fn="removeExternalUsage"
+  collection="media"
+  resource="media"
+  operation="update"
+  args={`{
+  body: {
+    assetId: 'ast_123', // required
+    consumer: 'newsletter', // required
+    url: 'https://news.example.com/2026-10',
+  },
+}`}
+  returns={{
+    removed: { type: 'number', description: 'How many entries were removed.' },
+  }}
+  params={{
+    assetId: { type: 'string', required: true, description: 'An asset in your scope.' },
+    consumer: { type: 'string', required: true, description: 'The integration that registered the usage.' },
+    url: { type: 'string', description: 'The usage to remove; without it every usage of `consumer` for the asset goes.' },
+  }}
+/>
+
+Throws `EXTERNAL_USAGE_NOT_CONFIGURED` and `ASSET_NOT_FOUND` like `registerExternalUsage`.
 
 ### Count Asset Usages [#getassetusagecounts]
 
@@ -818,6 +877,7 @@ Soft-delete a batch of assets (and their variants) so a later garbage-collection
     skippedReasons: { type: "Record<string, 'in_use' | 'external' | 'richtext_suspect'>", description: '`in_use`: used by the head of a branch. `external`: a usage source reports it. `richtext_suspect`: the id appears inside a longer string of a block version that the usage index does not cover.' },
     usage: { type: 'Record<string, { roots, published }>', description: 'Root counts for the `in_use` ids.' },
     usedByArchivedRoots: { type: 'string[]', description: 'Archived ids that archived roots still use; restoring such a root brings back a reference to an archived asset.' },
+    externalUsages: { type: 'Record<string, number>', description: 'Archived ids with their number of usages registered through [`registerExternalUsage`](#registerexternalusage). A warning only: these usages never keep an asset from being archived.' },
   }}
   params={{
     assetIds: { type: 'string[]', description: 'Asset ids to archive. One of `assetIds` and `allMatching` is required.' },

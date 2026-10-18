@@ -49,6 +49,20 @@ export type MediaUsagePage = {
   total: { roots: number; occurrences: number; hiddenRoots: number };
   items: MediaUsageItem[];
   nextCursor: string | null;
+  /** Usages outside content, on the first page only. */
+  external?: MediaExternalUsage[];
+};
+
+/**
+ * A use of an asset outside content: a registered external usage
+ * (`blocking: false`, with its `url`) or a configured usage source
+ * (`blocking: true`, which keeps the asset from being archived).
+ */
+export type MediaExternalUsage = {
+  consumer: string;
+  url: string | null;
+  registeredAt: string | null;
+  blocking: boolean;
 };
 
 export type MediaFolder = FolderRecord;
@@ -185,6 +199,8 @@ export type MediaClient = {
     archivedIds: string[];
     skipped: string[];
     skippedReasons?: Record<string, string>;
+    /** Archived ids still used outside the CMS, with their usage count. */
+    externalUsages?: Record<string, number>;
   }>;
   updateAssetsStatus(args: {
     body: MediaBulkTarget & { status: MediaAssetStatus };
