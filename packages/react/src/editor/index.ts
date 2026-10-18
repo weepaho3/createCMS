@@ -13,6 +13,9 @@ import {
   EditorFieldError,
   EditorFieldLabel,
   EditorForm,
+  EditorRichTextField,
+  EditorRichTextToolbar,
+  EditorRichTextToolbarButton,
 } from './field';
 import { EditorSlot } from './plugin-slot';
 import { EditorFramePreview, EditorPreview } from './preview';
@@ -67,6 +70,9 @@ export const Editor = {
   ShortcutHelp: EditorShortcutHelp,
   ErrorSummary: EditorErrorSummary,
   MoveToDialog: EditorMoveToDialog,
+  RichTextField: EditorRichTextField,
+  RichTextToolbar: EditorRichTextToolbar,
+  RichTextToolbarButton: EditorRichTextToolbarButton,
 };
 
 // Field parts: context, built-in controls and their prop types.
@@ -85,6 +91,11 @@ export type {
   ListElementRender,
   NestedFieldControlProps,
   NestedFieldRender,
+  UseRichTextEditorOptions,
+  UseRichTextEditorResult,
+  EditorRichTextFieldProps,
+  EditorRichTextToolbarButtonProps,
+  EditorRichTextToolbarProps,
 } from './field';
 export {
   defaultFieldControls,
@@ -92,7 +103,12 @@ export {
   fromDatetimeLocal,
   toDatetimeLocal,
   useFieldContext,
+  useRichTextEditor,
 } from './field';
+
+// Rich text: the static renderer (no editor, no raw HTML).
+export type { RichTextStaticProps } from './render/rich-text';
+export { RichTextStatic } from './render/rich-text';
 
 // Preview: delayed raw-document render and compiled iframe output.
 export type {

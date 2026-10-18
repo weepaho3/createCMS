@@ -11,6 +11,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // @vitest-environment happy-dom
 import type { EditorDocument } from '../core/document';
+import type {
+  RichTextAdapter,
+  RichTextDoc,
+  RichTextMountOptions,
+} from '../core/richtext';
 import type { EditorStore } from '../core/store';
 import type {
   AnyFieldControlProps,
@@ -101,6 +106,7 @@ function makeDoc(): EditorDocument {
             type: 'demo',
             props: {
               text: 'Hi',
+              body: BODY,
               count: 2,
               flag: true,
               when: '2026-08-16T10:30:00.000Z',
@@ -163,7 +169,57 @@ type FieldTreeOptions = {
   fields?: FieldControls;
   labelChildren?: React.ReactNode;
   controlRender?: (props: AnyFieldControlProps) => React.ReactElement | null;
+  richText?: RichTextAdapter;
 };
+
+const BODY: RichTextDoc = {
+  type: 'doc',
+  content: [
+    {
+      type: 'paragraph',
+      content: [
+        { type: 'text', text: 'Body ' },
+        { type: 'text', text: 'bold', marks: [{ type: 'bold' }] },
+      ],
+    },
+  ],
+};
+
+/** A rich text adapter without an editor: records what the control asks. */
+function stubRichTextAdapter() {
+  const calls = {
+    mounts: [] as RichTextMountOptions[],
+    setValue: [] as RichTextDoc[],
+    editable: [] as boolean[],
+    destroyed: 0,
+  };
+  const adapter: RichTextAdapter = {
+    mount(el, options) {
+      calls.mounts.push(options);
+      const editable = document.createElement('div');
+      for (const [name, value] of Object.entries(options.attributes ?? {})) {
+        editable.setAttribute(name, value);
+      }
+      el.append(editable);
+      return {
+        setValue: (value) => calls.setValue.push(value),
+        setEditable: (value) => calls.editable.push(value),
+        focus: () => editable.focus(),
+        destroy: () => {
+          calls.destroyed += 1;
+          editable.remove();
+        },
+        commands: {
+          toggleMark: () => {},
+          setLink: () => {},
+          setNode: () => {},
+          isActive: () => false,
+        },
+      };
+    },
+  };
+  return { adapter, calls };
+}
 
 function fieldTree(name: string, probe: Probe, options: FieldTreeOptions = {}) {
   const {
@@ -172,9 +228,15 @@ function fieldTree(name: string, probe: Probe, options: FieldTreeOptions = {}) {
     fields,
     labelChildren,
     controlRender,
+    richText,
   } = options;
   return (
-    <Editor.Root schema={formSchema} defaultValue={makeDoc()} fields={fields}>
+    <Editor.Root
+      schema={formSchema}
+      defaultValue={makeDoc()}
+      fields={fields}
+      richText={richText}
+    >
       <StoreProbe probe={probe} />
       <Editor.Field
         blockId={blockId}
@@ -220,16 +282,43 @@ describe('built-in controls', () => {
     expect(input?.value).toBe('Hey');
   });
 
-  it('richText: textarea round trip', () => {
-    const { container, props } = renderField('body');
-    const area = container.querySelector('textarea');
-    expect(area).not.toBeNull();
-    expect(area?.value).toBe('');
-    fireEvent.change(area as HTMLTextAreaElement, {
-      target: { value: 'Body text' },
+  it('richText without an adapter: formatted text, read-only, with a hint', () => {
+    const { container, getByText } = renderField('body');
+    const box = container.querySelector('[role="textbox"]') as HTMLElement;
+    expect(box.getAttribute('aria-readonly')).toBe('true');
+    expect(box.innerHTML).toBe('<p>Body <strong>bold</strong></p>');
+    expect(getByText('Formatted text cannot be edited here.')).toBeDefined();
+    expect(container.querySelector('label')?.getAttribute('for')).toBe(box.id);
+  });
+
+  it('richText with an adapter: mounts, writes edits, follows outside changes', () => {
+    const { adapter, calls } = stubRichTextAdapter();
+    const { container, props, store, unmount } = renderField('body', {
+      richText: adapter,
     });
-    expect(props().body).toBe('Body text');
-    expect(area?.value).toBe('Body text');
+    expect(calls.mounts).toHaveLength(1);
+    const mounted = calls.mounts[0]!;
+    expect(mounted.value).toEqual(BODY);
+    expect(mounted.schema.marks).toContain('bold');
+    const label = container.querySelector('label');
+    expect(
+      container.querySelector(`#${CSS.escape(label!.htmlFor)}`),
+    ).not.toBeNull();
+    const typed: RichTextDoc = {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'New' }] },
+      ],
+    };
+    act(() => mounted.onChange(typed));
+    expect(props().body).toEqual(typed);
+    expect(calls.setValue).toEqual([]);
+    act(() => {
+      void store.undo();
+    });
+    expect(calls.setValue).toEqual([BODY]);
+    unmount();
+    expect(calls.destroyed).toBe(1);
   });
 
   it('number: numeric value in, number out; empty deletes the property', () => {
@@ -533,10 +622,10 @@ describe('Editor.FieldDescription', () => {
   });
 
   it('renders nothing without a description and leaves aria-describedby unset', () => {
-    const { container } = renderField('body');
+    const { container } = renderField('count');
     expect(container.querySelector('p')).toBeNull();
-    const area = container.querySelector('textarea') as HTMLTextAreaElement;
-    expect(area.hasAttribute('aria-describedby')).toBe(false);
+    const input = container.querySelector('input') as HTMLInputElement;
+    expect(input.hasAttribute('aria-describedby')).toBe(false);
   });
 });
 

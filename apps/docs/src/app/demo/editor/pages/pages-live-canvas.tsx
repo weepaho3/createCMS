@@ -9,6 +9,7 @@ import {
   pagesComponents,
   pagesSchema,
 } from '@/app/demo/_lib/editor';
+import { demoRichText } from '@/app/demo/_lib/rich-text';
 import { useDemoFieldSources } from '@/app/demo/_lib/sources';
 import { useLocalDocument } from '@/app/demo/_lib/use-local-document';
 import {
@@ -79,6 +80,7 @@ export function PagesLiveCanvas() {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <Editor.Root
+        richText={demoRichText}
         schema={pagesSchema}
         defaultValue={PAGES_DOC}
         onChange={onChange}

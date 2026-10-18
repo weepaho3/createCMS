@@ -27,6 +27,11 @@ import { requestAndApproveMerge } from '../../../test-utils/helpers';
  * Second collection for cross-collection scope tests: a commit that lives in
  * `posts` must read as not-found from a `pages` endpoint.
  */
+const rtDoc = (text: string) => ({
+  type: 'doc' as const,
+  content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+});
+
 const posts = defineCollection({
   label: 'Posts',
   description: 'Blog posts (cross-collection scope fixture)',
@@ -609,7 +614,7 @@ describe('getDiff', () => {
     }
   });
 
-  it('carries word-level textDiff segments for richText property edits', async () => {
+  it('carries word-level richTextDiff segments for richText property edits', async () => {
     const { cms } = await setupTestCMS();
 
     const root = await cms.api.pages.createRoot({
@@ -622,7 +627,7 @@ describe('getDiff', () => {
         branchId: root.branchId,
         parentBlockId: root.rootId,
         type: 'paragraph',
-        properties: { text: 'Hello world today' },
+        properties: { text: 'p', body: rtDoc('Hello world today') },
       },
     });
 
@@ -640,7 +645,7 @@ describe('getDiff', () => {
         branchId: draft.branch.id,
         blockId: block.blockId,
         type: 'paragraph',
-        properties: { text: 'Hello brave world today' },
+        properties: { body: rtDoc('Hello brave world today') },
       },
     });
 
@@ -656,13 +661,17 @@ describe('getDiff', () => {
     expect(entry!.changeTypes).toEqual(['modified']);
 
     const change = entry!.propertyChanges!.find(
-      (p) => p.path.length === 1 && p.path[0] === 'text',
+      (p) => p.path.length === 1 && p.path[0] === 'body',
     );
     expect(change).toBeDefined();
     expect(change!.kind).toBe('changed');
-    expect(change!.textDiff).toBeDefined();
-    expect(change!.textDiff!.some((s) => s.type === 'ins')).toBe(true);
-    expect(change!.textDiff!.some((s) => s.type === 'same')).toBe(true);
+    expect(change!.richTextDiff).toBeDefined();
+    expect(
+      change!.richTextDiff!.some(
+        (s) => s.type === 'ins' && s.text === 'brave ',
+      ),
+    ).toBe(true);
+    expect(change!.richTextDiff!.some((s) => s.type === 'same')).toBe(true);
   });
 
   it('returns only the requested representation via view', async () => {

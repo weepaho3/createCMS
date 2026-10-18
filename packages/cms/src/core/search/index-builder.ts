@@ -18,6 +18,8 @@ import {
   templates,
   variables,
 } from '../db/schema.generated';
+import { richTextToPlainText } from '../rich-text/convert';
+import { isRichTextDoc } from '../rich-text/schema';
 
 function truncate(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
@@ -111,6 +113,20 @@ async function deleteSearchIndex(
  * The root block gets weight A for title-like props, B for others.
  * Child blocks get weight C.
  */
+/**
+ * The searchable text of a property value: a string, or the plain text of a
+ * `richText` value (blocks separated by spaces); `null` when it holds none.
+ */
+function indexableText(value: unknown): string | null {
+  const text =
+    typeof value === 'string'
+      ? value
+      : isRichTextDoc(value)
+        ? richTextToPlainText(value, { blockSeparator: ' ' })
+        : null;
+  return text !== null && text.trim().length > 0 ? text : null;
+}
+
 export async function indexRoot(
   db: DrizzleInstance,
   rootId: string,
@@ -175,24 +191,25 @@ export async function indexRoot(
       // The reserved `__slug` draft key is not user content, so never index
       // it. The published `roots.slug` is indexed separately below.
       if (key === ROOT_SLUG_PROP) continue;
-      if (typeof value !== 'string' || value.trim().length === 0) continue;
+      const text = indexableText(value);
+      if (text === null) continue;
 
       if (isRootBlock) {
         const isTitle = key === 'title' || key === 'name';
         textParts.push({
-          text: value,
+          text,
           weight: isTitle ? 'A' : 'B',
         });
         if (isTitle && !titleText) {
-          titleText = value;
+          titleText = text;
         }
         if (!snippetText && !isTitle) {
-          snippetText = truncate(value, 200);
+          snippetText = truncate(text, 200);
         }
       } else {
-        textParts.push({ text: value, weight: 'C' });
+        textParts.push({ text, weight: 'C' });
         if (!snippetText) {
-          snippetText = truncate(value, 200);
+          snippetText = truncate(text, 200);
         }
       }
     }

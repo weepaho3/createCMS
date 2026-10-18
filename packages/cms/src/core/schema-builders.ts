@@ -1,5 +1,6 @@
 import * as z from 'zod';
 
+import type { RichTextIssue } from './rich-text/types';
 import type {
   AnyBlockDefinition,
   BlockProperty,
@@ -12,6 +13,9 @@ import type {
   ListElementSpec,
 } from './types';
 
+import { richTextToPlainText } from './rich-text/convert';
+import { isRichTextDoc, richTextSchemaOf } from './rich-text/schema';
+import { validateRichText } from './rich-text/validate';
 import { wireBooleanSchema } from './utils/wire-boolean';
 
 const ALL_LINK_KINDS: readonly LinkKind[] = [
@@ -70,10 +74,100 @@ function buildLinkSchema(
   return z.discriminatedUnion('kind', members);
 }
 
+/** Marks a zod issue as a rich text finding (`params.richText`). */
+export type RichTextZodIssueParams = {
+  richText: RichTextIssue['code'] | 'html';
+  path?: (string | number)[];
+};
+
+/**
+ * Zod for a `richText` value: a `RichTextDoc` the property allows
+ * (`validateRichText` with its `marks`, `nodes`, `inline`) whose plain text
+ * fits `minLength` / `maxLength`. An HTML string fails with
+ * `params.richText: 'html'`; convert it with `htmlToRichText` first.
+ */
+export function richTextSchema(spec: {
+  marks?: readonly string[];
+  nodes?: readonly string[];
+  inline?: boolean;
+  minLength?: number;
+  maxLength?: number;
+}): z.ZodType {
+  const allowed = richTextSchemaOf(spec);
+  return z.unknown().superRefine((value, ctx) => {
+    if (typeof value === 'string') {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'richText values are ProseMirror JSON ({ type: "doc" }); convert HTML with htmlToRichText',
+        params: { richText: 'html' } satisfies RichTextZodIssueParams,
+      });
+      return;
+    }
+    const issues = validateRichText(value, allowed);
+    for (const issue of issues) {
+      ctx.addIssue({
+        code: 'custom',
+        path: issue.path,
+        message: `richText ${issue.code}${
+          issue.params ? ` ${JSON.stringify(issue.params)}` : ''
+        }`,
+        params: {
+          richText: issue.code,
+          path: issue.path,
+          ...issue.params,
+        },
+      });
+    }
+    if (issues.length > 0 || !isRichTextDoc(value)) return;
+    const length = richTextToPlainText(value).length;
+    if (typeof spec.minLength === 'number' && length < spec.minLength) {
+      ctx.addIssue({
+        code: 'too_small',
+        origin: 'string',
+        minimum: spec.minLength,
+        inclusive: true,
+        message: `richText text must be at least ${spec.minLength} characters`,
+      });
+    }
+    if (typeof spec.maxLength === 'number' && length > spec.maxLength) {
+      ctx.addIssue({
+        code: 'too_big',
+        origin: 'string',
+        maximum: spec.maxLength,
+        inclusive: true,
+        message: `richText text must be at most ${spec.maxLength} characters`,
+      });
+    }
+  });
+}
+
+/**
+ * True when every failure of a property parse is a rich text finding other
+ * than an HTML string: the write maps to `RICH_TEXT_INVALID`.
+ */
+export function isRichTextFailure(
+  issues: readonly z.core.$ZodIssue[],
+): boolean {
+  return (
+    issues.length > 0 &&
+    issues.every((issue) => {
+      const params = (issue as { params?: Partial<RichTextZodIssueParams> })
+        .params;
+      return (
+        issue.code === 'custom' &&
+        typeof params?.richText === 'string' &&
+        params.richText !== 'html'
+      );
+    })
+  );
+}
+
 /**
  * Zod for a scalar / reference property (or list element) of the given `spec`,
  * honouring the declarative constraints on it:
- * - `string` / `richText` -> `z.string()` with `minLength`/`maxLength`/`pattern`
+ * - `string` -> `z.string()` with `minLength`/`maxLength`/`pattern`
+ * - `richText` -> {@link richTextSchema}
  * - `number` -> `z.number()` with `min`/`max`
  * - `date` -> ISO-8601 datetime string (`z.iso.datetime()`)
  * - `boolean` -> `z.boolean()`; `image` / `reference` -> `z.string()`
@@ -83,6 +177,9 @@ function buildLinkSchema(
  */
 function scalarSchema(spec: {
   type: string;
+  marks?: readonly string[];
+  nodes?: readonly string[];
+  inline?: boolean;
   minLength?: number;
   maxLength?: number;
   pattern?: string;
@@ -90,8 +187,9 @@ function scalarSchema(spec: {
   max?: number;
 }): z.ZodType {
   switch (spec.type) {
-    case 'string':
-    case 'richText': {
+    case 'richText':
+      return richTextSchema(spec);
+    case 'string': {
       let s = z.string();
       if (typeof spec.minLength === 'number') s = s.min(spec.minLength);
       if (typeof spec.maxLength === 'number') s = s.max(spec.maxLength);

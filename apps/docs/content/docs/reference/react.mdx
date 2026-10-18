@@ -102,12 +102,24 @@ Typed accessor for the per-node annotation of a diff tree (`getDiff({ view: 'tre
 function getBlockDiff(node: BlockTreeNode): BlockDiffAnnotation | null;
 ```
 
-### `diffSegmentsToHtml`
+### `RichText` and `renderRichText`
 
-Renders the word-level `textDiff` segments of a `richText` property change as an HTML string with `<ins>`/`<del>` markers, for the same `dangerouslySetInnerHTML` path you already use for rich text. Style the markers via `ins[data-diff-text]` / `del[data-diff-text]`. Tags are never wrapped and deleted tags are dropped, so a formatting-only change (say, bolding a word) renders as the new HTML with no inline highlight. Server-safe when imported from `@createcms/core/react/blocks` — the `@createcms/core/react` barrel is a `'use client'` boundary.
+Renders a `richText` value (ProseMirror JSON) as plain React elements, without `dangerouslySetInnerHTML`: the same elements as `richTextToHtml`. `components` replaces the element of any node or mark type (`link` with Next's `Link`, `image` with `next/image`); each override gets `{ type, attrs, children, href?, src? }` (`RichTextElementProps`). `resolveLink(attrs)` decides a link's URL (default: the published read path's `attrs.resolved.href`, then external, `mailto:` and `tel:` targets; `richTextLinkHref` is that default); `resolveAsset(id)` gives image URLs (images are left out without it). Server-safe when imported from `@createcms/core/react/blocks`.
 
 ```ts
-function diffSegmentsToHtml(segments: TextDiffSegment[]): string;
+function RichText(props: RichTextProps): ReactNode;
+function renderRichText(value: RichTextDoc | null | undefined, options?: RenderRichTextOptions): ReactNode;
+function richTextLinkHref(attrs: Record<string, unknown>): string | null;
+type RichTextProps = RenderRichTextOptions & { value: RichTextDoc | null | undefined };
+type RenderRichTextOptions = { components?: RichTextComponents; resolveLink?; resolveAsset? };
+```
+
+### `RichTextDiff`
+
+Renders the word-level `richTextDiff` segments of a `richText` property change: one element per text block, `<ins data-diff-text="ins">`, `<del data-diff-text="del">` and `<span data-diff-text="format">` (text whose marks changed), each with its marks. Takes `segments` plus the `RichText` options except `resolveAsset` (`RichTextDiffProps`).
+
+```ts
+function RichTextDiff(props: RichTextDiffProps): ReactNode;
 ```
 
 ### `pickVariant`

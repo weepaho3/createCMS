@@ -101,7 +101,14 @@ await cms.api.posts.createBlock({
     branchId: post.branchId,
     parentBlockId: post.rootId,
     type: 'richText',
-    properties: { content: '<p>Welcome to my blog.</p>' },
+    properties: {
+      content: {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'Welcome to my blog.' }] },
+        ],
+      },
+    },
   },
 });
 
@@ -115,17 +122,19 @@ await cms.api.posts.publishBranch({
 Map the blocks to components and render the published tree, read by its full path:
 
 ```tsx title="app/blog/[slug]/page.tsx"
-import DOMPurify from 'isomorphic-dompurify';
-import { BlocksRenderer, createBlocksMap } from '@createcms/core/react/blocks';
+import {
+  BlocksRenderer,
+  createBlocksMap,
+  RichText,
+} from '@createcms/core/react/blocks';
 import { collections } from '@/lib/collections';
 import { cms } from '@/lib/cms';
 
 const postBlocks = createBlocksMap(collections.posts, {
-  // `richText` stores raw HTML: sanitize it before rendering.
   richText: ({ properties }) => (
-    <div
-      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(properties.content) }}
-    />
+    <div>
+      <RichText value={properties.content} />
+    </div>
   ),
   quote: ({ properties }) => (
     <blockquote>

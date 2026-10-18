@@ -84,6 +84,9 @@ describe('namespace shape', () => {
       'ShortcutHelp',
       'ErrorSummary',
       'MoveToDialog',
+      'RichTextField',
+      'RichTextToolbar',
+      'RichTextToolbarButton',
     ]);
   });
 

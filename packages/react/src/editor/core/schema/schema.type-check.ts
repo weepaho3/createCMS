@@ -3,6 +3,7 @@
  * entry imports it) but is covered by `tsc --noEmit`; a failing `Expect` or an
  * unused `@ts-expect-error` fails the type-check gate.
  */
+import type { RichTextDoc } from '../richtext/types';
 import type { StandardSchemaV1 } from './standard-schema';
 import type {
   FieldSpecOf,
@@ -12,6 +13,7 @@ import type {
   MediaValue,
   ReferenceValue,
   Responsive,
+  RichTextField,
 } from './types';
 
 import { defineComponent, defineEditorSchema } from './types';
@@ -78,7 +80,14 @@ export type _select = Expect<Equal<Props['select'], 'a' | 'b' | undefined>>;
 export type _multi = Expect<Equal<Props['multi'], 'x'[] | undefined>>;
 export type _date = Expect<Equal<Props['date'], string | undefined>>;
 export type _color = Expect<Equal<Props['color'], string | undefined>>;
-export type _richText = Expect<Equal<Props['richText'], string | undefined>>;
+export type _richText = Expect<
+  Equal<Props['richText'], RichTextDoc | undefined>
+>;
+export const _richTextPattern: RichTextField = {
+  type: 'richText',
+  // @ts-expect-error `pattern` does not apply to rich text
+  pattern: '^x',
+};
 export type _media = Expect<Equal<Props['media'], MediaValue | undefined>>;
 export type _link = Expect<Equal<Props['link'], LinkValue | undefined>>;
 export type _reference = Expect<

@@ -19,6 +19,7 @@ const CMS_MDX = 'reference/react-editor-cms.mdx';
 const ERROR_CODES = [
   'HEAD_MISMATCH',
   'TYPE_MISMATCH',
+  'RICH_TEXT_INVALID',
   'BLOCK_NOT_ALLOWED_IN_PARENT',
   'PROTECTED_BRANCH',
   'COMMIT_MESSAGE_REQUIRED',

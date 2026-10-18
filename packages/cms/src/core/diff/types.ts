@@ -1,4 +1,5 @@
 import type { ReconstructedBlock } from '../blocks/reconstruct-snapshot';
+import type { RichTextMark } from '../rich-text/types';
 
 // Visual diff contract
 //
@@ -25,10 +26,21 @@ export type ChangeType =
   | 'moved'
   | 'childrenReordered';
 
-/** One run of a word-level rich-text diff. `html` is a raw HTML fragment. */
-export type TextDiffSegment = {
-  type: 'same' | 'ins' | 'del';
-  html: string;
+/**
+ * One run of a word-level `richText` diff: its text with the marks it
+ * carries, and the text block it sits in (`block` counts text blocks in
+ * document order, `blockType` is `paragraph`, `heading` (with `level`),
+ * `codeBlock`, ...). `same` and `ins` follow the new value, `del` the old;
+ * `format` is unchanged text whose marks changed from `fromMarks`.
+ */
+export type RichTextDiffSegment = {
+  type: 'same' | 'ins' | 'del' | 'format';
+  text: string;
+  marks: RichTextMark[];
+  block: number;
+  blockType: string;
+  level?: number;
+  fromMarks?: RichTextMark[];
 };
 
 export type PropertyChangeKind = 'added' | 'removed' | 'changed';
@@ -49,10 +61,11 @@ export type PropertyChange = {
   /** New value. Absent for `removed`. */
   to?: unknown;
   /**
-   * Word-level segments for `richText` properties (per the collection schema).
-   * Only present when kind is `changed` and both sides are strings.
+   * Word-level segments for `richText` properties (per the collection
+   * schema). Present when kind is `changed`; a `richText` value always
+   * changes as a whole (`path` is the property or its list index).
    */
-  textDiff?: TextDiffSegment[];
+  richTextDiff?: RichTextDiffSegment[];
 };
 
 /**

@@ -17,10 +17,12 @@ import {
   templates,
   variables,
 } from './db/schema.generated';
+import { isRichTextDoc } from './rich-text/schema';
 import { crossScopeColumns, rootScopeConditions } from './scope';
 import {
   VAR_PATTERN,
   extractVariableKeysFromProperties,
+  resolveTemplateRichText,
 } from './variables-template';
 
 // The `{{key}}` helpers live in the dependency-free `variables-template`
@@ -28,8 +30,10 @@ import {
 // one import path.
 export {
   VAR_PATTERN,
+  extractRichTextVariableKeys,
   extractVariableKeys,
   extractVariableKeysFromProperties,
+  resolveTemplateRichText,
   resolveTemplateString,
 } from './variables-template';
 
@@ -57,8 +61,9 @@ export async function loadVariables(
 }
 
 /**
- * Replaces {{key}} patterns in all string properties of a single node.
- * Returns a new properties object (does not mutate the original).
+ * Replaces {{key}} patterns in all string and `richText` properties of a
+ * single node (and lists of `richText`). Returns a new properties object
+ * (does not mutate the original).
  */
 function substituteInProperties(
   properties: Record<string, unknown>,
@@ -66,7 +71,13 @@ function substituteInProperties(
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(properties)) {
-    if (typeof value === 'string') {
+    if (isRichTextDoc(value)) {
+      result[key] = resolveTemplateRichText(value, vars);
+    } else if (Array.isArray(value) && value.some(isRichTextDoc)) {
+      result[key] = value.map((item: unknown) =>
+        isRichTextDoc(item) ? resolveTemplateRichText(item, vars) : item,
+      );
+    } else if (typeof value === 'string') {
       VAR_PATTERN.lastIndex = 0;
       if (VAR_PATTERN.test(value)) {
         VAR_PATTERN.lastIndex = 0;

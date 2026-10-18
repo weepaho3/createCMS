@@ -8,6 +8,7 @@ import type {
 import type { MediaClient } from '@createcms/react/media';
 
 import {
+  Editor,
   emptyListElement,
   fromDatetimeLocal,
   toDatetimeLocal,
@@ -18,7 +19,6 @@ import {
   useVariableSuggest,
 } from '@createcms/react/editor/cms';
 import * as React from 'react';
-import { createPortal } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -660,111 +660,90 @@ function LinkField(props: FieldControlProps<'link'>) {
   );
 }
 
+const RICH_TEXT_BUTTON =
+  'text-muted-foreground hover:bg-accent hover:text-accent-foreground aria-pressed:bg-accent aria-pressed:text-accent-foreground inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-sm font-medium disabled:pointer-events-none disabled:opacity-50';
+
+const RICH_TEXT_MARKS = [
+  { mark: 'bold', label: 'B', title: 'Bold', className: 'font-bold' },
+  { mark: 'italic', label: 'I', title: 'Italic', className: 'italic' },
+  { mark: 'underline', label: 'U', title: 'Underline', className: 'underline' },
+  {
+    mark: 'strike',
+    label: 'S',
+    title: 'Strikethrough',
+    className: 'line-through',
+  },
+] as const;
+
+/**
+ * Rich text with a formatting toolbar and `{{variable}}` completion. The
+ * editor comes from `Editor.Root richText` (loaded on first focus); without
+ * it the field shows its formatted text read-only.
+ */
 function RichTextField(props: FieldControlProps<'richText'>) {
   const sources = useCmsSources();
   const suggest = useVariableSuggest(sources);
-  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
-  const [highlighted, setHighlighted] = React.useState(0);
-  const [suggestOpen, setSuggestOpen] = React.useState(false);
-  const [suggestQuery, setSuggestQuery] = React.useState('');
-  const [suggestRect, setSuggestRect] = React.useState<DOMRect | null>(null);
-
-  const items = suggestOpen ? suggest.getItems(suggestQuery) : [];
-
-  const updateSuggest = (text: string, caret: number) => {
-    const prefix = text.slice(0, caret);
-    const match = prefix.match(suggest.pattern);
-    if (!match) {
-      setSuggestOpen(false);
-      return;
-    }
-    setSuggestQuery(match[1] ?? '');
-    setSuggestOpen(true);
-    setHighlighted(0);
-    const textarea = textareaRef.current;
-    if (textarea) {
-      setSuggestRect(textarea.getBoundingClientRect());
-    }
-  };
-
-  const accept = (index: number) => {
-    const item = items[index];
-    const textarea = textareaRef.current;
-    if (!item || !textarea) return;
-    const caret = textarea.selectionStart;
-    const text = props.value ?? '';
-    const prefix = text.slice(0, caret);
-    const match = prefix.match(suggest.pattern);
-    if (!match) return;
-    const start = caret - match[0].length;
-    const next = text.slice(0, start) + item.insertText + text.slice(caret);
-    props.onChange(next);
-    setSuggestOpen(false);
-    requestAnimationFrame(() => {
-      const pos = start + item.insertText.length;
-      textarea.setSelectionRange(pos, pos);
-      textarea.focus();
-    });
-  };
-
+  const items = React.useCallback(
+    (query: string) =>
+      suggest.getItems(query).map((item) => ({
+        label: typeof item.key === 'string' ? item.key : item.insertText,
+        insertText: item.insertText,
+        description:
+          typeof item.description === 'string' ? item.description : undefined,
+      })),
+    [suggest],
+  );
+  const marks = props.spec.marks;
   return (
-    <div className="relative">
-      <Textarea
-        ref={textareaRef}
-        id={props.id}
-        name={props.name}
-        disabled={props.disabled}
-        readOnly={props.readOnly}
-        value={props.value ?? ''}
-        rows={4}
-        {...fieldAria(props)}
-        onChange={(event) => {
-          props.onChange(event.target.value);
-          updateSuggest(event.target.value, event.target.selectionStart);
-        }}
-        onKeyDown={(event) => {
-          if (!suggestOpen || items.length === 0) return;
-          if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            setHighlighted((prev) => (prev + 1) % items.length);
-          } else if (event.key === 'ArrowUp') {
-            event.preventDefault();
-            setHighlighted((prev) => (prev - 1 + items.length) % items.length);
-          } else if (event.key === 'Enter') {
-            event.preventDefault();
-            accept(highlighted);
-          } else if (event.key === 'Escape') {
-            event.preventDefault();
-            setSuggestOpen(false);
-          }
-        }}
-        onBlur={() => {
-          window.setTimeout(() => setSuggestOpen(false), 150);
-        }}
-      />
-      {suggestOpen && items.length > 0 && suggestRect
-        ? createPortal(
-            <div
-              className="bg-popover border-border z-50 rounded-md border shadow-md"
-              style={{
-                position: 'fixed',
-                top: suggestRect.bottom + 4,
-                left: suggestRect.left,
-                minWidth: suggestRect.width,
-              }}
+    <Editor.RichTextField
+      suggest={{ items }}
+      className="border-input focus-within:ring-ring/50 focus-within:border-ring dark:bg-input/30 rounded-md border bg-transparent shadow-xs focus-within:ring-[3px] data-[invalid]:border-destructive [&_[contenteditable]]:min-h-24 [&_[contenteditable]]:px-3 [&_[contenteditable]]:py-2 [&_[contenteditable]]:outline-none [&_[data-editor-richtext-hint]]:text-muted-foreground [&_[data-editor-richtext-hint]]:px-3 [&_[data-editor-richtext-hint]]:pb-2 [&_[data-editor-richtext-hint]]:text-xs [&_[data-editor-richtext-suggestions]]:bg-popover [&_[data-editor-richtext-suggestions]]:z-50 [&_[data-editor-richtext-suggestions]]:min-w-48 [&_[data-editor-richtext-suggestions]]:rounded-md [&_[data-editor-richtext-suggestions]]:border [&_[data-editor-richtext-suggestions]]:p-1 [&_[data-editor-richtext-suggestions]]:shadow-md [&_[role=option]]:flex [&_[role=option]]:cursor-default [&_[role=option]]:justify-between [&_[role=option]]:gap-4 [&_[role=option]]:rounded-sm [&_[role=option]]:px-2 [&_[role=option]]:py-1.5 [&_[role=option]]:text-sm [&_[role=option][data-highlighted]]:bg-accent"
+    >
+      <Editor.RichTextToolbar className="border-input flex flex-wrap gap-1 border-b p-1">
+        {RICH_TEXT_MARKS.filter(
+          (item) => marks === undefined || marks.includes(item.mark),
+        ).map((item) => (
+          <Editor.RichTextToolbarButton
+            key={item.mark}
+            mark={item.mark}
+            aria-label={item.title}
+            title={item.title}
+            className={`${RICH_TEXT_BUTTON} ${item.className}`}
+          >
+            {item.label}
+          </Editor.RichTextToolbarButton>
+        ))}
+        {props.spec.inline ? null : (
+          <>
+            <Editor.RichTextToolbarButton
+              node="heading"
+              attrs={{ level: 2 }}
+              aria-label="Heading"
+              title="Heading"
+              className={RICH_TEXT_BUTTON}
             >
-              {suggest.render({
-                items,
-                highlighted,
-                query: suggestQuery,
-                rect: suggestRect,
-                accept,
-              })}
-            </div>,
-            document.body,
-          )
-        : null}
-    </div>
+              H2
+            </Editor.RichTextToolbarButton>
+            <Editor.RichTextToolbarButton
+              node="bulletList"
+              aria-label="Bulleted list"
+              title="Bulleted list"
+              className={RICH_TEXT_BUTTON}
+            >
+              •
+            </Editor.RichTextToolbarButton>
+            <Editor.RichTextToolbarButton
+              node="orderedList"
+              aria-label="Numbered list"
+              title="Numbered list"
+              className={RICH_TEXT_BUTTON}
+            >
+              1.
+            </Editor.RichTextToolbarButton>
+          </>
+        )}
+      </Editor.RichTextToolbar>
+    </Editor.RichTextField>
   );
 }
 

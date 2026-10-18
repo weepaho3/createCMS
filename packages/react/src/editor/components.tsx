@@ -4,6 +4,7 @@ import type { EditorDocument } from './core/document';
 import type { Diagnostic } from './core/load';
 import type { MessagesInput, Platform } from './core/messages';
 import type { EditorPlugin } from './core/plugin';
+import type { RichTextAdapter } from './core/richtext/adapter';
 import type { AnyEditorSchema } from './core/schema';
 import type {
   BeforeSaveGate,
@@ -43,6 +44,12 @@ type EditorRootCommonProps = {
   dir?: 'ltr' | 'rtl';
   /** Keyboard label style; detected from the browser by default. */
   platform?: Platform;
+  /**
+   * The rich text editor for `richText` fields (`/editor/richtext`).
+   * Without it they show their formatted text read-only. Read once at
+   * mount.
+   */
+  richText?: RichTextAdapter;
   children?: React.ReactNode;
 };
 
@@ -183,6 +190,7 @@ export function EditorRoot(props: EditorRootProps) {
       announcer: createAnnouncer(),
       platform: props.platform ?? detectPlatform(),
       fields: withPluginControls(fields, store.plugins),
+      richText: props.richText ?? null,
       registerScrollTarget,
       scrollTo,
     };

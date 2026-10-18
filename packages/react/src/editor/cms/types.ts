@@ -6,7 +6,12 @@ import type {
 } from '@createcms/schema';
 import type { ReactNode } from 'react';
 
-import type { EditorDocument, Field, PersistenceOptions } from '../core';
+import type {
+  EditorDocument,
+  Field,
+  PersistenceOptions,
+  RichTextDoc,
+} from '../core';
 import type { CmsDocumentError } from './errors';
 
 export type { CmsDocumentError, CmsFieldError } from './errors';
@@ -80,7 +85,7 @@ export type CmsDocumentResolve = {
   richText: (
     value: unknown,
     spec: Field,
-  ) => string | Promise<string> | undefined;
+  ) => RichTextDoc | Promise<RichTextDoc> | undefined;
 };
 
 export type UseCmsDocumentOptions = {

@@ -12,11 +12,13 @@ import type { MediaClient } from '@createcms/react/media';
 import { Editor, useSave, useSaveConflict } from '@createcms/react/editor';
 import { Canvas } from '@createcms/react/editor/canvas';
 import {
+  assetUrl,
   cmsCanvasComponents,
   fromCollection,
   useCmsDocument,
   useCmsFieldSources,
 } from '@createcms/react/editor/cms';
+import { lazyRichTextAdapter } from '@createcms/react/editor/core';
 import * as React from 'react';
 
 import {
@@ -383,6 +385,7 @@ function CmsEditor({
         persistence={doc.persistence}
         onChange={doc.onChange}
         fields={cmsFields}
+        richText={richText}
       >
         <CmsSourcesProvider sources={sources} media={media}>
           <SaveErrorBanner />
@@ -429,5 +432,15 @@ function DeviceCanvas(
     />
   );
 }
+
+/**
+ * Tiptap for `richText` fields, loaded the first time one is edited so it
+ * stays out of the page's initial bundle.
+ */
+const richText = lazyRichTextAdapter(() =>
+  import('@createcms/react/editor/richtext').then((m) =>
+    m.createTiptapAdapter({ resolveAsset: (id) => assetUrl(id) }),
+  ),
+);
 
 export { CmsEditor };

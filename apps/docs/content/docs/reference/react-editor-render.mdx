@@ -29,6 +29,13 @@ components render unchanged).
 | `wrapBlock` | `(element, { id, type }) => ReactNode`: wrap every block, e.g. in a client `BlockErrorBoundary`.        |
 | `unknown`   | `({ id, type, props }) => ReactNode` for a type without a component (default: nothing).                 |
 
+## RichTextStatic
+
+`RichTextStatic` renders a `richText` value without an editor and without
+raw HTML: `<RichTextStatic value={props.body} />`. `RichTextStaticProps`:
+`value`, `resolveLink(attrs)` and `resolveAsset(id)`; see
+[the editor reference](/docs/reference/react-editor#rich-text).
+
 ## Types
 
 | Type                    | Description                                                     |

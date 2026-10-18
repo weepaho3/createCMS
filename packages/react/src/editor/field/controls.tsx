@@ -1,8 +1,12 @@
+import * as React from 'react';
+
 import type { Field } from '../core/schema';
 import type { FieldControlProps, FieldControls } from './types';
 
+import { EMPTY_RICH_TEXT } from '../core/richtext/schema';
 import { defaultValuesFor } from '../core/schema';
 import { useMessages } from '../messages';
+import { RichTextControlView } from './rich-text-parts';
 
 /** ISO-8601 datetime to the `datetime-local` input format (local time, minutes precision); `''` for missing/invalid input. */
 export function toDatetimeLocal(iso: string | undefined): string {
@@ -36,8 +40,9 @@ export function emptyListElement(of: Field): unknown {
       return of.multiple ? [] : (of.options[0]?.value ?? '');
     case 'text':
     case 'textarea':
-    case 'richText':
       return '';
+    case 'richText':
+      return structuredClone(EMPTY_RICH_TEXT);
     case 'list':
       return [];
     case 'object':
@@ -103,19 +108,23 @@ export function TextareaControl(props: FieldControlProps<'textarea'>) {
   );
 }
 
-/** The value is an HTML string; the textarea edits it as source. */
+/**
+ * The field's rich text editor (`Editor.Root richText`) with a toolbar for
+ * the formatting it allows. Without one the formatted text shows
+ * read-only with a hint.
+ */
 export function RichTextControl(props: FieldControlProps<'richText'>) {
   return (
-    <textarea
+    <RichTextControlView
+      spec={props.spec}
+      value={props.value}
+      onChange={props.onChange}
       id={props.id}
-      name={props.name}
-      value={props.value ?? ''}
-      placeholder={props.spec.placeholder}
+      describedBy={props.describedBy}
+      invalid={props.invalid}
       required={props.required}
-      disabled={props.disabled}
       readOnly={props.readOnly}
-      {...aria(props)}
-      onChange={(event) => props.onChange(event.currentTarget.value)}
+      disabled={props.disabled}
     />
   );
 }

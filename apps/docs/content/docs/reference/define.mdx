@@ -111,7 +111,7 @@ Every property is one of ten field types. The common shape:
 | `number` | `number` | `min?`, `max?` |
 | `boolean` | `boolean` | |
 | `date` | `string` (ISO) | |
-| `richText` | `string` (HTML) | `minLength?`, `maxLength?`, `pattern?` |
+| `richText` | `RichTextDoc` (ProseMirror JSON) | `marks?`, `nodes?`, `inline?`, `minLength?`, `maxLength?` (counted on the plain text) |
 | `image` | `string` (asset reference) | |
 | `select` | one of `options[].value` | `options: { label, value }[]` |
 | `reference` | target `rootId` string | `collection: string` |
@@ -124,8 +124,8 @@ The extra config on the text and number types is declarative validation, enforce
 
 | Field | Applies to | Meaning |
 | --- | --- | --- |
-| `minLength` / `maxLength` | `string`, `richText` | Bounds on the string length. |
-| `pattern` | `string`, `richText` | A JS `RegExp` **source** string the value must match, e.g. `'^[a-z-]+$'`. Write the source, not `/…/`. |
+| `minLength` / `maxLength` | `string`, `richText` | Bounds on the string length (for `richText`, the length of its plain text). |
+| `pattern` | `string` | A JS `RegExp` **source** string the value must match, e.g. `'^[a-z-]+$'`. Write the source, not `/…/`. |
 | `min` / `max` | `number` | Inclusive bounds on the value. |
 
 The same constraints apply to list elements of those types (`of: { type: 'string', maxLength: 24 }`). On a `list` itself, `min` / `max` bound the array **length** instead.

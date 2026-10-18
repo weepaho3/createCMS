@@ -1,5 +1,6 @@
 import type { Announcer } from './announcer';
 import type { Messages, Platform } from './core/messages';
+import type { RichTextAdapter } from './core/richtext/adapter';
 import type { AnyEditorSchema } from './core/schema';
 import type { EditorStore } from './core/store';
 import type { FieldControls } from './field/types';
@@ -25,6 +26,8 @@ export type EditorContextValue = {
   readonly announcer: Announcer;
   /** Per-kind control components from `Editor.Root`'s `fields` prop (`{}` when none). */
   readonly fields: FieldControls;
+  /** `Editor.Root`'s `richText` adapter, `null` without one. */
+  readonly richText: RichTextAdapter | null;
   registerScrollTarget(blockId: string, el: HTMLElement): () => void;
   scrollTo(blockId: string, opts?: EditorScrollToOptions): boolean;
 };

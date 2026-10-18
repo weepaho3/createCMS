@@ -31,6 +31,13 @@ export const messagesDe: Messages = {
     linkTarget: () => 'Der Link braucht ein Ziel.',
     responsive: () => 'Dieses Feld hat keine Werte pro Breakpoint.',
     localized: () => 'Dieses Feld hat keine Werte pro Sprache.',
+    richTextNode: (p) =>
+      `${value(p, 'node', 'Dieses Element')} ist hier nicht erlaubt.`,
+    richTextMark: (p) =>
+      `Die Formatierung ${value(p, 'mark')} ist hier nicht erlaubt.`,
+    richTextLinkProtocol: () =>
+      'Links müssen http, https, mailto oder tel verwenden.',
+    richTextStructure: () => 'Der formatierte Text ist fehlerhaft.',
   },
   structure: {
     duplicateId: () => 'Diese Block-ID kommt doppelt vor.',
@@ -64,6 +71,23 @@ export const messagesDe: Messages = {
     outline: 'Seitenstruktur',
     contextMenu: 'Blockaktionen',
     handleMenu: 'Blockaktionen',
+    richTextReadOnly: 'Formatierter Text kann hier nicht bearbeitet werden.',
+    richTextToolbar: 'Formatierung',
+    richTextSuggestions: 'Vorschläge',
+    richTextFormat: {
+      bold: 'Fett',
+      italic: 'Kursiv',
+      underline: 'Unterstrichen',
+      strike: 'Durchgestrichen',
+      code: 'Code',
+      link: 'Link',
+      paragraph: 'Absatz',
+      heading: ({ level }) => `Überschrift ${level}`,
+      bulletList: 'Aufzählung',
+      orderedList: 'Nummerierte Liste',
+      blockquote: 'Zitat',
+      codeBlock: 'Codeblock',
+    },
     emptySlotAdd: 'Block hinzufügen',
     moveTo: 'Verschieben nach ...',
     moveToTitle: (p) => `${named(p.block)} verschieben nach`,

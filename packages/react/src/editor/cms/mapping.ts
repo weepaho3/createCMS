@@ -17,7 +17,12 @@ import type {
   SlotSpec,
 } from '../core';
 
-import { DEFAULT_SLOT, EditorAdapterError } from '../core';
+import {
+  DEFAULT_SLOT,
+  EditorAdapterError,
+  htmlToRichText,
+  richTextSchemaOf,
+} from '../core';
 
 /** Schema version stamped on documents mapped from createcms trees. */
 export const CMS_SCHEMA_VERSION = 1;
@@ -90,6 +95,13 @@ const SHARED_KEYS = [
   'required',
 ] as const;
 const TEXT_KEYS = ['minLength', 'maxLength', 'pattern'] as const;
+const RICH_TEXT_KEYS = [
+  'marks',
+  'nodes',
+  'inline',
+  'minLength',
+  'maxLength',
+] as const;
 
 function elementField(spec: ListElementSpec): Field {
   return propertyField(spec as BlockProperty, 'list element');
@@ -109,7 +121,11 @@ function propertyField(spec: BlockProperty, key: string): Field {
       );
     case 'richText':
       return withDefault(
-        copyDefined({ ...base, type: 'richText' }, raw, TEXT_KEYS) as Field,
+        copyDefined(
+          { ...base, type: 'richText' },
+          raw,
+          RICH_TEXT_KEYS,
+        ) as Field,
         raw.defaultValue,
       );
     case 'number':
@@ -269,6 +285,9 @@ function mediaValue(value: Record<string, unknown>): MediaValue | undefined {
  * `{ id }`.
  */
 export function cmsValueToEditor(spec: BlockProperty, value: unknown): unknown {
+  if (spec.type === 'richText' && typeof value === 'string') {
+    return legacyRichText(value, spec);
+  }
   if (spec.type === 'image') {
     if (typeof value === 'string')
       return { assetId: value } satisfies MediaValue;
@@ -317,25 +336,44 @@ function toCms(spec: BlockProperty, value: unknown, element: boolean): unknown {
 function mapProps(
   props: Record<string, unknown>,
   specs: Record<string, BlockProperty>,
-  map: (spec: BlockProperty, value: unknown) => unknown,
+  map: (spec: BlockProperty, value: unknown, key: string) => unknown,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(props)) {
     const spec = specs[key];
-    out[key] = spec ? map(spec, value) : value;
+    out[key] = spec ? map(spec, value, key) : value;
   }
   return out;
 }
 
 /**
+ * A `richText` value stored as HTML before rich text became JSON, parsed
+ * with the property's allowed formatting; kept as is where no `DOMParser`
+ * exists (server rendering).
+ */
+function legacyRichText(html: string, spec: BlockProperty): unknown {
+  if (typeof globalThis.DOMParser !== 'function') return html;
+  return htmlToRichText(
+    html,
+    richTextSchemaOf(spec as { marks?: string[]; nodes?: string[] }),
+  ).doc;
+}
+
+/** Where `toEditor` found `richText` stored as HTML. */
+export type LegacyRichTextHit = { blockId: string; key: string };
+
+/**
  * A createcms tree (raw mode, as `getBlockTree` delivers it) as an editor
  * document: `blockId` → `id`, `properties` → `props` (values in editor
  * shape), `children` → the `children` slot. Keys the schema does not
- * declare (the root's `__slug`) are kept unchanged.
+ * declare (the root's `__slug`) are kept unchanged. `richText` stored as
+ * HTML is parsed into JSON and reported through `onLegacyRichText`; the
+ * next save writes it back as JSON.
  */
 export function toEditor(
   tree: BlockTreeNode,
   def: AnyCollectionDefinition,
+  options: { onLegacyRichText?: (hit: LegacyRichTextHit) => void } = {},
 ): EditorDocument {
   const convert = (node: BlockTreeNode): NodeData => {
     const out: NodeData = {
@@ -344,7 +382,13 @@ export function toEditor(
       props: mapProps(
         node.properties,
         propertiesOfType(def, node.type),
-        cmsValueToEditor,
+        (spec, value, key) => {
+          const next = cmsValueToEditor(spec, value);
+          if (next !== value && spec.type === 'richText') {
+            options.onLegacyRichText?.({ blockId: node.blockId, key });
+          }
+          return next;
+        },
       ) as Record<string, JsonValue>,
     };
     if (node.children.length > 0) {

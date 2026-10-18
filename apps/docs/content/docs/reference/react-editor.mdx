@@ -52,8 +52,9 @@ function PageForm({
 Fields hidden by `hidden` or `when` for the block's current props are left
 out of `useFields` and `Editor.Form`; `readOnly` fields render read-only
 controls (`readOnly`, `aria-readonly`) and the field carries
-`data-read-only`. Built-in controls: `text`, `textarea`, `richText` (the HTML
-source), `number`, `boolean`, `date`, `color`, `select` (with `multiple`),
+`data-read-only`. Built-in controls: `text`, `textarea`, `richText` (the
+`Editor.Root richText` editor; without one the formatted text shows
+read-only with a hint, `data-editor-richtext`, `data-readonly`), `number`, `boolean`, `date`, `color`, `select` (with `multiple`),
 `list` and `object`. `Editor.FieldError` shows each finding through the
 editor's catalog (`formatIssue`).
 
@@ -107,7 +108,7 @@ also saves when the page is hidden.
 
 | Part                      | Default element                                 | Props                                                                                                                                  | Data attributes                                                                                  |
 | ------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `Editor.Root`             | none (provider)                                 | `schema` + `defaultValue`, or `store`; `messages`, `dir`, `platform`, `onChange`, `onError`, `onDiagnostics`, `persistence`, `beforeSave`, `plugins`, `genId`, `remotePlacement`, `fields`, `guardUnload`, `children` | none                                                                                             |
+| `Editor.Root`             | none (provider)                                 | `schema` + `defaultValue`, or `store`; `messages`, `dir`, `platform`, `onChange`, `onError`, `onDiagnostics`, `persistence`, `beforeSave`, `plugins`, `genId`, `remotePlacement`, `fields`, `richText` (a `RichTextAdapter`, read once), `guardUnload`, `children` | none                                                                                             |
 | `Editor.Field`            | `div`                                           | `blockId` (required), `name` (required), `disabled`, `render`, div props                                                               | `data-kind`, `data-required`, `data-invalid`, `data-disabled`, `data-focused`                    |
 | `Editor.FieldLabel`       | `label`                                         | `render`, label props (`children` replaces the spec's `label`)                                                                         | `data-required`, `data-invalid`, `data-disabled`                                                 |
 | `Editor.FieldControl`     | the resolved control (see below)                | `render`                                                                                                                               | none                                                                                             |
@@ -123,6 +124,9 @@ also saves when the page is hidden.
 | `Editor.LiveAnnouncer`    | `div` with `role="status"`                      | div props; visually hidden, `aria-live="polite"`, one per editor                                                                        | `data-editor-live-announcer`                                                                     |
 | `Editor.ErrorSummary`     | `div` with `role="alert"`                       | `render`, div props; children replace the list. Shown while a `beforeSave` gate blocked the last save: takes focus on appear; each entry selects its block and focuses the field's control. | `data-count` |
 | `Editor.MoveToDialog`     | `div` with `role="dialog"`                      | `blockId`, `onClose`, `render`, div props: pick a slot, then a position; Escape closes. `Canvas.DragHandle`'s menu opens it. | `data-step` (`slot`, `position`) |
+| `Editor.RichTextField`    | `div` (`data-editor-richtext`)                  | `suggest` (`{ char?, items(query) }`), `render`, div props; children (a toolbar) render before the editable element. Uses the enclosing `Editor.Field` and `Editor.Root richText`; without an adapter the formatted text shows read-only with a hint. An open suggestion list is a `listbox` (`data-editor-richtext-suggestions`, options with `aria-selected`, `data-highlighted`). | `data-readonly`, `data-invalid` |
+| `Editor.RichTextToolbar`  | `div` with `role="toolbar"`                    | `render`, div props; one tab stop, arrows move between buttons (APG toolbar); named from the catalog (`parts.richTextToolbar`). | `data-disabled` |
+| `Editor.RichTextToolbarButton` | `button`                                 | `mark` or `node` (+ `attrs`, e.g. `{ level: 2 }`), `render`, button props; `aria-pressed` while active, keeps the editor's focus, disabled for formatting the field does not allow; an active heading turns back into a paragraph. | `data-active`, `data-disabled` |
 | `Editor.ShortcutHelp`     | `div` with `role="dialog"`                      | `open`, `defaultOpen`, `onOpenChange`, `render`, div props; children replace the list. Opens on `ui.shortcutHelp` (`?`, `Mod+/`), Escape closes and returns focus. | `data-open` |
 | `Editor.Slot`             | none (fragment)                                 | `name` (required), `fallback`, `props`: renders each plugin's `slots[name]` in plugin order                                            | none                                                                                             |
 
@@ -173,6 +177,36 @@ document (`getDocument()`) to `render` after a delay (default `PREVIEW_DEBOUNCE_
 | `usePalette`         | `PaletteItem[]`                                | Every insertable block type, memoised per schema.                                                                                                                                                                                                                                                                          |
 | `useMissingRequired` | `MissingRequiredField[]`                       | Every `required` property left empty across the document (blocks and root); memoised per `nodes` identity.                                                                                                                                                                                                                 |
 | `useFieldContext`    | `FieldContextValue`                            | The enclosing `Editor.Field`'s spec, value, `setValue`, ids, `errors`, flags; throws outside `Editor.Field`.                                                                                                                                                                                                               |
+| `useRichTextEditor`  | `UseRichTextEditorResult`                      | `(UseRichTextEditorOptions: value, schema, onChange, editable?, placeholder?, attributes?, caretFrom?, onFocus?, onBlur?)`: mounts `Editor.Root`'s rich text adapter into `ref`'s element; edits go to `onChange`, a value changed elsewhere (undo, remote) replaces the content. Returns `{ ref, handle, available, selectionVersion }` (`selectionVersion` changes with the selection, for toolbars). |
+
+## Rich text
+
+`RichTextStatic` renders a `richText` value as React elements without an
+editor and without `dangerouslySetInnerHTML` (also from
+`@createcms/react/editor/render`, so it works in Server Components).
+`RichTextStaticProps`: `value`, `resolveLink(attrs)` (default: external
+URLs, `mailto:`, `tel:`; internal links render as text) and
+`resolveAsset(id)` (images are left out without it). The elements match
+`richTextToHtml` from `/editor/core`.
+
+Editing needs an adapter on `Editor.Root richText` (the Tiptap one comes
+from `@createcms/react/editor/richtext`, best through
+`lazyRichTextAdapter`). Undo and redo inside the editor run the store's
+history.
+
+```tsx
+<Editor.Field blockId={id} name="body">
+  <Editor.FieldLabel />
+  <Editor.RichTextField suggest={{ items: variableItems }}>
+    <Editor.RichTextToolbar>
+      <Editor.RichTextToolbarButton mark="bold">B</Editor.RichTextToolbarButton>
+      <Editor.RichTextToolbarButton node="heading" attrs={{ level: 2 }}>
+        H2
+      </Editor.RichTextToolbarButton>
+    </Editor.RichTextToolbar>
+  </Editor.RichTextField>
+</Editor.Field>
+```
 
 ## createEditor
 
@@ -278,6 +312,9 @@ Field helpers: `defaultFieldControls`, `emptyListElement`, `toDatetimeLocal`,
 | `ErrorSummaryEntry`           | `{ id, label, blockId, field }` of `useSaveIssues`.                                                                                                                    |
 | `SectionOverrideEntry`        | `{ nodeId, key, field, blockLabel, value, overridden, set }` of `useSectionOverrides`.                                                                                 |
 | `EditorMoveToDialogProps`     | Props of `Editor.MoveToDialog`.                                                                                                                                        |
+| `EditorRichTextFieldProps`    | Props of `Editor.RichTextField`: `suggest`, div props.                                                                                                                 |
+| `EditorRichTextToolbarProps`  | Props of `Editor.RichTextToolbar`.                                                                                                                                     |
+| `EditorRichTextToolbarButtonProps` | Props of `Editor.RichTextToolbarButton`: `mark`, `node`, `attrs`, button props.                                                                                  |
 | `MoveToTarget`                | `{ parent, label, depth, count }` of `useMoveTargets`.                                                                                                                 |
 | `RovingFocusOptions`          | `{ orientation?, loop?, dir? }` of `useRovingFocus`.                                                                                                                   |
 | `EditorAddBlockProps`         | Props of `Editor.AddBlock`: `type`, `parentId?`, `slot?`, `index?`, `render?`, button props.                                                                          |

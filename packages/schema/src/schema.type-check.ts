@@ -24,6 +24,7 @@ import type {
   InferBlockTreeNode,
   LinkValue,
   RequireTrackingId,
+  RichTextDoc,
   ResolvedLink,
   ResolvedReference,
   RootDefinition,
@@ -167,6 +168,15 @@ const badListElement = asBlock({
 });
 void badListElement;
 
+// --- invalid: `pattern` does not apply to rich text --------------------------
+export const badRichTextPattern: BlockProperty = {
+  type: 'richText',
+  label: 'Body',
+  marks: ['bold'],
+  // @ts-expect-error - richText takes marks/nodes/inline, not a pattern
+  pattern: '^x',
+};
+
 // ---------------------------------------------------------------------------
 // InferBlockProperties shapes
 // ---------------------------------------------------------------------------
@@ -277,4 +287,25 @@ export type _treeHasFeatureSection = Expect<
     Extract<Tree, { type: 'featureSection' }>['properties'],
     { heading?: string }
   >
+>;
+
+const article = asBlock({
+  label: 'Article',
+  properties: {
+    body: {
+      type: 'richText',
+      label: 'Body',
+      required: true,
+      marks: ['bold', 'link'],
+      inline: false,
+      maxLength: 5000,
+    },
+    notes: { type: 'list', of: { type: 'richText', inline: true }, label: 'N' },
+  },
+});
+type ArticleProps = InferBlockProperties<
+  Writable<(typeof article)['properties']>
+>;
+export type _richText = Expect<
+  Equal<ArticleProps, { body: RichTextDoc; notes?: RichTextDoc[] }>
 >;

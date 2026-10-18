@@ -36,6 +36,11 @@ const ROOT_PROPERTIES: Record<string, DiffPropertySpec> = {
   intro: { type: 'richText' },
 };
 
+const rt = (text: string) => ({
+  type: 'doc' as const,
+  content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+});
+
 function block(
   blockId: string,
   opts: Partial<Omit<ReconstructedBlock, 'blockId'>> = {},
@@ -386,14 +391,14 @@ describe('classifyChanges', () => {
     expect(summary.modified).toBe(1);
   });
 
-  it('attaches word-level textDiff to richText property changes', () => {
+  it('attaches word-level richTextDiff to richText property changes', () => {
     const base = snapshot(
       block(ROOT_ID, { type: 'pages', children: ['a'] }),
-      block('a', { properties: { body: '<p>Hello world</p>' } }),
+      block('a', { properties: { body: rt('Hello world') } }),
     );
     const source = snapshot(
       block(ROOT_ID, { type: 'pages', children: ['a'] }),
-      block('a', { properties: { body: '<p>Hello brave world</p>' } }),
+      block('a', { properties: { body: rt('Hello brave world') } }),
     );
 
     const { changes } = classify({ base, source });
@@ -403,20 +408,20 @@ describe('classifyChanges', () => {
     expect(entry?.propertyChanges).toHaveLength(1);
     const change = entry?.propertyChanges?.[0];
     expect(change?.path).toEqual(['body']);
-    expect(change?.textDiff).toBeDefined();
+    expect(change?.richTextDiff).toBeDefined();
     expect(
-      change?.textDiff?.some(
-        (segment) => segment.type === 'ins' && segment.html.includes('brave'),
+      change?.richTextDiff?.some(
+        (segment) => segment.type === 'ins' && segment.text.includes('brave'),
       ),
     ).toBe(true);
   });
 
-  it('attaches textDiff to a changed item of a list-of-richText property', () => {
+  it('attaches richTextDiff to a changed item of a list-of-richText property', () => {
     const base = snapshot(
       block(ROOT_ID, { type: 'pages', children: ['g'] }),
       block('g', {
         type: 'gallery',
-        properties: { captions: ['<p>First caption</p>', '<p>Second</p>'] },
+        properties: { captions: [rt('First caption'), rt('Second')] },
       }),
     );
     const source = snapshot(
@@ -424,7 +429,7 @@ describe('classifyChanges', () => {
       block('g', {
         type: 'gallery',
         properties: {
-          captions: ['<p>First caption edited</p>', '<p>Second</p>'],
+          captions: [rt('First caption edited'), rt('Second')],
         },
       }),
     );
@@ -436,10 +441,10 @@ describe('classifyChanges', () => {
     const change = entry?.propertyChanges?.[0];
     expect(change?.path).toEqual(['captions', 0]);
     expect(change?.kind).toBe('changed');
-    expect(change?.textDiff).toBeDefined();
+    expect(change?.richTextDiff).toBeDefined();
     expect(
-      change?.textDiff?.some(
-        (segment) => segment.type === 'ins' && segment.html.includes('edited'),
+      change?.richTextDiff?.some(
+        (segment) => segment.type === 'ins' && segment.text.includes('edited'),
       ),
     ).toBe(true);
   });

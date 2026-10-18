@@ -103,3 +103,6 @@ export function renderDocument(
 ): React.ReactNode {
   return renderNode(doc.root, components, options);
 }
+
+export type { RichTextStaticProps } from './rich-text';
+export { RichTextStatic } from './rich-text';

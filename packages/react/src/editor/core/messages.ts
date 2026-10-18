@@ -52,6 +52,27 @@ export type Messages = {
     readonly handleMenu: string;
     /** The add button of an empty slot. */
     readonly emptySlotAdd: string;
+    /** A rich text field without an editor (`Editor.Root richText`). */
+    readonly richTextReadOnly: string;
+    /** `Editor.RichTextToolbar`. */
+    readonly richTextToolbar: string;
+    /** The suggestion list of a rich text field. */
+    readonly richTextSuggestions: string;
+    /** Toolbar buttons per mark or node type. */
+    readonly richTextFormat: {
+      readonly bold: string;
+      readonly italic: string;
+      readonly underline: string;
+      readonly strike: string;
+      readonly code: string;
+      readonly link: string;
+      readonly paragraph: string;
+      readonly heading: (p: { level: number }) => string;
+      readonly bulletList: string;
+      readonly orderedList: string;
+      readonly blockquote: string;
+      readonly codeBlock: string;
+    };
     readonly moveTo: string;
     readonly moveToTitle: (p: { block: AnnouncedBlock }) => string;
     readonly moveToPosition: (p: { position: number; count: number }) => string;
@@ -160,6 +181,12 @@ export const EN_MESSAGES: Messages = {
     linkTarget: () => 'The link needs a target.',
     responsive: () => 'This field has no per-breakpoint values.',
     localized: () => 'This field has no per-locale values.',
+    richTextNode: (p) =>
+      `${value(p, 'node', 'This element')} is not allowed here.`,
+    richTextMark: (p) =>
+      `The ${value(p, 'mark', '')} format is not allowed here.`,
+    richTextLinkProtocol: () => 'Links must use http, https, mailto or tel.',
+    richTextStructure: () => 'The formatted text is malformed.',
   },
   structure: {
     duplicateId: () => 'This block id is used twice.',
@@ -194,6 +221,23 @@ export const EN_MESSAGES: Messages = {
     contextMenu: 'Block actions',
     handleMenu: 'Block actions',
     emptySlotAdd: 'Add block',
+    richTextReadOnly: 'Formatted text cannot be edited here.',
+    richTextToolbar: 'Formatting',
+    richTextSuggestions: 'Suggestions',
+    richTextFormat: {
+      bold: 'Bold',
+      italic: 'Italic',
+      underline: 'Underline',
+      strike: 'Strikethrough',
+      code: 'Code',
+      link: 'Link',
+      paragraph: 'Paragraph',
+      heading: ({ level }) => `Heading ${level}`,
+      bulletList: 'Bulleted list',
+      orderedList: 'Numbered list',
+      blockquote: 'Quote',
+      codeBlock: 'Code block',
+    },
     moveTo: 'Move to...',
     moveToTitle: (p) => `Move ${named(p.block)} to`,
     moveToPosition: (p) => `Position ${p.position} of ${p.count}`,

@@ -120,7 +120,15 @@
       "type": "registry:block",
       "title": "Editor App",
       "description": "CMS-wired editor page: document load/save, field sources, shell, and canvas overlays in one install.",
-      "dependencies": ["@createcms/react"],
+      "dependencies": [
+        "@createcms/react",
+        "@tiptap/core@3.32.0",
+        "@tiptap/pm@3.32.0",
+        "@tiptap/starter-kit@3.32.0",
+        "@tiptap/extensions@3.32.0",
+        "@tiptap/extension-link@3.32.0",
+        "@tiptap/suggestion@3.32.0"
+      ],
       "registryDependencies": [
         "editor-form",
         "editor-canvas",

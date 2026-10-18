@@ -143,9 +143,25 @@ function fieldSchema(field: Field, target: string): JsonSchema {
 
 function plainSchema(field: Field, target: string): JsonSchema {
   switch (field.type) {
+    case 'richText':
+      // Nodes nest arbitrarily; `validateRichText` checks the rest.
+      return {
+        type: 'object',
+        required: ['type'],
+        properties: {
+          type: { const: 'doc' },
+          content: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['type'],
+              properties: { type: { type: 'string' } },
+            },
+          },
+        },
+      };
     case 'text':
     case 'textarea':
-    case 'richText':
     case 'color': {
       const out: JsonSchema = { type: 'string' };
       if ('minLength' in field && field.minLength !== undefined) {

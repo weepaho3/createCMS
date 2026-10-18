@@ -101,7 +101,7 @@ required fields are required keys, `select` narrows to its option values,
 | `SelectField`    | option value, or a list with `multiple`  | `options`, `multiple?`                              |
 | `DateField`      | ISO-8601 datetime string (UTC)           | none                                                |
 | `ColorField`     | CSS color string                         | none                                                |
-| `RichTextField`  | HTML string                              | `marks?`, `nodes?`, `inline?`, `TextConstraints`    |
+| `RichTextField`  | `RichTextDoc` (ProseMirror JSON)         | `marks?`, `nodes?`, `inline?`, `minLength?`, `maxLength?` |
 | `MediaField`     | `MediaValue` (`{ assetId, ... }`)           | `accept?`                                           |
 | `LinkField`      | `LinkValue`                              | `allowedKinds?`, `allowedCollections?`              |
 | `ReferenceField` | `ReferenceValue` (`{ id }`)              | `collection`                                        |
@@ -494,6 +494,70 @@ Built-in UI commands (labels from the catalog's `commands`):
 `Shift+Enter`, `Enter`, `Tab`, `Shift+Tab`, `Mod+a`, `Mod+k`, `/`,
 `Alt+F10`, `?` and `Mod+/`. A plugin's `shortcuts` replace a default
 binding; an empty id unbinds it.
+
+## Rich text
+
+A `richText` value is ProseMirror (Tiptap) JSON: a `RichTextDoc`
+(`{ type: 'doc', content?, schemaVersion? }`) of `RichTextNode`s
+(`{ type, attrs?, content?, marks?, text? }`) with `RichTextMark`s
+(`{ type, attrs? }`). The built-in node types (`RICH_TEXT_NODES`) are
+`paragraph`, `text`, `heading` (`level` 1 to 6), `bulletList`,
+`orderedList` (`start`), `listItem`, `blockquote`, `codeBlock`
+(`language`), `hardBreak`, `horizontalRule` and `image` (`assetId`,
+`alt`); the marks (`RICH_TEXT_MARKS`) are `bold`, `italic`, `underline`,
+`strike`, `code` and `link`. A link mark carries `{ link: LinkValue }` or
+`{ href }`; URLs may only use the schemes in `LINK_PROTOCOLS` (`http`,
+`https`, `mailto`, `tel`) or be relative. A field's `marks`, `nodes` and
+`inline` form its `RichTextSchema` (`richTextSchemaOf(field)`); `doc`,
+`paragraph` and `text` are always allowed. Everything here is pure and
+runs on servers and in Server Components.
+
+| Export                                     | Notes                                                                                                                                                                                   |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `EMPTY_RICH_TEXT`                          | One empty paragraph: the neutral value (frozen; `defaultValuesFor` copies it).                                                                                                          |
+| `isRichTextDoc(value)`                     | True for a value shaped like a document (not validated).                                                                                                                                |
+| `validateRichText(doc, schema)`            | `FieldError[]`: `richTextNode`, `richTextMark`, `richTextLinkProtocol`, `richTextStructure` (`params.reason`: list items only in lists, inline nodes only in text blocks, heading levels, one paragraph for `inline`). `validateField` runs it for `richText` fields, with `minLength` / `maxLength` counted on the plain text. |
+| `richTextToPlainText(doc, { blockSeparator? })` | Blocks joined by `\n` (or the separator), hard breaks as `\n`: lengths, search, excerpts.                                                                                          |
+| `richTextToHtml(doc, options?)`            | Escaped HTML with the same elements as `RichTextStatic`; `RichTextToHtmlOptions`: `resolveLink(attrs)` (default: external, `mailto:`, `tel:`; internal links as text) and `resolveAsset(id)` (images are left out without it). |
+| `escapeHtml(text)`                         | Escapes `& < > " '`.                                                                                                                                                                    |
+| `walkText(doc, fn)`                        | Rewrites text nodes (`fn(text, path)` returns the new text or nothing); empty text is removed; returns `doc` itself when nothing changed.                                                 |
+| `htmlToRichText(html, schema, options?)`   | `{ doc, lossy }`: parses pasted, imported or legacy HTML (Word and Google Docs clipboard noise removed, inline bold, italic, underline and strike styles as marks, `{{variables}}` kept). `HtmlToRichTextOptions.domParser` returns a `ParsedHtmlDocument` of `ParsedHtmlNode`s (default: the global `DOMParser`). `RichTextLossReport` counts dropped `tags`, `attributes`, and `nodes` and `marks` the field does not allow; `isLossless(report)`. |
+| `isSafeUrl(url)`                           | Relative, or a scheme in `LINK_PROTOCOLS` (whitespace and control characters inside the scheme are ignored, as browsers do).                                                             |
+| `linkMarkValue(attrs)` / `linkMarkHref(attrs)` | A link mark's target, and its URL without a resolver (`null` for internal or unsafe links).                                                                                        |
+
+`plainTextToRichText(text, { inline? })` gives one paragraph per line (or
+one paragraph with hard breaks); templates seed `richText` properties with
+it. `validateRichText` returns `RichTextIssue[]` (`{ code, path, params? }`,
+`code` a `RichTextIssueCode`), which are `FieldError`s.
+
+`RichTextAdapter` plugs an editor into the form and canvas
+(`Editor.Root richText`): `mount(el, RichTextMountOptions)` gets the
+`value`, the field's `schema`, `onChange`, `onSelectionChange`, `onFocus`,
+`onBlur`, `caretFrom` (a click point), `editable`, `placeholder` and
+`attributes` for the editable element, and returns a `RichTextHandle`
+(`setValue`, `setEditable`, `focus`, `destroy`, `commands`).
+`RichTextCommands` are `toggleMark(name)`, `setLink(value | null)`,
+`setNode(type, attrs?)` and `isActive(name, attrs?)`. The editor keeps no
+history of its own; undo runs through the store.
+
+`RichTextMountOptions.suggestion` (a `RichTextSuggestion`: `char`, default
+`{{`, `items(query)` returning `RichTextSuggestionItem`s with `label`,
+`insertText`, `description?`, and `onState`) completes after a trigger: the
+editor tracks the query and the keys (arrows, Enter, Tab, Escape) and
+reports a `RichTextSuggestionState` (`query`, `items`, `index`, `rect`,
+`select(index)`) or `null` for the UI to render.
+
+`lazyRichTextAdapter(load)` returns a `LazyRichTextAdapter`: the real
+adapter loads on first mount or on `preload()`, so the editor chunk stays
+out of the initial bundle; calls made while it loads apply once it mounts.
+
+```ts
+const richText = lazyRichTextAdapter(() =>
+  import('@createcms/react/editor/richtext').then((m) =>
+    m.createTiptapAdapter(),
+  ),
+);
+```
 
 ## Insertion points
 

@@ -1,11 +1,13 @@
 import type { JsonValue } from '../document';
 import type { Field } from './types';
 
+import { EMPTY_RICH_TEXT } from '../richtext/schema';
+
 export type DefaultValuesOptions = {
   /**
    * Also fill kinds WITHOUT a declared `defaultValue` with a neutral value:
    * `boolean` → `false`, `number` → `0`, `select` → its first option's value
-   * (`[]` with `multiple`), `text`/`textarea`/`richText` → `''`, `list` →
+   * (`[]` with `multiple`), `text`/`textarea` → `''`, `richText` → one empty paragraph, `list` →
    * `[]`, `object` → its nested neutral values. `date`, `color`, `media`,
    * `reference`, `link` and `custom` stay absent: an empty string is not a
    * valid value for them, so "no key" is the only honest default.
@@ -49,8 +51,9 @@ function defaultValueOf(
       return field.options[0]?.value;
     case 'text':
     case 'textarea':
-    case 'richText':
       return '';
+    case 'richText':
+      return structuredClone(EMPTY_RICH_TEXT);
     case 'list':
       return [];
     case 'object':

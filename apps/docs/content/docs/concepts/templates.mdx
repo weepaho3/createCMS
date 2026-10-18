@@ -68,7 +68,7 @@ const { blockId } = await cms.api.posts.createBlock({
 Seeding happens only when a fresh block is added, and only for the constraints above:
 
 - **`createBlock` only.** [`duplicateBlock`](/docs/reference/blocks#duplicateblock) makes a faithful copy (it must match the original, not re-default) and [`updateBlocks`](/docs/reference/blocks#updateblocks) applies a client-authoritative tree, so neither re-applies templates.
-- **Text properties only.** A template targets a `string` or `richText` property. [`createTemplate`](/docs/reference/templates#createtemplate) rejects any other type, or a property that does not exist on the block, with `TEMPLATE_PROPERTY_INVALID`.
+- **Text properties only.** A template targets a `string` or `richText` property; on a `richText` target the template text becomes one paragraph per line, its `{{variables}}` kept. [`createTemplate`](/docs/reference/templates#createtemplate) rejects any other type, or a property that does not exist on the block, with `TEMPLATE_PROPERTY_INVALID`.
 
 There is no client wiring to do: if a template exists for a property the caller left unset, it is used.
 

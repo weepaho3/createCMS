@@ -36,7 +36,7 @@ export const pages = defineEditorSchema({
       description: 'A block of body text',
       category: 'Text',
       fields: {
-        text: { type: 'richText', label: 'Body', pattern: '^[A-Z]' },
+        text: { type: 'richText', label: 'Body', maxLength: 500 },
       },
     },
     image: {

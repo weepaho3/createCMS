@@ -21,6 +21,7 @@ import type {
 import type { DrizzleInstance } from './types/drizzle';
 
 import { branches } from './db/schema.generated';
+import { isRichTextFailure } from './schema-builders';
 import {
   decodeWithRoot,
   decodeWithUser,
@@ -70,6 +71,11 @@ function cmsOnValidationError({
   message: string;
   issues: readonly unknown[];
 }): never {
+  // Formatting a richText property does not allow is its own code, so a
+  // client can point at the offending mark or node.
+  if (isRichTextFailure(issues as Parameters<typeof isRichTextFailure>[0])) {
+    throw new APIError(400, { code: 'RICH_TEXT_INVALID', message, issues });
+  }
   throw new APIError(400, { code: 'VALIDATION_ERROR', message, issues });
 }
 

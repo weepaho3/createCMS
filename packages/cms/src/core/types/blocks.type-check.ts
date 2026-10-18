@@ -105,5 +105,8 @@ const constrained = defineBlock({
 export const _constrainedOk: InferBlockProperties<typeof constrained.properties> = {
   title: 'Hello',
   count: 3,
-  body: '<p>hi</p>',
+  body: {
+    type: 'doc',
+    content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }],
+  },
 };

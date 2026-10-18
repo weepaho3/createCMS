@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { TextDiffSegment } from '../types';
+import type { RichTextDoc } from '../../rich-text/types';
+import type { RichTextDiffSegment } from '../types';
 
 import { diffProperties } from '../property-diff';
 
@@ -152,59 +153,73 @@ describe('diffProperties', () => {
   });
 
   describe('rich text', () => {
-    const segments: TextDiffSegment[] = [
-      { type: 'del', html: 'old' },
-      { type: 'ins', html: 'new' },
+    const doc = (value: string): RichTextDoc => ({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: value }] },
+      ],
+    });
+    const segments: RichTextDiffSegment[] = [
+      { type: 'del', text: 'old', marks: [], block: 0, blockType: 'paragraph' },
+      { type: 'ins', text: 'new', marks: [], block: 0, blockType: 'paragraph' },
     ];
 
-    it('attaches textDiff when isRichText matches and both sides are strings', () => {
-      const diffText = vi.fn(() => segments);
+    it('compares a rich text value as a whole and attaches richTextDiff', () => {
+      const diffRichText = vi.fn(() => segments);
       const changes = diffProperties(
-        { body: 'old text', title: 'a' },
-        { body: 'new text', title: 'b' },
-        { isRichText: (path) => path[0] === 'body', diffText },
+        { body: doc('old text'), title: 'a' },
+        { body: doc('new text'), title: 'b' },
+        { isRichText: (path) => path[0] === 'body', diffRichText },
       );
 
       expect(changes).toEqual([
         {
           path: ['body'],
           kind: 'changed',
-          from: 'old text',
-          to: 'new text',
-          textDiff: segments,
+          from: doc('old text'),
+          to: doc('new text'),
+          richTextDiff: segments,
         },
         { path: ['title'], kind: 'changed', from: 'a', to: 'b' },
       ]);
-      expect(diffText).toHaveBeenCalledOnce();
-      expect(diffText).toHaveBeenCalledWith('old text', 'new text');
+      expect(diffRichText).toHaveBeenCalledOnce();
     });
 
-    it('does not attach textDiff when isRichText returns false', () => {
-      const diffText = vi.fn(() => segments);
-      const changes = diffProperties(
-        { body: 'old text' },
-        { body: 'new text' },
-        { isRichText: () => false, diffText },
-      );
-
-      expect(changes).toEqual([
-        { path: ['body'], kind: 'changed', from: 'old text', to: 'new text' },
-      ]);
-      expect(diffText).not.toHaveBeenCalled();
+    it('reports nothing for an equal rich text value', () => {
+      const diffRichText = vi.fn(() => segments);
+      expect(
+        diffProperties(
+          { body: doc('same') },
+          { body: doc('same') },
+          { isRichText: () => true, diffRichText },
+        ),
+      ).toEqual([]);
+      expect(diffRichText).not.toHaveBeenCalled();
     });
 
-    it('does not attach textDiff when either side is not a string', () => {
-      const diffText = vi.fn(() => segments);
+    it('does not attach richTextDiff when a side is not a rich text value', () => {
+      const diffRichText = vi.fn(() => segments);
       const changes = diffProperties(
         { body: 1 },
-        { body: 'new text' },
-        { isRichText: () => true, diffText },
+        { body: doc('new') },
+        { isRichText: () => true, diffRichText },
       );
-
       expect(changes).toEqual([
-        { path: ['body'], kind: 'changed', from: 1, to: 'new text' },
+        { path: ['body'], kind: 'changed', from: 1, to: doc('new') },
       ]);
-      expect(diffText).not.toHaveBeenCalled();
+      expect(diffRichText).not.toHaveBeenCalled();
+    });
+
+    it('without isRichText a rich text value diffs like any object', () => {
+      const changes = diffProperties({ body: doc('a') }, { body: doc('b') });
+      expect(changes[0]?.path).toEqual([
+        'body',
+        'content',
+        0,
+        'content',
+        0,
+        'text',
+      ]);
     });
   });
 

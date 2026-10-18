@@ -1,3 +1,5 @@
+import type { RichTextDoc } from '@createcms/core';
+
 import { cms } from './cms';
 import { bootstrapped } from './db';
 
@@ -18,7 +20,7 @@ type SeedPost = {
   slug: string;
   title: string;
   excerpt: string;
-  body: string;
+  body: RichTextDoc;
   quote?: { text: string; cite?: string };
 };
 
@@ -27,7 +29,23 @@ const SEED_POSTS: SeedPost[] = [
     slug: 'hello-world',
     title: 'Hello World',
     excerpt: 'My first post, created and published through the CMS API.',
-    body: '<p>Welcome to a blog built with <strong>@createcms/core</strong>.</p>',
+    body: {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'Welcome to a blog built with ' },
+            {
+              type: 'text',
+              text: '@createcms/core',
+              marks: [{ type: 'bold' }],
+            },
+            { type: 'text', text: '.' },
+          ],
+        },
+      ],
+    },
     quote: {
       text: 'Content does not exist until you create and publish it.',
       cite: 'The Quickstart',
@@ -37,7 +55,20 @@ const SEED_POSTS: SeedPost[] = [
     slug: 'block-based-content',
     title: 'Block-based content',
     excerpt: 'A post is a typed root plus a tree of content blocks.',
-    body: '<p>Each block type maps to a React component you control.</p>',
+    body: {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'text',
+              text: 'Each block type maps to a React component you control.',
+            },
+          ],
+        },
+      ],
+    },
   },
 ];
 

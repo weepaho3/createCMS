@@ -1,4 +1,5 @@
 import type { EditorDocument, JsonValue, NodeData } from '../document';
+import type { RichTextNode } from '../richtext/types';
 import type { StandardSchemaV1 } from './standard-schema';
 import type {
   AnyComponentDef,
@@ -9,6 +10,9 @@ import type {
   SlotSpec,
 } from './types';
 
+import { richTextToPlainText } from '../richtext/convert';
+import { isRichTextDoc, richTextSchemaOf } from '../richtext/schema';
+import { validateRichText } from '../richtext/validate';
 import { componentOf, fieldsOf } from './fields';
 import { slotAccepts } from './placement';
 import { isLocalizedValue, isResponsiveValue } from './responsive';
@@ -31,7 +35,11 @@ export type FieldErrorCode =
   | 'linkCollection'
   | 'linkTarget'
   | 'responsive'
-  | 'localized';
+  | 'localized'
+  | 'richTextNode'
+  | 'richTextMark'
+  | 'richTextLinkProtocol'
+  | 'richTextStructure';
 
 /**
  * One finding of the built-in rules for one value. `code` is stable; map it
@@ -113,6 +121,12 @@ function linkTarget(link: Record<string, unknown>): unknown {
   }
 }
 
+/** Images and rules count as content of a rich text value. */
+const hasNonText = (node: RichTextNode): boolean =>
+  node.type === 'image' ||
+  node.type === 'horizontalRule' ||
+  (node.content ?? []).some(hasNonText);
+
 const blank = (value: unknown): boolean =>
   typeof value !== 'string' || value.trim() === '';
 
@@ -131,6 +145,12 @@ export function isEmptyValue(field: Field, value: unknown): boolean {
   if (field.type === 'link') return blank(linkTarget(value));
   if (field.type === 'media') return blank(value.assetId);
   if (field.type === 'reference') return blank(value.id);
+  if (field.type === 'richText' && isRichTextDoc(value)) {
+    return (
+      richTextToPlainText(value).trim() === '' &&
+      !(value.content ?? []).some(hasNonText)
+    );
+  }
   return false;
 }
 
@@ -168,9 +188,23 @@ function validatePlain(field: Field, value: unknown): FieldError[] {
     return [error('required')];
   }
   switch (field.type) {
-    case 'text':
-    case 'textarea':
     case 'richText': {
+      if (!isRichTextDoc(value)) return [typeError('richText')];
+      const errors: FieldError[] = validateRichText(
+        value,
+        richTextSchemaOf(field),
+      );
+      const length = richTextToPlainText(value).length;
+      if (typeof field.minLength === 'number' && length < field.minLength) {
+        errors.push(error('minLength', { min: field.minLength }));
+      }
+      if (typeof field.maxLength === 'number' && length > field.maxLength) {
+        errors.push(error('maxLength', { max: field.maxLength }));
+      }
+      return errors;
+    }
+    case 'text':
+    case 'textarea': {
       if (typeof value !== 'string') return [typeError('text')];
       const errors: FieldError[] = [];
       if (

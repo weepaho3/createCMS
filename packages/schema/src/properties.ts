@@ -5,6 +5,7 @@ import type {
   ResolvedLink,
   ResolvedReference,
 } from './references';
+import type { RichTextDoc } from './rich-text';
 
 // ============================================================================
 // Block Property Types
@@ -15,7 +16,8 @@ type BlockTypes = {
   number: number;
   boolean: boolean;
   date: string;
-  richText: string;
+  // ProseMirror (Tiptap) JSON; HTML strings are rejected on every write.
+  richText: RichTextDoc;
   // An image is the asset's id STRING on both write and read paths; it is
   // served via the id-addressed gate `/media/asset/{id}` and nothing is
   // resolved at read time (a slug swap behind the id propagates automatically).
@@ -44,16 +46,30 @@ export type BlockPropertyType = keyof BlockTypes;
 export type SelectOption = { readonly label: string; readonly value: string };
 
 /**
- * Declarative length/format constraints for text-like properties (`string`,
- * `richText`) and list elements of those types. Honoured by the zod builder
- * (`buildPropertiesSchema`): `minLength`/`maxLength` bound the string length
- * and `pattern` is a JS regex SOURCE string the value must match.
+ * Declarative length/format constraints for `string` properties and list
+ * elements. Honoured by the zod builder (`buildPropertiesSchema`):
+ * `minLength`/`maxLength` bound the string length and `pattern` is a JS
+ * regex SOURCE string the value must match.
  */
 export type StringConstraints = {
   minLength?: number;
   maxLength?: number;
   /** A JS `RegExp` SOURCE string the value must match (e.g. `'^[a-z]+$'`). */
   pattern?: string;
+};
+
+/**
+ * What a `richText` property (or list element) allows: `marks` and `nodes`
+ * (default: every built-in one), `inline` for at most one paragraph, and
+ * `minLength` / `maxLength` counted on its plain text. Honoured by the zod
+ * builder and the editor.
+ */
+export type RichTextConstraints = {
+  marks?: readonly string[];
+  nodes?: readonly string[];
+  inline?: boolean;
+  minLength?: number;
+  maxLength?: number;
 };
 
 /** Declarative range constraints for `number` properties / list elements. */
@@ -81,9 +97,11 @@ type BlockPropertySpec<T extends BlockPropertyType> = {
   group?: string;
 } & (T extends 'select' ? { options: readonly SelectOption[] } : {}) &
   (T extends 'reference' ? { collection: string } : {}) &
-  // Declarative zod-level constraints: text length/format on string/richText,
-  // numeric range on number. Honoured by buildPropertiesSchema.
-  (T extends 'string' | 'richText' ? StringConstraints : {}) &
+  // Declarative zod-level constraints: text length/format on string,
+  // allowed formatting and plain-text length on richText, numeric range on
+  // number. Honoured by buildPropertiesSchema.
+  (T extends 'string' ? StringConstraints : {}) &
+  (T extends 'richText' ? RichTextConstraints : {}) &
   (T extends 'number' ? NumberConstraints : {}) &
   (T extends 'link'
     ? {
@@ -111,7 +129,8 @@ export type ListElementSpec = {
     ? { options: readonly SelectOption[] }
     : {}) &
     (K extends 'reference' ? { collection: string } : {}) &
-    (K extends 'string' | 'richText' ? StringConstraints : {}) &
+    (K extends 'string' ? StringConstraints : {}) &
+    (K extends 'richText' ? RichTextConstraints : {}) &
     (K extends 'number' ? NumberConstraints : {});
 }[ListElementType];
 

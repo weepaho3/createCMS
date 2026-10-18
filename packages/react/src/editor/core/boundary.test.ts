@@ -149,6 +149,18 @@ describe('editor/core import boundary', () => {
     expect(problems).toEqual([]);
   });
 
+  it('only the rich text subpath imports Tiptap', () => {
+    const richtext = path.join(EDITOR_ROOT, 'richtext');
+    const problems = sourceFiles(EDITOR_ROOT)
+      .filter((file) => !file.startsWith(richtext + path.sep))
+      .flatMap((file) =>
+        importSpecifiers(file, fs.readFileSync(file, 'utf8'))
+          .filter((spec) => spec.startsWith('@tiptap/'))
+          .map((spec) => `${path.relative(EDITOR_ROOT, file)}: ${spec}`),
+      );
+    expect(problems).toEqual([]);
+  });
+
   it('the createcms adapter uses the public entries of the other layers', () => {
     const problems = sourceFiles(CMS_ROOT).flatMap((file) =>
       adapterViolations(file, fs.readFileSync(file, 'utf8')),

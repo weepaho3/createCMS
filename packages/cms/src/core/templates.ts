@@ -1,10 +1,32 @@
 import { and, eq, type SQL } from 'drizzle-orm';
 
-import type { ResolvedScope } from './types/definitions';
+import type { RichTextDoc } from './rich-text/types';
+import type { BlockProperty, ResolvedScope } from './types/definitions';
 import type { DrizzleInstance } from './types/drizzle';
 
 import { templates } from './db/schema.generated';
+import { plainTextToRichText } from './rich-text/convert';
 import { loadVariables, resolveTemplateString } from './variables';
+
+/**
+ * Template strings as property values: a `richText` target gets a rich text
+ * value (one paragraph per line, one with hard breaks for `inline`), every
+ * other target the string. Templates themselves stay plain text.
+ */
+export function templateValues(
+  strings: Record<string, string>,
+  properties: Readonly<Record<string, BlockProperty>> | undefined,
+): Record<string, string | RichTextDoc> {
+  const out: Record<string, string | RichTextDoc> = {};
+  for (const [key, value] of Object.entries(strings)) {
+    const spec = properties?.[key];
+    out[key] =
+      spec?.type === 'richText'
+        ? plainTextToRichText(value, { inline: spec.inline === true })
+        : value;
+  }
+  return out;
+}
 
 /**
  * Loads the RAW template strings for a `(collection, blockType)` pair within the
@@ -48,7 +70,8 @@ export async function resolveTemplateDefaults(
   collection: string,
   blockType: string,
   scope?: ResolvedScope,
-): Promise<Record<string, string>> {
+  properties?: Readonly<Record<string, BlockProperty>>,
+): Promise<Record<string, string | RichTextDoc>> {
   const strings = await loadTemplateStrings(
     exec,
     collection,
@@ -59,9 +82,9 @@ export async function resolveTemplateDefaults(
   if (keys.length === 0) return {};
 
   const vars = await loadVariables(exec, scope);
-  const defaults: Record<string, string> = {};
+  const resolved: Record<string, string> = {};
   for (const key of keys) {
-    defaults[key] = resolveTemplateString(strings[key], vars);
+    resolved[key] = resolveTemplateString(strings[key], vars);
   }
-  return defaults;
+  return templateValues(resolved, properties);
 }

@@ -40,7 +40,7 @@ const NESTED_I18N = {
       paragraph: {
         label: 'Paragraph',
         properties: {
-          text: { type: 'richText', label: 'Text', required: true },
+          text: { type: 'string', label: 'Text', required: true },
         },
       },
     },

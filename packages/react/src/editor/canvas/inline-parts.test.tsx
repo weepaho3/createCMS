@@ -143,7 +143,19 @@ describe('Canvas.InlineText', () => {
   it('richText click selects the block and focuses the field without a session', () => {
     resetWarnings();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const { host, store } = renderCanvas(inlineOverlay());
+    const richSchema = defineEditorSchema({
+      ...storeSchema,
+      components: {
+        ...storeSchema.components,
+        paragraph: {
+          label: 'Paragraph',
+          fields: { text: { type: 'richText', label: 'Body' } },
+        },
+      },
+    });
+    const { host, store } = renderCanvas(inlineOverlay(), {
+      schema: richSchema,
+    });
     const para = host.querySelector('[data-editor-block="p1"]');
     expect(para).not.toBeNull();
     act(() => {

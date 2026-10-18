@@ -1,4 +1,5 @@
 import type { JsonValue, NodeData } from '../document';
+import type { RichTextDoc } from '../richtext/types';
 import type { StandardSchemaV1 } from './standard-schema';
 
 /** The kinds a `link` field can point at. */
@@ -164,8 +165,10 @@ export type DateField = { type: 'date' } & FieldBase<string>;
 export type ColorField = { type: 'color' } & FieldBase<string>;
 
 /**
- * Formatted text. `marks` and `nodes` restrict the formatting the editor
- * offers; `inline` limits the value to a single paragraph.
+ * Formatted text as ProseMirror (Tiptap) JSON. `marks` and `nodes`
+ * restrict the formatting the value may use (default: every built-in
+ * one); `inline` limits it to a single paragraph; `minLength` and
+ * `maxLength` count its plain text.
  * @example { type: 'richText', label: 'Body', marks: ['bold', 'italic', 'link'] }
  */
 export type RichTextField = {
@@ -173,8 +176,9 @@ export type RichTextField = {
   marks?: readonly string[];
   nodes?: readonly string[];
   inline?: boolean;
-} & TextConstraints &
-  FieldBase<string>;
+  minLength?: number;
+  maxLength?: number;
+} & FieldBase<RichTextDoc>;
 
 /**
  * An asset from the media library.
@@ -263,7 +267,7 @@ export type FieldValueMap = {
   select: string | string[];
   date: string;
   color: string;
-  richText: string;
+  richText: RichTextDoc;
   media: MediaValue;
   link: LinkValue;
   reference: ReferenceValue;

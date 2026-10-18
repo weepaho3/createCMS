@@ -1,10 +1,13 @@
-import type { BlockComponentProps } from '@createcms/core/react/blocks';
+import type { RichTextDoc } from '@createcms/core';
+import type {
+  BlockComponentProps,
+  RichTextComponents,
+} from '@createcms/core/react/blocks';
 
-import { createBlocksMap } from '@createcms/core/react/blocks';
+import { createBlocksMap, RichText } from '@createcms/core/react/blocks';
 import { Button, Heading, Img, Section, Text } from '@react-email/components';
 
 import { emails } from '@/app/demo/_lib/email-schema';
-import { sanitizeRichTextHtml } from '@/lib/sanitize-rich-text';
 
 function demoAssetUrl(id: string): string {
   const origin = process.env.NEXT_PUBLIC_DOCS_URL ?? 'http://localhost:4000';
@@ -19,15 +22,20 @@ function EmailHeading({ properties, edit }: BlockComponentProps) {
   );
 }
 
+/** Paragraphs as react-email `Text`, so they get its e-mail styles. */
+const EMAIL_TEXT: RichTextComponents = {
+  paragraph: ({ children }) => <Text>{children}</Text>,
+};
+
 function EmailParagraph({ properties, edit }: BlockComponentProps) {
   return (
     <Section {...edit.block}>
-      <Text
-        {...edit.field.text}
-        dangerouslySetInnerHTML={{
-          __html: sanitizeRichTextHtml(properties.text),
-        }}
-      />
+      <div {...edit.field.text}>
+        <RichText
+          value={properties.text as RichTextDoc | undefined}
+          components={EMAIL_TEXT}
+        />
+      </div>
     </Section>
   );
 }

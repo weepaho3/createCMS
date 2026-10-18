@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { BlockTreeNode } from '../../core/blocks/reconstruct-snapshot';
+import type { RichTextDoc, RichTextNode } from '../../core/rich-text/types';
 import type {
   AnyBlockDefinition,
   CollectionDefinition,
@@ -19,8 +20,8 @@ import {
   BlocksRenderer,
   createBlocksMap,
   createContentRenderer,
-  diffSegmentsToHtml,
   getBlockDiff,
+  RichTextDiff,
 } from '../blocks';
 import { TrackingRuntimeProvider, useBlockTrackerRaw } from '../tracking';
 
@@ -404,89 +405,60 @@ describe('getBlockDiff', () => {
   });
 });
 
-describe('diffSegmentsToHtml', () => {
-  it('emits classic <del>/<ins> for a plain word change', () => {
-    expect(
-      diffSegmentsToHtml(
-        diffRichText('<p>Hello world</p>', '<p>Hello there</p>'),
-      ),
-    ).toBe(
-      '<p>Hello ' +
-        '<del data-diff-text="del">world</del>' +
-        '<ins data-diff-text="ins">there</ins>' +
-        '</p>',
+describe('RichTextDiff', () => {
+  const doc = (...paragraphs: RichTextNode[][]): RichTextDoc => ({
+    type: 'doc',
+    content: paragraphs.map((content) => ({ type: 'paragraph', content })),
+  });
+  const text = (value: string, marks?: RichTextNode['marks']): RichTextNode =>
+    marks
+      ? { type: 'text', text: value, marks }
+      : { type: 'text', text: value };
+
+  it('wraps inserted and deleted words, keeping the block element', () => {
+    const { container } = render(
+      <RichTextDiff
+        segments={diffRichText(
+          doc([text('Hello world')]),
+          doc([text('Hello there')]),
+        )}
+      />,
+    );
+    expect(container.innerHTML).toBe(
+      '<p>Hello <del data-diff-text="del">world</del><ins data-diff-text="ins">there</ins></p>',
     );
   });
 
-  it('passes same runs through raw and wraps only the text of ins/del runs', () => {
-    // Tags inside `same` runs pass raw; a deleted run's tags are dropped
-    // (never emitted), its text survives tag-stripped inside <del>.
-    expect(
-      diffSegmentsToHtml([
-        { type: 'same', html: 'Hello <em>world</em> ' },
-        { type: 'del', html: '<b>old</b>' },
-        { type: 'ins', html: 'new' },
-      ]),
-    ).toBe(
-      'Hello <em>world</em> ' +
-        '<del data-diff-text="del">old</del>' +
-        '<ins data-diff-text="ins">new</ins>',
+  it('marks a formatting-only change and renders the new marks', () => {
+    const { container } = render(
+      <RichTextDiff
+        segments={diffRichText(
+          doc([text('Hello '), text('world')]),
+          doc([text('Hello '), text('world', [{ type: 'bold' }])]),
+        )}
+      />,
+    );
+    expect(container.innerHTML).toBe(
+      '<p>Hello <span data-diff-text="format"><strong>world</strong></span></p>',
     );
   });
 
-  it('emits a formatting-only change as the new HTML with no inline highlight', () => {
-    // Bolding a word diffs as pure tag insertions — tags are never wrapped in
-    // <ins>, so the output is exactly the new document, valid and unmarked.
-    const segments = diffRichText(
-      '<p>hello world</p>',
-      '<p>hello <strong>world</strong></p>',
+  it('renders headings as headings and never raw HTML', () => {
+    const { container } = render(
+      <RichTextDiff
+        segments={diffRichText(doc(), {
+          type: 'doc',
+          content: [
+            {
+              type: 'heading',
+              attrs: { level: 3 },
+              content: [text('<img src=x onerror=alert(1)>')],
+            },
+          ],
+        })}
+      />,
     );
-    const html = diffSegmentsToHtml(segments);
-    expect(html).toBe('<p>hello <strong>world</strong></p>');
-    expect(html).not.toContain('<ins');
-    expect(html).not.toContain('<del');
-  });
-
-  it('emits only the new structural tags for a block-tag replacement', () => {
-    // <p> → <div>: the old tags are dropped, the new ones emitted bare — no
-    // mis-nested mix of both documents' structure.
-    expect(
-      diffSegmentsToHtml(diffRichText('<p>alpha</p>', '<div>alpha</div>')),
-    ).toBe('<div>alpha</div>');
-  });
-
-  it('emits inserted tags bare and wraps each inserted text run in <ins>', () => {
-    expect(
-      diffSegmentsToHtml(
-        diffRichText('<p></p>', '<p>hello <strong>world</strong></p>'),
-      ),
-    ).toBe(
-      '<p>' +
-        '<ins data-diff-text="ins">hello </ins>' +
-        '<strong><ins data-diff-text="ins">world</ins></strong>' +
-        '</p>',
-    );
-  });
-
-  it('strips tags from a deleted run, keeping its text runs in <del>', () => {
-    // Old inline structure must not leak into the new document: each run of
-    // text between the dropped tags becomes its own <del>.
-    expect(
-      diffSegmentsToHtml([
-        { type: 'same', html: '<p>keep ' },
-        { type: 'del', html: 'foo <em>bar</em> baz' },
-        { type: 'same', html: '</p>' },
-      ]),
-    ).toBe(
-      '<p>keep ' +
-        '<del data-diff-text="del">foo </del>' +
-        '<del data-diff-text="del">bar</del>' +
-        '<del data-diff-text="del"> baz</del>' +
-        '</p>',
-    );
-  });
-
-  it('returns an empty string for no segments', () => {
-    expect(diffSegmentsToHtml([])).toBe('');
+    expect(container.querySelector('h3')).not.toBeNull();
+    expect(container.querySelector('img')).toBeNull();
   });
 });

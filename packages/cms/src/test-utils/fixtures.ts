@@ -54,10 +54,16 @@ export const pages = defineCollection({
       description: 'A block of text',
       properties: {
         text: {
-          type: 'richText',
+          type: 'string',
           label: 'Text',
           required: true,
         },
+        body: {
+          type: 'richText',
+          label: 'Body',
+          marks: ['bold', 'italic', 'link'],
+        },
+        notes: { type: 'list', of: { type: 'richText' }, label: 'Notes' },
       },
       allowChildren: true,
     },

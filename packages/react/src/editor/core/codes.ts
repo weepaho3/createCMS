@@ -55,6 +55,10 @@ export const EDITOR_CODES = {
     level: 'warning',
     summary: 'The live canvas frame is sandboxed.',
   },
+  E015: {
+    level: 'warning',
+    summary: 'richText stored as HTML was converted to JSON on load.',
+  },
 } as const;
 
 export type EditorCode = keyof typeof EDITOR_CODES;

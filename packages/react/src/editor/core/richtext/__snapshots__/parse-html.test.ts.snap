@@ -1,0 +1,203 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`htmlToRichText > maps the built-in elements 1`] = `
+{
+  "content": [
+    {
+      "attrs": {
+        "level": 2,
+      },
+      "content": [
+        {
+          "text": "Title",
+          "type": "text",
+        },
+      ],
+      "type": "heading",
+    },
+    {
+      "content": [
+        {
+          "text": "Hi ",
+          "type": "text",
+        },
+        {
+          "marks": [
+            {
+              "type": "bold",
+            },
+          ],
+          "text": "bold",
+          "type": "text",
+        },
+        {
+          "text": " ",
+          "type": "text",
+        },
+        {
+          "marks": [
+            {
+              "type": "italic",
+            },
+          ],
+          "text": "it",
+          "type": "text",
+        },
+        {
+          "text": " ",
+          "type": "text",
+        },
+        {
+          "marks": [
+            {
+              "type": "underline",
+            },
+          ],
+          "text": "u",
+          "type": "text",
+        },
+        {
+          "text": " ",
+          "type": "text",
+        },
+        {
+          "marks": [
+            {
+              "type": "strike",
+            },
+          ],
+          "text": "s",
+          "type": "text",
+        },
+        {
+          "text": " ",
+          "type": "text",
+        },
+        {
+          "marks": [
+            {
+              "type": "code",
+            },
+          ],
+          "text": "c",
+          "type": "text",
+        },
+        {
+          "type": "hardBreak",
+        },
+        {
+          "text": "next ",
+          "type": "text",
+        },
+        {
+          "marks": [
+            {
+              "attrs": {
+                "href": "https://x.test",
+                "target": "_blank",
+              },
+              "type": "link",
+            },
+          ],
+          "text": "link",
+          "type": "text",
+        },
+      ],
+      "type": "paragraph",
+    },
+    {
+      "content": [
+        {
+          "content": [
+            {
+              "content": [
+                {
+                  "text": "one",
+                  "type": "text",
+                },
+              ],
+              "type": "paragraph",
+            },
+          ],
+          "type": "listItem",
+        },
+        {
+          "content": [
+            {
+              "content": [
+                {
+                  "text": "two",
+                  "type": "text",
+                },
+              ],
+              "type": "paragraph",
+            },
+            {
+              "attrs": {
+                "start": 4,
+              },
+              "content": [
+                {
+                  "content": [
+                    {
+                      "content": [
+                        {
+                          "text": "deep",
+                          "type": "text",
+                        },
+                      ],
+                      "type": "paragraph",
+                    },
+                  ],
+                  "type": "listItem",
+                },
+              ],
+              "type": "orderedList",
+            },
+          ],
+          "type": "listItem",
+        },
+      ],
+      "type": "bulletList",
+    },
+    {
+      "content": [
+        {
+          "content": [
+            {
+              "text": "quote",
+              "type": "text",
+            },
+          ],
+          "type": "paragraph",
+        },
+      ],
+      "type": "blockquote",
+    },
+    {
+      "attrs": {
+        "language": "ts",
+      },
+      "content": [
+        {
+          "text": "let a = 1;
+let b;",
+          "type": "text",
+        },
+      ],
+      "type": "codeBlock",
+    },
+    {
+      "type": "horizontalRule",
+    },
+    {
+      "attrs": {
+        "alt": "Logo",
+        "assetId": "a1",
+      },
+      "type": "image",
+    },
+  ],
+  "type": "doc",
+}
+`;

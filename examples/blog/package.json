@@ -17,7 +17,6 @@
     "@electric-sql/pglite": "^0.5.4",
     "drizzle-kit": "^0.31.9",
     "drizzle-orm": "^0.45.0",
-    "isomorphic-dompurify": "^4.4.0",
     "next": "^16.2.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"

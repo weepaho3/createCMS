@@ -1,12 +1,12 @@
 'use client';
 
+import type { RichTextDoc } from '@createcms/core';
 import type { BlockComponentProps } from '@createcms/core/react/blocks';
 
-import { createBlocksMap } from '@createcms/core/react/blocks';
+import { createBlocksMap, RichText } from '@createcms/core/react/blocks';
 import { assetUrl } from '@createcms/react/editor/cms';
 
 import { pages } from '@/app/demo/_lib/pages-schema';
-import { sanitizeRichTextHtml } from '@/lib/sanitize-rich-text';
 
 function Hero({ properties, edit }: BlockComponentProps) {
   return (
@@ -79,10 +79,9 @@ function RichTextBlock({ properties, edit }: BlockComponentProps) {
       {...edit.block}
       {...edit.field.text}
       className="prose dark:prose-invert max-w-none p-8"
-      dangerouslySetInnerHTML={{
-        __html: sanitizeRichTextHtml(properties.text),
-      }}
-    />
+    >
+      <RichText value={properties.text as RichTextDoc | undefined} />
+    </div>
   );
 }
 

@@ -1,6 +1,7 @@
 import { and } from 'drizzle-orm';
 
 import type { BlockTreeNode } from './blocks/reconstruct-snapshot';
+import type { RichTextNode } from './rich-text/types';
 import type {
   CollectionWithName,
   LinkValue,
@@ -13,6 +14,7 @@ import type { DrizzleInstance } from './types/drizzle';
 
 import { resolveRootCurrentPath } from './redirects/resolve';
 import { getLinkPropertyNames } from './references';
+import { isRichTextDoc } from './rich-text/schema';
 import { rootScopeConditions } from './scope';
 
 type EnabledSlug = Extract<ResolvedSlugConfig, { enabled: true }>;
@@ -41,6 +43,41 @@ function isInlinedReference(value: unknown): value is InlinedReference {
   );
 }
 
+/** The keys of `richText` properties (single or list) of `blockType`. */
+function getRichTextPropertyNames(
+  collectionDef: CollectionWithName,
+  blockType: string,
+): string[] {
+  const props =
+    blockType === collectionDef.name || blockType === 'root'
+      ? collectionDef.root.properties
+      : collectionDef.blocks?.[blockType]?.properties;
+  if (!props) return [];
+  return Object.entries(props)
+    .filter(
+      ([, spec]) =>
+        spec.type === 'richText' ||
+        (spec.type === 'list' && spec.of.type === 'richText'),
+    )
+    .map(([key]) => key);
+}
+
+/** The attrs of every `link` mark with a `{ link: LinkValue }` target. */
+function richTextLinkMarks(
+  nodes: readonly RichTextNode[] | undefined,
+  out: Record<string, unknown>[],
+): Record<string, unknown>[] {
+  for (const node of nodes ?? []) {
+    for (const mark of node.marks ?? []) {
+      if (mark.type === 'link' && isLinkValue(mark.attrs?.link)) {
+        out.push(mark.attrs as Record<string, unknown>);
+      }
+    }
+    richTextLinkMarks(node.content, out);
+  }
+  return out;
+}
+
 function withSuffix(path: string, fragment?: string, query?: string): string {
   return `${path}${query ? `?${query}` : ''}${fragment ? `#${fragment}` : ''}`;
 }
@@ -55,6 +92,11 @@ function withSuffix(path: string, fragment?: string, query?: string): string {
  * use). It resolves to `href: null` when the target is gone / out of scope / its
  * collection has no slug — the renderer disables the link. External / email /
  * phone are static pass-throughs. Unlike references, NOTHING is embedded.
+ *
+ * Link marks inside `richText` values (also in lists) resolve the same way:
+ * a mark with `attrs.link` gets `attrs.resolved = { href }` (`href: null`
+ * for a gone target, so the renderer drops the link). Like `link`
+ * properties, they do not guard their target against deletion.
  *
  * Runs on the host-collection tree (the common case: link fields on page blocks);
  * it walks the whole tree, so nested host blocks are covered.
@@ -73,6 +115,13 @@ export async function resolveLinkPaths(
     key: string;
     value: LinkValue;
   }[] = [];
+  const markHits: { attrs: Record<string, unknown>; value: LinkValue }[] = [];
+  const noteInternal = (value: LinkValue) => {
+    if (value.kind !== 'internal') return;
+    const set = internalByCollection.get(value.collection) ?? new Set();
+    set.add(value.rootId);
+    internalByCollection.set(value.collection, set);
+  };
   const internalByCollection = new Map<string, Set<string>>();
 
   const walk = (node: BlockTreeNode, def: CollectionWithName) => {
@@ -80,10 +129,22 @@ export async function resolveLinkPaths(
       const value = node.properties[key];
       if (!isLinkValue(value)) continue;
       hits.push({ props: node.properties, key, value });
-      if (value.kind === 'internal') {
-        const set = internalByCollection.get(value.collection) ?? new Set();
-        set.add(value.rootId);
-        internalByCollection.set(value.collection, set);
+      noteInternal(value);
+    }
+    for (const key of getRichTextPropertyNames(def, node.type)) {
+      const raw = node.properties[key];
+      if (raw === undefined || raw === null) continue;
+      // Resolution writes into the marks: work on this read's own copy.
+      const copy: unknown = structuredClone(raw);
+      node.properties[key] = copy;
+      const docs: unknown[] = Array.isArray(copy) ? copy : [copy];
+      for (const doc of docs) {
+        if (!isRichTextDoc(doc)) continue;
+        for (const attrs of richTextLinkMarks(doc.content, [])) {
+          const value = attrs.link as LinkValue;
+          markHits.push({ attrs, value });
+          noteInternal(value);
+        }
       }
     }
     // Descend into INLINED references (getPublishedContent inlines reusable
@@ -102,7 +163,7 @@ export async function resolveLinkPaths(
   };
   walk(tree, collectionDef);
 
-  if (hits.length === 0) return;
+  if (hits.length === 0 && markHits.length === 0) return;
 
   // Defensive scope gate at the path layer too (symmetric with redirects): even
   // though the resolver returns only in-scope targets, a misconfigured or
@@ -156,6 +217,9 @@ export async function resolveLinkPaths(
   // Replace each link value in place.
   for (const { props, key, value } of hits) {
     props[key] = resolveOne(value, resolved);
+  }
+  for (const { attrs, value } of markHits) {
+    attrs.resolved = { href: resolveOne(value, resolved).href };
   }
 }
 

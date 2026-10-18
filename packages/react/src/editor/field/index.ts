@@ -31,3 +31,18 @@ export type {
   NestedFieldControlProps,
   NestedFieldRender,
 } from './types';
+export type {
+  UseRichTextEditorOptions,
+  UseRichTextEditorResult,
+} from './rich-text';
+export { useRichTextEditor } from './rich-text';
+export type {
+  EditorRichTextFieldProps,
+  EditorRichTextToolbarButtonProps,
+  EditorRichTextToolbarProps,
+} from './rich-text-parts';
+export {
+  EditorRichTextField,
+  EditorRichTextToolbar,
+  EditorRichTextToolbarButton,
+} from './rich-text-parts';

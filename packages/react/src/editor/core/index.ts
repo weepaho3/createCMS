@@ -144,6 +144,49 @@ export type {
 } from './schema/json-schema';
 export { exportJsonSchema } from './schema/json-schema';
 
+// Rich text: ProseMirror (Tiptap) JSON values, validation, conversions.
+export type {
+  HtmlToRichTextOptions,
+  LazyRichTextAdapter,
+  ParsedHtmlDocument,
+  ParsedHtmlNode,
+  RichTextAdapter,
+  RichTextCommands,
+  RichTextDoc,
+  RichTextHandle,
+  RichTextIssue,
+  RichTextIssueCode,
+  RichTextLossReport,
+  RichTextMark,
+  RichTextMountOptions,
+  RichTextNode,
+  RichTextSchema,
+  RichTextSuggestion,
+  RichTextSuggestionItem,
+  RichTextSuggestionState,
+  RichTextToHtmlOptions,
+} from './richtext';
+export {
+  EMPTY_RICH_TEXT,
+  escapeHtml,
+  htmlToRichText,
+  isLossless,
+  isRichTextDoc,
+  isSafeUrl,
+  lazyRichTextAdapter,
+  LINK_PROTOCOLS,
+  linkMarkHref,
+  linkMarkValue,
+  plainTextToRichText,
+  RICH_TEXT_MARKS,
+  RICH_TEXT_NODES,
+  richTextSchemaOf,
+  richTextToHtml,
+  richTextToPlainText,
+  validateRichText,
+  walkText,
+} from './richtext';
+
 // Store: document store, commands, history, session, saving, serde.
 export type {
   AddOptions,

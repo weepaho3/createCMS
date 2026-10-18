@@ -80,7 +80,7 @@ kept for the typed factory (`FromCollection<C>`):
 | block `group`                 | component `category`                                                          |
 | `allowChildren` + `structure` | `children` slot with `allow` (from `accepts`) or `disallow` (from `excludes`) |
 
-`number`, `boolean`, `date`, `richText` (an HTML string), `select` and
+`number`, `boolean`, `date`, `richText` (ProseMirror JSON, passed through with its `marks`, `nodes` and `inline`), `select` and
 `link` keep their kind. The root always has a `children` slot. A property
 type the editor does not know throws an `EditorAdapterError` of kind
 `validation`.

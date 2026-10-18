@@ -114,7 +114,14 @@ The `tree` view returns the draft tree itself, annotated: the same `{ blockId, t
       // A ghost node: deleted on the draft, re-inserted at its old position.
       "blockId": "blk_51t8gvna6dzej0h4m2ub",
       "type": "richText",
-      "properties": { "content": "<p>Founded in a garage in 2019.</p>" },
+      "properties": {
+        "content": {
+          "type": "doc",
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Founded in a garage in 2019." }] }
+          ]
+        }
+      },
       "diff": { "changeTypes": ["deleted"] },
       "children": []
     }
@@ -183,43 +190,43 @@ A deleted block no longer exists on the draft, so a plain render would silently 
 
 ### Inline rich-text diffs
 
-For `richText` properties, `propertyChanges` additionally carries `textDiff`: word-level `same` / `ins` / `del` segments of the HTML. Inside a block component, read the node's annotation with `getBlockDiff` and serialize the segments with `diffSegmentsToHtml`, which wraps insertions in `<ins>` and removals in `<del>`:
+For `richText` properties, `propertyChanges` additionally carries `richTextDiff`: word-level segments (`same`, `ins`, `del`, and `format` for unchanged text whose marks changed), each with its text, marks and text block. A rich text value changes as a whole, so the change's `path` is the property (or its list index). Inside a block component, read the node's annotation with `getBlockDiff` and render the segments with `RichTextDiff`, which wraps insertions in `<ins>`, removals in `<del>` and reformatted text in `<span data-diff-text="format">`:
 
 ```tsx title="lib/blocks.tsx"
 import {
   createBlocksMap,
-  diffSegmentsToHtml,
   getBlockDiff,
+  RichText,
+  RichTextDiff,
 } from '@createcms/core/react/blocks';
 import { collections } from '@/lib/collections';
 
 export const pageBlocks = createBlocksMap(collections.pages, {
   hero: ({ properties }) => <h1>{properties.headline}</h1>,
   richText: ({ properties, node }) => {
-    const textDiff = getBlockDiff(node)?.propertyChanges?.find(
+    const segments = getBlockDiff(node)?.propertyChanges?.find(
       (change) => change.path[0] === 'content',
-    )?.textDiff;
+    )?.richTextDiff;
     return (
-      <div
-        dangerouslySetInnerHTML={{
-          __html: textDiff ? diffSegmentsToHtml(textDiff) : properties.content,
-        }}
-      />
+      <div>
+        {segments ? (
+          <RichTextDiff segments={segments} />
+        ) : (
+          <RichText value={properties.content} />
+        )}
+      </div>
     );
   },
 });
 ```
 
-`getBlockDiff` returns `null` for unchanged nodes and for plain (non-diff) trees, so the same component keeps working on the live site. Two rules keep the serialized fragment valid HTML: tags are never wrapped in `<ins>`/`<del>` — so a formatting-only change (say, bolding a word) renders as the new HTML with **no inline highlight** — and deleted runs are tag-stripped, keeping only their text inside `<del>` so the old document's structure never leaks into the new one. Style the emitted tags:
+`getBlockDiff` returns `null` for unchanged nodes and for plain (non-diff) trees, so the same component keeps working on the live site. `RichTextDiff` renders one element per text block (`p`, `h1` to `h6`, `pre`) from the segments themselves, without `dangerouslySetInnerHTML`. Style the markers:
 
 ```css
 ins[data-diff-text] { background: #dcfce7; text-decoration: none; }
 del[data-diff-text] { background: #fee2e2; }
+[data-diff-text='format'] { text-decoration: underline dotted; }
 ```
-
-<Callout type="warn">
-  The segment `html` values are raw fragments of the stored `richText` value, so `diffSegmentsToHtml` output is as unsanitized as the property itself. If the content is not fully trusted, sanitize it exactly as described in [Render content](/docs/guides/rendering-content#sanitize-untrusted-html-before-rendering).
-</Callout>
 
 ### Who changed what
 

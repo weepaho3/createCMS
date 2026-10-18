@@ -20,7 +20,7 @@ export const storeSchema = defineEditorSchema({
     },
     paragraph: {
       label: 'Paragraph',
-      fields: { text: { type: 'richText', label: 'Body' } },
+      fields: { text: { type: 'textarea', label: 'Body' } },
     },
     image: {
       label: 'Image',

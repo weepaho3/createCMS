@@ -41,12 +41,18 @@ describe('renderDocument', () => {
     expect(html).toContain('<i>widget</i>');
   });
 
-  it('has no client directive and imports only react and the core', () => {
-    const source = readFileSync(join(import.meta.dirname, 'index.ts'), 'utf8');
-    expect(source).not.toContain("'use client'");
-    const imports = [...source.matchAll(/from '([^']+)'/g)].map((m) => m[1]);
-    for (const path of imports) {
-      expect(path === 'react' || path?.startsWith('../core/')).toBe(true);
+  it('has no client directive and imports only react, the core and its own files', () => {
+    for (const file of ['index.ts', 'rich-text.ts']) {
+      const source = readFileSync(join(import.meta.dirname, file), 'utf8');
+      expect(source).not.toContain("'use client'");
+      const imports = [...source.matchAll(/from '([^']+)'/g)].map((m) => m[1]);
+      for (const path of imports) {
+        expect(
+          path === 'react' ||
+            path === './rich-text' ||
+            path?.startsWith('../core/'),
+        ).toBe(true);
+      }
     }
     expect(React).toBeDefined();
   });

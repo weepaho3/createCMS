@@ -546,7 +546,7 @@ export function createMergeEndpoints<TDef extends CollectionWithName>(
      * moved, and a parent is `childrenReordered` only when the RELATIVE order
      * of its surviving children changed — insertions and deletions around
      * untouched siblings produce no cascade. Modified entries carry granular
-     * `propertyChanges` (with word-level `textDiff` segments for richText
+     * `propertyChanges` (with word-level `richTextDiff` segments for richText
      * properties), and the root entry carries `slugChange` when the versioned
      * draft slug differs (a slug-only change is not `modified`).
      *

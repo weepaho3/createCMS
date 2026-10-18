@@ -15,12 +15,18 @@ import {
   NO_EDIT,
   createBlocksMap,
   createContentRenderer,
+  RichText,
 } from '../blocks';
 
 // A collection covering a leaf block with two string properties (hero), a
 // richText leaf (paragraph), a block with a reference property (card), and a
 // children-carrying container (section) — so anchors are exercised on every
 // shape the renderer builds elements for.
+const rt = (text: string) => ({
+  type: 'doc' as const,
+  content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+});
+
 const blocks = {
   hero: {
     label: 'Hero',
@@ -66,7 +72,10 @@ const map = createBlocksMap(collection, {
   },
   paragraph: ({ properties, edit }) => (
     <p {...edit.block} {...edit.field.text}>
-      {properties.text as string}
+      <RichText
+        value={properties.text}
+        components={{ paragraph: ({ children }) => children }}
+      />
     </p>
   ),
   card: ({ edit, children }) => (
@@ -105,7 +114,7 @@ const tree: BlockTreeNode = {
         {
           blockId: 'p_1',
           type: 'paragraph',
-          properties: { text: 'A paragraph' },
+          properties: { text: rt('A paragraph') },
           children: [],
         },
         {
@@ -124,7 +133,7 @@ const tree: BlockTreeNode = {
                   {
                     blockId: 'ref_p',
                     type: 'paragraph',
-                    properties: { text: 'From ref' },
+                    properties: { text: rt('From ref') },
                     children: [],
                   },
                 ],
@@ -150,7 +159,10 @@ const RenderPage = createContentRenderer(collection, {
   },
   paragraph: ({ properties, edit }) => (
     <p {...edit.block} {...edit.field.text}>
-      {properties.text as string}
+      <RichText
+        value={properties.text}
+        components={{ paragraph: ({ children }) => children }}
+      />
     </p>
   ),
   card: ({ edit, children }) => (

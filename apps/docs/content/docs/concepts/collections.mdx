@@ -52,7 +52,12 @@ await cms.api.posts.createBlock({
     branchId,
     parentBlockId: rootId, // pass the rootId to attach at the top level
     type: 'richText',
-    properties: { content: '<p>First post.</p>' },
+    properties: {
+      content: {
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'First post.' }] }],
+      },
+    },
   },
 });
 ```

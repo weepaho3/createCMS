@@ -91,3 +91,11 @@ WebKit runs none of the frame's listeners or animation frames, so selection
 and editing stop working in Safari. The live frame renders the app's own
 components and needs no sandbox; `Editor.FramePreview` is the sandboxed
 preview for compiled output.
+
+## E015
+
+**Warning.** `richText` values of the loaded createcms document were stored
+as HTML. The adapter parsed them into JSON (`htmlToRichText` with each
+property's allowed formatting) and the next save writes the JSON back.
+Convert all stored values once with `migrateRichText` (or the
+`admin.migrateRichText` endpoint) instead of relying on edits.

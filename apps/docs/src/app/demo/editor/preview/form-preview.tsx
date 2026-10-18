@@ -9,6 +9,7 @@ import { PAGES_DOC, pagesSchema } from '@/app/demo/_lib/editor';
 import { messagesDe } from '@/app/demo/_lib/messages-de';
 import { pageBlocks } from '@/app/demo/_lib/pages-blocks';
 import { pages } from '@/app/demo/_lib/pages-schema';
+import { demoRichText } from '@/app/demo/_lib/rich-text';
 import { useDemoFieldSources } from '@/app/demo/_lib/sources';
 import { useLocalDocument } from '@/app/demo/_lib/use-local-document';
 import { CmsSourcesProvider, cmsFields, Form } from '@/components/editor-form';
@@ -32,6 +33,7 @@ export function FormPreviewEditor() {
         </button>
       </div>
       <Editor.Root
+        richText={demoRichText}
         key={lang}
         schema={pagesSchema}
         defaultValue={latest.current}

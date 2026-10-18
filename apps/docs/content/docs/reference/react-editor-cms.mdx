@@ -83,7 +83,7 @@ kept for the typed factory (`FromCollection<C>`):
 | block `group`                 | component `category`                              |
 | `allowChildren` + `structure` | `children` slot with `allow` (from `accepts`) or `disallow` (from `excludes`) |
 
-`number`, `boolean`, `date`, `richText` (an HTML string), `select` and
+`number`, `boolean`, `date`, `richText` (ProseMirror JSON, passed through with its `marks`, `nodes` and `inline`), `select` and
 `link` keep their kind. The root always has a `children` slot. A property
 type the editor does not know throws an `EditorAdapterError` of kind
 `validation`.
@@ -155,6 +155,7 @@ Known error codes on `CmsDocumentError.code`:
 | ------------------------------ | ---------------------------------------------------- |
 | `HEAD_MISMATCH`                | Branch head advanced since the last load             |
 | `TYPE_MISMATCH`                | Server rejected property values (`error.fields`)     |
+| `RICH_TEXT_INVALID`            | A `richText` value uses formatting its property does not allow (`error.fields`) |
 | `BLOCK_NOT_ALLOWED_IN_PARENT`  | Block type not allowed under its parent              |
 | `PROTECTED_BRANCH`             | Branch is protected from direct edits                |
 | `COMMIT_MESSAGE_REQUIRED`      | Save requires a commit message                       |

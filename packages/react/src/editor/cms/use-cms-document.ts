@@ -8,7 +8,12 @@ import type {
 
 import * as React from 'react';
 
-import type { EditorDocument, Field, PersistenceOptions } from '../core';
+import type {
+  EditorDocument,
+  Field,
+  PersistenceOptions,
+  RichTextDoc,
+} from '../core';
 import type {
   CmsDocumentResolve,
   CmsDocumentStatus,
@@ -16,6 +21,7 @@ import type {
   UseCmsDocumentResult,
 } from './types';
 
+import { isRichTextDoc, walkText } from '../core';
 import { createCmsAdapter } from './adapter';
 import { readCmsError } from './errors';
 import { cmsValueToEditor, fromEditor } from './mapping';
@@ -75,6 +81,10 @@ function sidecarReference(
   };
 }
 
+/** Rich text values share the string cache under their JSON. */
+const richTextKey = (doc: RichTextDoc): string =>
+  `richText:${JSON.stringify(doc)}`;
+
 function walkTreesInLockstep(
   raw: BlockTreeNode,
   resolved: BlockTreeNode,
@@ -100,6 +110,9 @@ function walkTreesInLockstep(
     }
     if (typeof rawVal === 'string' && typeof resolvedVal === 'string') {
       stringCache.set(rawVal, resolvedVal);
+    }
+    if (isRichTextDoc(rawVal) && isRichTextDoc(resolvedVal)) {
+      stringCache.set(richTextKey(rawVal), JSON.stringify(resolvedVal));
     }
   }
   const resolvedChildrenById = new Map(
@@ -171,7 +184,32 @@ function createResolveObject(
     },
     text: resolveString,
     textarea: resolveString,
-    richText: resolveString,
+    // `{{variables}}` inside the text nodes resolve with the tree.
+    richText(value, spec) {
+      if (!isRichTextDoc(value)) return undefined;
+      let variables = false;
+      walkText(value, (text) => {
+        if (text.includes('{{')) variables = true;
+      });
+      if (!variables) return undefined;
+      const key = richTextKey(value);
+      const cached = stringCacheRef.current.get(key);
+      if (cached !== undefined) return JSON.parse(cached) as RichTextDoc;
+      return new Promise<RichTextDoc>((resolve) => {
+        pendingRef.current.push({
+          kind: 'string',
+          raw: key,
+          spec,
+          resolve: (json) =>
+            resolve(
+              json === undefined || json === key
+                ? value
+                : (JSON.parse(json) as RichTextDoc),
+            ),
+        });
+        scheduleFlush();
+      });
+    },
   } satisfies CmsDocumentResolve;
 }
 

@@ -34,6 +34,17 @@ re-exports of the old form.
 
 ### Unreleased
 
+- **`richText` values are ProseMirror JSON.** A `richText` field's value is
+  a `RichTextDoc` (`{ type: 'doc', content: [...] }`) instead of an HTML
+  string; the neutral value is `EMPTY_RICH_TEXT` (one empty paragraph), and
+  `validateField` reports a string as a `type` error. `RichTextField` drops
+  `pattern`; `minLength` and `maxLength` count the plain text. Convert
+  stored HTML once with `htmlToRichText(html, richTextSchemaOf(field))`
+  from `@createcms/react/editor/core`, and render values with
+  `RichTextStatic` or `richTextToHtml` instead of `dangerouslySetInnerHTML`.
+  The form control no longer edits HTML source: pass a `RichTextAdapter` as
+  `Editor.Root richText` to edit formatted text; without one the field is
+  read-only.
 - **The editor uses its own schema and documents.** `Editor.Root`'s
   `schema` is an `EditorSchema` (`defineEditorSchema({ root, components })`)
   and `defaultValue` an `EditorDocument` (`{ schemaVersion, root: NodeData }`)
@@ -267,6 +278,28 @@ on, schema changes are picked up with `createcms generate` + a Drizzle migration
 
 ## Unreleased
 
+- **`richText` is ProseMirror JSON.** A `richText` property's value is a
+  `RichTextDoc` (`{ type: 'doc', content: [...] }`) instead of an HTML
+  string, on every write and read path; writes with an HTML string fail
+  (`VALIDATION_ERROR`, or `TYPE_MISMATCH` from `updateBlocks`), and
+  formatting a property does not allow fails with the new code
+  `RICH_TEXT_INVALID`. `richText` specs drop `pattern` and gain `marks`,
+  `nodes` and `inline`; `minLength`/`maxLength` count the plain text.
+  `PropertyChange.textDiff` (HTML segments) is replaced by `richTextDiff`
+  (`RichTextDiffSegment[]`: text, marks and block per run, plus a `format`
+  kind), a `richText` value changes as a whole in a diff, and
+  `diffSegmentsToHtml` / `TextDiffSegment` are removed in favour of
+  `RichTextDiff`. Templates on a `richText` target seed one paragraph per
+  line.
+  → **Migration:** **Database action: migrate rich-text.** Install
+  `happy-dom` on the server, run `admin.migrateRichText({ dryRun: true })`,
+  read the report, then run it without `dryRun` (following `nextCursor`)
+  and rebuild the search index (`admin.reindexSearch`). Scripts can call
+  `migrateRichText(db, collections, { domParser })` instead. Render values
+  with `RichText` from `@createcms/core/react/blocks` (no sanitizer needed)
+  or `richTextToHtml`; write new values as JSON (`htmlToRichText` converts
+  HTML, `plainTextToRichText` plain text). Diff UIs render
+  `change.richTextDiff` with `RichTextDiff`.
 - **Browser uploads are a presign/complete protocol.** `createSignedUpload`
   no longer creates rows: it returns
   `{ uploads: [{ id, objectKey, url, signedUrl, headers, token }], expiresAt }`

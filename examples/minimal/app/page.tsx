@@ -2,12 +2,15 @@
 // re-exports the client (`createCMSClient`, `useStore`), which pulls React
 // hooks into a Server Component; importing the `/react/blocks` subpath keeps
 // this page server-only.
-import { BlocksRenderer, createBlocksMap } from '@createcms/core/react/blocks';
+import {
+  BlocksRenderer,
+  createBlocksMap,
+  RichText,
+} from '@createcms/core/react/blocks';
 
 import { cms } from '@/lib/cms';
 import { seeded } from '@/lib/cms-data';
 import { collections } from '@/lib/collections';
-import { sanitizeRichTextHtml } from '@/lib/sanitize-rich-text';
 
 // Read CMS data at request time, never at build time, so `next build` does not
 // touch the database. REQUIRED for every page that reads CMS content.
@@ -17,13 +20,11 @@ export const dynamic = 'force-dynamic';
 // `properties` of each block are fully typed from the collection definition.
 const pageBlocks = createBlocksMap(collections.pages, {
   hero: ({ properties }) => <h1>{properties.headline}</h1>,
+  // `richText` is stored as JSON and renders as plain React elements.
   richText: ({ properties }) => (
-    // `richText` stores raw HTML: sanitize it before rendering.
-    <div
-      dangerouslySetInnerHTML={{
-        __html: sanitizeRichTextHtml(properties.content),
-      }}
-    />
+    <div>
+      <RichText value={properties.content} />
+    </div>
   ),
 });
 
