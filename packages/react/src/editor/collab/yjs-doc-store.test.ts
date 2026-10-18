@@ -250,3 +250,138 @@ describe('createYjsDocStore', () => {
     );
   });
 });
+
+describe('cycle repair', () => {
+  /** Syncs until no peer has anything new: repairs travel like edits. */
+  function settle(sync: () => void, stores: { ydoc: Y.Doc }[]) {
+    for (let round = 0; round < 10; round++) {
+      const before = stores.map((s) => Y.encodeStateVector(s.ydoc).join());
+      sync();
+      const after = stores.map((s) => Y.encodeStateVector(s.ydoc).join());
+      if (before.every((v, i) => v === after[i])) return;
+    }
+    throw new Error('peers did not settle');
+  }
+
+  /** The stored placements (not the derived tree) contain no cycle. */
+  function storedAcyclic(ydoc: Y.Doc): boolean {
+    const nodes = ydoc.getMap<Y.Map<unknown>>('nodes');
+    const parent = (id: string) =>
+      (nodes.get(id)?.get('placement') as { parentId: string } | null)
+        ?.parentId;
+    for (const id of nodes.keys()) {
+      const seen = new Set<string>();
+      for (
+        let cur: string | undefined = id;
+        cur !== undefined;
+        cur = parent(cur)
+      ) {
+        if (seen.has(cur)) return false;
+        seen.add(cur);
+      }
+    }
+    return true;
+  }
+
+  it('repairs A under B and B under A to one acyclic tree, in both orders', () => {
+    for (const order of [0, 1]) {
+      const { stores, sync } = peers(2);
+      const [p, q] = order === 0 ? stores : [...stores].reverse();
+      p!.transact((tx) => tx.moveNode('a', 'b', 'children', 0));
+      q!.transact((tx) => tx.moveNode('b', 'a', 'children', 0));
+      settle(sync, stores);
+      const [first, second] = stores.map((s) => s.getSnapshot());
+      expect(json(first!)).toBe(json(second!));
+      expect(first!.nodes.a).toBeDefined();
+      expect(first!.nodes.b).toBeDefined();
+      for (const store of stores) {
+        assertTree(store.getSnapshot());
+        expect(storedAcyclic(store.ydoc)).toBe(true);
+      }
+    }
+  });
+
+  it('repairs a three-node cycle made on three peers', () => {
+    const initial = doc();
+    initial.root.slots!.children!.push({
+      id: 'c',
+      type: 'box',
+      props: {},
+      slots: { children: [] },
+    });
+    const { stores, sync } = peers(3, initial);
+    stores[0]!.transact((tx) => tx.moveNode('a', 'b', 'children', 0));
+    stores[1]!.transact((tx) => tx.moveNode('b', 'c', 'children', 0));
+    stores[2]!.transact((tx) => tx.moveNode('c', 'a', 'children', 0));
+    settle(sync, stores);
+    const [first, ...rest] = stores.map((s) => json(s.getSnapshot()));
+    for (const other of rest) expect(other).toBe(first);
+    for (const store of stores) {
+      assertTree(store.getSnapshot());
+      expect(storedAcyclic(store.ydoc)).toBe(true);
+      expect(Object.keys(store.getSnapshot().nodes)).toEqual(
+        expect.arrayContaining(['a', 'b', 'c']),
+      );
+    }
+  });
+
+  it('keeps repairs out of the undo history and reports only remote or system', () => {
+    const { stores, sync } = peers(2);
+    const [p, q] = stores;
+    const origins: Origin[] = [];
+    for (const store of stores) {
+      store.subscribe((_changes, origin) => origins.push(origin));
+    }
+    p!.transact((tx) => tx.moveNode('a', 'b', 'children', 0));
+    q!.transact((tx) => tx.moveNode('b', 'a', 'children', 0));
+    p!.clearHistory();
+    q!.clearHistory();
+    origins.length = 0;
+    settle(sync, stores);
+    // A peer whose view the repair does not change sees no event at all.
+    expect(origins).toContain('remote');
+    expect(origins.every((o) => o === 'remote' || o === 'system')).toBe(true);
+    expect(p!.canUndo()).toBe(false);
+    expect(q!.canUndo()).toBe(false);
+  });
+
+  it('converges with stored acyclic placements for random concurrent moves', () => {
+    const moveArb = fc.record({
+      peer: fc.nat({ max: 2 }),
+      a: fc.nat(),
+      b: fc.nat(),
+      sync: fc.boolean(),
+    });
+    fc.assert(
+      fc.property(fc.array(moveArb, { maxLength: 20 }), (moves) => {
+        const initial = doc();
+        initial.root.slots!.children!.push(
+          { id: 'c', type: 'box', props: {}, slots: { children: [] } },
+          { id: 'd', type: 'box', props: {}, slots: { children: [] } },
+        );
+        const { stores, sync } = peers(3, initial);
+        const boxes = ['a', 'b', 'c', 'd'];
+        for (const move of moves) {
+          const id = boxes[move.a % boxes.length]!;
+          const target = boxes[move.b % boxes.length]!;
+          try {
+            stores[move.peer]!.transact((tx) =>
+              tx.moveNode(id, target, 'children', 0),
+            );
+          } catch (error) {
+            if (!(error instanceof TxRejectedError)) throw error;
+          }
+          if (move.sync) settle(sync, stores);
+        }
+        settle(sync, stores);
+        const [first, ...rest] = stores.map((s) => json(s.getSnapshot()));
+        for (const other of rest) expect(other).toBe(first);
+        for (const store of stores) {
+          assertTree(store.getSnapshot());
+          expect(storedAcyclic(store.ydoc)).toBe(true);
+        }
+      }),
+      { numRuns: 300 },
+    );
+  });
+});

@@ -24,6 +24,12 @@ export type YjsPlacement = {
   readonly slot: string;
   /** Fractional index (`fractional-indexing`); siblings sort by it, then by id. */
   readonly order: string;
+  /** Where a move took the node from: the place a cycle repair returns it to. */
+  readonly prev?: {
+    readonly parentId: string;
+    readonly slot: string;
+    readonly order: string;
+  };
 };
 
 export type CreateYjsDocStoreOptions = {
@@ -102,6 +108,8 @@ export function createYjsDocStore(
   const nodesMap = ydoc.getMap<YNode>(NODES);
   /** Marks our own transactions: anything else came from another peer. */
   const local = { store: 'editor' };
+  /** Marks a cycle repair this store wrote (published as `system`). */
+  const repairing = { store: 'editor-repair' };
 
   if (meta.get('rootId') === undefined && options.initialValue) {
     const doc = options.initialValue;
@@ -116,7 +124,19 @@ export function createYjsDocStore(
   const cache = new Map<string, FlatNode>();
   let dirty: Set<string> | 'all' = 'all';
 
+  /** Nodes whose placement changed: where a cycle can have appeared. */
+  const moved = new Set<string>();
+
   const onDeep = (events: Y.YEvent<Y.AbstractType<unknown>>[]) => {
+    for (const event of events) {
+      const id = event.path[0];
+      if (typeof id === 'string' && event.changes.keys.has('placement')) {
+        moved.add(id);
+      }
+      if (event.target === nodesMap) {
+        for (const key of event.changes.keys.keys()) moved.add(key);
+      }
+    }
     if (dirty === 'all') return;
     for (const event of events) {
       if (event.target === nodesMap) {
@@ -368,11 +388,22 @@ export function createYjsDocStore(
           before.nodes[op.parent.id]?.slots[op.parent.slot] ?? []
         ).filter((id) => id !== op.id);
         const at = Math.max(0, Math.min(Math.trunc(op.index), siblings.length));
-        node.set('placement', {
+        const current = placementOf(node);
+        const placement: {
+          -readonly [K in keyof YjsPlacement]: YjsPlacement[K];
+        } = {
           parentId: op.parent.id,
           slot: op.parent.slot,
           order: keyAt(siblings, at),
-        } satisfies YjsPlacement);
+        };
+        if (current) {
+          placement.prev = {
+            parentId: current.parentId,
+            slot: current.slot,
+            order: current.order,
+          };
+        }
+        node.set('placement', placement);
         syncSlotNames(op.parent.id, after.nodes);
         return;
       }
@@ -395,6 +426,92 @@ export function createYjsDocStore(
         return;
       }
     }
+  }
+
+  /**
+   * Writes the repair of every cycle reachable from `candidates` in the
+   * stored placements. In each cycle, the node whose placement was written
+   * first (lowest clock, then client id) goes back to its previous place,
+   * or to the end of the root's `children` when that place is gone or
+   * inside the cycle. Every peer picks the same node; a repair written by
+   * two peers resolves like any concurrent move.
+   */
+  function repairCycles(candidates: Iterable<string>): boolean {
+    const rootId = meta.get('rootId') as string | undefined;
+    if (rootId === undefined) return false;
+    const parentOf = (id: string): string | undefined => {
+      const node = nodesMap.get(id);
+      const placement = node ? placementOf(node) : null;
+      return placement && nodesMap.has(placement.parentId)
+        ? placement.parentId
+        : undefined;
+    };
+    const writeRank = (id: string): [number, number] => {
+      const item = nodesMap.get(id)?._map.get('placement');
+      return item ? [item.id.clock, item.id.client] : [0, 0];
+    };
+    const reaches = (from: string, target: string): boolean => {
+      const seen = new Set<string>();
+      for (
+        let cur: string | undefined = from;
+        cur !== undefined;
+        cur = parentOf(cur)
+      ) {
+        if (cur === target) return true;
+        if (seen.has(cur)) return false;
+        seen.add(cur);
+      }
+      return false;
+    };
+    const fixes = new Map<string, YjsPlacement>();
+    for (const start of candidates) {
+      const path: string[] = [];
+      let cur: string | undefined = start;
+      while (cur !== undefined && !path.includes(cur) && cur !== rootId) {
+        path.push(cur);
+        cur = parentOf(cur);
+      }
+      if (cur === undefined || cur === rootId) continue;
+      const cycle = path.slice(path.indexOf(cur));
+      if (cycle.some((id) => fixes.has(id))) continue;
+      const pick = [...cycle].sort((a, b) => {
+        const [ca, xa] = writeRank(a);
+        const [cb, xb] = writeRank(b);
+        return ca - cb || xa - xb || (a < b ? -1 : 1);
+      })[0]!;
+      const prev = placementOf(nodesMap.get(pick)!)?.prev;
+      if (
+        prev &&
+        nodesMap.has(prev.parentId) &&
+        !reaches(prev.parentId, pick)
+      ) {
+        fixes.set(pick, { ...prev });
+      } else {
+        const rootChildren: string[] = [];
+        nodesMap.forEach((node) => {
+          const placement = placementOf(node);
+          if (
+            placement?.parentId === rootId &&
+            placement.slot === DEFAULT_SLOT
+          ) {
+            rootChildren.push(placement.order);
+          }
+        });
+        const last = rootChildren.sort().at(-1) ?? null;
+        fixes.set(pick, {
+          parentId: rootId,
+          slot: DEFAULT_SLOT,
+          order: generateKeyBetween(last, null),
+        });
+      }
+    }
+    if (fixes.size === 0) return false;
+    ydoc.transact(() => {
+      for (const [id, placement] of fixes) {
+        nodesMap.get(id)?.set('placement', placement);
+      }
+    }, repairing);
+    return true;
   }
 
   const initial = derive(0);
@@ -433,9 +550,16 @@ export function createYjsDocStore(
   );
 
   const onAfterTransaction = (tr: Y.Transaction) => {
-    if (tr.origin === local) return;
+    if (tr.origin === local) {
+      moved.clear();
+      return;
+    }
     if (tr.changed.size === 0 && tr.changedParentTypes.size === 0) return;
-    core.receive(derive(core.getSnapshot().version + 1));
+    const origin = tr.origin === repairing ? 'system' : 'remote';
+    core.receive(derive(core.getSnapshot().version + 1), origin);
+    const candidates = [...moved];
+    moved.clear();
+    if (origin === 'remote') repairCycles(candidates);
   };
   ydoc.on('afterTransaction', onAfterTransaction);
 

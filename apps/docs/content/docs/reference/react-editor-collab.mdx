@@ -48,13 +48,26 @@ writes are validated like in the JSON store, so the tree stays valid.
 - **Moved into a removed parent.** A block another person moved into a
   parent that was removed at the same time shows at the end of the root's
   `children`.
-- **Cycles.** Two concurrent moves can put two blocks inside each other.
-  The block with the greatest id in such a cycle shows at the end of the
-  root's `children`.
+- **Cycles.** Two concurrent moves can put two blocks inside each other
+  (A under B on one peer, B under A on another). After a remote update the
+  store looks for cycles among the blocks whose placement changed. In each
+  cycle, the block whose placement was written first (lowest Yjs clock,
+  then client id) goes back to where its last move took it from
+  (`placement.prev`), or to the end of the root's `children` when that
+  place is gone or inside the cycle. The repair is written to the `Y.Doc`
+  with origin `system`, never becomes an undo step, and travels to the
+  other peers like any edit; two peers writing the same repair resolve like
+  any concurrent move.
 
-Both rules only shape the derived tree; every peer derives the same tree
-from the same `Y.Doc`. Changes from other peers reach subscribers with
-origin `remote`, and the local undo steps they conflict with are dropped.
+Until a repair has synced, the derived tree breaks a cycle by showing its
+greatest id at the end of the root, so a snapshot never contains a cycle.
+Every peer derives the same tree from the same `Y.Doc`. Changes from other
+peers reach subscribers with origin `remote`, and the local undo steps they
+conflict with are dropped.
+
+The repair rule is a reasoned conclusion, not a proven algorithm: it is
+tested against every interleaving of two and three blocks and against
+random concurrent moves on three peers, but not yet in production.
 
 ## API
 
@@ -63,5 +76,5 @@ origin `remote`, and the local undo steps they conflict with are dropped.
 | `createYjsDocStore`        | `(options) => YjsDocStore`: the store; passes the DocStore conformance suite.                                                                                     |
 | `CreateYjsDocStoreOptions` | `ydoc`, `initialValue?` (written when `ydoc` holds no document; peers seeding the same document agree), `now?`, `mergeMs?`, `maxEntries?`, `random?` (key jitter). |
 | `YjsDocStore`              | `DocStoreCore` plus `ydoc` and `destroy()` (stops listening to the `Y.Doc`).                                                                                      |
-| `YjsPlacement`             | `{ parentId, slot, order }` of one block.                                                                                                                         |
+| `YjsPlacement`             | `{ parentId, slot, order, prev? }` of one block; `prev` is where its last move took it from.                                                                                                                         |
 | `yjsToDocument`            | `(ydoc) => EditorDocument \| null`: the document a `Y.Doc` holds, without order keys, for saving or rendering on the server.                                       |

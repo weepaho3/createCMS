@@ -212,10 +212,11 @@ export type DocStoreBackend = {
 export type DocStoreCore = DocStore & {
   /**
    * Publishes `next`, a state the backend received from outside
-   * `transact` (a remote peer): drops the undo steps it conflicts with and
-   * notifies subscribers with origin `remote`. Returns the dropped steps.
+   * `transact`: drops the undo steps it conflicts with and notifies
+   * subscribers with `origin` (default `remote`; `system` for a repair the
+   * backend made itself). Returns the dropped steps.
    */
-  receive(next: DocState): number;
+  receive(next: DocState, origin?: 'remote' | 'system'): number;
 };
 
 const sameList = (a: readonly string[], b: readonly string[]) =>
@@ -594,7 +595,7 @@ export function createDocStoreCore(
 
     getHistory: () => ({ past, future }),
 
-    receive(next) {
+    receive(next, origin = 'remote') {
       const { changes, touch } = diffStates(state, next);
       state = { ...next, version: state.version + 1 };
       if (changes.length === 0) return 0;
@@ -604,7 +605,7 @@ export function createDocStoreCore(
       past = past.filter(keep);
       future = future.filter(keep);
       if (past.length + future.length < before) mergeOpen = false;
-      notify(changes, 'remote');
+      notify(changes, origin);
       return before - past.length - future.length;
     },
   };
