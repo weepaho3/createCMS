@@ -50,6 +50,8 @@ export type Messages = {
     readonly contextMenu: string;
     /** The drag handle's menu (move, duplicate, delete). */
     readonly handleMenu: string;
+    /** The add button of an empty slot. */
+    readonly emptySlotAdd: string;
     readonly moveTo: string;
     readonly moveToTitle: (p: { block: AnnouncedBlock }) => string;
     readonly moveToPosition: (p: { position: number; count: number }) => string;
@@ -191,6 +193,7 @@ export const EN_MESSAGES: Messages = {
     outline: 'Page structure',
     contextMenu: 'Block actions',
     handleMenu: 'Block actions',
+    emptySlotAdd: 'Add block',
     moveTo: 'Move to...',
     moveToTitle: (p) => `Move ${named(p.block)} to`,
     moveToPosition: (p) => `Position ${p.position} of ${p.count}`,

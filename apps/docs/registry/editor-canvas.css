@@ -69,9 +69,58 @@
   }
 }
 
+/* Rings follow their block exactly: no transition on position or size,
+   only on opacity when chrome appears. */
 [data-slot='editor-selection-ring'],
 [data-slot='editor-hover-ring'] {
   transition-property: opacity;
+  transition-duration: 100ms;
+  transition-timing-function: ease-out;
+  border-radius: var(--el-radius, 0);
+}
+
+[data-slot='editor-hover-ring'] {
+  box-shadow:
+    inset 0 0 0 1px var(--editor-hover, var(--editor-drop)),
+    0 0 0 1px rgb(255 255 255 / 0.7);
+}
+
+[data-slot='editor-selection-ring'] {
+  box-shadow:
+    inset 0 0 0 2px var(--editor-selection, var(--editor-drop)),
+    0 0 0 1px rgb(255 255 255 / 0.7);
+}
+
+/* A cut-off edge draws no line. */
+[data-slot='editor-selection-ring'][data-clamped-top],
+[data-slot='editor-hover-ring'][data-clamped-top] {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+[data-slot='editor-block-toolbar'][data-scrolling] {
+  opacity: 0;
+}
+
+[data-box='padding'] {
+  background: rgb(147 196 125 / 0.55);
+}
+
+[data-box='margin'] {
+  background: rgb(246 178 107 / 0.66);
+}
+
+[data-editor-empty-slot][data-drag-over] {
+  outline: 2px dashed var(--editor-drop);
+  outline-offset: -2px;
+}
+
+/* Empty blocks stay visible and hittable while editing. */
+[data-editor-canvas][data-interactive='edit'] [data-editor-block]:empty {
+  min-height: 24px;
+  outline: 1px dashed rgb(0 0 0 / 0.7);
+  outline-offset: -1px;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.7);
 }
 
 @media (prefers-reduced-motion: reduce) {

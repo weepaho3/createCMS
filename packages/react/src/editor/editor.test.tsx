@@ -107,6 +107,9 @@ describe('namespace shape', () => {
       'BlockError',
       'UnknownBlock',
       'ContextMenu',
+      'Label',
+      'EmptySlot',
+      'SpacingOverlay',
     ]);
   });
 });

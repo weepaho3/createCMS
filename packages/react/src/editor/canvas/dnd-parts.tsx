@@ -32,10 +32,8 @@ import {
 import { targetFor } from './keyboard-drag';
 import { useCanvasSession, type CanvasSurfaceHandle } from './provider';
 import { OVERLAY_CHROME_INSET_PX, visibleIntersection } from './rect';
-import { useHostViewBox } from './rects';
+import { useHostViewBox, useMeasuredRect } from './rects';
 import { BlockToolbarContext } from './toolbar';
-
-const subscribeNoop = () => () => {};
 
 /** Drag sources own touch input and never select text or show a callout. */
 const HANDLE_STYLE = {
@@ -723,11 +721,7 @@ export function CanvasDragHandle({
   const measurer = canvas?.measurer ?? null;
   const host = canvas?.host ?? null;
   const view = useHostViewBox(host);
-  const rect = React.useSyncExternalStore(
-    measurer ? measurer.subscribe : subscribeNoop,
-    () => (measurer ? measurer.getBlockRect(blockId) : null),
-    () => null,
-  );
+  const rect = useMeasuredRect(measurer, 'block', blockId);
   const session = useDragSessionSnapshot();
   const ctx = useEditorContext('Canvas.DragHandle');
   const handleRef = React.useRef<HTMLButtonElement | null>(null);
@@ -1007,15 +1001,14 @@ export function CanvasDropTargetRing({
   const session = useDragSessionSnapshot();
   const target = useDropTargetSnapshot();
   const measurer = canvas.measurer;
-  const rect = React.useSyncExternalStore(
-    measurer ? measurer.subscribe : subscribeNoop,
-    () =>
-      measurer && target
-        ? (measurer.getSlotRect(target.parent.id, target.parent.slot) ??
-          measurer.getBlockRect(target.parent.id))
-        : null,
-    () => null,
+  const slotRect = useMeasuredRect(
+    measurer,
+    'slot',
+    target?.parent.id ?? '',
+    target?.parent.slot,
   );
+  const blockRect = useMeasuredRect(measurer, 'block', target?.parent.id ?? '');
+  const rect = slotRect ?? blockRect;
   const element = useRender<'div', DropTargetRingState>({
     defaultTagName: 'div',
     render,
@@ -1100,11 +1093,7 @@ export function CanvasDragPreview({
   const measurer = canvas?.measurer ?? null;
   const host = canvas?.host ?? null;
   const moveId = session?.kind === 'move' ? session.id : '';
-  const moveRect = React.useSyncExternalStore(
-    measurer ? measurer.subscribe : subscribeNoop,
-    () => (measurer ? measurer.getBlockRect(moveId) : null),
-    () => null,
-  );
+  const moveRect = useMeasuredRect(measurer, 'block', moveId);
   const nodeRef = React.useRef<HTMLDivElement | null>(null);
 
   // Position is written on the DOM node (rAF + translate3d). Subscribing

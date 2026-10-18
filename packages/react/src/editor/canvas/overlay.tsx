@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 
 import type { UseRenderComponentProps } from '../../use-render';
 import type { FlatNode } from '../core/document';
+import type { ClampedEdges } from './anchors';
 import type { CanvasRect } from './rect';
 
 import { useRender } from '../../use-render';
@@ -13,7 +14,7 @@ import {
 } from '../binding';
 import { blockElements } from './anchors';
 import { useCanvasContext } from './context';
-import { useBlockRect, useFieldRect } from './rects';
+import { useFieldRect, useMeasuredRect } from './rects';
 
 type OverlayState = {
   editorOverlay: boolean;
@@ -40,13 +41,22 @@ export type CanvasRingState = {
   canMove: boolean;
   canDelete: boolean;
   unresolved: boolean;
+  /** `block`, or `ref` for a reusable section. */
+  kind: 'block' | 'ref';
+  /** Edges an overflow ancestor cuts off (draw no line there). */
+  clampedLeft: boolean;
+  clampedTop: boolean;
+  clampedRight: boolean;
+  clampedBottom: boolean;
 };
 
 type SelectionRingState = CanvasRingState & {
+  state: 'selected';
   editorSelectionRing: boolean;
 };
 
 type HoverRingState = CanvasRingState & {
+  state: 'hover';
   editorHoverRing: boolean;
 };
 
@@ -66,7 +76,12 @@ export type CanvasFieldRingProps = React.ComponentPropsWithRef<'div'> & {
   render?: UseRenderComponentProps<'div', FieldRingState>['render'];
 };
 
-function ringStyle(rect: CanvasRect): React.CSSProperties {
+/**
+ * Position and size, also as `--x --y --w --h` and the block's own
+ * corner radius as `--el-radius` for box-shadow rings; no transition on
+ * any of them, so a ring never lags behind its block.
+ */
+function ringStyle(rect: CanvasRect, radius: string): React.CSSProperties {
   return {
     position: 'absolute',
     left: rect.x,
@@ -75,19 +90,39 @@ function ringStyle(rect: CanvasRect): React.CSSProperties {
     height: rect.height,
     boxSizing: 'border-box',
     pointerEvents: 'none',
+    ['--x' as string]: `${rect.x}px`,
+    ['--y' as string]: `${rect.y}px`,
+    ['--w' as string]: `${rect.width}px`,
+    ['--h' as string]: `${rect.height}px`,
+    ['--el-radius' as string]: radius,
   };
 }
+
+function radiusOf(host: HTMLElement | null, id: string | null): string {
+  const el = id && host ? blockElements(host, id)[0] : undefined;
+  const view = el?.ownerDocument.defaultView;
+  return el && view ? view.getComputedStyle(el).borderRadius : '0px';
+}
+
+type Clamped = { clamped?: ClampedEdges };
 
 function ringFlags(
   host: HTMLElement | null,
   node: FlatNode | null,
   id: string | null,
+  rect?: CanvasRect | null,
 ): CanvasRingState {
   const notRoot = node !== null && node.parent !== null;
+  const clamped = (rect as (CanvasRect & Clamped) | null | undefined)?.clamped;
   return {
     blockType: node?.type ?? null,
     canMove: notRoot,
     canDelete: notRoot,
+    kind: node?.type === '$ref' ? 'ref' : 'block',
+    clampedLeft: clamped?.left ?? false,
+    clampedTop: clamped?.top ?? false,
+    clampedRight: clamped?.right ?? false,
+    clampedBottom: clamped?.bottom ?? false,
     unresolved:
       id !== null && host !== null
         ? blockElements(host, id).some((el) =>
@@ -116,7 +151,15 @@ export function CanvasOverlay({
   React.useLayoutEffect(() => {
     const host = ctx.host;
     const inner = innerRef.current;
-    if (!host || !inner) return;
+    const layer = inner?.parentElement;
+    if (!host || !inner || !layer) return;
+    // A positioned host is the layer's containing block: the layer
+    // scrolls with the content already, and the host's overflow clips.
+    if (layer.offsetParent === host) {
+      inner.style.transform = '';
+      layer.style.overflow = 'visible';
+      return;
+    }
     const apply = () => {
       inner.style.transform =
         'translate(' + -host.scrollLeft + 'px,' + -host.scrollTop + 'px)';
@@ -204,17 +247,19 @@ export function CanvasSelectionRing({
   const node = useDocSelector((s) =>
     selected ? (s.nodes[selected] ?? null) : null,
   );
-  const rect = useBlockRect(selected ?? '');
-  const flags = ringFlags(canvas.host, node, selected);
+  const rect = useMeasuredRect(canvas.measurer, 'visible', selected ?? '');
+  const flags = ringFlags(canvas.host, node, selected, rect);
   const element = useRender<'div', SelectionRingState>({
     defaultTagName: 'div',
     render,
     props: {
       ...rest,
       'aria-hidden': true,
-      style: rect ? { ...ringStyle(rect), ...style } : style,
+      style: rect
+        ? { ...ringStyle(rect, radiusOf(canvas.host, selected)), ...style }
+        : style,
     },
-    state: { ...flags, editorSelectionRing: true },
+    state: { ...flags, state: 'selected', editorSelectionRing: true },
   });
   if (selected === null || rect === null) return null;
   return element;
@@ -231,17 +276,19 @@ export function CanvasHoverRing({
   const node = useDocSelector((s) =>
     hovered ? (s.nodes[hovered] ?? null) : null,
   );
-  const rect = useBlockRect(hovered ?? '');
-  const flags = ringFlags(canvas.host, node, hovered);
+  const rect = useMeasuredRect(canvas.measurer, 'visible', hovered ?? '');
+  const flags = ringFlags(canvas.host, node, hovered, rect);
   const element = useRender<'div', HoverRingState>({
     defaultTagName: 'div',
     render,
     props: {
       ...rest,
       'aria-hidden': true,
-      style: rect ? { ...ringStyle(rect), ...style } : style,
+      style: rect
+        ? { ...ringStyle(rect, radiusOf(canvas.host, hovered)), ...style }
+        : style,
     },
-    state: { ...flags, editorHoverRing: true },
+    state: { ...flags, state: 'hover', editorHoverRing: true },
   });
   if (canvas.dragging || canvas.editing) return null;
   if (hovered !== null && hovered === selected) return null;
@@ -267,7 +314,7 @@ export function CanvasFieldRing({
     props: {
       ...rest,
       'aria-hidden': true,
-      style: rect ? { ...ringStyle(rect), ...style } : style,
+      style: rect ? { ...ringStyle(rect, '0px'), ...style } : style,
     },
     state: { ...flags, editorFieldRing: true },
   });

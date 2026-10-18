@@ -64,6 +64,7 @@ export const messagesDe: Messages = {
     outline: 'Seitenstruktur',
     contextMenu: 'Blockaktionen',
     handleMenu: 'Blockaktionen',
+    emptySlotAdd: 'Block hinzufügen',
     moveTo: 'Verschieben nach ...',
     moveToTitle: (p) => `${named(p.block)} verschieben nach`,
     moveToPosition: (p) => `Position ${p.position} von ${p.count}`,

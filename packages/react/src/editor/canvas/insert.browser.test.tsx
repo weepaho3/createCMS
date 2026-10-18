@@ -41,7 +41,7 @@ describe('Canvas insert geometry in a real browser', () => {
   it('column stack inserts at the top gap with a horizontal line', async () => {
     const { host, store } = renderCanvas(
       <Canvas.Overlay>
-        <Canvas.InsertButton placement="between" type="cell">
+        <Canvas.InsertButton delay={0} placement="between" type="cell">
           +
         </Canvas.InsertButton>
       </Canvas.Overlay>,
@@ -75,7 +75,7 @@ describe('Canvas insert geometry in a real browser', () => {
   it('row stack inserts at the left gap with a vertical line', async () => {
     const { host, store } = renderCanvas(
       <Canvas.Overlay>
-        <Canvas.InsertButton placement="between" type="cell">
+        <Canvas.InsertButton delay={0} placement="between" type="cell">
           +
         </Canvas.InsertButton>
       </Canvas.Overlay>,
@@ -106,7 +106,7 @@ describe('Canvas insert geometry in a real browser', () => {
   it('grid stack inserts between the top row cells', async () => {
     const { host, store } = renderCanvas(
       <Canvas.Overlay>
-        <Canvas.InsertButton placement="between" type="cell">
+        <Canvas.InsertButton delay={0} placement="between" type="cell">
           +
         </Canvas.InsertButton>
       </Canvas.Overlay>,
@@ -141,10 +141,10 @@ describe('Canvas insert geometry in a real browser', () => {
   it('empty stack shows a container insert box', async () => {
     const { host, store } = renderCanvas(
       <Canvas.Overlay>
-        <Canvas.InsertButton placement="container" type="cell">
+        <Canvas.InsertButton delay={0} placement="container" type="cell">
           +
         </Canvas.InsertButton>
-        <Canvas.InsertButton placement="between" type="cell">
+        <Canvas.InsertButton delay={0} placement="between" type="cell">
           line
         </Canvas.InsertButton>
       </Canvas.Overlay>,
@@ -259,10 +259,10 @@ describe('Canvas insert geometry in a real browser', () => {
   it('InsertButton disables types the parent rejects', async () => {
     const { host, store } = renderCanvas(
       <Canvas.Overlay>
-        <Canvas.InsertButton placement="container" type="cell">
+        <Canvas.InsertButton delay={0} placement="container" type="cell">
           cell
         </Canvas.InsertButton>
-        <Canvas.InsertButton placement="container" type="heading">
+        <Canvas.InsertButton delay={0} placement="container" type="heading">
           heading
         </Canvas.InsertButton>
       </Canvas.Overlay>,
@@ -294,7 +294,7 @@ describe('Canvas insert geometry in a real browser', () => {
   it('select mode hides InsertButton but keeps BlockToolbar', async () => {
     const { host, store } = renderCanvas(
       <Canvas.Overlay>
-        <Canvas.InsertButton placement="between" type="cell">
+        <Canvas.InsertButton delay={0} placement="between" type="cell">
           +
         </Canvas.InsertButton>
         <Canvas.BlockToolbar />
@@ -324,7 +324,7 @@ describe('Canvas insert into named slots in a real browser', () => {
   it('targets the empty right slot by its own element', async () => {
     const { host, store } = renderCanvas(
       <Canvas.Overlay>
-        <Canvas.InsertButton placement="container" type="cell">
+        <Canvas.InsertButton delay={0} placement="container" type="cell">
           +
         </Canvas.InsertButton>
       </Canvas.Overlay>,

@@ -105,6 +105,8 @@ export function useInsertTarget(options?: {
   return next;
 }
 
+const TOOLBAR_SCROLL_IDLE_MS = 150;
+
 /** True when a DragHandle is rendered inside BlockToolbar (in-flow). */
 export const BlockToolbarContext = React.createContext(false);
 
@@ -112,6 +114,10 @@ type BlockToolbarState = {
   editorBlockToolbar: boolean;
   side: 'top' | 'bottom';
   blockType: string | null;
+  /** No room outside the block: the toolbar sits inside its edge. */
+  flipped: boolean;
+  /** On the host layer while the canvas scrolls (hidden until 150 ms after). */
+  scrolling: boolean;
 };
 
 export type CanvasBlockToolbarProps = React.ComponentPropsWithRef<'div'> & {
@@ -171,6 +177,24 @@ export function CanvasBlockToolbar({
 
   // On the host layer over a frame the toolbar may leave the frame.
   const onHostLayer = React.useContext(OverlayLayerContext) === 'host';
+  // Host-layer chrome cannot follow a scrolling frame frame by frame: it
+  // hides while the canvas scrolls and returns 150 ms after.
+  const [scrolling, setScrolling] = React.useState(false);
+  React.useEffect(() => {
+    const doc = canvas.host?.ownerDocument;
+    if (!onHostLayer || !doc) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onScroll = () => {
+      setScrolling(true);
+      clearTimeout(timer);
+      timer = setTimeout(() => setScrolling(false), TOOLBAR_SCROLL_IDLE_MS);
+    };
+    doc.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    return () => {
+      clearTimeout(timer);
+      doc.removeEventListener('scroll', onScroll, { capture: true });
+    };
+  }, [onHostLayer, canvas.host]);
   const fitsOutside =
     onHostLayer ||
     (side === 'bottom'
@@ -245,6 +269,8 @@ export function CanvasBlockToolbar({
       editorBlockToolbar: true,
       side,
       blockType: node?.type ?? null,
+      flipped: !fitsOutside,
+      scrolling,
     },
   });
 
@@ -281,13 +307,19 @@ export type CanvasInsertButtonProps = Omit<
   React.ComponentPropsWithRef<'button'>,
   'type'
 > & {
+  /** How long the pointer rests at a gap before the button shows. Default 400 ms. */
+  delay?: number;
   placement: 'between' | 'container';
   type?: string;
   onInsert?: (target: InsertTarget) => void;
   render?: UseRenderComponentProps<'button', InsertButtonState>['render'];
 };
 
+/** The pointer rests this long at a gap before `Canvas.InsertButton` shows. */
+export const INSERT_BUTTON_DELAY_MS = 400;
+
 export function CanvasInsertButton({
+  delay = INSERT_BUTTON_DELAY_MS,
   placement,
   type,
   onInsert,
@@ -314,6 +346,21 @@ export function CanvasInsertButton({
       : target.variant === 'box');
 
   const disabled = refused;
+
+  // Show only after the pointer rested at the same gap for `delay`.
+  const gapKey = target
+    ? `${target.parent.id}:${target.parent.slot}:${target.index}:${target.variant}`
+    : null;
+  const [shownKey, setShownKey] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (gapKey === null) return;
+    if (delay <= 0) {
+      setShownKey(gapKey);
+      return;
+    }
+    const timer = setTimeout(() => setShownKey(gapKey), delay);
+    return () => clearTimeout(timer);
+  }, [gapKey, delay]);
 
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (target === null) return;
@@ -356,6 +403,6 @@ export function CanvasInsertButton({
       allowedChildTypes: allowedTypes,
     },
   });
-  if (!active) return null;
+  if (!active || (delay > 0 && shownKey !== gapKey)) return null;
   return element;
 }

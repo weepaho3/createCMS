@@ -4,6 +4,7 @@ import { CanvasBlockError, CanvasUnknownBlock } from './boundary';
 // @createcms/react/editor/canvas: live surface, overlay and interaction
 // layer. The only entry that needs react-dom (portals); the peer is optional
 // so form-only consumers never install it.
+import { CanvasEmptySlot, CanvasLabel, CanvasSpacingOverlay } from './chrome';
 import { CanvasRoot } from './components';
 import { CanvasContextMenu } from './context-menu';
 import {
@@ -34,6 +35,13 @@ export type { CanvasClickToEdit } from './context';
 export type { CanvasContextMenuProps, ContextMenuEntry } from './context-menu';
 export { CONTEXT_MENU_COMMANDS } from './context-menu';
 export { createSectionRefBlock } from './section-ref';
+export type {
+  CanvasEmptySlotProps,
+  CanvasLabelProps,
+  CanvasSpacingOverlayProps,
+} from './chrome';
+export { LABEL_HEIGHT_PX, labelPlacement } from './chrome';
+export { INSERT_BUTTON_DELAY_MS } from './toolbar';
 export type { CanvasFileDrop } from './file-drop';
 export { useSurface } from './context';
 export type { PreviewSurface, SurfacePoint, SurfaceRect } from './surface';
@@ -140,4 +148,7 @@ export const Canvas = {
   BlockError: CanvasBlockError,
   UnknownBlock: CanvasUnknownBlock,
   ContextMenu: CanvasContextMenu,
+  Label: CanvasLabel,
+  EmptySlot: CanvasEmptySlot,
+  SpacingOverlay: CanvasSpacingOverlay,
 };

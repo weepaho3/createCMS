@@ -202,6 +202,23 @@ follows the same targets, and each dropped file is uploaded and inserted
 in order at the drop position. Empty slots keep a minimum height while
 editing in the registry styles (`--editor-slot-min-empty-height`, 128 px).
 
+Rings measure what they show. The measurer keeps only tracked rects
+current (rings, toolbars, handles: one shared ResizeObserver, a
+MutationObserver that ignores the overlay, scroll and font changes, one
+animation frame of reads, a 100 ms poll for movement no observer reports)
+and measures any other rect on demand. Blocks without a box of their own
+(`display: contents`, zero size) take their text or children's box;
+selection and hover rings are cut by overflow ancestors and flag the cut
+edges (`data-clamped-left`, `-top`, `-right`, `-bottom`); fixed and sticky
+blocks keep their ring while the canvas scrolls. Rings carry
+`data-state` (`selected`, `hover`), `data-kind` (`block`, `ref`) and the
+CSS variables `--x --y --w --h --el-radius` (the block's own corner
+radius) for box-shadow rings without transitions on position.
+`Canvas.BlockToolbar` carries `data-flipped` when it moved inside the block
+and, on the host layer, `data-scrolling` while the canvas scrolls (shown
+again 150 ms after). `Canvas.InsertButton` appears after the pointer rests
+at a gap for `delay` (400 ms).
+
 Auto-scroll moves the innermost scroller under the pointer whose edge zone
 (a quarter of its size, at most 180 px) holds it, outer scrollers once it
 reaches its end, at up to 900 px per second regardless of the frame rate,
@@ -303,11 +320,14 @@ below 1 ms either way); a browser test keeps it under 1.5 times inline.
 | `Canvas.HoverRing`     | `div`           | `render`, div props. Hidden while dragging, editing, or when hovered equals selected.                                          | `data-editor-hover-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
 | `Canvas.FieldRing`     | `div`           | `render`, div props. Sized from the focused field rect (own-block only).                                                       | `data-editor-field-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
 | `Canvas.BlockToolbar`  | `div`           | `align`, `side`, `offset`, `render`, div props. Consumer supplies buttons. Shown in `edit` and `select`. Pins inside the visible block when `side="top"` would clip. Named from the catalog (`parts.blockToolbar`), one tab stop, Alt+F10 entry. | `data-editor-block-toolbar`, `data-side`, `data-block-type`                                               |
-| `Canvas.InsertButton`  | `button`        | `placement` (`between` \| `container`), optional `type`, optional `onInsert`, `render`, button props. Shown only in `edit`.    | `data-editor-insert-button`, `data-orientation`, `data-empty-container`                                   |
+| `Canvas.InsertButton`  | `button`        | `placement` (`between` \| `container`), optional `type`, optional `onInsert`, `delay` (400 ms), `render`, button props. Shown only in `edit`, after the pointer rested at the gap for `delay`.    | `data-editor-insert-button`, `data-orientation`, `data-empty-container`                                   |
 | `Canvas.DragHandle`    | `button`        | `blockId` (required), `render`, button props. Move an existing block by pointer drag (a multi-selection moves along), by keyboard (Space), or through its menu (click, Enter). Overlay siblings inset into the visible block; inside `Canvas.BlockToolbar` the handle stays in flow. | `data-editor-drag-handle`, `data-dragging` on the handle while its block is the move session              |
 | `Canvas.PaletteItem`   | `button`        | `type` (required), optional `properties`, `render`, button props. Click inserts like `Editor.AddBlock`; drag adds by geometry. | `data-editor-palette-item`, `data-block-type`, `data-dragging` while this item starts a new-block session |
 | `Canvas.DropIndicator` | `div`           | `render`, div props. Line or box from the active drop target. Presentational.                                                  | `data-editor-drop-indicator`, `data-orientation`, `data-variant`, `data-kind` (`new` \| `move`)           |
 | `Canvas.DropTargetRing` | `div`         | `render`, div props. Outlines the container a drag drops into (its slot element, else its block); `aria-hidden`. | `data-editor-drop-target-ring`, `data-nested` |
+| `Canvas.Label`         | `div`           | `render`, div props. The selected block's name: above when it fits, below a block under 250 px, else inside its top (`labelPlacement`); its button opens a breadcrumb of parent and grandparent (click selects, hover highlights). | `data-placement`, `data-open` |
+| `Canvas.EmptySlot`     | `div`           | `blockId`, `slot?`, `onAdd?`, `render`, div props. Render it beside a slot's children: shows only while the slot is empty, in an editing canvas, with a minimum height and an add button (default: select the block, run `ui.quickInsert`). | `data-editor-empty-slot`, `data-drag-over` |
+| `Canvas.SpacingOverlay` | `div`          | `blockId?` (default: the hovered block while Alt and Shift are held), `render`, div props. Padding and margin as strips. | `data-box` (`padding`, `margin`), `data-side` |
 | `Canvas.DragPreview`   | `div`           | `render`, div props, optional children (default: block label, text excerpt, and the count of a multi-selection). At most 280 px square, 16 px right and 8 px below the pointer. Follows the pointer during a session. Presentational.                                  | `data-editor-drag-preview`, `data-kind` (`new` \| `move`)                                                 |
 | `Canvas.InlineText`    | `div`           | `suggest`, `discardOnEscape`, `render`, div props. Overlays a contentEditable glass on `text` fields in `edit`; not on `readOnly` fields. | `data-editor-inline-text`, `data-editing`, `data-block-type`, `data-field`                                |
 | `Canvas.ReadonlySubtree` | `div`         | `render`, div props. `inert`, `display: contents`; wraps embedded trees that are shown but not edited.                         | `data-editor-readonly`                                                                                    |
@@ -371,6 +391,9 @@ below 1 ms either way); a browser test keeps it under 1.5 times inline.
 | `CanvasDragPreviewProps`     | Props of `Canvas.DragPreview`.                                                                    |
 | `CanvasDropIndicatorProps`   | Props of `Canvas.DropIndicator`.                                                                  |
 | `CanvasDropTargetRingProps`  | Props of `Canvas.DropTargetRing`.                                                                 |
+| `CanvasLabelProps`           | Props of `Canvas.Label`.                                                                          |
+| `CanvasEmptySlotProps`       | Props of `Canvas.EmptySlot`.                                                                      |
+| `CanvasSpacingOverlayProps`  | Props of `Canvas.SpacingOverlay`.                                                                 |
 | `CanvasPaletteItemProps`     | Props of `Canvas.PaletteItem`.                                                                    |
 | `PointerStore`               | External pointer snapshot store on the canvas context.                                            |
 | `PointerSnapshot`            | One pointer sample (client coordinates and target block id).                                      |
@@ -404,6 +427,9 @@ client component.
 | `breakpointFor`          | `(width, breakpoints?)`: the widest fixed breakpoint not wider than `width` (991 gives 768). |
 | `fitScale`               | `(available, width)`: the scale that fits `width` into `available`, never above 1 or 0. |
 | `MAX_AUTO_HEIGHT`        | Cap of an auto-height frame (20000).                                        |
+| `labelPlacement`         | `(rect, viewTop, labelHeight?)`: `above`, `below` or `inside` for `Canvas.Label`. |
+| `LABEL_HEIGHT_PX`        | Height `Canvas.Label` reserves (20).                                        |
+| `INSERT_BUTTON_DELAY_MS` | How long the pointer rests at a gap before `Canvas.InsertButton` shows (400). |
 | `CONTEXT_MENU_COMMANDS`  | The default command ids of `Canvas.ContextMenu`.                            |
 | `rangeSelection`         | `(store, id)`: the Shift+click selection.                                   |
 | `toggledSelection`       | `(store, id)`: the Mod+click selection.                                     |
