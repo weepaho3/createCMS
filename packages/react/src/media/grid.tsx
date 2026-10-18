@@ -157,6 +157,12 @@ export type MediaGridProps = RenderProps<'div', GridState> &
     renderUpload?: (entry: MediaUploadEntry) => React.ReactNode;
     /** Enter or double click on an item. */
     onAction?: (asset: MediaAsset) => void;
+    /**
+     * What Space does on the focused item: `toggle` its selection (the APG
+     * grid convention) or open the `preview` (Quick Look in Finder).
+     * Alt+Space does the other. @default 'toggle'
+     */
+    spaceAction?: 'toggle' | 'preview';
     /** Mounts only the rows in view from this many items on. @default 200 */
     virtualizeFrom?: number;
     /** Rows mounted beyond the viewport. @default 2 */
@@ -204,7 +210,8 @@ export function useGridLayout(
  * `gridcell` elements placed from the layout engine (cells are absolutely
  * positioned; the grid gets the content height). Arrow keys follow the
  * layout, Shift extends from the anchor, Cmd/Ctrl moves without selecting,
- * Space toggles, Cmd/Ctrl+A selects all loaded items, Escape clears, Enter
+ * Space toggles (or previews, with `spaceAction="preview"`; Alt+Space does
+ * the other), Cmd/Ctrl+A selects all loaded items, Escape clears, Enter
  * calls `onAction`, typing jumps by name. From `virtualizeFrom` items on
  * only the rows in view (plus `overscan`) are mounted; the focused item
  * always is.
@@ -214,6 +221,7 @@ export function MediaGrid(props: MediaGridProps) {
     children,
     renderUpload,
     onAction,
+    spaceAction = 'toggle',
     virtualizeFrom = 200,
     overscan = 2,
     marquee = true,
@@ -429,12 +437,17 @@ export function MediaGrid(props: MediaGridProps) {
     }
     const id = ids[from];
     const asset = id ? state.collection.byId[id] : undefined;
-    if (event.key === ' ' && !event.altKey) {
+    if (event.key === ' ') {
       event.preventDefault();
-      if (asset) void store.dispatch({ type: 'toggleSelection', id: asset.id });
-    } else if (event.key === ' ' && event.altKey) {
-      event.preventDefault();
-      if (asset) void store.dispatch({ type: 'openPreview', id: asset.id });
+      // Alt+Space does the other one of toggling and previewing.
+      const preview = (spaceAction === 'preview') !== event.altKey;
+      if (asset) {
+        void store.dispatch(
+          preview
+            ? { type: 'openPreview', id: asset.id }
+            : { type: 'toggleSelection', id: asset.id },
+        );
+      }
     } else if (event.key === 'Enter') {
       if (asset && onAction) {
         event.preventDefault();

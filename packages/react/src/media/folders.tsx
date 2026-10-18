@@ -88,8 +88,8 @@ const selectCurrentFolder = (state: MediaStoreState) => state.folders.currentId;
 
 /**
  * A `button` that opens `folder`; `aria-current="page"` on the open one.
- * It is a drop target: assets dropped on it move there, and hovering a
- * drag for 500 ms opens the folder.
+ * It is a drop target, also while open: assets and folders dropped on it
+ * move there, and hovering a drag for 500 ms opens another folder.
  */
 export function MediaCrumb(props: MediaCrumbProps) {
   const { folder, render, children, ...rest } = props;
@@ -99,10 +99,9 @@ export function MediaCrumb(props: MediaCrumbProps) {
   const id = folder?.id ?? null;
   const current = id === currentId;
   const open = () => void store.dispatch({ type: 'openFolder', folderId: id });
-  const drop = useFolderDrop(id, {
-    onDwell: current ? undefined : open,
-    disabled: current,
-  });
+  // The open folder stays a drop target: a folder from below can move up
+  // into it; assets already in it are refused by the drop rules.
+  const drop = useFolderDrop(id, { onDwell: current ? undefined : open });
 
   return useRender({
     defaultTagName: 'button',
@@ -180,8 +179,8 @@ export function MediaFolder(props: MediaFolderProps) {
           void store.dispatch({ type: 'openFolder', folderId: folder.id }),
         children: children ?? folder.name,
         ...drop.props,
-        ...folderDragProps(folder.id),
       },
+      store.client.moveFolder ? folderDragProps(folder.id) : undefined,
       rest,
     ),
   });
@@ -233,7 +232,7 @@ export function useFolderTree() {
 
 export type FolderTreeProps = RenderProps<
   'ul',
-  { mode: 'navigate' | 'pick' }
+  { mode: 'navigate' | 'pick'; dropOver: boolean }
 > & {
   children: (row: FolderTreeRow) => React.ReactNode;
   /** `pick` chooses a target (the Move dialog) instead of opening folders. */
@@ -364,12 +363,18 @@ export function FolderTree(props: FolderTreeProps) {
     [rows, effectiveFocus, mode, value, onValueChange, renaming],
   );
 
+  // Drops on the tree outside a folder row go to the root.
+  const rootDrop = useFolderDrop(null, {
+    files: false,
+    disabled: mode === 'pick',
+  });
   const element = useRender({
     defaultTagName: 'ul',
     render,
-    state: { mode },
+    state: { mode, dropOver: rootDrop.state.over },
     props: mergeProps<'ul'>(
       { ref, role: 'tree', 'aria-label': messages.folder.tree, onKeyDown },
+      mode === 'navigate' ? rootDrop.props : undefined,
       rest,
       {
         children: rows.map((row) => (
@@ -391,6 +396,8 @@ type FolderItemState = {
   renaming: boolean;
   dropOver: boolean;
   dropFlash: boolean;
+  /** `before`/`after`: the drop goes next to the folder (its parent); `inside`: into it. */
+  dropPosition: 'before' | 'after' | 'inside' | null;
 };
 
 export type FolderItemProps = UseRenderComponentProps<'li', FolderItemState> & {
@@ -403,8 +410,10 @@ const RowContext = React.createContext<FolderTreeRow | null>(null);
  * One `treeitem` with `aria-level`, `aria-setsize`, `aria-posinset`,
  * `aria-expanded` (folders that may have children) and `aria-busy` while
  * its children load. A click opens (or picks) the folder, a double click
- * renames it. A drop target (hovering 500 ms opens a closed node) and
- * draggable onto other folders.
+ * renames it. A drop target (hovering 500 ms opens a closed node): the
+ * middle of the row drops into the folder, its top and bottom edge next to
+ * it (into its parent), shown as `data-drop-position`. Draggable onto other
+ * folders.
  */
 export function FolderItem(props: FolderItemProps) {
   const { row, render, children, ...rest } = props;
@@ -420,6 +429,7 @@ export function FolderItem(props: FolderItemProps) {
       }
     },
     disabled: tree.mode === 'pick',
+    edges: { parentId: row.parentId },
   });
   const picked = tree.mode === 'pick' && tree.picked === row.id;
   const renaming = tree.renaming === row.id;
@@ -435,6 +445,7 @@ export function FolderItem(props: FolderItemProps) {
       renaming,
       dropOver: drop.state.over,
       dropFlash: drop.state.flash,
+      dropPosition: drop.state.over ? drop.state.position : null,
     } satisfies FolderItemState,
     props: mergeProps<'li'>(
       {
@@ -463,7 +474,9 @@ export function FolderItem(props: FolderItemProps) {
         },
       },
       tree.mode === 'navigate' ? drop.props : undefined,
-      tree.mode === 'navigate' ? folderDragProps(row.id) : undefined,
+      tree.mode === 'navigate' && store.client.moveFolder
+        ? folderDragProps(row.id)
+        : undefined,
       rest,
       { children },
     ),

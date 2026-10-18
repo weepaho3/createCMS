@@ -174,6 +174,20 @@ describe('Media.Grid', () => {
     expect(store.getState().selection.selected).toEqual([]);
   });
 
+  it('opens the preview with Space when spaceAction is preview', async () => {
+    const { store, getAllByRole } = setup({
+      gridProps: { spaceAction: 'preview' },
+    });
+    await ready(store);
+    const cells = getAllByRole('gridcell');
+    fireEvent.click(cells[2]);
+    fireEvent.keyDown(cells[2], { key: ' ' });
+    expect(store.getState().preview.openId).toBe('a3');
+    expect(store.getState().selection.selected).toEqual(['a3']);
+    fireEvent.keyDown(cells[2], { key: ' ', altKey: true });
+    expect(store.getState().selection.selected).toEqual([]);
+  });
+
   it('selects like Finder with modifier clicks and toggles with the visible checkbox', async () => {
     const { store, getAllByRole } = setup();
     await ready(store);

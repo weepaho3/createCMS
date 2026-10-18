@@ -30,6 +30,7 @@ import {
   useMediaFacets,
   useMediaFilter,
   useMediaMessages,
+  useMediaSelection,
   useMediaUploads,
   usePickerItem,
   usePreview,
@@ -108,7 +109,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
+
+import { MediaDetailPanel } from './media-detail';
 
 const TYPE_ICONS: Record<
   MediaType,
@@ -212,7 +216,14 @@ function MediaCrumb({
         {...props}
         render={(crumbProps, state) =>
           state.current ? (
-            <BreadcrumbPage className={crumbProps.className} data-current="">
+            <BreadcrumbPage
+              className={crumbProps.className}
+              data-current=""
+              onDragEnter={crumbProps.onDragEnter}
+              onDragOver={crumbProps.onDragOver}
+              onDragLeave={crumbProps.onDragLeave}
+              onDrop={crumbProps.onDrop}
+            >
               {crumbProps.children}
             </BreadcrumbPage>
           ) : (
@@ -363,14 +374,18 @@ function MediaFolderTree({
   return (
     <Folder.Tree
       data-slot="media-folder-tree"
-      className={cn('flex flex-col text-sm', className)}
+      className={cn(
+        // The empty space below the rows takes drops into the root.
+        'data-drop-over:bg-media-drop/5 flex min-h-24 flex-col rounded-md pb-6 text-sm',
+        className,
+      )}
       {...props}
     >
       {(row) => (
         <Folder.Item
           row={row}
           style={{ paddingInlineStart: `${(row.level - 1) * 0.75 + 0.25}rem` }}
-          className="hover:bg-muted data-current:bg-muted data-picked:bg-primary/10 data-drop-over:ring-media-drop flex cursor-pointer items-center gap-1 rounded-md py-1 pr-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 data-drop-over:ring-2 aria-busy:opacity-60"
+          className="hover:bg-muted data-current:bg-muted data-picked:bg-primary/10 data-[drop-position=inside]:ring-media-drop flex cursor-pointer items-center gap-1 rounded-md py-1 pr-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[drop-position=after]:shadow-[inset_0_-2px_0_0_var(--color-media-drop)] data-[drop-position=before]:shadow-[inset_0_2px_0_0_var(--color-media-drop)] data-[drop-position=inside]:ring-2 data-[drop-position=inside]:ring-inset aria-busy:opacity-60"
         >
           <Folder.Toggle className="flex size-4 items-center justify-center transition-transform data-expanded:rotate-90">
             <ChevronRightIcon className="size-3.5" />
@@ -476,31 +491,43 @@ function MediaAssetCard({
   const type = mediaTypeOf(asset.mimeType);
   const Icon = TYPE_ICONS[type];
   const picker = usePickerItem(asset);
+  // Checkboxes show on hover, focus and touch, and on every card once
+  // anything is selected; the selection itself reads like Finder's.
+  const { selected } = useMediaSelection();
   return (
     <Media.Item
       asset={asset}
       data-slot="media-asset-card"
       aria-disabled={picker.disabled || undefined}
       className={cn(
-        'bg-card focus-visible:ring-ring/50 flex min-w-0 flex-col gap-2 rounded-lg border p-2 outline-none focus-visible:ring-[3px]',
-        'data-selected:ring-media-selection data-selected:ring-2 data-selected:ring-offset-1',
+        'group/card hover:bg-muted/60 focus-visible:ring-ring/50 flex min-w-0 flex-col gap-1.5 rounded-lg p-1.5 outline-none focus-visible:ring-[3px]',
+        'data-selected:bg-media-selection/15 data-selected:hover:bg-media-selection/20',
         'aria-disabled:opacity-50',
         className,
       )}
       {...props}
     >
-      <div className="bg-muted relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md">
+      <div className="bg-muted group-data-selected/card:ring-media-selection relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md group-data-selected/card:ring-2">
         <Media.Thumbnail
           className="size-full object-cover data-error:hidden"
           fallback={
             <Icon className="text-muted-foreground size-8" aria-hidden="true" />
           }
         />
-        <Selection.Checkbox className="absolute top-1.5 left-1.5 size-4 accent-[var(--color-primary)]" />
+        <Selection.Checkbox
+          className={cn(
+            'absolute top-1.5 left-1.5 size-4 accent-[var(--color-media-selection)] transition-opacity',
+            selected.length > 0
+              ? 'opacity-100'
+              : 'opacity-0 group-focus-within/card:opacity-100 group-hover/card:opacity-100 [@media(hover:none)]:opacity-100',
+          )}
+        />
       </div>
       <div className="flex items-center gap-1">
         <span className="min-w-0 flex-1 truncate text-sm" aria-hidden="true">
-          {asset.originalName ?? asset.slug}
+          <span className="group-data-selected/card:bg-media-selection rounded px-1 group-data-selected/card:text-white">
+            {asset.originalName ?? asset.slug}
+          </span>
         </span>
         {asset.status === 'private' ? (
           <Badge
@@ -1097,8 +1124,16 @@ function MediaMoveDialog({
   );
 }
 
-function MediaBulkBar({ className }: { className?: string }) {
+function MediaBulkBar({
+  className,
+  onDetails,
+}: {
+  className?: string;
+  /** Shows a Details button while exactly one asset is selected. */
+  onDetails?: () => void;
+}) {
   const { messages: t } = useMediaMessages();
+  const { selected } = useMediaSelection();
   const { confirm, dialog } = useConfirmDialog();
   const [moveOpen, setMoveOpen] = React.useState(false);
   return (
@@ -1111,6 +1146,11 @@ function MediaBulkBar({ className }: { className?: string }) {
         )}
       >
         <Selection.Count className="px-1 text-sm font-medium" />
+        {onDetails && selected.length === 1 ? (
+          <Button type="button" size="sm" onClick={onDetails}>
+            {t.detail.title}
+          </Button>
+        ) : null}
         <Selection.SelectAllMatching
           render={<Button type="button" variant="link" size="sm" />}
         />
@@ -1203,12 +1243,52 @@ function MediaOutcome() {
 // --- Layout --------------------------------------------------------------------
 
 /** Default composition of every wrapper above; must be rendered inside Media.Root. */
-function MediaLibraryLayout({ className }: { className?: string }) {
+/** Whether `query` matches; `false` on the server and before mount. */
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = React.useState(false);
+  React.useEffect(() => {
+    const list = window.matchMedia(query);
+    const update = () => setMatches(list.matches);
+    update();
+    list.addEventListener('change', update);
+    return () => list.removeEventListener('change', update);
+  }, [query]);
+  return matches;
+}
+
+/**
+ * Default composition of every wrapper above; must be rendered inside
+ * Media.Root. A click selects (Finder rules), Space opens the fullscreen
+ * preview. With `detail`, the selected asset's preview and details follow
+ * the selection in a side column from `xl` (1280 px); below that they open
+ * in a sheet on double click, Enter or the selection bar's Details button.
+ */
+function MediaLibraryLayout({
+  className,
+  detail = true,
+}: {
+  className?: string;
+  detail?: boolean;
+}) {
+  const { messages: t } = useMediaMessages();
   const preview = usePreview();
+  const { selected } = useMediaSelection();
+  const wide = useMediaQuery('(min-width: 80rem)');
+  const phone = !useMediaQuery('(min-width: 40rem)');
+  const single = selected.length === 1;
+  const [sheetOpen, setSheetOpen] = React.useState(false);
+  React.useEffect(() => {
+    if (!single) setSheetOpen(false);
+  }, [single]);
+  const showSheet = detail && !wide;
   return (
     <div
       data-slot="media-library"
-      className={cn('grid gap-4 md:grid-cols-[14rem_1fr]', className)}
+      className={cn(
+        'grid gap-4 md:grid-cols-[14rem_1fr]',
+        detail && 'xl:grid-cols-[14rem_1fr_20rem]',
+        className,
+      )}
     >
       <aside className="hidden md:block">
         <MediaFolderTree />
@@ -1230,7 +1310,12 @@ function MediaLibraryLayout({ className }: { className?: string }) {
         <MediaFolderList>
           {(folder) => <MediaFolderCard key={folder.id} folder={folder} />}
         </MediaFolderList>
-        <MediaGrid onAction={(asset) => preview.open(asset.id)}>
+        <MediaGrid
+          spaceAction="preview"
+          onAction={(asset) =>
+            showSheet ? setSheetOpen(true) : preview.open(asset.id)
+          }
+        >
           {(asset) => <MediaAssetCard key={asset.id} asset={asset} />}
         </MediaGrid>
         <MediaEmpty />
@@ -1238,11 +1323,27 @@ function MediaLibraryLayout({ className }: { className?: string }) {
         <MediaUploadList />
         <MediaDownloadList />
         <MediaPreview />
-        <MediaBulkBar />
+        <MediaBulkBar
+          onDetails={showSheet ? () => setSheetOpen(true) : undefined}
+        />
         <MediaOutcome />
         <MediaDropOverlay />
         <MediaFolderPrompt />
       </div>
+      {detail && wide ? (
+        <MediaDetailPanel className="sticky top-4 max-h-[calc(100vh-2rem)] self-start overflow-y-auto" />
+      ) : null}
+      {showSheet ? (
+        <Sheet open={sheetOpen && single} onOpenChange={setSheetOpen}>
+          <SheetContent
+            side={phone ? 'bottom' : 'right'}
+            aria-label={t.detail.title}
+            className="max-h-[90vh] gap-0 overflow-y-auto p-0 data-[side=right]:max-h-none data-[side=right]:w-96"
+          >
+            <MediaDetailPanel className="rounded-none border-0 pt-12" />
+          </SheetContent>
+        </Sheet>
+      ) : null}
     </div>
   );
 }

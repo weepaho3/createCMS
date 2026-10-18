@@ -150,7 +150,7 @@ the focused item always stays mounted. State: `data-status`
 | Arrows | Move the focus along the layout (up and down keep the column, the lane or the closest center); RTL mirrors left and right. |
 | Shift+Arrow | Extends the selection from the anchor. |
 | Cmd/Ctrl+Arrow | Moves the focus without selecting. |
-| Space | Toggles the focused item. Alt+Space opens the preview. |
+| Space | Toggles the focused item, Alt+Space opens the preview. With `spaceAction="preview"` (Quick Look in Finder) Space opens the preview and Alt+Space toggles. |
 | Cmd/Ctrl+A | Selects every loaded item. |
 | Home, End | Start or end of the row; with Cmd/Ctrl the first or last item. |
 | Page Up, Page Down | As many rows as fit the viewport. |
@@ -264,7 +264,7 @@ own (`{ id, label, canExecute, confirm?, run }`, see `BulkAction` in
 | Part | Element | Description |
 | --- | --- | --- |
 | `Folder.Tree` (`FolderTreeProps`) | `ul[role=tree]` | The folder tree with lazy children: opening a node lists them (`aria-busy` meanwhile), the expanded set persists in `localStorage`. Up/Down, Right opens or enters, Left closes or goes up, Home/End, `*` opens the siblings, type-ahead; F2 or Enter renames and Space opens. `mode="pick"` with `value`, `onValueChange` and `onConfirm` chooses a target (the "Move to" dialog). |
-| `Folder.Item` (`FolderItemProps`) | `li[role=treeitem]` | One row: `aria-level`, `aria-setsize`, `aria-posinset`, `aria-expanded`, `aria-current`. Drop target (hovering 500 ms opens a closed node) and draggable. State: `data-current`, `data-expanded`, `data-loading`, `data-picked`, `data-renaming`, `data-drop-over`. |
+| `Folder.Item` (`FolderItemProps`) | `li[role=treeitem]` | One row: `aria-level`, `aria-setsize`, `aria-posinset`, `aria-expanded`, `aria-current`. Drop target (hovering 500 ms opens a closed node): the middle drops into the folder, the top and bottom edge next to it (into its parent). Draggable when the client has `moveFolder`. State: `data-current`, `data-expanded`, `data-loading`, `data-picked`, `data-renaming`, `data-drop-over`, `data-drop-position` (`before`, `after`, `inside`). |
 | `Folder.Toggle` (`FolderToggleProps`) | `span` | The decorative disclosure; a click toggles. |
 | `Folder.Rename` (`FolderRenameProps`) | `input` | The inline rename field while the item is renamed. |
 | `Folder.Create` (`FolderCreateProps`) | `input` | Creates a folder inline: prefilled and selected "New folder", Enter creates, Escape cancels, `onDone(folder)`; announces "Folder created: name". |
@@ -591,10 +591,14 @@ Items carry their asset ids natively as `application/x-createcms-asset+json`
 Chrome's `DownloadURL` (drag to the desktop). A drag carries the selection
 when the dragged item is part of it, else that item alone; several items get
 a drag image with their count (`move.dragCount`). Folder tiles, tree items and
-crumbs are drop targets: `useFolderDrop(folderId, options)` gives any element
-that behaviour (`FolderDropOptions`: `onDwell` after `DROP_DWELL_MS`, `files`,
-`intake`, `disabled`; `FolderDropState`: `over`, `kind`, `flash` for
-`DROP_FLASH_MS`). Invalid targets (the assets' own folder, a folder into
+crumbs (the open one included) are drop targets: `useFolderDrop(folderId,
+options)` gives any element that behaviour (`FolderDropOptions`: `onDwell`
+after `DROP_DWELL_MS`, `files`, `intake`, `disabled`, `edges`;
+`FolderDropState`: `over`, `kind`, `flash` for `DROP_FLASH_MS`, `position`).
+With `edges: { parentId }` the top and bottom quarter of the element drop
+next to the folder, into `parentId`, as in a file tree (`position` `before`
+or `after`, else `inside`); tree items use it, and the tree itself takes
+drops outside its rows into the root. Invalid targets (the assets' own folder, a folder into
 itself or a descendant) show no indicator. `folderDragProps(folderId)` makes
 an element a folder drag source (`FOLDER_DRAG_TYPE`), and
 `useDropOverlay(enabled)` tracks OS file drags over the window

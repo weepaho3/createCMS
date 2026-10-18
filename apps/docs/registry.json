@@ -153,7 +153,9 @@
         "progress",
         "badge",
         "breadcrumb",
-        "dropdown-menu"
+        "dropdown-menu",
+        "media-detail",
+        "sheet"
       ],
       "files": [
         {

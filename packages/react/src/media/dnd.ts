@@ -22,6 +22,12 @@ export type FolderDropState = {
   kind: 'asset' | 'folder' | 'files' | null;
   /** Briefly true after a drop (off with `prefers-reduced-motion`). */
   flash: boolean;
+  /**
+   * With `edges`: `before` or `after` while the drag is over the top or
+   * bottom edge (the drop goes next to the folder, into its parent),
+   * `inside` over the middle. `null` otherwise.
+   */
+  position: 'before' | 'after' | 'inside' | null;
 };
 
 export type FolderDropOptions = {
@@ -32,7 +38,16 @@ export type FolderDropOptions = {
   /** Limits of a folder drop. */
   intake?: IntakeOptions;
   disabled?: boolean;
+  /**
+   * Makes the top and bottom quarter of the element target `parentId`
+   * instead of the folder, like dropping next to a row in a file tree.
+   * Assets and folders only; files always go into the folder.
+   */
+  edges?: { parentId: string | null };
 };
+
+/** Share of a row's height at its top and bottom that drops next to it. */
+const EDGE_SHARE = 0.25;
 
 function reducedMotion(): boolean {
   return (
@@ -77,6 +92,7 @@ export function useFolderDrop(
     over: false,
     kind: null,
     flash: false,
+    position: null,
   });
   const depth = React.useRef(0);
   const dwell = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -89,7 +105,31 @@ export function useFolderDrop(
   };
   React.useEffect(() => stopDwell, []);
 
-  const kindOf = (types: ArrayLike<string>): FolderDropState['kind'] => {
+  /** Where a drag at `event` would go, and how it is shown. */
+  const targetOf = (
+    event: React.DragEvent,
+  ): { folderId: string | null; position: FolderDropState['position'] } => {
+    const edges = optionsRef.current.edges;
+    const internal =
+      hasAssetDrag(event.dataTransfer.types) ||
+      Array.from(event.dataTransfer.types).includes(FOLDER_DRAG_TYPE);
+    if (!edges || !internal) {
+      return { folderId, position: edges ? 'inside' : null };
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const y = event.clientY - rect.top;
+    const edge = Math.max(4, rect.height * EDGE_SHARE);
+    if (y < edge) return { folderId: edges.parentId, position: 'before' };
+    if (y > rect.height - edge) {
+      return { folderId: edges.parentId, position: 'after' };
+    }
+    return { folderId, position: 'inside' };
+  };
+
+  const kindOf = (
+    types: ArrayLike<string>,
+    target: string | null = folderId,
+  ): FolderDropState['kind'] => {
     if (hasAssetDrag(types)) {
       // Asset data is unreadable before the drop; validity uses the selection.
       const { selection, collection } = store.getState();
@@ -97,7 +137,7 @@ export function useFolderDrop(
         (id) => collection.byId[id]?.folderId ?? null,
       );
       if (
-        moveRejection(store.getState().folders.nodes, folderId, {
+        moveRejection(store.getState().folders.nodes, target, {
           assetFolderIds: from,
         })
       ) {
@@ -105,21 +145,35 @@ export function useFolderDrop(
       }
       return 'asset';
     }
-    if (Array.from(types).includes(FOLDER_DRAG_TYPE)) return 'folder';
+    if (Array.from(types).includes(FOLDER_DRAG_TYPE)) {
+      return store.client.moveFolder ? 'folder' : null;
+    }
     if (optionsRef.current.files !== false && dragHasFiles(types))
       return 'files';
     return null;
   };
 
+  /** Internal drags handled here do not reach an enclosing target. */
+  const claim = (event: React.DragEvent, kind: FolderDropState['kind']) => {
+    if (kind === 'asset' || kind === 'folder') event.stopPropagation();
+  };
+
   const props = {
     onDragEnter: (event: React.DragEvent) => {
       if (optionsRef.current.disabled) return;
-      const kind = kindOf(event.dataTransfer.types);
+      const target = targetOf(event);
+      const kind = kindOf(event.dataTransfer.types, target.folderId);
       if (!kind) return;
       event.preventDefault();
+      claim(event, kind);
       depth.current += 1;
       if (depth.current === 1) {
-        setState({ over: true, kind, flash: false });
+        setState({
+          over: true,
+          kind,
+          flash: false,
+          position: target.position,
+        });
         stopDwell();
         dwell.current = setTimeout(
           () => optionsRef.current.onDwell?.(),
@@ -128,35 +182,56 @@ export function useFolderDrop(
       }
     },
     onDragOver: (event: React.DragEvent) => {
-      if (optionsRef.current.disabled || !kindOf(event.dataTransfer.types))
+      if (optionsRef.current.disabled) return;
+      const target = targetOf(event);
+      const kind = kindOf(event.dataTransfer.types, target.folderId);
+      if (!kind) {
+        // An edge can be invalid where the middle is not (or the reverse).
+        if (state.position !== null) {
+          setState((s) => ({ ...s, position: null }));
+        }
         return;
+      }
       event.preventDefault();
+      claim(event, kind);
+      if (target.position !== state.position) {
+        setState((s) => ({
+          ...s,
+          over: true,
+          kind,
+          position: target.position,
+        }));
+      }
       event.dataTransfer.dropEffect =
         hasAssetDrag(event.dataTransfer.types) ||
         Array.from(event.dataTransfer.types).includes(FOLDER_DRAG_TYPE)
           ? 'move'
           : 'copy';
     },
-    onDragLeave: () => {
+    onDragLeave: (event: React.DragEvent) => {
       if (depth.current === 0) return;
+      // Balances the claimed enter, so an enclosing target keeps its count.
+      claim(event, state.kind);
       depth.current -= 1;
       if (depth.current === 0) {
         stopDwell();
-        setState({ over: false, kind: null, flash: false });
+        setState({ over: false, kind: null, flash: false, position: null });
       }
     },
     onDrop: (event: React.DragEvent) => {
-      const kind = kindOf(event.dataTransfer.types);
+      const target = targetOf(event);
+      const kind = kindOf(event.dataTransfer.types, target.folderId);
       depth.current = 0;
       stopDwell();
       if (!kind || optionsRef.current.disabled) {
-        setState({ over: false, kind: null, flash: false });
+        setState({ over: false, kind: null, flash: false, position: null });
         return;
       }
       event.preventDefault();
       event.stopPropagation();
       const flash = !reducedMotion();
-      setState({ over: false, kind: null, flash });
+      setState({ over: false, kind: null, flash, position: null });
+      const folderId = target.folderId;
       if (flash)
         setTimeout(
           () => setState((s) => ({ ...s, flash: false })),

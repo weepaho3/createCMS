@@ -249,6 +249,27 @@ export function demoMediaClient(): MediaClient {
       }
       return { restoredIds, skipped: [] };
     },
+    async moveFolder({ body }) {
+      const folder = folders.find((entry) => entry.id === body.folderId);
+      if (!folder) throw { code: 'FOLDER_NOT_FOUND' };
+      const parentId = body.newParentFolderId ?? null;
+      for (let at = parentId; at;) {
+        if (at === folder.id) throw { code: 'FOLDER_CYCLE' };
+        at = folders.find((entry) => entry.id === at)?.parentId ?? null;
+      }
+      if (
+        folders.some(
+          (entry) =>
+            entry.parentId === parentId &&
+            entry.name === folder.name &&
+            entry.id !== folder.id,
+        )
+      ) {
+        throw { code: 'FOLDER_NAME_TAKEN' };
+      }
+      folder.parentId = parentId;
+      return { folder };
+    },
     async createFolder({ body }) {
       const folder: MediaFolder = {
         id: `folder-${Date.now().toString(36)}`,

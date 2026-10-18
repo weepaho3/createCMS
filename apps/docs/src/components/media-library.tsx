@@ -30,6 +30,7 @@ export { MediaPicker } from '../../registry/media-picker';
 export type { MediaPickerProps } from '../../registry/media-picker';
 export {
   MediaDetailPanel,
+  MediaDetailPreview,
   MediaFocalPointEditor,
   MediaRevisions,
 } from '../../registry/media-detail';

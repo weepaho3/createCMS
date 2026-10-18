@@ -16,6 +16,7 @@ import {
   useMediaSelection,
 } from '@createcms/react/media';
 import { previewKindOf } from '@createcms/react/media/core';
+import { FileIcon, Maximize2Icon, XIcon } from 'lucide-react';
 import * as React from 'react';
 
 import { Alert, AlertAction, AlertTitle } from '@/components/ui/alert';
@@ -58,6 +59,62 @@ function useFollowSelection() {
     if (only) commands.current.open(only);
     else commands.current.close();
   }, [only]);
+}
+
+/**
+ * The selected asset itself: the image, a playable video or audio file, or
+ * its type icon. The button opens the fullscreen preview (also Space in
+ * the grid).
+ */
+function MediaDetailPreview() {
+  const { messages: t, format } = useMediaMessages();
+  const { asset } = useAssetDetail();
+  const { store, assetUrl } = useMediaContext('MediaDetailPreview');
+  if (!asset) return null;
+  const kind = previewKindOf(asset.mimeType);
+  const src = assetUrl(asset);
+  const name = asset.originalName ?? asset.slug;
+  return (
+    <div className="bg-muted relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-md">
+      {/* An <img> never runs an SVG's scripts. */}
+      {kind === 'image' || kind === 'svg' ? (
+        <img
+          src={src}
+          alt=""
+          draggable={false}
+          className="size-full object-contain"
+        />
+      ) : kind === 'video' ? (
+        <video
+          key={asset.id}
+          src={src}
+          controls
+          preload="metadata"
+          className="size-full object-contain"
+        />
+      ) : kind === 'audio' ? (
+        <audio key={asset.id} src={src} controls className="w-11/12" />
+      ) : (
+        <FileIcon
+          className="text-muted-foreground size-10"
+          aria-hidden="true"
+        />
+      )}
+      <Button
+        type="button"
+        variant="secondary"
+        size="icon-sm"
+        className="absolute top-2 right-2 shadow-sm"
+        aria-label={t.preview.label({ name }, format)}
+        title={t.preview.label({ name }, format)}
+        onClick={() =>
+          void store.dispatch({ type: 'openPreview', id: asset.id })
+        }
+      >
+        <Maximize2Icon className="size-4" aria-hidden="true" />
+      </Button>
+    </div>
+  );
 }
 
 function MediaFocalPointEditor() {
@@ -159,7 +216,14 @@ function MediaRevisions() {
  * The detail form of the one selected asset; renders nothing while zero
  * or several assets are selected.
  */
-function MediaDetailPanel({ className }: { className?: string }) {
+function MediaDetailPanel({
+  className,
+  onClose,
+}: {
+  className?: string;
+  /** Shows a close button; `MediaLibraryLayout` clears the selection with it. */
+  onClose?: () => void;
+}) {
   useFollowSelection();
   const { messages: t, format } = useMediaMessages();
   const { asset } = useAssetDetail();
@@ -172,14 +236,26 @@ function MediaDetailPanel({ className }: { className?: string }) {
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-medium">{t.detail.title}</h3>
+        <h3 className="mr-auto text-sm font-medium">{t.detail.title}</h3>
         {asset ? (
           <Download.Button
             assets={[asset]}
             render={<Button type="button" variant="outline" size="sm" />}
           />
         ) : null}
+        {onClose ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label={t.preview.close}
+            onClick={onClose}
+          >
+            <XIcon className="size-4" aria-hidden="true" />
+          </Button>
+        ) : null}
       </div>
+      <MediaDetailPreview />
       <Detail.Conflict>
         {({ theirs, keepMine, takeTheirs }) => (
           <Alert variant="destructive">
@@ -235,4 +311,9 @@ function MediaDetailPanel({ className }: { className?: string }) {
   );
 }
 
-export { MediaDetailPanel, MediaFocalPointEditor, MediaRevisions };
+export {
+  MediaDetailPanel,
+  MediaDetailPreview,
+  MediaFocalPointEditor,
+  MediaRevisions,
+};
