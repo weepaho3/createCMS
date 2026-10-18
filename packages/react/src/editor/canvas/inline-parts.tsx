@@ -9,7 +9,7 @@ import { useDocSelector, useSessionSelector } from '../binding';
 import { useEditorContext } from '../context';
 import { warnOnce } from '../core/codes';
 import { fieldsOf } from '../core/schema';
-import { isHTMLElement } from '../dom';
+import { computedStyleOf, isHTMLElement } from '../dom';
 import { frameClickAnchor } from '../preview/frame-anchor';
 import { fieldElements, blockElements, isInsideReadonly } from './anchors';
 import { useCanvasContext } from './context';
@@ -469,7 +469,7 @@ export function CanvasInlineText({
 
     const origin = fieldOrigin(host, editing.blockId, editing.key);
     if (!isHTMLElement(origin)) return;
-    const computed = host.ownerDocument.defaultView?.getComputedStyle(origin);
+    const computed = computedStyleOf(origin);
     if (!computed) return;
 
     el.style.position = 'absolute';

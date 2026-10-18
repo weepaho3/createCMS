@@ -1,3 +1,4 @@
+import { computedStyleOf } from '../dom';
 import {
   blockElements,
   measureBlock,
@@ -114,7 +115,7 @@ export function createMeasurer(canvasEl: HTMLElement): Measurer {
           cur && cur !== canvasEl;
           cur = cur.parentElement
         ) {
-          const position = view?.getComputedStyle(cur).position;
+          const position = computedStyleOf(cur)?.position;
           if (position === 'fixed' || position === 'sticky')
             followsScroll = true;
         }

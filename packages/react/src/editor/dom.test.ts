@@ -4,7 +4,13 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import { isElement, isHTMLElement, isNode, viewOf } from './dom';
+import {
+  computedStyleOf,
+  isElement,
+  isHTMLElement,
+  isNode,
+  viewOf,
+} from './dom';
 
 const EDITOR_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const REALM_UNSAFE = /\binstanceof\s+(?:HTMLElement|Element|Node)\b/;
@@ -62,5 +68,18 @@ describe('realm-safe editor sources', () => {
       offenders,
       'use isHTMLElement/isElement/isNode from editor/dom.ts: instanceof is false for nodes in a same-origin iframe',
     ).toEqual([]);
+  });
+});
+
+describe('computedStyleOf', () => {
+  it('reads the style in the element window and is null without one', () => {
+    const el = document.createElement('div');
+    document.body.append(el);
+    expect(computedStyleOf(el)?.display).toBe('block');
+    el.remove();
+    const detached = document.implementation
+      .createHTMLDocument('')
+      .createElement('div');
+    expect(computedStyleOf(detached)).toBeNull();
   });
 });

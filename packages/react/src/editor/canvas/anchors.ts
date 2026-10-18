@@ -1,3 +1,4 @@
+import { computedStyleOf } from '../dom';
 import { canvasRectOf, unionRects, type CanvasRect } from './rect';
 
 export function isInsideReadonly(el: Element, canvas: Element): boolean {
@@ -118,7 +119,6 @@ export function measureVisibleBlock(
   const els = blockElements(canvas, id);
   const rect = unionRects(els.map((el) => elementBox(el, canvas)));
   if (!rect) return null;
-  const view = canvas.ownerDocument.defaultView;
   let left = rect.x;
   let top = rect.y;
   let right = rect.x + rect.width;
@@ -129,7 +129,7 @@ export function measureVisibleBlock(
     cur && cur !== canvas;
     cur = cur.parentElement
   ) {
-    const style = view?.getComputedStyle(cur);
+    const style = computedStyleOf(cur);
     if (!style) break;
     if (style.overflowX !== 'visible' || style.overflowY !== 'visible') {
       clips.push(canvasRectOf(cur, canvas));

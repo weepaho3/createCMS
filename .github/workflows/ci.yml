@@ -71,9 +71,10 @@ jobs:
 
   # Decides whether the browser job has to run: it is the one job that
   # downloads a browser, so it runs for changes that can affect the react
-  # package (its sources, the schema types it depends on, the lockfile, this
-  # workflow) — and always on main. Computed with git against the merge base
-  # so no third-party path-filter action is needed.
+  # package or the registry demos (their sources, the schema types they
+  # depend on, the lockfile, this workflow), and always on main. Computed
+  # with git against the merge base so no third-party path-filter action is
+  # needed.
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -96,7 +97,7 @@ jobs:
           fi
           merge_base="$(git merge-base "origin/$BASE" HEAD)"
           files="$(git diff --name-only "$merge_base" HEAD)"
-          if echo "$files" | grep -qE '^(packages/react/|packages/schema/|bun\.lock$|\.github/workflows/ci\.yml$)'; then
+          if echo "$files" | grep -qE '^(packages/react/|packages/schema/|apps/docs/registry/|apps/docs/src/app/demo/|apps/docs/vitest\.browser\.config\.ts$|bun\.lock$|\.github/workflows/ci\.yml$)'; then
             echo "react=true" >> "$GITHUB_OUTPUT"
           else
             echo "react=false" >> "$GITHUB_OUTPUT"
@@ -348,8 +349,10 @@ jobs:
         working-directory: packages/react
         run: bunx playwright install --with-deps chromium firefox webkit
 
+      # The react package's parts, then the registry items as the docs demos
+      # render them (axe and keyboard flows on editor-app).
       - name: Browser tests
-        run: bunx turbo run test:browser --filter=@createcms/react
+        run: bunx turbo run test:browser --filter=@createcms/react --filter=docs
 
   registry:
     needs: changes

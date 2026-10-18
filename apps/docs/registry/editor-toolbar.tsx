@@ -38,6 +38,7 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
+  CommandShortcut,
 } from '@/components/ui/command';
 import {
   Dialog,
@@ -78,7 +79,9 @@ function CommandPaletteItem({
       onSelect={() => onRun(() => command.run())}
     >
       <span className="flex-1 truncate">{label}</span>
-      {command.shortcutLabel ? <Kbd>{command.shortcutLabel}</Kbd> : null}
+      {command.shortcutLabel ? (
+        <CommandShortcut>{command.shortcutLabel}</CommandShortcut>
+      ) : null}
     </CommandItem>
   );
 }

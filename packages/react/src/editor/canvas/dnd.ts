@@ -3,6 +3,7 @@ import type { EditorNodes } from '../core/store';
 import type { InsertTarget } from './insert';
 import type { CanvasRect } from './rect';
 
+import { computedStyleOf } from '../dom';
 import { autoScrollSpeed } from './drag-geometry';
 
 /** Default distance before a mouse or pen gesture becomes a drag. */
@@ -189,10 +190,9 @@ export function blockIdAtPoint(
 
 export function findScrollParent(el: HTMLElement): HTMLElement | null {
   let cur: HTMLElement | null = el;
-  const view = el.ownerDocument.defaultView;
-  if (!view) return null;
   while (cur) {
-    const style = view.getComputedStyle(cur);
+    const style = computedStyleOf(cur);
+    if (!style) return null;
     const overflowY = style.overflowY;
     const overflowX = style.overflowX;
     const scrollsY =
@@ -212,10 +212,9 @@ type ScrollAxis = 'x' | 'y';
 /** Scrollable elements from `el` outward, innermost first. */
 export function scrollableAncestors(el: Element): Element[] {
   const out: Element[] = [];
-  const view = el.ownerDocument.defaultView;
-  if (!view) return out;
   for (let cur: Element | null = el; cur; cur = cur.parentElement) {
-    const style = view.getComputedStyle(cur);
+    const style = computedStyleOf(cur);
+    if (!style) break;
     const root = cur === el.ownerDocument.documentElement;
     const scrollsY =
       (root || style.overflowY === 'auto' || style.overflowY === 'scroll') &&

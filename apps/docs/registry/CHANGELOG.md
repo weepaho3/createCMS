@@ -37,3 +37,5 @@ between the two `@createcms/react` tags, for example
 - `editor-canvas`: accent-based theme tokens, 44px touch targets, a More
   menu (move to, wrap, copy, select parent) in the block toolbar.
 - Every item carries the version stamp and pins `@createcms/react`.
+- `editor-toolbar`: command palette shortcuts use `CommandShortcut`, so
+  the highlighted row keeps enough contrast (WCAG 1.4.3).

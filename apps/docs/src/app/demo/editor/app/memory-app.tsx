@@ -12,7 +12,7 @@ import {
 
 import { EditorApp } from '@/components/editor-app';
 
-const schema = defineEditorSchema({
+export const schema = defineEditorSchema({
   root: {
     label: 'Page',
     fields: { title: { type: 'text', label: 'Title', required: true } },
@@ -47,7 +47,7 @@ const schema = defineEditorSchema({
   },
 });
 
-const components: CanvasComponents = {
+export const components: CanvasComponents = {
   heading: ({ props, edit }) => (
     <h2 {...edit.block} className="px-6 py-3 text-2xl font-semibold">
       <span {...edit.field.text}>
@@ -74,7 +74,7 @@ const components: CanvasComponents = {
   ),
 };
 
-const home: EditorDocument = {
+export const home: EditorDocument = {
   schemaVersion: 1,
   root: {
     id: 'root',

@@ -12,6 +12,7 @@ import {
   useSessionSelector,
   useEphemeralSelector,
 } from '../binding';
+import { computedStyleOf } from '../dom';
 import { blockElements } from './anchors';
 import { useCanvasContext } from './context';
 import { useFieldRect, useMeasuredRect } from './rects';
@@ -100,8 +101,7 @@ function ringStyle(rect: CanvasRect, radius: string): React.CSSProperties {
 
 function radiusOf(host: HTMLElement | null, id: string | null): string {
   const el = id && host ? blockElements(host, id)[0] : undefined;
-  const view = el?.ownerDocument.defaultView;
-  return el && view ? view.getComputedStyle(el).borderRadius : '0px';
+  return (el ? computedStyleOf(el)?.borderRadius : undefined) ?? '0px';
 }
 
 type Clamped = { clamped?: ClampedEdges };

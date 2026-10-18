@@ -26,6 +26,17 @@ export function isHTMLElement(value: unknown): value is HTMLElement {
   );
 }
 
+/**
+ * The computed style of `el` in its own window, or `null`: Firefox returns
+ * `null` while the element's window is not rendered (a removed or hidden
+ * frame), and a document without a window has none.
+ */
+export function computedStyleOf(el: Element): CSSStyleDeclaration | null {
+  const style: CSSStyleDeclaration | null | undefined =
+    el.ownerDocument.defaultView?.getComputedStyle(el);
+  return style ?? null;
+}
+
 export function viewOf(node: Node | null | undefined): Window | null {
   return node?.ownerDocument?.defaultView ?? null;
 }

@@ -9,6 +9,7 @@ import {
   isSelfOrDescendant,
   slotsOf,
 } from '../core/schema';
+import { computedStyleOf } from '../dom';
 
 export type InsertOrientation = 'horizontal' | 'vertical';
 export type InsertVariant = 'line' | 'box';
@@ -103,9 +104,8 @@ export function distToSeg(
 export function flowIsHorizontal(el: HTMLElement): boolean {
   const wrap = el.parentElement;
   if (!wrap) return false;
-  const view = el.ownerDocument.defaultView;
-  if (!view) return false;
-  const ws = view.getComputedStyle(wrap);
+  const ws = computedStyleOf(wrap);
+  if (!ws) return false;
   if (ws.display === 'grid' || ws.display === 'inline-grid') {
     const cols = ws.gridTemplateColumns
       .split(/\s+/)

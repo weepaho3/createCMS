@@ -11,7 +11,8 @@
     "registry:build": "shadcn build --output public/r",
     "registry:check": "node scripts/check-registry.mjs",
     "start": "next start",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:browser": "vitest run --config vitest.browser.config.ts --maxWorkers=2"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -48,10 +49,16 @@
     "@types/node": "^22.20.1",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^6.1.2",
+    "@vitest/browser": "5.0.5",
+    "@vitest/browser-playwright": "5.0.5",
+    "axe-core": "^4.14.0",
+    "playwright": "^1.62.1",
     "postcss": "^8.5.25",
     "shadcn": "^4.18.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.10"
+    "vite": "^8.0.16",
+    "vitest": "^5.0.5"
   }
 }

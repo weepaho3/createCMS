@@ -11,6 +11,7 @@ import {
   useSessionSelector,
 } from '../binding';
 import { useEditorContext } from '../context';
+import { computedStyleOf } from '../dom';
 import { blockElements } from './anchors';
 import { CanvasContext, useCanvasContext } from './context';
 import { useCanvasSession } from './provider';
@@ -283,9 +284,8 @@ export function CanvasSpacingOverlay({
     () => {
       const el =
         blockId && canvas.host ? blockElements(canvas.host, blockId)[0] : null;
-      const view = el?.ownerDocument.defaultView;
-      if (!el || !view) return null;
-      const computed = view.getComputedStyle(el);
+      const computed = el ? computedStyleOf(el) : null;
+      if (!computed) return null;
       const key = `${computed.padding}|${computed.margin}`;
       return key;
     },
@@ -294,9 +294,8 @@ export function CanvasSpacingOverlay({
   const strips = React.useMemo(() => {
     const el =
       blockId && canvas.host ? blockElements(canvas.host, blockId)[0] : null;
-    const view = el?.ownerDocument.defaultView;
-    if (!el || !view || !rect || sides === null) return [];
-    const computed = view.getComputedStyle(el);
+    const computed = el ? computedStyleOf(el) : null;
+    if (!computed || !rect || sides === null) return [];
     const padding = boxSides(computed, 'padding');
     const margin = boxSides(computed, 'margin');
     const { x, y, width, height } = rect;
