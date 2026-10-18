@@ -64,3 +64,30 @@ block's id, type and component stack.
 **Warning.** The loaded document needed migrations or repairs. Pass
 `onDiagnostics` to `Editor.Root` (or `createEditorStore`) to see each one with
 its code and path; see [Loading documents](/docs/reference/react-editor-core#loading-documents).
+
+## E011
+
+**Warning.** `html`, `head` or `body` was rendered inside a canvas frame
+(react-email `Html`, `Head` and `Body` do this). React 19 takes over the
+frame's own elements instead of building a document. Pass head markup and
+body attributes through `Canvas.Root`'s `frame` instead; see
+[Frame surface](/docs/reference/react-editor-canvas#frame-surface).
+
+## E012
+
+**Warning.** An auto-height canvas frame grew by the same amount ten times in
+a row and its height was frozen. A block sized with `100vh` grows with a
+frame that follows its content; use a fixed `frame.height` or another unit.
+
+## E013
+
+**Warning.** Stylesheets mirrored from the host page into the canvas frame
+did not load within `frame.stylesTimeout`; the canvas shows without them.
+
+## E014
+
+**Warning.** The live canvas frame is sandboxed. Without `allow-scripts`,
+WebKit runs none of the frame's listeners or animation frames, so selection
+and editing stop working in Safari. The live frame renders the app's own
+components and needs no sandbox; `Editor.FramePreview` is the sandboxed
+preview for compiled output.

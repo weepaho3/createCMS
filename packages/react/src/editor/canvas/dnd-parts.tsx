@@ -2,11 +2,12 @@ import * as React from 'react';
 
 import type { UseRenderComponentProps } from '../../use-render';
 import type { InsertTarget, InsertOrientation, InsertVariant } from './insert';
+import type { PreviewSurface } from './surface';
 
 import { composeRefs, useRender } from '../../use-render';
 import { useDocSelector, useSessionSelector } from '../binding';
 import { useEditorContext } from '../context';
-import { isHTMLElement } from '../dom';
+import { isHTMLElement, isNode } from '../dom';
 import { useMessages } from '../messages';
 import { insertPointFor } from '../structure/insert-point';
 import { blockElements, isInsideReadonly } from './anchors';
@@ -61,15 +62,49 @@ function containsClientPoint(
   );
 }
 
-/** Editable surface under the pointer; the last registered match wins. */
+type Point = { x: number; y: number };
+
+/** The document an event target lives in (the target itself for a document). */
+function documentOf(target: EventTarget | null): Document | null {
+  if (!isNode(target)) return null;
+  return (
+    target.ownerDocument ??
+    (target.nodeType === 9 ? (target as Document) : null)
+  );
+}
+
+/** A client point of `doc` in host-page client coordinates. */
+function toPage(
+  surfaces: ReadonlyArray<CanvasSurfaceHandle>,
+  doc: Document,
+  client: Point,
+): Point {
+  for (const entry of surfaces) {
+    if (entry.surface.kind !== 'frame' || entry.surface.document !== doc) {
+      continue;
+    }
+    const rect = entry.surface.toHost({ ...client, width: 0, height: 0 });
+    return { x: rect.x, y: rect.y };
+  }
+  return client;
+}
+
+/** A host-page point in the client coordinates of `entry`'s document. */
+function toLocal(entry: CanvasSurfaceHandle, page: Point): Point {
+  return entry.surface.fromHost(page);
+}
+
+/** Editable surface under a host-page point; the last registered match wins. */
 function surfaceAtClient(
   surfaces: ReadonlyArray<CanvasSurfaceHandle>,
-  client: { x: number; y: number },
+  page: Point,
 ): CanvasSurfaceHandle | null {
   for (let i = surfaces.length - 1; i >= 0; i--) {
     const surface = surfaces[i]!;
     if (surface.interactive !== 'edit') continue;
-    if (containsClientPoint(surface.host, client)) return surface;
+    if (containsClientPoint(surface.host, toLocal(surface, page))) {
+      return surface;
+    }
   }
   return null;
 }
@@ -102,7 +137,7 @@ export function useDndDropResolution(): void {
   const ctx = useEditorContext('useDndDropResolution');
   const rootId = useDocSelector((s) => s.rootId);
   const dragging = canvas.dragging;
-  const { dnd, host, measurer, interactive } = canvas;
+  const { dnd, host, measurer, interactive, surface } = canvas;
   const store = ctx.store;
 
   // A remote change can remove the block being dragged: end the drag.
@@ -123,7 +158,8 @@ export function useDndDropResolution(): void {
     let raf = 0;
     const tick = () => {
       const session = dnd.getSession();
-      const client = dnd.getClientPoint();
+      const page = dnd.getClientPoint();
+      const client = page && surface ? surface.fromHost(page) : page;
       // Several Roots can share one session; only the hovered canvas may
       // auto-scroll.
       if (session && client && containsClientPoint(host, client)) {
@@ -168,6 +204,7 @@ export function useDndDropResolution(): void {
     rootId,
     ctx.schema,
     canvas.pointer,
+    surface,
     store,
   ]);
 }
@@ -195,12 +232,13 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
         return;
       }
       const { host, measurer } = surface;
+      const local = toLocal(surface, client);
       // Read at event time: the gesture never subscribes to the node table.
       const { nodes, rootId } = ctx.store.getDoc();
       const adapters = createInsertAdapters(host, measurer, nodes, rootId);
-      const point = contentPointFromClient(host, client);
+      const point = contentPointFromClient(host, local);
       pointer.setFromEvent(
-        { clientX: client.x, clientY: client.y } as PointerEvent,
+        { clientX: local.x, clientY: local.y } as PointerEvent,
         host,
       );
       dnd.setDropTarget(
@@ -310,15 +348,37 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
         // capture is optional; document listeners still end the gesture
       }
       ctx.store.setEditing(null);
-      dnd.beginGesture({ x: event.clientX, y: event.clientY });
+      const startSurfaces = canvasSession.getSurfaces();
+      dnd.beginGesture(
+        toPage(startSurfaces, doc, { x: event.clientX, y: event.clientY }),
+      );
       lastSurfaceRef.current = null;
+      // Every same-origin document of the drag reports the pointer: the
+      // gesture's own, and the host page when the gesture began in a frame.
+      // Frames other than the gesture's stop taking pointer events.
+      const docs = new Set<Document>([doc]);
+      const shielded: CanvasSurfaceHandle[] = [];
+      for (const entry of startSurfaces) {
+        if (entry.surface.kind !== 'frame') continue;
+        if (entry.surface.document === doc) {
+          const hostDoc = entry.surface.window.frameElement?.ownerDocument;
+          if (hostDoc) docs.add(hostDoc);
+        } else if (entry.shield) {
+          entry.shield(true);
+          shielded.push(entry);
+        }
+      }
 
       const onMove = (moveEvent: PointerEvent) => {
         if (moveEvent.pointerId !== pointerId) return;
         if (!dnd.getClientPoint() && !dnd.getSession()) return;
-        const client = { x: moveEvent.clientX, y: moveEvent.clientY };
-        dnd.moveGesture(client, session);
         const surfaces = canvasSession.getSurfaces();
+        const source = documentOf(moveEvent.target) ?? doc;
+        const client = toPage(surfaces, source, {
+          x: moveEvent.clientX,
+          y: moveEvent.clientY,
+        });
+        dnd.moveGesture(client, session);
         const surface =
           surfaceAtClient(surfaces, client) ??
           lastSurfaceRef.current ??
@@ -327,8 +387,9 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
         // Keep the preview hot path alive off-canvas; resolveTarget only
         // writes the pointer when a surface is under the cursor.
         if (surface) {
+          const local = toLocal(surface, client);
           pointer.setFromEvent(
-            { clientX: client.x, clientY: client.y } as PointerEvent,
+            { clientX: local.x, clientY: local.y } as PointerEvent,
             surface.host,
           );
         }
@@ -338,9 +399,12 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
       };
 
       const release = () => {
-        doc.removeEventListener('pointermove', onMove, true);
-        doc.removeEventListener('pointerup', onUp, true);
-        doc.removeEventListener('pointercancel', onCancel, true);
+        for (const target of docs) {
+          target.removeEventListener('pointermove', onMove, true);
+          target.removeEventListener('pointerup', onUp, true);
+          target.removeEventListener('pointercancel', onCancel, true);
+        }
+        for (const entry of shielded) entry.shield?.(false);
         view?.removeEventListener('blur', onBlur);
         if (capturedRef.current) {
           try {
@@ -379,9 +443,11 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
         release();
       };
 
-      doc.addEventListener('pointermove', onMove, true);
-      doc.addEventListener('pointerup', onUp, true);
-      doc.addEventListener('pointercancel', onCancel, true);
+      for (const target of docs) {
+        target.addEventListener('pointermove', onMove, true);
+        target.addEventListener('pointerup', onUp, true);
+        target.addEventListener('pointercancel', onCancel, true);
+      }
       view?.addEventListener('blur', onBlur);
     },
     [
@@ -635,11 +701,13 @@ function previewSnap(
   pointer: { getSnapshot: () => { x: number; y: number } | null },
   dnd: { getClientPoint: () => { x: number; y: number } | null },
   host: HTMLElement | null,
+  surface: PreviewSurface | null,
 ): { x: number; y: number } | null {
   const snap = pointer.getSnapshot();
   if (snap) return snap;
-  const client = dnd.getClientPoint();
-  if (!client || !host) return null;
+  const page = dnd.getClientPoint();
+  if (!page || !host) return null;
+  const client = surface ? surface.fromHost(page) : page;
   const box = host.getBoundingClientRect();
   return {
     x: Math.round(client.x - box.left + host.scrollLeft),
@@ -673,7 +741,10 @@ export function CanvasDragPreview({
     const node = nodeRef.current;
     if (!isHTMLElement(node)) return;
     node.style.willChange = 'transform';
-    applyPreviewTransform(node, previewSnap(pointer, dnd, host));
+    applyPreviewTransform(
+      node,
+      previewSnap(pointer, dnd, host, canvas?.surface ?? null),
+    );
     let raf = 0;
     const onPointer = () => {
       if (raf !== 0) return;
@@ -681,7 +752,10 @@ export function CanvasDragPreview({
         raf = 0;
         const current = nodeRef.current;
         if (isHTMLElement(current)) {
-          applyPreviewTransform(current, previewSnap(pointer, dnd, host));
+          applyPreviewTransform(
+            current,
+            previewSnap(pointer, dnd, host, canvas?.surface ?? null),
+          );
         }
       });
     };

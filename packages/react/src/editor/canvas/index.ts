@@ -33,6 +33,20 @@ export type { CanvasClickToEdit } from './context';
 export type { CanvasContextMenuProps, ContextMenuEntry } from './context-menu';
 export { CONTEXT_MENU_COMMANDS } from './context-menu';
 export { createSectionRefBlock } from './section-ref';
+export { useSurface } from './context';
+export type { PreviewSurface, SurfacePoint, SurfaceRect } from './surface';
+export type {
+  CanvasFrameOptions,
+  CanvasFrameWrapper,
+} from './frame/frame-shell';
+export { emailFrame } from './frame/presets';
+export type { Breakpoint } from './frame/viewport';
+export {
+  breakpointFor,
+  DEFAULT_BREAKPOINTS,
+  fitScale,
+  MAX_AUTO_HEIGHT,
+} from './frame/viewport';
 export {
   depthParent,
   isSelectionClick,

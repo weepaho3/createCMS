@@ -175,14 +175,20 @@ describe('Canvas.Root renderer', () => {
     expect(card?.hasAttribute('data-unresolved')).toBe(false);
   });
 
-  it('throws when surface is frame', () => {
-    expect(() =>
-      render(
-        <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
-          <Canvas.Root components={canvasBlocks} surface="frame" />
-        </Editor.Root>,
-      ),
-    ).toThrow('Canvas.Root: surface "frame" is not implemented');
+  it('surface frame renders an iframe in a host-page wrapper with the consumer props', () => {
+    const { getByTestId } = render(
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
+        <Canvas.Root
+          components={canvasBlocks}
+          surface="frame"
+          data-testid="outer"
+        />
+      </Editor.Root>,
+    );
+    const outer = getByTestId('outer');
+    expect(outer.hasAttribute('data-editor-frame-surface')).toBe(true);
+    expect(outer.querySelector('iframe')).not.toBeNull();
+    expect(outer.querySelector('[data-editor-host-layer]')).not.toBeNull();
   });
 
   it('Canvas.ReadonlySubtree is inert and its blocks are not selectable', () => {

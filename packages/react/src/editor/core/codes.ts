@@ -39,6 +39,22 @@ export const EDITOR_CODES = {
     level: 'warning',
     summary: 'The loaded document needed repairs or migrations.',
   },
+  E011: {
+    level: 'warning',
+    summary: 'html, head or body was rendered inside the live canvas frame.',
+  },
+  E012: {
+    level: 'warning',
+    summary: 'An auto-height canvas frame kept growing and was frozen.',
+  },
+  E013: {
+    level: 'warning',
+    summary: 'Stylesheets mirrored into the canvas frame did not load in time.',
+  },
+  E014: {
+    level: 'warning',
+    summary: 'The live canvas frame is sandboxed.',
+  },
 } as const;
 
 export type EditorCode = keyof typeof EDITOR_CODES;

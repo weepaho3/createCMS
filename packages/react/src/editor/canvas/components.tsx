@@ -7,8 +7,13 @@ import type {
   CanvasContextValue,
   InlineCaretPoint,
 } from './context';
+import type {
+  CanvasFrameOptions,
+  CanvasFrameWrapper,
+} from './frame/frame-shell';
 import type { CanvasComponents } from './map';
 import type { Measurer } from './measurer';
+import type { PreviewSurface } from './surface';
 
 import { composeRefs, useRender } from '../../use-render';
 import { useDocSelector, useSessionSelector } from '../binding';
@@ -18,6 +23,7 @@ import { CanvasContext } from './context';
 import { type DndStore } from './dnd';
 import { CanvasDndEffects } from './dnd-parts';
 import { createEditCache, type EditCache } from './edit';
+import { CanvasFrameShell } from './frame/frame-shell';
 import { handleCanvasClick, handleCanvasPointerOver } from './interact';
 import { createMeasurer } from './measurer';
 import { type PointerStore } from './pointer';
@@ -40,6 +46,7 @@ import {
   readResolved,
   type ResolveCache,
 } from './resolve';
+import { createFrameSurface, createInlineSurface } from './surface';
 
 const subscribeNoop = () => () => {};
 const HOVER_LEAVE_MS = 100;
@@ -49,6 +56,8 @@ export type CanvasSurface = 'inline' | 'frame';
 
 type CanvasRootState = {
   interactive: CanvasInteractive;
+  /** Mirrored frame stylesheets are still loading. */
+  loading: boolean;
   dragging: boolean;
   editing: boolean;
   editorCanvas: boolean;
@@ -77,6 +86,10 @@ export type CanvasRootProps = Omit<
    * `select-and-edit` for a mouse, `select-first` for touch and pen.
    */
   clickToEdit?: CanvasClickToEdit;
+  /** With `surface="frame"`: head, body attributes, width, height, scale, styles. */
+  frame?: CanvasFrameOptions;
+  /** With `surface="frame"`: wraps the canvas inside the frame (an e-mail table). */
+  wrapper?: CanvasFrameWrapper;
   children?: React.ReactNode;
   render?: UseRenderComponentProps<'div', CanvasRootState>['render'];
 };
@@ -90,11 +103,14 @@ export function CanvasRoot({
   renderBlockError,
   renderUnknownBlock,
   clickToEdit,
+  frame,
+  wrapper,
   children,
   render,
   style,
   ...rest
 }: CanvasRootProps) {
+  const framed = surface === 'frame';
   const ctx = useEditorContext('Canvas.Root');
   const rootId = useDocSelector((s) => s.rootId);
   const editing = useSessionSelector((s) => s.editing !== null);
@@ -142,6 +158,15 @@ export function CanvasRoot({
   }
 
   const hostRef = React.useRef<HTMLDivElement | null>(null);
+  // The canvas element; inside a frame it changes when the frame reloads.
+  const [hostNode, setHostNode] = React.useState<HTMLDivElement | null>(null);
+  const setHost = React.useCallback((node: HTMLDivElement | null) => {
+    hostRef.current = node;
+    setHostNode(node);
+  }, []);
+  const [frameEl, setFrameEl] = React.useState<HTMLIFrameElement | null>(null);
+  const [hostLayer, setHostLayer] = React.useState<HTMLElement | null>(null);
+  const [stylesLoading, setStylesLoading] = React.useState(false);
   const inlineCaretRef = React.useRef<InlineCaretPoint | null>(null);
   const measurerRef = React.useRef<Measurer | null>(null);
   const [hostEl, setHostEl] = React.useState<HTMLElement | null>(null);
@@ -163,8 +188,17 @@ export function CanvasRoot({
     sessionRef.current = session;
   });
 
+  React.useEffect(
+    () => () => {
+      // Destroy only what this Root created; a Provider-owned session
+      // outlives the Root.
+      ownSessionRef.current?.dnd.destroy();
+    },
+    [],
+  );
+
   React.useLayoutEffect(() => {
-    const node = hostRef.current;
+    const node = hostNode;
     if (!node) return;
     const next = createMeasurer(node);
     measurerRef.current = next;
@@ -174,15 +208,14 @@ export function CanvasRoot({
     setDnd(sessionRef.current.dnd);
     return () => {
       next.destroy();
-      // Destroy only what this Root created; a Provider-owned session
-      // outlives the Root.
-      ownSessionRef.current?.dnd.destroy();
       measurerRef.current = null;
+      setHostEl(null);
+      setMeasurer(null);
     };
-  }, []);
+  }, [hostNode]);
 
   React.useLayoutEffect(() => {
-    const host = hostRef.current;
+    const host = hostNode;
     const pointerStore = sessionRef.current.pointer;
     if (!host) return;
     const onClick = (event: Event) => {
@@ -233,7 +266,7 @@ export function CanvasRoot({
       host.removeEventListener('pointermove', onPointerMove);
       host.removeEventListener('pointerleave', onPointerLeave);
     };
-  }, []);
+  }, [hostNode]);
 
   const dragging = React.useSyncExternalStore(
     dnd ? dnd.subscribeSession : subscribeNoop,
@@ -242,7 +275,7 @@ export function CanvasRoot({
   );
 
   React.useLayoutEffect(() => {
-    const host = hostRef.current;
+    const host = hostNode;
     const dndStore = sessionRef.current.dnd;
     if (!host) return;
     const doc = host.ownerDocument;
@@ -256,17 +289,25 @@ export function CanvasRoot({
     return () => {
       doc.removeEventListener('keydown', onKeyDown, true);
     };
-  }, []);
+  }, [hostNode]);
+
+  const previewSurface = React.useMemo((): PreviewSurface | null => {
+    if (!hostEl) return null;
+    if (!framed) return createInlineSurface(hostEl);
+    return frameEl ? createFrameSurface(frameEl, hostEl) : null;
+  }, [framed, hostEl, frameEl]);
 
   const surfaceHandleRef = React.useRef<{
     host: HTMLElement;
     measurer: Measurer;
     interactive: CanvasInteractive;
     editing: boolean;
+    surface: PreviewSurface;
+    shield?: (on: boolean) => void;
   } | null>(null);
 
   React.useLayoutEffect(() => {
-    if (!hostEl || !measurer) return;
+    if (!hostEl || !measurer || !previewSurface) return;
     // The handle object stays identical while registered; `interactive` and
     // `editing` are mutated in place by the sync effect below so gesture
     // handlers read current values without a re-registration (registration
@@ -276,6 +317,12 @@ export function CanvasRoot({
       measurer,
       interactive: interactiveRef.current,
       editing: false,
+      surface: previewSurface,
+      shield: frameEl
+        ? (on: boolean) => {
+            frameEl.style.pointerEvents = on ? 'none' : '';
+          }
+        : undefined,
     };
     surfaceHandleRef.current = handle;
     const unregister = sessionRef.current.registerSurface(handle);
@@ -283,7 +330,7 @@ export function CanvasRoot({
       unregister();
       surfaceHandleRef.current = null;
     };
-  }, [hostEl, measurer]);
+  }, [hostEl, measurer, previewSurface, frameEl]);
 
   React.useLayoutEffect(() => {
     const handle = surfaceHandleRef.current;
@@ -291,10 +338,6 @@ export function CanvasRoot({
     handle.interactive = interactive;
     handle.editing = editing;
   });
-
-  if (surface === 'frame') {
-    throw new Error('Canvas.Root: surface "frame" is not implemented');
-  }
 
   const renderDeps = React.useMemo((): CanvasRenderDeps => {
     const cache = cacheRef.current!;
@@ -370,6 +413,8 @@ export function CanvasRoot({
       dragging,
       editing,
       inlineCaret: inlineCaretRef,
+      surface: previewSurface,
+      hostLayer: framed ? hostLayer : null,
     };
   }, [
     read,
@@ -381,16 +426,25 @@ export function CanvasRoot({
     dragging,
     editing,
     clickEdits,
+    previewSurface,
+    framed,
+    hostLayer,
   ]);
 
+  const { ref: outerRef, ...hostRest } = rest;
+  // Inside a frame the outer element in the host page takes the consumer's
+  // props; the canvas element only its own.
+  const canvasProps: typeof hostRest = framed ? {} : hostRest;
   const host = useRender<'div', CanvasRootState>({
     defaultTagName: 'div',
     render,
     props: {
-      ...rest,
+      ...canvasProps,
       // No double-tap zoom delay on touch.
-      style: { touchAction: 'manipulation', ...style },
-      ref: composeRefs(rest.ref, hostRef),
+      style: framed
+        ? { touchAction: 'manipulation', position: 'relative' }
+        : { touchAction: 'manipulation', ...style },
+      ref: framed ? setHost : composeRefs(outerRef, setHost),
       children: (
         <>
           <CanvasRenderContext.Provider value={renderDeps}>
@@ -403,6 +457,7 @@ export function CanvasRoot({
     },
     state: {
       interactive,
+      loading: stylesLoading,
       dragging,
       editing,
       editorCanvas: true,
@@ -411,7 +466,21 @@ export function CanvasRoot({
 
   const content = (
     <CanvasContext.Provider value={canvasContext}>
-      {host}
+      {framed ? (
+        <CanvasFrameShell
+          options={frame ?? {}}
+          wrapper={wrapper}
+          outer={{ ...hostRest, ref: outerRef, style }}
+          hostNode={hostNode}
+          onFrame={setFrameEl}
+          onHostLayer={setHostLayer}
+          onLoading={setStylesLoading}
+        >
+          {host}
+        </CanvasFrameShell>
+      ) : (
+        host
+      )}
     </CanvasContext.Provider>
   );
 

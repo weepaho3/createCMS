@@ -20,6 +20,7 @@ import {
   type InsertOrientation,
 } from './insert';
 import { createInsertAdapters } from './insert-dom';
+import { OverlayLayerContext } from './overlay';
 import {
   overlayChromeFitsAbove,
   overlayChromeFitsBelow,
@@ -168,10 +169,13 @@ export function CanvasBlockToolbar({
         ? { right: 0 }
         : { left: 0 };
 
+  // On the host layer over a frame the toolbar may leave the frame.
+  const onHostLayer = React.useContext(OverlayLayerContext) === 'host';
   const fitsOutside =
-    side === 'bottom'
+    onHostLayer ||
+    (side === 'bottom'
       ? overlayChromeFitsBelow(frameRect, view, offset)
-      : overlayChromeFitsAbove(frameRect, view, offset);
+      : overlayChromeFitsAbove(frameRect, view, offset));
 
   const sideStyle: React.CSSProperties = fitsOutside
     ? side === 'bottom'

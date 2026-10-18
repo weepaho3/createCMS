@@ -129,37 +129,123 @@ and the block behind the pointer. `Canvas.BlockToolbar` is one tab stop
 from the canvas or inline text without changing the selection, and Escape
 returns to where focus was.
 
+## Frame surface
+
+`surface="frame"` renders the canvas inside a same-origin `srcdoc` iframe:
+a real viewport, so media queries, `vw` units and an e-mail's fixed width
+behave as on the published page. Blocks, measurement, rings, inline text
+and drag and drop work as inline; the editor's stores and context reach
+the frame through a portal. The consumer's props (`className`, `style`,
+`ref`) go to the element in the host page around the frame.
+
+```tsx
+<Canvas.Root
+  components={pageBlocks}
+  surface="frame"
+  frame={{ width: 768, head: '<link rel="stylesheet" href="/site.css">' }}
+>
+  <Canvas.Overlay>
+    <Canvas.SelectionRing />
+  </Canvas.Overlay>
+  <Canvas.Overlay layer="host">
+    <Canvas.BlockToolbar>{/* buttons */}</Canvas.BlockToolbar>
+  </Canvas.Overlay>
+</Canvas.Root>
+```
+
+- **Size.** `frame.width` is the layout width (`full` takes the available
+  width); `frame.scale: 'fit'` (default) shrinks a wider frame with
+  `transform: scale()` so layout and media queries keep the full width.
+  Changing the width resizes the same iframe. `DEFAULT_BREAKPOINTS`,
+  `breakpointFor` and `fitScale` help build a device switcher.
+- **Height.** `frame.height: 'auto'` (default) follows the content, so the
+  frame never scrolls itself (capped at `MAX_AUTO_HEIGHT`). A block sized
+  with `100vh` would grow with the frame forever: after ten equal growth
+  steps the height freezes and a development build logs `[editor:E012]`.
+  A number gives a fixed height that scrolls inside the frame.
+- **Head and body.** `frame.head` (markup) and `frame.bodyAttributes` are
+  patched into the live document, so a theme or stylesheet change never
+  reloads the frame (no white flash, scroll kept). React 19 hoists
+  `<link rel="stylesheet" precedence>` rendered by a block into the frame
+  head on its own. Never render `html`, `head` or `body` (react-email
+  `Html`, `Head`, `Body`) in the frame: React takes over the live shell,
+  and a development build logs `[editor:E011]`.
+- **Styles.** `frame.styles: 'mirror'` (default) copies the host page's
+  `<style>` and stylesheet links into the frame and follows later ones
+  (CSS-in-JS included), copying identical content once; the canvas carries
+  `data-loading` until mirrored sheets load (at most `stylesTimeout`, then
+  `[editor:E013]`). Rules added through CSSOM (`insertRule`) and
+  `adoptedStyleSheets` cannot cross into another document; give such
+  libraries the frame head as their container instead. `none` mirrors
+  nothing.
+- **Layers.** `Canvas.Overlay` draws inside the frame by default (rings
+  scroll with the content). `layer="host"` draws over the frame in the
+  host page, for chrome that may leave the frame: a toolbar of the first
+  block sits above the frame. The host layer sets `--editor-scale` for
+  strokes that should keep their width when the frame is scaled.
+- **Events.** Clicks, hover, links and forms behave as inline. The frame
+  document gets the editor's shortcuts and block clipboard itself, since
+  its key events never reach the host page. While a builder input in the
+  host page takes focus, the frame body is `inert` for a second, so the
+  frame never pulls focus back. Drags cross the frame edge both ways: a
+  palette drag from the host page drops into the frame (the frame ignores
+  the pointer meanwhile), and a drag that starts in the frame keeps
+  tracking when the pointer leaves it.
+- **Sandbox.** The live frame is not sandboxed: it renders the app's own
+  components. With `frame.sandbox` and no `allow-scripts`, WebKit runs no
+  listeners and no animation frames in it, so editing stops there
+  (`[editor:E014]`).
+- **E-mail.** `emailFrame({ sheet, width? })` returns `frame` and
+  `wrapper` for live e-mail editing: the compiled e-mail sheet as the only
+  styles, no body margin, a centered table around the blocks. Compiled
+  output (react-email `<Tailwind>`, render to string) belongs in
+  `Editor.FramePreview`; `<Tailwind>` compiles asynchronously and must
+  not enter the client bundle.
+
+`useSurface()` returns the `PreviewSurface`: the canvas document and
+window, its `scale`, and `toHost(rect)` / `fromHost(point)` between the
+canvas's client coordinates and the host page's. An edit in a
+1000-block frame measured within the inline cost in Chromium (median
+below 1 ms either way); a browser test keeps it under 1.5 times inline.
+
 ## Parts
 
-| Part                     | Default element          | Props                                                                                                                                                                                                                                            | Data attributes                                                                                           |
-| ------------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| `Canvas.Provider`        | none                     | `children`. Renders no element; owns the drag session shared by every part and `Canvas.Root` below it. Optional.                                                                                                                                 | none                                                                                                      |
-| `Canvas.Root`            | `div`                    | `components` (required), `surface`, `interactive`, `resolve`, `chunkSize`, `renderBlockError`, `renderUnknownBlock`, `clickToEdit`, `children` (overlay), `render`, div props                                                                    | `data-editor-canvas`, `data-interactive`, `data-dragging`, `data-editing`                                 |
-| `Canvas.Overlay`         | `div`                    | `render`, div props. Portals into the canvas host.                                                                                                                                                                                               | `data-editor-overlay`                                                                                     |
-| `Canvas.SelectionRing`   | `div`                    | `render`, div props. Sized from the selected block rect.                                                                                                                                                                                         | `data-editor-selection-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`    |
-| `Canvas.HoverRing`       | `div`                    | `render`, div props. Hidden while dragging, editing, or when hovered equals selected.                                                                                                                                                            | `data-editor-hover-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
-| `Canvas.FieldRing`       | `div`                    | `render`, div props. Sized from the focused field rect (own-block only).                                                                                                                                                                         | `data-editor-field-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
-| `Canvas.BlockToolbar`    | `div`                    | `align`, `side`, `offset`, `render`, div props. Consumer supplies buttons. Shown in `edit` and `select`. Pins inside the visible block when `side="top"` would clip. Named from the catalog (`parts.blockToolbar`), one tab stop, Alt+F10 entry. | `data-editor-block-toolbar`, `data-side`, `data-block-type`                                               |
-| `Canvas.InsertButton`    | `button`                 | `placement` (`between` \| `container`), optional `type`, optional `onInsert`, `render`, button props. Shown only in `edit`.                                                                                                                      | `data-editor-insert-button`, `data-orientation`, `data-empty-container`                                   |
-| `Canvas.DragHandle`      | `button`                 | `blockId` (required), `render`, button props. Move an existing block by pointer drag. Overlay siblings inset into the visible block; inside `Canvas.BlockToolbar` the handle stays in flow.                                                      | `data-editor-drag-handle`, `data-dragging` on the handle while its block is the move session              |
-| `Canvas.PaletteItem`     | `button`                 | `type` (required), optional `properties`, `render`, button props. Click inserts like `Editor.AddBlock`; drag adds by geometry.                                                                                                                   | `data-editor-palette-item`, `data-block-type`, `data-dragging` while this item starts a new-block session |
-| `Canvas.DropIndicator`   | `div`                    | `render`, div props. Line or box from the active drop target. Presentational.                                                                                                                                                                    | `data-editor-drop-indicator`, `data-orientation`, `data-variant`, `data-kind` (`new` \| `move`)           |
-| `Canvas.DragPreview`     | `div`                    | `render`, div props, optional children. Follows the pointer during a session. Presentational.                                                                                                                                                    | `data-editor-drag-preview`, `data-kind` (`new` \| `move`)                                                 |
-| `Canvas.InlineText`      | `div`                    | `suggest`, `discardOnEscape`, `render`, div props. Overlays a contentEditable glass on `text` fields in `edit`; not on `readOnly` fields.                                                                                                        | `data-editor-inline-text`, `data-editing`, `data-block-type`, `data-field`                                |
-| `Canvas.ReadonlySubtree` | `div`                    | `render`, div props. `inert`, `display: contents`; wraps embedded trees that are shown but not edited.                                                                                                                                           | `data-editor-readonly`                                                                                    |
-| `Canvas.BlockError`      | `div`                    | `blockId`, `blockType`, `error` (all set by the canvas), `render`, div props; `role="alert"`, carries the block anchor so the block stays selectable and deletable                                                                               | `data-editor-block`, `data-block-error`, `data-block-id`, `data-block-type`                               |
-| `Canvas.UnknownBlock`    | `div`                    | `blockId`, `blockType`, `props`, `slots` (set by the canvas), `render`, div props; renders every slot below its label                                                                                                                            | `data-editor-block`, `data-unknown-block`, `data-block-id`, `data-block-type`                             |
-| `Canvas.ContextMenu`     | `div` with `role="menu"` | `commands`, `renderItem(entry, run)`, `render`, div props; fixed at the pointer, focus returns on close                                                                                                                                          | `data-open`                                                                                               |
+| Part                        | Default element                      | Props                                                                                                                                                                                                                                            | Data attributes                                                                                           |
+| --------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `Canvas.Provider`           | none                                 | `children`. Renders no element; owns the drag session shared by every part and `Canvas.Root` below it. Optional.                                                                                                                                 | none                                                                                                      |
+| `Canvas.Root`               | `div`                                | `components` (required), `surface`, `interactive`, `resolve`, `chunkSize`, `renderBlockError`, `renderUnknownBlock`, `clickToEdit`, `frame`, `wrapper`, `children` (overlay), `render`, div props                                                | `data-editor-canvas`, `data-interactive`, `data-dragging`, `data-editing`                                 |
+| `data-editor-frame-surface` | `Canvas.Root` with `surface="frame"` | The element in the host page around the frame; takes the consumer's props.                                                                                                                                                                       |
+| `data-editor-host-layer`    | frame surface                        | The host-page layer over the frame (`Canvas.Overlay layer="host"`).                                                                                                                                                                              |
+| `data-editor-frame-root`    | inside the frame                     | The mount node in the frame body (`translate="no"`).                                                                                                                                                                                             |
+| `data-editor-mirrored`      | frame head                           | A stylesheet copied from the host page.                                                                                                                                                                                                          |
+| `data-loading`              | host                                 | Present while mirrored frame stylesheets load.                                                                                                                                                                                                   |
+| `data-editor-email-wrapper` | `emailFrame` wrapper                 | The centered e-mail table.                                                                                                                                                                                                                       |
+| `Canvas.Overlay`            | `div`                                | `layer` (`surface` default, `host`), `render`, div props. Portals into the canvas host, or over a frame into the host-page layer.                                                                                                                | `data-editor-overlay`                                                                                     |
+| `Canvas.SelectionRing`      | `div`                                | `render`, div props. Sized from the selected block rect.                                                                                                                                                                                         | `data-editor-selection-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`    |
+| `Canvas.HoverRing`          | `div`                                | `render`, div props. Hidden while dragging, editing, or when hovered equals selected.                                                                                                                                                            | `data-editor-hover-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
+| `Canvas.FieldRing`          | `div`                                | `render`, div props. Sized from the focused field rect (own-block only).                                                                                                                                                                         | `data-editor-field-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
+| `Canvas.BlockToolbar`       | `div`                                | `align`, `side`, `offset`, `render`, div props. Consumer supplies buttons. Shown in `edit` and `select`. Pins inside the visible block when `side="top"` would clip. Named from the catalog (`parts.blockToolbar`), one tab stop, Alt+F10 entry. | `data-editor-block-toolbar`, `data-side`, `data-block-type`                                               |
+| `Canvas.InsertButton`       | `button`                             | `placement` (`between` \| `container`), optional `type`, optional `onInsert`, `render`, button props. Shown only in `edit`.                                                                                                                      | `data-editor-insert-button`, `data-orientation`, `data-empty-container`                                   |
+| `Canvas.DragHandle`         | `button`                             | `blockId` (required), `render`, button props. Move an existing block by pointer drag. Overlay siblings inset into the visible block; inside `Canvas.BlockToolbar` the handle stays in flow.                                                      | `data-editor-drag-handle`, `data-dragging` on the handle while its block is the move session              |
+| `Canvas.PaletteItem`        | `button`                             | `type` (required), optional `properties`, `render`, button props. Click inserts like `Editor.AddBlock`; drag adds by geometry.                                                                                                                   | `data-editor-palette-item`, `data-block-type`, `data-dragging` while this item starts a new-block session |
+| `Canvas.DropIndicator`      | `div`                                | `render`, div props. Line or box from the active drop target. Presentational.                                                                                                                                                                    | `data-editor-drop-indicator`, `data-orientation`, `data-variant`, `data-kind` (`new` \| `move`)           |
+| `Canvas.DragPreview`        | `div`                                | `render`, div props, optional children. Follows the pointer during a session. Presentational.                                                                                                                                                    | `data-editor-drag-preview`, `data-kind` (`new` \| `move`)                                                 |
+| `Canvas.InlineText`         | `div`                                | `suggest`, `discardOnEscape`, `render`, div props. Overlays a contentEditable glass on `text` fields in `edit`; not on `readOnly` fields.                                                                                                        | `data-editor-inline-text`, `data-editing`, `data-block-type`, `data-field`                                |
+| `Canvas.ReadonlySubtree`    | `div`                                | `render`, div props. `inert`, `display: contents`; wraps embedded trees that are shown but not edited.                                                                                                                                           | `data-editor-readonly`                                                                                    |
+| `Canvas.BlockError`         | `div`                                | `blockId`, `blockType`, `error` (all set by the canvas), `render`, div props; `role="alert"`, carries the block anchor so the block stays selectable and deletable                                                                               | `data-editor-block`, `data-block-error`, `data-block-id`, `data-block-type`                               |
+| `Canvas.UnknownBlock`       | `div`                                | `blockId`, `blockType`, `props`, `slots` (set by the canvas), `render`, div props; renders every slot below its label                                                                                                                            | `data-editor-block`, `data-unknown-block`, `data-block-id`, `data-block-type`                             |
+| `Canvas.ContextMenu`        | `div` with `role="menu"`             | `commands`, `renderItem(entry, run)`, `render`, div props; fixed at the pointer, focus returns on close                                                                                                                                          | `data-open`                                                                                               |
 
 ## Hooks
 
-| Hook               | Returns                | Notes                                                                                                                                                         |
-| ------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `useResolved`      | `T \| undefined`       | Reads the canvas resolve cache. Throws outside `Canvas.Root`. `undefined` is miss or pending.                                                                 |
-| `useBlockRect`     | `CanvasRect \| null`   | Content coordinates of a block id (union of same-id nodes). Throws outside `Canvas.Root`.                                                                     |
-| `useFieldRect`     | `CanvasRect \| null`   | Content coordinates of a field on its own block. Throws outside `Canvas.Root`.                                                                                |
-| `useEditableField` | `EditableField`        | `(blockId, key)`: in-place plain-text editing of the component's own element. `editable` is false outside an editing canvas; spread `props` onto the element. |
-| `useInsertTarget`  | `InsertTarget \| null` | Resolved line or box from pointer and hover. Throws outside `Canvas.Root`. Null in `select` / `none`, while dragging or editing, or without pointer / hover.  |
+| Hook               | Returns                  | Notes                                                                                                                                                         |
+| ------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `useResolved`      | `T \| undefined`         | Reads the canvas resolve cache. Throws outside `Canvas.Root`. `undefined` is miss or pending.                                                                 |
+| `useBlockRect`     | `CanvasRect \| null`     | Content coordinates of a block id (union of same-id nodes). Throws outside `Canvas.Root`.                                                                     |
+| `useFieldRect`     | `CanvasRect \| null`     | Content coordinates of a field on its own block. Throws outside `Canvas.Root`.                                                                                |
+| `useEditableField` | `EditableField`          | `(blockId, key)`: in-place plain-text editing of the component's own element. `editable` is false outside an editing canvas; spread `props` onto the element. |
+| `useSurface`       | `PreviewSurface \| null` | The canvas surface: document, window, scale, coordinate mapping. Throws outside `Canvas.Root`.                                                                |
+| `useInsertTarget`  | `InsertTarget \| null`   | Resolved line or box from pointer and hover. Throws outside `Canvas.Root`. Null in `select` / `none`, while dragging or editing, or without pointer / hover.  |
 
 ## Types
 
@@ -188,8 +274,14 @@ returns to where focus was.
 | `FieldResolver`              | `(value, field) => resolved \| Promise<resolved> \| undefined`.                                                                                  |
 | `CanvasReadonlySubtreeProps` | Props of `Canvas.ReadonlySubtree`.                                                                                                               |
 | `CanvasInteractive`          | `'edit' \| 'select' \| 'none'`. Default `'edit'`.                                                                                                |
-| `CanvasSurface`              | `'inline' \| 'frame'`. Default `'inline'`. `'frame'` throws.                                                                                     |
+| `CanvasSurface`              | `'inline' \| 'frame'`. Default `'inline'`. See Frame surface.                                                                                    |
 | `InsertTarget`               | Resolved insert: `parent` (`{ id, slot }`), `index`, `orientation`, `variant`, `rect`, `allowedTypes`, `nested`.                                 |
+| `PreviewSurface`             | `{ kind, document, window, scale, toHost(rect), fromHost(point), getElementsForNode(id) }`.                                                      |
+| `SurfacePoint`               | `{ x, y }` in client coordinates.                                                                                                                |
+| `SurfaceRect`                | `{ x, y, width, height }` in client coordinates.                                                                                                 |
+| `CanvasFrameOptions`         | `frame` of `Canvas.Root`: `head`, `bodyAttributes`, `width`, `height`, `scale`, `styles`, `stylesTimeout`, `maxAutoHeight`, `sandbox`, `title`.  |
+| `CanvasFrameWrapper`         | `wrapper` of `Canvas.Root`: a component around the canvas inside the frame.                                                                      |
+| `Breakpoint`                 | `{ id, width: number \| 'full', label? }`.                                                                                                       |
 | `InsertOrientation`          | `'horizontal'` \| `'vertical'`.                                                                                                                  |
 | `InsertVariant`              | `'line'` \| `'box'`.                                                                                                                             |
 | `ResolveInsertAtOptions`     | Injected block rects, slot rects (`getSlotRect(id, slot)`, the element carrying `edit.slot.<name>`) and the row-flow stub for `resolveInsertAt`. |
@@ -226,6 +318,11 @@ client component.
 | `adjustMoveIndex`         | `(nodes, id, parent: SlotRef, index)`: index adjustment when moving a block within the same slot.                                                                                                                |
 | `blockIdAtPoint`          | Block id under a client point from measured rects.                                                                                                                                                               |
 | `createSectionRefBlock`   | `({ resolver, components, schema? })`: the canvas component for `$ref` blocks. The block selects as a whole (`data-kind="ref"`, `data-loading` until resolved); its section renders read-only with `components`. |
+| `emailFrame`              | `({ sheet, width?, background? })`: `{ frame, wrapper }` for live e-mail editing.                                                                                                                                |
+| `DEFAULT_BREAKPOINTS`     | Mobile 360, tablet 768, desktop 1280, full.                                                                                                                                                                      |
+| `breakpointFor`           | `(width, breakpoints?)`: the widest fixed breakpoint not wider than `width` (991 gives 768).                                                                                                                     |
+| `fitScale`                | `(available, width)`: the scale that fits `width` into `available`, never above 1 or 0.                                                                                                                          |
+| `MAX_AUTO_HEIGHT`         | Cap of an auto-height frame (20000).                                                                                                                                                                             |
 | `CONTEXT_MENU_COMMANDS`   | The default command ids of `Canvas.ContextMenu`.                                                                                                                                                                 |
 | `rangeSelection`          | `(store, id)`: the Shift+click selection.                                                                                                                                                                        |
 | `toggledSelection`        | `(store, id)`: the Mod+click selection.                                                                                                                                                                          |

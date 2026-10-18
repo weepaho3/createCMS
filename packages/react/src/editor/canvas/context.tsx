@@ -5,6 +5,7 @@ import type { CanvasInteractive } from './components';
 import type { DndStore } from './dnd';
 import type { Measurer } from './measurer';
 import type { PointerStore } from './pointer';
+import type { PreviewSurface } from './surface';
 
 export type CanvasResolveContextValue = {
   read: (kind: FieldKind, value: unknown, spec: Field) => unknown;
@@ -21,6 +22,13 @@ export type CanvasContextValue = CanvasResolveContextValue & {
   dragging: boolean;
   editing: boolean;
   inlineCaret: React.RefObject<InlineCaretPoint | null>;
+  /** Where the canvas renders; `null` until the host mounted. */
+  surface: PreviewSurface | null;
+  /**
+   * The host-page layer over a frame surface (toolbars, menus); `null` for
+   * an inline surface, whose overlay already lives in the host page.
+   */
+  hostLayer: HTMLElement | null;
   /**
    * Whether a click on a text field of `blockId` starts editing under the
    * click model (see `CanvasRootProps.clickToEdit`).
@@ -55,4 +63,9 @@ export function useCanvasResolveContext(
   componentName: string,
 ): CanvasContextValue {
   return useCanvasContext(componentName);
+}
+
+/** Where the canvas renders and how its coordinates map to the host page; `null` until mounted. */
+export function useSurface(): PreviewSurface | null {
+  return useCanvasContext('useSurface').surface;
 }

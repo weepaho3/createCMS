@@ -2,6 +2,7 @@ import * as React from 'react';
 
 import type { CanvasInteractive } from './components';
 import type { Measurer } from './measurer';
+import type { PreviewSurface } from './surface';
 
 import { createDndStore, type DndStore } from './dnd';
 import { createPointerStore, type PointerStore } from './pointer';
@@ -17,6 +18,13 @@ export type CanvasSurfaceHandle = {
   readonly measurer: Measurer;
   readonly interactive: CanvasInteractive;
   readonly editing: boolean;
+  /** Maps host-page client points into the host's document. */
+  readonly surface: PreviewSurface;
+  /**
+   * Lets a drag that started in another document track the pointer over
+   * this surface (a frame stops taking pointer events meanwhile).
+   */
+  readonly shield?: (on: boolean) => void;
 };
 
 export type CanvasSessionContextValue = {

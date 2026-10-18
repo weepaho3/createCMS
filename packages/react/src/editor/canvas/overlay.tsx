@@ -19,7 +19,19 @@ type OverlayState = {
   editorOverlay: boolean;
 };
 
+/** The layer the nearest `Canvas.Overlay` draws on. */
+export const OverlayLayerContext = React.createContext<'surface' | 'host'>(
+  'surface',
+);
+
 export type CanvasOverlayProps = React.ComponentPropsWithRef<'div'> & {
+  /**
+   * `surface` (default) draws inside the canvas document, scrolling with
+   * the content; `host` draws over a frame surface in the host page, for
+   * chrome that may leave the frame (toolbars, menus). Inline canvases
+   * have one layer, so `host` behaves like `surface` there.
+   */
+  layer?: 'surface' | 'host';
   render?: UseRenderComponentProps<'div', OverlayState>['render'];
 };
 
@@ -92,6 +104,7 @@ function ringFlags(
  * there so `absolute; inset: 0` covers the surface.
  */
 export function CanvasOverlay({
+  layer = 'surface',
   children,
   render,
   style,
@@ -115,7 +128,27 @@ export function CanvasOverlay({
     };
   }, [ctx.host]);
 
-  const layer = useRender<'div', OverlayState>({
+  // Over a frame, host-layer chrome may leave the frame (a toolbar above
+  // the first block); the layer's own transform maps content coordinates.
+  const hostLayer = useRender<'div', OverlayState>({
+    defaultTagName: 'div',
+    render,
+    props: {
+      ...rest,
+      style: {
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        pointerEvents: 'none',
+        zIndex: 'var(--editor-z-overlay, 1)',
+        ...style,
+      },
+      children,
+    },
+    state: { editorOverlay: true },
+  });
+
+  const surfaceLayer = useRender<'div', OverlayState>({
     defaultTagName: 'div',
     render,
     props: {
@@ -149,8 +182,16 @@ export function CanvasOverlay({
     },
   });
 
+  if (layer === 'host' && ctx.hostLayer) {
+    return createPortal(
+      <OverlayLayerContext.Provider value="host">
+        {hostLayer}
+      </OverlayLayerContext.Provider>,
+      ctx.hostLayer,
+    );
+  }
   if (!ctx.host) return null;
-  return createPortal(layer, ctx.host);
+  return createPortal(surfaceLayer, ctx.host);
 }
 
 export function CanvasSelectionRing({

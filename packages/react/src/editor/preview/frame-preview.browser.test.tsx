@@ -12,9 +12,32 @@ import { Editor } from '../index';
 afterEach(cleanup);
 
 // WebKit does not run listeners the host page adds inside a frame sandboxed
-// without `allow-scripts`, so selectable clicks and keys never reach the
-// editor there (TODO).
+// without `allow-scripts`: clicks arrive through the host shield there, and
+// the frame never takes focus, so keys stay in the host document.
 const noFrameListeners = server.browser === 'webkit';
+
+/** Clicks `el` in the frame the way a user would: through the shield when one covers the frame. */
+async function clickInFrame(host: HTMLElement, el: Element) {
+  const frame = frontFrame(host);
+  if (noFrameListeners) {
+    await waitFor(() => {
+      expect(host.querySelector('[data-editor-frame-shield]')).not.toBeNull();
+    });
+    const shield = host.querySelector('[data-editor-frame-shield]')!;
+    const frameRect = frame.getBoundingClientRect();
+    const rect = el.getBoundingClientRect();
+    shield.dispatchEvent(
+      new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        clientX: frameRect.left + rect.left + rect.width / 2,
+        clientY: frameRect.top + rect.top + rect.height / 2,
+      }),
+    );
+    return;
+  }
+  (el as HTMLElement).click();
+}
 
 type Probe = { store: EditorStore | null };
 
@@ -128,73 +151,67 @@ describe('Editor.FramePreview in a real browser', () => {
     expect(html).not.toContain('old');
   });
 
-  it.skipIf(noFrameListeners)(
-    'selectable click writes select and focus',
-    async () => {
-      const { host, store } = renderFrame({
-        html: HEADING_HTML,
-        selectable: true,
-      });
-      await waitFor(
-        () => {
-          expect(frontFrame(host).contentDocument).not.toBeNull();
-          expect(
-            frontFrame(host).contentDocument?.querySelector('h1'),
-          ).not.toBeNull();
-        },
-        { timeout: 5000 },
-      );
-      const doc = frontFrame(host).contentDocument;
-      if (doc === null) {
-        throw new Error('contentDocument is null on selectable frame');
-      }
-      const heading = doc.querySelector('h1');
-      if (!heading) throw new Error('missing heading');
-      heading.click();
-      await waitFor(() => {
-        const local = {
-          selected: store.getSession().selection[0] ?? null,
-          focus: store.getSession().focusedField,
-          editing: store.getSession().editing,
-        };
-        expect(local?.selected).toBe('h1');
-        expect(local?.focus).toEqual({ blockId: 'h1', key: 'text' });
-      });
-    },
-  );
+  it('selectable click writes select and focus', async () => {
+    const { host, store } = renderFrame({
+      html: HEADING_HTML,
+      selectable: true,
+    });
+    await waitFor(
+      () => {
+        expect(frontFrame(host).contentDocument).not.toBeNull();
+        expect(
+          frontFrame(host).contentDocument?.querySelector('h1'),
+        ).not.toBeNull();
+      },
+      { timeout: 5000 },
+    );
+    const doc = frontFrame(host).contentDocument;
+    if (doc === null) {
+      throw new Error('contentDocument is null on selectable frame');
+    }
+    const heading = doc.querySelector('h1');
+    if (!heading) throw new Error('missing heading');
+    await clickInFrame(host, heading);
+    await waitFor(() => {
+      const local = {
+        selected: store.getSession().selection[0] ?? null,
+        focus: store.getSession().focusedField,
+        editing: store.getSession().editing,
+      };
+      expect(local?.selected).toBe('h1');
+      expect(local?.focus).toEqual({ blockId: 'h1', key: 'text' });
+    });
+  });
 
-  it.skipIf(noFrameListeners)(
-    'selectable click on a slot selects its block without a field focus',
-    async () => {
-      const { host, store } = renderFrame({
-        html:
-          '<section data-editor-block="sec1">' +
-          '<div data-editor-slot="children"><p id="gap">gap</p></div>' +
-          '</section>',
-        selectable: true,
-      });
-      await waitFor(
-        () => {
-          expect(
-            frontFrame(host).contentDocument?.querySelector('#gap'),
-          ).not.toBeNull();
-        },
-        { timeout: 5000 },
-      );
-      const gap = frontFrame(host).contentDocument?.querySelector('#gap');
-      if (!gap) throw new Error('missing slot child');
-      (gap as HTMLElement).click();
-      await waitFor(() => {
-        const local = {
-          selected: store.getSession().selection[0] ?? null,
-          focus: store.getSession().focusedField,
-          editing: store.getSession().editing,
-        };
-        expect(local?.selected).toBe('sec1');
-        expect(local?.focus).toBeNull();
-      });
-    },
-  );
+  it('selectable click on a slot selects its block without a field focus', async () => {
+    const { host, store } = renderFrame({
+      html:
+        '<section data-editor-block="sec1">' +
+        '<div data-editor-slot="children"><p id="gap">gap</p></div>' +
+        '</section>',
+      selectable: true,
+    });
+    await waitFor(
+      () => {
+        expect(
+          frontFrame(host).contentDocument?.querySelector('#gap'),
+        ).not.toBeNull();
+      },
+      { timeout: 5000 },
+    );
+    const gap = frontFrame(host).contentDocument?.querySelector('#gap');
+    if (!gap) throw new Error('missing slot child');
+    await clickInFrame(host, gap);
+    await waitFor(() => {
+      const local = {
+        selected: store.getSession().selection[0] ?? null,
+        focus: store.getSession().focusedField,
+        editing: store.getSession().editing,
+      };
+      expect(local?.selected).toBe('sec1');
+      expect(local?.focus).toBeNull();
+    });
+  });
 
   it('form focus marks the block in the frame', async () => {
     const { host, store } = renderFrame({
@@ -287,43 +304,40 @@ describe('Editor.FramePreview in a real browser', () => {
     }
   });
 
-  it.skipIf(noFrameListeners)(
-    'stacked form plus selectable FramePreview writes field focus',
-    async () => {
-      const { host, getByTestId } = renderFrame({
-        html: HEADING_HTML,
-        selectable: true,
-        extra: <Editor.Form blockId="h1" data-testid="form" />,
-      });
-      await waitFor(
-        () => {
-          expect(frontFrame(host).contentDocument).not.toBeNull();
-          expect(
-            frontFrame(host).contentDocument?.querySelector('h1'),
-          ).not.toBeNull();
-        },
-        { timeout: 5000 },
-      );
-      const doc = frontFrame(host).contentDocument;
-      if (doc === null) {
-        throw new Error('contentDocument is null on selectable frame');
-      }
-      const heading = doc.querySelector('h1');
-      if (!heading) throw new Error('missing heading');
-      heading.click();
-      await waitFor(() => {
+  it('stacked form plus selectable FramePreview writes field focus', async () => {
+    const { host, getByTestId } = renderFrame({
+      html: HEADING_HTML,
+      selectable: true,
+      extra: <Editor.Form blockId="h1" data-testid="form" />,
+    });
+    await waitFor(
+      () => {
+        expect(frontFrame(host).contentDocument).not.toBeNull();
         expect(
-          getByTestId('form').querySelector('[data-focused]'),
+          frontFrame(host).contentDocument?.querySelector('h1'),
         ).not.toBeNull();
-      });
-      // The click moves real focus into the field's control.
-      await waitFor(() => {
-        const active = document.activeElement;
-        expect(active?.tagName).toBe('INPUT');
-        expect(getByTestId('form').contains(active)).toBe(true);
-      });
-    },
-  );
+      },
+      { timeout: 5000 },
+    );
+    const doc = frontFrame(host).contentDocument;
+    if (doc === null) {
+      throw new Error('contentDocument is null on selectable frame');
+    }
+    const heading = doc.querySelector('h1');
+    if (!heading) throw new Error('missing heading');
+    await clickInFrame(host, heading);
+    await waitFor(() => {
+      expect(
+        getByTestId('form').querySelector('[data-focused]'),
+      ).not.toBeNull();
+    });
+    // The click moves real focus into the field's control.
+    await waitFor(() => {
+      const active = document.activeElement;
+      expect(active?.tagName).toBe('INPUT');
+      expect(getByTestId('form').contains(active)).toBe(true);
+    });
+  });
 
   it.skipIf(noFrameListeners)(
     'keys pressed inside the frame run editor shortcuts',
