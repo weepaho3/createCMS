@@ -54,6 +54,8 @@ canvas entry.
   coordinates, iframe `load`, `contentEditable`.
 - Property-based (fast-check): `src/editor/core/store/properties.test.ts`,
   ops, inverses, history, serde and remap over random documents.
+- Real devices, touch, IME and screen readers: the manual
+  [device runbook](./DEVICE-RUNBOOK.md), with a results table per run.
 - Never run the `@createcms/core` vitest suite unbounded.
 
 ## Bundle size
