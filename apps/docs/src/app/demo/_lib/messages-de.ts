@@ -102,6 +102,16 @@ export const messagesDe: Messages = {
     editingEnded: (p) => `Bearbeitung von ${p.field} beendet.`,
     root: 'der Seite',
     refused: 'Das ist hier nicht möglich.',
+    dragPickedUp: (p) =>
+      `${named(p.block)} aufgenommen. Position ${p.position} von ${p.count} in ${p.parent}.`,
+    dragMoved: (p) =>
+      `Bewegt in ${p.parent}, Position ${p.position} von ${p.count}.`,
+    dragDropped: (p) =>
+      `${named(p.block)} in ${p.parent} abgelegt, Position ${p.position}.`,
+    dragCancelled: (p) =>
+      `Abgebrochen, ${named(p.block)} zurück auf Position ${p.position} von ${p.count} in ${p.parent}.`,
+    dragSourceRemoved: 'Ziehen abgebrochen: der Block wurde entfernt.',
+    dragNoTargets: 'Dieser Block kann nirgendwo anders hin.',
   },
   keys: {
     apple: { mod: '⌘', ctrl: '⌃', alt: '⌥', shift: '⇧', separator: '' },

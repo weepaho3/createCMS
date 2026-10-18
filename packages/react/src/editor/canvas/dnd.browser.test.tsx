@@ -34,6 +34,16 @@ function stackOptions(
   };
 }
 
+const center = (rect: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}) => ({
+  x: rect.x + rect.width / 2,
+  y: rect.y + rect.height / 2,
+});
+
 function dragPastThreshold(
   target: EventTarget,
   from: Point,
@@ -306,12 +316,9 @@ describe('Canvas pointer drag in a real browser', () => {
     dispatchPointer(handle, 'pointermove', { x: from.x + 6, y: from.y });
     dispatchPointer(handle, 'pointermove', edge);
     const first = host.scrollTop;
+    // Speed ramps up over 400 ms after entering the edge zone.
     await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          resolve();
-        });
-      });
+      setTimeout(resolve, 300);
     });
     const second = host.scrollTop;
     expect(second).toBeGreaterThan(first);
@@ -343,10 +350,71 @@ describe('Canvas pointer drag in a real browser', () => {
       x: c3Rect.x + c3Rect.width / 2,
       y: c3Rect.y + c3Rect.height - 2,
     };
-    dragPastThreshold(handle, from, to, {
-      pointerType: 'touch',
-      pointerId: 7,
+    const touch = { pointerType: 'touch', pointerId: 7 };
+    // A touch drag starts after a still 250 ms press.
+    dispatchPointer(handle, 'pointerdown', from, touch);
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 300);
     });
+    dispatchPointer(handle, 'pointermove', to, touch);
+    dispatchPointer(handle, 'pointerup', to, touch);
+    const ids = store.getDoc().nodes.stack1!.slots.children;
+    expect(ids.indexOf('c3')).toBeLessThan(ids.indexOf('c1'));
+  });
+
+  it('a touch that moves before the press completes does not drag', async () => {
+    const { host, store } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.BlockToolbar side="top">
+          <Canvas.DragHandle blockId="c1" />
+        </Canvas.BlockToolbar>
+      </Canvas.Overlay>,
+      stackOptions(columnStackBlocks, columnStackTree()),
+    );
+    const c3 = host.querySelector('[data-editor-block="c3"]')!;
+    await waitForLayout(c3);
+    store.select('c1');
+    await waitForLayout(host);
+    const handle = host.querySelector('[data-editor-drag-handle]')!;
+    const from = center(handle.getBoundingClientRect());
+    const to = center(rectOf(c3));
+    const touch = { pointerType: 'touch', pointerId: 8 };
+    dispatchPointer(handle, 'pointerdown', from, touch);
+    dispatchPointer(
+      handle,
+      'pointermove',
+      { x: from.x, y: from.y + 20 },
+      touch,
+    );
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 300);
+    });
+    dispatchPointer(handle, 'pointermove', to, touch);
+    dispatchPointer(handle, 'pointerup', to, touch);
+    expect(store.getDoc().nodes.stack1!.slots.children[0]).toBe('c1');
+  });
+
+  it('a pen drags after 5 px like a mouse away from a handle', async () => {
+    const { host, store } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.BlockToolbar side="top">
+          <Canvas.DragHandle blockId="c1" />
+        </Canvas.BlockToolbar>
+      </Canvas.Overlay>,
+      stackOptions(columnStackBlocks, columnStackTree()),
+    );
+    const c3 = host.querySelector('[data-editor-block="c3"]')!;
+    await waitForLayout(c3);
+    store.select('c1');
+    await waitForLayout(host);
+    const handle = host.querySelector('[data-editor-drag-handle]')!;
+    const from = center(handle.getBoundingClientRect());
+    const c3Rect = rectOf(c3);
+    const to = {
+      x: c3Rect.x + c3Rect.width / 2,
+      y: c3Rect.y + c3Rect.height - 2,
+    };
+    dragPastThreshold(handle, from, to, { pointerType: 'pen', pointerId: 9 });
     const ids = store.getDoc().nodes.stack1!.slots.children;
     expect(ids.indexOf('c3')).toBeLessThan(ids.indexOf('c1'));
   });

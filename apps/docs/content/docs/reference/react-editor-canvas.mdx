@@ -167,6 +167,32 @@ session itself and provides it to its children.
 </Editor.Root>
 ```
 
+## Dragging
+
+A drag starts by pointer type: a mouse on `Canvas.DragHandle` on the first
+movement, a mouse elsewhere (`Canvas.PaletteItem`) and a pen after 5 px, a
+touch after a still 250 ms press (moving earlier cancels it). Inputs,
+links, editable text and other buttons inside a drag source never start a
+drag. Dragged blocks carry `data-dragging`.
+
+The block under the pointer comes from the browser's own hit test
+(`elementsFromPoint`), so its cost follows the nesting depth, not the
+block count; the dragged block, its descendants and read-only subtrees are
+skipped. A leaf's outer 6 px and the 30 px band at the edge of a container
+taller than 120 px (past its children, along the parent's flow) drop
+beside it instead of into it. From that block the nearest gap of every
+slot up its ancestors that takes the type wins, and the target holds
+against jitter: it changes after 10 px of movement or for a clearly
+closer gap. Dragging one block of a multi-selection moves all selected
+blocks (the outermost ones), landing next to each other in document order
+as one undo step. When someone else removes a dragged block, the drag ends
+and `Editor.LiveAnnouncer` says so.
+
+Auto-scroll moves the innermost scroller under the pointer whose edge zone
+(a quarter of its size, at most 180 px) holds it, outer scrollers once it
+reaches its end, at up to 900 px per second regardless of the frame rate,
+ramping up over 400 ms after the pointer enters the zone.
+
 ## Frame surface
 
 `surface="frame"` renders the canvas inside a same-origin `srcdoc` iframe:
@@ -331,7 +357,7 @@ below 1 ms either way); a browser test keeps it under 1.5 times inline.
 | `CanvasPaletteItemProps`     | Props of `Canvas.PaletteItem`.                                                                    |
 | `PointerStore`               | External pointer snapshot store on the canvas context.                                            |
 | `PointerSnapshot`            | One pointer sample (client coordinates and target block id).                                      |
-| `DragSession`                | Active pointer drag state (new block or move).                                                    |
+| `DragSession`                | Active drag: `{ kind: 'new', type, properties? }` or `{ kind: 'move', id, ids? }` (`ids` for a multi-selection). |
 | `EditableField`              | What `useEditableField` returns: `editable`, `editing`, `props`.                                  |
 | `PlainTextOptions`           | `{ multiline, maxLength }`: the plain-text rules of a field.                                      |
 | `CanvasInlineTextProps`      | Props of `Canvas.InlineText`.                                                                     |
@@ -366,7 +392,7 @@ client component.
 | `toggledSelection`       | `(store, id)`: the Mod+click selection.                                     |
 | `depthParent`            | `(store, id)`: the Alt+click target, `null` at the top level.               |
 | `isSelectionClick`       | Whether a click's modifiers select without editing.                         |
-| `DND_THRESHOLD_PX`       | Pointer distance before a drag session starts.                              |
+| `DND_THRESHOLD_PX`       | Default pointer distance (5 px) before a mouse or pen drag starts.          |
 | `applyTextEdit`          | Apply a DOM text edit to a string value.                                    |
 | `EMPTY_FIELD_PLACEHOLDER`| Zero-width placeholder injected for empty inline fields.                    |
 | `normalizePlainText`     | `(text, multiline)`: line endings normalised; line breaks become spaces when single-line. |

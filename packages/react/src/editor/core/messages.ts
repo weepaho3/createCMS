@@ -80,6 +80,32 @@ export type Messages = {
     readonly root: string;
     /** A local edit the schema or placement rules refused. */
     readonly refused: string;
+    readonly dragPickedUp: (p: {
+      block: AnnouncedBlock;
+      position: number;
+      count: number;
+      parent: string;
+    }) => string;
+    readonly dragMoved: (p: {
+      position: number;
+      count: number;
+      parent: string;
+    }) => string;
+    readonly dragDropped: (p: {
+      block: AnnouncedBlock;
+      position: number;
+      parent: string;
+    }) => string;
+    readonly dragCancelled: (p: {
+      block: AnnouncedBlock;
+      position: number;
+      count: number;
+      parent: string;
+    }) => string;
+    /** The dragged block was removed by someone else. */
+    readonly dragSourceRemoved: string;
+    /** A keyboard drag found no other place the block may go. */
+    readonly dragNoTargets: string;
   };
   /** Key names for shortcut labels; `apple` platforms show symbols. */
   readonly keys: {
@@ -196,6 +222,16 @@ export const EN_MESSAGES: Messages = {
     editingEnded: (p) => `Stopped editing ${p.field}.`,
     root: 'the page',
     refused: 'That cannot go here.',
+    dragPickedUp: (p) =>
+      `${named(p.block)} picked up. Position ${p.position} of ${p.count} in ${p.parent}.`,
+    dragMoved: (p) =>
+      `Moved to ${p.parent}, position ${p.position} of ${p.count}.`,
+    dragDropped: (p) =>
+      `${named(p.block)} dropped in ${p.parent}, position ${p.position}.`,
+    dragCancelled: (p) =>
+      `Cancelled. ${named(p.block)} back at position ${p.position} of ${p.count} in ${p.parent}.`,
+    dragSourceRemoved: 'Drag cancelled: the block was removed.',
+    dragNoTargets: 'There is no other place this block can go.',
   },
   keys: {
     apple: { mod: '⌘', ctrl: '⌃', alt: '⌥', shift: '⇧', separator: '' },
