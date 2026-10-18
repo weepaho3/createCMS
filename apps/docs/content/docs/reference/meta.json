@@ -36,6 +36,7 @@
     "react-editor-cms",
     "react-editor-render",
     "react-editor-richtext",
+    "react-editor-collab",
     "editor-errors",
     "react-media",
     "edge",

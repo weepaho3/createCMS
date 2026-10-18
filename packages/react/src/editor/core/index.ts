@@ -272,7 +272,13 @@ export {
   PlacementError,
   placementMiddleware,
 } from './store/commands';
+export type {
+  DocStoreBackend,
+  DocStoreCore,
+  DocStoreCoreOptions,
+} from './store/doc-store';
 export {
+  createDocStoreCore,
   createJsonDocStore,
   MAX_HISTORY,
   MERGE_MS,

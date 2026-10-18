@@ -193,6 +193,81 @@ function stepOf(
 }
 
 /**
+ * Where a `DocStore` keeps its document. The store core validates every
+ * write with `applyOp` and keeps history and listeners; the backend stores
+ * the result. `write` gets the validated `ops`, the state before and the
+ * state they produce, and returns the state to publish (a CRDT backend
+ * returns its own view, which may order or repair the tree).
+ */
+export type DocStoreBackend = {
+  write(
+    ops: readonly Op[],
+    from: DocState,
+    to: DocState,
+    origin: Origin,
+  ): DocState;
+};
+
+/** A `DocStore` whose backend can also publish changes made elsewhere. */
+export type DocStoreCore = DocStore & {
+  /**
+   * Publishes `next`, a state the backend received from outside
+   * `transact` (a remote peer): drops the undo steps it conflicts with and
+   * notifies subscribers with origin `remote`. Returns the dropped steps.
+   */
+  receive(next: DocState): number;
+};
+
+const sameList = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && a.every((id, i) => id === b[i]);
+
+/** The changes and the history touch between two states of one document. */
+function diffStates(
+  prev: DocState,
+  next: DocState,
+): { changes: Change[]; touch: Touch } {
+  const touch = emptyTouch();
+  const changes: Change[] = [];
+  if (prev.rootId !== next.rootId) {
+    touch.all = true;
+    return { changes: [{ kind: 'node', id: next.rootId }], touch };
+  }
+  const ids = new Set([...Object.keys(prev.nodes), ...Object.keys(next.nodes)]);
+  for (const id of ids) {
+    const a = prev.nodes[id];
+    const b = next.nodes[id];
+    if (a === b) continue;
+    if (!a || !b || a.type !== b.type) {
+      touch.nodes.add(id);
+      changes.push({ kind: 'node', id });
+      continue;
+    }
+    if (a.parent?.id !== b.parent?.id || a.parent?.slot !== b.parent?.slot) {
+      touch.nodes.add(id);
+      changes.push({ kind: 'placement', id, keys: [] });
+    }
+    const slots = new Set([...Object.keys(a.slots), ...Object.keys(b.slots)]);
+    const changedSlots = [...slots].filter(
+      (slot) => !sameList(a.slots[slot] ?? [], b.slots[slot] ?? []),
+    );
+    if (changedSlots.length > 0) {
+      for (const slot of changedSlots) touch.slots.add(id + SEP + slot);
+      changes.push({ kind: 'placement', id, keys: changedSlots });
+    }
+    const keys = new Set([...Object.keys(a.props), ...Object.keys(b.props)]);
+    const changedKeys = [...keys].filter(
+      (key) => JSON.stringify(a.props[key]) !== JSON.stringify(b.props[key]),
+    );
+    if (changedKeys.length > 0) {
+      touch.propNodes.add(id);
+      for (const key of changedKeys) touch.props.add(id + SEP + key);
+      changes.push({ kind: 'props', id, keys: changedKeys });
+    }
+  }
+  return { changes, touch };
+}
+
+/**
  * The single-user `DocStore`: a flat node table with an undo history of op
  * inverses. Steps with the same `mergeKey` inside the merge window become
  * one; marks collect live writes for `squash` or `bail`; a remote change
@@ -201,16 +276,43 @@ function stepOf(
 export function createJsonDocStore(
   options: CreateJsonDocStoreOptions,
 ): DocStore {
+  const initial = normalize(options.initialValue);
+  return createDocStoreCore(
+    {
+      ...options,
+      initial: {
+        rootId: initial.rootId,
+        nodes: initial.nodes,
+        version: 0,
+        schemaVersion: options.initialValue.schemaVersion,
+      },
+    },
+    { write: (_ops, _from, to) => to },
+  );
+}
+
+/** History options of a store core, with the state it starts from. */
+export type DocStoreCoreOptions = Omit<
+  CreateJsonDocStoreOptions,
+  'initialValue'
+> & {
+  initial: DocState;
+};
+
+/**
+ * The history and transaction logic of every `DocStore`, over a `backend`
+ * that stores the document. `createJsonDocStore` keeps it in memory; a
+ * collaborative store writes through to a CRDT and calls `receive` for
+ * changes from other peers.
+ */
+export function createDocStoreCore(
+  options: DocStoreCoreOptions,
+  backend: DocStoreBackend,
+): DocStoreCore {
   const now = options.now ?? Date.now;
   const mergeMs = options.mergeMs ?? MERGE_MS;
   const maxEntries = options.maxEntries ?? MAX_HISTORY;
-  const initial = normalize(options.initialValue);
-  let state: DocState = {
-    rootId: initial.rootId,
-    nodes: initial.nodes,
-    version: 0,
-    schemaVersion: options.initialValue.schemaVersion,
-  };
+  let state: DocState = options.initial;
   let past: HistoryEntry[] = [];
   let future: HistoryEntry[] = [];
   let mergeOpen = false;
@@ -307,7 +409,7 @@ export function createJsonDocStore(
     return before - past.length - future.length;
   };
 
-  const store: DocStore = {
+  const store: DocStoreCore = {
     getSnapshot: () => state,
     subscribe(listener) {
       listeners.add(listener);
@@ -358,7 +460,7 @@ export function createJsonDocStore(
       }
       if (ops.length === 0) return { ops, inverse: [], invalidated: 0 };
       const { state: next, inverse } = applyAll(state, ops);
-      state = next;
+      state = backend.write(ops, state, next, origin);
       let invalidated = 0;
       if (origin === 'remote') invalidated = invalidate(ops, inverse);
       else if (origin !== 'history') record(ops, inverse, meta);
@@ -377,7 +479,7 @@ export function createJsonDocStore(
         past = past.slice(0, -1);
         return null;
       }
-      state = applied.state;
+      state = backend.write(entry.inverse, state, applied.state, 'history');
       past = past.slice(0, -1);
       future = [entry, ...future];
       mergeOpen = false;
@@ -395,7 +497,7 @@ export function createJsonDocStore(
         future = future.slice(1);
         return null;
       }
-      state = applied.state;
+      state = backend.write(entry.ops, state, applied.state, 'history');
       future = future.slice(1);
       past = [...past, entry];
       mergeOpen = false;
@@ -462,7 +564,12 @@ export function createJsonDocStore(
           applied.push(op);
           undo.unshift(result.inverse);
         }
-        state = { nodes, rootId, schemaVersion, version: state.version + 1 };
+        state = backend.write(
+          applied,
+          state,
+          { nodes, rootId, schemaVersion, version: state.version + 1 },
+          'history',
+        );
         for (const outer of marks) {
           outer.ops.push(...applied);
           outer.inverse.unshift(...undo);
@@ -486,6 +593,20 @@ export function createJsonDocStore(
     },
 
     getHistory: () => ({ past, future }),
+
+    receive(next) {
+      const { changes, touch } = diffStates(state, next);
+      state = { ...next, version: state.version + 1 };
+      if (changes.length === 0) return 0;
+      const keep = (entry: HistoryEntry): boolean =>
+        !conflicts(touchOf(entry.inverse, touchOf(entry.ops)), touch);
+      const before = past.length + future.length;
+      past = past.filter(keep);
+      future = future.filter(keep);
+      if (past.length + future.length < before) mergeOpen = false;
+      notify(changes, 'remote');
+      return before - past.length - future.length;
+    },
   };
   return store;
 }

@@ -649,6 +649,16 @@ History rules of `JsonDocStore`:
 | `HistoryStep`  | What `undo`/`redo` applied.                                                 |
 | `MarkId`       | Opaque handle of a mark.                                                    |
 
+
+A store with another backend (a CRDT, a server) reuses the history logic:
+
+| Name | Description |
+| --- | --- |
+| `createDocStoreCore`   | `(options, backend) => DocStoreCore`: the history and transaction logic of every store over a `DocStoreBackend`; `createJsonDocStore` and `createYjsDocStore` are built on it. |
+| `DocStoreBackend`      | `{ write(ops, from, to, origin) }`: stores validated writes and returns the state to publish.                                                    |
+| `DocStoreCore`         | `DocStore` plus `receive(next)`: publishes a change from another peer with origin `remote` and drops conflicting undo steps.                     |
+| `DocStoreCoreOptions`  | `{ initial, now?, mergeMs?, maxEntries? }`.                                                                                                      |
+
 ### Conformance
 
 `runDocStoreConformance(createStore, options?)` checks a `DocStore` against

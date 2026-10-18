@@ -1,7 +1,7 @@
 // Asserts the packaging guarantees of the built `@createcms/react` subpaths:
 // - every client entry starts with 'use client' (React Server Components
 //   treat the entry as a client boundary only with the directive), and the
-//   React-free `/editor/richtext` adapter carries none;
+//   React-free `/editor/richtext` and `/editor/collab` entries carry none;
 // - every React context is declared in exactly one file of `dist`, so
 //   `/editor` and `/editor/canvas` share one editor context instead of each
 //   bundling its own copy;
@@ -28,7 +28,10 @@ const CLIENT_ENTRIES = [
   'editor/cms/index.js',
   'media/index.js',
 ];
-const DIRECTIVE_FREE_ENTRIES = ['editor/richtext/index.js'];
+const DIRECTIVE_FREE_ENTRIES = [
+  'editor/richtext/index.js',
+  'editor/collab/index.js',
+];
 const PEER_FREE_ENTRIES = ['editor/index.js', 'editor/canvas/index.js'];
 const FORBIDDEN = [/^@tiptap\//, /^yjs$/, /^y-protocols(\/|$)/, /^happy-dom$/];
 const HEADLESS_ENTRIES = [
@@ -38,6 +41,7 @@ const HEADLESS_ENTRIES = [
   'editor/core/index.js',
   'editor/render/index.js',
   'editor/richtext/index.js',
+  'editor/collab/index.js',
 ];
 const UI_KITS = [/^@base-ui\//, /^@radix-ui\//, /^@floating-ui\//];
 

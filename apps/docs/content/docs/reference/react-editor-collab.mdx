@@ -1,0 +1,67 @@
+---
+title: Editor collaboration
+description: A DocStore over Yjs for several people editing one document, with atomic moves and fractional order keys.
+---
+
+`@createcms/react/editor/collab` lets several people edit one document at
+once. `createYjsDocStore` is a `DocStore` over a `Y.Doc`: pass it to the
+editor store and connect the `Y.Doc` to your sync provider. `yjs` (exactly
+`13.6.33`) and `y-protocols` are optional peer dependencies; this is the
+only entry that imports them. The entry has no React import and no
+directive.
+
+```tsx
+import { createYjsDocStore } from '@createcms/react/editor/collab';
+import { createEditorStore } from '@createcms/react/editor/core';
+import * as Y from 'yjs';
+
+const ydoc = new Y.Doc();
+// Connect ydoc to your provider (Hocuspocus, y-websocket, ...) here.
+
+const docStore = createYjsDocStore({ ydoc, initialValue: pageDocument });
+const store = createEditorStore({ schema, docStore });
+
+<Editor.Root store={store}>{/* chrome */}</Editor.Root>;
+```
+
+## How a document is stored
+
+Every block is one `Y.Map` in the `Y.Doc`'s `nodes` map:
+
+| Key         | Value                                                                                                   |
+| ----------- | ------------------------------------------------------------------------------------------------------- |
+| `type`      | The block type.                                                                                         |
+| `placement` | `YjsPlacement`: `{ parentId, slot, order }`, written as one value. `null` for the root.                 |
+| `props`     | A `Y.Map` of the props; concurrent writes to the same prop resolve by last writer wins, per key.        |
+| `slots`     | The slot names the block holds (empty slots included).                                                  |
+| `v`, `meta` | As in the document.                                                                                     |
+
+A move rewrites `placement` as a whole, so two people moving the same block
+never duplicate it: one move wins. `order` is a fractional index between
+the neighbours' keys (with a little randomness, so two runs typed at the
+same place do not interleave); siblings sort by `order`, then by id. Order
+keys never leave the store: exported documents keep plain arrays, and
+writes are validated like in the JSON store, so the tree stays valid.
+
+## Conflicts every peer resolves the same way
+
+- **Moved into a removed parent.** A block another person moved into a
+  parent that was removed at the same time shows at the end of the root's
+  `children`.
+- **Cycles.** Two concurrent moves can put two blocks inside each other.
+  The block with the greatest id in such a cycle shows at the end of the
+  root's `children`.
+
+Both rules only shape the derived tree; every peer derives the same tree
+from the same `Y.Doc`. Changes from other peers reach subscribers with
+origin `remote`, and the local undo steps they conflict with are dropped.
+
+## API
+
+| Name                       | Description                                                                                                                                                       |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createYjsDocStore`        | `(options) => YjsDocStore`: the store; passes the DocStore conformance suite.                                                                                     |
+| `CreateYjsDocStoreOptions` | `ydoc`, `initialValue?` (written when `ydoc` holds no document; peers seeding the same document agree), `now?`, `mergeMs?`, `maxEntries?`, `random?` (key jitter). |
+| `YjsDocStore`              | `DocStoreCore` plus `ydoc` and `destroy()` (stops listening to the `Y.Doc`).                                                                                      |
+| `YjsPlacement`             | `{ parentId, slot, order }` of one block.                                                                                                                         |
+| `yjsToDocument`            | `(ydoc) => EditorDocument \| null`: the document a `Y.Doc` holds, without order keys, for saving or rendering on the server.                                       |

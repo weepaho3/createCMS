@@ -28,6 +28,10 @@
     "media": {
       "baseline": 6456,
       "budget": 7500
+    },
+    "editor/collab": {
+      "baseline": 26279,
+      "budget": 29000
     }
   }
 }

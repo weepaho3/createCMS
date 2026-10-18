@@ -66,7 +66,13 @@ export {
   PlacementError,
   placementMiddleware,
 } from './commands';
+export type {
+  DocStoreBackend,
+  DocStoreCore,
+  DocStoreCoreOptions,
+} from './doc-store';
 export {
+  createDocStoreCore,
   createJsonDocStore,
   MAX_HISTORY,
   MERGE_MS,
