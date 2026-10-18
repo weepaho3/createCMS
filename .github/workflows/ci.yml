@@ -102,7 +102,7 @@ jobs:
           else
             echo "react=false" >> "$GITHUB_OUTPUT"
           fi
-          if echo "$files" | grep -qE '^(apps/docs/registry/|apps/docs/registry.json|apps/docs/public/r/|apps/docs/package.json|apps/docs/scripts/check-registry.mjs|apps/docs/scripts/stamp-registry.mjs|packages/react/package.json|apps/docs/components.json|bun\.lock$|turbo.json|\.github/workflows/ci\.yml$)'; then
+          if echo "$files" | grep -qE '^(apps/docs/registry/|apps/docs/registry.json|apps/docs/public/r/|apps/docs/package.json|apps/docs/scripts/check-registry.mjs|apps/docs/scripts/stamp-registry.mjs|apps/docs/scripts/registry-fixture.mjs|apps/docs/registry-fixture/|packages/react/package.json|packages/react/src/|apps/docs/components.json|bun\.lock$|turbo.json|\.github/workflows/ci\.yml$)'; then
             echo "registry=true" >> "$GITHUB_OUTPUT"
           else
             echo "registry=false" >> "$GITHUB_OUTPUT"
@@ -358,7 +358,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.registry == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -392,6 +392,14 @@ jobs:
 
       - name: Check registry assertions
         run: bun run --filter=docs registry:check
+
+      # Every item installed into a fresh Next.js app by `shadcn add`, then
+      # tsc, next build and a check of the rendered editor-app page.
+      - name: Build @createcms/react
+        run: bunx turbo run build --filter=@createcms/react
+
+      - name: Install the registry into a fixture app
+        run: node apps/docs/scripts/registry-fixture.mjs
 
   build:
     runs-on: ubuntu-latest

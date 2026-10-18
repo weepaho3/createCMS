@@ -37,6 +37,12 @@ Install an item by URL, or register the `@createcms` namespace once in your
 npx shadcn@latest add @createcms/editor-shell
 ```
 
+Items land in your components directory next to each other
+(`components/editor-shell.tsx`, ...), because they import each other by
+relative path. `editor-canvas` also copies `components/editor-canvas.css`
+(target sizes and the `editor-canvas-static` opt-in): import it from your
+global stylesheet, for example `@import '../components/editor-canvas.css';`.
+
 Items version in lockstep with `@createcms/react`. Every copied file starts
 with a stamp naming the release it came from, and every item pins
 `@createcms/react@^<version>`:

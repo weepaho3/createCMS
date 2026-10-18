@@ -268,6 +268,12 @@ to copies stamped below it. The per-item history lives in the
   `CmsSourcesProvider` come from `editor-form-createcms`; the `Field` parts
   and `fieldControls` (the shadcn controls for the built-in kinds) from
   `editor-field`. `editor-form` keeps `Form` and `FormSurface`.
+- **Items install into `components/`.** Item files are
+  `registry:component` instead of `registry:ui`, so shadcn copies them to
+  your components directory instead of `components/ui/` and the relative
+  imports between items resolve. Move previously copied `editor-*`,
+  `media-*` files from `components/ui/` to `components/` and update their
+  imports.
 - **`editor-shell` exports only the shell.** `EditorToolbar`,
   `EditorPalette`, `EditorOutline` and `EditorInspector` are their own items
   (`editor-toolbar`, `editor-palette`, `editor-outline`,

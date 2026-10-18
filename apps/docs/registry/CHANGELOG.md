@@ -36,6 +36,12 @@ between the two `@createcms/react` tags, for example
 - `editor-outline`: virtualized with `@tanstack/react-virtual`.
 - `editor-canvas`: accent-based theme tokens, 44px touch targets, a More
   menu (move to, wrap, copy, select parent) in the block toolbar.
+- **Breaking:** item files install into `components/` (file type
+  `registry:component`) instead of `components/ui/`, so the relative imports
+  between items resolve. Move copied files out of `components/ui/`.
+- Dependencies between items are full URLs
+  (`https://createcms.dev/r/<item>.json`); bare names resolved against the
+  shadcn registry and failed to install.
 - Every item carries the version stamp and pins `@createcms/react`.
 - `editor-toolbar`: command palette shortcuts use `CommandShortcut`, so
   the highlighted row keeps enough contrast (WCAG 1.4.3).

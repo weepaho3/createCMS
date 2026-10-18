@@ -7,8 +7,8 @@
     "@createcms/react@^0.3.2"
   ],
   "registryDependencies": [
-    "editor-app",
-    "editor-form-createcms"
+    "https://createcms.dev/r/editor-app.json",
+    "https://createcms.dev/r/editor-form-createcms.json"
   ],
   "files": [
     {

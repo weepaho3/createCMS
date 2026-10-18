@@ -13,11 +13,11 @@
     "@tiptap/suggestion@3.32.0"
   ],
   "registryDependencies": [
-    "editor-canvas",
-    "editor-chrome",
-    "editor-field",
-    "editor-form",
-    "editor-shell",
+    "https://createcms.dev/r/editor-canvas.json",
+    "https://createcms.dev/r/editor-chrome.json",
+    "https://createcms.dev/r/editor-field.json",
+    "https://createcms.dev/r/editor-form.json",
+    "https://createcms.dev/r/editor-shell.json",
     "alert",
     "alert-dialog",
     "button",

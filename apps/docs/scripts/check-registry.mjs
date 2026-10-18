@@ -101,6 +101,29 @@ for (const name of [...UI_ITEM_NAMES, ...BLOCK_ITEM_NAMES]) {
   }
 }
 
+// A bare name resolves against the shadcn registry in a consumer's
+// `shadcn add`: dependencies on items of this registry must be URLs.
+const REGISTRY_URL = 'https://createcms.dev/r/';
+for (const item of catalog.items) {
+  for (const dep of item.registryDependencies ?? []) {
+    if (catalogNames.has(dep)) {
+      console.error(
+        `check-registry: ${item.name} depends on "${dep}" by name; use ${REGISTRY_URL}${dep}.json`,
+      );
+      process.exit(1);
+    }
+    if (
+      dep.startsWith(REGISTRY_URL) &&
+      !catalogNames.has(dep.slice(REGISTRY_URL.length, -'.json'.length))
+    ) {
+      console.error(
+        `check-registry: ${item.name} depends on unknown item ${dep}`,
+      );
+      process.exit(1);
+    }
+  }
+}
+
 const uiItems = UI_ITEM_NAMES.map((name) =>
   assertNamedItem(readJson(`${name}.json`), name, 'registry:ui'),
 );
@@ -120,7 +143,7 @@ for (const name of GENERIC_ITEM_NAMES) {
     process.exit(1);
   }
   const deps = item.registryDependencies ?? [];
-  if (deps.some((dep) => dep.endsWith('-createcms'))) {
+  if (deps.some((dep) => dep.includes('-createcms'))) {
     console.error(
       `check-registry: generic item ${name} must not depend on a createcms item`,
     );
