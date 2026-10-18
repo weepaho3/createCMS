@@ -57,3 +57,6 @@ between the two `@createcms/react` tags, for example
   the host layer, so the frame edge no longer cuts them off; the frame
   fills the visible surface (`frame.minHeight`), so the space below the
   last block takes drops.
+- `editor-app` exports `DeviceCanvas` (the device-sized frame canvas that
+  fills the visible surface) for custom canvas pages. The outline focus ring
+  is inset, so the list edges no longer cut it off.

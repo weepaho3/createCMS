@@ -55,7 +55,7 @@ function OutlineRow({
     <Editor.OutlineItem
       blockId={row.id}
       data-active={selected || undefined}
-      className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[active]:bg-sidebar-accent focus-visible:ring-sidebar-ring absolute left-0 flex w-full items-center gap-2 rounded-md pr-2 text-sm outline-none focus-visible:ring-2 data-[active]:font-medium"
+      className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[active]:bg-sidebar-accent focus-visible:ring-sidebar-ring absolute left-0 flex w-full items-center gap-2 rounded-md pr-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-inset data-[active]:font-medium"
       style={{
         top: 0,
         height,

@@ -1,4 +1,8 @@
-export { EditorApp, EditorAppView } from '../../registry/editor-app';
+export {
+  DeviceCanvas,
+  EditorApp,
+  EditorAppView,
+} from '../../registry/editor-app';
 export type {
   EditorAppDocument,
   EditorAppError,

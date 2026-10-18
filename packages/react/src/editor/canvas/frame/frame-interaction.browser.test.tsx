@@ -117,6 +117,8 @@ describe('overlay over a frame surface', () => {
   it('a host-layer toolbar of the first block leaves the frame and stays clickable', async () => {
     let clicked = false;
     const { frame, store, getByTestId } = renderFrame({
+      // Room above the frame in the page.
+      wrap: (canvas) => <div style={{ paddingTop: 80 }}>{canvas}</div>,
       overlay: (
         <Canvas.Overlay layer="host">
           <Canvas.BlockToolbar side="top" data-testid="toolbar">
@@ -140,6 +142,33 @@ describe('overlay over a frame surface', () => {
     expect(Math.abs(box.left - block.left)).toBeLessThanOrEqual(1);
     toolbar.querySelector('button')!.click();
     expect(clicked).toBe(true);
+  });
+
+  it('a host-layer toolbar stays inside the block where the page clips the space above', async () => {
+    const { frame, store, getByTestId } = renderFrame({
+      wrap: (canvas) => (
+        <div style={{ marginTop: 80, height: 300, overflow: 'auto' }}>
+          {canvas}
+        </div>
+      ),
+      overlay: (
+        <Canvas.Overlay layer="host">
+          <Canvas.BlockToolbar side="top" data-testid="toolbar">
+            <button type="button">Act</button>
+          </Canvas.BlockToolbar>
+        </Canvas.Overlay>
+      ),
+    });
+    const doc = await connected(frame, 'h1');
+    act(() => store().select('h1'));
+    const toolbar = await waitFor(() => getByTestId('toolbar'));
+    const block = hostRect(
+      frame,
+      doc.querySelector('[data-editor-block="h1"]')!,
+    );
+    expect(toolbar.getBoundingClientRect().top).toBeGreaterThanOrEqual(
+      block.top - 1,
+    );
   });
 });
 
@@ -283,6 +312,80 @@ describe('drag and drop across the frame boundary', () => {
     const children = store().getDoc().nodes.root_1!.slots.children;
     expect(children).toHaveLength(3);
     expect(store().getDoc().nodes[children[2]!]!.type).toBe('paragraph');
+  });
+
+  it('starting to edit text in a scrolled page keeps its scroll position', async () => {
+    let scroller: HTMLDivElement | null = null;
+    const { frame, store } = renderFrame({
+      minHeight: 900,
+      wrap: (canvas) => (
+        <div
+          ref={(el) => {
+            scroller = el;
+          }}
+          style={{ height: 300, overflow: 'auto' }}
+        >
+          {canvas}
+        </div>
+      ),
+      overlay: (
+        <Canvas.Overlay>
+          <Canvas.InlineText />
+        </Canvas.Overlay>
+      ),
+    });
+    await connected(frame, 'p1');
+    await waitFor(() =>
+      expect(frame.getBoundingClientRect().height).toBeGreaterThanOrEqual(900),
+    );
+    scroller!.scrollTop = 60;
+    act(() => {
+      store().select('h1');
+      store().setEditing({ blockId: 'h1', key: 'text' });
+    });
+    await waitFor(() =>
+      expect(
+        frame.contentDocument!.querySelector('[data-editor-inline-text]'),
+      ).not.toBeNull(),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(scroller!.scrollTop).toBe(60);
+  });
+
+  it('a host-layer drag preview is fixed in the host page at the pointer', async () => {
+    const { frame } = renderFrame({
+      overlay: (
+        <Canvas.Overlay layer="host">
+          <Canvas.DragPreview data-testid="preview" />
+        </Canvas.Overlay>
+      ),
+      outside: (
+        <Canvas.PaletteItem type="paragraph" data-testid="palette">
+          Paragraph
+        </Canvas.PaletteItem>
+      ),
+    });
+    const doc = await connected(frame, 'p1');
+    const palette = document.querySelector('[data-editor-palette-item]')!;
+    const from = center(palette.getBoundingClientRect());
+    const to = center(
+      hostRect(frame, doc.querySelector('[data-editor-block="h1"]')!),
+    );
+    dispatchPointer(palette, 'pointerdown', from);
+    dispatchPointer(document, 'pointermove', { x: from.x + 6, y: from.y });
+    dispatchPointer(document, 'pointermove', to);
+    const preview = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>('[data-testid="preview"]');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    expect(preview.style.position).toBe('fixed');
+    expect(preview.parentElement).toBe(document.body);
+    await waitFor(() => {
+      const box = preview.getBoundingClientRect();
+      expect(Math.abs(box.left - (to.x + 16))).toBeLessThanOrEqual(2);
+    });
+    dispatchPointer(document, 'pointerup', to);
   });
 
   it('a drag near the edge of the page around a growing frame scrolls the page', async () => {

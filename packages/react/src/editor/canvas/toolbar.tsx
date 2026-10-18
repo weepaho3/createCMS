@@ -2,6 +2,7 @@ import * as React from 'react';
 
 import type { UseRenderComponentProps } from '../../use-render';
 import type { FieldRef } from '../core/store';
+import type { PreviewSurface } from './surface';
 
 import { composeRefs, useRender } from '../../use-render';
 import {
@@ -22,6 +23,7 @@ import {
 import { createInsertAdapters } from './insert-dom';
 import { OverlayLayerContext } from './overlay';
 import {
+  OVERLAY_TOOLBAR_ESTIMATE_PX,
   overlayChromeFitsAbove,
   overlayChromeFitsBelow,
   visibleIntersection,
@@ -128,6 +130,56 @@ export type CanvasBlockToolbarProps = React.ComponentPropsWithRef<'div'> & {
   render?: UseRenderComponentProps<'div', BlockToolbarState>['render'];
 };
 
+/**
+ * Whether host-layer chrome beside block `id` stays in sight: the page
+ * around a frame may clip it (a scroll container under an app bar), so the
+ * space above (or below) the block must lie inside every clipping
+ * ancestor of the frame.
+ */
+function hostChromeFits(
+  surface: PreviewSurface | null,
+  id: string | null,
+  side: 'top' | 'bottom',
+  offset: number,
+): { fits: boolean; hiddenTop: number } {
+  const all = { fits: true, hiddenTop: 0 };
+  const frame = surface?.window.frameElement;
+  if (!surface || surface.kind !== 'frame' || !frame || id === null) {
+    return all;
+  }
+  const el = surface.getElementsForNode(id)[0];
+  if (!el) return all;
+  const box = el.getBoundingClientRect();
+  const block = surface.toHost({
+    x: box.left,
+    y: box.top,
+    width: box.width,
+    height: box.height,
+  });
+  const view = frame.ownerDocument.defaultView;
+  if (!view) return all;
+  let top = 0;
+  let bottom = view.innerHeight;
+  for (let cur = frame.parentElement; cur; cur = cur.parentElement) {
+    const style = view.getComputedStyle(cur);
+    if (style.overflowY === 'visible' && style.overflowX === 'visible') {
+      continue;
+    }
+    const clip = cur.getBoundingClientRect();
+    top = Math.max(top, clip.top);
+    bottom = Math.min(bottom, clip.bottom);
+  }
+  const room = OVERLAY_TOOLBAR_ESTIMATE_PX + offset;
+  return {
+    fits:
+      side === 'bottom'
+        ? block.y + block.height + room <= bottom
+        : block.y - room >= top,
+    // How much of the block's top the page hides, in canvas pixels.
+    hiddenTop: Math.max(0, (top - block.y) / (surface.scale || 1)),
+  };
+}
+
 export function CanvasBlockToolbar({
   align = 'start',
   side = 'top',
@@ -195,11 +247,14 @@ export function CanvasBlockToolbar({
       doc.removeEventListener('scroll', onScroll, { capture: true });
     };
   }, [onHostLayer, canvas.host]);
-  const fitsOutside =
-    onHostLayer ||
-    (side === 'bottom'
+  const host = onHostLayer
+    ? hostChromeFits(canvas.surface, selected, side, offset)
+    : null;
+  const fitsOutside = host
+    ? host.fits
+    : side === 'bottom'
       ? overlayChromeFitsBelow(frameRect, view, offset)
-      : overlayChromeFitsAbove(frameRect, view, offset));
+      : overlayChromeFitsAbove(frameRect, view, offset);
 
   const sideStyle: React.CSSProperties = fitsOutside
     ? side === 'bottom'
@@ -275,7 +330,18 @@ export function CanvasBlockToolbar({
   });
 
   if (!active) return null;
-  const frame = fitsOutside ? frameRect : vis;
+  // Inside the block, the toolbar sits at the top the page leaves visible.
+  const hidden = Math.min(host?.hiddenTop ?? 0, frameRect.height);
+  const frame = fitsOutside
+    ? frameRect
+    : host
+      ? {
+          x: frameRect.x,
+          y: frameRect.y + hidden,
+          width: frameRect.width,
+          height: frameRect.height - hidden,
+        }
+      : vis;
 
   return (
     <div

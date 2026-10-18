@@ -467,4 +467,4 @@ function EditorApp({
   return <EditorAppView document={document} {...props} />;
 }
 
-export { EditorApp, EditorAppView };
+export { DeviceCanvas, EditorApp, EditorAppView };

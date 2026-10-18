@@ -429,7 +429,9 @@ export function CanvasInlineText({
       seededFor.current = key;
       sessionStart.current = storeValue;
       el.textContent = storeValue;
-      el.focus();
+      // on purpose: the glass may not sit over its field yet, and focus
+      // would scroll the page to wherever it is.
+      el.focus({ preventScroll: true });
       if (at) {
         const range = caretRangeAtPoint(doc, at.x, at.y);
         if (range && el.contains(range.startContainer)) {

@@ -1,8 +1,6 @@
 'use client';
 
 import { Editor, useEditor } from '@createcms/react/editor';
-import { Canvas } from '@createcms/react/editor/canvas';
-import * as React from 'react';
 
 import {
   PAGES_DOC,
@@ -12,6 +10,7 @@ import {
 import { demoRichText } from '@/app/demo/_lib/rich-text';
 import { useDemoFieldSources } from '@/app/demo/_lib/sources';
 import { useLocalDocument } from '@/app/demo/_lib/use-local-document';
+import { DeviceCanvas } from '@/components/editor-app';
 import {
   BlockToolbar,
   DragPreview,
@@ -27,7 +26,7 @@ import {
   CmsSourcesProvider,
   cmsFields,
 } from '@/components/editor-form-createcms';
-import { EditorShell, useDeviceFrame } from '@/components/editor-shell';
+import { EditorShell } from '@/components/editor-shell';
 import {
   Collapsible,
   CollapsibleContent,
@@ -57,25 +56,6 @@ function DocumentJson() {
   );
 }
 
-function DeviceCanvas(
-  props: Omit<React.ComponentProps<typeof Canvas.Root>, 'surface' | 'frame'>,
-) {
-  const frame = useDeviceFrame();
-  // A device frame narrower than the column sits centered in it.
-  return (
-    <Canvas.Root
-      surface="frame"
-      frame={frame}
-      {...props}
-      style={{
-        marginInline: 'auto',
-        maxWidth: frame.width === 'full' ? undefined : frame.width,
-        ...props.style,
-      }}
-    />
-  );
-}
-
 export function PagesLiveCanvas() {
   const sources = useDemoFieldSources();
   const { onChange, persistence } = useLocalDocument(PAGES_DOC);
@@ -100,11 +80,13 @@ export function PagesLiveCanvas() {
                 <SelectionRing />
                 <HoverRing />
                 <FieldRing />
-                <BlockToolbar side="top" align="start" />
                 <InsertButton placement="between" type="richText" />
+                <InlineText />
+              </Overlay>
+              <Overlay layer="host">
+                <BlockToolbar side="top" align="start" />
                 <DropIndicator />
                 <DragPreview />
-                <InlineText />
               </Overlay>
             </DeviceCanvas>
           </EditorShell>

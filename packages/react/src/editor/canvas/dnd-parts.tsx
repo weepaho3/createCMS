@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 
 import type { UseRenderComponentProps } from '../../use-render';
 import type { InsertTarget, InsertOrientation, InsertVariant } from './insert';
@@ -26,6 +27,7 @@ import {
   resolveDropTarget,
 } from './insert-dom';
 import { targetFor } from './keyboard-drag';
+import { OverlayLayerContext } from './overlay';
 import { useCanvasSession, type CanvasSurfaceHandle } from './provider';
 import { OVERLAY_CHROME_INSET_PX, visibleIntersection } from './rect';
 import { useHostViewBox, useMeasuredRect } from './rects';
@@ -1052,20 +1054,46 @@ export type CanvasDragPreviewProps = React.ComponentPropsWithRef<'div'> & {
 };
 
 const PREVIEW_OFFSET = { x: 16, y: 8 } as const;
-/** The preview never grows past this square. */
+/** The preview never grows wider than this. */
 export const DRAG_PREVIEW_MAX_PX = 280;
 
 function applyPreviewTransform(
   node: HTMLElement,
   snap: { x: number; y: number } | null,
+  fixed: boolean,
 ): void {
   if (snap === null) {
     node.style.visibility = 'hidden';
     return;
   }
   node.style.visibility = '';
-  // Beside the pointer, never under it: 16 px right, 8 px down.
-  node.style.transform = `translate3d(${snap.x + PREVIEW_OFFSET.x}px, ${snap.y + PREVIEW_OFFSET.y}px, 0)`;
+  // Beside the pointer, never under it: 16 px right, 8 px down, or above
+  // the pointer where a scroll container or the window would cut it off.
+  const below = snap.y + PREVIEW_OFFSET.y;
+  node.style.transform = `translate3d(${snap.x + PREVIEW_OFFSET.x}px, ${below}px, 0)`;
+  const box = node.getBoundingClientRect();
+  const limit = fixed
+    ? (node.ownerDocument.defaultView?.innerHeight ?? Infinity)
+    : visibleBottom(node);
+  if (box.height > 0 && box.bottom > limit) {
+    const scale = node.offsetHeight > 0 ? box.height / node.offsetHeight : 1;
+    const above = snap.y - PREVIEW_OFFSET.y - box.height / scale;
+    node.style.transform = `translate3d(${snap.x + PREVIEW_OFFSET.x}px, ${above}px, 0)`;
+  }
+}
+
+/** The lowest client y at which `el` is still visible in its document. */
+function visibleBottom(el: Element): number {
+  const view = el.ownerDocument.defaultView;
+  if (!view) return Infinity;
+  let bottom = view.innerHeight;
+  for (let cur = el.parentElement; cur; cur = cur.parentElement) {
+    const style = view.getComputedStyle(cur);
+    if (style.overflowY !== 'visible') {
+      bottom = Math.min(bottom, cur.getBoundingClientRect().bottom);
+    }
+  }
+  return bottom;
 }
 
 function previewSnap(
@@ -1100,6 +1128,15 @@ export function CanvasDragPreview({
   const moveId = session?.kind === 'move' ? session.id : '';
   const moveRect = useMeasuredRect(measurer, 'block', moveId);
   const nodeRef = React.useRef<HTMLDivElement | null>(null);
+  // On the host layer over a frame the preview is fixed in the host page
+  // at the pointer: no scroll container clips it or grows because of it,
+  // and it never lags behind a scrolling page.
+  const hostBody =
+    React.useContext(OverlayLayerContext) === 'host' &&
+    canvas?.surface?.kind === 'frame'
+      ? (canvas.hostLayer?.ownerDocument.body ?? null)
+      : null;
+  const fixed = hostBody !== null;
 
   // Position is written on the DOM node (rAF + translate3d). Subscribing
   // through React would re-render the tree on every pointermove.
@@ -1107,11 +1144,12 @@ export function CanvasDragPreview({
     if (canvas === null || session === null) return;
     const node = nodeRef.current;
     if (!isHTMLElement(node)) return;
+    const snap = () =>
+      fixed
+        ? dnd.getClientPoint()
+        : previewSnap(pointer, dnd, host, canvas?.surface ?? null);
     node.style.willChange = 'transform';
-    applyPreviewTransform(
-      node,
-      previewSnap(pointer, dnd, host, canvas?.surface ?? null),
-    );
+    applyPreviewTransform(node, snap(), fixed);
     let raf = 0;
     const onPointer = () => {
       if (raf !== 0) return;
@@ -1119,10 +1157,7 @@ export function CanvasDragPreview({
         raf = 0;
         const current = nodeRef.current;
         if (isHTMLElement(current)) {
-          applyPreviewTransform(
-            current,
-            previewSnap(pointer, dnd, host, canvas?.surface ?? null),
-          );
+          applyPreviewTransform(current, snap(), fixed);
         }
       });
     };
@@ -1132,15 +1167,11 @@ export function CanvasDragPreview({
       if (raf !== 0) cancelAnimationFrame(raf);
       node.style.willChange = '';
     };
-  }, [canvas, dnd, host, pointer, session]);
+  }, [canvas, dnd, host, pointer, session, fixed]);
 
   const width = Math.min(
     DRAG_PREVIEW_MAX_PX,
-    session?.kind === 'move' && moveRect ? moveRect.width : 80,
-  );
-  const height = Math.min(
-    DRAG_PREVIEW_MAX_PX,
-    session?.kind === 'move' && moveRect ? moveRect.height : 40,
+    session?.kind === 'move' && moveRect ? moveRect.width : 160,
   );
   const ctx = useEditorContext('Canvas.DragPreview');
   const count = session?.kind === 'move' ? (session.ids?.length ?? 1) : 1;
@@ -1164,11 +1195,13 @@ export function CanvasDragPreview({
       ref: composeRefs(nodeRef, rest.ref),
       'aria-hidden': true,
       style: {
-        position: 'absolute',
+        position: fixed ? 'fixed' : 'absolute',
         left: 0,
         top: 0,
+        zIndex: fixed ? 'var(--editor-z-drag-preview, 60)' : undefined,
+        // As wide as the dragged block up to the cap, as tall as its
+        // summary: a block-sized box would cover the drop targets.
         width,
-        height,
         overflow: 'hidden',
         pointerEvents: 'none',
         ...style,
@@ -1198,7 +1231,7 @@ export function CanvasDragPreview({
   // Pointer snapshots are host-relative absolute coordinates, so the
   // preview positions itself only inside a Canvas.Root surface.
   if (canvas === null || session === null) return null;
-  return element;
+  return hostBody ? createPortal(element, hostBody) : element;
 }
 
 /** Marks the dragged blocks with `data-dragging` while a move runs. */
