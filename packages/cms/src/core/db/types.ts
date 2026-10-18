@@ -64,10 +64,13 @@ export type TableColumns<
 > = Record<string, ColumnDefinition<ReferenceTarget, EnumTarget>>;
 
 export type IndexDefinition<ColumnName extends string> = {
+  /** The indexed columns; with `expression`, the columns it reads. */
   columns: readonly ColumnName[];
   unique?: boolean;
   using?: IndexUsing;
   where?: string;
+  /** A SQL expression indexed instead of `columns` (unqualified column names). */
+  expression?: string;
 };
 
 export type CompositePrimaryKey<ColumnName extends string> = {

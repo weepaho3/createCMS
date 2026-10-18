@@ -191,6 +191,34 @@
       }
     },
     {
+      // The media library kernel is importable without React (servers,
+      // workers, other frameworks) and has no runtime dependencies. Relative
+      // escapes out of src/media/core are caught by its boundary test.
+      "files": ["packages/react/src/media/core/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "react",
+                  "react/*",
+                  "react-dom",
+                  "react-dom/*",
+                  "@createcms/react",
+                  "@createcms/react/*",
+                  "@createcms/schema",
+                  "@createcms/schema/*"
+                ],
+                "message": "@createcms/react/media/core must stay React-free with no runtime dependencies."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       // node:test's `test()` returns the runner's promise; awaiting it is not
       // the caller's job.
       "files": ["scripts/**"],

@@ -9,16 +9,19 @@
 import type {
   MediaClient,
   MediaMessagesInput,
-  MediaUploadedAsset,
+  MediaUploadEntry,
 } from '@createcms/react/media';
 
 import {
   Media,
   mergeMediaMessages,
-  useMediaLibrary,
   useMediaMessages,
   useMediaSelection,
 } from '@createcms/react/media';
+import {
+  createMemoryFilterAdapter,
+  type FilterState,
+} from '@createcms/react/media/core';
 import * as React from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -33,7 +36,6 @@ import {
 import { cn } from '@/lib/utils';
 
 import {
-  MEDIA_EMPTY_CLASS,
   MediaAssetCard,
   MediaBreadcrumbs,
   MediaDropzone,
@@ -45,17 +47,13 @@ import {
   MediaLoadMore,
   MediaSearch,
   MediaUploadList,
-  matchesAccept,
 } from './media-library';
-
-/** Pages fetched automatically per folder or query while every listed asset is filtered out. */
-const AUTO_PAGE_LIMIT = 5;
 
 export type MediaPickerProps = {
   client: MediaClient;
   value?: string;
   onChange: (id: string) => void;
-  /** Like the `accept` attribute; filters the grid and the dropzone (default `image/*`). */
+  /** Like the `accept` attribute; filters the grid on the server and the dropzone (default `image/*`). */
   accept?: string;
   /** The dialog trigger; a `<Button>` labelled `picker.choose` when omitted. */
   trigger?: React.ReactElement;
@@ -69,6 +67,14 @@ export type MediaPickerProps = {
   className?: string;
 };
 
+/** MIME types and prefixes of an `accept` attribute (extensions are left out). */
+function mimeOfAccept(accept: string): string[] {
+  return accept
+    .split(',')
+    .map((rule) => rule.trim().toLowerCase())
+    .filter((rule) => rule.includes('/'));
+}
+
 function PickerSelection({ value }: { value: string | undefined }) {
   const { select } = useMediaSelection();
   const valueRef = React.useRef(value);
@@ -78,97 +84,6 @@ function PickerSelection({ value }: { value: string | undefined }) {
   }, [select]);
 
   return null;
-}
-
-/**
- * The grid with its own roving `tabIndex` over the assets that match
- * `accept`. `Media.Grid` hands `tabIndex=0` to the first listed asset, which
- * `MediaAssetCard` does not render when it fails `accept`; the override keeps
- * exactly one rendered option tabbable.
- */
-function PickerGrid({ accept }: { accept: string | undefined }) {
-  const { assets } = useMediaLibrary();
-  const { selected } = useMediaSelection();
-  const [focusedId, setFocusedId] = React.useState<string | null>(null);
-
-  const visible = assets.filter((asset) => matchesAccept(accept, asset));
-  const isVisible = (id: string | null): id is string =>
-    id !== null && visible.some((asset) => asset.id === id);
-  const activeId = isVisible(focusedId)
-    ? focusedId
-    : isVisible(selected[0] ?? null)
-      ? selected[0]
-      : (visible[0]?.id ?? null);
-
-  return (
-    <MediaGrid>
-      {(asset) => (
-        <MediaAssetCard
-          key={asset.id}
-          asset={asset}
-          accept={accept}
-          tabIndex={activeId === asset.id ? 0 : -1}
-          onFocus={() => setFocusedId(asset.id)}
-        />
-      )}
-    </MediaGrid>
-  );
-}
-
-/**
- * Appends pages while every listed asset is hidden by `accept` and a cursor
- * remains, at most `AUTO_PAGE_LIMIT` times per folder, search or sort.
- * Renders the empty notice once no cursor is left and no page showed an asset;
- * with a cursor left past the limit only `MediaLoadMore` stays.
- */
-function PickerAutoPage({ accept }: { accept: string | undefined }) {
-  const { messages: t } = useMediaMessages();
-  const {
-    assets,
-    folders,
-    folderId,
-    search,
-    sortBy,
-    sortDirection,
-    nextCursor,
-    status,
-    loadMore,
-  } = useMediaLibrary();
-  const attempts = React.useRef(0);
-  const queryKey = `${folderId ?? ''}\u0000${search}\u0000${sortBy}\u0000${sortDirection}`;
-  const lastQuery = React.useRef(queryKey);
-  if (lastQuery.current !== queryKey) {
-    lastQuery.current = queryKey;
-    attempts.current = 0;
-  }
-
-  const visible = assets.filter((asset) => matchesAccept(accept, asset));
-  const allHidden = assets.length > 0 && visible.length === 0;
-  const canAutoPage =
-    allHidden &&
-    nextCursor !== null &&
-    status === 'idle' &&
-    attempts.current < AUTO_PAGE_LIMIT;
-
-  React.useEffect(() => {
-    if (!canAutoPage) return;
-    attempts.current += 1;
-    void loadMore();
-  }, [canAutoPage, loadMore]);
-
-  if (
-    !allHidden ||
-    nextCursor !== null ||
-    status !== 'idle' ||
-    folders.length > 0
-  ) {
-    return null;
-  }
-  return (
-    <div data-slot="media-empty" className={MEDIA_EMPTY_CLASS}>
-      {t.list.empty}
-    </div>
-  );
 }
 
 function PickerFooter({
@@ -221,10 +136,17 @@ function MediaPicker({
     setOpen(false);
   };
 
-  const onUploaded = (assets: MediaUploadedAsset[]) => {
-    const only = assets.length === 1 ? assets[0] : undefined;
+  const onUploaded = (entries: MediaUploadEntry[]) => {
+    const only = entries.length === 1 ? entries[0].result : undefined;
     if (only) choose(only.id);
   };
+  // The picker keeps its filter in memory: it never touches the page URL.
+  const filterUrl = React.useMemo(() => {
+    const filter: FilterState = { sort: 'created_desc' };
+    const mime = mimeOfAccept(accept);
+    if (mime.length > 0) filter.mime = mime;
+    return createMemoryFilterAdapter(filter);
+  }, [accept]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -248,6 +170,8 @@ function MediaPicker({
         <Media.Root
           client={client}
           selection="single"
+          filterUrl={filterUrl}
+          expandedStorageKey={false}
           messages={messages}
           locale={locale}
         >
@@ -262,9 +186,10 @@ function MediaPicker({
             <MediaFolderList>
               {(folder) => <MediaFolderCard key={folder.id} folder={folder} />}
             </MediaFolderList>
-            <PickerGrid accept={accept} />
+            <MediaGrid onAction={(asset) => choose(asset.id)}>
+              {(asset) => <MediaAssetCard key={asset.id} asset={asset} />}
+            </MediaGrid>
             <MediaEmpty />
-            <PickerAutoPage accept={accept} />
             <MediaLoadMore />
             <MediaUploadList />
           </div>

@@ -5,18 +5,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { MediaMessagesInput } from './messages';
 
-import {
-  MediaBreadcrumbs,
-  MediaCrumb,
-  MediaRoot,
-  MediaSearch,
-} from './components';
+import { MediaSearch } from './collection';
+import { MediaBreadcrumbs, MediaCrumb } from './folders';
 import {
   createMediaFormatters,
   defaultMediaMessages,
   mediaErrorMessage,
   mergeMediaMessages,
 } from './messages';
+import { MediaRoot } from './root';
 import { makeClient, makeEntry, makeUploadState } from './test-fixtures';
 import {
   MediaUploadItem,

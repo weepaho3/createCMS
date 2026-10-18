@@ -239,6 +239,7 @@ describe('media.deleteFolder', () => {
       folders: 0,
       assets: 0,
       assetsInUse: 0,
+      pages: 0,
       skipped: [],
     });
 

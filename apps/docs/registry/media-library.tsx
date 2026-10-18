@@ -4,25 +4,31 @@
 // MediaLibraryLayout and every wrapper below must sit inside one.
 
 import type {
-  MediaAsset,
-  MediaBulkResult,
   MediaMessages,
-  MediaSortBy,
-  MediaSortDirection,
   MediaType,
   MediaUploadEntry,
 } from '@createcms/react/media';
+import type {
+  ConfirmDescriptor,
+  FilterSort,
+} from '@createcms/react/media/core';
 
 import {
+  Bulk,
+  Filter,
+  Folder,
+  Intake,
   Media,
+  Selection,
   mediaErrorMessage,
   mediaTypeOf,
-  useMediaLibrary,
+  useMediaFacets,
+  useMediaFilter,
   useMediaMessages,
-  useMediaSelection,
   useMediaUploads,
 } from '@createcms/react/media';
 import {
+  ChevronRightIcon,
   CircleAlertIcon,
   CircleCheckIcon,
   CirclePauseIcon,
@@ -54,11 +60,11 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import {
   Breadcrumb,
+  BreadcrumbEllipsis,
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
@@ -73,8 +79,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import {
@@ -98,68 +109,14 @@ const TYPE_ICONS: Record<
 };
 
 const SORT_OPTIONS: Array<{
-  value: string;
+  value: FilterSort;
   label: Exclude<keyof MediaMessages['sort'], 'label'>;
-  sortBy: MediaSortBy;
-  sortDirection: MediaSortDirection;
 }> = [
-  {
-    value: 'createdAt:desc',
-    label: 'newest',
-    sortBy: 'createdAt',
-    sortDirection: 'desc',
-  },
-  {
-    value: 'createdAt:asc',
-    label: 'oldest',
-    sortBy: 'createdAt',
-    sortDirection: 'asc',
-  },
-  {
-    value: 'slug:asc',
-    label: 'nameAsc',
-    sortBy: 'slug',
-    sortDirection: 'asc',
-  },
-  {
-    value: 'slug:desc',
-    label: 'nameDesc',
-    sortBy: 'slug',
-    sortDirection: 'desc',
-  },
-  {
-    value: 'size:asc',
-    label: 'sizeAsc',
-    sortBy: 'size',
-    sortDirection: 'asc',
-  },
-  {
-    value: 'size:desc',
-    label: 'sizeDesc',
-    sortBy: 'size',
-    sortDirection: 'desc',
-  },
+  { value: 'created_desc', label: 'newest' },
+  { value: 'created_asc', label: 'oldest' },
+  { value: 'name_asc', label: 'nameAsc' },
+  { value: 'size_desc', label: 'sizeDesc' },
 ];
-
-/** Mirrors the `accept` attribute for a listed asset: `.ext` against the slug, `type/*` and exact types against the MIME type. */
-export function matchesAccept(
-  accept: string | undefined,
-  asset: Pick<MediaAsset, 'mimeType' | 'slug'>,
-): boolean {
-  if (!accept) return true;
-  const rules = accept
-    .split(',')
-    .map((rule) => rule.trim().toLowerCase())
-    .filter(Boolean);
-  if (rules.length === 0) return true;
-  const type = asset.mimeType.toLowerCase();
-  const name = asset.slug.toLowerCase();
-  return rules.some((rule) => {
-    if (rule.startsWith('.')) return name.endsWith(rule);
-    if (rule.endsWith('/*')) return type.startsWith(rule.slice(0, -1));
-    return type === rule;
-  });
-}
 
 function errorCode(error: unknown): string | undefined {
   if (typeof error === 'object' && error !== null && 'code' in error) {
@@ -179,15 +136,44 @@ function MediaBreadcrumbs({
   return (
     <Media.Breadcrumbs
       data-slot="media-breadcrumbs"
-      aria-label={t.folder.path}
       className={cn('min-w-0', className)}
       render={<Breadcrumb />}
       {...props}
     >
-      {(path) => (
+      {({ head, overflow, tail }) => (
         <BreadcrumbList>
           <MediaCrumb folder={null}>{t.folder.root}</MediaCrumb>
-          {path.map((folder) => (
+          {head.map((folder) => (
+            <React.Fragment key={folder.id}>
+              <BreadcrumbSeparator />
+              <MediaCrumb folder={folder} />
+            </React.Fragment>
+          ))}
+          {overflow.length > 0 ? (
+            <>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    aria-label={t.folder.overflow}
+                    render={<button type="button" className="cursor-pointer" />}
+                  >
+                    <BreadcrumbEllipsis />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    {overflow.map((folder) => (
+                      <Media.Crumb
+                        key={folder.id}
+                        folder={folder}
+                        render={<DropdownMenuItem />}
+                      />
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </BreadcrumbItem>
+            </>
+          ) : null}
+          {tail.map((folder) => (
             <React.Fragment key={folder.id}>
               <BreadcrumbSeparator />
               <MediaCrumb folder={folder} />
@@ -206,7 +192,10 @@ function MediaCrumb({
   return (
     <BreadcrumbItem data-slot="media-crumb">
       <Media.Crumb
-        className={className}
+        className={cn(
+          'rounded-sm data-drop-over:ring-media-drop data-drop-over:ring-2',
+          className,
+        )}
         {...props}
         render={(crumbProps, state) =>
           state.current ? (
@@ -241,7 +230,6 @@ function MediaSearch({
     <Media.Search
       data-slot="media-search"
       placeholder={t.search.label}
-      aria-label={t.search.label}
       className={cn('w-full sm:w-56', className)}
       render={<Input />}
       {...props}
@@ -251,19 +239,17 @@ function MediaSearch({
 
 function MediaSortSelect({ className }: { className?: string }) {
   const { messages: t } = useMediaMessages();
-  const { sortBy, sortDirection, setSort } = useMediaLibrary();
-  const value = `${sortBy}:${sortDirection}`;
-
+  const { filter, set } = useMediaFilter();
   return (
     <Select
-      value={value}
+      value={filter.sort}
       items={SORT_OPTIONS.map((option) => ({
         value: option.value,
         label: t.sort[option.label],
       }))}
       onValueChange={(next) => {
         const option = SORT_OPTIONS.find((entry) => entry.value === next);
-        if (option) setSort(option.sortBy, option.sortDirection);
+        if (option) set({ sort: option.value });
       }}
     >
       <SelectTrigger
@@ -276,7 +262,7 @@ function MediaSortSelect({ className }: { className?: string }) {
       <SelectContent>
         {SORT_OPTIONS.map((option) => (
           <SelectItem key={option.value} value={option.value}>
-            {option.label}
+            {t.sort[option.label]}
           </SelectItem>
         ))}
       </SelectContent>
@@ -286,95 +272,108 @@ function MediaSortSelect({ className }: { className?: string }) {
 
 function MediaNewFolder({ className }: { className?: string }) {
   const { messages: t } = useMediaMessages();
-  const { createFolder, clearMutationError } = useMediaLibrary();
-  const [open, setOpen] = React.useState(false);
-  const [name, setName] = React.useState('');
-  const [pending, setPending] = React.useState(false);
-  const inputId = React.useId();
-
-  const submit = async () => {
-    const trimmed = name.trim();
-    if (!trimmed || pending) return;
-    setPending(true);
-    try {
-      await createFolder(trimmed);
-      setName('');
-      setOpen(false);
-    } catch {
-      // The store holds the rejection; MediaMutationError below renders it.
-    } finally {
-      setPending(false);
-    }
-  };
-
-  const onOpenChange = (next: boolean) => {
-    setOpen(next);
-    if (!next) clearMutationError();
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger
-        render={
-          <Button
-            type="button"
-            variant="outline"
-            data-slot="media-new-folder"
-            className={cn(className)}
-          >
-            <FolderPlusIcon data-icon="inline-start" aria-hidden="true" />
-            {t.folder.create}
-          </Button>
-        }
+  const [creating, setCreating] = React.useState(false);
+  if (creating) {
+    return (
+      <Folder.Create
+        data-slot="media-new-folder-input"
+        className={cn('w-44', className)}
+        render={<Input />}
+        onDone={() => setCreating(false)}
       />
-      <DialogContent className="max-w-sm">
-        <form
-          className="flex flex-col gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submit();
-          }}
+    );
+  }
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      data-slot="media-new-folder"
+      className={cn(className)}
+      onClick={() => setCreating(true)}
+    >
+      <FolderPlusIcon data-icon="inline-start" aria-hidden="true" />
+      {t.folder.create}
+    </Button>
+  );
+}
+
+const CHIP_CLASS =
+  'rounded-full border px-3 py-1 text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-pressed:bg-primary aria-pressed:text-primary-foreground';
+
+function MediaFilterBar({ className }: { className?: string }) {
+  const facets = useMediaFacets();
+  return (
+    <div
+      data-slot="media-filters"
+      className={cn('flex flex-wrap items-center gap-2', className)}
+    >
+      {(['image', 'video', 'document'] as const).map((kind) => (
+        <Filter.Chip
+          key={kind}
+          dimension="kinds"
+          value={kind}
+          facets={facets}
+          className={CHIP_CLASS}
+        />
+      ))}
+      <Filter.Chip
+        dimension="provenance"
+        value="ai_generated"
+        facets={facets}
+        className={CHIP_CLASS}
+      />
+      <Filter.Chip dimension="usage" value="unused" className={CHIP_CLASS} />
+      <Filter.Chip dimension="missingAlt" value={true} className={CHIP_CLASS} />
+      <Filter.Clear
+        render={<Button type="button" variant="ghost" size="sm" />}
+      />
+      <Filter.Scope className="text-muted-foreground basis-full text-xs">
+        {({ label, searchAll, allLabel }) => (
+          <>
+            {label}{' '}
+            <button type="button" className="underline" onClick={searchAll}>
+              {allLabel}
+            </button>
+          </>
+        )}
+      </Filter.Scope>
+    </div>
+  );
+}
+
+// --- Folder tree -----------------------------------------------------------------
+
+function MediaFolderTree({
+  className,
+  ...props
+}: Omit<React.ComponentProps<typeof Folder.Tree>, 'children'>) {
+  return (
+    <Folder.Tree
+      data-slot="media-folder-tree"
+      className={cn('flex flex-col text-sm', className)}
+      {...props}
+    >
+      {(row) => (
+        <Folder.Item
+          row={row}
+          style={{ paddingInlineStart: `${(row.level - 1) * 0.75 + 0.25}rem` }}
+          className="hover:bg-muted data-current:bg-muted data-picked:bg-primary/10 data-drop-over:ring-media-drop flex cursor-pointer items-center gap-1 rounded-md py-1 pr-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 data-drop-over:ring-2 aria-busy:opacity-60"
         >
-          <DialogHeader>
-            <DialogTitle>{t.folder.createTitle}</DialogTitle>
-            <DialogDescription>{t.folder.createDescription}</DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={inputId} className="text-sm font-medium">
-              {t.folder.name}
-            </label>
-            <Input
-              id={inputId}
-              value={name}
-              autoFocus
-              disabled={pending}
-              onChange={(event) => setName(event.currentTarget.value)}
-            />
-          </div>
-          <MediaMutationError />
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={pending}
-              onClick={() => onOpenChange(false)}
-            >
-              {t.action.cancel}
-            </Button>
-            <Button type="submit" disabled={pending || name.trim() === ''}>
-              {pending ? (
-                <LoaderCircleIcon
-                  data-icon="inline-start"
-                  className="animate-spin"
-                  aria-hidden="true"
-                />
-              ) : null}
-              {t.action.create}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+          <Folder.Toggle className="flex size-4 items-center justify-center transition-transform data-expanded:rotate-90">
+            <ChevronRightIcon className="size-3.5" />
+          </Folder.Toggle>
+          {row.hasChildren ? null : (
+            <span className="size-4" aria-hidden="true" />
+          )}
+          <FolderIcon
+            className="text-muted-foreground size-4 shrink-0"
+            aria-hidden="true"
+          />
+          <span className="truncate">{row.name}</span>
+          <Folder.Rename className="h-7" render={<Input />} />
+        </Folder.Item>
+      )}
+    </Folder.Tree>
   );
 }
 
@@ -407,6 +406,7 @@ function MediaFolderCard({
         folder={folder}
         className={cn(
           'bg-card hover:bg-muted focus-visible:ring-ring/50 flex min-w-0 cursor-pointer items-center gap-2 rounded-lg border p-3 text-left text-sm outline-none focus-visible:ring-[3px]',
+          'data-drop-over:ring-media-drop data-drop-over:ring-2 data-drop-flash:bg-primary/10',
           className,
         )}
         {...props}
@@ -428,29 +428,40 @@ function MediaGrid({
   return (
     <Media.Grid
       data-slot="media-grid"
+      minCell={144}
+      gap={12}
       className={cn(
-        'grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-3 outline-none data-[status=loading]:opacity-60',
+        'outline-none transition-opacity data-[status=refreshing]:opacity-60',
         className,
       )}
+      renderUpload={(entry) => <MediaUploadTile key={entry.id} entry={entry} />}
       {...props}
     />
   );
 }
 
+function MediaUploadTile({ entry }: { entry: MediaUploadEntry }) {
+  return (
+    <Media.UploadTile
+      data-slot="media-upload-tile"
+      className="bg-card flex flex-col gap-2 overflow-hidden rounded-lg border p-2 opacity-80"
+    >
+      <div className="bg-muted flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md">
+        <Media.UploadPreview className="size-full object-cover" />
+      </div>
+      <Progress value={Math.round(entry.progress * 100)} />
+    </Media.UploadTile>
+  );
+}
+
 function MediaAssetCard({
   asset,
-  accept,
   className,
   ...props
-}: React.ComponentProps<typeof Media.Item> & {
-  /** Like the `accept` attribute; a non-matching asset renders nothing. */
-  accept?: string;
-}) {
-  const { messages: t, format } = useMediaMessages();
-  if (!matchesAccept(accept, asset)) return null;
+}: React.ComponentProps<typeof Media.Item>) {
+  const { messages: t } = useMediaMessages();
   const type = mediaTypeOf(asset.mimeType);
   const Icon = TYPE_ICONS[type];
-
   return (
     <Media.Item
       asset={asset}
@@ -462,65 +473,98 @@ function MediaAssetCard({
       )}
       {...props}
     >
-      <div className="bg-muted flex aspect-square items-center justify-center overflow-hidden rounded-md">
+      <div className="bg-muted relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md">
         <Media.Thumbnail
           className="size-full object-cover data-error:hidden"
           fallback={
             <Icon className="text-muted-foreground size-8" aria-hidden="true" />
           }
         />
+        <Selection.Checkbox className="absolute top-1.5 left-1.5 size-4 accent-[var(--color-primary)]" />
       </div>
-      <span className="truncate text-sm" title={asset.slug}>
-        {asset.slug}
-      </span>
-      <div className="flex flex-wrap items-center justify-between gap-1">
-        <Badge variant="secondary">{t.type[type]}</Badge>
+      <div className="flex items-center gap-1">
+        <span className="min-w-0 flex-1 truncate text-sm" aria-hidden="true">
+          {asset.originalName ?? asset.slug}
+        </span>
         {asset.status === 'private' ? (
-          <Badge variant="outline" data-slot="media-asset-status">
+          <Badge
+            variant="outline"
+            data-slot="media-asset-status"
+            aria-hidden="true"
+          >
             {t.visibility.private}
           </Badge>
         ) : null}
-        <span className="text-muted-foreground text-xs tabular-nums">
-          {format.bytes(asset.size)}
-        </span>
       </div>
     </Media.Item>
   );
 }
 
-// --- Dropzone ------------------------------------------------------------------
+// --- Intake ------------------------------------------------------------------------
 
 function MediaDropzone({
   className,
   children,
   ...props
-}: Omit<React.ComponentProps<typeof Media.Dropzone>, 'children'> & {
-  children?: React.ComponentProps<typeof Media.Dropzone>['children'];
-}) {
+}: React.ComponentProps<typeof Intake.Dropzone>) {
   const { messages: t } = useMediaMessages();
   return (
-    <Media.Dropzone
+    <Intake.Dropzone
       data-slot="media-dropzone"
       className={cn(
-        'text-muted-foreground hover:bg-muted/50 focus-visible:ring-ring/50 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-6 text-sm outline-none transition-colors focus-visible:ring-[3px]',
-        'data-drag-active:border-media-drop data-drag-active:ring-media-drop/40 data-drag-active:text-foreground data-drag-active:ring-2',
-        'data-uploading:cursor-progress data-uploading:opacity-70',
+        'text-muted-foreground flex w-full flex-wrap items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-6 text-sm transition-colors',
+        'data-[drag-over=window]:border-media-drop data-[drag-over=zone]:border-media-drop data-[drag-over=zone]:ring-media-drop/40 data-[drag-over=zone]:text-foreground data-[drag-over=zone]:ring-2',
         className,
       )}
       {...props}
     >
-      {children ??
-        (({ dragActive, uploading }) => (
-          <>
-            <UploadIcon className="size-4" aria-hidden="true" />
-            {uploading
-              ? t.dropzone.uploading
-              : dragActive
-                ? t.dropzone.active
-                : t.dropzone.idle}
-          </>
-        ))}
-    </Media.Dropzone>
+      {children ?? (
+        <>
+          <UploadIcon className="size-4" aria-hidden="true" />
+          <span>{t.dropzone.idle}</span>
+          <Intake.Input
+            accept={props.accept}
+            render={<Button type="button" variant="outline" size="sm" />}
+          />
+          <Intake.FolderInput
+            render={<Button type="button" variant="ghost" size="sm" />}
+          />
+        </>
+      )}
+    </Intake.Dropzone>
+  );
+}
+
+function MediaDropOverlay() {
+  return (
+    <Intake.Overlay
+      data-slot="media-drop-overlay"
+      className="bg-background/80 border-media-drop text-foreground fixed inset-4 z-50 flex items-center justify-center rounded-xl border-2 border-dashed text-lg font-medium backdrop-blur-sm"
+    />
+  );
+}
+
+function MediaFolderPrompt() {
+  return (
+    <Intake.FolderPrompt>
+      {({ recreate, flatten, cancel, recreateLabel, flattenLabel }) => (
+        <AlertDialog open onOpenChange={(open) => (open ? null : cancel())}>
+          <AlertDialogContent data-slot="media-folder-prompt">
+            <AlertDialogHeader>
+              <AlertDialogTitle>{recreateLabel}</AlertDialogTitle>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel type="button" onClick={flatten}>
+                {flattenLabel}
+              </AlertDialogCancel>
+              <AlertDialogAction type="button" onClick={recreate}>
+                {recreateLabel}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+    </Intake.FolderPrompt>
   );
 }
 
@@ -576,7 +620,6 @@ function MediaUploadList({ className }: { className?: string }) {
   const { messages: t } = useMediaMessages();
   const { files } = useMediaUploads();
   if (files.length === 0) return null;
-
   return (
     <section
       data-slot="media-upload-list"
@@ -638,18 +681,14 @@ const MEDIA_EMPTY_CLASS =
 
 function MediaEmpty({
   className,
-  children,
   ...props
 }: React.ComponentProps<typeof Media.Empty>) {
-  const { messages: t } = useMediaMessages();
   return (
     <Media.Empty
       data-slot="media-empty"
       className={cn(MEDIA_EMPTY_CLASS, className)}
       {...props}
-    >
-      {children ?? t.list.empty}
-    </Media.Empty>
+    />
   );
 }
 
@@ -715,190 +754,233 @@ function MediaMutationError({
 
 function MediaLoadMore({
   className,
-  children,
   ...props
 }: React.ComponentProps<typeof Media.LoadMore>) {
-  const { messages: t } = useMediaMessages();
   return (
     <Media.LoadMore
       data-slot="media-load-more"
-      className={cn('self-center not-data-has-more:hidden', className)}
+      className={cn('self-center', className)}
       render={<Button type="button" variant="outline" />}
       {...props}
-    >
-      {children ?? t.action.loadMore}
-    </Media.LoadMore>
+    />
   );
 }
 
-// --- Selection bar -------------------------------------------------------------
+// --- Selection and bulk ------------------------------------------------------------
 
-function MediaSelectionBar({ className }: { className?: string }) {
+/** A confirm dialog driven by `Bulk.Action`'s `confirm` callback. */
+function useConfirmDialog() {
   const { messages: t, format } = useMediaMessages();
-  const { selected, clear } = useMediaSelection();
-  const { folders, move, setStatus, archive } = useMediaLibrary();
-  const [pending, setPending] = React.useState(false);
-  const [skipped, setSkipped] = React.useState(0);
-  const [moveOpen, setMoveOpen] = React.useState(false);
-
-  React.useEffect(() => {
-    if (selected.length === 0) setSkipped(0);
-  }, [selected.length]);
-
-  if (selected.length === 0) return null;
-
-  const run = async (action: () => Promise<MediaBulkResult>) => {
-    if (pending) return;
-    setPending(true);
-    setSkipped(0);
-    try {
-      const result = await action();
-      setSkipped(result.skipped.length);
-    } catch {
-      // The store holds the rejection; MediaMutationError renders it.
-    } finally {
-      setPending(false);
-    }
+  const [pending, setPending] = React.useState<{
+    descriptor: ConfirmDescriptor;
+    resolve: (ok: boolean) => void;
+  } | null>(null);
+  const confirm = React.useCallback(
+    (descriptor: ConfirmDescriptor) =>
+      new Promise<boolean>((resolve) => setPending({ descriptor, resolve })),
+    [],
+  );
+  const close = (ok: boolean) => {
+    pending?.resolve(ok);
+    setPending(null);
   };
-
-  const ids = selected;
-
-  return (
-    <div
-      data-slot="media-selection-bar"
-      role="toolbar"
-      aria-label={t.selection.count({ count: ids.length }, format)}
-      className={cn(
-        'bg-card sticky bottom-2 flex flex-wrap items-center gap-2 rounded-lg border p-2 shadow-md',
-        className,
-      )}
+  const inUse = pending?.descriptor.kind === 'archiveInUse';
+  const dialog = (
+    <AlertDialog
+      open={pending !== null}
+      onOpenChange={(open) => (open ? null : close(false))}
     >
-      <span className="px-1 text-sm font-medium">
-        {t.selection.count({ count: ids.length }, format)}
-      </span>
-      <Dialog open={moveOpen} onOpenChange={setMoveOpen}>
-        <DialogTrigger
-          render={
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={pending}
-            >
-              {t.action.move}
-            </Button>
-          }
+      <AlertDialogContent data-slot="media-confirm">
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t.action.archiveTitle}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {inUse
+              ? t.bulk.archiveInUse(
+                  { count: pending?.descriptor.count ?? 0 },
+                  format,
+                )
+              : t.action.archiveDescription}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel type="button">{t.action.cancel}</AlertDialogCancel>
+          <AlertDialogAction
+            type="button"
+            variant="destructive"
+            onClick={() => close(true)}
+          >
+            {inUse ? t.bulk.archiveAnyway : t.action.archive}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+  return { confirm, dialog };
+}
+
+/** "Move to…": a folder tree in pick mode; Enter on a folder moves there. */
+function MediaMoveDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { messages: t } = useMediaMessages();
+  const [target, setTarget] = React.useState<string | null | undefined>(
+    undefined,
+  );
+  const moveRef = React.useRef<HTMLButtonElement | null>(null);
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm" data-slot="media-move-dialog">
+        <DialogHeader>
+          <DialogTitle>{t.move.title}</DialogTitle>
+          <DialogDescription>{t.move.description}</DialogDescription>
+        </DialogHeader>
+        <button
+          type="button"
+          className="hover:bg-muted data-picked:bg-primary/10 flex items-center gap-2 rounded-md px-2 py-1 text-left text-sm"
+          data-picked={target === null ? '' : undefined}
+          onClick={() => setTarget(null)}
+        >
+          <FolderIcon className="size-4" aria-hidden="true" />
+          {t.folder.root}
+        </button>
+        <MediaFolderTree
+          mode="pick"
+          value={target ?? null}
+          onValueChange={setTarget}
+          onConfirm={(id) => {
+            setTarget(id);
+            requestAnimationFrame(() => moveRef.current?.click());
+          }}
+          className="max-h-64 overflow-y-auto"
         />
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{t.action.moveTitle}</DialogTitle>
-            <DialogDescription>{t.action.moveDescription}</DialogDescription>
-          </DialogHeader>
-          <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto">
-            {[
-              { id: null, name: t.folder.root },
-              ...folders.map((folder) => ({
-                id: folder.id,
-                name: folder.name,
-              })),
-            ].map((target) => (
-              <li key={target.id ?? 'root'}>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
+            {t.action.cancel}
+          </Button>
+          <Bulk.Action
+            ref={moveRef}
+            action="move"
+            input={{ folderId: target ?? null }}
+            disabled={target === undefined}
+            onResult={() => onOpenChange(false)}
+            render={<Button type="button" />}
+          >
+            {t.move.confirm}
+          </Bulk.Action>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function MediaBulkBar({ className }: { className?: string }) {
+  const { messages: t } = useMediaMessages();
+  const { confirm, dialog } = useConfirmDialog();
+  const [moveOpen, setMoveOpen] = React.useState(false);
+  return (
+    <>
+      <Selection.Bar
+        data-slot="media-selection-bar"
+        className={cn(
+          'bg-card sticky bottom-2 flex flex-wrap items-center gap-2 rounded-lg border p-2 shadow-md',
+          className,
+        )}
+      >
+        <Selection.Count className="px-1 text-sm font-medium" />
+        <Selection.SelectAllMatching
+          render={<Button type="button" variant="link" size="sm" />}
+        />
+        <Bulk.Bar className="flex flex-wrap items-center gap-2">
+          {(actions) =>
+            actions.map(({ action }) =>
+              action.id === 'move' ? (
                 <Button
+                  key={action.id}
                   type="button"
-                  variant="ghost"
-                  className="w-full justify-start"
-                  disabled={pending}
-                  onClick={() => {
-                    setMoveOpen(false);
-                    void run(() => move(ids, target.id));
-                  }}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setMoveOpen(true)}
                 >
-                  <FolderIcon data-icon="inline-start" aria-hidden="true" />
-                  {target.name}
+                  {t.bulk.action.move}
                 </Button>
-              </li>
-            ))}
-          </ul>
-        </DialogContent>
-      </Dialog>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={pending}
-        onClick={() => void run(() => setStatus(ids, 'public'))}
-      >
-        {t.action.makePublic}
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={pending}
-        onClick={() => void run(() => setStatus(ids, 'private'))}
-      >
-        {t.action.makePrivate}
-      </Button>
-      <AlertDialog>
-        <AlertDialogTrigger
+              ) : action.id === 'setProvenance' ||
+                action.id === 'restore' ? null : (
+                <Bulk.Action
+                  key={action.id}
+                  action={action.id}
+                  confirm={confirm}
+                  render={
+                    <Button
+                      type="button"
+                      variant={
+                        action.id === 'archive' ? 'destructive' : 'outline'
+                      }
+                      size="sm"
+                    />
+                  }
+                  className="aria-disabled:opacity-50"
+                />
+              ),
+            )
+          }
+        </Bulk.Bar>
+        <Selection.Clear
           render={
             <Button
               type="button"
-              variant="destructive"
+              variant="ghost"
               size="sm"
-              disabled={pending}
-            >
-              {t.action.archive}
-            </Button>
+              className="ml-auto"
+            />
           }
         />
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t.action.archiveTitle}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t.action.archiveDescription}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel type="button">
-              {t.action.cancel}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              type="button"
-              variant="destructive"
-              onClick={() => void run(() => archive(ids))}
-            >
-              {t.action.archive}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="ml-auto"
-        disabled={pending}
-        onClick={clear}
-      >
-        {t.action.clearSelection}
-      </Button>
-      {skipped > 0 ? (
+        <Selection.Hidden className="text-muted-foreground basis-full px-1 text-xs" />
         <p
-          data-slot="media-skipped"
-          role="status"
+          data-slot="media-visibility-hint"
           className="text-muted-foreground basis-full px-1 text-xs"
         >
-          {t.bulk.skipped({ count: skipped }, format)}
+          {t.visibility.hint}
         </p>
-      ) : null}
-      <p
-        data-slot="media-visibility-hint"
-        className="text-muted-foreground basis-full px-1 text-xs"
-      >
-        {t.visibility.hint}
-      </p>
-    </div>
+      </Selection.Bar>
+      <MediaMoveDialog open={moveOpen} onOpenChange={setMoveOpen} />
+      {dialog}
+    </>
+  );
+}
+
+function MediaOutcome() {
+  const { messages: t } = useMediaMessages();
+  return (
+    <Bulk.Outcome
+      data-slot="media-outcome"
+      className="bg-foreground text-background fixed right-4 bottom-4 z-40 flex items-center gap-3 rounded-lg px-4 py-2 text-sm shadow-lg"
+    >
+      {({ message, undo, dismiss }) => (
+        <>
+          <span>{message}</span>
+          {undo ? (
+            <button
+              type="button"
+              className="font-medium underline"
+              onClick={undo}
+            >
+              {t.bulk.undo}
+            </button>
+          ) : null}
+          <button type="button" aria-label={t.action.dismiss} onClick={dismiss}>
+            <CircleXIcon className="size-4" aria-hidden="true" />
+          </button>
+        </>
+      )}
+    </Bulk.Outcome>
   );
 }
 
@@ -909,30 +991,39 @@ function MediaLibraryLayout({ className }: { className?: string }) {
   return (
     <div
       data-slot="media-library"
-      className={cn('flex flex-col gap-4', className)}
+      className={cn('grid gap-4 md:grid-cols-[14rem_1fr]', className)}
     >
-      <div
-        data-slot="media-toolbar"
-        className="flex flex-wrap items-center gap-2"
-      >
-        <MediaBreadcrumbs className="mr-auto" />
-        <MediaSearch />
-        <MediaSortSelect />
-        <MediaNewFolder />
+      <aside className="hidden md:block">
+        <MediaFolderTree />
+      </aside>
+      <div className="flex min-w-0 flex-col gap-4">
+        <div
+          data-slot="media-toolbar"
+          className="flex flex-wrap items-center gap-2"
+        >
+          <MediaBreadcrumbs className="mr-auto" />
+          <MediaSearch />
+          <MediaSortSelect />
+          <MediaNewFolder />
+        </div>
+        <MediaFilterBar />
+        <MediaError />
+        <MediaMutationError />
+        <MediaDropzone />
+        <MediaFolderList>
+          {(folder) => <MediaFolderCard key={folder.id} folder={folder} />}
+        </MediaFolderList>
+        <MediaGrid>
+          {(asset) => <MediaAssetCard key={asset.id} asset={asset} />}
+        </MediaGrid>
+        <MediaEmpty />
+        <MediaLoadMore />
+        <MediaUploadList />
+        <MediaBulkBar />
+        <MediaOutcome />
+        <MediaDropOverlay />
+        <MediaFolderPrompt />
       </div>
-      <MediaError />
-      <MediaMutationError />
-      <MediaDropzone />
-      <MediaFolderList>
-        {(folder) => <MediaFolderCard key={folder.id} folder={folder} />}
-      </MediaFolderList>
-      <MediaGrid>
-        {(asset) => <MediaAssetCard key={asset.id} asset={asset} />}
-      </MediaGrid>
-      <MediaEmpty />
-      <MediaLoadMore />
-      <MediaUploadList />
-      <MediaSelectionBar />
     </div>
   );
 }
@@ -941,19 +1032,26 @@ export {
   MEDIA_EMPTY_CLASS,
   MediaAssetCard,
   MediaBreadcrumbs,
+  MediaBulkBar,
   MediaCrumb,
+  MediaDropOverlay,
   MediaDropzone,
   MediaEmpty,
   MediaError,
+  MediaFilterBar,
   MediaFolderCard,
   MediaFolderList,
+  MediaFolderPrompt,
+  MediaFolderTree,
   MediaGrid,
   MediaLibraryLayout,
   MediaLoadMore,
+  MediaMoveDialog,
   MediaMutationError,
   MediaNewFolder,
+  MediaOutcome,
   MediaSearch,
-  MediaSelectionBar,
   MediaSortSelect,
   MediaUploadList,
+  MediaUploadTile,
 };

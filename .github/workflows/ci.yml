@@ -456,6 +456,12 @@ jobs:
             bunx --yes @arethetypeswrong/cli --pack "$pkg" --profile esm-only
           done
 
+      # The built `@createcms/react/media/core` entry has no runtime
+      # dependency and no directive, and loads in Node with every bare import
+      # refused.
+      - name: Check React-free media core
+        run: node packages/react/scripts/check-media-core-dist.mjs
+
   # The one status check branch protection should require. Green only when
   # every needed job succeeded; red on any failure, skip, or cancellation —
   # except `commits`, which only exists on pull requests and is skipped on

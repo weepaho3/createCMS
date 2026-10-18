@@ -24,6 +24,7 @@ import { backfillFolderPaths } from '../media/folder-paths';
 import {
   assetsReferencedByLiveContent,
   assetsSuspectedInRichText,
+  rootsUsingAssets,
 } from '../media/usage';
 import { crossScopeColumns, scopedInsert } from '../scope';
 
@@ -366,7 +367,8 @@ export function createMediaFolderEndpoints(cmsCtx: CMSProcedureContext) {
 
     /**
      * Lists the live folders of one level: the children of `parentFolderId`,
-     * or the root level when omitted. Each folder carries `assetCount` (live
+     * or the root level when omitted. Each folder carries `folderCount` (live
+     * direct subfolders), `assetCount` (live
      * assets directly in it) and `assetCountRecursive` (including all
      * subfolders), counting originals in scope only.
      *
@@ -405,6 +407,11 @@ export function createMediaFolderEndpoints(cmsCtx: CMSProcedureContext) {
                  AND cms.assets.variant_of IS NULL
                  ${assetScope}
             )`,
+            folderCount: sql<number>`(
+              SELECT count(*)::int FROM cms.asset_folders AS c
+               WHERE c.parent_id = "cms"."asset_folders"."id"
+                 AND c.archived_at IS NULL
+            )`,
             assetCountRecursive: sql<number>`(
               SELECT count(*)::int FROM cms.assets
                 JOIN cms.asset_folders AS d ON d.id = cms.assets.folder_id
@@ -433,6 +440,7 @@ export function createMediaFolderEndpoints(cmsCtx: CMSProcedureContext) {
             ...toFolder(row),
             assetCount: row.assetCount,
             assetCountRecursive: row.assetCountRecursive,
+            folderCount: row.folderCount,
           })),
         };
       },
@@ -451,7 +459,7 @@ export function createMediaFolderEndpoints(cmsCtx: CMSProcedureContext) {
      *
      * With `dryRun`, nothing changes and the counts preview the deletion.
      *
-     * @returns `{ folderId, folders, assets, assetsInUse, skipped }`: folders and assets in the subtree (the folder itself excluded), how many assets are in use, and the ids skipped by `archive-contents`.
+     * @returns `{ folderId, folders, assets, assetsInUse, pages, skipped }`: folders and assets in the subtree (the folder itself excluded), how many assets are in use, on how many pages (roots), and the ids skipped by `archive-contents`.
      * @throws FOLDER_NOT_FOUND if folderId does not exist.
      * @throws FOLDER_HAS_CONTENT for `empty-only` on a folder with content.
      * @throws FOLDER_NAME_TAKEN for `move-to-parent` when a subfolder's name is taken in the parent.
@@ -512,6 +520,11 @@ export function createMediaFolderEndpoints(cmsCtx: CMSProcedureContext) {
             folders: subtreeIds.length - 1,
             assets: assetIds.length,
             assetsInUse: inUse.size,
+            pages: await rootsUsingAssets(tx, {
+              assetIds: [...inUse],
+              scope: 'live',
+              scopeColumns,
+            }),
             skipped: [] as string[],
           };
           if (dryRun) return summary;

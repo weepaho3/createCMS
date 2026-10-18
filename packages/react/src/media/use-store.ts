@@ -1,6 +1,9 @@
 import * as React from 'react';
 
+import type { MediaStoreState } from './core/store';
+
 import { shallowEqual } from '../editor/binding';
+import { useMediaContext } from './context';
 
 export type ReadableStore<S> = {
   subscribe(listener: () => void): () => void;
@@ -45,4 +48,17 @@ export function useSelector<S, T>(
     [store],
   );
   return React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+/**
+ * Subscribes to a slice of the enclosing `Media.Root` store. Selectors
+ * should be stable (module level or `useCallback`); results are compared
+ * shallowly unless `isEqual` is given.
+ */
+export function useMediaStore<T>(
+  selector: (state: MediaStoreState) => T,
+  isEqual?: (a: T, b: T) => boolean,
+): T {
+  const { store } = useMediaContext('useMediaStore');
+  return useSelector(store, selector, isEqual);
 }

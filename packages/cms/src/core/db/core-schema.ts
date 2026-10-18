@@ -1,3 +1,4 @@
+import { ASSET_SEARCH_VECTOR_SQL } from '../media/search-vector';
 import { NOTIFICATION_TYPES } from '../notifications/constants';
 import { defineCoreSchema } from './define';
 
@@ -691,6 +692,14 @@ export const coreSchema = defineCoreSchema({
           columns: ['folderId', 'createdAt', 'id'],
           where:
             'archived_at IS NULL AND variant_of IS NULL AND revision_of IS NULL',
+        },
+        // Full-text search of listAssets `q`; the expression must stay
+        // identical to ASSET_SEARCH_VECTOR in core/media/asset-filter.ts or
+        // the planner cannot use the index.
+        searchGin: {
+          columns: ['originalName', 'metadata'],
+          using: 'gin',
+          expression: ASSET_SEARCH_VECTOR_SQL,
         },
       },
     },

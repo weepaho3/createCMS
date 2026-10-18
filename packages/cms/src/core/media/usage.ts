@@ -290,6 +290,22 @@ export async function assetUsageCounts(
   return counts;
 }
 
+/** How many distinct roots use any of `filter.assetIds` in `filter.scope`. */
+export async function rootsUsingAssets(
+  db: DrizzleInstance,
+  filter: UsageFilter & { assetIds: string[] },
+): Promise<number> {
+  if (filter.assetIds.length === 0) return 0;
+  const [row] = await db
+    .select({
+      roots: sql<number>`count(DISTINCT ${contentUsages.rootId})::int`,
+    })
+    .from(contentUsages)
+    .innerJoin(roots, eq(roots.id, contentUsages.rootId))
+    .where(usageWhere(filter));
+  return row?.roots ?? 0;
+}
+
 /** The asset ids indexed for the blocks of `rootId` at `commitId`. */
 export async function assetsAtCommit(
   db: DrizzleInstance,

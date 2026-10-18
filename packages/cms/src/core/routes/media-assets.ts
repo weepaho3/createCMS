@@ -20,6 +20,12 @@ import { assetFolders, assets } from '../db/schema.generated';
 import { cmsMeta, createCMSEndpoint } from '../endpoint';
 import { CMSError, errorMessages } from '../errors';
 import { archiveAssetsInScope } from '../media/archive';
+import {
+  BULK_TARGET_MESSAGE,
+  bulkTargetIds,
+  bulkTargetFields,
+  hasBulkTarget,
+} from '../media/asset-filter';
 import { emitMediaEvents } from '../media/events';
 import { purgeAssetPaths, setAssetsVisibility } from '../media/placement';
 import { assertFolderExists } from '../media/uploads';
@@ -382,15 +388,24 @@ export function createMediaAssetEndpoints<TItem>(
       '/media/restoreAssets',
       {
         method: 'POST',
-        body: z.object({
-          assetIds: z.array(z.string()).min(1).max(MEDIA_BATCH_LIMIT),
-        }),
+        body: z
+          .object({
+            assetIds: bulkTargetFields.assetIds
+              .unwrap()
+              .max(MEDIA_BATCH_LIMIT)
+              .optional(),
+            allMatching: bulkTargetFields.allMatching,
+          })
+          .refine(hasBulkTarget, BULK_TARGET_MESSAGE),
         metadata: cmsMeta({}, { operation: 'update', ...MEDIA_META }),
       },
       async (ctx) => {
         const { scope } = ctx.context;
+        const assetIds = await bulkTargetIds(db, ctx.body, scope, {
+          archived: true,
+        });
         const restoredIds = await db.transaction((tx) =>
-          restore(tx, ctx.body.assetIds, scope),
+          restore(tx, assetIds, scope),
         );
         await emitMediaEvents(
           cmsCtx.realtime,
@@ -402,7 +417,7 @@ export function createMediaAssetEndpoints<TItem>(
         );
         return {
           restoredIds,
-          skipped: ctx.body.assetIds.filter((id) => !restoredIds.includes(id)),
+          skipped: assetIds.filter((id) => !restoredIds.includes(id)),
         };
       },
     ),

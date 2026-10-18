@@ -65,7 +65,7 @@ The rest of this guide grows `pageViews` into a real plugin that counts views pe
 
 `references` is `{ table, column, onDelete?, onUpdate? }`, where each action is one of `'cascade' \| 'restrict' \| 'no action' \| 'set null' \| 'set default'`.
 
-**Indexes are table-level, not per-column.** Declare them in `TableDefinition.indexes` — a map of index keys to `{ columns, unique?, using?: 'btree' \| 'gin', where? }`:
+**Indexes are table-level, not per-column.** Declare them in `TableDefinition.indexes`: a map of index keys to `{ columns, unique?, using?: 'btree' \| 'gin', where?, expression? }`. `expression` indexes a SQL expression instead of the columns (for example a weighted `to_tsvector(...)` for full-text search); `columns` then lists the columns it reads, and a query must use the identical expression for the planner to pick the index:
 
 ```ts
 import { definePluginSchema } from '@createcms/core';

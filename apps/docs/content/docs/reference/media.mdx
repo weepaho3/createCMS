@@ -24,7 +24,7 @@ Walk the folder tree one level at a time. Omit `parentFolderId` to get the root-
   query: { parentFolderId: 'fld_images' }, // omit for the root-level folders
 }`}
   returns={{
-    folders: { type: '{ id, name, parentId, createdBy, createdAt, assetCount, assetCountRecursive }[]', description: 'The live child folders (of the parent, or of the root), sorted by name. `assetCount` counts live original assets directly in the folder, `assetCountRecursive` those in its whole subtree, both within scope.' },
+    folders: { type: '{ id, name, parentId, createdBy, createdAt, folderCount, assetCount, assetCountRecursive }[]', description: 'The live child folders (of the parent, or of the root), sorted by name. `folderCount` counts live direct subfolders (a tree shows a disclosure only when it is above 0), `assetCount` live original assets directly in the folder, `assetCountRecursive` those in its whole subtree, both within scope.' },
   }}
   params={{
     parentFolderId: { type: 'string', description: 'Parent folder id. Omit for the root-level folders (those with no parent).' },
@@ -155,6 +155,7 @@ Move a folder to the trash. Folders never cascade: pick what happens to the cont
     folders: { type: 'number', description: 'Live subfolders in its subtree.' },
     assets: { type: 'number', description: 'Live original assets in its subtree.' },
     assetsInUse: { type: 'number', description: 'How many of those are referenced by live content.' },
+    pages: { type: 'number', description: 'Distinct roots (pages) using those assets, for a confirmation such as "9 are used on 14 pages".' },
     skipped: { type: 'string[]', description: 'Asset ids `archive-contents` kept (in use or suspected in rich text); empty otherwise.' },
   }}
   params={{
@@ -168,7 +169,7 @@ Move a folder to the trash. Folders never cascade: pick what happens to the cont
 
 ### List Assets [#listassets]
 
-List the assets in your media library, with optional filtering (by folder, status, or slug search) and sorting. For paging, prefer the stable `cursor` (keyset) mode to walk the whole library — pass the previous page's `nextCursor` to continue; the legacy `offset` mode is capped to the first 100 rows and `cursor` takes precedence over it.
+List the original assets of the library (never variants or revisions), filtered on the server so paging stays exact. `q` searches file name (weighted highest), description, credit and copyright through a full-text index and also matches substrings of the file name and slug, so `Hamb` finds `Hamburg Hafen.jpg`. For paging, prefer the stable `cursor` (keyset) mode: pass the previous page's `nextCursor` to continue; the legacy `offset` mode is capped to the first 100 rows and `cursor` takes precedence over it. Counting a large filtered set is expensive, so pass `includeTotal: false` when you page and do not need `total` (it is then `null`).
 
 <APIMethod
   method="GET"
@@ -179,34 +180,81 @@ List the assets in your media library, with optional filtering (by folder, statu
   operation="read"
   args={`{
   query: {
-    status: 'public',
+    q: 'hamburg',
+    kinds: 'image,video',
+    folderId: 'fld_products',
+    recursive: true,
+    sortBy: 'originalName',
+    sortDirection: 'asc',
     limit: 50,
+    includeTotal: false,
   },
 }`}
   returns={{
     assets: { type: 'AssetListItem[]', description: 'The assets on this page. Each carries `id`, `slug`, `originalName`, `mimeType`, `size`, `width`, `height`, `objectKey`, `url` (direct, `null` when private), `deliveryUrl` (gate path), `status`, `provenance`, `metadata` (`AssetMetadata`), `variants` (`{ variantKey, width, height, size }[]` of the live variants), `folderId`, `variantOf`, `uploadedBy`, `createdAt`, `updatedAt`.' },
-    total: { type: 'number', description: 'Total assets across all pages for the current filter (ignores paging).' },
+    total: { type: 'number | null', description: 'Total assets for the filter across all pages; `null` with `includeTotal: false`.' },
     hasMore: { type: 'boolean', description: 'Whether more assets exist after this page.' },
     nextCursor: { type: 'string | null', description: 'Opaque cursor for the next page; `null` at the end of the list. Pass it back as `cursor` to continue.' },
   }}
   params={{
-    folderId: { type: 'string', description: "Filter to a folder's assets. Omit for no folder filter." },
-    unfiled: { type: 'boolean', description: 'Set `true` to list only root-level (unfiled) assets, those with no folder. Takes precedence over `folderId`.' },
-    status: { type: "'private' | 'public'", description: 'Filter by privacy status.' },
-    search: { type: 'string', description: 'Case-insensitive substring match against the asset slug.' },
-    limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
-    offset: { type: 'number', default: '0', description: 'Rows to skip. Ignored when `cursor` is given.' },
-    cursor: { type: 'string', description: "Opaque keyset cursor from a previous page's `nextCursor`; pages past the offset ceiling." },
-    sortBy: { type: "'createdAt' | 'slug' | 'size'", default: "'createdAt'", description: 'Sort field.' },
-    sortDirection: { type: "'asc' | 'desc'", default: "'desc'", description: 'Sort order.' },
+    folderId: { type: 'string', description: "A folder's assets. Omit for every folder." },
+    recursive: { type: 'boolean', description: 'With `folderId`: the assets of every subfolder too.' },
+    unfiled: { type: 'boolean', description: 'Only root-level (unfiled) assets. Takes precedence over `folderId`.' },
+    q: { type: 'string', description: 'Full-text search (file name, description, credit, copyright) plus a substring match on file name and slug.' },
+    search: { type: 'string', description: 'Case-insensitive substring of the slug.' },
+    kinds: { type: 'string', description: 'Comma separated kinds derived from the type: `image`, `video`, `audio`, `document`, `archive`, `other`.' },
+    mime: { type: 'string', description: 'Comma separated exact types or prefixes such as `image/*`.' },
+    status: { type: "'private' | 'public'", description: 'One visibility.' },
+    visibility: { type: 'string', description: 'Comma separated visibilities (`private,public`).' },
+    provenance: { type: 'string', description: 'Comma separated provenances (`ai_generated,unknown`).' },
+    uploadedBy: { type: 'string', description: 'Comma separated user ids.' },
+    createdFrom: { type: 'string', description: 'ISO date or date-time, inclusive.' },
+    createdTo: { type: 'string', description: 'ISO date (the whole day) or date-time, inclusive.' },
+    sizeMin: { type: 'number', description: 'Bytes, inclusive.' },
+    sizeMax: { type: 'number', description: 'Bytes, inclusive.' },
+    widthMin: { type: 'number', description: 'Px, inclusive.' },
+    heightMin: { type: 'number', description: 'Px, inclusive.' },
+    orientation: { type: "'landscape' | 'portrait' | 'square'", description: 'Only assets with dimensions.' },
     usage: { type: "'used' | 'unused'", description: 'Only assets with (or without) a usage in `usageScope`.' },
     usageScope: { type: "'live' | 'published'", default: "'live'", description: 'The scope `usage` and `unusedSinceDays` look at (see [`getAssetUsages`](#getassetusages)).' },
     missingAlt: { type: 'boolean', description: 'Only assets with at least one live image usage without alt text.' },
     unusedSinceDays: { type: 'number', description: 'Only assets without a usage in `usageScope` that were created at least this many days ago.' },
+    expiringWithinDays: { type: 'number', description: 'Only assets whose `metadata.rights.expiresAt` is within this many days or already past. Expiry only marks assets; content is never unpublished.' },
+    archived: { type: 'boolean', description: 'List the trash instead of live assets.' },
+    limit: { type: 'number', default: '20', description: 'Page size, 1 to 100.' },
+    offset: { type: 'number', default: '0', description: 'Rows to skip. Ignored when `cursor` is given.' },
+    cursor: { type: 'string', description: "Opaque keyset cursor from a previous page's `nextCursor`." },
+    sortBy: { type: "'createdAt' | 'updatedAt' | 'slug' | 'originalName' | 'size' | 'width'", default: "'createdAt'", description: 'Sort field; `originalName` sorts case-insensitively and falls back to the slug, `width` puts assets without dimensions last in `desc`.' },
+    sortDirection: { type: "'asc' | 'desc'", default: "'desc'", description: 'Sort order.' },
+    includeTotal: { type: 'boolean', default: 'true', description: '`false` skips the count query.' },
   }}
 />
 
-Each asset includes `deliveryUrl` and, for public assets, the direct `url`; `nextCursor` is `null` at the end of the list.
+Lists are comma separated so the query survives URL serialization. The same filter parameters drive [`getAssetFacets`](#getassetfacets) and the `allMatching` selection of the bulk endpoints.
+
+### Count Assets per Facet [#getassetfacets]
+
+Counts the assets matching a filter per kind, provenance and visibility, for filter chips. Each dimension is counted with every other filter applied but not its own, so a chip shows what selecting it would add.
+
+<APIMethod
+  method="GET"
+  path="/media/getAssetFacets"
+  fn="getAssetFacets"
+  collection="media"
+  resource="media"
+  operation="read"
+  args={`{
+  query: { folderId: 'fld_products', kinds: 'image' },
+}`}
+  returns={{
+    kinds: { type: 'Record<string, number>', description: 'Matches per kind (`image`, `video`, `audio`, `document`, `archive`, `other`); kinds without assets are left out.' },
+    provenance: { type: 'Record<string, number>', description: 'Matches per provenance.' },
+    visibility: { type: 'Record<string, number>', description: 'Matches per visibility (`private`, `public`).' },
+  }}
+  params={{
+    query: { type: 'listAssets filter', description: 'The filter parameters of [`listAssets`](#listassets), without paging and sort.' },
+  }}
+/>
 
 ### Get Assets by Id [#getassets]
 
@@ -637,7 +685,7 @@ Flip one or more assets between `private` and `public` — this is the gate you 
   operation="update"
   args={`{
   body: {
-    assetIds: ['ast_123'], // required
+    assetIds: ['ast_123'], // or allMatching: { query: { folderId: 'fld_1' }, except: [] }
     status: 'public', // required
   },
 }`}
@@ -647,7 +695,8 @@ Flip one or more assets between `private` and `public` — this is the gate you 
     skipped: { type: 'string[]', description: 'Requested ids that matched no live, in-scope asset (archived or out of scope).' },
   }}
   params={{
-    assetIds: { type: 'string[]', required: true, description: 'Asset ids to update (at least one).' },
+    assetIds: { type: 'string[]', description: 'Asset ids to update. One of `assetIds` and `allMatching` is required.' },
+    allMatching: { type: '{ query, except }', description: 'Instead of `assetIds`: every asset matching `query` (the filter parameters of [`listAssets`](#listassets)) minus the ids in `except`, resolved on the server, so a selection of 312 assets of which 40 are loaded works. At most 10,000 assets.' },
     status: { type: "'private' | 'public'", required: true, description: 'Target status.' },
   }}
 />
@@ -665,7 +714,7 @@ Move a batch of assets into a folder (or to the root with `folderId: null`). Non
   operation="update"
   args={`{
   body: {
-    assetIds: ['ast_123'], // required
+    assetIds: ['ast_123'], // or allMatching
     folderId: 'fld_images', // required; null moves to the root
   },
 }`}
@@ -675,7 +724,8 @@ Move a batch of assets into a folder (or to the root with `folderId: null`). Non
     skipped: { type: 'string[]', description: 'Requested ids that were skipped: missing, out-of-scope, archived, or a variant passed on its own.' },
   }}
   params={{
-    assetIds: { type: 'string[]', required: true, description: 'Asset ids to move (at least one).' },
+    assetIds: { type: 'string[]', description: 'Asset ids to move. One of `assetIds` and `allMatching` is required.' },
+    allMatching: { type: '{ query, except }', description: 'Instead of `assetIds`: every asset matching `query` (the filter parameters of [`listAssets`](#listassets)) minus the ids in `except`, resolved on the server, so a selection of 312 assets of which 40 are loaded works. At most 10,000 assets.' },
     folderId: { type: 'string | null', required: true, description: 'Target folder id, or `null` to move to the root.' },
   }}
 />
@@ -695,7 +745,7 @@ Soft-delete a batch of assets (and their variants) so a later garbage-collection
   operation="delete"
   args={`{
   body: {
-    assetIds: ['ast_123'], // required
+    allMatching: { query: { folderId: 'fld_old', recursive: true }, except: ['ast_keep'] },
     force: false, // archive assets that are in use too
   },
 }`}
@@ -708,7 +758,8 @@ Soft-delete a batch of assets (and their variants) so a later garbage-collection
     usedByArchivedRoots: { type: 'string[]', description: 'Archived ids that archived roots still use; restoring such a root brings back a reference to an archived asset.' },
   }}
   params={{
-    assetIds: { type: 'string[]', required: true, description: 'Asset ids to archive (at least one).' },
+    assetIds: { type: 'string[]', description: 'Asset ids to archive. One of `assetIds` and `allMatching` is required.' },
+    allMatching: { type: '{ query, except }', description: 'Instead of `assetIds`: every asset matching `query` (the filter parameters of [`listAssets`](#listassets)) minus the ids in `except`, resolved on the server, so a selection of 312 assets of which 40 are loaded works. At most 10,000 assets.' },
     force: { type: 'boolean', description: 'Archive skipped assets anyway, whatever the reason. Use after the user confirmed the usage list.' },
   }}
 />
@@ -811,7 +862,8 @@ Take archived assets out of the trash, with the variants archived together with 
     skipped: { type: 'string[]', description: 'Ids that matched no archived asset in scope.' },
   }}
   params={{
-    assetIds: { type: 'string[]', required: true, description: 'Archived asset ids.' },
+    assetIds: { type: 'string[]', description: 'Archived asset ids, 1 to 500. One of `assetIds` and `allMatching` is required.' },
+    allMatching: { type: '{ query, except }', description: 'Instead of `assetIds`: every archived asset matching `query` minus `except` (`archived` is implied).' },
   }}
 />
 

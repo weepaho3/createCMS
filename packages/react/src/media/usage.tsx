@@ -3,42 +3,25 @@
 import * as React from 'react';
 
 import type { UseRenderComponentProps } from '../use-render';
-import type { MediaClient } from './types';
+import type {
+  MediaClient,
+  MediaUsageItem,
+  MediaUsageOccurrence,
+  MediaUsagePage,
+  MediaUsageScope,
+} from './core/types';
+
+export type {
+  MediaUsageItem,
+  MediaUsageOccurrence,
+  MediaUsagePage,
+  MediaUsageScope,
+};
 
 import { mergeProps, useRender } from '../use-render';
 import { useMediaMessages } from './context';
 
 // --- data ---------------------------------------------------------------------
-
-export type MediaUsageScope = 'live' | 'published' | 'history';
-
-export type MediaUsageOccurrence = {
-  branchId: string | null;
-  branchName: string | null;
-  blockId: string;
-  propertyKey: string;
-  /** JSON pointer inside the block's properties. */
-  path: string;
-  matchedBy: string;
-  altState: string | null;
-  revisionId: string | null;
-};
-
-export type MediaUsageItem = {
-  rootId: string;
-  collection: string;
-  title: string;
-  storedSlug: string | null;
-  status: 'published' | 'scheduled' | 'draft';
-  via: { rootId: string; title: string } | null;
-  occurrences: MediaUsageOccurrence[];
-};
-
-export type MediaUsagePage = {
-  total: { roots: number; occurrences: number; hiddenRoots: number };
-  items: MediaUsageItem[];
-  nextCursor: string | null;
-};
 
 /** Builds the editor link of one usage. */
 export type EditorHrefAdapter = {

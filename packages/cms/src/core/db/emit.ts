@@ -178,7 +178,9 @@ function emitIndexes(table: ResolvedTable): string[] {
       .map((column) => `table.${column}`)
       .join(', ');
     let line: string;
-    if (indexDef.using && indexDef.using !== 'btree') {
+    if (indexDef.expression) {
+      line = `    ${factory}(${quote(`${prefix}_${toSnakeCase(indexKey)}`)}).using(${quote(indexDef.using ?? 'btree')}, sql\`${indexDef.expression}\`)`;
+    } else if (indexDef.using && indexDef.using !== 'btree') {
       line = `    ${factory}(${quote(`${prefix}_${toSnakeCase(indexKey)}`)}).using(${quote(indexDef.using)}, ${columns})`;
     } else {
       line = `    ${factory}(${quote(`${prefix}_${toSnakeCase(indexKey)}`)}).on(${columns})`;
@@ -263,7 +265,7 @@ function emitTable(table: ResolvedTable): {
 
   const indexes = emitIndexes(table);
   for (const idx of Object.values(table.indexes)) {
-    if (idx.where) needsSql = true;
+    if (idx.where || idx.expression) needsSql = true;
   }
 
   const compositePK = emitCompositePrimaryKey(table);

@@ -1,0 +1,258 @@
+---
+title: Media core
+description: The framework-free store, layout, selection, filter and intake logic of the media library (@createcms/react/media/core).
+---
+
+`@createcms/react/media/core` is the React-free kernel of the
+[media library](/docs/reference/react-media). It has no directive, no React
+and no runtime dependency (a boundary test, an oxlint rule and a dist check
+guard that), so servers, workers, tests in Node and other frameworks import
+it. The React parts are thin bindings over it.
+
+```ts
+import { createHistoryFilterAdapter, createMediaStore, layout } from '@createcms/react/media/core';
+```
+
+## Store
+
+`createMediaStore(options)` returns a `MediaStore`:
+`{ getState, subscribe, dispatch, on, emit, registries, setUploader, client, pageSize, dispose }`.
+`CreateMediaStoreOptions`: `client` (a `MediaClient`), `defaultFolderId`,
+`filter`, `pageSize` (1 to `MAX_PAGE_SIZE`, default 40), `selection`
+(`SelectionMode`), `keepHiddenSelection`, `layout`, `expandedStorage`
+(`{ storage, key }`, errors ignored) and `onFilterChange(filter, mode)` for
+URL sync. Every change replaces the state object and the changed slice, so
+selectors compare by reference.
+
+`MediaStoreState` has one slice per module:
+
+| Slice | Type | Holds |
+| --- | --- | --- |
+| `collection` | `CollectionSlice` | `query` (a `FilterState`), `ids`, `byId`, `cursor`, `total`, `status` (`CollectionStatus`: `idle`, `loading`, `refreshing`, `appending`, `error`), `error`. |
+| `selection` | `SelectionSlice` | A `SelectionState` plus `hidden`. |
+| `folders` | `FolderTreeState` | `nodes` (`FolderNode`), `roots`, `expanded`, `loading`, `currentId`, `path`. |
+| `preview` | | `openId`, `zoom`, `rotation`. |
+| `detail` | | `assetId`, `draft` (`AssetPatch`), `dirty`, `baseUpdatedAt`, `saving`, `error`. |
+| `ui` | | `layout` (`LayoutMode`), `viewport`. |
+| `mutation` | | `status`, `error`, `skipped`, `skippedReasons` of the last bulk change. |
+
+`dispatch(command)` runs a `MediaCommand` and resolves with a
+`CommandResult`: `{ ok: true, value?, skipped?, undo? }` or
+`{ ok: false, code, error }` with a `MediaErrorCode` (or the server's code).
+Commands: `init` (optionally with the URL `filter`, applied without writing
+it back), `load`, `loadMore`, `refresh`, `setFilter` (`replace`, `debounce`
+for typing, `silent` for history navigation), `openFolder`, `loadFolders`,
+`expandFolder`, `collapseFolder`, `select` (with `SelectionModifiers`),
+`toggleSelection`, `extendSelection`, `focus`, `setSelection`, `selectAll`,
+`selectAllMatching`, `clearSelection`, `move`, `archive`, `restore`,
+`setVisibility`, `setProvenance`, `updateAsset`, `createFolder`,
+`renameFolder`, `moveFolder`, `deleteFolder`, `receive`, `assetUploaded`,
+`openPreview`, `closePreview`, `openDetail`, `closeDetail`, `setLayout`,
+`setViewport`, `clearMutationError`.
+
+List requests are aborted when a newer one starts; a filter change keeps the
+old results visible as `refreshing`; typing waits `SEARCH_DEBOUNCE_MS` (250).
+Appended pages do not count again (`total` comes from the first page). Move,
+archive and visibility changes patch the collection optimistically, roll back
+on failure, restore the ids the server skipped, move the focus to the next
+item after a removal and return an `undo` where the change is invertible.
+With `allMatching` selected, bulk commands send the filter instead of ids.
+`client.subscribe` events (`MediaServerEvent`) are reconciled: updated and
+replaced assets are refetched, archived ones removed, folder changes relist
+the affected levels. `dispose()` cancels timers, requests and the
+subscription; `init` resumes, so a React StrictMode remount works.
+
+`on(type, listener)` subscribes to a `MediaEvent` (`MediaEventType`):
+`asset:uploaded`, `asset:updated`, `asset:replaced`, `asset:moved`,
+`asset:archived`, `asset:restored`, `folder:changed`, `selection:changed`.
+
+`receive` queues files through `setUploader(upload)` (a `MediaUploader`,
+the client's `upload`): file hooks run first, and with `recreateFolders` the
+relative folders of a drop are created parents first and every file is
+uploaded into its folder.
+
+Selectors: `collectionAssets(state)` (the loaded assets in order),
+`currentFolders(state)` (subfolders of the open folder) and
+`emptyReason(state)` (`folder-empty`, `no-results`, `error`,
+`no-permission` or `null`).
+
+### Registries
+
+`store.registries` (`MediaRegistries`) holds four `Registry`s
+(`createRegistry`: `register` replaces by `id` and returns the unregister,
+`list`, `get`, `subscribe`):
+
+| Registry | Item | Use |
+| --- | --- | --- |
+| `sources` | `MediaSource` | Extra places to get files from (URL import, a DAM); `open({ receive })`. |
+| `fileHooks` | `MediaFileHook` | `transform(files)` before files are queued (rename, resize, reject). |
+| `assetActions` | `BulkAction` | Bulk and item actions (below). |
+| `previewRenderers` | `MediaPreviewRenderer` | `match(asset)` and a framework-specific `render`. |
+
+### Bulk actions
+
+A `BulkAction` is `{ id, label, scope?, canExecute(context), confirm?(context), run(context, input) }`.
+`canExecute` returns `true` or a reason code; `confirm` a
+`ConfirmDescriptor` (`{ kind, count, destructive?, items?, requireTyping? }`).
+`bulkContext(store, itemId?, state?)` builds the `BulkContext`
+(`{ store, state, ids, count, assets, target }`); `BulkInput` carries
+`folderId`, `force`, `provenance` and `open`. Built-ins:
+`moveAction`, `makePublicAction`, `makePrivateAction`, `setProvenanceAction`,
+`downloadAction` (`?download=true` on the asset endpoint), `archiveAction`
+and `restoreAction`, in `builtInBulkActions`;
+`registerBuiltInBulkActions(store)` adds them. `archiveInUseConfirm(reasons)`
+describes the confirmation for assets an archive skipped because they are in
+use.
+
+## Filter
+
+`FilterState` drives the query, the URL and shareable views: `q`, `kinds`
+(`MediaKind`), `mime`, `folderId`, `recursive`, `unfiled`, `provenance`
+(`AssetProvenance`), `visibility` (`AssetVisibility`), `processingState`
+(`ProcessingState`), `uploadedBy`, `createdFrom`, `createdTo`, `sizeMin`,
+`sizeMax`, `widthMin`, `heightMin`, `orientation` (`Orientation`), `usage`,
+`usageScope`, `missingAlt`, `expiringWithinDays`, `archived` and `sort`
+(`FilterSort`, one of `FILTER_SORTS`). `DEFAULT_FILTER` sorts newest first;
+`MEDIA_KINDS` and `ASSET_PROVENANCES` list the values.
+
+| Function | Does |
+| --- | --- |
+| `encodeFilter(filter)` | The query string with short keys: `q`, `type=image,video`, `folder` (`ROOT_FOLDER_PARAM` for the root), `from`, `to`, `size=0-5mb`, `usage=unused`, ... The default sort is left out. |
+| `parseFilter(search, base?)` | Reads a query string; unknown keys and invalid values are ignored. `parseFilter(encodeFilter(f))` equals `normalizeFilter(f)`. |
+| `normalizeFilter(filter)` | One shape for equal filters (no empty values or impossible combinations). |
+| `filtersEqual(a, b)`, `activeFilterCount(filter)` | Equality; filters beyond folder, sort and text. |
+| `formatSizeParam(bytes)`, `parseSizeParam(text)` | `5mb` and back. |
+| `filterToQuery(filter)`, `sortOfFilter(sort)` | The `listAssets` parameters and sort. |
+| `isPlainFolderView(filter)` | Only folder and sort set. |
+
+A `FilterUrlAdapter` is `{ read(), write(filter, mode), subscribe? }` with
+`FilterWriteMode` `replace` (typing) or `push` (discrete changes).
+`createHistoryFilterAdapter({ prefix?, window? })` mirrors the filter in
+`location.search` and keeps query parameters it does not own;
+`createMemoryFilterAdapter(initial?)` keeps it in memory (a picker never
+touches the URL).
+
+## Layout
+
+`layout(viewport, items, options)` lays out `LayoutItem`s
+(`{ id, width?, height? }`) without measuring the DOM and returns a
+`CollectionLayout`: `rows` (`LayoutRow`: `index`, `top`, `height`, `items`),
+`rects` (`Rect` per item, content coordinates), `rowOf`, `columns`,
+`totalHeight`, `rowHeight` and, for masonry, `laneOf`. `LayoutOptions`:
+`mode` (`LayoutMode`: `grid`, `justified`, `masonry`, `list`), `gap`,
+`minCell`, `aspect`, `targetRowHeight` (180 to 240), `listRowHeight` (48 to
+56), `rtl`. Grid columns are `columnCount(width, minCell, gap)` =
+`floor((width + gap) / (minCell + gap))`.
+
+`navigate(layout, index, key, { rtl, viewportHeight })` returns the item a
+`NavigationKey` moves to, never outside the items: up and down keep the
+column (grid, list, clamped into a short last row), the lane (masonry) or the
+closest horizontal center (justified); page keys move by the rows that fit.
+`navigationKeyOf(key, ctrlOrMeta)` maps `KeyboardEvent.key`.
+`visibleRows(layout, scrollTop, viewportHeight, overscan)` is the mounted
+range, `itemsInRect(layout, rect)` a hit test over all rects and
+`intersects(a, b)` the rect test.
+
+## Selection
+
+`SelectionState` is `{ mode, selected, anchor, rangeEnd, focus, allMatching }`
+(`SelectionMode`, `AllMatching` = `{ query, except }`), from
+`createSelection(mode)`.
+
+| Function | Does |
+| --- | --- |
+| `selectionClick(state, order, id, modifiers)` | A click: replace; Cmd/Ctrl toggles; Shift replaces the previous range from the anchor (Finder); both add a range. |
+| `toggleSelection`, `focusSelection`, `extendSelection` | Space, Cmd/Ctrl+Arrow, Shift+Arrow. |
+| `selectAllLoaded`, `selectAllMatching`, `clearSelection` | Cmd/Ctrl+A, every match on the server, Escape. |
+| `reconcileSelection(state, visible, options)` | After a filter or removal: drops hidden ids unless `keepHidden` (then counts them). |
+| `isSelected`, `selectionCount(state, total)` | Membership and count, unloaded `allMatching` assets included. |
+| `bulkTarget(state)` | The `BulkTarget` a bulk endpoint receives. |
+| `dragIds(state, id)` | The selection when `id` is part of it, else `id` alone. |
+| `nextFocusAfterRemoval(order, removed, focus)` | The next remaining id, else the previous one. |
+
+## Marquee
+
+`marqueeRect(start, current)` and `marqueeActivated(start, current)` (after
+`MARQUEE_ACTIVATION_PX`) work on `Point`s; `marqueeHits(layout, ids, rect)`
+hit-tests every layout rect, mounted or not; `applyMarquee(base, hits, mode)`
+applies a `MarqueeMode` (`marqueeModeOf`: no modifier replaces, Shift adds,
+Cmd/Ctrl toggles) to the selection at the start of the gesture.
+`autoScrollDelta(pointer, start, size, msInBand)` scrolls in an edge band of
+`min(AUTO_SCROLL_BAND_RATIO, AUTO_SCROLL_BAND_MAX_PX)` at up to
+`AUTO_SCROLL_MAX_PX` per frame, ramped up over `AUTO_SCROLL_RAMP_MS`.
+
+## Folders
+
+`createFolderTree(currentId)` and `setFolderChildren(state, parentId, folders)`
+build the tree from `FolderRecord`s; `mayHaveChildren(node)` reads
+`folderCount`. `folderTreeRows(state)` lists the visible `FolderTreeRow`s
+(level, set size, position, expanded, loading); `treeNavigate(rows, id, key)`
+applies an APG tree `TreeKey` (`treeKeyOf`) and returns a `TreeKeyResult`
+(`focus`, `expand`, `collapse`). `moveRejection(nodes, targetId, move)`
+returns a `MoveRejectReason` (`same-folder`, `into-itself`) with
+`isSelfOrDescendant`; `collapseBreadcrumbs(path, max)` splits a deep path;
+`loadExpanded` and `saveExpanded` persist the expanded set, ignoring storage
+errors.
+
+## Intake
+
+`normalizeDrop(dataTransfer, options)` returns an `IntakeResult`
+(`{ files, folders, skippedSystem, truncated }`, files as `IntakeFile`
+`{ file, relativePath }`): it collects every entry synchronously
+(`collectDrop`, call it inside `drop`) and then reads directories batch by
+batch (`readDrop`). It works on `DataTransferLike`, `DataTransferItemLike`
+and `EntryLike`, so tests pass fakes. `IntakeOptions`: `maxFiles` (500),
+`maxDepth` (10), `maxTotalBytes`, `skipSystemFiles`, `onProgress`; a limit
+sets `truncated` (`IntakeLimitReason`). `normalizeInput(files)` does the same
+for file and folder inputs (`webkitRelativePath`), `normalizePaste(clipboard,
+now)` renames screenshots with `pastedFileName(date, ext)`.
+`isSystemFile(path)`, `isTextInput(target)`, `dragHasFiles(types)`,
+`dragFilePreview(dataTransfer)` and `folderOfPath(path)` help the parts.
+
+`validate(file, constraints, dimensions?)` returns an `IntakeRejectReason`
+(`type`, `size`, `count`, `dimensions`, `aspect`) for `IntakeConstraints`
+(`accept`, `maxSize`, `maxFiles`, `minWidth`, `minHeight`, `maxWidth`,
+`maxHeight`, `aspect`, `aspectTolerance`); `validateBatch(items, constraints)`
+splits a batch into accepted items and `IntakeRejection`s; `acceptsFile`
+mirrors the `accept` attribute.
+
+## Drag payload
+
+`ASSET_DRAG_TYPE` is `application/x-createcms-asset+json`.
+`writeAssetDrag(dataTransfer, assets)` writes an `AssetDragPayload`
+(`{ ids, version: 1 }`) for `DragAsset`s, `text/uri-list`, `text/plain` and,
+for one asset with a URL, `DownloadURL`. A drop target checks
+`hasAssetDrag(types)` in `dragover` and reads `readAssetDrag(dataTransfer)` in
+`drop` (`parseAssetDragPayload` validates).
+
+## Announcements
+
+An `Announce` is `(message, politeness?)` with `Politeness` `polite` or
+`assertive`. `createProgressAnnouncer(announce)` returns a
+`ProgressAnnouncer` (`start`, `update(percent, now, message)`, `end`) that
+speaks at `PROGRESS_THRESHOLDS` (25, 50, 75) or every
+`PROGRESS_HEARTBEAT_MS`, at most `MAX_PROGRESS_ANNOUNCEMENTS` times, a jump
+over several thresholds once. `progressValueNow(percent)` rounds to 10 percent
+steps, `batchPoliteness(failed, total)` is assertive only when everything
+failed, and `createDebouncedAnnouncer(announce, delay)` (a
+`DebouncedAnnouncer`, default `SELECTION_ANNOUNCE_MS`) speaks the last message
+of a burst.
+
+## Type-ahead and errors
+
+`createTypeAhead(timeout)` returns a `TypeAhead` buffering keys within
+`TYPE_AHEAD_MS`; `isTypeAheadKey(key, modifiers)` and
+`matchTypeAhead(labels, from, search)` find the next label. `errorCodeOf(error)`
+reads the code of a thrown client error and `isAbortError(error)` recognizes
+an aborted request.
+
+## Types
+
+`MediaClient` and its data types are shared with
+[`@createcms/react/media`](/docs/reference/react-media#client-shape):
+`MediaAsset`, `MediaFolder`, `MediaAssetListQuery`, `MediaAssetFilterQuery`,
+`MediaAssetListResult`, `MediaAssetStatus`, `MediaSortBy`,
+`MediaSortDirection`, `MediaAllMatching`, `MediaBulkTarget`, `MediaFacets`,
+`MediaServerEvent`, `MediaUploadState`, `MediaUploadEntry`,
+`MediaUploadedAsset`, and the usage types `MediaUsagePage`, `MediaUsageItem`,
+`MediaUsageOccurrence` and `MediaUsageScope`.

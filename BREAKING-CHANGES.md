@@ -440,6 +440,83 @@ nextCursor }`, each item a root with `title`, `status`, `via` and its
   → **Migration:** none; archived assets used by old commits are freed once
   those commits were pruned.
 
+- **`listAssets` lists originals only, and the assets table gets a search
+  index.** Variants (renditions) and revisions no longer appear in
+  `listAssets`; they are reached through `variants` and `listRevisions`.
+  The `assets` table gains the GIN index `assets_search_gin` over the
+  weighted file name, description, credit and copyright, used by the new
+  `q` parameter. `listAssets` also takes `kinds`, `mime`, `recursive`,
+  `visibility`, `provenance`, `uploadedBy`, `createdFrom`, `createdTo`,
+  `sizeMin`, `sizeMax`, `widthMin`, `heightMin`, `orientation`,
+  `expiringWithinDays`, `archived`, the sorts `updatedAt`, `originalName`
+  and `width`, and `includeTotal` (`total` is `null` with `false`).
+  → **Migration:** regenerate the schema and run the migration. Code that
+  found renditions through `listAssets` reads `variants` of the original.
+
+- **Bulk media endpoints take `assetIds` or `allMatching`.**
+  `updateAssetsStatus`, `moveAssets`, `archiveAssets` and `restoreAssets`
+  accept `allMatching: { query, except }` (a `listAssets` filter resolved
+  on the server, at most 10,000 assets) instead of `assetIds`; `assetIds`
+  is no longer required on its own.
+  → **Migration:** none for callers passing `assetIds`; typed wrappers of
+  the bodies make `assetIds` optional.
+
+- **`@createcms/react`: the media store moved to `/media/core` and works by
+  commands.** `createMediaStore` is exported from
+  `@createcms/react/media/core` and returns a store with slices
+  (`collection`, `selection`, `folders`, `preview`, `detail`, `ui`,
+  `mutation`), `dispatch(command)`, typed events (`on`) and registries.
+  `MediaLibraryState`, `MediaStoreActions`, `MediaBulkResult`,
+  `MediaListStatus`, `MediaMutationState` and `SEARCH_DEBOUNCE_MS` (now in
+  core) are gone from `/media`; `useMediaLibrary()` returns
+  `{ state, dispatch, assets, folders, openFolder, setFilter, setLayout,
+refresh }` and `useMediaSelection()` the new `MediaSelection`.
+  `MediaContextValue` has `announce` instead of `selection`. The folder
+  type is exported as `MediaFolderRecord`.
+  → **Migration:** replace `actions.navigate(folder)` with
+  `dispatch({ type: 'openFolder', folderId })`, `setSearch` and `setSort`
+  with `setFilter({ q })` and `setFilter({ sort })`, `archive`, `move` and
+  `setStatus` with the `archive`, `move` and `setVisibility` commands (or
+  `Bulk.Action`), and read state from `state.collection`,
+  `state.selection` and `state.folders`.
+
+- **`@createcms/react`: `Media.Grid` is an APG grid placed by the layout
+  engine.** `Media.Grid` renders `div[role=grid]` with `row` and `gridcell`
+  elements instead of `ul[role=listbox]` with `li[role=option]`; cells are
+  absolutely positioned from the layout (`minCell`, `gap`, `aspect`, the
+  store's `layout` mode) and the grid gets the content height. Clicks
+  follow OS conventions (Cmd/Ctrl toggles, Shift selects a range) instead
+  of toggling in multiple mode. `Media.Thumbnail` loads the 320 px
+  rendition with `alt=""` (the cell is named), not `asset.url` with the
+  slug as `alt`.
+  → **Migration:** style cells as filling their box (no CSS grid on
+  `Media.Grid`), select `[role=gridcell]` instead of `[role=option]`, and
+  add `Selection.Checkbox` where users toggled by clicking.
+
+- **`@createcms/react`: `Media.Dropzone` is replaced by the `Intake.*`
+  parts.** `Media.Dropzone`, `MediaDropzoneProps`, `MediaDropzoneState`,
+  `MediaRejectReason` and `acceptsFile` are gone from `/media`;
+  `Intake.Dropzone`, `Intake.Input`, `Intake.FolderInput`, `Intake.Paste`,
+  `Intake.Overlay` and `Intake.FolderPrompt` take `IntakeHandlerOptions`
+  (`onUploaded` receives upload entries), read folders and accept drops
+  while uploading. `acceptsFile` and `validate` are in `/media/core`.
+  → **Migration:** use `Intake.Dropzone` with `Intake.Input` inside it;
+  read `entry.result` in `onUploaded`.
+
+- **`@createcms/react`: other media parts changed.** `Media.Breadcrumbs`
+  passes `{ head, overflow, tail, all }` instead of an array of folders;
+  `Media.LoadMore` renders only while a next page exists instead of being
+  disabled; `Media.Empty` renders for empty filters too, with
+  `data-empty-reason` and the catalog text as default children;
+  `Media.UploadList` no longer renders a `role="log"` (`Media.Root` owns the
+  live regions and announces uploads); `Media.UploadProgress` reports
+  `aria-valuenow` in 10 percent steps. `MediaMessages` gains the `grid`,
+  `empty`, `filter`, `intake` and `move` groups and new keys under
+  `folder`, `selection`, `bulk`, `upload` and `error`.
+  → **Migration:** read `all` (or `head`, `overflow`, `tail`) in
+  breadcrumbs; complete full catalogs typed as `MediaMessages` with the new
+  keys (a partial `MediaMessagesInput` falls back to English).
+
 ---
 
 ## 0.6.0 — 2026-08-14

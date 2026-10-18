@@ -8,7 +8,9 @@
       "type": "registry:ui",
       "title": "Editor Form",
       "description": "Styled wrappers for Editor.Field parts and cms field controls. Does not wrap Editor.Root.",
-      "dependencies": ["@createcms/react"],
+      "dependencies": [
+        "@createcms/react"
+      ],
       "registryDependencies": [
         "button",
         "dialog",
@@ -41,8 +43,15 @@
       "type": "registry:ui",
       "title": "Editor Canvas",
       "description": "Styled wrappers for Canvas overlay and interaction parts. Does not wrap Canvas.Root.",
-      "dependencies": ["@createcms/react", "lucide-react"],
-      "registryDependencies": ["button", "separator", "tooltip"],
+      "dependencies": [
+        "@createcms/react",
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "button",
+        "separator",
+        "tooltip"
+      ],
       "files": [
         {
           "path": "registry/editor-canvas.tsx",
@@ -77,7 +86,10 @@
       "type": "registry:ui",
       "title": "Editor Shell",
       "description": "Sidebar-grade editor chrome with palette, outline, inspector, and toolbar. Use inside Editor.Root.",
-      "dependencies": ["@createcms/react", "lucide-react"],
+      "dependencies": [
+        "@createcms/react",
+        "lucide-react"
+      ],
       "registryDependencies": [
         "editor-form",
         "editor-canvas",
@@ -106,8 +118,12 @@
       "type": "registry:ui",
       "title": "Editor Email",
       "description": "Split form and FramePreview layout for email editing. Use inside Editor.Root.",
-      "dependencies": ["@createcms/react"],
-      "registryDependencies": ["editor-form"],
+      "dependencies": [
+        "@createcms/react"
+      ],
+      "registryDependencies": [
+        "editor-form"
+      ],
       "files": [
         {
           "path": "registry/editor-email.tsx",
@@ -120,7 +136,9 @@
       "type": "registry:block",
       "title": "Editor App",
       "description": "CMS-wired editor page: document load/save, field sources, shell, and canvas overlays in one install.",
-      "dependencies": ["@createcms/react"],
+      "dependencies": [
+        "@createcms/react"
+      ],
       "registryDependencies": [
         "editor-form",
         "editor-canvas",
@@ -141,8 +159,11 @@
       "name": "media-library",
       "type": "registry:ui",
       "title": "Media Library",
-      "description": "Styled wrappers for every Media.* part plus MediaLibraryLayout. Does not wrap Media.Root.",
-      "dependencies": ["@createcms/react", "lucide-react"],
+      "description": "Styled wrappers for the Media.* parts (grid, folder tree, filters, bulk bar, intake) plus MediaLibraryLayout. Does not wrap Media.Root.",
+      "dependencies": [
+        "@createcms/react",
+        "lucide-react"
+      ],
       "registryDependencies": [
         "button",
         "input",
@@ -152,7 +173,8 @@
         "alert-dialog",
         "progress",
         "badge",
-        "breadcrumb"
+        "breadcrumb",
+        "dropdown-menu"
       ],
       "files": [
         {
@@ -172,8 +194,14 @@
       "type": "registry:ui",
       "title": "Media Picker",
       "description": "Dialog control that owns its own Media.Root and returns one selected asset id.",
-      "dependencies": ["@createcms/react"],
-      "registryDependencies": ["media-library", "dialog", "button"],
+      "dependencies": [
+        "@createcms/react"
+      ],
+      "registryDependencies": [
+        "media-library",
+        "dialog",
+        "button"
+      ],
       "files": [
         {
           "path": "registry/media-picker.tsx",

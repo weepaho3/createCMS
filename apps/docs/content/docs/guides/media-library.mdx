@@ -3,7 +3,7 @@ title: Media library
 description: Install the styled media library and media picker from the createCMS shadcn registry.
 ---
 
-`@createcms/react/media` ships the headless parts (`Media.Root`, `Media.Grid`, `Media.Dropzone`, …; see the [Media reference](/docs/reference/react-media)). The registry adds two styled items on top:
+`@createcms/react/media` ships the headless parts (`Media.Root`, `Media.Grid`, `Folder.Tree`, `Intake.Dropzone`, `Bulk.Bar`, ...; see the [Media reference](/docs/reference/react-media)). The registry adds two styled items on top:
 
 - `media-library`: a wrapper per `Media.*` part plus `MediaLibraryLayout`, a composed default view. None of them render `Media.Root`.
 - `media-picker`: a dialog control that owns its own `Media.Root` and returns one selected asset id.
@@ -15,25 +15,30 @@ npx shadcn@latest add https://createcms.dev/r/media-library.json
 npx shadcn@latest add https://createcms.dev/r/media-picker.json
 ```
 
-The CLI installs the shadcn dependencies (`progress`, `badge`, `breadcrumb`, `alert`, `alert-dialog`, …) automatically; `media-picker` pulls in `media-library`. While developing the docs site locally, swap `https://createcms.dev` for `http://localhost:4000`.
+The CLI installs the shadcn dependencies (`progress`, `badge`, `breadcrumb`, `alert`, `alert-dialog`, `dropdown-menu`, ...) automatically; `media-picker` pulls in `media-library`. While developing the docs site locally, swap `https://createcms.dev` for `http://localhost:4000`.
 
 Both items need a `@createcms/react` release that contains the `/media` entry point.
 
 ## The default layout
 
-`MediaLibraryLayout` composes the toolbar (breadcrumbs, search, sort, new folder), the dropzone, folder cards, the asset grid, the empty and error states, load more, the upload list and the selection bar. Render it inside `Media.Root` with `cmsClient.media`:
+`MediaLibraryLayout` composes the folder tree, the toolbar (breadcrumbs, search, sort, new folder), filter chips, the dropzone with file and folder inputs, folder cards, the asset grid with upload tiles, the empty and error states, load more, the upload list, the bulk bar with its "Move to" dialog, the undo toast, the window drop overlay and the folder-structure prompt. Render it inside `Media.Root` with `cmsClient.media`:
 
 ```tsx
 'use client';
 
 import { Media } from '@createcms/react/media';
+import { createHistoryFilterAdapter } from '@createcms/react/media/core';
+import * as React from 'react';
 
 import { cmsClient } from '@/lib/cms-client';
 import { MediaLibraryLayout } from '@/components/media-library';
 
 export function MediaPage() {
+  // Folder, search, filters and sort live in the URL, so a copied link
+  // opens the same view and back and forward work.
+  const [filterUrl] = React.useState(() => createHistoryFilterAdapter());
   return (
-    <Media.Root client={cmsClient.media} selection="multiple">
+    <Media.Root client={cmsClient.media} selection="multiple" filterUrl={filterUrl}>
       <MediaLibraryLayout />
     </Media.Root>
   );
@@ -57,8 +62,8 @@ import {
   MediaError,
   MediaGrid,
   MediaLoadMore,
+  MediaBulkBar,
   MediaSearch,
-  MediaSelectionBar,
   MediaUploadList,
 } from '@/components/media-library';
 
@@ -73,22 +78,24 @@ import {
   <MediaEmpty />
   <MediaLoadMore />
   <MediaUploadList />
-  <MediaSelectionBar />
+  <MediaBulkBar />
 </Media.Root>
 ```
 
-| Export                | Wraps                                           | Notes                                                                                   |
-| --------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `MediaBreadcrumbs`    | `Media.Breadcrumbs` + shadcn `Breadcrumb`       | Root crumb labelled `MEDIA_LABELS.root`; the current folder renders as `BreadcrumbPage` |
-| `MediaSearch`         | `Media.Search` as shadcn `Input`                |                                                                                         |
-| `MediaSortSelect`     | shadcn `Select` bound to `setSort`              | Newest, oldest, name and size                                                           |
-| `MediaNewFolder`      | shadcn `Dialog` around `createFolder`           | Shows `MediaMutationError` inside the dialog when the request fails                     |
-| `MediaFolderList`, `MediaFolderCard` | `Media.FolderList`, `Media.Folder` | Hidden while the folder has no subfolders                                               |
-| `MediaGrid`, `MediaAssetCard` | `Media.Grid`, `Media.Item` + `Media.Thumbnail` | Type badge, slug, formatted size, ring on `data-selected`; `accept` hides non-matching assets |
-| `MediaDropzone`       | `Media.Dropzone`                                | Dashed zone with a `data-drag-active` ring                                              |
-| `MediaUploadList`     | `Media.UploadList` + shadcn `Progress`          | One abort and one clear button per list                                                 |
-| `MediaEmpty`, `MediaError`, `MediaMutationError`, `MediaLoadMore` | the matching parts | Errors render a destructive `Alert` with Retry or Dismiss                     |
-| `MediaSelectionBar`   | `useMediaSelection` + `useMediaLibrary`         | See below                                                                               |
+| Export | Wraps | Notes |
+| --- | --- | --- |
+| `MediaFolderTree` | `Folder.Tree`, `Folder.Item`, `Folder.Toggle`, `Folder.Rename` | Indented rows, a drop ring on `data-drop-over`; `mode="pick"` serves the "Move to" dialog |
+| `MediaBreadcrumbs`, `MediaCrumb` | `Media.Breadcrumbs`, `Media.Crumb` + shadcn `Breadcrumb` | Deep paths collapse into a `DropdownMenu`; crumbs are drop targets |
+| `MediaSearch` | `Media.Search` as shadcn `Input` | |
+| `MediaSortSelect` | shadcn `Select` bound to `useMediaFilter` | Newest, oldest, name and largest first |
+| `MediaNewFolder` | `Folder.Create` | A button that turns into an inline name field |
+| `MediaFilterBar` | `Filter.Chip`, `Filter.Clear`, `Filter.Scope` | Chips with facet counts for images, videos, documents, AI-generated, not in use and missing alt text |
+| `MediaFolderList`, `MediaFolderCard` | `Media.FolderList`, `Media.Folder` | Drop targets for assets, folders and files |
+| `MediaGrid`, `MediaAssetCard`, `MediaUploadTile` | `Media.Grid`, `Media.Item`, `Media.Thumbnail`, `Selection.Checkbox`, `Media.UploadTile` | Cells are placed by the layout engine; the card fills its cell |
+| `MediaDropzone`, `MediaDropOverlay`, `MediaFolderPrompt` | `Intake.Dropzone`, `Intake.Input`, `Intake.FolderInput`, `Intake.Overlay`, `Intake.FolderPrompt` | Dashed zone, full-window overlay, recreate-or-flatten dialog |
+| `MediaUploadList` | `Media.UploadList` + shadcn `Progress` | One abort and one clear button per list |
+| `MediaEmpty`, `MediaError`, `MediaMutationError`, `MediaLoadMore` | the matching parts | Errors render a destructive `Alert` with Retry or Dismiss |
+| `MediaBulkBar`, `MediaMoveDialog`, `MediaOutcome` | `Selection.*`, `Bulk.Bar`, `Bulk.Action`, `Bulk.Outcome` | See below |
 
 Every visible string comes from the media messages catalog (see [Messages](/docs/reference/react-media#messages)). Pass a partial catalog and a locale to `Media.Root` to translate the library; sizes, numbers and plurals follow the locale. `MediaPicker` takes the same `messages` and `locale` props.
 
@@ -106,11 +113,11 @@ import { mediaMessagesDe } from '@/lib/media-messages-de';
 
 ### Selection actions
 
-`MediaSelectionBar` appears once at least one asset is selected and offers **Move to folder** (a dialog listing the subfolders of the current folder plus the root), **Make public**, **Make private** and **Archive** behind a confirmation, with a note that visibility controls delivery through the asset endpoint but is not an access boundary. Each action awaits the store's `move`, `setStatus` or `archive`; when the server skips ids (assets in use, already archived or out of scope) the bar shows an inline notice such as "2 assets were skipped because they are in use". A rejected action surfaces through `MediaMutationError`, never through the list error view.
+`MediaBulkBar` appears once something is selected: the count, **Select all 312** when more assets match than are loaded, the registered bulk actions (**Move to...**, **Make public**, **Make private**, **Download**, **Archive**) and **Clear**. Disabled actions say why in their tooltip ("All selected assets are public."). **Archive** asks first; when the server skips assets because they are in use, a second dialog lists them and **Archive anyway** archives them with `force`. **Move to...** opens `MediaMoveDialog`, a folder tree in pick mode where Enter moves. Results show in `MediaOutcome`, a toast with **Undo** ("4 assets moved to Products. Undo"), and are announced to screen readers; after a removal the focus moves to the next asset. Register your own actions with `store.registries.assetActions.register(...)`.
 
 ### Thumbnails
 
-`MediaAssetCard` shows `asset.url`, the direct object URL, which the server only hands to admin sessions. The library is admin UI; do not reuse the card on public pages. Pass `assetUrl` on `Media.Root` to change the source.
+`MediaAssetCard` loads the 320 px WebP rendition through the asset endpoint, never the bucket URL of a private asset, with a `srcset` of the existing renditions and the dominant colour until it loaded. Assets without renditions fall back to `assetUrl` on `Media.Root` (the gate path by default).
 
 ## The picker in a field control
 
@@ -135,7 +142,7 @@ function HeroImageField(props: FieldControlProps<'image'>) {
 }
 ```
 
-`accept` works like the file input attribute (`.ext`, `type/*`, exact types). The server lists every asset of a folder, so the picker hides non-matching cards and fetches up to five further pages automatically while a page shows nothing; only after that does it show the empty state.
+`accept` works like the file input attribute: its types (`image/*`, exact types) filter the grid on the server, and the dropzone rejects other files. The picker keeps its filter in memory and never touches the page URL. Enter or a double click on an asset selects it right away.
 
 `editor-form`'s image control uses the picker. `CmsSourcesProvider` takes an optional `media` client for it:
 
@@ -145,4 +152,4 @@ function HeroImageField(props: FieldControlProps<'image'>) {
 </CmsSourcesProvider>
 ```
 
-Without `media`, the picker runs on a read-only adapter over `sources.assets` (`sourcesMediaClient`): offset paging as the cursor, no folders, uploads through `sources.assets.useUpload`, and every mutation rejected with `Not supported by this media source`. `CmsEditor` passes `client.media` through automatically when it has the full `MediaClient` surface (`listFolders`, `createFolder`, `moveAssets`, `archiveAssets`, `updateAssetsStatus`, `useUploadAssets`).
+Without `media`, the picker runs on a read-only adapter over `sources.assets` (`sourcesMediaClient`): offset paging as the cursor, text search, no folders and no type filter, uploads through `sources.assets.useUpload`, and every mutation rejected with `Not supported by this media source`. `CmsEditor` passes `client.media` through automatically when it has the full `MediaClient` surface (`listFolders`, `createFolder`, `moveAssets`, `archiveAssets`, `updateAssetsStatus`, `useUploadAssets`).

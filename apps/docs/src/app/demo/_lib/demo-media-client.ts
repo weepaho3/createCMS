@@ -4,7 +4,13 @@ import type {
   CmsAssetListItem,
   CmsMediaUploadState,
 } from '@createcms/react/editor/cms';
-import type { MediaClient, MediaFolder } from '@createcms/react/media';
+import type {
+  MediaAssetFilterQuery,
+  MediaBulkTarget,
+  MediaClient,
+  MediaFolderRecord as MediaFolder,
+  MediaSortBy,
+} from '@createcms/react/media';
 
 import { DEMO_ASSETS } from '@/app/demo/_lib/assets';
 
@@ -89,22 +95,34 @@ const EXTRA_ASSETS: CmsAssetListItem[] = [
 
 const PAGE_SIZE_FALLBACK = 40;
 
-function compareAssets(
-  sortBy: 'createdAt' | 'slug' | 'size',
-  direction: 'asc' | 'desc',
-) {
+function compareAssets(sortBy: MediaSortBy, direction: 'asc' | 'desc') {
   const sign = direction === 'asc' ? 1 : -1;
   return (a: CmsAssetListItem, b: CmsAssetListItem): number => {
     switch (sortBy) {
       case 'slug':
-        return sign * a.slug.localeCompare(b.slug);
+      case 'originalName':
+        return (
+          sign *
+          (a.originalName ?? a.slug).localeCompare(b.originalName ?? b.slug)
+        );
       case 'size':
         return sign * (a.size - b.size);
+      case 'width':
+        return sign * ((a.width ?? -1) - (b.width ?? -1));
+      case 'updatedAt':
+        return sign * String(a.updatedAt).localeCompare(String(b.updatedAt));
       case 'createdAt':
         return sign * String(a.createdAt).localeCompare(String(b.createdAt));
     }
   };
 }
+
+const KIND_PREFIX: Record<string, string> = {
+  image: 'image/',
+  video: 'video/',
+  audio: 'audio/',
+  document: 'application/pdf',
+};
 
 /**
  * In-memory `MediaClient` for the media demo: folders, asset status and
@@ -116,28 +134,49 @@ export function demoMediaClient(): MediaClient {
   const assets = structuredClone([...DEMO_ASSETS, ...EXTRA_ASSETS]);
   const inUse = new Set(['brand-guide']);
 
-  const byIds = (ids: string[]) =>
-    assets.filter((asset) => ids.includes(asset.id));
+  const matching = (query: MediaAssetFilterQuery | undefined) => {
+    const search = (query?.q ?? query?.search)?.toLowerCase();
+    let filtered = assets.filter(
+      (asset) => (asset.status === 'archived') === !!query?.archived,
+    );
+    if (query?.folderId) {
+      filtered = filtered.filter((asset) => asset.folderId === query.folderId);
+    } else if (query?.unfiled) {
+      filtered = filtered.filter((asset) => asset.folderId === null);
+    }
+    if (search) {
+      filtered = filtered.filter(
+        (asset) =>
+          asset.id.toLowerCase().includes(search) ||
+          (asset.originalName ?? asset.slug).toLowerCase().includes(search),
+      );
+    }
+    if (query?.kinds) {
+      const prefixes = query.kinds
+        .split(',')
+        .map((kind) => KIND_PREFIX[kind] ?? '~');
+      filtered = filtered.filter((asset) =>
+        prefixes.some((prefix) => asset.mimeType.startsWith(prefix)),
+      );
+    }
+    return filtered;
+  };
+
+  const byIds = (target: MediaBulkTarget) => {
+    if (target.allMatching) {
+      const except = new Set(target.allMatching.except);
+      return matching(target.allMatching.query).filter(
+        (asset) => !except.has(asset.id),
+      );
+    }
+    const ids = target.assetIds ?? [];
+    return assets.filter((asset) => ids.includes(asset.id));
+  };
 
   return {
     async listAssets(args) {
       const query = args?.query;
-      const search = query?.search?.toLowerCase();
-      let filtered = assets.filter((asset) => asset.status !== 'archived');
-      if (query?.folderId) {
-        filtered = filtered.filter(
-          (asset) => asset.folderId === query.folderId,
-        );
-      } else if (query?.unfiled) {
-        filtered = filtered.filter((asset) => asset.folderId === null);
-      }
-      if (search) {
-        filtered = filtered.filter(
-          (asset) =>
-            asset.id.toLowerCase().includes(search) ||
-            asset.slug.toLowerCase().includes(search),
-        );
-      }
+      const filtered = matching(query);
       filtered.sort(
         compareAssets(
           query?.sortBy ?? 'createdAt',
@@ -158,8 +197,56 @@ export function demoMediaClient(): MediaClient {
     async listFolders(args) {
       const parentId = args?.query?.parentFolderId ?? null;
       return {
-        folders: folders.filter((folder) => folder.parentId === parentId),
+        folders: folders
+          .filter((folder) => folder.parentId === parentId)
+          .map((folder) => ({
+            ...folder,
+            folderCount: folders.filter((child) => child.parentId === folder.id)
+              .length,
+            assetCount: assets.filter(
+              (asset) =>
+                asset.folderId === folder.id && asset.status !== 'archived',
+            ).length,
+          })),
       };
+    },
+    async getFolderPath({ query }) {
+      const path: MediaFolder[] = [];
+      let current = folders.find((folder) => folder.id === query.folderId);
+      while (current) {
+        path.unshift(current);
+        const parentId: string | null = current.parentId;
+        current = folders.find((folder) => folder.id === parentId);
+      }
+      return { path };
+    },
+    async renameFolder({ body }) {
+      const folder = folders.find((entry) => entry.id === body.folderId);
+      if (!folder) throw { code: 'FOLDER_NOT_FOUND' };
+      if (
+        folders.some(
+          (entry) =>
+            entry.parentId === folder.parentId &&
+            entry.name === body.name &&
+            entry.id !== folder.id,
+        )
+      ) {
+        throw { code: 'FOLDER_NAME_TAKEN' };
+      }
+      folder.name = body.name;
+      return { folder };
+    },
+    async restoreAssets({ body }) {
+      const restoredIds: string[] = [];
+      for (const asset of assets.filter((entry) =>
+        body.assetIds?.includes(entry.id),
+      )) {
+        if (asset.status === 'archived') {
+          asset.status = 'private';
+          restoredIds.push(asset.id);
+        }
+      }
+      return { restoredIds, skipped: [] };
     },
     async createFolder({ body }) {
       const folder: MediaFolder = {
@@ -172,7 +259,7 @@ export function demoMediaClient(): MediaClient {
     },
     async moveAssets({ body }) {
       const movedIds: string[] = [];
-      for (const asset of byIds(body.assetIds)) {
+      for (const asset of byIds(body)) {
         asset.folderId = body.folderId;
         movedIds.push(asset.id);
       }
@@ -181,7 +268,7 @@ export function demoMediaClient(): MediaClient {
     async archiveAssets({ body }) {
       const archivedIds: string[] = [];
       const skipped: string[] = [];
-      for (const asset of byIds(body.assetIds)) {
+      for (const asset of byIds(body)) {
         if (inUse.has(asset.id)) {
           skipped.push(asset.id);
           continue;
@@ -193,7 +280,7 @@ export function demoMediaClient(): MediaClient {
     },
     async updateAssetsStatus({ body }) {
       const updatedIds: string[] = [];
-      for (const asset of byIds(body.assetIds)) {
+      for (const asset of byIds(body)) {
         asset.status = body.status;
         updatedIds.push(asset.id);
       }

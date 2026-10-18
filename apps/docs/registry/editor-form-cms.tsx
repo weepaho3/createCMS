@@ -94,7 +94,7 @@ export function sourcesMediaClient(sources: CmsFieldSources): MediaClient {
       const query = args?.query;
       const offset = Number(query?.cursor ?? 0);
       const page = await sources.assets.list({
-        search: query?.search,
+        search: query?.q ?? query?.search,
         limit: query?.limit,
         offset,
       });

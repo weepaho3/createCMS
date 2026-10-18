@@ -141,7 +141,7 @@
       "name": "media-library",
       "type": "registry:ui",
       "title": "Media Library",
-      "description": "Styled wrappers for every Media.* part plus MediaLibraryLayout. Does not wrap Media.Root.",
+      "description": "Styled wrappers for the Media.* parts (grid, folder tree, filters, bulk bar, intake) plus MediaLibraryLayout. Does not wrap Media.Root.",
       "dependencies": ["@createcms/react", "lucide-react"],
       "registryDependencies": [
         "button",
@@ -152,7 +152,8 @@
         "alert-dialog",
         "progress",
         "badge",
-        "breadcrumb"
+        "breadcrumb",
+        "dropdown-menu"
       ],
       "files": [
         {

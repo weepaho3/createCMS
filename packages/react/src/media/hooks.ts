@@ -1,58 +1,73 @@
 import * as React from 'react';
 
-import type { MediaStoreActions } from './store';
+import type { FilterState } from './core/filter';
+import type { LayoutMode } from './core/layout';
 import type {
-  MediaAsset,
-  MediaLibraryState,
-  MediaSelectionMode,
-  MediaUploadState,
-} from './types';
+  CollectionSlice,
+  MediaCommand,
+  MediaEvent,
+  MediaEventType,
+  MediaStore,
+  MediaStoreState,
+} from './core/store';
+import type { MediaAsset, MediaFolder, MediaUploadState } from './core/types';
 
 import { useMediaContext, useMediaUploadsContext } from './context';
+import { collectionAssets, currentFolders } from './core/store';
 import { useSelector } from './use-store';
 
-export type MediaLibrary = MediaLibraryState &
-  Omit<MediaStoreActions, 'dispose'>;
+export type MediaLibrary = {
+  state: MediaStoreState;
+  dispatch: MediaStore['dispatch'];
+  /** The loaded assets in order. */
+  assets: MediaAsset[];
+  /** The subfolders of the open folder. */
+  folders: MediaFolder[];
+  openFolder: (folderId: string | null) => void;
+  setFilter: (patch: Partial<FilterState>) => void;
+  setLayout: (layout: LayoutMode) => void;
+  refresh: () => void;
+};
 
-const identity = (state: MediaLibraryState): MediaLibraryState => state;
+const identity = (state: MediaStoreState) => state;
 
 /**
- * The whole library state merged with the store actions except `dispose`,
- * which `Media.Root` calls on unmount. Re-renders on every state change;
- * use `useMediaSelection` or `useMediaAsset` for narrower subscriptions.
+ * The whole store state of the enclosing `Media.Root` with `dispatch` and
+ * shortcuts for the common commands. Re-renders on every change; prefer
+ * `useMediaStore(selector)` for narrow subscriptions.
  */
 export function useMediaLibrary(): MediaLibrary {
   const { store } = useMediaContext('useMediaLibrary');
   const state = useSelector(store, identity, Object.is);
   return React.useMemo(() => {
-    const { dispose: _dispose, ...actions } = store.actions;
-    return { ...state, ...actions };
+    const run = (command: MediaCommand) => void store.dispatch(command);
+    return {
+      state,
+      dispatch: store.dispatch,
+      assets: collectionAssets(state),
+      folders: currentFolders(state),
+      openFolder: (folderId) => run({ type: 'openFolder', folderId }),
+      setFilter: (filter) => run({ type: 'setFilter', filter }),
+      setLayout: (layout) => run({ type: 'setLayout', layout }),
+      refresh: () => run({ type: 'refresh' }),
+    };
   }, [state, store]);
 }
 
-export type MediaSelection = {
-  selected: string[];
-  select: (id: string) => void;
-  toggle: (id: string) => void;
-  clear: () => void;
-  mode: MediaSelectionMode;
-};
+const selectCollection = (state: MediaStoreState) => state.collection;
 
-const selectSelected = (state: MediaLibraryState): string[] => state.selected;
-
-/** The selected asset ids and the selection actions of the enclosing `Media.Root`. */
-export function useMediaSelection(): MediaSelection {
-  const { store, selection } = useMediaContext('useMediaSelection');
-  const selected = useSelector(store, selectSelected);
+/** The collection slice: query, ids, assets by id, cursor, total and status. */
+export function useMediaCollection(): CollectionSlice & {
+  assets: MediaAsset[];
+} {
+  const { store } = useMediaContext('useMediaCollection');
+  const collection = useSelector(store, selectCollection, Object.is);
   return React.useMemo(
     () => ({
-      selected,
-      select: store.actions.select,
-      toggle: store.actions.toggle,
-      clear: store.actions.clearSelection,
-      mode: selection,
+      ...collection,
+      assets: collectionAssets({ collection } as MediaStoreState),
     }),
-    [selected, store, selection],
+    [collection],
   );
 }
 
@@ -61,13 +76,30 @@ export function useMediaUploads(): MediaUploadState {
   return useMediaUploadsContext('useMediaUploads');
 }
 
-/** One listed asset by id, or `null` when the current page does not contain it. */
+/** One loaded asset by id, or `null` when the collection does not hold it. */
 export function useMediaAsset(id: string): MediaAsset | null {
   const { store } = useMediaContext('useMediaAsset');
   const selector = React.useCallback(
-    (state: MediaLibraryState): MediaAsset | null =>
-      state.assets.find((asset) => asset.id === id) ?? null,
+    (state: MediaStoreState): MediaAsset | null =>
+      state.collection.byId[id] ?? null,
     [id],
   );
   return useSelector(store, selector, Object.is);
+}
+
+/**
+ * Subscribes to a store event (`asset:replaced`, `selection:changed`, ...)
+ * for as long as the component is mounted.
+ */
+export function useMediaEvent<K extends MediaEventType>(
+  type: K,
+  listener: (event: Extract<MediaEvent, { type: K }>) => void,
+): void {
+  const { store } = useMediaContext('useMediaEvent');
+  const ref = React.useRef(listener);
+  ref.current = listener;
+  React.useEffect(
+    () => store.on(type, (event) => ref.current(event)),
+    [store, type],
+  );
 }

@@ -11,7 +11,8 @@ const LITERAL_PATTERNS: RegExp[] = [
   /'aria-(label|valuetext|description)':\s*['`"]/,
   /aria-(label|valuetext|description)="[^"{]/,
   /children:\s*[^,\n]*\?\?\s*['`"]/,
-  />\s*[A-Za-z][A-Za-z ,.]+\s*</,
+  // JSX text between tags; `=> Promise<...>` (a return type) is not text.
+  /(?<!=)>\s*[A-Za-z][A-Za-z ,.]+\s*</,
   /return\s+['`"][A-Z][a-z]+[ .:]/,
 ];
 

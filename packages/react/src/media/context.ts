@@ -1,16 +1,18 @@
 import * as React from 'react';
 
+import type { Announce } from './core/announcer';
+import type { MediaStore } from './core/store';
+import type { MediaAsset, MediaUploadState } from './core/types';
 import type { MediaFormatters, MediaMessages } from './messages';
-import type { MediaStore } from './store';
-import type { MediaAsset, MediaSelectionMode, MediaUploadState } from './types';
 
 import { createMediaFormatters, defaultMediaMessages } from './messages';
 
 export type MediaContextValue = {
   store: MediaStore;
-  selection: MediaSelectionMode;
-  /** Resolves the `src` of `Media.Thumbnail`; defaults to `asset.deliveryUrl`. */
+  /** Resolves the fallback `src` of `Media.Thumbnail`; defaults to `asset.deliveryUrl`. */
   assetUrl: (asset: MediaAsset) => string;
+  /** Speaks to screen readers (the root's live regions or an injected announcer). */
+  announce: Announce;
 };
 
 export const MediaContext = React.createContext<MediaContextValue | null>(null);
@@ -65,3 +67,10 @@ export const MediaMessagesContext =
 export function useMediaMessages(): MediaMessagesContextValue {
   return React.useContext(MediaMessagesContext);
 }
+
+/** The announcer of the nearest `Media.Root`; a no-op outside one. */
+export function useMediaAnnouncer(): Announce {
+  return React.useContext(MediaContext)?.announce ?? noop;
+}
+
+const noop: Announce = () => {};

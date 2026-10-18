@@ -130,6 +130,7 @@ export const assets = cmsSchema.table(
     index("assets_sha_idx").on(table.sha256),
     index("assets_provenance_idx").on(table.provenance).where(sql`archived_at IS NULL`),
     index("assets_list_idx").on(table.folderId, table.createdAt, table.id).where(sql`archived_at IS NULL AND variant_of IS NULL AND revision_of IS NULL`),
+    index("assets_search_gin").using("gin", sql`(setweight(to_tsvector('simple', coalesce(original_name, '')), 'A') || setweight(to_tsvector('simple', coalesce(metadata->>'description', '')), 'B') || setweight(to_tsvector('simple', coalesce(metadata->'rights'->>'credit', '') || ' ' || coalesce(metadata->'rights'->>'copyright', '')), 'C'))`),
   ],
 );
 

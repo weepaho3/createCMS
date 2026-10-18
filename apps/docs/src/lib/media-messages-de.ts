@@ -32,6 +32,98 @@ export const mediaMessagesDe: MediaMessages = {
       }
       return parts.join(' ');
     },
+    tree: 'Ordner',
+    defaultName: 'Neuer Ordner',
+    rename: 'Umbenennen',
+    delete: 'Ordner löschen',
+    deleteTitle: 'Ordner löschen?',
+    deleteMode: {
+      moveToParent: 'Inhalt in den übergeordneten Ordner verschieben',
+      archiveContents: 'Inhalt archivieren',
+    },
+    typeToConfirm: ({ name }) => `Zum Bestätigen "${name}" eingeben`,
+    created: ({ name }) => `Ordner angelegt: ${name}`,
+    renamed: ({ name }) => `Ordner umbenannt: ${name}`,
+    deleted: ({ name }) => `Ordner gelöscht: ${name}`,
+    overflow: 'Weitere Ordner zeigen',
+    count: ({ count }, format) =>
+      `${format.number(count)} ${plural(count, format, 'Datei', 'Dateien')}`,
+  },
+  grid: {
+    label: 'Medien',
+    describe: ({ type, width, height, size }, format) =>
+      [
+        type,
+        width && height
+          ? `${format.number(width)} mal ${format.number(height)} Pixel`
+          : null,
+        format.bytes(size),
+      ]
+        .filter(Boolean)
+        .join(', '),
+    uploading: ({ name, percent }, format) =>
+      `${name}, wird hochgeladen ${format.percent(percent / 100)}`,
+    loadingMore: 'Weitere Medien werden geladen…',
+    loadedMore: ({ count, loaded, total }, format) =>
+      total === null
+        ? `${format.number(count)} weitere Medien geladen`
+        : `${format.number(count)} weitere Medien geladen, ${format.number(loaded)} von ${format.number(total)}`,
+  },
+  empty: {
+    'folder-empty': 'Dieser Ordner ist leer.',
+    'no-results': 'Keine Medien passen zu den Filtern.',
+    error: 'Medien konnten nicht geladen werden.',
+    'no-permission': 'Du hast keinen Zugriff auf diese Medien.',
+  },
+  filter: {
+    label: 'Filter',
+    clear: 'Filter zurücksetzen',
+    remove: ({ label }) => `Filter ${label} entfernen`,
+    kind: {
+      image: 'Bilder',
+      video: 'Videos',
+      audio: 'Audio',
+      document: 'Dokumente',
+      archive: 'Archive',
+      other: 'Andere Dateien',
+    },
+    provenance: {
+      unknown: 'Herkunft unbekannt',
+      captured: 'Aufgenommen',
+      ai_generated: 'KI-generiert',
+      ai_edited: 'KI-bearbeitet',
+    },
+    usage: { used: 'Verwendet', unused: 'Unbenutzt' },
+    missingAlt: 'Ohne Alt-Text',
+    searchIn: ({ folder }) => `Suche in ${folder}`,
+    allFolders: 'Alle Ordner',
+    chip: ({ label, count }, format) =>
+      count === null ? label : `${label} (${format.number(count)})`,
+  },
+  intake: {
+    overlay: 'Dateien zum Hochladen ablegen',
+    files: 'Dateien hochladen',
+    folder: 'Ordner hochladen',
+    paste: 'Aus Zwischenablage einfügen',
+    reading: ({ count }, format) =>
+      `Ordner wird gelesen… ${format.number(count)} ${plural(count, format, 'Datei', 'Dateien')}`,
+    recreate: ({ folders, files }, format) =>
+      `Ordnerstruktur nachbilden (${format.number(folders)} Ordner, ${format.number(files)} ${plural(files, format, 'Datei', 'Dateien')})`,
+    flatten: 'Alles in den aktuellen Ordner',
+    skippedSystem: ({ count }, format) =>
+      `${format.number(count)} ${plural(count, format, 'Systemdatei wurde', 'Systemdateien wurden')} übersprungen`,
+    rejected: ({ count }, format) =>
+      `${format.number(count)} ${plural(count, format, 'Datei wurde', 'Dateien wurden')} abgelehnt`,
+    truncated: ({ count }, format) =>
+      `Nur die ersten ${format.number(count)} Dateien wurden gelesen`,
+  },
+  move: {
+    title: 'Verschieben nach',
+    description: 'Wähle den Zielordner.',
+    confirm: 'Hierher verschieben',
+    dragCount: ({ count }, format) =>
+      `${format.number(count)} ${plural(count, format, 'Element', 'Elemente')}`,
+    insert: 'In Editor einfügen',
   },
   search: { label: 'Medien durchsuchen' },
   sort: {
@@ -77,6 +169,18 @@ export const mediaMessagesDe: MediaMessages = {
   },
   selection: {
     count: ({ count }, format) => `${format.number(count)} ausgewählt`,
+    all: ({ count }, format) => `Alle ${format.number(count)} ausgewählt`,
+    cleared: 'Auswahl aufgehoben',
+    selectAllMatching: ({ count }, format) =>
+      `Alle ${format.number(count)} auswählen`,
+    hidden: ({ count }, format) =>
+      plural(
+        count,
+        format,
+        `${format.number(count)} ausgewähltes Element ist durch Filter verborgen`,
+        `${format.number(count)} ausgewählte Elemente sind durch Filter verborgen`,
+      ),
+    item: ({ name }) => `${name} auswählen`,
   },
   bulk: {
     skipped: ({ count }, format) =>
@@ -86,6 +190,38 @@ export const mediaMessagesDe: MediaMessages = {
         `${format.number(count)} Datei wurde übersprungen, weil sie verwendet wird`,
         `${format.number(count)} Dateien wurden übersprungen, weil sie verwendet werden`,
       ),
+    bar: 'Aktionen für die Auswahl',
+    action: {
+      move: 'Verschieben nach…',
+      makePublic: 'Öffentlich machen',
+      makePrivate: 'Privat machen',
+      setProvenance: 'Herkunft setzen',
+      download: 'Herunterladen',
+      archive: 'Archivieren',
+      restore: 'Wiederherstellen',
+    },
+    disabled: {
+      empty: 'Zuerst Dateien auswählen.',
+      unsupported: 'Auf diesem Server nicht verfügbar.',
+      archived: 'Diese Dateien sind bereits archiviert.',
+      'not-archived': 'Nur archivierte Dateien lassen sich wiederherstellen.',
+      'all-public': 'Alle ausgewählten Dateien sind öffentlich.',
+      'all-private': 'Alle ausgewählten Dateien sind privat.',
+      'too-many': 'Für diese Aktion geladene Dateien auswählen.',
+    },
+    moved: ({ count, folder }, format) =>
+      `${format.number(count)} ${plural(count, format, 'Datei', 'Dateien')} nach ${folder} verschoben.`,
+    archived: ({ count }, format) =>
+      `${format.number(count)} ${plural(count, format, 'Datei', 'Dateien')} archiviert.`,
+    restored: ({ count }, format) =>
+      `${format.number(count)} ${plural(count, format, 'Datei', 'Dateien')} wiederhergestellt.`,
+    visibility: ({ count, status }, format) =>
+      `${format.number(count)} ${plural(count, format, 'Datei ist', 'Dateien sind')} jetzt ${status === 'public' ? 'öffentlich' : 'privat'}.`,
+    undo: 'Rückgängig',
+    undone: 'Rückgängig gemacht.',
+    archiveInUse: ({ count }, format) =>
+      `${format.number(count)} ${plural(count, format, 'Datei wird', 'Dateien werden')} noch verwendet. Trotzdem archivieren? Inhalte verweisen weiter darauf.`,
+    archiveAnyway: 'Trotzdem archivieren',
   },
   type: {
     image: 'Bild',
@@ -115,6 +251,15 @@ export const mediaMessagesDe: MediaMessages = {
       `${format.number(done)} von ${format.number(total)} ${plural(total, format, 'Datei', 'Dateien')} (${format.percent(percent / 100)})`,
     eta: ({ seconds }, format) => format.eta(seconds),
     failed: ({ reason }) => `Fehlgeschlagen: ${reason}`,
+    started: ({ count }, format) =>
+      `${format.number(count)} ${plural(count, format, 'Datei wird', 'Dateien werden')} hochgeladen`,
+    finished: ({ done, total, failed }, format) =>
+      failed > 0
+        ? `${format.number(done)} von ${format.number(total)} Dateien hochgeladen, ${format.number(failed)} fehlgeschlagen`
+        : `${format.number(done)} von ${format.number(total)} Dateien hochgeladen`,
+    entryDone: ({ name }) => `${name} hochgeladen`,
+    entryFailed: ({ name, reason }) => `${name} fehlgeschlagen: ${reason}`,
+    entryCancelled: ({ name }) => `${name} abgebrochen`,
   },
   image: {
     provenance: { ai_generated: 'KI-generiert', ai_edited: 'KI-bearbeitet' },
@@ -163,6 +308,7 @@ export const mediaMessagesDe: MediaMessages = {
     CANNOT_REPLACE_VARIANT: 'Eine erzeugte Variante kann nicht ersetzt werden.',
     FILE_TOO_LARGE: 'Die Datei ist zu groß.',
     FOLDER_HAS_CONTENT: 'Der Ordner ist nicht leer.',
+    FOLDER_NAME_TAKEN: 'Hier gibt es bereits einen Ordner mit diesem Namen.',
     FOLDER_NOT_FOUND: 'Der Ordner existiert nicht mehr.',
     INVALID_FILE_TYPE: 'Dieser Dateityp ist nicht erlaubt.',
     NETWORK_ERROR: 'Die Verbindung wurde unterbrochen.',
@@ -170,10 +316,13 @@ export const mediaMessagesDe: MediaMessages = {
     SLUG_GENERATION_FAILED: 'Es wurde kein freier Dateiname gefunden.',
     STORAGE_UNSUPPORTED: 'Der Speicher unterstützt diesen Upload nicht.',
     TOO_MANY_FILES: 'Zu viele Dateien auf einmal.',
+    UNSUPPORTED: 'Diese Aktion ist nicht verfügbar.',
     UPLOAD_EXPIRED: 'Der Upload-Link ist abgelaufen.',
     UPLOAD_FAILED: 'Der Upload ist fehlgeschlagen.',
     UPLOAD_NOT_FOUND:
       'Die hochgeladene Datei wurde im Speicher nicht gefunden.',
     UPLOAD_TOKEN_INVALID: 'Der Upload konnte nicht bestätigt werden.',
+    VERSION_CONFLICT:
+      'Jemand anderes hat diese Datei geändert. Neu laden und erneut versuchen.',
   },
 };

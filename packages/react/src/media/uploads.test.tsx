@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { MediaUploadState } from './types';
 
-import { MediaRoot } from './components';
+import { MediaRoot } from './root';
 import { makeClient, makeEntry, makeUploadState } from './test-fixtures';
 import {
   MediaUploadAbort,
@@ -77,7 +77,7 @@ describe('Media.UploadProgress', () => {
     const bar = getByRole('progressbar', { name: 'hero.png' });
     expect(bar.getAttribute('aria-valuemin')).toBe('0');
     expect(bar.getAttribute('aria-valuemax')).toBe('100');
-    expect(bar.getAttribute('aria-valuenow')).toBe('45');
+    expect(bar.getAttribute('aria-valuenow')).toBe('40');
     expect(bar.getAttribute('aria-valuetext')).toBe('45%');
     expect(bar.getAttribute('data-status')).toBe('uploading');
     expect(getByTestId('list').hasAttribute('data-empty')).toBe(false);
@@ -130,40 +130,69 @@ describe('Media.UploadProgress', () => {
   });
 });
 
-describe('Media.UploadList log', () => {
-  it('announces each terminal entry once', () => {
+describe('Media.Root upload announcements', () => {
+  it('announces the start, a failed entry and the result of a batch', () => {
     const uploading = makeEntry({
       id: 'u',
       name: 'u.png',
       status: 'uploading',
     });
+    const failing = makeEntry({ id: 'f', name: 'f.png', status: 'uploading' });
     const { getByRole, update } = setup(
-      makeUploadState({ isUploading: true, files: [uploading] }),
+      makeUploadState({ isUploading: true, files: [uploading, failing] }),
     );
-    const log = getByRole('log');
-    expect(log.textContent).toBe('');
+    const status = getByRole('status');
+    expect(status.textContent).toBe('2 files are uploading');
 
-    const done = { ...uploading, status: 'success' as const, progress: 1 };
-    update(makeUploadState({ files: [done] }));
-    expect(log.textContent).toBe('u.png uploaded');
-
-    update(makeUploadState({ files: [{ ...done }] }));
-    expect(log.textContent).toBe('u.png uploaded');
+    update(
+      makeUploadState({
+        isUploading: true,
+        files: [
+          uploading,
+          {
+            ...failing,
+            status: 'error',
+            error: { code: 'UPLOAD_FAILED', message: 'boom', retryable: false },
+          },
+        ],
+      }),
+    );
+    expect(status.textContent).toBe('f.png failed: The upload failed.');
 
     update(
       makeUploadState({
         files: [
-          done,
-          makeEntry({
-            id: 'f',
-            name: 'f.png',
+          { ...uploading, status: 'success', progress: 1 },
+          {
+            ...failing,
             status: 'error',
             error: { code: 'UPLOAD_FAILED', message: 'boom', retryable: false },
-          }),
+          },
         ],
       }),
     );
-    expect(log.textContent).toBe('u.png uploadedf.png failed: boom');
+    expect(status.textContent).toBe('1 of 2 files uploaded, 1 failed');
+  });
+
+  it('announces a batch where everything failed assertively', () => {
+    const entry = makeEntry({ id: 'x', name: 'x.png', status: 'uploading' });
+    const { getByRole, update } = setup(
+      makeUploadState({ isUploading: true, files: [entry] }),
+    );
+    update(
+      makeUploadState({
+        files: [
+          {
+            ...entry,
+            status: 'error',
+            error: { code: 'UPLOAD_FAILED', message: 'x', retryable: false },
+          },
+        ],
+      }),
+    );
+    expect(getByRole('alert').textContent).toBe(
+      '0 of 1 files uploaded, 1 failed',
+    );
   });
 });
 

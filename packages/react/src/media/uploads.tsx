@@ -2,46 +2,12 @@ import * as React from 'react';
 
 import type { UseRenderComponentProps } from '../use-render';
 import type { MediaMessagesContextValue } from './context';
-import type { MediaUploadEntry } from './types';
+import type { MediaUploadEntry } from './core/types';
 
 import { mergeProps, useRender } from '../use-render';
 import { useMediaMessages, useMediaUploadsContext } from './context';
+import { progressValueNow } from './core/announcer';
 import { mediaErrorMessage } from './messages';
-
-const VISUALLY_HIDDEN: React.CSSProperties = {
-  position: 'absolute',
-  width: 1,
-  height: 1,
-  padding: 0,
-  margin: -1,
-  overflow: 'hidden',
-  clipPath: 'inset(50%)',
-  whiteSpace: 'nowrap',
-  border: 0,
-};
-
-function isTerminal(status: MediaUploadEntry['status']): boolean {
-  return status === 'success' || status === 'error' || status === 'aborted';
-}
-
-function announcement(entry: MediaUploadEntry): string {
-  switch (entry.status) {
-    case 'success':
-      return `${entry.name} uploaded`;
-    case 'error':
-      return `${entry.name} failed${entry.error ? `: ${entry.error.message}` : ''}`;
-    case 'aborted':
-      return `${entry.name} cancelled`;
-    case 'queued':
-    case 'preparing':
-    case 'signing':
-    case 'uploading':
-    case 'completing':
-    case 'retrying':
-    case 'paused':
-      return '';
-  }
-}
 
 // --- Media.UploadList -----------------------------------------------------------
 
@@ -55,36 +21,18 @@ export type MediaUploadListProps = Omit<
 };
 
 /**
- * The upload queue of `Media.Root`'s client (rendition entries excepted) as
- * a `ul`, plus a visually
- * hidden `role="log"` that announces each entry once when it reaches
- * `success`, `error` or `aborted`.
+ * The upload queue of `Media.Root`'s client as a `ul` (rendition entries
+ * are part of their parent upload and not listed). `Media.Root` announces
+ * the batch: its start, at most five progress steps and the result.
  */
 export function MediaUploadList(props: MediaUploadListProps) {
   const { children, render, ...rest } = props;
   const { files: all } = useMediaUploadsContext('Media.UploadList');
-  // Rendition entries are part of their parent upload, which stays
-  // `completing` until they finished; they are not listed on their own.
   const files = React.useMemo(
     () => all.filter((entry) => entry.parentId === undefined),
     [all],
   );
-  const announced = React.useRef(new Set<string>());
-  const [log, setLog] = React.useState<{ id: string; text: string }[]>([]);
-
-  React.useEffect(() => {
-    const fresh = files.filter(
-      (entry) => isTerminal(entry.status) && !announced.current.has(entry.id),
-    );
-    if (fresh.length === 0) return;
-    for (const entry of fresh) announced.current.add(entry.id);
-    setLog((prev) => [
-      ...prev,
-      ...fresh.map((entry) => ({ id: entry.id, text: announcement(entry) })),
-    ]);
-  }, [files]);
-
-  const element = useRender({
+  return useRender({
     defaultTagName: 'ul',
     render,
     state: { empty: files.length === 0 } satisfies UploadListState,
@@ -92,17 +40,6 @@ export function MediaUploadList(props: MediaUploadListProps) {
       children: files.map((entry) => children(entry)),
     }),
   });
-
-  return (
-    <>
-      {element}
-      <div role="log" aria-live="polite" style={VISUALLY_HIDDEN}>
-        {log.map((line) => (
-          <div key={line.id}>{line.text}</div>
-        ))}
-      </div>
-    </>
-  );
 }
 
 // --- Media.UploadItem -----------------------------------------------------------
@@ -171,6 +108,8 @@ function valueText(
 /**
  * `role="progressbar"` for the enclosing `Media.UploadItem`, or for all
  * uploads (`progress.fraction`, labelled `upload.all`) outside one.
+ * `aria-valuenow` moves in 10 percent steps so screen readers are not
+ * flooded; `aria-valuetext` carries the exact value.
  */
 export function MediaUploadProgress(props: MediaUploadProgressProps) {
   const { render, ...rest } = props;
@@ -181,7 +120,7 @@ export function MediaUploadProgress(props: MediaUploadProgressProps) {
     Math.max(entry ? entry.progress : uploads.progress.fraction, 0),
     1,
   );
-  const percent = Math.round(fraction * 100);
+  const percent = progressValueNow(fraction * 100);
 
   return useRender({
     defaultTagName: 'div',
