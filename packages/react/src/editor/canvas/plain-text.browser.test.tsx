@@ -135,6 +135,10 @@ function beforeInput(el: HTMLElement, init: InputEventInit): InputEvent {
     cancelable: true,
     ...init,
   });
+  // WebKit's constructor ignores `dataTransfer` in the init dictionary.
+  if (init.dataTransfer && !event.dataTransfer) {
+    Object.defineProperty(event, 'dataTransfer', { value: init.dataTransfer });
+  }
   el.dispatchEvent(event);
   return event;
 }

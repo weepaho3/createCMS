@@ -326,8 +326,9 @@ jobs:
           bun-version-file: package.json
 
       # The Playwright browser download is keyed by the lockfile: the
-      # playwright version pinned there decides which Chromium build is
-      # needed, and a lockfile change is the only thing that changes it.
+      # playwright version pinned there decides which browser builds are
+      # needed. The key names the engine set, so adding an engine does not
+      # restore a cache that lacks it.
       - name: Cache bun, turbo & Playwright browsers
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -335,16 +336,16 @@ jobs:
             ~/.bun/install/cache
             ~/.cache/ms-playwright
             .turbo
-          key: ${{ runner.os }}-browser-${{ hashFiles('bun.lock') }}
+          key: ${{ runner.os }}-browser-cfw-${{ hashFiles('bun.lock') }}
           restore-keys: |
-            ${{ runner.os }}-browser-
+            ${{ runner.os }}-browser-cfw-
 
       - name: Install
         run: bun install --frozen-lockfile
 
-      - name: Install Chromium
+      - name: Install Chromium, Firefox and WebKit
         working-directory: packages/react
-        run: bunx playwright install --with-deps chromium
+        run: bunx playwright install --with-deps chromium firefox webkit
 
       - name: Browser tests
         run: bunx turbo run test:browser --filter=@createcms/react
