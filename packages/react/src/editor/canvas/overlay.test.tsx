@@ -57,6 +57,21 @@ describe('Canvas rings', () => {
     expect(host.querySelector('[data-editor-field-ring]')).not.toBeNull();
   });
 
+  it('hides FieldRing once another block is selected', () => {
+    const { host, store } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.FieldRing />
+      </Canvas.Overlay>,
+    );
+    act(() => {
+      store.select('h1');
+      store.focus({ blockId: 'h1', key: 'text' });
+    });
+    expect(host.querySelector('[data-editor-field-ring]')).not.toBeNull();
+    act(() => store.select('p1'));
+    expect(host.querySelector('[data-editor-field-ring]')).toBeNull();
+  });
+
   it('hides HoverRing when hovered equals selected', () => {
     const { host, store } = renderCanvas(
       <Canvas.Overlay>

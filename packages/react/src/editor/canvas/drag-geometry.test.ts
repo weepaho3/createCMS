@@ -58,13 +58,14 @@ describe('drag geometry', () => {
 
   it('auto-scroll speed is per second, ramps to the edge and after entering', () => {
     expect(autoScrollSpeed(500, 1000, 1000)).toBe(0);
-    // Zone is min(25 %, 180) = 180 px; full speed from half the zone.
-    expect(autoScrollSpeed(90, 1000, 1000)).toBe(900);
-    expect(autoScrollSpeed(135, 1000, 1000)).toBe(450);
-    expect(autoScrollSpeed(0, 1000, 200)).toBe(450);
-    expect(autoScrollSpeed(0, 1000, 1000, true)).toBe(1500);
-    // Small scrollers get a proportional zone (25 % of 200 = 50 px).
-    expect(autoScrollSpeed(60, 200, 1000)).toBe(0);
+    // Zone is min(15 %, 96) = 96 px; the speed eases in towards the edge.
+    expect(autoScrollSpeed(96, 1000, 1000)).toBe(0);
+    expect(autoScrollSpeed(48, 1000, 1000)).toBe(250);
+    expect(autoScrollSpeed(0, 1000, 1000)).toBe(1000);
+    expect(autoScrollSpeed(0, 1000, 150)).toBe(500);
+    expect(autoScrollSpeed(0, 1000, 1000, true)).toBe(1600);
+    // Small scrollers get a proportional zone (15 % of 200 = 30 px).
+    expect(autoScrollSpeed(40, 200, 1000)).toBe(0);
     expect(autoScrollSpeed(10, 200, 1000)).toBeGreaterThan(0);
   });
 

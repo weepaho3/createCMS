@@ -210,6 +210,7 @@ describe('Canvas overlay rings', () => {
         components: nestedTextBlocks,
       },
     );
+    store.select('outer1');
     store.focus({ blockId: 'outer1', key: 'text' });
     const outerField = host.querySelector(
       '[data-editor-block="outer1"] > [data-editor-field="text"]',

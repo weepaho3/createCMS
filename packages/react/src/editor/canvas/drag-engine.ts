@@ -60,8 +60,22 @@ function flashDropped(host: HTMLElement, ids: readonly string[]): void {
   }, DROP_FLASH_MS);
 }
 
-function containsClientPoint(el: HTMLElement, client: Point): boolean {
-  const rect = el.getBoundingClientRect();
+function containsClientPoint(
+  entry: CanvasSurfaceHandle,
+  client: Point,
+): boolean {
+  // In a frame the whole frame viewport is canvas: the page area below or
+  // beside the content takes drops too.
+  if (entry.surface.kind === 'frame') {
+    const view = entry.surface.window;
+    return (
+      client.x >= 0 &&
+      client.x <= view.innerWidth &&
+      client.y >= 0 &&
+      client.y <= view.innerHeight
+    );
+  }
+  const rect = entry.host.getBoundingClientRect();
   return (
     client.x >= rect.left &&
     client.x <= rect.right &&
@@ -83,7 +97,7 @@ export function surfaceAtClient(
   for (let i = surfaces.length - 1; i >= 0; i--) {
     const surface = surfaces[i]!;
     if (surface.interactive !== 'edit') continue;
-    if (containsClientPoint(surface.host, toLocal(surface, page))) {
+    if (containsClientPoint(surface, toLocal(surface, page))) {
       return surface;
     }
   }
@@ -155,7 +169,9 @@ export function createDragEngine(deps: {
       const local = toLocal(surface, page);
       // Read at event time: the gesture never subscribes to the node table.
       const { nodes, rootId } = store.getDoc();
-      const adapters = createInsertAdapters(host, measurer, nodes, rootId);
+      const adapters = createInsertAdapters(host, measurer, nodes, rootId, {
+        framePage: surface.surface.kind === 'frame',
+      });
       const point = contentPointFromClient(host, local);
       pointer.setFromEvent(
         { clientX: local.x, clientY: local.y } as PointerEvent,

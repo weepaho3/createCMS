@@ -119,6 +119,33 @@ describe('outline drag', () => {
     expect(store.getDoc().nodes.sec1!.slots.children).toEqual(['p1']);
   });
 
+  it('a row drag selects no text and restores the page afterwards', async () => {
+    mount();
+    const tree = document.querySelector('[data-testid="tree"]')!;
+    const root = document.documentElement;
+    const range = document.createRange();
+    range.selectNodeContents(tree);
+    document.getSelection()!.addRange(range);
+    const sec = label('sec1');
+    drag('h1', { x: sec.x + 40, y: sec.y + 12 });
+    expect(String(document.getSelection())).toBe('');
+    expect(tree.hasAttribute('data-dragging')).toBe(true);
+    // WebKit keeps only the prefixed property.
+    const userSelect = () =>
+      root.style.getPropertyValue('user-select') ||
+      root.style.getPropertyValue('-webkit-user-select');
+    expect(userSelect()).toBe('none');
+    const select = new Event('selectstart', {
+      bubbles: true,
+      cancelable: true,
+    });
+    tree.dispatchEvent(select);
+    expect(select.defaultPrevented).toBe(true);
+    pointer(document, 'pointerup', sec.x + 40, sec.y + 12);
+    expect(tree.hasAttribute('data-dragging')).toBe(false);
+    expect(userSelect()).toBe('');
+  });
+
   it('an invalid target shows no indicator and drops nothing', async () => {
     const { store } = mount();
     const p1 = label('p1');

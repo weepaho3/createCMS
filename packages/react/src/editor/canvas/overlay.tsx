@@ -302,7 +302,13 @@ export function CanvasFieldRing({
   ...rest
 }: CanvasFieldRingProps) {
   const canvas = useCanvasContext('Canvas.FieldRing');
-  const focus = useSessionSelector((s) => s.focusedField);
+  // A field outside the selected block is no longer what the user works
+  // on, even when it kept the store's field focus.
+  const focus = useSessionSelector((s) =>
+    s.focusedField && s.selection.includes(s.focusedField.blockId)
+      ? s.focusedField
+      : null,
+  );
   const node = useDocSelector((s) =>
     focus ? (s.nodes[focus.blockId] ?? null) : null,
   );
@@ -318,6 +324,6 @@ export function CanvasFieldRing({
     },
     state: { ...flags, editorFieldRing: true },
   });
-  if (focus === null || rect === null) return null;
+  if (focus === null || rect === null || canvas.dragging) return null;
   return element;
 }

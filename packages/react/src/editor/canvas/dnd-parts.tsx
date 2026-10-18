@@ -17,11 +17,7 @@ import { insertPointFor } from '../structure/insert-point';
 import { EditorMoveToDialog } from '../structure/move-to';
 import { blockElements, isInsideReadonly } from './anchors';
 import { CanvasContext, useCanvasContext } from './context';
-import {
-  createAutoScroller,
-  scrollableAncestors,
-  type DragSession,
-} from './dnd';
+import { createAutoScroller, scrollChain, type DragSession } from './dnd';
 import { createDragEngine, draggedIds, type DragEngine } from './drag-engine';
 import { activationFor } from './drag-geometry';
 import {
@@ -165,19 +161,28 @@ export function useDndDropResolution(): void {
       const client = page && surface ? surface.fromHost(page) : page;
       // Several Roots can share one session; only the hovered canvas may
       // auto-scroll, innermost scroller first.
-      const rect = host.getBoundingClientRect();
+      // In a frame the whole frame viewport is this canvas.
+      const inFrame = surface?.kind === 'frame';
+      const rect = inFrame
+        ? { left: 0, top: 0, right: view.innerWidth, bottom: view.innerHeight }
+        : host.getBoundingClientRect();
       const over =
         client !== null &&
         client.x >= rect.left &&
         client.x <= rect.right &&
         client.y >= rect.top &&
         client.y <= rect.bottom;
-      if (session && client && over) {
-        const scrolled = scroller.step(scrollableAncestors(host), client, now);
+      if (session && client && page && over) {
+        const scrolled = scroller.step(
+          scrollChain(host, client, inFrame ? page : null),
+          now,
+        );
         if (scrolled) {
           // The pointer did not move, the content did: resolve again.
           const nodes = store.getDoc().nodes;
-          const adapters = createInsertAdapters(host, measurer, nodes, rootId);
+          const adapters = createInsertAdapters(host, measurer, nodes, rootId, {
+            framePage: inFrame,
+          });
           const point = contentPointFromClient(host, client);
           canvas.pointer?.setFromEvent(
             { clientX: client.x, clientY: client.y } as PointerEvent,

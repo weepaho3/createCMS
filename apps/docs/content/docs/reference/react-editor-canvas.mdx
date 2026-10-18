@@ -233,9 +233,12 @@ again 150 ms after). `Canvas.InsertButton` appears after the pointer rests
 at a gap for `delay` (400 ms).
 
 Auto-scroll moves the innermost scroller under the pointer whose edge zone
-(a quarter of its size, at most 180 px) holds it, outer scrollers once it
-reaches its end, at up to 900 px per second regardless of the frame rate,
-ramping up over 400 ms after the pointer enters the zone.
+(15 % of its size, at most 96 px) holds it, outer scrollers once it
+reaches its end. The speed eases in across the zone up to 1000 px per
+second at the edge, regardless of the frame rate, and ramps up over
+300 ms after the pointer enters the zone. In a frame surface the whole
+frame viewport takes drops: the page area below the last block drops
+into the root.
 
 ## Frame surface
 
@@ -270,6 +273,10 @@ the frame through a portal. The consumer's props (`className`, `style`,
   frame never scrolls itself (capped at `MAX_AUTO_HEIGHT`). A block sized
   with `100vh` would grow with the frame forever: after ten equal growth
   steps the height freezes and a development build logs `[editor:E012]`.
+  `frame.minHeight` sets a floor, e.g. the visible height of the surface,
+  so a short page still fills it; the page area below the content takes
+  drops into the root, and dragging near the edge of the page around the
+  frame scrolls that page.
   A number gives a fixed height that scrolls inside the frame.
 - **Head and body.** `frame.head` (markup) and `frame.bodyAttributes` are
   patched into the live document, so a theme or stylesheet change never
@@ -331,7 +338,7 @@ below 1 ms either way); a browser test keeps it under 1.5 times inline.
 | `Canvas.Overlay`       | `div`           | `layer` (`surface` default, `host`), `render`, div props. Portals into the canvas host, or over a frame into the host-page layer.                                                                             | `data-editor-overlay`                                                                                     |
 | `Canvas.SelectionRing` | `div`           | `render`, div props. Sized from the selected block rect.                                                                       | `data-editor-selection-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`    |
 | `Canvas.HoverRing`     | `div`           | `render`, div props. Hidden while dragging, editing, or when hovered equals selected.                                          | `data-editor-hover-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
-| `Canvas.FieldRing`     | `div`           | `render`, div props. Sized from the focused field rect (own-block only).                                                       | `data-editor-field-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
+| `Canvas.FieldRing`     | `div`           | `render`, div props. Sized from the focused field rect (own-block only); shown while that block is selected, hidden during a drag. | `data-editor-field-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
 | `Canvas.BlockToolbar`  | `div`           | `align`, `side`, `offset`, `render`, div props. Consumer supplies buttons. Shown in `edit` and `select`. Pins inside the visible block when `side="top"` would clip. Named from the catalog (`parts.blockToolbar`), one tab stop, Alt+F10 entry. | `data-editor-block-toolbar`, `data-side`, `data-block-type`                                               |
 | `Canvas.InsertButton`  | `button`        | `placement` (`between` \| `container`), optional `type`, optional `onInsert`, `delay` (400 ms), `render`, button props. Shown only in `edit`, after the pointer rested at the gap for `delay`.    | `data-editor-insert-button`, `data-orientation`, `data-empty-container`                                   |
 | `Canvas.DragHandle`    | `button`        | `blockId` (required), `render`, button props. Move an existing block by pointer drag (a multi-selection moves along), by keyboard (Space), or through its menu (click, Enter). Overlay siblings inset into the visible block; inside `Canvas.BlockToolbar` the handle stays in flow. | `data-editor-drag-handle`, `data-dragging` on the handle while its block is the move session              |
@@ -393,7 +400,7 @@ below 1 ms either way); a browser test keeps it under 1.5 times inline.
 | `PreviewSurface`             | `{ kind, document, window, scale, toHost(rect), fromHost(point), getElementsForNode(id) }`.        |
 | `SurfacePoint`               | `{ x, y }` in client coordinates.                                                                  |
 | `SurfaceRect`                | `{ x, y, width, height }` in client coordinates.                                                   |
-| `CanvasFrameOptions`         | `frame` of `Canvas.Root`: `head`, `bodyAttributes`, `width`, `height`, `scale`, `styles`, `stylesTimeout`, `maxAutoHeight`, `sandbox`, `title`. |
+| `CanvasFrameOptions`         | `frame` of `Canvas.Root`: `head`, `bodyAttributes`, `width`, `height`, `scale`, `styles`, `stylesTimeout`, `minHeight`, `maxAutoHeight`, `sandbox`, `title`. |
 | `CanvasFrameWrapper`         | `wrapper` of `Canvas.Root`: a component around the canvas inside the frame.                        |
 | `Breakpoint`                 | `{ id, width: number \| 'full', label? }`.                                                          |
 | `InsertOrientation`          | `'horizontal'` \| `'vertical'`.                                                                   |

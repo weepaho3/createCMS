@@ -163,6 +163,9 @@ export function EditorOutline(props: EditorOutlineProps) {
     const view = doc.defaultView;
     const origin = { x: event.clientX, y: event.clientY };
     let active = false;
+    const rootStyle = doc.documentElement.style;
+    const userSelect = rootStyle.getPropertyValue('user-select');
+    const webkitUserSelect = rootStyle.getPropertyValue('-webkit-user-select');
     let drop: { parent: SlotRef; index: number } | null = null;
     let dwell: { id: string; timer: ReturnType<typeof setTimeout> } | null =
       null;
@@ -182,6 +185,12 @@ export function EditorOutline(props: EditorOutlineProps) {
         }
         active = true;
         row.setAttribute('data-dragging', '');
+        tree.setAttribute('data-dragging', '');
+        // A row drag never selects text: drop what the press began and
+        // keep the moving pointer from extending it.
+        doc.documentElement.style.setProperty('user-select', 'none');
+        doc.documentElement.style.setProperty('-webkit-user-select', 'none');
+        doc.getSelection()?.removeAllRanges();
       }
       const over = doc
         .elementFromPoint(move.clientX, move.clientY)
@@ -263,6 +272,15 @@ export function EditorOutline(props: EditorOutlineProps) {
 
     const end = (commit: boolean) => {
       doc.removeEventListener('pointermove', onMove, true);
+      doc.removeEventListener('selectstart', onSelectStart, true);
+      tree.removeAttribute('data-dragging');
+      if (active) {
+        doc.documentElement.style.setProperty('user-select', userSelect);
+        doc.documentElement.style.setProperty(
+          '-webkit-user-select',
+          webkitUserSelect,
+        );
+      }
       doc.removeEventListener('pointerup', onUp, true);
       doc.removeEventListener('keydown', onKey, true);
       view?.removeEventListener('blur', onBlur);
@@ -300,6 +318,9 @@ export function EditorOutline(props: EditorOutlineProps) {
     };
     const onUp = () => end(true);
     const onBlur = () => end(false);
+    const onSelectStart = (select: Event) => {
+      if (active) select.preventDefault();
+    };
     const onKey = (key: KeyboardEvent) => {
       if (key.key !== 'Escape' || !active) return;
       key.preventDefault();
@@ -307,6 +328,7 @@ export function EditorOutline(props: EditorOutlineProps) {
       end(false);
     };
     doc.addEventListener('pointermove', onMove, true);
+    doc.addEventListener('selectstart', onSelectStart, true);
     doc.addEventListener('pointerup', onUp, true);
     doc.addEventListener('keydown', onKey, true);
     view?.addEventListener('blur', onBlur);

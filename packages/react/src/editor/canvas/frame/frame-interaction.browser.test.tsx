@@ -35,7 +35,10 @@ function renderFrame(options: {
   components?: CanvasComponents;
   overlay?: React.ReactNode;
   outside?: React.ReactNode;
+  minHeight?: number;
+  wrap?: (canvas: React.ReactNode) => React.ReactNode;
 }) {
+  const wrap = options.wrap ?? ((canvas: React.ReactNode) => canvas);
   const bag: Bag = { store: null };
   const utils = render(
     <Editor.Root
@@ -45,15 +48,17 @@ function renderFrame(options: {
       <Probe bag={bag} />
       <Canvas.Provider>
         {options.outside}
-        <Canvas.Root
-          data-testid="outer"
-          components={options.components ?? canvasBlocks}
-          surface="frame"
-          frame={{ styles: 'none' }}
-          style={{ width: 380 }}
-        >
-          {options.overlay}
-        </Canvas.Root>
+        {wrap(
+          <Canvas.Root
+            data-testid="outer"
+            components={options.components ?? canvasBlocks}
+            surface="frame"
+            frame={{ styles: 'none', minHeight: options.minHeight }}
+            style={{ width: 380 }}
+          >
+            {options.overlay}
+          </Canvas.Root>,
+        )}
       </Canvas.Provider>
     </Editor.Root>,
   );
@@ -248,5 +253,72 @@ describe('drag and drop across the frame boundary', () => {
     dispatchPointer(doc, 'pointerup', to);
     const ids = store().getDoc().nodes.stack1!.slots.children;
     expect(ids.indexOf('c3')).toBeLessThan(ids.indexOf('c1'));
+  });
+
+  it('the page area below the content of a filled frame drops into the root', async () => {
+    const { frame, store } = renderFrame({
+      minHeight: 500,
+      outside: (
+        <Canvas.PaletteItem type="paragraph" data-testid="palette">
+          Paragraph
+        </Canvas.PaletteItem>
+      ),
+    });
+    const doc = await connected(frame, 'p1');
+    await waitFor(() =>
+      expect(frame.getBoundingClientRect().height).toBeGreaterThanOrEqual(500),
+    );
+    const content = doc
+      .querySelector('[data-editor-canvas]')!
+      .getBoundingClientRect();
+    expect(content.height).toBeLessThan(400);
+    const palette = document.querySelector('[data-editor-palette-item]')!;
+    const from = center(palette.getBoundingClientRect());
+    const frameRect = frame.getBoundingClientRect();
+    const below = { x: frameRect.left + 100, y: frameRect.top + 460 };
+    dispatchPointer(palette, 'pointerdown', from);
+    dispatchPointer(document, 'pointermove', { x: from.x + 6, y: from.y });
+    dispatchPointer(document, 'pointermove', below);
+    dispatchPointer(document, 'pointerup', below);
+    const children = store().getDoc().nodes.root_1!.slots.children;
+    expect(children).toHaveLength(3);
+    expect(store().getDoc().nodes[children[2]!]!.type).toBe('paragraph');
+  });
+
+  it('a drag near the edge of the page around a growing frame scrolls the page', async () => {
+    let scroller: HTMLDivElement | null = null;
+    const { frame } = renderFrame({
+      minHeight: 900,
+      wrap: (canvas) => (
+        <div
+          ref={(el) => {
+            scroller = el;
+          }}
+          style={{ height: 300, overflow: 'auto' }}
+        >
+          {canvas}
+        </div>
+      ),
+      outside: (
+        <Canvas.PaletteItem type="paragraph" data-testid="palette">
+          Paragraph
+        </Canvas.PaletteItem>
+      ),
+    });
+    await connected(frame, 'p1');
+    await waitFor(() =>
+      expect(frame.getBoundingClientRect().height).toBeGreaterThanOrEqual(900),
+    );
+    const palette = document.querySelector('[data-editor-palette-item]')!;
+    const from = center(palette.getBoundingClientRect());
+    const box = scroller!.getBoundingClientRect();
+    const edge = { x: box.left + 100, y: box.bottom - 5 };
+    dispatchPointer(palette, 'pointerdown', from);
+    dispatchPointer(document, 'pointermove', { x: from.x + 6, y: from.y });
+    dispatchPointer(document, 'pointermove', edge);
+    await waitFor(() => expect(scroller!.scrollTop).toBeGreaterThan(20), {
+      timeout: 3000,
+    });
+    dispatchPointer(document, 'pointerup', edge);
   });
 });

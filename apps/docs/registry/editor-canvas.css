@@ -18,6 +18,17 @@
   user-select: none;
 }
 
+/* The editable wraps the field's content in one more element, so
+   typography rules for the first and last child (`.prose`) would miss it
+   and the block would grow when editing starts. */
+[data-editor-inline-richtext] > :first-child {
+  margin-top: 0;
+}
+
+[data-editor-inline-richtext] > :last-child {
+  margin-bottom: 0;
+}
+
 /* Empty slots stay a reachable drop target while editing. */
 [data-editor-canvas][data-interactive='edit'] [data-editor-slot]:empty {
   min-height: var(--editor-slot-min-empty-height, 128px);

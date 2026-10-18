@@ -169,6 +169,12 @@ function EditorOutline({
           rows={ids}
           reveal={reveal}
           style={{ height: virtualizer.getTotalSize() }}
+          className={cn(
+            'data-[dragging]:cursor-grabbing [&_[data-dragging]]:opacity-50',
+            '[&_[data-editor-outline-drop-indicator]]:z-10',
+            '[&_[data-editor-outline-drop-indicator][data-variant=line]]:bg-editor-drop [&_[data-editor-outline-drop-indicator][data-variant=line]]:-translate-y-px [&_[data-editor-outline-drop-indicator][data-variant=line]]:rounded-full',
+            '[&_[data-editor-outline-drop-indicator][data-variant=box]]:border-editor-drop [&_[data-editor-outline-drop-indicator][data-variant=box]]:bg-editor-drop/10 [&_[data-editor-outline-drop-indicator][data-variant=box]]:rounded-md [&_[data-editor-outline-drop-indicator][data-variant=box]]:border-2',
+          )}
         >
           {virtualizer.getVirtualItems().map((item) => {
             const row = rows[item.index]!;

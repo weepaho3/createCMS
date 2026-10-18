@@ -105,21 +105,21 @@ export function stickyTarget(
 /** Auto-scroll tuning, in CSS pixels per second. */
 export const AUTO_SCROLL = {
   /** Edge zone: this share of the scroller's size, */
-  zoneShare: 0.25,
-  /** but never more than this. */
-  zoneMaxPx: 180,
-  /** Full speed from this share of the zone onward (towards the edge). */
-  fullSpeedAt: 0.5,
-  speedPxPerSecond: 900,
-  fastSpeedPxPerSecond: 1500,
+  zoneShare: 0.15,
+  /** but never more than this, so most of the canvas stays a plain target. */
+  zoneMaxPx: 96,
+  /** Speed at the very edge; it eases in quadratically across the zone. */
+  speedPxPerSecond: 1000,
+  fastSpeedPxPerSecond: 1600,
   /** Speed ramps up over this long after the pointer entered a zone. */
-  dampeningMs: 400,
+  dampeningMs: 300,
 } as const;
 
 /**
  * Scroll speed in px per second for a pointer `distance` px from an edge
  * of a scroller `size` px long, `sinceEnterMs` after it entered the zone.
- * Zero outside the zone; independent of the frame rate.
+ * Zero outside the zone, slow at its inner border and full at the edge;
+ * independent of the frame rate.
  */
 export function autoScrollSpeed(
   distance: number,
@@ -130,7 +130,6 @@ export function autoScrollSpeed(
   const zone = Math.min(size * AUTO_SCROLL.zoneShare, AUTO_SCROLL.zoneMaxPx);
   if (!(zone > 0) || distance >= zone) return 0;
   const depth = 1 - Math.max(0, distance) / zone;
-  const ramp = Math.min(1, depth / AUTO_SCROLL.fullSpeedAt);
   const dampen = Math.min(
     1,
     Math.max(0, sinceEnterMs) / AUTO_SCROLL.dampeningMs,
@@ -138,7 +137,7 @@ export function autoScrollSpeed(
   const max = fast
     ? AUTO_SCROLL.fastSpeedPxPerSecond
     : AUTO_SCROLL.speedPxPerSecond;
-  return max * ramp * dampen;
+  return max * depth * depth * dampen;
 }
 
 /** Pointer-type activation of a drag gesture. */

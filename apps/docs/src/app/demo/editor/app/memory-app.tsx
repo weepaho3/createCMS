@@ -8,6 +8,7 @@ import {
   createMemoryAdapter,
   defineEditorSchema,
   isRichTextDoc,
+  plainTextToRichText,
 } from '@createcms/react/editor/core';
 
 import { EditorApp } from '@/components/editor-app';
@@ -22,12 +23,20 @@ export const schema = defineEditorSchema({
     heading: {
       label: 'Heading',
       category: 'Content',
-      fields: { text: { type: 'text', label: 'Text' } },
+      fields: {
+        text: { type: 'text', label: 'Text', defaultValue: 'New heading' },
+      },
     },
     paragraph: {
       label: 'Paragraph',
       category: 'Content',
-      fields: { body: { type: 'richText', label: 'Body' } },
+      fields: {
+        body: {
+          type: 'richText',
+          label: 'Body',
+          defaultValue: plainTextToRichText('Write something.'),
+        },
+      },
     },
     section: {
       label: 'Section',

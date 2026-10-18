@@ -47,3 +47,13 @@ between the two `@createcms/react` tags, for example
   excerpt and the selection count as a badge.
 - `editor-toolbar`: command palette shortcuts use `CommandShortcut`, so
   the highlighted row keeps enough contrast (WCAG 1.4.3).
+- `editor-outline`: the drop indicator is styled (line between rows, box
+  for nesting) and the dragged row dims.
+- `editor-canvas`: one 2px selection ring without the type chip over the
+  content; the block toolbar shows the block label instead. The field ring
+  is a quiet dashed outline. Inline rich text keeps the field's layout
+  when editing starts (`.prose` first/last child margins).
+- `editor-app`: the block toolbar, drop indicator and drag preview draw on
+  the host layer, so the frame edge no longer cuts them off; the frame
+  fills the visible surface (`frame.minHeight`), so the space below the
+  last block takes drops.

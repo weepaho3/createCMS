@@ -5,7 +5,9 @@ import {
   Editor,
   useBlockActions,
   useCommand,
+  useDocSelector,
   useMoveTargets,
+  usePalette,
   useSelection,
 } from '@createcms/react/editor';
 import { Canvas } from '@createcms/react/editor/canvas';
@@ -57,27 +59,13 @@ function Overlay({
 
 function SelectionRing({
   className,
-  children,
   ...props
 }: React.ComponentProps<typeof Canvas.SelectionRing>) {
   return (
     <Canvas.SelectionRing
       data-slot="editor-selection-ring"
-      className={cn('border-editor-selection border', ringMotion, className)}
+      className={cn(ringMotion, className)}
       {...props}
-      render={(ringProps, state) => (
-        <div {...ringProps}>
-          {state.blockType ? (
-            <span
-              data-slot="editor-selection-chip"
-              className="bg-editor-selection text-primary-foreground pointer-events-none absolute top-1.5 left-1.5 rounded-md px-1.5 py-0.5 text-[10px] leading-none font-medium"
-            >
-              {state.blockType}
-            </span>
-          ) : null}
-          {children}
-        </div>
-      )}
     />
   );
 }
@@ -89,7 +77,7 @@ function HoverRing({
   return (
     <Canvas.HoverRing
       data-slot="editor-hover-ring"
-      className={cn('border-editor-hover border', ringMotion, className)}
+      className={cn(ringMotion, className)}
       {...props}
     />
   );
@@ -102,7 +90,10 @@ function FieldRing({
   return (
     <Canvas.FieldRing
       data-slot="editor-field-ring"
-      className={cn('border-editor-focus border', className)}
+      className={cn(
+        'border-editor-focus/60 rounded-sm border border-dashed',
+        className,
+      )}
       {...props}
     />
   );
@@ -144,11 +135,20 @@ function CanvasIconButton({
 function DefaultBlockToolbarActions() {
   const selected = useSelection().selected;
   const actions = useBlockActions(selected ?? '');
+  const palette = usePalette();
+  const type = useDocSelector((doc) => doc.nodes[selected ?? '']?.type);
   if (!selected || actions.parent === null) return null;
+  const label = palette.find((item) => item.type === type)?.label ?? type ?? '';
 
   return (
     <>
       <DragHandle blockId={selected} />
+      <span
+        data-slot="editor-block-toolbar-label"
+        className="text-muted-foreground max-w-32 truncate px-1.5 text-xs font-medium"
+      >
+        {label}
+      </span>
       <Separator orientation="vertical" className="h-4" />
       <CanvasIconButton
         label="Move up"

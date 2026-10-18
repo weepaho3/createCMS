@@ -269,17 +269,23 @@ function CanvasOverlays() {
   const { setAddOpen } = useEditorChrome();
 
   return (
-    <Overlay>
-      <SelectionRing />
-      <HoverRing />
-      <FieldRing />
-      <BlockToolbar side="top" align="start" />
-      <InsertButton placement="between" onInsert={() => setAddOpen(true)} />
-      <InsertButton placement="container" onInsert={() => setAddOpen(true)} />
-      <DropIndicator />
-      <DragPreview />
-      <InlineText />
-    </Overlay>
+    <>
+      <Overlay>
+        <SelectionRing />
+        <HoverRing />
+        <FieldRing />
+        <InsertButton placement="between" onInsert={() => setAddOpen(true)} />
+        <InsertButton placement="container" onInsert={() => setAddOpen(true)} />
+        <InlineText />
+      </Overlay>
+      {/* Chrome that may leave the frame: the toolbar above the first
+          block, the indicator and preview at its edges. */}
+      <Overlay layer="host">
+        <BlockToolbar side="top" align="start" />
+        <DropIndicator />
+        <DragPreview />
+      </Overlay>
+    </>
   );
 }
 
@@ -287,16 +293,41 @@ function CanvasOverlays() {
 function DeviceCanvas(
   props: Omit<React.ComponentProps<typeof Canvas.Root>, 'surface' | 'frame'>,
 ) {
-  const frame = useDeviceFrame();
+  const device = useDeviceFrame();
+  const [minHeight, setMinHeight] = React.useState(0);
+  // The frame fills the visible surface, so a short page leaves no dead
+  // band under it and the space below the last block takes drops.
+  const fillSurface = React.useCallback((el: HTMLDivElement | null) => {
+    const surface = el?.closest<HTMLElement>('[data-slot="editor-surface"]');
+    const view = surface?.ownerDocument.defaultView;
+    if (!surface || !view) return;
+    const measure = () => {
+      const style = view.getComputedStyle(surface);
+      setMinHeight(
+        surface.clientHeight -
+          parseFloat(style.paddingTop) -
+          parseFloat(style.paddingBottom),
+      );
+    };
+    measure();
+    const observer = new view.ResizeObserver(measure);
+    observer.observe(surface);
+    return () => observer.disconnect();
+  }, []);
+  const frame = React.useMemo(
+    () => ({ ...device, minHeight }),
+    [device, minHeight],
+  );
   // A device frame narrower than the column sits centered in it.
   return (
     <Canvas.Root
+      ref={fillSurface}
       surface="frame"
       frame={frame}
       {...props}
       style={{
         marginInline: 'auto',
-        maxWidth: frame.width === 'full' ? undefined : frame.width,
+        maxWidth: device.width === 'full' ? undefined : device.width,
         ...props.style,
       }}
     />

@@ -25,6 +25,13 @@ export type CanvasFrameOptions = {
   styles?: 'mirror' | 'none';
   /** How long the canvas shows `data-loading` while mirrored sheets load. Default 5000 ms. */
   stylesTimeout?: number;
+  /**
+   * Floor for `height: 'auto'` in CSS pixels, e.g. the visible height of
+   * the surface, so a short page still fills it and the space below the
+   * last block takes drops. The frame's own content height is measured
+   * without it.
+   */
+  minHeight?: number;
   /** Cap for `height: 'auto'`. Default `MAX_AUTO_HEIGHT` (20000). */
   maxAutoHeight?: number;
   /**
@@ -84,6 +91,7 @@ export function CanvasFrameShell({
     styles = 'mirror',
     stylesTimeout = STYLES_TIMEOUT_MS,
     maxAutoHeight = MAX_AUTO_HEIGHT,
+    minHeight = 0,
     sandbox,
     title,
   } = options;
@@ -103,7 +111,10 @@ export function CanvasFrameShell({
         ? 1
         : fitScale(available, width)
       : Math.max(0.05, scale);
-  const layoutHeight = height === 'auto' ? contentHeight : height;
+  const layoutHeight =
+    height === 'auto'
+      ? Math.min(maxAutoHeight, Math.max(contentHeight, minHeight))
+      : height;
 
   // The available width decides `full` and `fit`.
   React.useLayoutEffect(() => {

@@ -38,6 +38,10 @@ export function createInsertAdapters(
   measurer: Measurer,
   nodes: EditorNodes,
   rootId: string,
+  options: {
+    /** The canvas fills a frame: its page area outside the content drops into the root. */
+    framePage?: boolean;
+  } = {},
 ): InsertAdapters {
   const getRect = (id: string) => {
     const measured = measurer.getBlockRect(id);
@@ -98,7 +102,14 @@ export function createInsertAdapters(
     const hits = host.ownerDocument.elementsFromPoint?.(client.x, client.y);
     if (!hits) return null;
     const point = { x, y };
+    const doc = host.ownerDocument;
+    // The page area of a frame surface below or beside the content is the
+    // canvas too: it drops into the root.
+    const framePage = (hit: Element) =>
+      options.framePage === true &&
+      (hit === doc.documentElement || hit === doc.body);
     for (const hit of hits) {
+      if (framePage(hit)) return rootId;
       if (!host.contains(hit)) continue;
       if (isInsideReadonly(hit, host)) continue;
       const blockEl = hit.closest('[data-editor-block]');

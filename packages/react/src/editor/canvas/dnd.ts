@@ -209,6 +209,36 @@ export function findScrollParent(el: HTMLElement): HTMLElement | null {
 
 type ScrollAxis = 'x' | 'y';
 
+/** A scroller and the pointer in its own document's client coordinates. */
+export type ScrollEntry = {
+  readonly el: Element;
+  readonly client: { x: number; y: number };
+};
+
+/**
+ * Scrollable elements from `el` outward, innermost first, each with the
+ * pointer in its document's coordinates. For a canvas in a frame pass the
+ * host page point (`hostClient`): the chain goes on in the host page, so a
+ * frame that grows with its content scrolls the page around it.
+ */
+export function scrollChain(
+  el: Element,
+  client: { x: number; y: number },
+  hostClient: { x: number; y: number } | null,
+): ScrollEntry[] {
+  const out: ScrollEntry[] = scrollableAncestors(el).map((cur) => ({
+    el: cur,
+    client,
+  }));
+  const frame = el.ownerDocument.defaultView?.frameElement;
+  if (hostClient && frame?.parentElement) {
+    for (const cur of scrollableAncestors(frame.parentElement)) {
+      out.push({ el: cur, client: hostClient });
+    }
+  }
+  return out;
+}
+
 /** Scrollable elements from `el` outward, innermost first. */
 export function scrollableAncestors(el: Element): Element[] {
   const out: Element[] = [];
@@ -249,21 +279,15 @@ export function createAutoScroller() {
   };
   return {
     /**
-     * Scrolls for the time since the previous step. `client` is in the
-     * client coordinates of `chain`'s document. Returns whether anything
-     * scrolled.
+     * Scrolls for the time since the previous step. Returns whether
+     * anything scrolled.
      */
-    step(
-      chain: readonly Element[],
-      client: { x: number; y: number },
-      now: number,
-      fast = false,
-    ): boolean {
+    step(chain: readonly ScrollEntry[], now: number, fast = false): boolean {
       const dt = last === 0 ? 16 : Math.min(100, now - last);
       last = now;
       const seen = new Set<string>();
       let scrolled = false;
-      for (const el of chain) {
+      for (const { el, client } of chain) {
         const root = el === el.ownerDocument.documentElement;
         const view = el.ownerDocument.defaultView;
         const rect =

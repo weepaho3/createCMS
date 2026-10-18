@@ -203,7 +203,7 @@ const uiChecks = [
   ['data-slot="editor-outline"', 'editor-outline slot'],
   ['data-slot="editor-inspector"', 'editor-inspector slot'],
   ['data-slot="editor-surface"', 'editor-surface slot'],
-  ['data-slot="editor-selection-chip"', 'editor-selection-chip slot'],
+  ['data-slot="editor-block-toolbar-label"', 'block toolbar label slot'],
   ['<DragHandle blockId={selected} />', 'toolbar drag handle'],
   ['SidebarProvider', 'SidebarProvider usage'],
   ['CommandDialog', 'CommandDialog usage'],
