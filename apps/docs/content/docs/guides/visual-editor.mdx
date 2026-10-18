@@ -5,9 +5,10 @@ description: Compose a live canvas, a form plus preview, or a form-only editor f
 
 This guide shows how to compose a styled editor from `@createcms/react` and
 the docs registry. For a real createCMS backend, start with the one-install
-`editor-app` block in [Editor UI](/docs/guides/editor-ui): it wraps
+`editor-app-createcms` block in [Editor UI](/docs/guides/editor-ui); for any
+other backend, the generic `editor-app` over an `EditorAdapter`. Both wrap
 `Editor.Root` and `Canvas.Root` and wires `useCmsDocument` /
-`useCmsFieldSources`. The chrome items below (`editor-form`, `editor-canvas`,
+`useCmsFieldSources` (createCMS). The chrome items below (`editor-form`, `editor-canvas`,
 `editor-shell`, `editor-email`) do not wrap `Root` — compose those **inside**
 `Editor.Root`.
 
@@ -17,13 +18,13 @@ the docs registry. For a real createCMS backend, start with the one-install
 npm install @createcms/react
 ```
 
-### One install (`editor-app`)
+### One install (`editor-app-createcms`)
 
 When you have a collection client, start with the CMS-wired page in
 [Editor UI](/docs/guides/editor-ui):
 
 ```bash
-npx shadcn@latest add https://createcms.dev/r/editor-app.json
+npx shadcn@latest add https://createcms.dev/r/editor-app-createcms.json
 ```
 
 ### Building-block chrome
@@ -33,13 +34,14 @@ documented on [Editor UI](/docs/guides/editor-ui):
 
 ```bash
 npx shadcn@latest add https://createcms.dev/r/editor-form.json
+npx shadcn@latest add https://createcms.dev/r/editor-form-createcms.json
 npx shadcn@latest add https://createcms.dev/r/editor-canvas.json
 npx shadcn@latest add https://createcms.dev/r/editor-shell.json
 npx shadcn@latest add https://createcms.dev/r/editor-email.json
 ```
 
 The docs app hosts working demos composed from those registry items:
-[live canvas](/demo/editor/pages), [form only](/demo/editor/form),
+[editor app in memory](/demo/editor/app), [live canvas](/demo/editor/pages), [form only](/demo/editor/form),
 [form plus preview](/demo/editor/preview), and
 [email split](/demo/editor/email).
 
@@ -92,7 +94,7 @@ import * as React from 'react';
 import { createDemoCmsClient } from '@/app/demo/_lib/demo-cms-client';
 import { pageBlocks } from '@/app/demo/_lib/pages-blocks';
 import { PAGES_TREE } from '@/app/demo/_lib/pages-tree';
-import { CmsEditor } from '@/components/editor-app';
+import { CmsEditor } from '@/components/editor-app-createcms';
 import {
   Collapsible,
   CollapsibleContent,
@@ -174,7 +176,7 @@ import {
   Overlay,
   SelectionRing,
 } from '@/components/editor-canvas';
-import { CmsSourcesProvider, cmsFields } from '@/components/editor-form';
+import { CmsSourcesProvider, cmsFields } from '@/components/editor-form-createcms';
 import { EditorShell } from '@/components/editor-shell';
 import {
   Collapsible,
@@ -246,7 +248,7 @@ export function PagesLiveCanvas() {
 
 <Callout type="info">
   A createCMS collection client can skip this local stand-in: install
-  `editor-app` from [Editor UI](/docs/guides/editor-ui) and pass the client
+  `editor-app-createcms` from [Editor UI](/docs/guides/editor-ui) and pass the client
   plus your `createBlocksMap` result as `blocks`. `CmsEditor` already wires `useCmsDocument` as on
   the [Editor cms adapter](/docs/reference/react-editor-cms) reference page
   (`key={doc.key}`, `onChange={doc.onChange}`, `persistence={doc.persistence}`, and
@@ -273,7 +275,8 @@ import { pageBlocks } from '@/app/demo/_lib/pages-blocks';
 import { pages } from '@/app/demo/_lib/pages-schema';
 import { useDemoFieldSources } from '@/app/demo/_lib/sources';
 import { useLocalDocument } from '@/app/demo/_lib/use-local-document';
-import { CmsSourcesProvider, cmsFields, Form } from '@/components/editor-form';
+import { Form } from '@/components/editor-form';
+import { CmsSourcesProvider, cmsFields } from '@/components/editor-form-createcms';
 
 export function FormPreviewEditor() {
   const sources = useDemoFieldSources();
@@ -328,7 +331,7 @@ import { renderEmailHtml } from '@/app/demo/_lib/render-email';
 import { useDemoFieldSources } from '@/app/demo/_lib/sources';
 import { useLocalDocument } from '@/app/demo/_lib/use-local-document';
 import { EditorEmail } from '@/components/editor-email';
-import { CmsSourcesProvider, cmsFields } from '@/components/editor-form';
+import { CmsSourcesProvider, cmsFields } from '@/components/editor-form-createcms';
 
 export function EmailSplitEditor() {
   const sources = useDemoFieldSources();

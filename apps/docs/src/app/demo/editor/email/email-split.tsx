@@ -10,7 +10,10 @@ import { demoRichText } from '@/app/demo/_lib/rich-text';
 import { useDemoFieldSources } from '@/app/demo/_lib/sources';
 import { useLocalDocument } from '@/app/demo/_lib/use-local-document';
 import { EditorEmail } from '@/components/editor-email';
-import { CmsSourcesProvider, cmsFields } from '@/components/editor-form';
+import {
+  CmsSourcesProvider,
+  cmsFields,
+} from '@/components/editor-form-createcms';
 
 export function EmailSplitEditor() {
   const sources = useDemoFieldSources();

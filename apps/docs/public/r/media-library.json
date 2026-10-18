@@ -8,15 +8,15 @@
     "lucide-react"
   ],
   "registryDependencies": [
-    "button",
-    "input",
-    "select",
-    "dialog",
     "alert",
     "alert-dialog",
-    "progress",
     "badge",
-    "breadcrumb"
+    "breadcrumb",
+    "button",
+    "dialog",
+    "input",
+    "progress",
+    "select"
   ],
   "files": [
     {

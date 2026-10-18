@@ -2,6 +2,12 @@ import Link from 'next/link';
 
 const demos = [
   {
+    href: '/demo/editor/app',
+    title: 'Editor app (in memory)',
+    description:
+      'The generic editor-app item on createMemoryAdapter, without createCMS.',
+  },
+  {
     href: '/demo/editor/pages',
     title: 'Live canvas',
     description:

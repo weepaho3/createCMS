@@ -1,6 +1,8 @@
-export { CmsEditor } from '../../registry/editor-app';
+export { EditorApp, EditorAppView } from '../../registry/editor-app';
 export type {
-  CmsEditorClient,
-  CmsEditorMode,
-  CmsEditorProps,
+  EditorAppDocument,
+  EditorAppError,
+  EditorAppMode,
+  EditorAppProps,
+  EditorAppViewProps,
 } from '../../registry/editor-app';

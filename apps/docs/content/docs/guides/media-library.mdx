@@ -130,7 +130,7 @@ from the asset id createcms stores.
 
 `accept` works like the file input attribute (`.ext`, `type/*`, exact types). The server lists every asset of a folder, so the picker hides non-matching cards and fetches up to five further pages automatically while a page shows nothing; only after that does it show the empty state.
 
-`editor-form`'s media control uses the picker. `CmsSourcesProvider` takes an optional `media` client for it:
+`editor-form-createcms`'s media control uses the picker. `CmsSourcesProvider` takes an optional `media` client for it:
 
 ```tsx
 <CmsSourcesProvider sources={sources} media={cmsClient.media}>

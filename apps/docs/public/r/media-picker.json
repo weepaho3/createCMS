@@ -8,8 +8,8 @@
   ],
   "registryDependencies": [
     "media-library",
-    "dialog",
-    "button"
+    "button",
+    "dialog"
   ],
   "files": [
     {

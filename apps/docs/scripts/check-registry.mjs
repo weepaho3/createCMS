@@ -6,15 +6,37 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const publicR = path.join(root, 'public/r');
 
 const UI_ITEM_NAMES = [
+  'editor-field',
   'editor-form',
   'editor-canvas',
+  'editor-chrome',
+  'editor-toolbar',
+  'editor-palette',
+  'editor-outline',
+  'editor-inspector',
   'editor-shell',
   'editor-email',
+  'editor-form-createcms',
   'media-library',
   'media-picker',
 ];
 
-const BLOCK_ITEM_NAMES = ['editor-app'];
+const BLOCK_ITEM_NAMES = ['editor-app', 'editor-app-createcms'];
+
+/** Generic items: usable without a createCMS backend. */
+const GENERIC_ITEM_NAMES = [
+  'editor-field',
+  'editor-form',
+  'editor-canvas',
+  'editor-chrome',
+  'editor-toolbar',
+  'editor-palette',
+  'editor-outline',
+  'editor-inspector',
+  'editor-shell',
+  'editor-email',
+  'editor-app',
+];
 
 function readJson(name) {
   const filePath = path.join(publicR, name);
@@ -61,13 +83,13 @@ function assertNamedItem(item, name, expectedType) {
 const catalog = readJson('registry.json');
 const catalogNames = new Set((catalog.items ?? []).map((item) => item.name));
 const editorFormItem = catalog.items.find(
-  (item) => item.name === 'editor-form',
+  (item) => item.name === 'editor-field',
 );
 const editorFormDeps = editorFormItem?.registryDependencies ?? [];
 for (const dep of ['input', 'textarea', 'select', 'checkbox']) {
   if (!editorFormDeps.includes(dep)) {
     console.error(
-      `check-registry: editor-form registryDependencies must include "${dep}"`,
+      `check-registry: editor-field registryDependencies must include "${dep}"`,
     );
     process.exit(1);
   }
@@ -87,6 +109,24 @@ const blockItems = BLOCK_ITEM_NAMES.map((name) =>
 );
 
 const uiContents = uiItems.map(itemContents).join('\n');
+
+for (const name of GENERIC_ITEM_NAMES) {
+  const item = [...uiItems, ...blockItems].find((it) => it.name === name);
+  const contents = itemContents(item);
+  if (/@createcms\/react\/editor\/cms|-createcms'/.test(contents)) {
+    console.error(
+      `check-registry: generic item ${name} must not import the createCMS layer`,
+    );
+    process.exit(1);
+  }
+  const deps = item.registryDependencies ?? [];
+  if (deps.some((dep) => dep.endsWith('-createcms'))) {
+    console.error(
+      `check-registry: generic item ${name} must not depend on a createcms item`,
+    );
+    process.exit(1);
+  }
+}
 const blockContents = blockItems.map(itemContents).join('\n');
 
 if (/<(Editor|Canvas)\.Root/.test(uiContents)) {

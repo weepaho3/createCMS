@@ -34,6 +34,13 @@ export type {
   EditorRootStoreProps,
 } from './components';
 export type { EditorContextValue, EditorScrollToOptions } from './types';
+export type {
+  AdapterDocumentError,
+  AdapterDocumentStatus,
+  UseAdapterDocumentOptions,
+  UseAdapterDocumentResult,
+} from './adapter-document';
+export { useAdapterDocument } from './adapter-document';
 export { useEditorContext } from './context';
 export type { EditorSlotProps } from './plugin-slot';
 export type { EditorLiveAnnouncerProps } from './announcer';

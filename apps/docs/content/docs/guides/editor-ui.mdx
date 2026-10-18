@@ -3,9 +3,12 @@ title: Editor UI
 description: Install a CMS-wired editor page in one command, or copy styled chrome from the createCMS shadcn registry.
 ---
 
-The createCMS docs site hosts a [shadcn registry](https://ui.shadcn.com/docs/registry/getting-started) of copy-paste editor chrome. Start with `editor-app` for a complete CMS-wired page.
+The createCMS docs site hosts a [shadcn registry](https://ui.shadcn.com/docs/registry/getting-started) of copy-paste editor chrome in two layers:
 
-The chrome items (`editor-form`, `editor-canvas`, `editor-shell`, `editor-email`) do not wrap `Editor.Root` or `Canvas.Root` — compose them **inside** `Editor.Root`. For form-only, live canvas, and form-plus-preview layouts, see the [Visual editor](/docs/guides/visual-editor) guide. `editor-form`'s image control now opens the `media-picker` item; the [Media library](/docs/guides/media-library) guide covers it and the `media-library` wrappers.
+- **Generic items** work with any backend through an `EditorAdapter`: `editor-field`, `editor-form`, `editor-canvas`, `editor-toolbar`, `editor-palette`, `editor-outline`, `editor-inspector`, `editor-shell`, `editor-email` and the `editor-app` block. They never import `@createcms/react/editor/cms`.
+- **createCMS items** layer on top: `editor-form-createcms` (asset, reference, link and variable controls plus `CmsSourcesProvider`), the `editor-app-createcms` block (`CmsEditor`), `media-library` and `media-picker`.
+
+The chrome items do not wrap `Editor.Root` or `Canvas.Root`: compose them **inside** `Editor.Root`. For form-only, live canvas, and form-plus-preview layouts, see the [Visual editor](/docs/guides/visual-editor) guide. `editor-form-createcms`'s image control opens the `media-picker` item; the [Media library](/docs/guides/media-library) guide covers it and the `media-library` wrappers.
 
 ## Prerequisites
 
@@ -15,11 +18,11 @@ Your app should already be initialized with shadcn (`npx shadcn@latest init`) an
 npm install @createcms/react
 ```
 
-`editor-app` handles the CMS wiring (`useCmsDocument` and `useCmsFieldSources`). Pass `fields={cmsFields}` on `Editor.Root` and wrap with `CmsSourcesProvider` only when you compose chrome yourself — pass the result of `useCmsFieldSources(client)` into the provider.
+`editor-app-createcms` handles the CMS wiring (`useCmsDocument` and `useCmsFieldSources`). Pass `fields={cmsFields}` on `Editor.Root` and wrap with `CmsSourcesProvider` only when you compose chrome yourself: pass the result of `useCmsFieldSources(client)` into the provider. Without createCMS, pass `fields={fieldControls}` from `editor-field`.
 
-## Start with one install
+## Without a backend: `editor-app`
 
-`editor-app` copies a complete CMS-wired editor page in one `shadcn add`.
+`editor-app` is the complete editor page over any `PersistenceAdapter`. `createMemoryAdapter` from `@createcms/react/editor/core` keeps documents in memory, which is enough for prototypes, demos and tests:
 
 ```bash
 npx shadcn@latest add https://createcms.dev/r/editor-app.json
@@ -28,7 +31,39 @@ npx shadcn@latest add https://createcms.dev/r/editor-app.json
 ```tsx
 'use client';
 
-import { CmsEditor } from '@/components/editor-app';
+import { createMemoryAdapter } from '@createcms/react/editor/core';
+
+import { EditorApp } from '@/components/editor-app';
+
+const adapter = createMemoryAdapter({ home: homeDocument });
+
+export function PageEditor() {
+  return (
+    <EditorApp
+      adapter={adapter}
+      documentId="home"
+      baseVersion={adapter.version('home')}
+      schema={schema}
+      components={canvasComponents}
+    />
+  );
+}
+```
+
+`EditorApp` loads through `useAdapterDocument`, saves through the adapter (a stale `baseVersion` opens the conflict dialog), and renders the shell, canvas overlays, loading skeleton and error states. `EditorAppView` takes a document from any other source (`document`, `schema`, `components`, `resolve`, `fields`, `richText`, `renderProviders`): `CmsEditor` is built on it. The [in-memory demo](/demo/editor/app) runs this setup.
+
+## With createCMS: `editor-app-createcms`
+
+`editor-app-createcms` copies a complete CMS-wired editor page in one `shadcn add`.
+
+```bash
+npx shadcn@latest add https://createcms.dev/r/editor-app-createcms.json
+```
+
+```tsx
+'use client';
+
+import { CmsEditor } from '@/components/editor-app-createcms';
 
 export function PageEditor({
   rootId,
@@ -72,8 +107,7 @@ What `CmsEditor` includes:
 | `collection` | yes | — | Collection name on `client`. |
 | `rootId` | yes | — | Document root. |
 | `branchId` | yes | — | Branch to load and save. |
-| `schema` | yes | — | Editor schema. |
-| `components` | yes | — | Canvas block map. |
+| `blocks` | yes | | `createBlocksMap` result: schema, canvas components and document mapping. |
 | `templates` | no | `client.templates` | Override for `useCmsDocument` template defaults. |
 | `mode` | no | `'canvas'` | `'canvas'` or `'form'`. Form skips `Canvas.Root` and `EditorShell` hides canvas chrome (palette, outline, inspector, device toggle). |
 | `className` | no | — | Applied to the page root, loading skeleton, and error state. |
@@ -84,31 +118,26 @@ While developing the docs site locally, swap `https://createcms.dev` for `http:/
 
 ## When composing yourself
 
-If you installed `editor-app`, you can stop here. `CmsEditor` already depends on `editor-form`, `editor-canvas`, and `editor-shell`. Install the items below only when you want to compose chrome yourself.
+If you installed `editor-app` or `editor-app-createcms`, you can stop here: they depend on the items below. Install single items only when you want to compose chrome yourself.
 
-**Field wrappers and cms controls**
-
-```bash
-npx shadcn@latest add https://createcms.dev/r/editor-form.json
-```
-
-**Canvas overlay chrome**
-
-```bash
-npx shadcn@latest add https://createcms.dev/r/editor-canvas.json
-```
-
-**Sidebar-grade shell**
+| Item | What it adds |
+| --- | --- |
+| `editor-field` | `Field` parts and `fieldControls` (shadcn controls for the built-in field kinds). |
+| `editor-form` | `Form` and the form-only `FormSurface`. |
+| `editor-canvas` | Canvas overlay chrome and theme tokens. |
+| `editor-toolbar` | Top toolbar, command palette (Mod+K), commit message dialog. |
+| `editor-palette` | Block palette, add-block list and dialog. |
+| `editor-outline` | Virtualized outline. |
+| `editor-inspector` | Block and page fields in tabs. |
+| `editor-shell` | The assembled shell: provider, panels, phone and tablet layouts. |
+| `editor-email` | Split form and frame preview for email. |
+| `editor-form-createcms` | `cmsFields` (asset, reference, link, variable controls) and `CmsSourcesProvider`. |
 
 ```bash
 npx shadcn@latest add https://createcms.dev/r/editor-shell.json
 ```
 
-**Email split layout**
-
-```bash
-npx shadcn@latest add https://createcms.dev/r/editor-email.json
-```
+`editor-toolbar`, `editor-palette`, `editor-outline` and `editor-inspector` read the shell state from `editor-chrome`, which they install with them.
 
 ### Usage
 
@@ -119,11 +148,11 @@ Compose these parts **inside** `<Editor.Root schema={…}>`. Do not nest styled 
 ```tsx
 import { Editor } from '@createcms/react/editor';
 import { useCmsFieldSources } from '@createcms/react/editor/cms';
+import { Form } from '@/components/editor-form';
 import {
   CmsSourcesProvider,
   cmsFields,
-  Form,
-} from '@/components/editor-form';
+} from '@/components/editor-form-createcms';
 
 const sources = useCmsFieldSources(cmsClient);
 
@@ -134,7 +163,7 @@ const sources = useCmsFieldSources(cmsClient);
 </Editor.Root>
 ```
 
-**Styled container.** Wrap the block's fields with the styled `Form` shell. Inner fields remain the headless primitives from `@createcms/react` unless you pass `fields={cmsFields}` (shadcn `Input` / `Textarea` / `Select` / `Checkbox` and CMS pickers). `FormSurface` is a padded selected-block form for `CmsEditor mode="form"` and the form-only demo. Do not replace those primitives with custom input chrome.
+**Styled container.** Wrap the block's fields with the styled `Form` shell. Inner fields remain the headless primitives from `@createcms/react` unless you pass `fields={fieldControls}` from `editor-field` (shadcn `Input`, `Textarea`, `Select`, `Checkbox`, rich text, lists, objects) or `fields={cmsFields}` (those plus the CMS pickers). `FormSurface` is a padded selected-block form for `CmsEditor mode="form"` and the form-only demo. Do not replace those primitives with custom input chrome.
 
 ```tsx
 import { Editor } from '@createcms/react/editor';
@@ -149,7 +178,7 @@ import { Form } from '@/components/editor-form';
 
 ```tsx
 import { Editor } from '@createcms/react/editor';
-import { Field, FieldLabel, FieldControl } from '@/components/editor-form';
+import { Field, FieldLabel, FieldControl } from '@/components/editor-field';
 
 <Editor.Root schema={schema}>
   <Field blockId={blockId} name="title">
@@ -167,6 +196,8 @@ The items copy into your shadcn components directory. Adjust import paths to mat
 
 The assembled `EditorShell` is a default composition of shadcn `Sidebar` (left palette + outline, right inspector), not a custom three-column grid. Cmd+B, icon-rail collapse and cookie persistence come from `SidebarProvider`; phones and tablets get bottom sheets and a drawer instead (see [Phones and tablets](#phones-and-tablets)).
 
+Each part is its own item and file (`editor-toolbar`, `editor-palette`, `editor-outline`, `editor-inspector`); `editor-shell` holds the provider, the surface and the layouts.
+
 | Export            | Role                                                                                          | Composed from                                      |
 | ----------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------- |
 | `EditorProvider`  | `TooltipProvider` + `SidebarProvider` + `Canvas.Provider` + keyboard (⌘S, ⌘K, undo/redo)     | shadcn `sidebar`, `tooltip`                        |
@@ -177,21 +208,18 @@ The assembled `EditorShell` is a default composition of shadcn `Sidebar` (left p
 | `EditorSurface`   | Scrolling canvas column, or a scrolling form column in `mode="form"`                          | none                                                |
 | `EditorShell`     | Default assembly. `mode="form"` hides palette, outline, inspector, and device toggles.        | all of the above                                   |
 
-`useEditorChrome()` reads device preview, add-block dialog, and save-dialog state from `EditorProvider`. `useDeviceFrame()` returns the `frame` options for the chosen device (375, 768 or full width): pass them to `Canvas.Root surface="frame"` so media queries, sticky and fixed elements behave as on the site, as `editor-app` does.
+`useEditorChrome()` (from `editor-chrome`) reads device preview, layout, sheet, add-block dialog, and save-dialog state from `EditorProvider`. `useDeviceFrame()` returns the `frame` options for the chosen device (375, 768 or full width): pass them to `Canvas.Root surface="frame"` so media queries, sticky and fixed elements behave as on the site, as `editor-app` does.
 
 An inline `Canvas.Root` (no frame) has no viewport of its own: sticky and fixed elements pin to the editor window. Add the class `editor-canvas-static` to it to lay them out in flow (`editor-canvas.css`).
 
 Compose a custom layout from the same parts:
 
 ```tsx
-import {
-  EditorInspector,
-  EditorOutline,
-  EditorPalette,
-  EditorProvider,
-  EditorSurface,
-  EditorToolbar,
-} from '@/components/editor-shell';
+import { EditorInspector } from '@/components/editor-inspector';
+import { EditorOutline } from '@/components/editor-outline';
+import { EditorPalette } from '@/components/editor-palette';
+import { EditorProvider, EditorSurface } from '@/components/editor-shell';
+import { EditorToolbar } from '@/components/editor-toolbar';
 import {
   Sidebar,
   SidebarContent,

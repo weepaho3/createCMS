@@ -1,0 +1,23 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "editor-inspector",
+  "title": "Editor Inspector",
+  "description": "Block and page fields in tabs with block actions. Use inside EditorProvider.",
+  "dependencies": [
+    "@createcms/react",
+    "lucide-react"
+  ],
+  "registryDependencies": [
+    "editor-chrome",
+    "editor-form",
+    "tabs"
+  ],
+  "files": [
+    {
+      "path": "registry/editor-inspector.tsx",
+      "content": "'use client';\n\n// The selected block's fields and the page fields, in tabs. Plugins add UI\n// through the `inspector-header` and `inspector-footer` outlets.\n\nimport {\n  Editor,\n  useAnyBlock,\n  useBlockActions,\n  useEditor,\n  usePalette,\n  useSelection,\n} from '@createcms/react/editor';\nimport { BoxIcon, CopyIcon, Trash2Icon } from 'lucide-react';\nimport * as React from 'react';\n\nimport { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';\nimport { cn } from '@/lib/utils';\n\nimport { blockTypeIcon, ToolbarHintButton } from './editor-chrome';\nimport { Form } from './editor-form';\n\nfunction EditorInspector({ className, ...props }: React.ComponentProps<'div'>) {\n  const rootId = useEditor((state) => state.rootId);\n  const selected = useSelection().selected;\n  const block = useAnyBlock(selected);\n  const palette = usePalette();\n  const actions = useBlockActions(selected ?? '');\n  const label =\n    palette.find((item) => item.type === block?.type)?.label ??\n    block?.type ??\n    null;\n  const Icon = blockTypeIcon(block?.type ?? '');\n\n  return (\n    <div\n      data-slot=\"editor-inspector\"\n      className={cn('flex min-h-0 flex-1 flex-col', className)}\n      {...props}\n    >\n      <Tabs defaultValue=\"block\" className=\"flex min-h-0 flex-1 flex-col gap-0\">\n        <div className=\"bg-background sticky top-0 z-10 border-b\">\n          <div className=\"flex items-center gap-2 px-3 py-2\">\n            {selected && block ? (\n              <>\n                <Icon className=\"size-4 shrink-0\" />\n                <span className=\"min-w-0 flex-1 truncate text-sm font-medium\">\n                  {label}\n                </span>\n                <Editor.Slot\n                  name=\"inspector-header\"\n                  props={{ blockId: selected }}\n                />\n                {actions.parent !== null ? (\n                  <div className=\"flex items-center gap-1\">\n                    <ToolbarHintButton\n                      label=\"Duplicate\"\n                      onClick={() => actions.duplicate()}\n                    >\n                      <CopyIcon />\n                    </ToolbarHintButton>\n                    <ToolbarHintButton\n                      label=\"Delete\"\n                      onClick={() => actions.remove()}\n                    >\n                      <Trash2Icon />\n                    </ToolbarHintButton>\n                  </div>\n                ) : null}\n              </>\n            ) : (\n              <span className=\"text-muted-foreground text-sm\">Inspector</span>\n            )}\n          </div>\n          <TabsList variant=\"line\" className=\"w-full justify-start px-3\">\n            <TabsTrigger value=\"block\">Block</TabsTrigger>\n            <TabsTrigger value=\"page\">Page</TabsTrigger>\n          </TabsList>\n        </div>\n        <TabsContent\n          value=\"block\"\n          className=\"min-h-0 flex-1 overflow-y-auto p-3\"\n        >\n          {selected ? (\n            <Form blockId={selected} autoScroll />\n          ) : (\n            <div className=\"text-muted-foreground flex flex-col items-center gap-2 px-4 py-10 text-center text-sm\">\n              <BoxIcon className=\"size-8 opacity-40\" />\n              <p>Select a block to edit its fields.</p>\n            </div>\n          )}\n        </TabsContent>\n        <TabsContent\n          value=\"page\"\n          className=\"min-h-0 flex-1 overflow-y-auto p-3\"\n        >\n          <Form blockId={rootId} />\n        </TabsContent>\n      </Tabs>\n      <div\n        data-slot=\"editor-inspector-footer\"\n        className=\"border-t p-3 empty:hidden\"\n      >\n        <Editor.Slot\n          name=\"inspector-footer\"\n          props={{ blockId: selected ?? rootId }}\n        />\n      </div>\n    </div>\n  );\n}\n\nexport { EditorInspector };\n",
+      "type": "registry:ui"
+    }
+  ],
+  "type": "registry:ui"
+}

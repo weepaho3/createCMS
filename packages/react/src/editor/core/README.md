@@ -280,13 +280,16 @@ editor can map the DOM back to nodes, fields and slots. The prefix is
 A backend plugs in through `EditorAdapter`. Failures throw
 `EditorAdapterError` with a `kind` the editor reacts to.
 
-| Name                     | Description                                                                                                        |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| `PersistenceAdapter`     | `load(id)`, `save(id, doc, { ops, baseVersion?, message? })` returning `{ version }`, optional `publish(id, doc)`. |
-| `EditorAdapter`          | `PersistenceAdapter` plus optional `resolveReference`, `resolveField`, `fieldSources`, `uploadMedia`, `canPlace`.  |
-| `FieldSources`           | Data for field controls (assets, documents, variables); the shape is adapter-defined.                              |
-| `EditorAdapterError`     | `Error` with `kind` and `details`.                                                                                 |
-| `EditorAdapterErrorKind` | `'validation' \| 'conflict' \| 'network' \| 'permission' \| 'not-found' \| 'unknown'`.                             |
+| Name                     | Description                                                                                                                                                                                                                      |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PersistenceAdapter`     | `load(id)`, `save(id, doc, { ops, baseVersion?, message? })` returning `{ version }`, optional `publish(id, doc)`.                                                                                                               |
+| `EditorAdapter`          | `PersistenceAdapter` plus optional `resolveReference`, `resolveField`, `fieldSources`, `uploadMedia`, `canPlace`.                                                                                                                |
+| `FieldSources`           | Data for field controls (assets, documents, variables); the shape is adapter-defined.                                                                                                                                            |
+| `EditorAdapterError`     | `Error` with `kind` and `details`.                                                                                                                                                                                               |
+| `EditorAdapterErrorKind` | `'validation' \| 'conflict' \| 'network' \| 'permission' \| 'not-found' \| 'unknown'`.                                                                                                                                           |
+| `createMemoryAdapter`    | `(documents, { latencyMs? })`: an `EditorAdapter` over documents in memory. `save` rejects a stale `baseVersion` with `conflict`, `load` of an unknown id throws `not-found`; `get(id)` and `version(id)` read the stored state. |
+| `MemoryAdapter`          | `EditorAdapter` plus `get(id)` and `version(id)`.                                                                                                                                                                                |
+| `MemoryAdapterOptions`   | `latencyMs?`: delay before each call settles.                                                                                                                                                                                    |
 
 ## Messages
 

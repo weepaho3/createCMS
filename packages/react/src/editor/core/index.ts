@@ -24,6 +24,8 @@ export type {
   PersistenceAdapter,
 } from './adapter';
 export { EditorAdapterError } from './adapter';
+export type { MemoryAdapter, MemoryAdapterOptions } from './memory-adapter';
+export { createMemoryAdapter } from './memory-adapter';
 
 // Editor anchors handed to components.
 export type { EditAttrs, EditProps, EditRef } from './edit';

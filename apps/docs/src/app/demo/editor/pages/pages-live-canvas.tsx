@@ -23,7 +23,10 @@ import {
   Overlay,
   SelectionRing,
 } from '@/components/editor-canvas';
-import { CmsSourcesProvider, cmsFields } from '@/components/editor-form';
+import {
+  CmsSourcesProvider,
+  cmsFields,
+} from '@/components/editor-form-createcms';
 import { EditorShell, useDeviceFrame } from '@/components/editor-shell';
 import {
   Collapsible,

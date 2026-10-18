@@ -6,7 +6,7 @@ import * as React from 'react';
 import { createDemoCmsClient } from '@/app/demo/_lib/demo-cms-client';
 import { pageBlocks } from '@/app/demo/_lib/pages-blocks';
 import { PAGES_TREE } from '@/app/demo/_lib/pages-tree';
-import { CmsEditor } from '@/components/editor-app';
+import { CmsEditor } from '@/components/editor-app-createcms';
 import {
   Collapsible,
   CollapsibleContent,
