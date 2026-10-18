@@ -129,6 +129,63 @@ and the block behind the pointer. `Canvas.BlockToolbar` is one tab stop
 from the canvas or inline text without changing the selection, and Escape
 returns to where focus was.
 
+## Dragging
+
+A drag starts by pointer type: a mouse on `Canvas.DragHandle` on the first
+movement, a mouse elsewhere (`Canvas.PaletteItem`) and a pen after 5 px, a
+touch after a still 250 ms press (moving earlier cancels it). Inputs,
+links, editable text and other buttons inside a drag source never start a
+drag. Dragged blocks carry `data-dragging`.
+
+The block under the pointer comes from the browser's own hit test
+(`elementsFromPoint`), so its cost follows the nesting depth, not the
+block count; the dragged block, its descendants and read-only subtrees are
+skipped. A leaf's outer 6 px and the 30 px band at the edge of a container
+taller than 120 px (past its children, along the parent's flow) drop
+beside it instead of into it. From that block the nearest gap of every
+slot up its ancestors that takes the type wins, and the target holds
+against jitter: it changes after 10 px of movement or for a clearly
+closer gap. Dragging one block of a multi-selection moves all selected
+blocks (the outermost ones), landing next to each other in document order
+as one undo step. When someone else removes a dragged block, the drag ends
+and `Editor.LiveAnnouncer` says so.
+
+`Canvas.DragHandle` also works without dragging (WCAG 2.5.7). A click or
+Enter opens its menu (`role="menu"`: move up, move down, move to, duplicate,
+delete; Move to opens `Editor.MoveToDialog`). Space picks the block up for
+a keyboard drag: arrows step through every valid place in document order
+(`insertionPoints`), the drop indicator follows, Space or Enter drops,
+Escape or leaving the handle puts the block back. `Editor.LiveAnnouncer`
+announces each step; focus returns to the handle.
+
+Files dragged from the desktop need `fileDrop` (`CanvasFileDrop`:
+`blockType`, `field`, `upload(file)`, `accept?`): the drop indicator
+follows the same targets, and each dropped file is uploaded and inserted
+in order at the drop position. Empty slots keep a minimum height while
+editing in the registry styles (`--editor-slot-min-empty-height`, 128 px).
+
+Rings measure what they show. The measurer keeps only tracked rects
+current (rings, toolbars, handles: one shared ResizeObserver, a
+MutationObserver that ignores the overlay, scroll and font changes, one
+animation frame of reads, a 100 ms poll for movement no observer reports)
+and measures any other rect on demand. Blocks without a box of their own
+(`display: contents`, zero size) take their text or children's box;
+selection and hover rings are cut by overflow ancestors and flag the cut
+edges (`data-clamped-left`, `-top`, `-right`, `-bottom`); fixed and sticky
+blocks keep their ring while the canvas scrolls. Rings carry
+`data-state` (`selected`, `hover`), `data-kind` (`block`, `ref`) and the
+CSS variables `--x --y --w --h --el-radius` (the block's own corner
+radius) for box-shadow rings without transitions on position.
+`Canvas.BlockToolbar` carries `data-flipped` when it moved inside the block
+and, on the host layer, `data-scrolling` while the canvas scrolls (shown
+again 150 ms after). `Canvas.InsertButton` appears after the pointer rests
+at a gap for `delay` (400 ms).
+
+Auto-scroll moves the innermost scroller under the pointer whose edge zone
+(a quarter of its size, at most 180 px) holds it, outer scrollers once it
+reaches its end, at up to 900 px per second regardless of the frame rate,
+ramping up over 400 ms after the pointer enters the zone.
+
 ## Frame surface
 
 `surface="frame"` renders the canvas inside a same-origin `srcdoc` iframe:
@@ -235,6 +292,10 @@ below 1 ms either way); a browser test keeps it under 1.5 times inline.
 | `Canvas.BlockError`         | `div`                                | `blockId`, `blockType`, `error` (all set by the canvas), `render`, div props; `role="alert"`, carries the block anchor so the block stays selectable and deletable                                                                               | `data-editor-block`, `data-block-error`, `data-block-id`, `data-block-type`                               |
 | `Canvas.UnknownBlock`       | `div`                                | `blockId`, `blockType`, `props`, `slots` (set by the canvas), `render`, div props; renders every slot below its label                                                                                                                            | `data-editor-block`, `data-unknown-block`, `data-block-id`, `data-block-type`                             |
 | `Canvas.ContextMenu`        | `div` with `role="menu"`             | `commands`, `renderItem(entry, run)`, `render`, div props; fixed at the pointer, focus returns on close                                                                                                                                          | `data-open`                                                                                               |
+| `Canvas.DropTargetRing`     | `div`                                | `render`, div props. Outlines the container a drag drops into (its slot element, else its block); `aria-hidden`.                                                                                                                                 | `data-editor-drop-target-ring`, `data-nested`                                                             |
+| `Canvas.Label`              | `div`                                | `render`, div props. The selected block's name: above when it fits, below a block under 250 px, else inside its top (`labelPlacement`); its button opens a breadcrumb of parent and grandparent (click selects, hover highlights).               | `data-placement`, `data-open`                                                                             |
+| `Canvas.EmptySlot`          | `div`                                | `blockId`, `slot?`, `onAdd?`, `render`, div props. Render it beside a slot's children: shows only while the slot is empty, in an editing canvas, with a minimum height and an add button (default: select the block, run `ui.quickInsert`).      | `data-editor-empty-slot`, `data-drag-over`                                                                |
+| `Canvas.SpacingOverlay`     | `div`                                | `blockId?` (default: the hovered block while Alt and Shift are held), `render`, div props. Padding and margin as strips.                                                                                                                         | `data-box` (`padding`, `margin`), `data-side`                                                             |
 
 ## Hooks
 
@@ -300,6 +361,11 @@ below 1 ms either way); a browser test keeps it under 1.5 times inline.
 | `InlineSuggest`              | Optional `$`-anchored suggest config: `pattern`, `getItems`, `render`.                                                                           |
 | `InlineSuggestItem`          | Suggest row: `insertText` plus consumer fields for `render`.                                                                                     |
 | `InlineSuggestRenderContext` | Suggest UI context: items, highlight, query, anchor rect, `accept`.                                                                              |
+| `CanvasFileDrop`             | `fileDrop` of `Canvas.Root`: `{ blockType, field, upload(file), accept? }`.                                                                      |
+| `CanvasDropTargetRingProps`  | Props of `Canvas.DropTargetRing`.                                                                                                                |
+| `CanvasLabelProps`           | Props of `Canvas.Label`.                                                                                                                         |
+| `CanvasEmptySlotProps`       | Props of `Canvas.EmptySlot`.                                                                                                                     |
+| `CanvasSpacingOverlayProps`  | Props of `Canvas.SpacingOverlay`.                                                                                                                |
 
 ## Helpers
 
@@ -333,40 +399,47 @@ client component.
 | `EMPTY_FIELD_PLACEHOLDER` | Zero-width placeholder injected for empty inline fields.                                                                                                                                                         |
 | `normalizePlainText`      | `(text, multiline)`: line endings normalised; line breaks become spaces when single-line.                                                                                                                        |
 | `isInlineEditableKind`    | Whether a field kind supports `Canvas.InlineText`.                                                                                                                                                               |
+| `labelPlacement`          | `(rect, viewTop, labelHeight?)`: `above`, `below` or `inside` for `Canvas.Label`.                                                                                                                                |
+| `LABEL_HEIGHT_PX`         | Height `Canvas.Label` reserves (20).                                                                                                                                                                             |
+| `INSERT_BUTTON_DELAY_MS`  | How long the pointer rests at a gap before `Canvas.InsertButton` shows (400).                                                                                                                                    |
 
 ## Data attributes
 
-| Attribute                    | Where                                | Meaning                                                                                                                    |
-| ---------------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| `data-editor-canvas`         | host                                 | Presence marker.                                                                                                           |
-| `data-interactive`           | host                                 | `'edit'`, `'select'`, or `'none'`.                                                                                         |
-| `data-dragging`              | host, drag handle, palette item      | Present on the host while any canvas drag session is active; on a handle or palette item while that part owns the session. |
-| `data-editing`               | host, inline glass                   | Present while the local selection has an inline-editing target.                                                            |
-| `data-editor-block`          | block root via `edit.block`          | Document-tree block id.                                                                                                    |
-| `data-editor-field`          | field element via `edit.field.<key>` | Field key, counted only inside its own block.                                                                              |
-| `data-editor-slot`           | slot element via `edit.slot.<name>`  | Slot name; the slot's children render inside this element.                                                                 |
-| `data-unresolved`            | block root via `edit.block`; rings   | Present when a resolved value is pending or missing. On a ring: any measured block element for that id has the attribute.  |
-| `data-editor-readonly`       | `Canvas.ReadonlySubtree`             | Together with `inert`, excludes the subtree from click-select and measurement.                                             |
-| `data-editor-overlay`        | Overlay host                         | Presence marker. `pointer-events: none`; not `aria-hidden`.                                                                |
-| `data-editor-block-toolbar`  | `Canvas.BlockToolbar` inner chrome   | Presence marker. `role="toolbar"`.                                                                                         |
-| `data-editor-insert-button`  | `Canvas.InsertButton`                | Presence marker.                                                                                                           |
-| `data-side`                  | `Canvas.BlockToolbar`                | `'top'` or `'bottom'`.                                                                                                     |
-| `data-orientation`           | `Canvas.InsertButton`                | `'horizontal'` or `'vertical'`.                                                                                            |
-| `data-empty-container`       | `Canvas.InsertButton`                | Present when the target variant is `box`.                                                                                  |
-| `data-editor-drag-handle`    | `Canvas.DragHandle`                  | Presence marker.                                                                                                           |
-| `data-editor-palette-item`   | `Canvas.PaletteItem`                 | Presence marker.                                                                                                           |
-| `data-editor-drop-indicator` | `Canvas.DropIndicator`               | Presence marker. `aria-hidden`.                                                                                            |
-| `data-editor-drag-preview`   | `Canvas.DragPreview`                 | Presence marker. `aria-hidden`.                                                                                            |
-| `data-kind`                  | drop indicator, drag preview         | `'new'` or `'move'`.                                                                                                       |
-| `data-variant`               | `Canvas.DropIndicator`               | `'line'` or `'box'`.                                                                                                       |
-| `data-editor-selection-ring` | `Canvas.SelectionRing`               | Presence marker.                                                                                                           |
-| `data-editor-hover-ring`     | `Canvas.HoverRing`                   | Presence marker.                                                                                                           |
-| `data-editor-field-ring`     | `Canvas.FieldRing`                   | Presence marker.                                                                                                           |
-| `data-block-type`            | rings                                | Store node type. Omitted when the id is unknown.                                                                           |
-| `data-can-move`              | rings                                | Present when the block is not the root.                                                                                    |
-| `data-can-delete`            | rings                                | Present when the block is not the root.                                                                                    |
-| `data-editor-inline-text`    | `Canvas.InlineText` glass            | Presence marker. `role="textbox"`.                                                                                         |
-| `data-field`                 | `Canvas.InlineText` glass            | Property key being edited.                                                                                                 |
+| Attribute                      | Where                                | Meaning                                                                                                                    |
+| ------------------------------ | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `data-editor-canvas`           | host                                 | Presence marker.                                                                                                           |
+| `data-interactive`             | host                                 | `'edit'`, `'select'`, or `'none'`.                                                                                         |
+| `data-dragging`                | host, drag handle, palette item      | Present on the host while any canvas drag session is active; on a handle or palette item while that part owns the session. |
+| `data-editing`                 | host, inline glass                   | Present while the local selection has an inline-editing target.                                                            |
+| `data-editor-block`            | block root via `edit.block`          | Document-tree block id.                                                                                                    |
+| `data-editor-field`            | field element via `edit.field.<key>` | Field key, counted only inside its own block.                                                                              |
+| `data-editor-slot`             | slot element via `edit.slot.<name>`  | Slot name; the slot's children render inside this element.                                                                 |
+| `data-unresolved`              | block root via `edit.block`; rings   | Present when a resolved value is pending or missing. On a ring: any measured block element for that id has the attribute.  |
+| `data-editor-readonly`         | `Canvas.ReadonlySubtree`             | Together with `inert`, excludes the subtree from click-select and measurement.                                             |
+| `data-editor-overlay`          | Overlay host                         | Presence marker. `pointer-events: none`; not `aria-hidden`.                                                                |
+| `data-editor-block-toolbar`    | `Canvas.BlockToolbar` inner chrome   | Presence marker. `role="toolbar"`.                                                                                         |
+| `data-editor-insert-button`    | `Canvas.InsertButton`                | Presence marker.                                                                                                           |
+| `data-side`                    | `Canvas.BlockToolbar`                | `'top'` or `'bottom'`.                                                                                                     |
+| `data-orientation`             | `Canvas.InsertButton`                | `'horizontal'` or `'vertical'`.                                                                                            |
+| `data-empty-container`         | `Canvas.InsertButton`                | Present when the target variant is `box`.                                                                                  |
+| `data-editor-drag-handle`      | `Canvas.DragHandle`                  | Presence marker.                                                                                                           |
+| `data-editor-palette-item`     | `Canvas.PaletteItem`                 | Presence marker.                                                                                                           |
+| `data-editor-drop-indicator`   | `Canvas.DropIndicator`               | Presence marker. `aria-hidden`.                                                                                            |
+| `data-editor-drag-preview`     | `Canvas.DragPreview`                 | Presence marker. `aria-hidden`.                                                                                            |
+| `data-kind`                    | drop indicator, drag preview         | `'new'` or `'move'`.                                                                                                       |
+| `data-variant`                 | `Canvas.DropIndicator`               | `'line'` or `'box'`.                                                                                                       |
+| `data-editor-selection-ring`   | `Canvas.SelectionRing`               | Presence marker.                                                                                                           |
+| `data-editor-hover-ring`       | `Canvas.HoverRing`                   | Presence marker.                                                                                                           |
+| `data-editor-field-ring`       | `Canvas.FieldRing`                   | Presence marker.                                                                                                           |
+| `data-block-type`              | rings                                | Store node type. Omitted when the id is unknown.                                                                           |
+| `data-can-move`                | rings                                | Present when the block is not the root.                                                                                    |
+| `data-can-delete`              | rings                                | Present when the block is not the root.                                                                                    |
+| `data-editor-inline-text`      | `Canvas.InlineText` glass            | Presence marker. `role="textbox"`.                                                                                         |
+| `data-field`                   | `Canvas.InlineText` glass            | Property key being edited.                                                                                                 |
+| `data-editor-handle-menu`      | `Canvas.DragHandle` menu             | The handle's `role="menu"`.                                                                                                |
+| `data-editor-drop-target-ring` | `Canvas.DropTargetRing`              | Presence marker. `aria-hidden`.                                                                                            |
+| `data-dropped`                 | dropped blocks                       | Present for 700 ms after a drop (the registry flashes them).                                                               |
+| `data-count`                   | `Canvas.DragPreview`                 | Blocks the drag moves.                                                                                                     |
 
 ## Tests
 
