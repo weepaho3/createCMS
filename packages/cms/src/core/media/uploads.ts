@@ -7,6 +7,8 @@ import { newId } from '../../utils/nanoid';
 import { assetFolders, assets } from '../db/schema.generated';
 import { CMSError, errorMessages } from '../errors';
 import { createSlug, isFileTypeAllowed } from '../storage/s3/utils';
+import { normalizeDisplayName } from './display-name';
+import { isSvgType } from './sniff';
 
 const MAX_SLUG_ATTEMPTS = 100;
 
@@ -30,6 +32,17 @@ type PrepareUploadInput = {
   /** The object key for a new asset id and file name. */
   objectKeyFor: (id: string, fileName: string) => string;
 };
+
+/** `input` with every file name normalized for storage (`normalizeDisplayName`). */
+function withDisplayNames(input: PrepareUploadInput): PrepareUploadInput {
+  return {
+    ...input,
+    files: input.files.map((file) => ({
+      ...file,
+      name: normalizeDisplayName(file.name, file.type),
+    })),
+  };
+}
 
 async function validateUploadBatch(
   db: DrizzleInstance,
@@ -56,11 +69,11 @@ async function validateUploadBatch(
  */
 export async function prepareAssetUpload(
   db: DrizzleInstance,
-  input: PrepareUploadInput,
+  raw: PrepareUploadInput,
 ) {
+  await validateUploadBatch(db, raw);
+  const input = withDisplayNames(raw);
   const { actor, files, folderId, scope } = input;
-
-  await validateUploadBatch(db, input);
 
   const prepared: {
     id: string;
@@ -95,11 +108,11 @@ export async function prepareAssetUpload(
  */
 export async function prepareSignedUpload(
   db: DrizzleInstance,
-  input: PrepareUploadInput,
+  raw: PrepareUploadInput,
 ) {
+  await validateUploadBatch(db, raw);
+  const input = withDisplayNames(raw);
   const { actor, files, folderId } = input;
-
-  await validateUploadBatch(db, input);
 
   const prepared = files.map((file) => {
     const id = newId('asset');
@@ -180,7 +193,13 @@ export function validateFiles(
       });
     }
 
-    if (!isFileTypeAllowed(file.type, config.allowedMimeTypes)) {
+    // On purpose: SVG runs script when opened from the media origin, so it is
+    // refused even when `allowedMimeTypes` lists it or a wildcard covers it.
+    if (
+      isSvgType(file.type) ||
+      /\.svgz?$/i.test(file.name) ||
+      !isFileTypeAllowed(file.type, config.allowedMimeTypes)
+    ) {
       throw new CMSError('INVALID_FILE_TYPE', {
         message: errorMessages.invalidFileType(file.name, file.type),
       });

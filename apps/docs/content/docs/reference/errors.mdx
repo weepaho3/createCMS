@@ -139,13 +139,15 @@ try {
 | `RENDITION_MISMATCH` | 400 | `commitRendition` found bytes that are not the variant key's format, width or height; the object is deleted |
 | `RENDITION_WIDTH_UNSUPPORTED` | 400 | The asset endpoint got a `w` larger than the largest of `renditionWidths` |
 | `RENDITION_NOT_FOUND` | 404 | The asset endpoint, with `strict=true`, has no exact or larger rendition to serve |
-| `RATE_LIMITED` | 429 | `downloadIntent` past `media.downloadRateLimit` signatures per actor and minute; the `Retry-After` header and `data.retryAfter` give the seconds to wait |
+| `RATE_LIMITED` | 429 | `downloadIntent` past `media.downloadRateLimit`, or the signing endpoints past `media.uploadRateLimit`, per actor and minute; the `Retry-After` header and `data.retryAfter` give the seconds to wait |
+| `ORIGIN_NOT_ALLOWED` | 403 | A state-changing media request with cookies from another site whose `Origin` is not in `media.allowedOrigins` |
+| `QUOTA_EXCEEDED` | 413 | Signing an upload would exceed `media.quota`; `data` carries `maxBytes`, `maxAssets`, `usedBytes`, `usedAssets` |
 | `REVISION_NOT_FOUND` | 404 | `setCurrentRevision` with a `revisionId` that is not a revision of the asset |
 | `TOO_MANY_FILES` | 400 | Too many files in upload batch |
 | `FILE_TOO_LARGE` | 400 | One or more files exceed the maximum allowed size |
-| `INVALID_FILE_TYPE` | 400 | One or more files have a disallowed MIME type |
+| `INVALID_FILE_TYPE` | 400 | A file has a disallowed MIME type, is SVG, or its leading bytes do not fit the declared type |
 | `UPLOAD_FAILED` | 500 | Server-side upload to S3 failed |
-| `UPLOAD_TOKEN_INVALID` | 403 | Upload token is invalid, expired, or issued to another user |
+| `UPLOAD_TOKEN_INVALID` | 403 | Upload token is invalid, expired, issued to another user, or redeemed at another endpoint or on another host than the one that signed it |
 | `UPLOAD_NOT_FOUND` | 404 | No object was uploaded for this token |
 | `STORAGE_UNSUPPORTED` | 500 | The storage adapter does not support this operation |
 | `MISSING_REQUIRED_S3_PARAMETERS` | 400 | Missing required S3 parameters: hostname, accessKeyId, or secretAccessKey |

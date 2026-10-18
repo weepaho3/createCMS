@@ -388,9 +388,11 @@ Hand the browser presigned PUT URLs so it can upload files straight to your buck
 
 Returns `{ uploads: { id, objectKey, url, deliveryUrl, signedUrl, headers, token }[], expiresAt }`. `url` is `null` (new assets are private); `deliveryUrl` is the gate path. PUT each file to its `signedUrl` with the returned `headers` (`Content-Type`, `Cache-Control`); `expiresAt` is when the signed URLs expire. The token stays valid for one hour past `expiresAt`, so a PUT that started before expiry can still be completed. Throws `TOO_MANY_FILES`, `FILE_TOO_LARGE`, `INVALID_FILE_TYPE`, `FOLDER_NOT_FOUND`, or `ASSET_NOT_FOUND` (unknown `variantOf`).
 
+Before signing, the CMS normalizes each file name (see [Upload security](/docs/guides/media-uploads#upload-security)), checks `media.uploadRateLimit` per actor (`RATE_LIMITED`, 429 with `Retry-After`) and `media.quota` (`QUOTA_EXCEEDED`, 413), and refuses SVG with `INVALID_FILE_TYPE`. Each `token` redeems only at `completeUpload` and only on the host that signed it.
+
 ### Complete an Upload [#completeupload]
 
-Create the asset rows for the files the browser PUT to the URLs from `createSignedUpload`. For each token the CMS checks the signature, the calling user and scope, `HEAD`s the object (its length must equal and its content type must match the declared file), sniffs the leading bytes of a declared image against its magic bytes, mints the slug, and inserts the row as `private`. An object that fails the length, type, or sniff check is deleted from the bucket. Completing the same token twice returns the existing asset. One file's failure never fails the call: it is reported per entry in `errors`.
+Create the asset rows for the files the browser PUT to the URLs from `createSignedUpload`. For each token the CMS checks the signature, the calling user and scope, that the token was signed for `completeUpload` on this host, `HEAD`s the object (its length must equal and its content type must match the declared file), sniffs its first 4,100 bytes (markup is refused, image, video, audio and PDF types must match their signature), mints the slug, and inserts the row as `private`. An object that fails the length, type, or sniff check is deleted from the bucket. Completing the same token twice returns the existing asset. One file's failure never fails the call: it is reported per entry in `errors`.
 
 <APIMethod
   method="POST"

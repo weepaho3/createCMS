@@ -517,6 +517,26 @@ refresh }` and `useMediaSelection()` the new `MediaSelection`.
   breadcrumbs; complete full catalogs typed as `MediaMessages` with the new
   keys (a partial `MediaMessagesInput` falls back to English).
 
+- **Media uploads are checked more strictly.** SVG (`image/svg+xml` or a
+  `.svg` name) is refused even when `allowedMimeTypes` lists it or a
+  wildcard covers it. Every upload is sniffed from its first 4,100 bytes,
+  not only images: markup is refused under any type except plain text, and
+  image, video, audio and PDF types whose bytes match no or another
+  signature answer `INVALID_FILE_TYPE` (previously only PNG, JPEG, GIF,
+  WebP and AVIF were checked, and exotic declared image types passed).
+  Range reads are required for every upload, not only images. Stored file
+  names are normalized and get the extension of their type, so `readme`
+  uploaded as a PDF is stored as `readme.pdf` with the slug `readme.pdf`.
+  Upload tokens carry the endpoint and host they were signed for; tokens
+  signed before the update no longer redeem. State-changing media requests
+  that carry cookies from another origin answer `ORIGIN_NOT_ALLOWED` (403).
+  Signing is limited to 60 files per actor and minute by default.
+  → **Migration:** convert SVG assets to PNG or WebP before uploading;
+  finish or restart uploads in flight during the deploy; an admin UI on
+  another domain sets `media.allowedOrigins` (or sends
+  `x-createcms-media: 1`); raise `media.uploadRateLimit` (or set `0`) for
+  bulk importers.
+
 - **`@createcms/react`: the upload parts moved to `Upload.*`.**
   `Media.UploadList`, `Media.UploadItem`, `Media.UploadProgress`,
   `Media.UploadAbort` and `Media.UploadClear` are gone, and so are their

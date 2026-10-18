@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { assetFolders, assets } from '../../../schema';
 import { setupTestCMS } from '../../../test-utils/cms';
 import { createMemoryStorage } from '../../../test-utils/storage';
-import { createRateWindow } from '../../routes/media-assets';
+import { createRateWindow } from '../rate-window';
 
 const emitted: { event: string; assetId?: string; folderId?: string }[] = [];
 vi.mock('../events', async (importOriginal) => {
@@ -572,5 +572,139 @@ describe('createRateWindow', () => {
     expect(take('u', 2, 3)).toBe(0);
     expect(take('other', 3, 3)).toBe(0);
     expect(take('u', 5, 3)).toBe(60);
+  });
+});
+
+describe('upload hardening', () => {
+  const signing = () =>
+    createMemoryStorage({
+      signedPut: { supported: true, contentType: true, contentLength: true },
+    });
+  const file = { name: 'a.png', size: PNG.byteLength, type: 'image/png' };
+  const at = (host: string, extra: Record<string, string> = {}) =>
+    new Headers({ host, ...extra });
+
+  it('redeems a token only on the host that minted it', async () => {
+    const { cms } = await setupTestCMS({ media: { storage: signing() } });
+    const signed = await cms.api.media.createSignedUpload({
+      body: { files: [file] },
+      headers: at('a.example.com'),
+    });
+    const elsewhere = await cms.api.media.completeUpload({
+      body: { uploads: [{ token: signed.uploads[0].token }] },
+      headers: at('b.example.com'),
+    });
+    expect(elsewhere.errors.map((e) => e.code)).toEqual([
+      'UPLOAD_TOKEN_INVALID',
+    ]);
+  });
+
+  it('refuses cross-site cookie POSTs unless the origin is allowed', async () => {
+    const { cms } = await setupTestCMS({
+      media: {
+        storage: signing(),
+        allowedOrigins: ['https://admin.example.com'],
+      },
+    });
+    const post = (headers: Headers) =>
+      cms.api.media.createFolder({
+        body: { name: `f${Math.random()}` },
+        headers,
+      });
+    const cookie = { cookie: 'session=1' };
+
+    await expect(
+      post(
+        at('cms.example.com', {
+          ...cookie,
+          origin: 'https://evil.example',
+          'sec-fetch-site': 'cross-site',
+        }),
+      ),
+    ).rejects.toMatchObject({ cmsCode: 'ORIGIN_NOT_ALLOWED', statusCode: 403 });
+    await expect(
+      post(
+        at('cms.example.com', { ...cookie, origin: 'https://cms.example.com' }),
+      ),
+    ).resolves.toBeDefined();
+    await expect(
+      post(
+        at('cms.example.com', {
+          ...cookie,
+          'sec-fetch-site': 'same-origin',
+          origin: 'https://cms.example.com',
+        }),
+      ),
+    ).resolves.toBeDefined();
+    await expect(
+      post(
+        at('cms.example.com', {
+          ...cookie,
+          origin: 'https://admin.example.com',
+          'sec-fetch-site': 'same-site',
+        }),
+      ),
+    ).resolves.toBeDefined();
+    await expect(
+      post(
+        at('cms.example.com', {
+          ...cookie,
+          origin: 'https://evil.example',
+          'x-createcms-media': '1',
+        }),
+      ),
+    ).resolves.toBeDefined();
+    // Without cookies a forged request carries no credentials.
+    await expect(
+      post(
+        at('cms.example.com', {
+          origin: 'https://evil.example',
+          'sec-fetch-site': 'cross-site',
+        }),
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it('enforces the quota when signing', async () => {
+    const { cms } = await setupTestCMS({
+      media: {
+        storage: signing(),
+        quota: () => ({ maxBytes: PNG.byteLength * 2, maxAssets: 5 }),
+      },
+    });
+    await cms.api.media.uploadAssets({ body: { files: [png('a.png')] } });
+    await expect(
+      cms.api.media.createSignedUpload({ body: { files: [file, file] } }),
+    ).rejects.toMatchObject({
+      cmsCode: 'QUOTA_EXCEEDED',
+      statusCode: 413,
+      body: { data: { usedBytes: PNG.byteLength, usedAssets: 1 } },
+    });
+    await expect(
+      cms.api.media.createSignedUpload({ body: { files: [file] } }),
+    ).resolves.toBeDefined();
+  });
+
+  it('limits signed files per actor and minute', async () => {
+    const { cms } = await setupTestCMS({
+      media: { storage: signing(), uploadRateLimit: 2 },
+    });
+    await cms.api.media.createSignedUpload({ body: { files: [file, file] } });
+    const error = await cms.api.media
+      .createSignedUpload({ body: { files: [file] } })
+      .catch((e: unknown) => e);
+    expect(error).toMatchObject({ cmsCode: 'RATE_LIMITED', statusCode: 429 });
+  });
+
+  it('stores display names without bidi overrides', async () => {
+    const { cms } = await setupTestCMS({ media: { storage: signing() } });
+    const {
+      assets: [asset],
+    } = await cms.api.media.uploadAssets({
+      body: {
+        files: [png('photo' + String.fromCodePoint(0x202e) + 'gnp.exe.png')],
+      },
+    });
+    expect(asset.originalName).toBe('photognp.exe.png');
   });
 });

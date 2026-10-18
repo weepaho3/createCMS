@@ -5,6 +5,7 @@ import type {
   StorageCapabilitiesOverride,
   StoragePreset,
 } from '../storage/s3/presets';
+import type { ResolvedScope } from './definitions';
 
 export type S3Client = {
   s3: AwsClient;
@@ -57,10 +58,12 @@ type BaseMediaConfig = {
   maxFiles?: number;
   /**
    * Allowed MIME types. Exact matches, or a `type/*` wildcard prefix (e.g.
-   * `image/*`). The default is an EXPLICIT raster/document allowlist that
-   * deliberately excludes `image/svg+xml` — an uploaded SVG can carry inline
-   * script and, served same-origin, becomes stored XSS. Re-add SVG only if you
-   * sanitize it and serve it from a separate origin.
+   * `image/*`). The default is an explicit raster and document allowlist.
+   * `image/svg+xml` (and `.svg` names) is refused whatever this list says:
+   * an uploaded SVG can carry script and, opened from the media origin,
+   * becomes stored XSS. Every upload is also sniffed: markup is refused
+   * under any type, and an image, video, audio or PDF type must match the
+   * file's signature.
    * @default ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'video/mp4', 'video/webm', 'application/pdf']
    */
   allowedMimeTypes?: string[];
@@ -116,6 +119,36 @@ type BaseMediaConfig = {
     assetId: string;
     variantKey: string;
   }) => void | Promise<void>;
+
+  /**
+   * Origins besides the CMS's own that may call the state-changing media
+   * endpoints with cookies (an admin UI on another domain). Cookie requests
+   * from any other origin answer `ORIGIN_NOT_ALLOWED`; requests without
+   * cookies and requests sending `x-createcms-media: 1` are not checked.
+   * Default: none, so only same-origin cookie requests pass.
+   */
+  allowedOrigins?: string[];
+
+  /**
+   * Limits checked when uploads are signed, for the caller and scope.
+   * `maxBytes` counts every stored byte in the scope (originals, renditions,
+   * revisions, trash) plus the batch; `maxAssets` counts originals.
+   * Exceeding either answers `QUOTA_EXCEEDED`.
+   */
+  quota?: (target: {
+    actor: string | null;
+    scope: ResolvedScope;
+  }) =>
+    | { maxBytes?: number; maxAssets?: number }
+    | null
+    | Promise<{ maxBytes?: number; maxAssets?: number } | null>;
+
+  /**
+   * Files one actor may sign per minute across `createSignedUpload`,
+   * `createSignedReplace` and `createSignedRendition`, counted per server
+   * process. Default 60; `0` turns the limit off.
+   */
+  uploadRateLimit?: number;
 
   /**
    * Called after `downloadIntent` signed downloads, for an audit log.
@@ -235,8 +268,8 @@ export type MediaConfig =
 export const MEDIA_DEFAULTS = {
   maxFileSize: 4 * 1024 * 1024, // 4MB
   maxFiles: 10,
-  // Explicit allowlist — no `image/*` wildcard, so `image/svg+xml` (a stored-XSS
-  // vector) is excluded by default. Widen via `allowedMimeTypes` if you need more.
+  // Explicit allowlist; widen it via `allowedMimeTypes`. SVG is refused
+  // whatever the list says (`validateFiles`).
   allowedMimeTypes: [
     'image/png',
     'image/jpeg',

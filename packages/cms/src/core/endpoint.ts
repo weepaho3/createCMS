@@ -21,6 +21,8 @@ import type {
 import type { DrizzleInstance } from './types/drizzle';
 
 import { branches } from './db/schema.generated';
+import { CMSError } from './errors';
+import { isMediaOriginAllowed } from './media/origin';
 import {
   decodeWithRoot,
   decodeWithUser,
@@ -329,6 +331,18 @@ export function toCMSEndpoints(
         request: requestContext.request,
       };
 
+      if (
+        meta.permissionResource === 'media' &&
+        meta.operation !== 'read' &&
+        !isMediaOriginAllowed(
+          cmsCtx.media?.allowedOrigins,
+          requestHeaders(reqCtx),
+          reqCtx.request?.url,
+        )
+      ) {
+        throw new CMSError('ORIGIN_NOT_ALLOWED');
+      }
+
       const branchName =
         meta.scope === 'collection'
           ? await resolveBranchName(cmsCtx.db, reqCtx)
@@ -468,6 +482,12 @@ export function toCMSEndpoints(
   }
 
   return wrapped;
+}
+
+/** The request headers as `Headers`, or `undefined` for a server call. */
+function requestHeaders(reqCtx: CMSMiddlewareRequest): Headers | undefined {
+  if (reqCtx.request) return reqCtx.request.headers;
+  return reqCtx.headers ? new Headers(reqCtx.headers) : undefined;
 }
 
 async function runUserMiddleware(

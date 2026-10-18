@@ -30,8 +30,10 @@ import {
   contentDisposition,
   safeDownloadName,
 } from '../media/content-disposition';
+import { normalizeDisplayName } from '../media/display-name';
 import { emitMediaEvents } from '../media/events';
 import { purgeAssetPaths, setAssetsVisibility } from '../media/placement';
+import { createRateWindow } from '../media/rate-window';
 import { assertFolderExists } from '../media/uploads';
 import { requireCapability } from '../storage/adapter';
 import { getStorage } from '../storage/get-storage';
@@ -54,31 +56,6 @@ export const DOWNLOAD_URL_SECONDS = 300;
 /** Upper bound of ids per `downloadIntent` call. */
 export const DOWNLOAD_INTENT_LIMIT = 100;
 const DOWNLOAD_RATE_DEFAULT = 60;
-const RATE_WINDOW_MS = 60_000;
-
-/**
- * Counts signatures per actor over a sliding minute. Returns the seconds to
- * wait when `count` more would exceed `limit`, else records them and
- * returns 0.
- */
-export function createRateWindow(now: () => number = Date.now) {
-  const hits = new Map<string, number[]>();
-  return (key: string, count: number, limit: number): number => {
-    const at = now();
-    const recent = (hits.get(key) ?? []).filter((t) => at - t < RATE_WINDOW_MS);
-    if (recent.length + count > limit) {
-      hits.set(key, recent);
-      if (count > limit) return RATE_WINDOW_MS / 1000;
-      // The oldest hits that must expire before `count` more fit.
-      const freeAt = recent[recent.length + count - limit - 1];
-      return Math.max(1, Math.ceil((freeAt + RATE_WINDOW_MS - at) / 1000));
-    }
-    for (let i = 0; i < count; i++) recent.push(at);
-    hits.set(key, recent);
-    return 0;
-  };
-}
-
 async function hashAddress(address: string | null | undefined) {
   const ip = address?.split(',')[0]?.trim();
   if (!ip) return null;
@@ -330,7 +307,7 @@ export function createMediaAssetEndpoints<TItem>(
             : undefined;
           const set: Partial<AssetRow> = { updatedAt: new Date() };
           if (patch.originalName !== undefined)
-            set.originalName = patch.originalName;
+            set.originalName = normalizeDisplayName(patch.originalName);
           if (metadata) set.metadata = metadata;
           if (patch.provenance) {
             set.provenance = patch.provenance;

@@ -1108,6 +1108,36 @@ describe('media.createSignedUpload', () => {
     expect(await db.select().from(assets)).toHaveLength(0);
   });
 
+  it('rejects and deletes an HTML document declared as a PDF', async () => {
+    const { cms, db, s3 } = await setupTestCMS({ withS3: true });
+    cleanup = s3.cleanup;
+
+    const html = new TextEncoder().encode(
+      '<html><!-- %PDF-1.4 --><script>alert(1)</script></html>',
+    );
+    const signed = await cms.api.media.createSignedUpload({
+      body: {
+        files: [
+          {
+            name: 'invoice.pdf',
+            size: html.byteLength,
+            type: 'application/pdf',
+          },
+        ],
+      },
+    });
+    await putSigned(signed.uploads[0], html);
+    const completed = await cms.api.media.completeUpload({
+      body: { uploads: [{ token: signed.uploads[0].token }] },
+    });
+
+    expect(completed.errors.map((e) => e.code)).toEqual(['INVALID_FILE_TYPE']);
+    expect(await objectExists(objectUrl(s3, signed.uploads[0].objectKey))).toBe(
+      false,
+    );
+    expect(await db.select().from(assets)).toHaveLength(0);
+  });
+
   it('rejects a tampered or malformed token (UPLOAD_TOKEN_INVALID)', async () => {
     const { cms, db, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
@@ -2160,7 +2190,7 @@ describe('slug collision handling', () => {
     ]);
   });
 
-  it('handles files without extensions', async () => {
+  it('gives files without an extension the one of their type', async () => {
     const { cms, s3 } = await setupTestCMS({ withS3: true });
     cleanup = s3.cleanup;
 
@@ -2168,8 +2198,11 @@ describe('slug collision handling', () => {
     const { assets: first } = await uploadSigned(cms, [file]);
     const { assets: second } = await uploadSigned(cms, [file]);
 
-    expect(first[0].slug).toBe('readme');
-    expect(second[0].slug).toBe('readme-2');
+    expect(first[0]).toMatchObject({
+      slug: 'readme.pdf',
+      originalName: 'readme.pdf',
+    });
+    expect(second[0].slug).toBe('readme-2.pdf');
   });
 });
 

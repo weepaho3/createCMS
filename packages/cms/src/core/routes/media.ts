@@ -49,11 +49,14 @@ import {
   uploadAcl,
 } from '../media/placement';
 import { PROVENANCE_SCAN_BYTES, readProvenance } from '../media/provenance';
+import { createRateWindow } from '../media/rate-window';
+import { checkDeclaredType, SNIFF_BYTES, sniffType } from '../media/sniff';
 import {
   deriveUploadKey,
   mintUploadToken,
   scopeFingerprint,
   type UploadTokenPayload,
+  isTokenBoundTo,
   verifyUploadToken,
 } from '../media/upload-token';
 import {
@@ -126,6 +129,22 @@ function requireVariantOfForKey<
   });
 }
 
+/**
+ * The host a request addressed (`x-forwarded-host` before `host`), or
+ * `null` for a server call without request headers.
+ */
+function requestHost(ctx: {
+  headers?: Headers;
+  request?: Request;
+}): string | null {
+  const headers = ctx.headers ?? ctx.request?.headers;
+  const host = headers?.get('x-forwarded-host') ?? headers?.get('host');
+  return host ? host.split(',')[0].trim().toLowerCase() : null;
+}
+
+/** Files one actor may sign per minute unless `media.uploadRateLimit` says otherwise. */
+const UPLOAD_RATE_DEFAULT = 60;
+
 /** Lifetime of the signed GET a private asset redirects to. */
 const PRIVATE_SIGNED_GET_SECONDS = 300;
 
@@ -134,14 +153,6 @@ const MEDIA_META = {
   permissionResource: 'media' as const,
 };
 
-/**
- * Declared image MIME types whose magic bytes `sniffImageType` recognizes. Used
- * to decide when an unrecognizable buffer is a genuine contradiction: a payload
- * declared as one of these but not matching ANY known signature (e.g. an SVG or
- * HTML file smuggled in as `image/png`) is rejected, while an exotic-but-legit
- * declared type outside this set (e.g. a custom-configured `image/avif`) is left
- * to the declared-type allowlist rather than false-rejected.
- */
 /**
  * Descriptive metadata a client may send with `completeUpload` (computed by
  * the media-optimize worker). Untrusted: validated against
@@ -179,75 +190,6 @@ const RENDITION_MIME: Readonly<Record<VariantFormat, string>> = {
 /** Leading bytes read to verify a rendition's format and dimensions. */
 const RENDITION_HEADER_BYTES = 64 * 1024;
 
-const SNIFFABLE_IMAGE_TYPES = new Set([
-  'image/png',
-  'image/jpeg',
-  'image/gif',
-  'image/webp',
-  'image/avif',
-]);
-
-/**
- * Dependency-free magic-byte sniff for the raster image types createcms accepts
- * by default. Returns the detected MIME type, or `undefined` if the leading
- * bytes match no known image signature.
- */
-function sniffImageType(bytes: Uint8Array): string | undefined {
-  // PNG: 89 50 4E 47 0D 0A 1A 0A
-  if (
-    bytes.length >= 8 &&
-    bytes[0] === 0x89 &&
-    bytes[1] === 0x50 &&
-    bytes[2] === 0x4e &&
-    bytes[3] === 0x47 &&
-    bytes[4] === 0x0d &&
-    bytes[5] === 0x0a &&
-    bytes[6] === 0x1a &&
-    bytes[7] === 0x0a
-  ) {
-    return 'image/png';
-  }
-  // JPEG: FF D8 FF
-  if (
-    bytes.length >= 3 &&
-    bytes[0] === 0xff &&
-    bytes[1] === 0xd8 &&
-    bytes[2] === 0xff
-  ) {
-    return 'image/jpeg';
-  }
-  // GIF: 47 49 46 38 ('GIF8')
-  if (
-    bytes.length >= 4 &&
-    bytes[0] === 0x47 &&
-    bytes[1] === 0x49 &&
-    bytes[2] === 0x46 &&
-    bytes[3] === 0x38
-  ) {
-    return 'image/gif';
-  }
-  // WebP: 'RIFF' <4-byte size> 'WEBP'
-  if (
-    bytes.length >= 12 &&
-    bytes[0] === 0x52 &&
-    bytes[1] === 0x49 &&
-    bytes[2] === 0x46 &&
-    bytes[3] === 0x46 &&
-    bytes[8] === 0x57 &&
-    bytes[9] === 0x45 &&
-    bytes[10] === 0x42 &&
-    bytes[11] === 0x50
-  ) {
-    return 'image/webp';
-  }
-  // AVIF: ISO BMFF 'ftyp' box with an 'avif' or 'avis' major brand.
-  if (bytes.length >= 12) {
-    const box = String.fromCharCode(...bytes.subarray(4, 12));
-    if (box === 'ftypavif' || box === 'ftypavis') return 'image/avif';
-  }
-  return undefined;
-}
-
 /** Read the first `count` bytes of an upload body (Blob or ArrayBuffer). */
 async function readLeadingBytes(
   buffer: Blob | ArrayBuffer,
@@ -260,36 +202,22 @@ async function readLeadingBytes(
 }
 
 /**
- * True when the leading bytes of a payload are consistent with
- * `declaredType`. Non-image types always pass. A declared image type fails
- * when the bytes match a different known signature, or match no signature
- * while the declared type is in SNIFFABLE_IMAGE_TYPES (the SVG/HTML-as-image
- * case). A declared type outside that set with unrecognized bytes passes and
- * is left to the declared-type allowlist.
- */
-function verifyImageBytes(declaredType: string, bytes: Uint8Array): boolean {
-  if (!declaredType.startsWith('image/')) return true;
-  const sniffed = sniffImageType(bytes);
-  if (sniffed === declaredType) return true;
-  return sniffed === undefined && !SNIFFABLE_IMAGE_TYPES.has(declaredType);
-}
-
-/**
- * Content-type validation for the server upload paths (`uploadAssets`,
- * `replaceAsset`), which hold the bytes. `completeUpload` and `commitReplace`
- * apply `verifyImageBytes` to the first 12 bytes of the landed object. Runs
- * AFTER the declared-type allowlist and throws INVALID_FILE_TYPE when the
- * bytes contradict a declared image type. Video/PDF are declared-type-only.
+ * Content check for the server upload paths (`uploadAssets`,
+ * `replaceAsset`), which hold the bytes: the first `SNIFF_BYTES` must fit
+ * the declared type (`checkDeclaredType`). Runs after the allowlist and
+ * throws INVALID_FILE_TYPE on markup, a contradicting signature, or an
+ * unrecognizable renderable type.
  */
 async function assertDeclaredTypeMatchesBytes(
   fileName: string,
   declaredType: string,
   buffer: Blob | ArrayBuffer,
 ): Promise<void> {
-  if (!declaredType.startsWith('image/')) return;
-  if (verifyImageBytes(declaredType, await readLeadingBytes(buffer, 12))) {
-    return;
-  }
+  const verdict = checkDeclaredType(
+    declaredType,
+    await readLeadingBytes(buffer, SNIFF_BYTES),
+  );
+  if (verdict.ok) return;
   throw new CMSError('INVALID_FILE_TYPE', {
     message: errorMessages.invalidFileType(fileName, declaredType),
   });
@@ -617,6 +545,80 @@ export function createMediaEndpoints(
     }
   }
 
+  const uploadRateWindow = createRateWindow();
+
+  /**
+   * Checks a batch about to be signed: the actor's per-minute signing limit
+   * (`uploadRateLimit`, RATE_LIMITED with Retry-After), the scope's quota
+   * (`quota`, QUOTA_EXCEEDED) and that no key already belongs to an asset,
+   * since a presigned PUT would overwrite it. `newAssets` counts the
+   * originals the batch adds.
+   */
+  async function guardSignedBatch(batch: {
+    actor: string | null;
+    scope: ResolvedScope;
+    objectKeys: string[];
+    bytes: number;
+    newAssets: number;
+  }): Promise<void> {
+    const limit = mediaConfig.uploadRateLimit ?? UPLOAD_RATE_DEFAULT;
+    if (limit > 0) {
+      const wait = uploadRateWindow(
+        batch.actor ?? 'anonymous',
+        batch.objectKeys.length,
+        limit,
+      );
+      if (wait > 0) {
+        throw new CMSError('RATE_LIMITED', {
+          headers: { 'retry-after': String(wait) },
+          data: { retryAfter: wait },
+        });
+      }
+    }
+
+    const limits = await mediaConfig.quota?.({
+      actor: batch.actor,
+      scope: batch.scope,
+    });
+    if (limits?.maxBytes !== undefined || limits?.maxAssets !== undefined) {
+      const inScope = batch.scope.assets?.where;
+      const [usage] = await db
+        .select({
+          bytes: sql<string>`coalesce(sum(${assets.size}), 0)`,
+          originals: sql<string>`count(*) filter (where ${assets.variantOf} is null and ${assets.revisionOf} is null and ${assets.archivedAt} is null)`,
+        })
+        .from(assets)
+        .where(inScope);
+      const usedBytes = Number(usage?.bytes ?? 0);
+      const usedAssets = Number(usage?.originals ?? 0);
+      if (
+        (limits.maxBytes !== undefined &&
+          usedBytes + batch.bytes > limits.maxBytes) ||
+        (limits.maxAssets !== undefined &&
+          usedAssets + batch.newAssets > limits.maxAssets)
+      ) {
+        throw new CMSError('QUOTA_EXCEEDED', {
+          data: {
+            maxBytes: limits.maxBytes ?? null,
+            maxAssets: limits.maxAssets ?? null,
+            usedBytes,
+            usedAssets,
+          },
+        });
+      }
+    }
+
+    const taken = await db
+      .select({ objectKey: assets.objectKey })
+      .from(assets)
+      .where(inArray(assets.objectKey, batch.objectKeys));
+    if (taken.length > 0) {
+      throw new CMSError('UPLOAD_FAILED', {
+        message: 'Refusing to sign an upload to the key of an existing asset',
+      });
+    }
+  }
+
   /**
    * Throws STORAGE_UNSUPPORTED unless the adapter signs uploads and, when any
    * declared type is `image/*`, can read byte ranges: an image that cannot be
@@ -640,11 +642,13 @@ export function createMediaEndpoints(
    * Checks an object the browser PUT against the token's claim. Returns the
    * error to report when no object exists at the key, its content length is
    * missing or differs from `size`, its content type (parameters stripped)
-   * differs from `type`, or the leading bytes contradict a declared image
-   * type. The object is deleted in the last three cases; a failed delete is
-   * logged and the error still returned. Returns `null` when the object
-   * matches. Throws STORAGE_UNSUPPORTED for an image type when the adapter
-   * cannot read a byte range, since an image is never accepted unsniffed.
+   * differs from `type`, or the first `SNIFF_BYTES` do not fit the declared
+   * type (`checkDeclaredType`: markup, a contradicting signature, an
+   * unrecognizable image, video, audio or PDF). The object is deleted in the
+   * last three cases; a failed delete is logged and the error still
+   * returned. Returns `null` when the object matches. Throws
+   * STORAGE_UNSUPPORTED when the adapter cannot read a byte range, since no
+   * upload is accepted unsniffed.
    */
   async function inspectUploadedObject(claim: {
     name: string;
@@ -665,13 +669,11 @@ export function createMediaEndpoints(
       }
     };
 
-    if (claim.type.startsWith('image/')) {
-      requireCapability(
-        storage,
-        (c) => c.rangeRead,
-        'range reads, which verifying an uploaded image requires',
-      );
-    }
+    requireCapability(
+      storage,
+      (c) => c.rangeRead,
+      'range reads, which verifying the content of an upload requires',
+    );
 
     const head = await storage.head(claim.objectKey);
     if (!head) return missing();
@@ -692,15 +694,13 @@ export function createMediaEndpoints(
         message: `Declared MIME type "${claim.type}" does not match the uploaded object ("${head.contentType}")`,
       });
     }
-    if (claim.type.startsWith('image/')) {
-      const bytes = await storage.getRange(claim.objectKey, 0, 11);
-      if (!bytes) return missing();
-      if (!verifyImageBytes(claim.type, bytes)) {
-        await discard();
-        return new CMSError('INVALID_FILE_TYPE', {
-          message: errorMessages.invalidFileType(claim.name, claim.type),
-        });
-      }
+    const bytes = await storage.getRange(claim.objectKey, 0, SNIFF_BYTES - 1);
+    if (!bytes) return missing();
+    if (!checkDeclaredType(claim.type, bytes).ok) {
+      await discard();
+      return new CMSError('INVALID_FILE_TYPE', {
+        message: errorMessages.invalidFileType(claim.name, claim.type),
+      });
     }
     return null;
   }
@@ -1601,6 +1601,13 @@ export function createMediaEndpoints(
           storage,
           prepared.map((p) => p.file.type),
         );
+        await guardSignedBatch({
+          actor: actor ?? null,
+          scope,
+          objectKeys: prepared.map((p) => p.objectKey),
+          bytes: prepared.reduce((sum, p) => sum + p.file.size, 0),
+          newAssets: prepared.filter((p) => !p.file.variantOf).length,
+        });
         const key = await deriveUploadKey(mediaConfig);
         const scopeId = await scopeFingerprint(scope.assets?.insertColumns);
         const exp = Date.now() + signedUrlExpiresIn * 1000;
@@ -1623,6 +1630,8 @@ export function createMediaEndpoints(
             });
             const token = await mintUploadToken(key, {
               kind: 'upload',
+              aud: 'completeUpload',
+              host: requestHost(ctx),
               id: p.id,
               name: p.file.name,
               objectKey: p.objectKey,
@@ -1710,6 +1719,7 @@ export function createMediaEndpoints(
           );
           if (
             !payload ||
+            !isTokenBoundTo(payload, 'completeUpload', requestHost(ctx)) ||
             payload.kind !== 'upload' ||
             payload.scope !== scopeId ||
             payload.actor !== actor
@@ -1856,6 +1866,13 @@ export function createMediaEndpoints(
 
         const storage = getStorage(mediaConfig);
         requireSignedUploadCapability(storage, [file.type]);
+        await guardSignedBatch({
+          actor: actor ?? null,
+          scope,
+          objectKeys: [objectKey],
+          bytes: file.size,
+          newAssets: 0,
+        });
         const exp = Date.now() + signedUrlExpiresIn * 1000;
         const expiresAt = new Date(exp);
         const signed = await storage.signPut(objectKey, {
@@ -1869,6 +1886,8 @@ export function createMediaEndpoints(
           await deriveUploadKey(mediaConfig),
           {
             kind: 'replace',
+            aud: 'commitReplace',
+            host: requestHost(ctx),
             assetId,
             slug,
             objectKey,
@@ -1941,6 +1960,7 @@ export function createMediaEndpoints(
         );
         if (
           !payload ||
+          !isTokenBoundTo(payload, 'commitReplace', requestHost(ctx)) ||
           payload.kind !== 'replace' ||
           payload.scope !==
             (await scopeFingerprint(scope.assets?.insertColumns)) ||
@@ -2195,6 +2215,11 @@ export function createMediaEndpoints(
         );
         if (
           !payload ||
+          !isTokenBoundTo(
+            payload,
+            ['completeUpload', 'commitRendition', 'commitReplace'],
+            requestHost(ctx),
+          ) ||
           payload.scope !==
             (await scopeFingerprint(scope.assets?.insertColumns)) ||
           payload.actor !== actor
@@ -2406,6 +2431,13 @@ export function createMediaEndpoints(
           visibility: original.status,
           scope,
         });
+        await guardSignedBatch({
+          actor: userId ?? null,
+          scope,
+          objectKeys: [objectKey],
+          bytes: size,
+          newAssets: 0,
+        });
         const exp = Date.now() + signedUrlExpiresIn * 1000;
         const signed = await storage.signPut(objectKey, {
           contentType: type,
@@ -2418,6 +2450,8 @@ export function createMediaEndpoints(
           await deriveUploadKey(mediaConfig),
           {
             kind: 'upload',
+            aud: 'commitRendition',
+            host: requestHost(ctx),
             id,
             name,
             objectKey,
@@ -2481,6 +2515,7 @@ export function createMediaEndpoints(
             : null;
         if (
           !payload ||
+          !isTokenBoundTo(payload, 'commitRendition', requestHost(ctx)) ||
           payload.kind !== 'upload' ||
           !payload.variantOf ||
           !spec ||
@@ -2530,7 +2565,7 @@ export function createMediaEndpoints(
         const dimensions = bytes ? readImageDimensions(bytes) : null;
         if (
           !bytes ||
-          sniffImageType(bytes) !== RENDITION_MIME[spec.format] ||
+          sniffType(bytes) !== RENDITION_MIME[spec.format] ||
           !dimensions ||
           dimensions.width !== spec.width ||
           (spec.height !== undefined && dimensions.height !== spec.height)

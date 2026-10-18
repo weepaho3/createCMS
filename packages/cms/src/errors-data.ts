@@ -333,6 +333,15 @@ export const CMS_ERRORS = {
     status: 404 as const,
     message: 'No rendition of this asset matches the request',
   },
+  ORIGIN_NOT_ALLOWED: {
+    status: 403 as const,
+    message:
+      'Cross-site request refused: the Origin is not this site and not in media.allowedOrigins',
+  },
+  QUOTA_EXCEEDED: {
+    status: 413 as const,
+    message: 'The upload would exceed the media quota',
+  },
   RATE_LIMITED: {
     status: 429 as const,
     message:

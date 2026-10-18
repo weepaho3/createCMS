@@ -105,6 +105,26 @@ Uploads are validated server-side against the limits (defaults: `maxFileSize` 4 
 
 The vanilla client exposes the same queue as the nanostores atom `client.media.uploadState`. After a reload, `takeInterruptedUploads()` (from `@createcms/core/react`, or `@createcms/core` for the vanilla client) returns the name, size and kind of every upload that was unfinished when the page was last hidden, so the app can ask the user to pick those files again.
 
+### Upload security
+
+Every upload path (signed uploads, renditions, replaces and server uploads) applies the same rules:
+
+- **No SVG.** `image/svg+xml` and `.svg` names are refused even when `allowedMimeTypes` lists them: an SVG can carry script, and opened from your domain it runs there.
+- **Content sniffing.** The first 4,100 bytes must fit the declared type. HTML, SVG and XML are refused under every type except plain text, so an HTML page cannot pass as a PDF. Images, video, audio and PDF must match their signature (PNG, JPEG, GIF, WebP, AVIF, HEIC, MP4, QuickTime, WebM, MP3, Ogg, WAV, PDF); a mismatch deletes the object and answers `INVALID_FILE_TYPE`.
+- **File names.** The stored name is Unicode NFC, without control and bidi override characters (`invoice\u202Efdp.exe` would display as a PDF), whitespace collapsed, at most 200 bytes, with the extension of its type. Object keys stay ASCII slugs.
+- **Tokens.** A signing token redeems only at the endpoint it was made for and only on the host that signed it, so two deployments sharing `uploadSecret` cannot redeem each other's tokens. The server never signs a key that already belongs to an asset.
+- **Cross-site requests.** State-changing media requests that carry cookies must come from the CMS's own origin or one listed in `media.allowedOrigins`; otherwise they answer `ORIGIN_NOT_ALLOWED`. An admin UI on another domain either lists its origin or sends `x-createcms-media: 1`, which forces a CORS preflight.
+- **Limits.** `media.uploadRateLimit` (default 60 files per actor and minute) and an optional `media.quota({ actor, scope })` are checked before anything is signed.
+
+```ts title="cms.ts"
+media: {
+  // ...
+  allowedOrigins: ['https://admin.example.com'],
+  uploadRateLimit: 120,
+  quota: () => ({ maxBytes: 10 * 1024 ** 3, maxAssets: 20_000 }),
+},
+```
+
 ### Optimize before upload
 
 Add the [media optimize plugin](/docs/plugins/media-optimize) and `upload` removes GPS, reads the provenance and computes a placeholder in the browser, then uploads WebP renditions at 320, 640, 1280 and 1920 px as variants of the new asset. Each rendition is its own entry (`kind: 'rendition'`, `parentId`, `variantKey`); the parent finishes when they did, and `Upload.List` lists the parent only. See [Media optimize: Usage](/docs/plugins/media-optimize#usage).

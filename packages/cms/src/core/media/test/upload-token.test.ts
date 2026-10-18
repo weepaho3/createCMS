@@ -8,6 +8,7 @@ import {
   scopeFingerprint,
   UPLOAD_TOKEN_GRACE_MS,
   type UploadTokenPayload,
+  isTokenBoundTo,
   verifyUploadToken,
 } from '../upload-token';
 
@@ -23,6 +24,8 @@ const baseConfig = (): MediaConfig => ({
 
 const payload: UploadTokenPayload = {
   kind: 'upload',
+  aud: 'completeUpload',
+  host: 'cms.example.com',
   id: 'ast_1',
   name: 'photo.jpg',
   objectKey: 'ast_1/photo.jpg',
@@ -118,5 +121,34 @@ describe('upload token', () => {
     expect(a).not.toBe(c);
     expect(await scopeFingerprint(undefined)).toBe(await scopeFingerprint({}));
     expect(a).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+describe('isTokenBoundTo', () => {
+  it('redeems only at its endpoint and on its host', () => {
+    expect(isTokenBoundTo(payload, 'completeUpload', 'cms.example.com')).toBe(
+      true,
+    );
+    expect(
+      isTokenBoundTo(
+        payload,
+        ['commitRendition', 'completeUpload'],
+        'cms.example.com',
+      ),
+    ).toBe(true);
+    expect(isTokenBoundTo(payload, 'commitReplace', 'cms.example.com')).toBe(
+      false,
+    );
+    expect(isTokenBoundTo(payload, 'completeUpload', 'other.example.com')).toBe(
+      false,
+    );
+    expect(isTokenBoundTo(payload, 'completeUpload', null)).toBe(false);
+  });
+
+  it('rejects tokens minted without a binding', async () => {
+    const key = await deriveUploadKey(baseConfig());
+    const { aud: _aud, host: _host, ...unbound } = payload;
+    const token = await mintUploadToken(key, unbound as UploadTokenPayload);
+    expect(await verifyUploadToken(key, token, payload.exp)).toBe(null);
   });
 });

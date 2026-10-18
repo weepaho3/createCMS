@@ -1,41 +1,57 @@
 import type { MediaConfig } from '../types/s3';
 
+/** The endpoint a token redeems at. */
+export type UploadTokenAudience =
+  | 'completeUpload'
+  | 'commitRendition'
+  | 'commitReplace';
+
+/**
+ * What every token binds besides the object: the endpoint it redeems at
+ * (`aud`) and the host it was minted on (`host`, `null` for server calls
+ * without a request), so a token never redeems at another endpoint or on
+ * another host sharing the upload secret.
+ */
+type TokenBinding = { aud: UploadTokenAudience; host: string | null };
+
 /**
  * Claims a presign call binds to one object key. `scope` is the
  * `scopeFingerprint` of the caller's assets insert columns; `exp` is the
  * signed-URL expiry in epoch milliseconds.
  */
-export type UploadTokenPayload =
-  | {
-      kind: 'upload';
-      id: string;
-      name: string;
-      objectKey: string;
-      type: string;
-      size: number;
-      folderId: string | null;
-      variantOf: string | null;
-      /** Canonical variant key; absent in tokens minted without one. */
-      variantKey?: string | null;
-      /** Base64 SHA-256 the PUT was signed with (`x-amz-checksum-sha256`). */
-      sha256?: string | null;
-      /** Status of the new row; renditions take their original's. */
-      status?: 'public' | 'private';
-      actor: string | null;
-      scope: string;
-      exp: number;
-    }
-  | {
-      kind: 'replace';
-      assetId: string;
-      slug: string;
-      objectKey: string;
-      type: string;
-      size: number;
-      actor: string | null;
-      scope: string;
-      exp: number;
-    };
+export type UploadTokenPayload = TokenBinding &
+  (
+    | {
+        kind: 'upload';
+        id: string;
+        name: string;
+        objectKey: string;
+        type: string;
+        size: number;
+        folderId: string | null;
+        variantOf: string | null;
+        /** Canonical variant key; absent in tokens minted without one. */
+        variantKey?: string | null;
+        /** Base64 SHA-256 the PUT was signed with (`x-amz-checksum-sha256`). */
+        sha256?: string | null;
+        /** Status of the new row; renditions take their original's. */
+        status?: 'public' | 'private';
+        actor: string | null;
+        scope: string;
+        exp: number;
+      }
+    | {
+        kind: 'replace';
+        assetId: string;
+        slug: string;
+        objectKey: string;
+        type: string;
+        size: number;
+        actor: string | null;
+        scope: string;
+        exp: number;
+      }
+  );
 
 /** Milliseconds a token stays valid after `exp`, so a PUT in flight at expiry can still be completed. */
 export const UPLOAD_TOKEN_GRACE_MS = 3_600_000;
@@ -117,7 +133,11 @@ function isPayload(value: unknown): value is UploadTokenPayload {
     typeof v.size === 'number' &&
     (v.actor === null || typeof v.actor === 'string') &&
     typeof v.scope === 'string' &&
-    typeof v.exp === 'number';
+    typeof v.exp === 'number' &&
+    (v.aud === 'completeUpload' ||
+      v.aud === 'commitRendition' ||
+      v.aud === 'commitReplace') &&
+    (v.host === null || typeof v.host === 'string');
   if (!common) return false;
   if (v.kind === 'upload') {
     return (
@@ -160,6 +180,20 @@ export async function verifyUploadToken(
   if (!isPayload(parsed)) return null;
   if (now > parsed.exp + UPLOAD_TOKEN_GRACE_MS) return null;
   return parsed;
+}
+
+/**
+ * Whether a verified token redeems here: at one of `aud` and on `host`
+ * (the request's host, `null` without a request).
+ */
+export function isTokenBoundTo(
+  payload: UploadTokenPayload,
+  aud: UploadTokenAudience | readonly UploadTokenAudience[],
+  host: string | null,
+): boolean {
+  const audiences: readonly UploadTokenAudience[] =
+    typeof aud === 'string' ? [aud] : aud;
+  return audiences.includes(payload.aud) && payload.host === host;
 }
 
 /** SHA-256 hex of the insert columns, entries sorted by key; `{}` when undefined. */
