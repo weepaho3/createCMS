@@ -104,12 +104,15 @@ export function collectDrop(dataTransfer: DataTransferLike): DropSnapshot {
     for (const item of items) {
       if (item.kind !== 'file') continue;
       const entry = item.getAsEntry?.() ?? item.webkitGetAsEntry?.() ?? null;
-      if (entry) {
+      // Folders need the entry API; a dropped file is read directly, since
+      // WebKit can hand out an entry whose file() never resolves.
+      if (entry?.isDirectory) {
         entries.push(entry);
         continue;
       }
       const file = item.getAsFile();
       if (file) files.push(file);
+      else if (entry) entries.push(entry);
     }
     return { entries, files };
   }

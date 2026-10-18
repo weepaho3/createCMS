@@ -153,6 +153,7 @@
     "prepublishOnly": "bun run build",
     "test": "vitest run --maxWorkers=2",
     "test:coverage": "vitest run --coverage --maxWorkers=2",
+    "test:engines": "vitest run --config vitest.engines.config.ts",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -182,12 +183,14 @@
     "@types/react-dom": "^19.2.4",
     "@upstash/realtime": "^1.1.0",
     "@upstash/redis": "^1.38.1",
+    "@vitest/browser-playwright": "4.1.10",
     "@vitest/coverage-v8": "4.1.10",
     "bunchee": "^7.0.1",
     "drizzle-kit": "^0.31.9",
     "drizzle-orm": "^0.45.0",
     "happy-dom": "^20.11.1",
     "next": "^16.2.0",
+    "playwright": "^1.62.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "typescript": "^5.7.2",

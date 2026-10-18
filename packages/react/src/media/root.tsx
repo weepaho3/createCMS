@@ -5,13 +5,20 @@ import type { FilterUrlAdapter } from './core/filter';
 import type { LayoutMode } from './core/layout';
 import type { SelectionMode } from './core/selection';
 import type { MediaStore } from './core/store';
-import type { MediaAsset, MediaClient, MediaUploadEntry } from './core/types';
+import type {
+  MediaAsset,
+  MediaClient,
+  MediaUploadEntry,
+  MediaUploadState,
+} from './core/types';
 
 import { useLiveRegions } from './announcer';
 import {
   MediaContext,
   MediaMessagesContext,
   MediaUploadsContext,
+  type MediaUploadsStore,
+  MediaUploadsStoreContext,
 } from './context';
 import {
   batchPoliteness,
@@ -299,6 +306,29 @@ export function MediaRoot({
     progress,
   ]);
 
+  const uploadsStore = React.useMemo(() => {
+    let current: MediaUploadState | null = null;
+    const listeners = new Set<() => void>();
+    return {
+      get: () => current,
+      subscribe(listener: () => void) {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+      set(next: MediaUploadState) {
+        if (next === current) return;
+        current = next;
+        for (const listener of listeners) listener();
+      },
+    } satisfies MediaUploadsStore & { set(next: MediaUploadState): void };
+  }, []);
+  if (uploadsStore.get() === null) uploadsStore.set(uploads);
+  React.useLayoutEffect(() => {
+    uploadsStore.set(uploads);
+  }, [uploads, uploadsStore]);
+
   const value = React.useMemo(
     () => ({
       store,
@@ -313,8 +343,10 @@ export function MediaRoot({
     <MediaContext.Provider value={value}>
       <MediaMessagesContext.Provider value={catalog}>
         <MediaUploadsContext.Provider value={uploads}>
-          {children}
-          {externalAnnounce ? null : live.regions}
+          <MediaUploadsStoreContext.Provider value={uploadsStore}>
+            {children}
+            {externalAnnounce ? null : live.regions}
+          </MediaUploadsStoreContext.Provider>
         </MediaUploadsContext.Provider>
       </MediaMessagesContext.Provider>
     </MediaContext.Provider>

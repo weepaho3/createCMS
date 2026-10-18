@@ -12,13 +12,20 @@ Each upload creates a row in `assets`:
 | Field | Meaning |
 | --- | --- |
 | `id` | Stable primary key (`ast_…`). What content stores and what the gate resolves. Never changes, even when the bytes are replaced. |
-| `slug` | Unique, URL-friendly name derived from the filename. Regenerated on `replaceAsset`. |
+| `slug` | URL-friendly name derived from the file name, unique per scope. Regenerated on a replace. |
 | `objectKey` | The key in your bucket: `{tenant}/{pub or prv}/<id>/<slug>` (see [Private vs public](#private-vs-public)), where the id is fresh per upload, replace and move. |
+| `originalName` | The file name shown to editors and used for downloads, normalized (NFC, no control or bidi override characters, at most 200 bytes). |
+| `mimeType`, `size` | Content type (checked against the file's bytes) and byte size (`bigint`). |
+| `width`, `height` | Pixel dimensions, read from the bytes on the server. |
+| `sha256` | Hex SHA-256 of the bytes, for duplicate detection. |
+| `provenance` | `unknown`, `captured`, `ai_generated` or `ai_edited` (see [Provenance](#provenance)). |
+| `metadata` | Description, rights, focal point, placeholder, dominant colour, EXIF allowlist and project fields (validated `jsonb`). |
 | `status` | `'private'` (default) or `'public'`. |
+| `processingState` | `ready`, or `pending`/`failed` while a [malware scanner](#security) is configured. |
 | `folderId` | The folder it lives in, if any. |
-| `variantOf` | If set, this asset is a variant (a resized or reformatted copy) of another. |
-| `mimeType`, `size` | Content type and byte size. |
-| `archivedAt` | Soft-delete marker for pruning. |
+| `variantOf`, `variantKey` | Set on renditions: the original and the canonical rendition key (`w640.webp`). |
+| `revisionOf` | Set on earlier versions kept after a replace. |
+| `archivedAt` | Soft-delete marker (the trash). |
 
 Three of these are identifiers, and keeping them straight is the key to the whole model. The `id` is stable and opaque: content references it, and the gate is addressed by it. The `slug` is a human-readable name derived from the filename, unique within a scope (two tenants can both own `hero.jpg`); the `objectKey` is where the bytes live in your bucket and ends in the slug. The `id` and the slug/key pair are decoupled on purpose. [`replaceAsset`](/docs/reference/media#replaceasset) (server-side) or [`createSignedReplace`](/docs/reference/media#createsignedreplace) + [`commitReplace`](/docs/reference/media#commitreplace) (browser) mints a new slug and object key for the new bytes but keeps the `id`, so every reference follows the swap while the CDN still treats each version's object as immutable.
 
@@ -88,29 +95,9 @@ Both mint a fresh slug and object key (the cache-bust) and keep the asset's `id`
 
 ## Serving assets
 
-Serve assets through the **gate**: [`GET /media/asset/{id}`](/docs/reference/media#asset), a public redirect to the object, addressed by the **asset id** (which is what content stores). It is the contract to use in content and on public pages. It enforces `status` (a `private` asset returns `ASSET_ACCESS_DENIED`) and honors `?format=webp|jpeg|png` and `?w=<width>` by resolving a **pre-uploaded variant**, falling back to the original.
+Serve assets through the **gate**: [`GET /media/asset/{id}`](/docs/reference/media#asset), a redirect addressed by the **asset id** (which is what content stores). It is the contract to use in content and on public pages. It enforces `status` (a `private` asset returns `ASSET_ACCESS_DENIED`), serves only assets whose `processingState` is `ready` (`ASSET_NOT_READY` otherwise), and honors `?w=<width>` and `?format=webp|avif|jpeg|png` by resolving a **rendition**.
 
-There is no on-the-fly transform. A variant is just another asset row whose `variantOf` points at the original and whose `slug` is derived from the original plus the requested format and width. The gate computes that expected slug and looks it up: a hit is served, a miss silently serves the original. So a request for `/media/asset/{id}?w=800&format=webp` on an asset stored as `welcome-hero.jpg` resolves to a sibling asset named `welcome-hero-800-webp.webp`:
-
-```ts
-// Register a pre-sized WebP variant of an existing asset.
-await cms.api.media.createSignedUpload({
-  body: {
-    files: [
-      {
-        name: 'welcome-hero-800-webp.webp', // matches the slug the gate derives
-        size: variantBytes,
-        type: 'image/webp',
-        variantOf: hero.id,
-      },
-    ],
-  },
-});
-// GET /media/asset/{hero.id}?w=800&format=webp now serves this variant;
-// any other size or format still falls back to the original.
-```
-
-Create the variants you need ahead of time. The [media optimize plugin](/docs/plugins/media-optimize) resizes and re-encodes images in the browser before upload, so the stored bytes are already small.
+There is no on-the-fly transform. A rendition is another asset row whose `variantOf` points at the original and whose `variantKey` names it canonically (`w640.webp`). `?w` snaps up to the next of `renditionWidths` (320, 640, 1280, 1920 by default) and the gate answers in the `x-cms-rendition` header which one it served: `exact`, `nearest` (the smallest larger rendition of the format) or `miss` (none fits: the original is served and `onRenditionMiss` is called; `?strict=true` answers `RENDITION_NOT_FOUND` instead). The [media optimize plugin](/docs/plugins/media-optimize) produces the WebP renditions in the browser and uploads them with [`createSignedRendition`](/docs/reference/media#createsignedrendition) and [`commitRendition`](/docs/reference/media#commitrendition), so every image arrives with its sizes.
 
 `?download=true` redirects to a short-lived **signed** object URL (valid for one hour) that carries `response-content-disposition=attachment` bound into the signature, so the bucket answers with a `Content-Disposition` header and the browser downloads the file under its slug; a `Content-Disposition` header on the `302` itself would be ignored by browsers. Types outside the raster-image (PNG, JPEG, GIF, WebP, AVIF), video, audio and PDF set are always served that way, so an allowed SVG or HTML asset never renders inline from the gate even if `allowedMimeTypes` admits it.
 
@@ -126,7 +113,7 @@ Every asset returned by [`listAssets`](/docs/reference/media#listassets) and the
 
 ## Images in content
 
-An `image` block property stores the asset **id** (an `ast_…` reference), never a URL, and the read path returns it verbatim (nothing is resolved). Your renderer builds the gate URL straight from that id: `<img src="/media/asset/{id}">`. Because the id is stable, swapping the object behind it updates every reference automatically, with no content change and no re-render. Do not store the direct `url` in content: it bypasses the status gate and transforms, pins the entry to your bucket layout, and will not follow such a swap.
+An `image` property stores a bare asset **id** or an `AssetRef`: `{ assetId, alt, decorative, altSource, caption, revisionId, crop, focal }`. It never stores a URL. Alt text, caption, crop and focal point belong to the **use**, not to the asset: the same photo can need different alt text on two pages, and those texts are versioned, branched, merged and translated with the block that holds them. There is no library-wide alt text; `decorative: true` renders `alt=""` on purpose, and an AI suggestion is copied in only when accepted (`altSource: 'ai-suggested'`). Renderers build the gate URL from the id; because the id is stable, a replace updates every use with no content change. `revisionId` pins an earlier version of the asset instead.
 
 [`getAssetUsages`](/docs/reference/media#getassetusages) reports which entries reference an asset (the index keys on the asset id), and archiving is blocked while an asset is used by live content:
 
@@ -243,13 +230,28 @@ Send `Vary: Origin` on GET responses from your CDN when the admin origin downloa
 }
 ```
 
+## Revisions [#revisions]
+
+A replace keeps the superseded bytes as a revision (`revisionOf` set, archived), and [`setCurrentRevision`](/docs/reference/media#setcurrentrevision) makes one current again. The ten newest revisions of an asset survive the pruning pass for rollback, and a revision pinned in content survives as long as the content uses it.
+
+## Provenance [#provenance]
+
+`provenance` records whether an image is a camera capture or AI-generated or AI-edited. It is pre-filled from IPTC `DigitalSourceType` and C2PA on upload, can be set by hand (`metadata.provenanceSource: 'user'` then), is filterable, and reaches renderers (`data-provenance`, an optional label). The optimizer never drops the marking: it reads provenance before re-encoding, writes IPTC back into renditions, and keeps the original, which carries a signed C2PA manifest. Article 50 of the EU AI Act applies from 2 August 2026; the reference setup labels `ai_generated` and `ai_edited` visibly. This is not legal advice.
+
+## Security [#security]
+
+- **Uploads** are checked against their bytes: the first 4,100 bytes must fit the declared type, markup is refused under every type except plain text, and SVG is never accepted. File names are normalized; object keys stay ASCII.
+- **Tokens and requests**: upload tokens redeem only at their endpoint and on the host that signed them; state-changing media requests with cookies must come from the CMS's origin or `media.allowedOrigins`; signing is rate limited and can be capped by `media.quota`.
+- **Malware**: an optional `media.scan` keeps new bytes private and undelivered until the pruning pass scanned them.
+- **Erasure**: [`purgeAssets`](/docs/reference/media#purgeassets) deletes an asset with all revisions and renditions under the separate `purge` operation; content that still references it renders a placeholder.
+
+Details and configuration: [Upload security](/docs/guides/media-uploads#upload-security), [Malware scanning](/docs/guides/media-uploads#malware-scanning) and [Erasing assets](/docs/guides/media-uploads#erasing-assets).
+
 ## Limitations
 
-The media pipeline is deliberately thin. Know these boundaries before you design around it:
-
-- **No server-side image transforms.** `GET /media/asset/{id}?format=webp&w=800` resolves a **pre-uploaded variant** (an asset whose `variantOf` points at the original) by matching the requested format and width. If no matching variant exists, the gate **silently serves the original**, at its stored size and format: an unmatched `?format` or `?w` is not an error and does not resize or convert on the fly. Create the variants you need ahead of time.
-- **Optimization is client-side only.** The [media optimize plugin](/docs/plugins/media-optimize) resizes and re-encodes each image **in the browser** (via a canvas) before upload, then uploads the smaller result. Nothing optimizes server-side, so a file uploaded through a path that skips the plugin is stored as-is.
-- **Assets store bytes and status, nothing else.** An `assets` row carries the fields in the table above and no more. There is no stored **width/height**, **focal point**, **alt text**, or **caption**. Keep intrinsic dimensions, art-direction focal points, and accessibility text on your content instead (for example an `image` block's own `alt` property), not on the asset.
+- **No server-side image transforms.** Renditions are uploaded ahead of time; a width or format without a rendition serves the nearest larger one or the original.
+- **Optimization is client-side.** The [media optimize plugin](/docs/plugins/media-optimize) resizes and re-encodes in the browser; a file uploaded through a path that skips it is stored as uploaded, without renditions, until `regenerateRenditions` produces them.
+- **No SVG.** Convert vector graphics to PNG or WebP before uploading.
 
 <Callout type="info">
   For uploading and serving step by step, see [Upload and serve media](/docs/guides/media-uploads).

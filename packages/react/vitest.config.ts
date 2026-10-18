@@ -6,6 +6,10 @@ import { configDefaults, defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     testTimeout: 15_000,
-    exclude: [...configDefaults.exclude, 'src/**/*.browser.test.tsx'],
+    exclude: [
+      ...configDefaults.exclude,
+      'src/**/*.browser.test.tsx',
+      'src/**/*.engine.test.tsx',
+    ],
   },
 });

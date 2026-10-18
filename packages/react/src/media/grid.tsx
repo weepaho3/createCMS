@@ -12,7 +12,8 @@ import type { MediaAsset, MediaUploadEntry } from './core/types';
 import { mergeProps, useRender } from '../use-render';
 import { VISUALLY_HIDDEN } from './announcer';
 import {
-  MediaUploadsContext,
+  type MediaUploadsStore,
+  MediaUploadsStoreContext,
   useMediaContext,
   useMediaMessages,
 } from './context';
@@ -228,7 +229,7 @@ export function MediaGrid(props: MediaGridProps) {
   } = props;
   const { store, announce } = useMediaContext('Media.Grid');
   const { messages, format } = useMediaMessages();
-  const uploads = React.useContext(MediaUploadsContext);
+  const uploadsStore = React.useContext(MediaUploadsStoreContext);
   const {
     collection,
     selection,
@@ -245,31 +246,28 @@ export function MediaGrid(props: MediaGridProps) {
     () => collectionAssets({ collection } as MediaStoreState),
     [collection],
   );
-  const uploadsInView = React.useMemo(
-    () =>
-      renderUpload && uploads
-        ? uploads.files.filter(
-            (entry) =>
-              entry.kind === 'create' &&
-              entry.parentId === undefined &&
-              entry.status !== 'success' &&
-              entry.status !== 'aborted' &&
-              (entry.folderId ?? null) === currentFolder,
-          )
-        : [],
-    [renderUpload, uploads, currentFolder],
+  // Only the ids of uploads in view: a primitive snapshot, so progress
+  // ticks (a new upload state each time) do not re-render the grid.
+  const uploadKey = React.useSyncExternalStore(
+    uploadsStore?.subscribe ?? noSubscription,
+    () => (renderUpload ? uploadIdsInView(uploadsStore, currentFolder) : ''),
+    () => '',
+  );
+  const uploadIds = React.useMemo(
+    () => (uploadKey ? uploadKey.split('\n') : []),
+    [uploadKey],
   );
 
   const items = React.useMemo(
     () => [
-      ...uploadsInView.map((entry) => ({
-        id: `upload:${entry.id}`,
+      ...uploadIds.map((id) => ({
+        id: `upload:${id}`,
         width: null,
         height: null,
       })),
       ...assets,
     ],
-    [uploadsInView, assets],
+    [uploadIds, assets],
   );
   const ids = React.useMemo(() => items.map((item) => item.id), [items]);
   const geometry = React.useMemo(
@@ -524,9 +522,6 @@ export function MediaGrid(props: MediaGridProps) {
   );
 
   const status = collection.status;
-  const uploadById = new Map(
-    uploadsInView.map((entry) => [`upload:${entry.id}`, entry]),
-  );
   const rowCount = collection.cursor === null ? geometry.rows.length : -1;
 
   const element = useRender({
@@ -585,17 +580,21 @@ export function MediaGrid(props: MediaGridProps) {
           >
             {row.items.map((index, col) => {
               const id = ids[index];
-              const entry = uploadById.get(id);
-              const asset = entry ? null : collection.byId[id];
+              const uploadId = id.startsWith('upload:')
+                ? id.slice('upload:'.length)
+                : null;
+              const asset = uploadId ? null : collection.byId[id];
               return (
                 <CellContext.Provider
                   key={id}
                   value={{ index, rowIndex: row.index, colIndex: col }}
                 >
-                  {entry && renderUpload ? (
-                    <UploadEntryContext.Provider value={entry}>
-                      {renderUpload(entry)}
-                    </UploadEntryContext.Provider>
+                  {uploadId && renderUpload ? (
+                    <UploadSlot
+                      id={uploadId}
+                      store={uploadsStore}
+                      render={renderUpload}
+                    />
                   ) : asset ? (
                     children(asset)
                   ) : null}
@@ -973,6 +972,46 @@ export type MediaUploadTileProps = UseRenderComponentProps<
   'div',
   UploadTileState
 >;
+
+const noSubscription = () => () => {};
+
+/** The ids of create uploads in flight in `folderId`, newline separated. */
+function uploadIdsInView(
+  store: MediaUploadsStore | null,
+  folderId: string | null,
+): string {
+  return (store?.get()?.files ?? [])
+    .filter(
+      (entry) =>
+        entry.kind === 'create' &&
+        entry.parentId === undefined &&
+        entry.status !== 'success' &&
+        entry.status !== 'aborted' &&
+        (entry.folderId ?? null) === folderId,
+    )
+    .map((entry) => entry.id)
+    .join('\n');
+}
+
+/** One upload tile; subscribes to its own entry so only it follows progress. */
+function UploadSlot(props: {
+  id: string;
+  store: MediaUploadsStore | null;
+  render: (entry: MediaUploadEntry) => React.ReactNode;
+}) {
+  const { id, store, render } = props;
+  const entry = React.useSyncExternalStore(
+    store?.subscribe ?? noSubscription,
+    () => store?.get()?.files.find((file) => file.id === id) ?? null,
+    () => null,
+  );
+  if (!entry) return null;
+  return (
+    <UploadEntryContext.Provider value={entry}>
+      {render(entry)}
+    </UploadEntryContext.Provider>
+  );
+}
 
 /**
  * A `gridcell` for an upload in flight (inside `Media.Grid`'s

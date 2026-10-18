@@ -1,0 +1,57 @@
+---
+title: Testing the media library
+description: Where each kind of media test lives, how to run the engine tests, and the screen reader checklist for releases.
+---
+
+The media library is tested in three layers, from cheapest to closest to the user:
+
+| Layer | Runs in | Covers | Files |
+| --- | --- | --- | --- |
+| Core | Node | The React-free store, layout, selection, filter, intake, ZIP writer, sniffer, tokens, server endpoints against PGlite and an in-memory S3 server | `*.test.ts` |
+| Parts | happy-dom | ARIA roles and states, keyboard handlers, catalog texts, store wiring of every part | `*.test.tsx` |
+| Engines | Chromium, Firefox and WebKit (Vitest browser mode with Playwright) | Real uploads with XHR progress, the optimizer's codec paths, drag and drop, paste, marquee, long press, axe, focus flows, performance | `*.engine.test.ts(x)` |
+
+Engine differences are why the third layer exists: WebP encoding, drag data stores and file entries, and XHR progress behave differently per engine. A dropped file, for example, used to get lost in WebKit when its file-system entry did not resolve; the engine tests caught it.
+
+## Running the engine tests
+
+```bash
+cd packages/cms && bun run test:engines
+```
+
+```bash
+cd packages/react && bun run test:engines
+```
+
+`ENGINES=chromium` (or a comma separated list) narrows the run; the default is all three. Install the browsers once with `bunx playwright install chromium firefox webkit`.
+
+The cms engine tests start a test CMS on PGlite with an in-memory S3 server in a global setup (`src/test-utils/engine-server.ts`) and reach it over HTTP with CORS. Test routes steer the storage per object name, so the three engines can run in parallel against one server:
+
+| Route | Effect |
+| --- | --- |
+| `POST /__test/slow-down?name=x&count=n` | The next `n` PUTs of `x` answer 503 SlowDown. |
+| `POST /__test/put-delay?name=x&ms=n` | PUTs of `x` answer after `n` milliseconds. |
+| `GET /__test/keys` | The stored object keys. |
+
+In CI the `media-engines` job runs both suites once per engine and uploads failure screenshots as artifacts. It is skipped when no media code changed.
+
+## Performance budget
+
+`perf.engine.test.tsx` loads 10,000 assets into a virtualized grid. It fails when an upload progress tick re-renders `Media.Grid` (upload progress has its own store) or when scrolling mounts more than a few hundred cells. Frame times and long tasks are reported as warnings, not failures, because CI machines vary too much.
+
+## Screen reader checklist (each release)
+
+Run these with VoiceOver on macOS and iOS, NVDA and JAWS on Windows, and TalkBack on Android, on the [media demo](/demo/media):
+
+1. The grid is announced as a grid with its size; arrow keys move between cells and each cell reads its file name, then type, dimensions and size.
+2. Space selects, the count is announced once the selection settles; "Select all 312" announces the server-side count.
+3. The folder tree reads level, position and expanded state; Enter opens a folder and the breadcrumbs follow.
+4. Dropping or picking files announces the start, at most five progress steps and the result; a failed file announces its reason.
+5. Enter on an asset opens the preview as a dialog named after the file with "n of total"; Escape returns focus to the asset.
+6. The detail form reads every field label; a save announces "Changes saved"; a conflict announces both choices.
+7. The focal point handle reads "42% from the left, 30% from the top" and moves by arrow keys.
+8. In the picker, a locked asset reads its reason ("Needs at least 1,200 × 630 px").
+9. The image field marks missing alt text as invalid and reads a suggestion as suggested.
+10. Bulk actions without dragging: "Move to…", "Download", "Delete permanently" with its typed confirmation.
+
+Record deviations as issues; the automated axe run covers roles and names, not the spoken experience.

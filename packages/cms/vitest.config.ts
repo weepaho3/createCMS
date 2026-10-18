@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 /**
  * Directory-level coverage floors.
@@ -111,6 +111,8 @@ const coverageThresholds = {
 
 export default defineConfig({
   test: {
+    // Engine tests run in real browsers (vitest.engines.config.ts).
+    exclude: [...configDefaults.exclude, 'src/**/*.engine.test.ts'],
     testTimeout: 15_000,
     // PGlite keeps a ~200MB WASM heap per worker that Linux never reclaims
     // (see src/test-utils/db.ts). Unbounded workers OOM a 16GB runner.

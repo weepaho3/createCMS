@@ -24,6 +24,13 @@ export type TestS3 = {
    * Default: every key is readable.
    */
   publicRead: { allows: (key: string) => boolean };
+  /**
+   * Per object name (the key's last segment): how many upload PUTs still
+   * answer 503 SlowDown. Scoped by name so parallel tests do not interfere.
+   */
+  slowDown: Map<string, number>;
+  /** Per object name: upload PUTs answer only after this many ms. */
+  putDelay: Map<string, number>;
   /** Object keys (without bucket prefix) currently stored. */
   keys: () => string[];
   /** The stored object at `key` (without bucket prefix). */
@@ -50,13 +57,16 @@ function readBody(req: import('node:http').IncomingMessage): Promise<Buffer> {
  * 206), HEAD, DELETE, POST `?delete` (DeleteObjects) and GET `?list-type=2`
  * (ListObjectsV2), keyed by the request path. No SigV4 verification, no
  * multipart or ACLs. `Content-Type` and `Cache-Control` are stored and
- * returned.
+ * returned. Every response allows any origin, so browser tests can PUT to
+ * presigned URLs.
  */
 export async function setupTestS3(): Promise<TestS3> {
   const store = new Map<string, StoredObject>();
   const failKeys = new Set<string>();
   const failCopyFrom = new Set<string>();
   const publicRead = { allows: (_key: string) => true };
+  const slowDown = new Map<string, number>();
+  const putDelay = new Map<string, number>();
   const bucketPrefix = `/${TEST_BUCKET}/`;
   const bare = (path: string) =>
     path.startsWith(bucketPrefix) ? path.slice(bucketPrefix.length) : path;
@@ -69,6 +79,20 @@ export async function setupTestS3(): Promise<TestS3> {
     const signed =
       req.headers.authorization !== undefined ||
       url.searchParams.has('X-Amz-Signature');
+
+    // Browsers PUT to presigned URLs cross-origin.
+    res.setHeader('access-control-allow-origin', '*');
+    res.setHeader('access-control-expose-headers', 'ETag');
+    if (method === 'OPTIONS') {
+      res.writeHead(204, {
+        'access-control-allow-methods': 'GET, HEAD, PUT, POST, DELETE',
+        'access-control-allow-headers':
+          req.headers['access-control-request-headers'] ?? '*',
+        'access-control-max-age': '600',
+      });
+      res.end();
+      return;
+    }
 
     if (method === 'POST' && url.searchParams.has('delete')) {
       void readBody(req).then((body) => {
@@ -145,7 +169,21 @@ export async function setupTestS3(): Promise<TestS3> {
         );
         return;
       }
-      void readBody(req).then((body) => {
+      const name = key.slice(key.lastIndexOf('/') + 1);
+      const failures = slowDown.get(name) ?? 0;
+      if (failures > 0) {
+        slowDown.set(name, failures - 1);
+        void readBody(req).then(() => {
+          res.writeHead(503, { 'content-type': 'application/xml' });
+          res.end(xmlError('SlowDown', 'Please reduce your request rate.'));
+        });
+        return;
+      }
+      void readBody(req).then(async (body) => {
+        const delay = putDelay.get(name) ?? 0;
+        if (delay > 0) {
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
         store.set(key, {
           body,
           contentType: req.headers['content-type'],
@@ -238,6 +276,8 @@ export async function setupTestS3(): Promise<TestS3> {
     failKeys,
     failCopyFrom,
     publicRead,
+    slowDown,
+    putDelay,
     keys: () => [...store.keys()].map(bare),
     object: (k) => store.get(`${bucketPrefix}${k}`),
     cleanup,

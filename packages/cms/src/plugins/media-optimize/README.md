@@ -37,4 +37,9 @@ Layout:
 - `container/`: lossless byte edits of JPEG, PNG and WebP (GPS, XMP).
 - `worker.ts`: `serveOptimizeWorker` for the host's worker module.
 
+Tests: `test/*.test.ts` run in Node against a fake `PipelineEnv`;
+`test/pipeline.engine.test.ts` runs the real codecs in Chromium, Firefox and
+WebKit (`bun run test:engines` in `packages/cms`), including the jSquash
+WebP path where the canvas cannot encode WebP.
+
 Options and behaviour: https://createcms.dev/docs/plugins/media-optimize

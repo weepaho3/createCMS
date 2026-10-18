@@ -24,6 +24,19 @@ export const MediaUploadsContext = React.createContext<MediaUploadState | null>(
 );
 
 /**
+ * The upload state as a subscribable store, for parts that need only a
+ * slice of it (the grid needs the ids of uploads in flight, not every
+ * progress tick).
+ */
+export type MediaUploadsStore = {
+  get(): MediaUploadState | null;
+  subscribe(listener: () => void): () => void;
+};
+
+export const MediaUploadsStoreContext =
+  React.createContext<MediaUploadsStore | null>(null);
+
+/**
  * Reads the library context and throws a precise error when a part is
  * rendered outside `Media.Root`.
  */

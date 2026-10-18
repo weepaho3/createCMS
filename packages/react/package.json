@@ -73,6 +73,7 @@
     "lint": "oxlint",
     "test": "vitest run --maxWorkers=2",
     "test:browser": "vitest run --config vitest.browser.config.ts",
+    "test:engines": "vitest run --config vitest.engines.config.ts",
     "test:watch": "vitest"
   },
   "devDependencies": {
@@ -82,6 +83,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitest/browser-playwright": "4.1.10",
+    "axe-core": "^4.11.0",
     "bunchee": "^7.0.1",
     "happy-dom": "^20.11.1",
     "playwright": "^1.62.1",
