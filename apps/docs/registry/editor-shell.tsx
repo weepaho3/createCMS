@@ -372,7 +372,7 @@ function BottomSheet({
 
 /** Phone sheets: properties of the selection, add block, outline. */
 function PhoneSheets() {
-  const { sheet, setSheet } = useEditorChrome();
+  const { sheet, setSheet, mode } = useEditorChrome();
   const selected = useSelection().selected;
   const block = useAnyBlock(selected);
   const palette = usePalette();
@@ -387,9 +387,14 @@ function PhoneSheets() {
     if (selected === previous.current) return;
     previous.current = selected;
     if (!selected) return;
+    // In form mode the selected block's form is the page itself.
+    if (mode === 'form') {
+      if (sheet === 'outline') setSheet(null);
+      return;
+    }
     if (sheet === null) setSheet('props');
     if (sheet === null || sheet === 'props') revealBlock(selected);
-  }, [selected, sheet, setSheet]);
+  }, [selected, sheet, setSheet, mode]);
 
   return (
     <>
@@ -470,7 +475,7 @@ function TabletInspector() {
 
 /** Phone: add, outline, properties, undo and redo, above the home indicator. */
 function EditorBottomBar() {
-  const { setSheet } = useEditorChrome();
+  const { setSheet, mode } = useEditorChrome();
   const history = useHistory();
   const inset = useKeyboardInset();
   const items: {
@@ -485,11 +490,15 @@ function EditorBottomBar() {
       icon: ListTreeIcon,
       onClick: () => setSheet('outline'),
     },
-    {
-      label: 'Properties',
-      icon: SlidersHorizontalIcon,
-      onClick: () => setSheet('props'),
-    },
+    ...(mode === 'canvas'
+      ? [
+          {
+            label: 'Properties',
+            icon: SlidersHorizontalIcon,
+            onClick: () => setSheet('props'),
+          },
+        ]
+      : []),
     {
       label: 'Undo',
       icon: Undo2Icon,
@@ -538,7 +547,9 @@ function EditorShellLayout({ children }: { children?: React.ReactNode }) {
   const canvas = mode === 'canvas';
   return (
     <>
-      {canvas && layout !== 'phone' ? (
+      {/* Palette and outline in both modes: they are how a form-only
+          editor reaches the blocks. The inspector is the form itself there. */}
+      {layout !== 'phone' ? (
         <Sidebar side="left" collapsible="icon" className="absolute h-full">
           <SidebarContent>
             <EditorPalette />
@@ -556,11 +567,11 @@ function EditorShellLayout({ children }: { children?: React.ReactNode }) {
         >
           <Editor.Slot name="status-bar" />
         </footer>
-        {canvas && layout === 'phone' ? <EditorBottomBar /> : null}
+        {layout === 'phone' ? <EditorBottomBar /> : null}
       </SidebarInset>
       {canvas && layout === 'desktop' ? <EditorRightSidebar /> : null}
       {canvas && layout === 'tablet' ? <TabletInspector /> : null}
-      {canvas && layout === 'phone' ? <PhoneSheets /> : null}
+      {layout === 'phone' ? <PhoneSheets /> : null}
     </>
   );
 }

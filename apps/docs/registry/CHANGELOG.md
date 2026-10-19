@@ -60,3 +60,7 @@ between the two `@createcms/react` tags, for example
 - `editor-app` exports `DeviceCanvas` (the device-sized frame canvas that
   fills the visible surface) for custom canvas pages. The outline focus ring
   is inset, so the list edges no longer cut it off.
+- `editor-shell` and `editor-form`: form mode keeps the palette and the
+  outline (on phones the bottom bar with add block and outline), and the
+  form surface shows the path to the selected block and its nested blocks
+  per slot, so every block is reachable without a canvas.

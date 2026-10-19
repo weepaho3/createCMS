@@ -14,7 +14,7 @@ afterEach(async () => {
   await page.viewport(1280, 800);
 });
 
-function mount() {
+function mount(mode: 'canvas' | 'form' = 'canvas') {
   const adapter = createMemoryAdapter({ home });
   const utils = render(
     <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column' }}>
@@ -24,6 +24,7 @@ function mount() {
         baseVersion={adapter.version('home')}
         schema={schema}
         components={components}
+        mode={mode}
       />
     </div>,
   );
@@ -186,5 +187,37 @@ describe('editor-app on the memory adapter', () => {
       ).not.toBeNull(),
     );
     expect(await seriousViolations()).toEqual([]);
+  });
+
+  it('reaches nested blocks in form mode through the content list and the path', async () => {
+    mount('form');
+    await ready();
+    const surface = () =>
+      document.querySelector<HTMLElement>('[data-slot="editor-form-surface"]')!;
+    const heading = () => surface().querySelector('h1')!.textContent;
+    expect(heading()).toBe('Page');
+    const row = (label: string) =>
+      [
+        ...surface().querySelectorAll<HTMLElement>(
+          '[data-slot="editor-form-child"]',
+        ),
+      ].find((el) => el.textContent?.startsWith(label))!;
+    await userEvent.click(row('Section'));
+    await waitFor(() => expect(heading()).toBe('Section'));
+    expect(row('Paragraph')).toBeDefined();
+    await userEvent.click(row('Paragraph'));
+    await waitFor(() => expect(heading()).toBe('Paragraph'));
+    const path = surface().querySelector(
+      '[data-slot="editor-form-breadcrumb"]',
+    )!;
+    expect(path.textContent).toContain('Page');
+    expect(path.textContent).toContain('Section');
+    await userEvent.click(
+      [...path.querySelectorAll('button')].find(
+        (b) => b.textContent === 'Page',
+      )!,
+    );
+    await waitFor(() => expect(heading()).toBe('Page'));
+    expect(await seriousViolations(surface())).toEqual([]);
   });
 });
