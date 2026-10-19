@@ -32,6 +32,14 @@
     "editor/collab": {
       "baseline": 31233,
       "budget": 33000
+    },
+    "tree": {
+      "baseline": 4419,
+      "budget": 5500
+    },
+    "tree/core": {
+      "baseline": 1383,
+      "budget": 2048
     }
   }
 }

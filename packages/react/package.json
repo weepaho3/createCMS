@@ -65,6 +65,14 @@
     "./media": {
       "types": "./dist/media/index.d.ts",
       "default": "./dist/media/index.js"
+    },
+    "./tree": {
+      "types": "./dist/tree/index.d.ts",
+      "default": "./dist/tree/index.js"
+    },
+    "./tree/core": {
+      "types": "./dist/tree/core/index.d.ts",
+      "default": "./dist/tree/core/index.js"
     }
   },
   "publishConfig": {

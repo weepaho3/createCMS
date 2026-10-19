@@ -231,6 +231,34 @@
       }
     },
     {
+      // The tree kernel is importable without React and has no runtime
+      // dependencies. Relative escapes out of src/tree/core are caught by the
+      // boundary test next to its barrel.
+      "files": ["packages/react/src/tree/core/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "react",
+                  "react/*",
+                  "react-dom",
+                  "react-dom/*",
+                  "@createcms/react",
+                  "@createcms/react/*",
+                  "@createcms/schema",
+                  "@createcms/schema/*"
+                ],
+                "message": "@createcms/react/tree/core must stay React-free with no runtime dependencies."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       // The editor kernel is importable without React (servers, workers, RSC)
       // and has no runtime dependencies. Listed after the editor-wide entry
       // because the later override replaces the rule options for these files. Relative escapes out of

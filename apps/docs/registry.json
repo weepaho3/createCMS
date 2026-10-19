@@ -347,6 +347,20 @@
           "type": "registry:component"
         }
       ]
+    },
+    {
+      "name": "tree",
+      "type": "registry:ui",
+      "title": "Tree",
+      "description": "Styled wrappers for the Tree.* parts: rows indented by level, drop marking for unordered trees, a drop line for ordered ones, and the class names for trees built on Tree.Item.",
+      "dependencies": ["@createcms/react", "lucide-react"],
+      "registryDependencies": [],
+      "files": [
+        {
+          "path": "registry/tree.tsx",
+          "type": "registry:ui"
+        }
+      ]
     }
   ]
 }

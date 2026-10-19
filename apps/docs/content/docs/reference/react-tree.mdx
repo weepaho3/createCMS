@@ -1,0 +1,125 @@
+---
+title: Tree
+description: A headless tree over flat rows with keyboard navigation, type-ahead and drop instructions (@createcms/react/tree).
+---
+
+`@createcms/react/tree` is a headless tree for folder trees and document
+outlines: an APG tree over flat rows, unstyled, with `data-*` state and a `render`
+prop on every part. It owns focus, keys and drop feedback; your data stays in
+your store, and the tree reports what should change. The pure logic lives in
+`@createcms/react/tree/core` (no React, no runtime dependency), so a
+pointer-driven drag session or a server can use the same drop rules.
+
+```ts
+import { Tree } from '@createcms/react/tree';
+import { dropInstruction } from '@createcms/react/tree/core';
+```
+
+## Usage
+
+```tsx
+import { Tree, type TreeRow } from '@createcms/react/tree';
+
+function Outline({ rows, toggle, move }: OutlineProps) {
+  return (
+    <Tree.Root
+      aria-label="Pages"
+      rows={rows}
+      indent={16}
+      getLabel={(row) => row.title}
+      onExpandedChange={(id, expanded) => toggle(id, expanded)}
+      indicator={<Tree.DropIndicator className="h-0.5 bg-blue-500" />}
+      dnd={{
+        ordered: true,
+        accepts: (dataTransfer) => dataTransfer.types.includes(PAGE_TYPE),
+        canDrop: (target) => target.parentId !== draggingId,
+        onDrop: (target) => move(draggingId, target.parentId, target.index),
+      }}
+    >
+      {(row) => (
+        <Tree.Item
+          row={row}
+          draggable
+          style={{ paddingInlineStart: 'calc(var(--tree-indent) * var(--tree-level))' }}
+        >
+          <Tree.Toggle>▸</Tree.Toggle>
+          {row.title}
+        </Tree.Item>
+      )}
+    </Tree.Root>
+  );
+}
+```
+
+## Rows
+
+A tree renders `TreeRow`s: the visible nodes in display order, each with
+`id`, `parentId` (`null` on the root level), `level` (1-based), `setsize`,
+`posinset`, `hasChildren` and `expanded`. Rows are siblings in the DOM, not
+nested elements, which keeps one drop line positionable against them and
+lets a list virtualize. Build them from your nodes in display order,
+skipping the children of collapsed nodes.
+
+## Parts
+
+| Part | Element | Description |
+| --- | --- | --- |
+| `Tree.Root` (`TreeRootProps`) | `div[role=tree]` | Renders `children(row)` for every row, then `indicator` (usually `Tree.DropIndicator`). Up/Down move, Right opens or enters, Left closes or goes to the parent, Home/End, `*` opens the siblings; Right and Left swap under `dir="rtl"`. `getLabel` turns on type-ahead. Focus is a single tab stop: `defaultFocusId`, or controlled with `focusId` and `onFocusIdChange`. `onExpandedChange(id, expanded)` reports keys, toggles and drags resting on a closed node. Sets `--tree-indent` from `indent` (px, default 16). State (`TreeRootState`): `data-drop-target` while the root level receives a drag, `data-drag-over` while any accepted drag is over it. |
+| `Tree.Item` (`TreeItemProps`) | `div[role=treeitem]` | One row with `aria-level`, `aria-setsize`, `aria-posinset` and `aria-expanded` (rows with children). Sets `--tree-level` (0 on the root level). State (`TreeItemState`): `data-focused`, `data-expanded`, `data-level`, `data-drop-target` (the drag drops into this row), `data-drop-within` (inside the receiving node's subtree), `data-drop-blocked`, `data-drop-flash` (briefly after a drop into it, for `TREE_FLASH_MS`). |
+| `Tree.Toggle` (`TreeToggleProps`) | `span` | The decorative disclosure: a click expands or collapses without activating the row; nothing for rows without children. |
+| `Tree.DropIndicator` (`TreeDropIndicatorProps`) | `div` | The line of an ordered tree, absolutely positioned on the edge of the row it touches and indented by `calc(var(--tree-indent) * var(--tree-drop-level))`. State (`TreeDropIndicatorState`): `data-edge` (`top`, `bottom`), `data-level`, `data-blocked`. Stays `hidden` while no line is due; pass it as `Tree.Root`'s `indicator`. |
+
+Parts that render a tree row of their own call `useTreeItem(row)` for its
+`props` and `state` and wrap the element in `TreeRowContext` so
+`Tree.Toggle` finds the row. `useTreeDrop()`
+returns the active `TreeDropInstruction` for a custom indicator.
+
+## Drag and drop
+
+`dnd` (`TreeDndOptions`) handles native drags with one set of listeners on
+the root: `accepts(dataTransfer)` decides from the drag's types whether it
+is meant for the tree (the payload is unreadable before the drop), `canDrop(target,
+dataTransfer)` validates a target, `onDrop(target, event)` runs the drop
+with a `TreeDropTarget` (`parentId`, and in ordered trees the child `index`).
+`canContain(row)` marks rows that can never take children, `edge` sets the
+share of a row's height that drops next to it (default 0.25),
+`dropEffect` picks the cursor and `openDelay` opens a closed node a drag
+rests on (`TREE_OPEN_DELAY_MS`, 500 ms; `0` turns it off).
+
+Where a drop goes follows file trees:
+
+- the top edge of a row drops before it, the bottom edge after it;
+- the middle drops into it; a row that cannot take children splits in
+  halves instead;
+- the bottom edge of an expanded row drops in as its first child;
+- at the bottom edge of the last row of a subtree, a pointer left of the
+  row's indentation leaves the subtree: its inline offset picks the
+  ancestor level, never above the level of the next row;
+- empty space in the tree drops into the root level.
+
+`ordered: true` keeps sibling order meaningful: `index` is set and
+`Tree.DropIndicator` shows the line at the target level. In an unordered
+tree (folders sorted by name) `index` is `null`, there is no line, and the
+receiving node is marked with its visible subtree, as VS Code does. A
+refused target stays where the pointer is and shows as blocked; it is never
+redirected to another node.
+
+For drags the tree does not see as native events (a pointer-driven
+session), compute the instruction yourself and pass it as `dropTarget`; the
+rows and the indicator show it the same way.
+
+## Kernel
+
+`dropInstruction(input)` (`TreeDropInput`: `rows`, the row `index` under the
+pointer or `-1`, `x` in px from the row's inline start, `y` as a share of
+its height, `indent`, `ordered`, `edge`, `canContain`, `canDrop`) returns a
+`TreeDropInstruction`: the `TreeDropTarget` plus `kind` (`inside`,
+`between`), `overId`, `line` (a `TreeDropLine`: `rowIndex`, `edge`, `level`)
+and `blocked`. `sameDropInstruction(a, b)` compares what two instructions
+show. `treeSubtreeRange(rows, parentId)` returns the rows a node spans.
+
+`treeNavigate(rows, id, key)` applies an APG `TreeKey` (from `treeKeyOf`)
+and returns a `TreeKeyResult` (`focus`, `expand`, `collapse`).
+`createTypeAhead(timeout)` returns a `TypeAhead` buffering keys within
+`TYPE_AHEAD_MS`; `isTypeAheadKey(key, modifiers)` and
+`matchTypeAhead(labels, from, search)` find the next label.

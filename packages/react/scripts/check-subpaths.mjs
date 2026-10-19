@@ -1,14 +1,15 @@
 // Asserts the packaging guarantees of the built `@createcms/react` subpaths:
 // - every client entry starts with 'use client' (React Server Components
 //   treat the entry as a client boundary only with the directive), and the
-//   React-free `/editor/richtext` and `/editor/collab` entries carry none;
+//   React-free `/editor/richtext`, `/editor/collab` and `/tree/core` entries
+//   carry none;
 // - every React context is declared in exactly one file of `dist`, so
 //   `/editor` and `/editor/canvas` share one editor context instead of each
 //   bundling its own copy;
 // - the import graphs of `/editor` and `/editor/canvas` never reach an
 //   optional peer (Tiptap, Yjs) or the server-only HTML parser, so an app
 //   without them builds and its bundle carries none of them;
-// - no editor entry reaches a UI kit (Base UI, Radix, Floating UI): those
+// - no editor or tree entry reaches a UI kit (Base UI, Radix, Floating UI): those
 //   belong to the copied registry layer, the package stays headless.
 // The React-free `/editor/core` and `/editor/render` entries are covered by
 // check-core-dist.mjs.
@@ -27,10 +28,12 @@ const CLIENT_ENTRIES = [
   'editor/canvas/index.js',
   'editor/cms/index.js',
   'media/index.js',
+  'tree/index.js',
 ];
 const DIRECTIVE_FREE_ENTRIES = [
   'editor/richtext/index.js',
   'editor/collab/index.js',
+  'tree/core/index.js',
 ];
 const PEER_FREE_ENTRIES = ['editor/index.js', 'editor/canvas/index.js'];
 const FORBIDDEN = [/^@tiptap\//, /^yjs$/, /^y-protocols(\/|$)/, /^happy-dom$/];
@@ -42,6 +45,8 @@ const HEADLESS_ENTRIES = [
   'editor/render/index.js',
   'editor/richtext/index.js',
   'editor/collab/index.js',
+  'tree/index.js',
+  'tree/core/index.js',
 ];
 const UI_KITS = [/^@base-ui\//, /^@radix-ui\//, /^@floating-ui\//];
 

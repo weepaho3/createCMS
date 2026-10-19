@@ -39,6 +39,7 @@
     "react-editor-collab",
     "editor-errors",
     "react-media",
+    "react-tree",
     "edge",
     "cli"
   ]

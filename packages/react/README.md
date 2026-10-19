@@ -21,6 +21,8 @@ component registry, not in this package.
 | `@createcms/react/editor/richtext` | The Tiptap rich text adapter (`createTiptapAdapter`); the only entry that imports Tiptap.                                                   |
 | `@createcms/react/editor/collab`   | Collaborative editing over Yjs (`createYjsDocStore`); the only entry that imports Yjs.                                                      |
 | `@createcms/react/media`           | Headless media library (`Media.Root`, `Media.Grid`, `Media.Dropzone`, `Media.UploadList`): folders, paging, search, selection, uploads.     |
+| `@createcms/react/tree`            | Headless tree over flat rows (`Tree.Root`, `Tree.Item`, `Tree.DropIndicator`): APG keys, type-ahead, drop instructions.                     |
+| `@createcms/react/tree/core`       | React-free tree kernel (`dropInstruction`, `treeNavigate`, type-ahead); no directive, no runtime dependency.                                |
 
 `Canvas.Root` renders the store tree through a `components` map.
 `Canvas.Overlay` positions rings from measured anchors and hosts an
@@ -29,7 +31,7 @@ indicator, drag preview and inline text glass for string fields.
 
 See each entry's own README (`src/editor/README.md`,
 `src/editor/canvas/README.md`, `src/editor/cms/README.md`,
-`src/media/README.md`) for its parts, hooks, types and data attributes.
+`src/media/README.md`, `src/tree/README.md`) for its parts, hooks, types and data attributes.
 
 ## Peers
 
