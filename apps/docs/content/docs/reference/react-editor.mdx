@@ -117,9 +117,10 @@ also saves when the page is hidden.
 | `Editor.Form`             | `div`                                           | `blockId` (required), `disabled`, `autoScroll`, `render`, div props                                                                    | `data-block-type`, `data-block-id`; each named group is a `fieldset[data-group]` with a `legend` |
 | `Editor.Preview`          | `div`                                           | `render` (required, document callback), `debounceMs`, div props                                                                            | `data-stale` while a version change is pending                                                   |
 | `Editor.FramePreview`     | `div` wrapping two iframes                      | `render` (required, async compiler), `debounceMs`, `selectable`, `resolveAnchor`, `onIssues`, `onError`, `sandbox`, `title`, div props. With `selectable`, a frame whose listeners do not run (WebKit without `allow-scripts`) takes clicks through a transparent shield in the host page (`data-editor-frame-shield`); its keys then stay in the host page. | `data-loading`, `data-stale`, `data-error`, `data-kind` (`html` or `blob`)                       |
-| `Editor.OutlineItem`      | `div` with `role="treeitem"`                    | `blockId` (required), `onDelete`, `render`, div props. Render the children only while `expanded` (render state). | `data-selected`, `data-depth`, `data-has-children`, `data-expanded`, `data-hovered`, `data-block-id`, `data-block-type` |
-| `Editor.Outline`          | `div` with `role="tree"`                        | `indent` (16), `rows` and `reveal` (flat, virtualized outlines: keyboard navigation follows `rows` and calls `reveal(id)` before focusing a row that is not mounted), `render`, div props; named from the catalog (`parts.outline`), `aria-multiselectable`. Rows drag: the top or bottom quarter of a row reorders, its middle nests (a collapsed row opens after 500 ms), left of the last row of a group by whole indents moves out; invalid places show no indicator (`data-editor-outline-drop-indicator`, `data-variant` line or box, unstyled); while a row drags the tree carries `data-dragging` and the page selects no text | none |
-| `Editor.OutlineGroup`     | `div` with `role="group"`                       | `blockId` and `slot` (required), `render`, div props. Wraps one slot's rows; `aria-label` is the slot's `label`, else its name          |                                                                                                  |
+| `Editor.OutlineItem`      | `div` with `role="treeitem"`                    | `row` (required, from `Editor.Outline`'s `children`), `render`, div props; children replace the default content (the block label, or the slot label). A click on a block row selects it, the pointer over it hovers it. Built on `Tree.Item`: render state includes `focused`, `level`, `dropTarget`, `dropBlocked` and the rest of `TreeItemState`. | `data-kind` (`node`, `slot`), `data-selected`, `data-hovered`, `data-block-id`, `data-block-type`, `data-slot-name`, `data-focused`, `data-expanded`, `data-level`, `data-drop-target`, `data-drop-within`, `data-drop-blocked`, `data-drop-flash` |
+| `Editor.Outline`          | `div` with `role="tree"`                        | `children` (`(row) => ReactNode`, default `<Editor.OutlineItem row={row} />`), `indicator` (usually `Editor.OutlineDropIndicator`), `indent` (16, px per level, `--tree-indent`), `rows` (`useOutlineRows`, for a virtualizer that needs the same list), `range` and `reveal` (render only rows `start` to `end`; `reveal(id)` scrolls a row in before it takes focus), `slotRows`, `onDelete` (return `false` to keep the block), `render`, div props. An APG tree over flat rows (`@createcms/react/tree`): one row per visible block and one per labelled slot, named from the catalog (`parts.outline`), `aria-multiselectable`, one tab stop. Rows drag with the pointer: the top or bottom quarter of a row drops next to it, its middle into it (a row that takes no children splits in halves), the bottom edge of an expanded row makes the first child, at the end of a group the pointer's inline offset picks the level, a collapsed row opens after 500 ms. A target `canPlaceIn` refuses shows as blocked and drops nothing. While a row drags the tree and the row carry `data-dragging` and the page selects no text | `data-dragging` |
+| `Editor.OutlineToggle`    | `span`                                          | `Tree.Toggle`: the decorative disclosure of a row; a click expands or collapses it without selecting. Nothing for rows without children. | none |
+| `Editor.OutlineDropIndicator` | `div`                                      | `Tree.DropIndicator`: the drop line between rows, indented to the target level; hidden while no line is due. Pass it as `Editor.Outline`'s `indicator`. | `data-edge`, `data-level`, `data-blocked` |
 | `Editor.AddBlock`         | `button`                                        | `type` (required), `parentId`, `slot`, `index`, `render`, button props (`children` replaces the palette label). Disabled while `canPlaceIn` refuses the target | `data-block-type`                                                                                |
 | `Editor.LiveAnnouncer`    | `div` with `role="status"`                      | div props; visually hidden, `aria-live="polite"`, one per editor                                                                        | `data-editor-live-announcer`                                                                     |
 | `Editor.ErrorSummary`     | `div` with `role="alert"`                       | `render`, div props; children replace the list. Shown while a `beforeSave` gate blocked the last save: takes focus on appear; each entry selects its block and focuses the field's control. | `data-count` |
@@ -170,7 +171,7 @@ document (`getDocument()`) to `render` after a delay (default `PREVIEW_DEBOUNCE_
 | `useSection`         | `ResolvedSection \| null`                      | `(resolver, ref, overrides?)`: a `$ref` block's resolved section, `null` while loading. |
 | `useSectionOverrides`| `readonly SectionOverrideEntry[]`              | `(blockId, resolver)`: the section props its components expose, with the current override and `set(value)` (`undefined` removes it): what an inspector offers for a `$ref` block. |
 | `useMoveTargets`     | `{ targets, moveTo }`                          | `(blockId)`: every slot the block may move into (document order, with label, depth and count) and `moveTo(parent, index)`: the logic of a move-to dialog. |
-| `useFlatOutline`     | `readonly FlatOutlineRow[]`                    | `({ slotRows? })`: the visible outline rows in document order (blocks in collapsed blocks left out): `FlatOutlineNodeRow` (`id`, `type`, `level`, `posInSet`, `setSize`, `parentId`, `slot`, `hasChildren`, `expanded`) and, with `slotRows: 'labelled'` (default), `FlatOutlineSlotRow` labels for named slots. `flatOutlineRows(schema, nodes, rootId, collapsed, options)` is the pure form. |
+| `useOutlineRows`     | `readonly OutlineRow[]`                        | `({ slotRows? })`: the visible outline rows as tree rows (`TreeRow`: `id`, `parentId`, `level`, `posinset`, `setsize`, `hasChildren`, `expanded`): `OutlineNodeRow` (`kind: 'node'`, `type`, `parent` slot) and, with `slotRows: 'labelled'` (default), `OutlineSlotRow` (`kind: 'slot'`, `blockId`, `slot`, id `outlineSlotRowId(blockId, slot)`) for each slot of a block with several slots or a named one; that slot's blocks are its children one level below. Blocks inside a collapsed block are left out. `outlineRows(schema, nodes, rootId, collapsed, options)` is the pure form. |
 | `useShortcutList`    | `readonly ShortcutEntry[]`                     | Every bound command with its platform labels, for a custom help dialog or command palette. |
 | `useSave`            | `SaveApi`                                      | `{ status, dirty, saving, error, conflict, save }`.                                                                                                                                                                                                                                                                        |
 | `useSaveConflict`    | `SaveConflictApi \| null`                      | During a save conflict: `{ serverDoc, localDoc, reload(), overwrite(), copyMine() }`; `null` otherwise.                                                                                                                                                                                                                    |
@@ -185,23 +186,26 @@ document (`getDocument()`) to `render` after a delay (default `PREVIEW_DEBOUNCE_
 
 ## Virtualized outline
 
-For large documents render only the rows in view: `useFlatOutline()` lists
-the visible rows, a virtualizer picks the slice, and `Editor.Outline rows`
-(the block ids in order) with `reveal` keeps keyboard navigation (arrows,
-Home, End, Left to the parent, type-ahead, Delete) working across rows that
-are not mounted. Rows render flat, indented by their `level`.
+For large documents render only the rows in view: `useOutlineRows()` lists
+the visible rows, a virtualizer picks the slice, and `Editor.Outline` gets
+the same `rows`, the slice as `range` and `reveal`, so keyboard navigation
+(arrows, Home, End, Left to the parent, type-ahead, Delete) reaches rows
+that are not mounted. Rows are flat siblings indented by
+`calc(var(--tree-indent) * var(--tree-level))`.
 
 ```tsx
-const rows = useFlatOutline();
-const ids = rows.flatMap((row) => (row.kind === 'node' ? [row.id] : []));
+const rows = useOutlineRows();
 const virtualizer = useVirtualizer({ count: rows.length, ... });
+const items = virtualizer.getVirtualItems();
 
 <Editor.Outline
-  rows={ids}
+  rows={rows}
+  range={{ start: items[0].index, end: items.at(-1).index }}
   reveal={(id) => virtualizer.scrollToIndex(rows.findIndex((r) => r.id === id))}
+  indicator={<Editor.OutlineDropIndicator />}
   style={{ height: virtualizer.getTotalSize() }}
 >
-  {virtualizer.getVirtualItems().map((item) => /* Editor.OutlineItem */)}
+  {(row) => <Editor.OutlineItem key={row.id} row={row} style={/* translateY of its index */} />}
 </Editor.Outline>
 ```
 
@@ -329,8 +333,8 @@ Field helpers: `defaultFieldControls`, `emptyListElement`, `toDatetimeLocal`,
 | `NestedFieldRender`           | `(props: NestedFieldControlProps) => ReactElement \| null`, passed to `object` controls.                                                                              |
 | `ChildRef`                    | One child of a block: `{ id, type, index }`.                                                                                                                          |
 | `BlockActions`                | Structural actions of one block (`add`/`remove`/`duplicate`/`moveUp`/`moveDown`/`moveTo`).                                                                                     |
-| `EditorOutlineItemProps`      | Props of `Editor.OutlineItem`: `blockId`, `onDelete?`, `render?`, div props.                                                                                          |
-| `EditorOutlineProps`          | Props of `Editor.Outline`: `indent?`, div props.                                                                                                                                  |
+| `EditorOutlineItemProps`      | Props of `Editor.OutlineItem`: `row`, `render?`, div props.                                                                                                          |
+| `EditorOutlineProps`          | Props of `Editor.Outline`: `children?`, `indicator?`, `indent?`, `rows?`, `range?`, `reveal?`, `slotRows?`, `onDelete?`, `render?`, div props.                   |
 | `EditorShortcutHelpProps`     | Props of `Editor.ShortcutHelp`.                                                                                                                                        |
 | `ShortcutEntry`               | `{ id, label, keys }` of `useShortcutList`.                                                                                                                            |
 | `RovingFocus`                 | What `useRovingFocus` returns.                                                                                                                                         |
@@ -342,20 +346,18 @@ Field helpers: `defaultFieldControls`, `emptyListElement`, `toDatetimeLocal`,
 | `EditorRichTextToolbarProps`  | Props of `Editor.RichTextToolbar`.                                                                                                                                     |
 | `EditorRichTextToolbarButtonProps` | Props of `Editor.RichTextToolbarButton`: `mark`, `node`, `attrs`, button props.                                                                                  |
 | `MoveToTarget`                | `{ parent, label, depth, count }` of `useMoveTargets`.                                                                                                                 |
-| `FlatOutlineRow` | A row of `useFlatOutline`: `FlatOutlineNodeRow` or `FlatOutlineSlotRow`. |
+| `OutlineRow` | A row of `useOutlineRows`: `OutlineNodeRow` or `OutlineSlotRow`, both `TreeRow`s. |
 | `UseAdapterDocumentOptions` | Options of `useAdapterDocument`: `adapter`, `id`, `baseVersion?`, `autosave?`. |
 | `UseAdapterDocumentResult` | `doc`, `key`, `status`, `error`, `persistence`, `reload()`. |
 | `AdapterDocumentStatus` | `'loading' \| 'idle' \| 'error'`. |
 | `AdapterDocumentError` | `{ kind, message }` of a failed load (`kind` from `EditorAdapterError`, else `unknown`). |
-| `FlatOutlineNodeRow` | A block row with its level, position and expansion. |
-| `FlatOutlineSlotRow` | A slot label row (`id` is `<parent id>:<slot>`). |
-| `FlatOutlineOptions` | `{ slotRows?: 'labelled' \| 'none' }`. |
+| `OutlineNodeRow` | A block row: `kind: 'node'`, `type`, `parent` (the slot it sits in). |
+| `OutlineSlotRow` | A slot label row: `kind: 'slot'`, `blockId`, `slot`; `id` is `outlineSlotRowId(blockId, slot)` (`<block id>:<slot>`). |
+| `OutlineRowsOptions` | `{ slotRows?: 'labelled' \| 'none' }`. |
 | `RovingFocusOptions`          | `{ orientation?, loop?, dir? }` of `useRovingFocus`.                                                                                                                   |
 | `EditorAddBlockProps`         | Props of `Editor.AddBlock`: `type`, `parentId?`, `slot?`, `index?`, `render?`, button props.                                                                          |
-| `EditorOutlineGroupProps`     | Props of `Editor.OutlineGroup`: `blockId`, `slot`, `render?`, div props.                                                                                              |
 | `InsertPoint`                 | `insertPointFor`'s result: `{ parent: SlotRef, index, allowed }`.                                                                                                     |
-| `OutlineGroupState`           | `useRender` state of `Editor.OutlineGroup` (`{ slot, blockId }`).                                                                                                     |
-| `OutlineItemState`            | `useRender` state of `Editor.OutlineItem`.                                                                                                                            |
+| `OutlineItemState`            | `useRender` state of `Editor.OutlineItem`: `TreeItemState` plus `kind`, `selected`, `hovered`, `blockId`, `blockType`, `slotName`.                                 |
 | `AddBlockState`               | `useRender` state of `Editor.AddBlock` (`{ blockType }`).                                                                                                             |
 
 ## Data attributes
@@ -374,9 +376,7 @@ Field helpers: `defaultFieldControls`, `emptyListElement`, `toDatetimeLocal`,
 | `data-block-id`     | `Editor.Form`, `Editor.OutlineItem`                      | The block this form or row represents.                                                                           |
 | `data-group`        | `fieldset` inside `Editor.Form`                          | The group label of the fields inside.                                                                            |
 | `data-selected`     | `Editor.OutlineItem`                                     | Present while this row is the local user's selected block.                                                       |
-| `data-depth`        | `Editor.OutlineItem`                                     | Hops from the root (root children are `1`).                                                                      |
-| `data-has-children` | `Editor.OutlineItem`                                     | Present when the block has a child in any slot.                                                                  |
-| `data-expanded`     | `Editor.OutlineItem`                                     | Present while the row has children and is not collapsed.                                                         |
+| `data-expanded`     | `Editor.OutlineItem`                                     | Present while the row has children and is not collapsed (slot rows with blocks are always expanded).            |
 | `data-hovered`      | `Editor.OutlineItem`                                     | Present while the pointer is over this block (here, in the canvas or a preview).                                 |
 
 ## Keyboard
@@ -384,15 +384,15 @@ Field helpers: `defaultFieldControls`, `emptyListElement`, `toDatetimeLocal`,
 | Where                                           | Keys                                   | Action                                                                                                                           |
 | ----------------------------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | Field controls                                  | Tab / Shift+Tab                        | Native tab order. Typing edits the value (one undo step via `coalesce`).                                                         |
-| `Editor.OutlineItem`                            | Click                                  | Select the row.                                                                                                                  |
-| `Editor.OutlineItem`                            | ArrowUp / ArrowDown                    | Select and focus the previous/next visible row (rows inside a collapsed row are skipped).                                         |
-| `Editor.OutlineItem`                            | Alt+ArrowUp / Alt+ArrowDown            | Move among siblings.                                                                                                             |
-| `Editor.OutlineItem`                            | ArrowRight / ArrowLeft                 | Expand, then move to the first child; collapse, then move to the parent row (mirrored for `rtl`).                               |
-| `Editor.OutlineItem`                            | Home / End                             | First / last visible row.                                                                                                       |
-| `Editor.OutlineItem`                            | `*`                                    | Expand every sibling.                                                                                                           |
-| `Editor.OutlineItem`                            | Printable characters                   | Type-ahead: the next row whose text starts with the letters typed within 500 ms.                                                |
-| `Editor.OutlineItem`                            | Delete / Backspace                     | Remove after `onDelete` (return `false` to keep).                                                                                |
-| `Editor.OutlineItem`                            | Escape                                 | Clear the selection.                                                                                                             |
+| `Editor.Outline`                                | Click                                  | Select the block of the row (slot rows only take focus).                                                                         |
+| `Editor.Outline`                                | ArrowUp / ArrowDown                    | Focus the previous/next visible row and select its block (rows inside a collapsed row are skipped).                              |
+| `Editor.Outline`                                | Alt+ArrowUp / Alt+ArrowDown            | Move the block among its siblings; focus stays on it.                                                                           |
+| `Editor.Outline`                                | ArrowRight / ArrowLeft                 | Expand, then move to the first child; collapse, then move to the parent row (mirrored for `rtl`). Slot rows go straight to their block. |
+| `Editor.Outline`                                | Home / End                             | First / last visible row.                                                                                                       |
+| `Editor.Outline`                                | `*`                                    | Expand every sibling.                                                                                                           |
+| `Editor.Outline`                                | Printable characters                   | Type-ahead: the next row whose label starts with the letters typed in quick succession.                                         |
+| `Editor.Outline`                                | Delete / Backspace                     | Remove after `onDelete` (return `false` to keep); the next block row outside it (else the previous) takes focus and selection.   |
+| `Editor.Outline`                                | Escape                                 | Clear the selection.                                                                                                            |
 | `useEditorKeyboard(scopeRef)`                   | Mod+Z / Mod+Shift+Z or Ctrl+Y          | Undo / redo (also inside inputs).                                                                                               |
 | `useEditorKeyboard(scopeRef)`                   | Mod+C / Mod+X / Mod+V                  | Copy, cut, paste blocks through the browser's clipboard events.                                                                 |
 | `useEditorKeyboard(scopeRef)`                   | Mod+Alt+C / Mod+Alt+V                  | Copy props, paste them onto selected blocks of the same type.                                                                   |
@@ -420,7 +420,7 @@ Field helpers: `defaultFieldControls`, `emptyListElement`, `toDatetimeLocal`,
 | `aria-level`       | `Editor.OutlineItem`                | Depth; root children are 1.                                                                                  |
 | `aria-expanded`    | `Editor.OutlineItem`                | Only on rows with children: `"false"` while collapsed (`store.setCollapsed`); selecting a block expands its ancestors. |
 | `aria-setsize`, `aria-posinset` | `Editor.OutlineItem`  | The row's siblings in its slot and its position among them.                                                  |
-| `role="treeitem"`  | `Editor.OutlineItem`                | Default. Wrap the tree in `[role="tree"]`.                                                                   |
+| `role="treeitem"`  | `Editor.OutlineItem`                | Rows are flat siblings inside `Editor.Outline`'s `[role="tree"]`.                                                                   |
 | `data-required`    | `Editor.Field`, `Editor.FieldLabel` | Present when the spec is `required` (styling hook; not a substitute for `aria-required`).                    |
 
 ## Focus
@@ -430,10 +430,11 @@ Field helpers: `defaultFieldControls`, `emptyListElement`, `toDatetimeLocal`,
 | Tab into a field                                               | `store.focus({ blockId, key })` once (not on every keystroke). `data-focused` mirrors that.                                   |
 | Click a preview anchor in `Editor.FramePreview` (`selectable`) | `store.select` / `store.focus`; the matching `[data-editor-block]` gets `data-editor-focused` and scrolls into view.          |
 | `Editor.Form autoScroll`                                       | The form host scrolls into view (`block: 'nearest'`) on each store focus change that targets that form.                       |
-| Delete/Backspace on `Editor.OutlineItem`                       | Neighbour row (next treeitem outside this subtree, else previous) is selected and focused; no neighbour clears the selection. |
-| Alt+Arrow reorder on `Editor.OutlineItem`                      | Focus is restored on the moved row after the DOM move.                                                                        |
+| Delete/Backspace in `Editor.Outline`                           | Neighbour row (next block row outside this subtree, else previous) is selected and focused; no neighbour clears the selection. |
+| Alt+Arrow reorder in `Editor.Outline`                          | Focus is restored on the moved row after the DOM move.                                                                        |
 | `useEditorKeyboard` commands                                   | Store only; the router does not move DOM focus.                                                                               |
 | Store focus set by a click in the canvas or a preview          | `Editor.Field` moves DOM focus into its control after the click, unless inline editing started or another input has focus.    |
 | Pointer over `Editor.Field`                                    | Hovers its block, so the canvas and preview highlight it.                                                                     |
 | A selection made outside the outline                           | The row scrolls into view (`block: 'nearest'`) without taking focus.                                                          |
-| Escape on `Editor.OutlineItem`                                 | Selection cleared; focus stays.                                                                                               |
+| Escape in `Editor.Outline`                                     | Selection cleared; focus stays.                                                                                               |
+| Tab into `Editor.Outline`                                      | The selected block's row (else the first row) takes focus; focus alone selects nothing.                                        |

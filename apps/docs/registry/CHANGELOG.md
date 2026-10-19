@@ -64,3 +64,8 @@ between the two `@createcms/react` tags, for example
   outline (on phones the bottom bar with add block and outline), and the
   form surface shows the path to the selected block and its nested blocks
   per slot, so every block is reachable without a canvas.
+- **Breaking:** `editor-outline` renders the flat tree outline
+  (`useOutlineRows`, `Editor.Outline` with `rows`, `range` and `reveal`,
+  `Editor.OutlineItem row`): slot rows, a drop line at the target level,
+  the receiving row marked, refused targets shown as blocked, and a toggle
+  that does not select.

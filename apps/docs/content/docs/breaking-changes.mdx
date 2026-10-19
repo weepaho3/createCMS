@@ -34,6 +34,29 @@ re-exports of the old form.
 
 ### Unreleased
 
+- **`Editor.Outline` renders flat rows on `@createcms/react/tree`.**
+  `Editor.OutlineItem` takes `row` (from `Editor.Outline`'s `children`
+  callback) instead of `blockId` and no longer nests rows in the DOM;
+  `Editor.OutlineGroup` is removed (slot rows replace it);
+  `useFlatOutline`, `flatOutlineRows` and the `FlatOutline*` types are
+  replaced by `useOutlineRows`, `outlineRows` and `OutlineRow`,
+  `OutlineNodeRow`, `OutlineSlotRow`, `OutlineRowsOptions` (tree rows:
+  `posinset`, `setsize`, `parentId` is the tree parent, slot rows sit one
+  level above their blocks). `Editor.Outline` takes `rows`, `range` and
+  `reveal` for virtualized lists instead of a list of ids, and `onDelete`
+  moved from the row to the outline. The outline's unstyled
+  `data-editor-outline-drop-indicator` is replaced by
+  `Editor.OutlineDropIndicator` (`indicator` prop); row state is
+  `TreeItemState` plus `kind`, `selected`, `hovered`, `blockId`,
+  `blockType`, `slotName` (`data-depth` and `data-has-children` are gone,
+  use `data-level` and `aria-expanded`). Focusing a row without a key or a
+  click no longer selects its block.
+  → **Migration:** render
+  `<Editor.Outline indicator={<Editor.OutlineDropIndicator />}>{(row) => <Editor.OutlineItem key={row.id} row={row} />}</Editor.Outline>`
+  and indent rows with `calc(var(--tree-indent) * var(--tree-level))`;
+  move `onDelete` to `Editor.Outline`; replace `useFlatOutline` with
+  `useOutlineRows` and `posInSet`/`setSize` with `posinset`/`setsize`.
+
 - **`richText` values are ProseMirror JSON.** A `richText` field's value is
   a `RichTextDoc` (`{ type: 'doc', content: [...] }`) instead of an HTML
   string; the neutral value is `EMPTY_RICH_TEXT` (one empty paragraph), and
@@ -257,6 +280,13 @@ to copies stamped below it. The per-item history lives in the
 [registry changelog](https://github.com/weepaho3/createCMS/blob/main/apps/docs/registry/CHANGELOG.md).
 
 ### Unreleased
+
+- **`editor-outline` uses the flat tree outline.** It renders
+  `useOutlineRows()` through `Editor.Outline rows range reveal` and
+  `Editor.OutlineItem row`, with `Editor.OutlineToggle` and
+  `Editor.OutlineDropIndicator`; copies built on `useFlatOutline` or
+  `Editor.OutlineItem blockId` no longer compile. Reinstall with
+  `npx shadcn@latest add https://createcms.dev/r/editor-outline.json`.
 
 - **`editor-app` is generic; the createCMS page moved to
   `editor-app-createcms`.** `editor-app` now exports `EditorApp` (props

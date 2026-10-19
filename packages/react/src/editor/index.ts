@@ -1,5 +1,6 @@
 'use client';
 
+import { Tree } from '../tree';
 import { EditorLiveAnnouncer } from './announcer';
 // @createcms/react/editor: schema, state, form and preview layer of the
 // editor primitive. Parts live on the `Editor` namespace (`Editor.Root`, …);
@@ -24,7 +25,6 @@ import {
   EditorAddBlock,
   EditorMoveToDialog,
   EditorOutline,
-  EditorOutlineGroup,
   EditorOutlineItem,
 } from './structure';
 
@@ -71,7 +71,8 @@ export const Editor = {
   FramePreview: EditorFramePreview,
   Outline: EditorOutline,
   OutlineItem: EditorOutlineItem,
-  OutlineGroup: EditorOutlineGroup,
+  OutlineToggle: Tree.Toggle,
+  OutlineDropIndicator: Tree.DropIndicator,
   AddBlock: EditorAddBlock,
   Slot: EditorSlot,
   LiveAnnouncer: EditorLiveAnnouncer,
@@ -133,21 +134,19 @@ export { PREVIEW_DEBOUNCE_MS } from './preview';
 export type {
   AddBlockState,
   EditorAddBlockProps,
-  EditorOutlineGroupProps,
   EditorOutlineItemProps,
   EditorOutlineProps,
   InsertPoint,
-  OutlineGroupState,
   OutlineItemState,
 } from './structure';
 export { insertPointFor, useMoveTargets } from './structure';
 export type {
-  FlatOutlineNodeRow,
-  FlatOutlineOptions,
-  FlatOutlineRow,
-  FlatOutlineSlotRow,
+  OutlineNodeRow,
+  OutlineRow,
+  OutlineRowsOptions,
+  OutlineSlotRow,
 } from './structure';
-export { flatOutlineRows, useFlatOutline } from './structure';
+export { outlineRows, outlineSlotRowId, useOutlineRows } from './structure';
 export type { EditorMoveToDialogProps, MoveToTarget } from './structure';
 
 // React binding and untyped hooks.

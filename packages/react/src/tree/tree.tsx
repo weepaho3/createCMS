@@ -116,6 +116,16 @@ export type TreeRootProps<TRow extends TreeRow> = Omit<
    * (a pointer-driven session). Overrides the native drop while set.
    */
   dropTarget?: TreeDropInstruction | null;
+  /**
+   * Virtualized lists: render only the rows from `start` to `end`
+   * (inclusive). Keys still move across every row in `rows`.
+   */
+  range?: { start: number; end: number };
+  /**
+   * Brings a row that is not rendered into the range (scrolls the
+   * virtualizer to it) before the tree focuses it.
+   */
+  reveal?: (id: string) => void;
 };
 
 /**
@@ -145,9 +155,13 @@ export function TreeRoot<TRow extends TreeRow>(props: TreeRootProps<TRow>) {
     getLabel,
     dnd,
     dropTarget,
+    range,
+    reveal,
     render,
     ...rest
   } = props;
+  const revealRef = React.useRef(reveal);
+  revealRef.current = reveal;
   const [innerFocus, setInnerFocus] = React.useState<string | null>(null);
   const focusId = controlledFocus !== undefined ? controlledFocus : innerFocus;
   const focusChangeRef = React.useRef(onFocusIdChange);
@@ -183,11 +197,25 @@ export function TreeRoot<TRow extends TreeRow>(props: TreeRootProps<TRow>) {
   React.useEffect(() => {
     if (!pendingFocus.current || !effectiveFocus) return;
     pendingFocus.current = false;
-    rootRef.current
-      ?.querySelector<HTMLElement>(
-        `[${ROW_ATTR}="${CSS.escape(effectiveFocus)}"]`,
-      )
-      ?.focus();
+    const id = effectiveFocus;
+    const find = () =>
+      rootRef.current?.querySelector<HTMLElement>(
+        `[${ROW_ATTR}="${CSS.escape(id)}"]`,
+      );
+    const row = find();
+    if (row) {
+      row.focus();
+      return;
+    }
+    // A row outside the rendered range mounts after the reveal scrolls to it.
+    revealRef.current?.(id);
+    let tries = 0;
+    const retry = () => {
+      const mounted = find();
+      if (mounted) mounted.focus();
+      else if ((tries += 1) < 10) requestAnimationFrame(retry);
+    };
+    requestAnimationFrame(retry);
   });
 
   const stopDwell = () => {
@@ -409,7 +437,10 @@ export function TreeRoot<TRow extends TreeRow>(props: TreeRootProps<TRow>) {
       {
         children: (
           <>
-            {rows.map((row) => (
+            {(range
+              ? rows.slice(Math.max(0, range.start), range.end + 1)
+              : rows
+            ).map((row) => (
               <React.Fragment key={row.id}>{children(row)}</React.Fragment>
             ))}
             {indicator}

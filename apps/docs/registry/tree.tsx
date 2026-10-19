@@ -1,3 +1,4 @@
+// @registry tree@0.3.2
 'use client';
 
 // Styled wrappers for the Tree.* parts. The class names are exported as

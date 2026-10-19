@@ -5,7 +5,7 @@
  */
 import type { EditorFactory, TypedBlockActions } from '../factory';
 import { storeSchema } from '../core/store/fixtures';
-import type { EditorAddBlockProps, EditorOutlineItemProps } from './types';
+import type { EditorAddBlockProps, EditorOutlineProps } from './types';
 
 type Equal<A, B> =
   (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
@@ -15,7 +15,7 @@ type Expect<T extends true> = T;
 
 export type _onDeleteReturn = Expect<
   Equal<
-    ReturnType<NonNullable<EditorOutlineItemProps['onDelete']>>,
+    ReturnType<NonNullable<EditorOutlineProps['onDelete']>>,
     boolean | void
   >
 >;

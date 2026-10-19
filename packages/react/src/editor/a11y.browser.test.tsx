@@ -11,7 +11,6 @@ import { renderCanvas, waitForLayout } from './canvas/test/harness';
 import { useEditorContext } from './context';
 import { requireValidDocument } from './core/store';
 import { counterGenId, makeDoc, storeSchema } from './core/store/fixtures';
-import { useChildren } from './hooks';
 import { Editor } from './index';
 
 afterEach(cleanup);
@@ -63,29 +62,18 @@ function mount(children: React.ReactNode, root?: { beforeSave?: boolean }) {
   return { ...utils, store: probe.store };
 }
 
-function OutlineRow({ blockId }: { blockId: string }) {
-  const nested = useChildren(blockId);
-  return (
-    <Editor.OutlineItem blockId={blockId}>
-      <span>{blockId}</span>
-      {nested.length > 0 ? (
-        <Editor.OutlineGroup blockId={blockId} slot="children">
-          {nested.map((child) => (
-            <OutlineRow key={child.id} blockId={child.id} />
-          ))}
-        </Editor.OutlineGroup>
-      ) : null}
-    </Editor.OutlineItem>
-  );
-}
-
 function Outline() {
-  const rows = useChildren('root_1');
   return (
-    <Editor.Outline data-testid="outline">
-      {rows.map((row) => (
-        <OutlineRow key={row.id} blockId={row.id} />
-      ))}
+    <Editor.Outline
+      data-testid="outline"
+      indicator={<Editor.OutlineDropIndicator />}
+    >
+      {(row) => (
+        <Editor.OutlineItem key={row.id} row={row}>
+          <Editor.OutlineToggle>+</Editor.OutlineToggle>
+          {row.id}
+        </Editor.OutlineItem>
+      )}
     </Editor.Outline>
   );
 }

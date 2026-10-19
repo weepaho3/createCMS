@@ -140,7 +140,7 @@ What `CmsEditor` includes:
 - `EditorShell` and canvas overlays
 - Loading skeleton, error + Retry (`doc.reload`), and a conflict dialog on `HEAD_MISMATCH` (reload vs `save({ force: true })`)
 
-`mode="form"` skips `Canvas.Root` and passes `mode` into `EditorShell`. Form mode hides device toggles, the palette/outline sidebar, Add block, and the inspector so **FormSurface is the only edit surface**. The [form-only demo](/demo/editor/form) is this path: `CmsEditor mode="form"` with a `Collapsible` JSON dump as children of the shell, not a bare `Editor.Root` + `Form` composition.
+`mode="form"` skips `Canvas.Root` and passes `mode` into `EditorShell`. Form mode hides the device toggles and the inspector: **FormSurface is the edit surface**. It shows the path to the selected block and its nested blocks per slot; the palette and the outline stay, so every block is reachable. The [form-only demo](/demo/editor/form) is this path: `CmsEditor mode="form"` with a `Collapsible` JSON dump as children of the shell, not a bare `Editor.Root` + `Form` composition.
 
 ### Props
 
@@ -152,7 +152,7 @@ What `CmsEditor` includes:
 | `branchId` | yes | — | Branch to load and save. |
 | `blocks` | yes | | `createBlocksMap` result: schema, canvas components and document mapping. |
 | `templates` | no | `client.templates` | Override for `useCmsDocument` template defaults. |
-| `mode` | no | `'canvas'` | `'canvas'` or `'form'`. Form skips `Canvas.Root` and `EditorShell` hides canvas chrome (palette, outline, inspector, device toggle). |
+| `mode` | no | `'canvas'` | `'canvas'` or `'form'`. Form skips `Canvas.Root` and `EditorShell` hides the canvas chrome (inspector, device toggle); palette and outline stay. |
 | `className` | no | — | Applied to the page root, loading skeleton, and error state. |
 | `requireCommitMessage` | no | `false` | Opens the shell commit-message dialog on save. |
 | `children` | no | — | Canvas: after the shell. Form: inside the shell surface under `FormSurface` (demo extras such as a JSON `Collapsible`). |
@@ -246,10 +246,10 @@ Each part is its own item and file (`editor-toolbar`, `editor-palette`, `editor-
 | `EditorProvider`  | `TooltipProvider` + `SidebarProvider` + `Canvas.Provider` + keyboard (⌘S, ⌘K, undo/redo)     | shadcn `sidebar`, `tooltip`                        |
 | `EditorToolbar`   | Icon buttons with `Tooltip` + `Kbd`, device `ToggleGroup` (canvas mode), save dirty-dot + spinner | `button`, `tooltip`, `kbd`, `toggle-group`, `separator` |
 | `EditorPalette`   | `SidebarGroup` of `Canvas.PaletteItem` rows with grip affordance                              | `sidebar`, `editor-canvas`                         |
-| `EditorOutline`   | Virtualized tree (`useFlatOutline` + `@tanstack/react-virtual`): `Editor.Outline` rows on `Editor.OutlineItem`, chevron collapse, type icon, slot labels; keyboard reaches every row | `sidebar`                                          |
+| `EditorOutline`   | Virtualized tree (`useOutlineRows` + `@tanstack/react-virtual`): `Editor.Outline` with `range` and `reveal`, rows on `Editor.OutlineItem`, `Editor.OutlineToggle` chevron, type icon, slot rows, drop line and blocked targets; keyboard reaches every row | `sidebar`                                          |
 | `EditorInspector` | `Tabs` (Block / Page), empty state, sticky header with Duplicate / Delete                     | `tabs`, `editor-form`                              |
 | `EditorSurface`   | Scrolling canvas column, or a scrolling form column in `mode="form"`                          | none                                                |
-| `EditorShell`     | Default assembly. `mode="form"` hides palette, outline, inspector, and device toggles.        | all of the above                                   |
+| `EditorShell`     | Default assembly. `mode="form"` hides the inspector and the device toggles.                    | all of the above                                   |
 
 `useEditorChrome()` (from `editor-chrome`) reads device preview, layout, sheet, add-block dialog, and save-dialog state from `EditorProvider`. `useDeviceFrame()` returns the `frame` options for the chosen device (375, 768 or full width): pass them to `Canvas.Root surface="frame"` so media queries, sticky and fixed elements behave as on the site, as `editor-app` does.
 

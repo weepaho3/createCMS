@@ -6,7 +6,6 @@ import type { EditorStore } from '../core/store';
 
 import { useEditorContext } from '../context';
 import { counterGenId, makeDoc, storeSchema } from '../core/store/fixtures';
-import { useChildren } from '../hooks';
 import { Editor } from '../index';
 
 afterEach(cleanup);
@@ -17,34 +16,27 @@ function Probe({ bag }: { bag: Bag }) {
   return null;
 }
 
-function Branch({ blockId }: { blockId: string }) {
-  const nested = useChildren(blockId);
-  return (
-    <Editor.OutlineItem
-      blockId={blockId}
-      render={(props, state) => (
-        <div {...props}>
-          <span style={{ display: 'block', height: 24 }}>{blockId}</span>
-          {state.expanded ? (
-            <div style={{ paddingLeft: 16 }}>
-              {nested.map((child) => (
-                <Branch key={child.id} blockId={child.id} />
-              ))}
-            </div>
-          ) : null}
-        </div>
-      )}
-    />
-  );
-}
-
 function Tree() {
-  const nested = useChildren('root_1');
   return (
-    <Editor.Outline data-testid="tree" style={{ width: 300 }}>
-      {nested.map((child) => (
-        <Branch key={child.id} blockId={child.id} />
-      ))}
+    <Editor.Outline
+      data-testid="tree"
+      indent={16}
+      style={{ width: 300 }}
+      indicator={<Editor.OutlineDropIndicator data-testid="line" />}
+    >
+      {(row) => (
+        <Editor.OutlineItem
+          key={row.id}
+          row={row}
+          style={{
+            display: 'block',
+            height: 24,
+            paddingInlineStart: 'calc(var(--tree-indent) * var(--tree-level))',
+          }}
+        >
+          {row.id}
+        </Editor.OutlineItem>
+      )}
     </Editor.Outline>
   );
 }
@@ -64,10 +56,9 @@ function mount() {
   return { ...utils, store: bag.store! };
 }
 
-const label = (id: string) =>
-  document
-    .querySelector(`[data-block-id="${id}"] > span`)!
-    .getBoundingClientRect();
+const rowOf = (id: string) =>
+  document.querySelector<HTMLElement>(`[data-tree-row-id="${id}"]`)!;
+const label = (id: string) => rowOf(id).getBoundingClientRect();
 
 function pointer(target: EventTarget, type: string, x: number, y: number) {
   target.dispatchEvent(
@@ -85,7 +76,7 @@ function pointer(target: EventTarget, type: string, x: number, y: number) {
 
 function drag(fromId: string, to: { x: number; y: number }) {
   const from = label(fromId);
-  const start = document.querySelector(`[data-block-id="${fromId}"] > span`)!;
+  const start = rowOf(fromId);
   pointer(start, 'pointerdown', from.x + 10, from.y + 12);
   pointer(document, 'pointermove', from.x + 10, from.y + 30);
   pointer(document, 'pointermove', to.x, to.y);
@@ -97,12 +88,11 @@ describe('outline drag', () => {
     const sec = label('sec1');
     drag('h1', { x: sec.x + 40, y: sec.y + 12 });
     await waitFor(() => {
-      expect(
-        document
-          .querySelector('[data-editor-outline-drop-indicator]')
-          ?.getAttribute('data-variant'),
-      ).toBe('box');
+      expect(rowOf('sec1').hasAttribute('data-drop-target')).toBe(true);
     });
+    expect(
+      document.querySelector('[data-testid="line"]')!.hasAttribute('hidden'),
+    ).toBe(true);
     pointer(document, 'pointerup', sec.x + 40, sec.y + 12);
     expect(store.getDoc().nodes.sec1!.slots.children).toEqual(['p1', 'h1']);
   });
@@ -146,24 +136,38 @@ describe('outline drag', () => {
     expect(userSelect()).toBe('');
   });
 
-  it('an invalid target shows no indicator and drops nothing', async () => {
+  it('a target the placement rules refuse shows as blocked and drops nothing', async () => {
     const { store } = mount();
     const p1 = label('p1');
     // A section cannot go into a section.
     drag('sec1', { x: p1.x + 40, y: p1.y + p1.height - 2 });
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(
-      document.querySelector('[data-editor-outline-drop-indicator]'),
-    ).toBeNull();
+    await waitFor(() =>
+      expect(
+        document
+          .querySelector('[data-testid="line"]')!
+          .hasAttribute('data-blocked'),
+      ).toBe(true),
+    );
     pointer(document, 'pointerup', p1.x + 40, p1.y + p1.height - 2);
     expect(store.getDoc().nodes.root_1!.slots.children).toEqual(['h1', 'sec1']);
+  });
+
+  it('between rows the line shows at the target level', async () => {
+    const { store } = mount();
+    const sec = label('sec1');
+    drag('h1', { x: sec.x + 40, y: sec.y + sec.height - 2 });
+    const line = document.querySelector<HTMLElement>('[data-testid="line"]')!;
+    // The bottom edge of an expanded row drops in as its first child.
+    await waitFor(() => expect(line.getAttribute('data-level')).toBe('2'));
+    pointer(document, 'pointerup', sec.x + 40, sec.y + sec.height - 2);
+    expect(store.getDoc().nodes.sec1!.slots.children).toEqual(['h1', 'p1']);
   });
 
   it('a collapsed row opens after resting on it', async () => {
     const { store } = mount();
     store.setCollapsed('sec1', true);
     await waitFor(() =>
-      expect(document.querySelector('[data-block-id="p1"]')).toBeNull(),
+      expect(document.querySelector('[data-tree-row-id="p1"]')).toBeNull(),
     );
     const sec = label('sec1');
     drag('h1', { x: sec.x + 40, y: sec.y + 12 });

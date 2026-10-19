@@ -9,7 +9,7 @@ import type { EditorStore } from '../core/store';
 import { useEditorContext } from '../context';
 import { defineEditorSchema } from '../core/schema';
 import { Editor } from '../index';
-import { useFlatOutline } from './flat-outline';
+import { useOutlineRows } from './outline-rows';
 
 afterEach(cleanup);
 
@@ -58,35 +58,33 @@ function bigDoc(): EditorDocument {
 function WindowedOutline({ onStore }: { onStore: (s: EditorStore) => void }) {
   const { store } = useEditorContext('WindowedOutline');
   onStore(store);
-  const rows = useFlatOutline();
-  const ids = React.useMemo(
-    () => rows.flatMap((row) => (row.kind === 'node' ? [row.id] : [])),
-    [rows],
-  );
+  const rows = useOutlineRows();
   const [start, setStart] = React.useState(0);
   const reveal = React.useCallback(
     (id: string) => {
-      const at = ids.indexOf(id);
+      const at = rows.findIndex((row) => row.id === id);
       setStart((current) =>
         at < current ? at : at >= current + WINDOW ? at - WINDOW + 1 : current,
       );
     },
-    [ids],
+    [rows],
   );
   return (
-    <Editor.Outline rows={ids} reveal={reveal} style={{ height: WINDOW * ROW }}>
-      {ids.slice(start, start + WINDOW).map((id) => {
-        const row = rows.find((r) => r.id === id)!;
-        return (
-          <Editor.OutlineItem
-            key={id}
-            blockId={id}
-            style={{ height: ROW, paddingLeft: row.level * 12 }}
-          >
-            {id}
-          </Editor.OutlineItem>
-        );
-      })}
+    <Editor.Outline
+      rows={rows}
+      range={{ start, end: start + WINDOW - 1 }}
+      reveal={reveal}
+      style={{ height: WINDOW * ROW }}
+    >
+      {(row) => (
+        <Editor.OutlineItem
+          key={row.id}
+          row={row}
+          style={{ height: ROW, paddingLeft: row.level * 12 }}
+        >
+          {row.id}
+        </Editor.OutlineItem>
+      )}
     </Editor.Outline>
   );
 }
@@ -104,7 +102,7 @@ function setup() {
 const focusedId = () =>
   (document.activeElement as HTMLElement | null)?.dataset.blockId;
 
-describe('flat, windowed outline', () => {
+describe('windowed outline', () => {
   it('mounts only the visible rows and carries levels and positions', () => {
     const { container } = setup();
     const items = container.querySelectorAll('[role="treeitem"]');
