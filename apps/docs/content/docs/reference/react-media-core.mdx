@@ -195,10 +195,10 @@ Cmd/Ctrl toggles) to the selection at the start of the gesture.
 
 `createFolderTree(currentId)` and `setFolderChildren(state, parentId, folders)`
 build the tree from `FolderRecord`s; `mayHaveChildren(node)` reads
-`folderCount`. `folderTreeRows(state)` lists the visible `FolderTreeRow`s
-(level, set size, position, expanded, loading); `treeNavigate(rows, id, key)`
-applies an APG tree `TreeKey` (`treeKeyOf`) and returns a `TreeKeyResult`
-(`focus`, `expand`, `collapse`). `moveRejection(nodes, targetId, move)`
+`folderCount`. `folderTreeRows(state)` lists the visible `FolderTreeRow`s, a
+`TreeRow` of the [tree kernel](/docs/reference/react-tree#kernel) with the
+folder `name` and `loading`, which handles their keyboard navigation.
+`moveRejection(nodes, targetId, move)`
 returns a `MoveRejectReason` (`same-folder`, `into-itself`) with
 `isSelfOrDescendant`; `collapseBreadcrumbs(path, max)` splits a deep path;
 `loadExpanded` and `saveExpanded` persist the expanded set, ignoring storage
@@ -406,7 +406,8 @@ of a burst.
 
 `createTypeAhead(timeout)` returns a `TypeAhead` buffering keys within
 `TYPE_AHEAD_MS`; `isTypeAheadKey(key, modifiers)` and
-`matchTypeAhead(labels, from, search)` find the next label. `errorCodeOf(error)`
+`matchTypeAhead(labels, from, search)` find the next label (shared with the
+tree kernel). `errorCodeOf(error)`
 reads the code of a thrown client error and `isAbortError(error)` recognizes
 an aborted request.
 

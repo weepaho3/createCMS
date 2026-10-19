@@ -35,6 +35,7 @@
     "react-editor-cms",
     "react-media",
     "react-media-core",
+    "react-tree",
     "edge",
     "cli"
   ]

@@ -365,7 +365,6 @@ export type {
   FolderRenameProps,
   FolderToggleProps,
   FolderTreeProps,
-  FolderTreeState,
   MediaBreadcrumbsProps,
   MediaCrumbProps,
   MediaFolderListProps,
@@ -408,7 +407,9 @@ export type {
 export { useIntake, useIntakePaste } from './intake';
 export type {
   DropOverlayState,
+  FolderDropKind,
   FolderDropOptions,
+  FolderDropRules,
   FolderDropState,
 } from './dnd';
 export {
@@ -418,6 +419,7 @@ export {
   folderDragProps,
   useDropOverlay,
   useFolderDrop,
+  useFolderDropRules,
 } from './dnd';
 export type { MediaContextValue, MediaMessagesContextValue } from './context';
 export {

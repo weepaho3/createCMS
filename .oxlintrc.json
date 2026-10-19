@@ -192,9 +192,13 @@
     },
     {
       // The media library kernel is importable without React (servers,
-      // workers, other frameworks) and has no runtime dependencies. Relative
-      // escapes out of src/media/core are caught by its boundary test.
-      "files": ["packages/react/src/media/core/**"],
+      // workers, other frameworks) and has no runtime dependencies; so has the
+      // tree kernel it builds on. Relative escapes out of either are caught by
+      // the boundary test in src/media/core.
+      "files": [
+        "packages/react/src/media/core/**",
+        "packages/react/src/tree/core/**"
+      ],
       "rules": {
         "no-restricted-imports": [
           "error",
@@ -211,7 +215,7 @@
                   "@createcms/schema",
                   "@createcms/schema/*"
                 ],
-                "message": "@createcms/react/media/core must stay React-free with no runtime dependencies."
+                "message": "The media and tree kernels must stay React-free with no runtime dependencies."
               }
             ]
           }

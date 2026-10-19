@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { FolderTreeState } from './folders';
 
+import { treeNavigate } from '../../tree/core/rows';
+import { createTypeAhead, matchTypeAhead } from '../../tree/core/typeahead';
 import {
   batchPoliteness,
   createDebouncedAnnouncer,
@@ -23,10 +25,8 @@ import {
   moveRejection,
   saveExpanded,
   setFolderChildren,
-  treeNavigate,
 } from './folders';
 import { createRegistry } from './registry';
-import { createTypeAhead, matchTypeAhead } from './typeahead';
 
 afterEach(() => {
   vi.useRealTimers();

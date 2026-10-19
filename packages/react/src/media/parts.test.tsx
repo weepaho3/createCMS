@@ -17,6 +17,7 @@ import {
   Bulk,
   Filter,
   Folder,
+  FOLDER_DRAG_TYPE,
   Intake,
   Media,
   Selection,
@@ -568,6 +569,60 @@ describe('folder parts', () => {
     await waitFor(() =>
       expect(document.activeElement?.textContent).toBe('Products'),
     );
+  });
+
+  it('drops folders by the tree rules and blocks a folder into itself', async () => {
+    const moveFolder = vi.fn(
+      async ({
+        body,
+      }: {
+        body: { folderId: string; newParentFolderId?: string | null };
+      }) => ({
+        folder: makeFolder({
+          id: 'f2',
+          name: 'Press',
+          parentId: body.newParentFolderId ?? null,
+        }),
+      }),
+    );
+    const client = makeClient({
+      listFolders: vi.fn(
+        async (args?: { query?: { parentFolderId?: string } }) => ({
+          folders: folders.filter(
+            (f) => f.parentId === (args?.query?.parentFolderId ?? null),
+          ),
+        }),
+      ),
+      moveFolder,
+    });
+    const { store, getAllByRole } = setup({ client, children: tree() });
+    await ready(store);
+    const [products, press] = getAllByRole('treeitem');
+    const payload = JSON.stringify({ id: 'f2' });
+    const dataTransfer = {
+      types: [FOLDER_DRAG_TYPE],
+      setData: vi.fn(),
+      getData: (type: string) => (type === FOLDER_DRAG_TYPE ? payload : ''),
+      dropEffect: 'none',
+      effectAllowed: 'all',
+    };
+    fireEvent.dragStart(press, { dataTransfer });
+    fireEvent.dragEnter(press, { dataTransfer });
+    fireEvent.dragOver(press, { dataTransfer });
+    expect(press.hasAttribute('data-drop-blocked')).toBe(true);
+    fireEvent.dragOver(products, { dataTransfer });
+    expect(products.hasAttribute('data-drop-target')).toBe(true);
+    expect(press.hasAttribute('data-drop-blocked')).toBe(false);
+    await act(async () => {
+      fireEvent.drop(products, { dataTransfer });
+    });
+    fireEvent.dragEnd(press, { dataTransfer });
+    expect(moveFolder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { folderId: 'f2', newParentFolderId: 'f1' },
+      }),
+    );
+    expect(products.hasAttribute('data-drop-target')).toBe(false);
   });
 
   it('renames inline with F2 and keeps a name conflict inline', async () => {

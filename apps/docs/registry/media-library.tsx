@@ -133,6 +133,7 @@ import {
 import { cn } from '@/lib/utils';
 
 import { MediaDetailPanel } from './media-detail';
+import { TreeToggle, treeClassName, treeItemClassName } from './tree';
 
 const TYPE_ICONS: Record<
   MediaType,
@@ -394,25 +395,18 @@ function MediaFolderTree({
   return (
     <Folder.Tree
       data-slot="media-folder-tree"
-      className={cn(
-        // The empty space below the rows takes drops into the root.
-        'data-drop-over:bg-media-drop/5 flex min-h-24 flex-col rounded-md pb-6 text-sm',
-        className,
-      )}
+      indent={12}
+      // The empty space below the rows takes drops into the root.
+      className={cn(treeClassName, 'min-h-24 pb-6', className)}
       {...props}
     >
       {(row) => (
         <Folder.Item
           row={row}
-          style={{ paddingInlineStart: `${(row.level - 1) * 0.75 + 0.25}rem` }}
-          className="hover:bg-muted data-current:bg-muted data-picked:bg-primary/10 data-[drop-position=inside]:ring-media-drop flex cursor-pointer items-center gap-1 rounded-md py-1 pr-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[drop-position=after]:shadow-[inset_0_-2px_0_0_var(--color-media-drop)] data-[drop-position=before]:shadow-[inset_0_2px_0_0_var(--color-media-drop)] data-[drop-position=inside]:ring-2 data-[drop-position=inside]:ring-inset aria-busy:opacity-60"
+          // `aria-selected` marks the open folder, or the picked one.
+          className={treeItemClassName}
         >
-          <Folder.Toggle className="flex size-4 items-center justify-center transition-transform data-expanded:rotate-90">
-            <ChevronRightIcon className="size-3.5" />
-          </Folder.Toggle>
-          {row.hasChildren ? null : (
-            <span className="size-4" aria-hidden="true" />
-          )}
+          <TreeToggle />
           <FolderIcon
             className="text-muted-foreground size-4 shrink-0"
             aria-hidden="true"

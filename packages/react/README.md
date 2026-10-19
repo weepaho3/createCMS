@@ -17,6 +17,8 @@ component registry, not in this package.
 | `@createcms/react/editor/canvas` | Live surface, overlay and interaction layer (`Canvas.Root`, `Canvas.Overlay`).                                                              |
 | `@createcms/react/editor/cms`    | Optional createcms client adapters (`useCmsDocument`: load/save, head tracking, canvas resolve; `useCmsFieldSources`: registry field data). |
 | `@createcms/react/media`         | Headless media library (`Media.Root`, `Media.Grid`, `Media.Dropzone`, `Upload.List`): folders, paging, search, selection, uploads.          |
+| `@createcms/react/tree`          | Headless tree over flat rows (`Tree.Root`, `Tree.Item`, `Tree.DropIndicator`): APG keys, type-ahead, drop instructions.                     |
+| `@createcms/react/tree/core`     | The React-free tree kernel (`dropInstruction`, `treeNavigate`, type-ahead).                                                                 |
 
 `Canvas.Root` renders the store tree through a `components` map.
 `Canvas.Overlay` positions rings from measured anchors and hosts an
@@ -25,7 +27,7 @@ indicator, drag preview and inline text glass for string and richText fields.
 
 See each entry's own README (`src/editor/README.md`,
 `src/editor/canvas/README.md`, `src/editor/cms/README.md`,
-`src/media/README.md`) for its parts, hooks, types and data attributes.
+`src/media/README.md`, `src/tree/README.md`) for its parts, hooks, types and data attributes.
 
 ## Peers
 

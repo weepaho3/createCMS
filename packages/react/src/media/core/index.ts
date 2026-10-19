@@ -20,6 +20,6 @@ export * from './registry';
 export * from './selection';
 export * from './store';
 export * from './touch';
-export * from './typeahead';
+export * from '../../tree/core/typeahead';
 export * from './types';
 export * from './zip';

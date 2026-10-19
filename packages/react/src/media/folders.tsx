@@ -1,26 +1,22 @@
 import * as React from 'react';
 
+import type {
+  TreeDndOptions,
+  TreeItemState,
+  TreeRootProps,
+} from '../tree/tree';
 import type { UseRenderComponentProps } from '../use-render';
 import type { FolderTreeRow } from './core/folders';
 import type { MediaStoreState } from './core/store';
 import type { MediaFolder as FolderRecord } from './core/types';
 
+import { TreeRoot, TreeRowContext, useTreeItem } from '../tree/tree';
 import { mergeProps, useRender } from '../use-render';
 import { useMediaContext, useMediaMessages } from './context';
 import { errorCodeOf } from './core/errors';
-import {
-  collapseBreadcrumbs,
-  folderTreeRows,
-  treeKeyOf,
-  treeNavigate,
-} from './core/folders';
+import { collapseBreadcrumbs, folderTreeRows } from './core/folders';
 import { currentFolders } from './core/store';
-import {
-  createTypeAhead,
-  isTypeAheadKey,
-  matchTypeAhead,
-} from './core/typeahead';
-import { folderDragProps, useFolderDrop } from './dnd';
+import { folderDragProps, useFolderDrop, useFolderDropRules } from './dnd';
 import { mediaErrorMessage } from './messages';
 import { useSelector } from './use-store';
 
@@ -189,9 +185,6 @@ export function MediaFolder(props: MediaFolderProps) {
 // --- Folder.Tree / Folder.Item --------------------------------------------------------
 
 type TreeContextValue = {
-  rows: FolderTreeRow[];
-  focusId: string | null;
-  setFocusId: (id: string) => void;
   /** `pick` (the Move dialog) selects a target instead of opening it. */
   mode: 'navigate' | 'pick';
   picked: string | null | undefined;
@@ -201,8 +194,6 @@ type TreeContextValue = {
 };
 
 const TreeContext = React.createContext<TreeContextValue | null>(null);
-
-export type FolderTreeState = { rows: FolderTreeRow[]; loading: boolean };
 
 const selectTree = (state: MediaStoreState) => state.folders;
 
@@ -230,10 +221,17 @@ export function useFolderTree() {
   );
 }
 
-export type FolderTreeProps = RenderProps<
-  'ul',
-  { mode: 'navigate' | 'pick'; dropOver: boolean }
+export type FolderTreeProps = Omit<
+  TreeRootProps<FolderTreeRow>,
+  | 'rows'
+  | 'children'
+  | 'render'
+  | 'getLabel'
+  | 'onExpandedChange'
+  | 'dnd'
+  | 'dropTarget'
 > & {
+  render?: TreeRootProps<FolderTreeRow>['render'];
   children: (row: FolderTreeRow) => React.ReactNode;
   /** `pick` chooses a target (the Move dialog) instead of opening folders. */
   mode?: 'navigate' | 'pick';
@@ -245,13 +243,17 @@ export type FolderTreeProps = RenderProps<
 };
 
 /**
- * An APG tree (`role="tree"`) of the folders with lazy children: opening a
- * node lists its children (`aria-busy` meanwhile), the expanded set is
- * kept in `localStorage`. Up/Down move, Right opens or enters, Left closes
- * or goes to the parent, Home/End, `*` opens the siblings, typing jumps by
- * name; F2 or Enter renames and Space opens (navigate mode), Space picks
- * and Enter confirms (pick mode). `children` renders each
- * visible row, usually a `Folder.Item`.
+ * The folders as a `Tree.Root` (APG tree, lazy children: opening a node
+ * lists its children with `aria-busy` meanwhile; the expanded set is kept
+ * in `localStorage`). Keys as in `Tree.Root`, plus F2 or Enter renames and
+ * Space opens (navigate mode), Space picks and Enter confirms (pick mode).
+ *
+ * In navigate mode assets, folders and OS files drop onto it: the middle
+ * of a row drops into the folder, its top and bottom edge next to it (into
+ * its parent), the end of a subtree into the ancestor the pointer's
+ * inline offset picks, empty space into the root. Folders sort by name, so
+ * the receiving folder and its visible subtree are marked instead of a
+ * line. `children` renders each visible row, usually a `Folder.Item`.
  */
 export function FolderTree(props: FolderTreeProps) {
   const {
@@ -266,154 +268,123 @@ export function FolderTree(props: FolderTreeProps) {
   const { store } = useMediaContext('Folder.Tree');
   const { messages } = useMediaMessages();
   const { rows, currentId } = useFolderTree();
-  const [focusId, setFocusId] = React.useState<string | null>(null);
   const [renaming, setRenaming] = React.useState<string | null>(null);
-  const ref = React.useRef<HTMLUListElement | null>(null);
-  const typeAhead = React.useRef(createTypeAhead());
-  const pendingFocus = React.useRef(false);
-  const rtl = React.useRef(false);
+  const [focusId, setFocusId] = React.useState<string | null>(null);
+  const rules = useFolderDropRules();
 
-  const effectiveFocus =
-    focusId && rows.some((row) => row.id === focusId)
+  const fallbackFocus = (mode === 'pick' ? value : currentId) ?? null;
+  const focused =
+    (focusId !== null && rows.some((row) => row.id === focusId)
       ? focusId
-      : ((mode === 'pick' ? value : currentId) ?? rows[0]?.id ?? null);
+      : null) ??
+    fallbackFocus ??
+    rows[0]?.id ??
+    null;
 
-  React.useEffect(() => {
-    if (!pendingFocus.current || !effectiveFocus) return;
-    pendingFocus.current = false;
-    ref.current
-      ?.querySelector<HTMLElement>(
-        `[data-folder-id="${CSS.escape(effectiveFocus)}"]`,
-      )
-      ?.focus();
-  });
-  React.useLayoutEffect(() => {
-    rtl.current = ref.current?.closest('[dir]')?.getAttribute('dir') === 'rtl';
-  }, []);
-
-  const onKeyDown = (event: React.KeyboardEvent<HTMLUListElement>) => {
-    if (renaming || !effectiveFocus) return;
+  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (renaming || !focused) return;
+    if ((event.target as Element).closest('input, textarea')) return;
     // Rename with F2 (Windows) or Enter (Finder); Space opens the folder.
     if (mode === 'navigate' && (event.key === 'F2' || event.key === 'Enter')) {
       event.preventDefault();
-      setRenaming(effectiveFocus);
+      setRenaming(focused);
       return;
     }
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       if (mode === 'pick') {
-        onValueChange?.(effectiveFocus);
-        if (event.key === 'Enter') onConfirm?.(effectiveFocus);
+        onValueChange?.(focused);
+        if (event.key === 'Enter') onConfirm?.(focused);
       } else {
-        void store.dispatch({ type: 'openFolder', folderId: effectiveFocus });
-      }
-      return;
-    }
-    let key = treeKeyOf(event.key);
-    if (key === 'left' && rtl.current) key = 'right';
-    else if (key === 'right' && rtl.current) key = 'left';
-    if (key) {
-      event.preventDefault();
-      const result = treeNavigate(rows, effectiveFocus, key);
-      for (const id of result.expand ?? [])
-        void store.dispatch({ type: 'expandFolder', folderId: id });
-      if (result.collapse)
-        void store.dispatch({
-          type: 'collapseFolder',
-          folderId: result.collapse,
-        });
-      if (result.focus) {
-        pendingFocus.current = true;
-        setFocusId(result.focus);
-      }
-      return;
-    }
-    if (
-      isTypeAheadKey(event.key, {
-        ctrl: event.ctrlKey,
-        meta: event.metaKey,
-        alt: event.altKey,
-      })
-    ) {
-      const search = typeAhead.current.push(event.key, event.timeStamp);
-      const from = rows.findIndex((row) => row.id === effectiveFocus);
-      const match = matchTypeAhead(
-        rows.map((row) => row.name),
-        from,
-        search,
-      );
-      if (match !== -1) {
-        pendingFocus.current = true;
-        setFocusId(rows[match].id);
+        void store.dispatch({ type: 'openFolder', folderId: focused });
       }
     }
   };
 
   const contextValue = React.useMemo<TreeContextValue>(
     () => ({
-      rows,
-      focusId: effectiveFocus,
-      setFocusId,
       mode,
       picked: value,
       onPick: onValueChange,
       renaming,
       setRenaming,
     }),
-    [rows, effectiveFocus, mode, value, onValueChange, renaming],
+    [mode, value, onValueChange, renaming],
   );
 
-  // Drops on the tree outside a folder row go to the root.
-  const rootDrop = useFolderDrop(null, {
-    files: false,
-    disabled: mode === 'pick',
-  });
-  const element = useRender({
-    defaultTagName: 'ul',
-    render,
-    state: { mode, dropOver: rootDrop.state.over },
-    props: mergeProps<'ul'>(
-      { ref, role: 'tree', 'aria-label': messages.folder.tree, onKeyDown },
-      mode === 'navigate' ? rootDrop.props : undefined,
-      rest,
-      {
-        children: rows.map((row) => (
-          <React.Fragment key={row.id}>{children(row)}</React.Fragment>
-        )),
-      },
-    ),
-  });
+  const dnd = React.useMemo<TreeDndOptions | undefined>(
+    () =>
+      mode === 'navigate'
+        ? {
+            accepts: (dataTransfer) =>
+              rules.kindOf(dataTransfer.types) !== null,
+            canDrop: (target, dataTransfer) => {
+              const kind = rules.kindOf(dataTransfer.types);
+              return kind !== null && rules.allows(kind, target.parentId);
+            },
+            onDrop: (target, event) => {
+              const kind = rules.kindOf(event.dataTransfer.types);
+              if (kind) rules.perform(event, kind, target.parentId);
+            },
+            dropEffect: (dataTransfer) =>
+              rules.kindOf(dataTransfer.types) === 'files' ? 'copy' : 'move',
+          }
+        : undefined,
+    [mode, rules],
+  );
+
   return (
-    <TreeContext.Provider value={contextValue}>{element}</TreeContext.Provider>
+    <TreeContext.Provider value={contextValue}>
+      <TreeRoot
+        aria-label={messages.folder.tree}
+        {...rest}
+        rows={rows}
+        focusId={focused}
+        onFocusIdChange={setFocusId}
+        getLabel={(row) => row.name}
+        onExpandedChange={(folderId, expanded) =>
+          void store.dispatch({
+            type: expanded ? 'expandFolder' : 'collapseFolder',
+            folderId,
+          })
+        }
+        dnd={dnd}
+        onKeyDown={(event) => {
+          rest.onKeyDown?.(event);
+          if (!event.defaultPrevented) onKeyDown(event);
+        }}
+        data-mode={mode}
+        render={render}
+      >
+        {children}
+      </TreeRoot>
+    </TreeContext.Provider>
   );
 }
 
-type FolderItemState = {
+type FolderItemState = TreeItemState & {
   current: boolean;
-  expanded: boolean;
   loading: boolean;
   picked: boolean;
   renaming: boolean;
-  dropOver: boolean;
-  dropFlash: boolean;
-  /** `before`/`after`: the drop goes next to the folder (its parent); `inside`: into it. */
-  dropPosition: 'before' | 'after' | 'inside' | null;
 };
 
-export type FolderItemProps = UseRenderComponentProps<'li', FolderItemState> & {
+export type FolderItemProps = UseRenderComponentProps<
+  'div',
+  FolderItemState
+> & {
   row: FolderTreeRow;
 };
 
 const RowContext = React.createContext<FolderTreeRow | null>(null);
 
 /**
- * One `treeitem` with `aria-level`, `aria-setsize`, `aria-posinset`,
- * `aria-expanded` (folders that may have children) and `aria-busy` while
- * its children load. A click opens (or picks) the folder, a double click
- * renames it. A drop target (hovering 500 ms opens a closed node): the
- * middle of the row drops into the folder, its top and bottom edge next to
- * it (into its parent), shown as `data-drop-position`. Draggable onto other
- * folders.
+ * One `Tree.Item` for a folder, with `aria-busy` while its children load
+ * and `aria-current="page"` on the open folder. A click opens (or picks)
+ * the folder, a double click renames it. Shows the drop states of
+ * `Tree.Item` (`data-drop-target`, `data-drop-within`, `data-drop-blocked`,
+ * `data-drop-flash`). Draggable onto other folders when the client can
+ * move folders.
  */
 export function FolderItem(props: FolderItemProps) {
   const { row, render, children, ...rest } = props;
@@ -422,58 +393,38 @@ export function FolderItem(props: FolderItemProps) {
   if (!tree)
     throw new Error('Folder.Item must be used within a Folder.Tree component.');
   const currentId = useSelector(store, selectCurrentFolder, Object.is);
-  const drop = useFolderDrop(row.id, {
-    onDwell: () => {
-      if (row.hasChildren && !row.expanded) {
-        void store.dispatch({ type: 'expandFolder', folderId: row.id });
-      }
-    },
-    disabled: tree.mode === 'pick',
-    edges: { parentId: row.parentId },
-  });
   const picked = tree.mode === 'pick' && tree.picked === row.id;
   const renaming = tree.renaming === row.id;
+  const current = currentId === row.id;
 
+  const item = useTreeItem(row);
   const element = useRender({
-    defaultTagName: 'li',
+    defaultTagName: 'div',
     render,
     state: {
-      current: currentId === row.id,
-      expanded: row.expanded,
+      ...item.state,
+      current,
       loading: row.loading,
       picked,
       renaming,
-      dropOver: drop.state.over,
-      dropFlash: drop.state.flash,
-      dropPosition: drop.state.over ? drop.state.position : null,
     } satisfies FolderItemState,
-    props: mergeProps<'li'>(
+    props: mergeProps<'div'>(
+      item.props,
       {
-        role: 'treeitem',
-        'aria-level': row.level,
-        'aria-setsize': row.setsize,
-        'aria-posinset': row.posinset,
-        'aria-expanded': row.hasChildren ? row.expanded : undefined,
         'aria-busy': row.loading || undefined,
-        'aria-selected': tree.mode === 'pick' ? picked : currentId === row.id,
+        'aria-selected': tree.mode === 'pick' ? picked : current,
         'aria-current':
-          tree.mode === 'navigate' && currentId === row.id ? 'page' : undefined,
-        tabIndex: tree.focusId === row.id ? 0 : -1,
+          tree.mode === 'navigate' && current ? 'page' : undefined,
         'data-folder-id': row.id,
         onClick: (event: React.MouseEvent) => {
           event.stopPropagation();
-          tree.setFocusId(row.id);
           if (tree.mode === 'pick') tree.onPick?.(row.id);
           else void store.dispatch({ type: 'openFolder', folderId: row.id });
         },
         onDoubleClick: () => {
           if (tree.mode === 'navigate') tree.setRenaming(row.id);
         },
-        onFocus: (event: React.FocusEvent) => {
-          if (event.target === event.currentTarget) tree.setFocusId(row.id);
-        },
       },
-      tree.mode === 'navigate' ? drop.props : undefined,
       tree.mode === 'navigate' && store.client.moveFolder
         ? folderDragProps(row.id)
         : undefined,
@@ -481,7 +432,11 @@ export function FolderItem(props: FolderItemProps) {
       { children },
     ),
   });
-  return <RowContext.Provider value={row}>{element}</RowContext.Provider>;
+  return (
+    <TreeRowContext.Provider value={row}>
+      <RowContext.Provider value={row}>{element}</RowContext.Provider>
+    </TreeRowContext.Provider>
+  );
 }
 
 export type FolderToggleProps = UseRenderComponentProps<

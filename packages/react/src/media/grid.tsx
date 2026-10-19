@@ -9,6 +9,11 @@ import type {
 import type { MediaStoreState } from './core/store';
 import type { MediaAsset, MediaUploadEntry } from './core/types';
 
+import {
+  createTypeAhead,
+  isTypeAheadKey,
+  matchTypeAhead,
+} from '../tree/core/typeahead';
 import { mergeProps, useRender } from '../use-render';
 import { VISUALLY_HIDDEN } from './announcer';
 import {
@@ -31,11 +36,6 @@ import {
 import { dragIds, isSelected } from './core/selection';
 import { collectionAssets } from './core/store';
 import { createLongPress, vibrateTick } from './core/touch';
-import {
-  createTypeAhead,
-  isTypeAheadKey,
-  matchTypeAhead,
-} from './core/typeahead';
 import { buildSrcSet, variantUrl } from './image';
 import { useSelector } from './use-store';
 

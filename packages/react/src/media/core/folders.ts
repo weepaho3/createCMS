@@ -1,8 +1,10 @@
 /**
  * Folder tree state and its pure helpers: visible rows with their ARIA
- * position, APG tree keys, move validity, breadcrumb overflow and the
- * persisted expanded set.
+ * position, move validity, breadcrumb overflow and the persisted expanded
+ * set. Keyboard navigation over the rows is the shared tree kernel's.
  */
+
+import type { TreeRow } from '../../tree/core/rows';
 
 export type FolderRecord = {
   id: string;
@@ -71,17 +73,10 @@ export function mayHaveChildren(node: FolderNode): boolean {
   return node.folderCount === undefined || node.folderCount > 0;
 }
 
-export type FolderTreeRow = {
-  id: string;
+export type FolderTreeRow = TreeRow & {
   name: string;
-  /** 1-based (`aria-level`). */
-  level: number;
-  setsize: number;
-  posinset: number;
-  expanded: boolean;
-  hasChildren: boolean;
+  /** Its children are being listed. */
   loading: boolean;
-  parentId: string | null;
 };
 
 /** The visible rows of the tree in display order. */
@@ -111,88 +106,6 @@ export function folderTreeRows(state: FolderTreeState): FolderTreeRow[] {
   };
   visit(state.roots ?? [], 1);
   return rows;
-}
-
-export type TreeKey =
-  | 'up'
-  | 'down'
-  | 'right'
-  | 'left'
-  | 'home'
-  | 'end'
-  | 'expandSiblings';
-
-export type TreeKeyResult = {
-  focus?: string;
-  expand?: string[];
-  collapse?: string;
-};
-
-export function treeKeyOf(key: string): TreeKey | null {
-  switch (key) {
-    case 'ArrowUp':
-      return 'up';
-    case 'ArrowDown':
-      return 'down';
-    case 'ArrowRight':
-      return 'right';
-    case 'ArrowLeft':
-      return 'left';
-    case 'Home':
-      return 'home';
-    case 'End':
-      return 'end';
-    case '*':
-      return 'expandSiblings';
-    default:
-      return null;
-  }
-}
-
-/**
- * APG tree view keys: Up/Down move between visible rows, Right opens a
- * closed node or moves to its first child, Left closes an open node or
- * moves to its parent, Home/End go to the first/last row, `*` opens every
- * sibling. Right and Left are swapped by the caller for RTL.
- */
-export function treeNavigate(
-  rows: readonly FolderTreeRow[],
-  focusId: string,
-  key: TreeKey,
-): TreeKeyResult {
-  const index = rows.findIndex((row) => row.id === focusId);
-  if (index === -1) return rows[0] ? { focus: rows[0].id } : {};
-  const row = rows[index];
-  switch (key) {
-    case 'up':
-      return index > 0 ? { focus: rows[index - 1].id } : {};
-    case 'down':
-      return index < rows.length - 1 ? { focus: rows[index + 1].id } : {};
-    case 'home':
-      return { focus: rows[0].id };
-    case 'end':
-      return { focus: rows[rows.length - 1].id };
-    case 'right':
-      if (!row.hasChildren) return {};
-      if (!row.expanded) return { expand: [row.id] };
-      return rows[index + 1]?.parentId === row.id
-        ? { focus: rows[index + 1].id }
-        : {};
-    case 'left':
-      if (row.expanded) return { collapse: row.id };
-      return row.parentId ? { focus: row.parentId } : {};
-    case 'expandSiblings':
-      return {
-        expand: rows
-          .filter(
-            (other) =>
-              other.parentId === row.parentId &&
-              other.hasChildren &&
-              !other.expanded,
-          )
-          .map((other) => other.id),
-      };
-  }
 }
 
 /** Whether `id` is `ancestorId` or lies below it. */

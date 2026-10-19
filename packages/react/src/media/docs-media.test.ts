@@ -36,7 +36,7 @@ const CORE_MODULES = [
   'selection',
   'store',
   'touch',
-  'typeahead',
+  '../../tree/core/typeahead',
   'types',
   'zip',
 ];

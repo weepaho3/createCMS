@@ -263,8 +263,8 @@ own (`{ id, label, canExecute, confirm?, run }`, see `BulkAction` in
 
 | Part | Element | Description |
 | --- | --- | --- |
-| `Folder.Tree` (`FolderTreeProps`) | `ul[role=tree]` | The folder tree with lazy children: opening a node lists them (`aria-busy` meanwhile), the expanded set persists in `localStorage`. Up/Down, Right opens or enters, Left closes or goes up, Home/End, `*` opens the siblings, type-ahead; F2 or Enter renames and Space opens. `mode="pick"` with `value`, `onValueChange` and `onConfirm` chooses a target (the "Move to" dialog). |
-| `Folder.Item` (`FolderItemProps`) | `li[role=treeitem]` | One row: `aria-level`, `aria-setsize`, `aria-posinset`, `aria-expanded`, `aria-current`. Drop target (hovering 500 ms opens a closed node): the middle drops into the folder, the top and bottom edge next to it (into its parent). Draggable when the client has `moveFolder`. State: `data-current`, `data-expanded`, `data-loading`, `data-picked`, `data-renaming`, `data-drop-over`, `data-drop-position` (`before`, `after`, `inside`). |
+| `Folder.Tree` (`FolderTreeProps`) | `div[role=tree]` | The folders as a [`Tree.Root`](/docs/reference/react-tree) with lazy children: opening a node lists them (`aria-busy` meanwhile), the expanded set persists in `localStorage`. Keys and type-ahead as in `Tree.Root`; F2 or Enter renames and Space opens. Assets, folders and OS files drop onto it by the tree's drop rules (unordered: the receiving folder and its visible subtree are marked, empty space drops into the root); `data-mode`, `data-drop-target` and the other `Tree.Root` state. `mode="pick"` with `value`, `onValueChange` and `onConfirm` chooses a target (the "Move to" dialog) and turns dropping off. |
+| `Folder.Item` (`FolderItemProps`) | `div[role=treeitem]` | One `Tree.Item` row plus `aria-current` and `aria-busy`. A click opens (or picks), a double click renames. Draggable when the client has `moveFolder`. State: the `Tree.Item` state (`data-drop-target`, `data-drop-within`, `data-drop-blocked`, `data-drop-flash`, ...) plus `data-current`, `data-loading`, `data-picked`, `data-renaming`. |
 | `Folder.Toggle` (`FolderToggleProps`) | `span` | The decorative disclosure; a click toggles. |
 | `Folder.Rename` (`FolderRenameProps`) | `input` | The inline rename field while the item is renamed. |
 | `Folder.Create` (`FolderCreateProps`) | `input` | Creates a folder inline: prefilled and selected "New folder", Enter creates, Escape cancels, `onDone(folder)`; announces "Folder created: name". |
@@ -590,17 +590,19 @@ Items carry their asset ids natively as `application/x-createcms-asset+json`
 `text/uri-list` and `text/plain` with public URLs and, for one public asset,
 Chrome's `DownloadURL` (drag to the desktop). A drag carries the selection
 when the dragged item is part of it, else that item alone; several items get
-a drag image with their count (`move.dragCount`). Folder tiles, tree items and
-crumbs (the open one included) are drop targets: `useFolderDrop(folderId,
-options)` gives any element that behaviour (`FolderDropOptions`: `onDwell`
-after `DROP_DWELL_MS`, `files`, `intake`, `disabled`, `edges`;
-`FolderDropState`: `over`, `kind`, `flash` for `DROP_FLASH_MS`, `position`).
-With `edges: { parentId }` the top and bottom quarter of the element drop
-next to the folder, into `parentId`, as in a file tree (`position` `before`
-or `after`, else `inside`); tree items use it, and the tree itself takes
-drops outside its rows into the root. Invalid targets (the assets' own folder, a folder into
-itself or a descendant) show no indicator. `folderDragProps(folderId)` makes
-an element a folder drag source (`FOLDER_DRAG_TYPE`), and
+a drag image with their count (`move.dragCount`). Folder tiles, the tree and
+crumbs (the open one included) are drop targets. `useFolderDropRules(options)`
+returns the shared `FolderDropRules`: `kindOf(types)` (a `FolderDropKind`:
+`asset`, `folder` or `files`), `allows(kind, folderId)` and
+`perform(event, kind, folderId)`. Assets cannot drop into their own folder, a
+folder not into itself, a descendant or its current parent.
+`useFolderDrop(folderId, options)` makes any element a target by those rules
+(`FolderDropOptions`: `onDwell` after `DROP_DWELL_MS`, `files`, `intake`,
+`disabled`; `FolderDropState`: `over`, `kind`, `flash` for `DROP_FLASH_MS`);
+invalid targets show no indicator. `Folder.Tree` feeds the same rules to
+`Tree.Root`, where a refused target shows as `data-drop-blocked`.
+`folderDragProps(folderId)` makes an element a folder drag source
+(`FOLDER_DRAG_TYPE`), and
 `useDropOverlay(enabled)` tracks OS file drags over the window
 (`DropOverlayState`). Every drag has a non-dragging alternative: the "Move
 to" tree in pick mode, `Intake.Input` and `Intake.FolderInput`.

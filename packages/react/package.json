@@ -61,6 +61,14 @@
     "./media/next-loader": {
       "types": "./dist/media/next-loader.d.ts",
       "default": "./dist/media/next-loader.js"
+    },
+    "./tree": {
+      "types": "./dist/tree/index.d.ts",
+      "default": "./dist/tree/index.js"
+    },
+    "./tree/core": {
+      "types": "./dist/tree/core/index.d.ts",
+      "default": "./dist/tree/core/index.js"
     }
   },
   "publishConfig": {

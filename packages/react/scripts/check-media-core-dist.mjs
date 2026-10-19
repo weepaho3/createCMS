@@ -1,7 +1,8 @@
-// Asserts that the built `@createcms/react/media/core` entry stays React-free:
-// its whole import graph has no bare specifier (no runtime dependency, so no
-// `react`), no file carries a directive, and the entry loads in Node with
-// every bare import refused.
+// Asserts that the built `@createcms/react/media/core` and
+// `@createcms/react/tree/core` entries stay React-free: their whole import
+// graph has no bare specifier (no runtime dependency, so no `react`), no file
+// carries a directive, and each entry loads in Node with every bare import
+// refused.
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -11,21 +12,33 @@ const PACKAGE_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',
 );
-const ENTRY = path.join(PACKAGE_ROOT, 'dist', 'media', 'core', 'index.js');
+/** Each kernel entry and an export it must provide. */
+const ENTRIES = [
+  [
+    path.join(PACKAGE_ROOT, 'dist', 'media', 'core', 'index.js'),
+    'createMediaStore',
+  ],
+  [
+    path.join(PACKAGE_ROOT, 'dist', 'tree', 'core', 'index.js'),
+    'dropInstruction',
+  ],
+];
 const SPECIFIER =
   /(?:^|[\s;}])(?:import|export)\s[^'"]*?from\s*['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)|^\s*import\s*['"]([^'"]+)['"]/gm;
 const DIRECTIVE = /^\s*['"]use (?:client|server)['"]/;
 
-if (!fs.existsSync(ENTRY)) {
-  console.error(
-    `check-media-core-dist: ${ENTRY} is missing; run the build first.`,
-  );
-  process.exit(1);
+for (const [entry] of ENTRIES) {
+  if (!fs.existsSync(entry)) {
+    console.error(
+      `check-media-core-dist: ${entry} is missing; run the build first.`,
+    );
+    process.exit(1);
+  }
 }
 
 const problems = [];
 const seen = new Set();
-const queue = [ENTRY];
+const queue = ENTRIES.map(([entry]) => entry);
 while (queue.length > 0) {
   const file = queue.pop();
   if (seen.has(file)) continue;
@@ -55,21 +68,23 @@ export async function resolve(specifier, context, next) {
 const register = `data:text/javascript,${encodeURIComponent(
   `import { register } from 'node:module'; register(${JSON.stringify(hook)});`,
 )}`;
-const run = spawnSync(
-  process.execPath,
-  [
-    '--import',
-    register,
-    '--input-type=module',
-    '-e',
-    `const m = await import(${JSON.stringify(pathToFileURL(ENTRY).href)}); if (typeof m.createMediaStore !== 'function') throw new Error('createMediaStore missing');`,
-  ],
-  { encoding: 'utf8' },
-);
-if (run.status !== 0) {
-  problems.push(
-    `loading the entry without dependencies failed:\n${run.stderr}`,
+for (const [entry, name] of ENTRIES) {
+  const run = spawnSync(
+    process.execPath,
+    [
+      '--import',
+      register,
+      '--input-type=module',
+      '-e',
+      `const m = await import(${JSON.stringify(pathToFileURL(entry).href)}); if (typeof m[${JSON.stringify(name)}] !== 'function') throw new Error(${JSON.stringify(`${name} missing`)});`,
+    ],
+    { encoding: 'utf8' },
   );
+  if (run.status !== 0) {
+    problems.push(
+      `loading ${path.relative(PACKAGE_ROOT, entry)} without dependencies failed:\n${run.stderr}`,
+    );
+  }
 }
 
 if (problems.length > 0) {
@@ -79,5 +94,5 @@ if (problems.length > 0) {
   process.exit(1);
 }
 console.log(
-  `check-media-core-dist: ok (${seen.size} file(s), loads without dependencies)`,
+  `check-media-core-dist: ok (${seen.size} file(s), entries load without dependencies)`,
 );
