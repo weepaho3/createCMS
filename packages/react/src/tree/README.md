@@ -13,5 +13,5 @@ level; unordered trees mark the receiving node and its visible subtree
 (`data-drop-target`, `data-drop-within`). A refused target shows as
 `data-drop-blocked` and is never redirected.
 
-The media library's `Folder.Tree` is built on it. Reference:
+Reference:
 `apps/docs/content/docs/reference/react-tree.mdx`.

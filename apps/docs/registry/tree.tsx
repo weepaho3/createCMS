@@ -1,8 +1,9 @@
+// @registry tree@0.3.2
 'use client';
 
 // Styled wrappers for the Tree.* parts. The class names are exported as
-// well, so trees built on Tree.Item (Folder.Item, an editor outline) look the
-// same.
+// well, so trees built on Tree.Item (a folder tree, an editor outline) look
+// the same.
 
 import type { TreeRootProps, TreeRow } from '@createcms/react/tree';
 

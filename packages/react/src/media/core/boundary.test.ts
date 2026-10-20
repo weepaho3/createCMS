@@ -19,7 +19,7 @@ const TYPE_ONLY_ALLOWED = new Set([
   path.join(SRC_ROOT, 'editor', 'cms', 'types'),
 ]);
 
-/** The tree kernel: React-free too, held to the same rules below. */
+/** The tree kernel: React-free too, with its own boundary test. */
 const TREE_CORE = path.join(SRC_ROOT, 'tree', 'core');
 
 function within(root: string, target: string): boolean {
@@ -82,21 +82,15 @@ function importSpecifiers(file: string, text: string): Specifier[] {
   return specs;
 }
 
-function coreViolations(
-  file: string,
-  text: string,
-  root = CORE_ROOT,
-): string[] {
-  const rel = path.relative(root, file);
+function coreViolations(file: string, text: string): string[] {
+  const rel = path.relative(CORE_ROOT, file);
   const out: string[] = [];
   for (const spec of importSpecifiers(file, text)) {
     if (spec.text.startsWith('.')) {
       const target = path.resolve(path.dirname(file), spec.text);
-      if (within(root, target) || within(TREE_CORE, target)) continue;
+      if (within(CORE_ROOT, target) || within(TREE_CORE, target)) continue;
       if (spec.typeOnly && TYPE_ONLY_ALLOWED.has(target)) continue;
-      out.push(
-        `${rel}: "${spec.text}" leaves src/${path.relative(SRC_ROOT, root)}`,
-      );
+      out.push(`${rel}: "${spec.text}" leaves src/media/core`);
     } else if (FORBIDDEN_PACKAGES.some((re) => re.test(spec.text))) {
       out.push(`${rel}: imports "${spec.text}"`);
     } else if (!spec.typeOnly) {
@@ -113,13 +107,6 @@ describe('media/core import boundary', () => {
   it('imports no React, no other layer and no runtime dependency', () => {
     const problems = sourceFiles(CORE_ROOT).flatMap((file) =>
       coreViolations(file, fs.readFileSync(file, 'utf8')),
-    );
-    expect(problems).toEqual([]);
-  });
-
-  it('holds the tree kernel to the same rules', () => {
-    const problems = sourceFiles(TREE_CORE).flatMap((file) =>
-      coreViolations(file, fs.readFileSync(file, 'utf8'), TREE_CORE),
     );
     expect(problems).toEqual([]);
   });

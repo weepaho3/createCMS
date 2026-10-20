@@ -2,8 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { FolderTreeState } from './folders';
 
-import { treeNavigate } from '../../tree/core/rows';
-import { createTypeAhead, matchTypeAhead } from '../../tree/core/typeahead';
 import {
   batchPoliteness,
   createDebouncedAnnouncer,
@@ -155,20 +153,6 @@ describe('folder tree', () => {
     ]);
   });
 
-  it('follows the APG tree keys', () => {
-    const rows = folderTreeRows(tree());
-    expect(treeNavigate(rows, 'a', 'down')).toEqual({ focus: 'a1' });
-    expect(treeNavigate(rows, 'a', 'right')).toEqual({ focus: 'a1' });
-    expect(treeNavigate(rows, 'a', 'left')).toEqual({ collapse: 'a' });
-    expect(treeNavigate(rows, 'a2', 'left')).toEqual({ focus: 'a' });
-    expect(treeNavigate(rows, 'c', 'right')).toEqual({ expand: ['c'] });
-    expect(treeNavigate(rows, 'b', 'right')).toEqual({});
-    expect(treeNavigate(rows, 'b', 'expandSiblings')).toEqual({
-      expand: ['c'],
-    });
-    expect(treeNavigate(rows, 'b', 'end')).toEqual({ focus: 'c' });
-  });
-
   it('rejects moving a folder into itself or a descendant', () => {
     const { nodes } = tree();
     expect(moveRejection(nodes, 'a1', { folderId: 'a' })).toBe('into-itself');
@@ -219,19 +203,7 @@ describe('folder tree', () => {
   });
 });
 
-describe('type-ahead and registry', () => {
-  it('builds a buffer within 500 ms and matches labels', () => {
-    const typeAhead = createTypeAhead();
-    expect(typeAhead.push('h', 0)).toBe('h');
-    expect(typeAhead.push('a', 300)).toBe('ha');
-    expect(typeAhead.push('x', 1000)).toBe('x');
-    const labels = ['Hafen.jpg', 'Hamburg.jpg', 'house.png', 'Zebra.gif'];
-    expect(matchTypeAhead(labels, 0, 'ham')).toBe(1);
-    expect(matchTypeAhead(labels, 0, 'h')).toBe(1);
-    expect(matchTypeAhead(labels, 2, 'h')).toBe(0);
-    expect(matchTypeAhead(labels, 0, 'q')).toBe(-1);
-  });
-
+describe('registry', () => {
   it('registers, replaces by id and unregisters', () => {
     const registry = createRegistry<{ id: string; v: number }>();
     const calls: number[] = [];

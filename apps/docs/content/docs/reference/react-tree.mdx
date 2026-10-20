@@ -3,8 +3,8 @@ title: Tree
 description: A headless tree over flat rows with keyboard navigation, type-ahead and drop instructions (@createcms/react/tree).
 ---
 
-`@createcms/react/tree` is the tree the media library's folder tree is built
-on: an APG tree over flat rows, unstyled, with `data-*` state and a `render`
+`@createcms/react/tree` is a headless tree for folder trees and document
+outlines: an APG tree over flat rows, unstyled, with `data-*` state and a `render`
 prop on every part. It owns focus, keys and drop feedback; your data stays in
 your store, and the tree reports what should change. The pure logic lives in
 `@createcms/react/tree/core` (no React, no runtime dependency), so a
@@ -57,21 +57,21 @@ A tree renders `TreeRow`s: the visible nodes in display order, each with
 `id`, `parentId` (`null` on the root level), `level` (1-based), `setsize`,
 `posinset`, `hasChildren` and `expanded`. Rows are siblings in the DOM, not
 nested elements, which keeps one drop line positionable against them and
-lets a list virtualize. Build them from your nodes; the media library's
-`folderTreeRows` is one example.
+lets a list virtualize. Build them from your nodes in display order,
+skipping the children of collapsed nodes.
 
 ## Parts
 
 | Part | Element | Description |
 | --- | --- | --- |
-| `Tree.Root` (`TreeRootProps`) | `div[role=tree]` | Renders `children(row)` for every row, then `indicator` (usually `Tree.DropIndicator`). Up/Down move, Right opens or enters, Left closes or goes to the parent, Home/End, `*` opens the siblings; Right and Left swap under `dir="rtl"`. `getLabel` turns on type-ahead. Focus is a single tab stop: `defaultFocusId`, or controlled with `focusId` and `onFocusIdChange`. `onExpandedChange(id, expanded)` reports keys, toggles and drags resting on a closed node. Sets `--tree-indent` from `indent` (px, default 16). State (`TreeRootState`): `data-drop-target` while the root level receives a drag, `data-drag-over` while any accepted drag is over it. |
+| `Tree.Root` (`TreeRootProps`) | `div[role=tree]` | Renders `children(row)` for every row, then `indicator` (usually `Tree.DropIndicator`). Up/Down move, Right opens or enters, Left closes or goes to the parent, Home/End, `*` opens the siblings; Right and Left swap under `dir="rtl"`. `getLabel` turns on type-ahead. Focus is a single tab stop: `defaultFocusId`, or controlled with `focusId` and `onFocusIdChange`. `onExpandedChange(id, expanded)` reports keys, toggles and drags resting on a closed node. Virtualized lists pass `range` (`{ start, end }`, the rows to render; keys still move across every row) and `reveal(id)`, which brings a row into the range before it takes focus. Sets `--tree-indent` from `indent` (px, default 16). State (`TreeRootState`): `data-drop-target` while the root level receives a drag, `data-drag-over` while any accepted drag is over it. |
 | `Tree.Item` (`TreeItemProps`) | `div[role=treeitem]` | One row with `aria-level`, `aria-setsize`, `aria-posinset` and `aria-expanded` (rows with children). Sets `--tree-level` (0 on the root level). State (`TreeItemState`): `data-focused`, `data-expanded`, `data-level`, `data-drop-target` (the drag drops into this row), `data-drop-within` (inside the receiving node's subtree), `data-drop-blocked`, `data-drop-flash` (briefly after a drop into it, for `TREE_FLASH_MS`). |
 | `Tree.Toggle` (`TreeToggleProps`) | `span` | The decorative disclosure: a click expands or collapses without activating the row; nothing for rows without children. |
 | `Tree.DropIndicator` (`TreeDropIndicatorProps`) | `div` | The line of an ordered tree, absolutely positioned on the edge of the row it touches and indented by `calc(var(--tree-indent) * var(--tree-drop-level))`. State (`TreeDropIndicatorState`): `data-edge` (`top`, `bottom`), `data-level`, `data-blocked`. Stays `hidden` while no line is due; pass it as `Tree.Root`'s `indicator`. |
 
 Parts that render a tree row of their own call `useTreeItem(row)` for its
 `props` and `state` and wrap the element in `TreeRowContext` so
-`Tree.Toggle` finds the row (`Folder.Item` does this). `useTreeDrop()`
+`Tree.Toggle` finds the row. `useTreeDrop()`
 returns the active `TreeDropInstruction` for a custom indicator.
 
 ## Drag and drop
