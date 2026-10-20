@@ -22,6 +22,10 @@ import { createAutoScroller, scrollChain, type DragSession } from './dnd';
 import { createDragEngine, draggedIds, type DragEngine } from './drag-engine';
 import { activationFor } from './drag-geometry';
 import {
+  cloneBlockForPreview,
+  type BlockPreviewClone,
+} from './drag-preview-clone';
+import {
   contentPointFromClient,
   createInsertAdapters,
   resolveDropTarget,
@@ -1047,15 +1051,60 @@ type DragPreviewState = {
   /** Blocks the drag moves (a multi-selection shows as a stack). */
   count: number;
   kind: 'new' | 'move';
+  /** What the preview shows: a copy of the block, its preview image, or its label. */
+  content: 'block' | 'image' | 'label';
 };
 
 export type CanvasDragPreviewProps = React.ComponentPropsWithRef<'div'> & {
   render?: UseRenderComponentProps<'div', DragPreviewState>['render'];
+  /**
+   * `block` (default): a moved block shows as a scaled-down copy of itself
+   * (its label for very large blocks), a new block as its palette preview
+   * image when it has one. `label`: the label chip only.
+   */
+  preview?: 'block' | 'label';
 };
 
 const PREVIEW_OFFSET = { x: 16, y: 8 } as const;
 /** The preview never grows wider than this. */
 export const DRAG_PREVIEW_MAX_PX = 280;
+/** A block copy in the preview is cut off below this height. */
+export const DRAG_PREVIEW_MAX_HEIGHT_PX = 200;
+
+/** Shows a block copy at `scale` inside its fixed-size box. */
+function BlockCopy({
+  clone,
+  width,
+  height,
+  scale,
+}: {
+  clone: BlockPreviewClone;
+  width: number;
+  height: number;
+  scale: number;
+}) {
+  const ref = React.useCallback(
+    (box: HTMLDivElement | null) => {
+      if (!box) return;
+      const node = clone.node;
+      node.style.setProperty('position', 'absolute');
+      node.style.setProperty('top', '0');
+      node.style.setProperty('left', '0');
+      node.style.setProperty('transform', `scale(${scale})`);
+      node.style.setProperty('transform-origin', '0 0');
+      box.replaceChildren(node);
+      return () => node.remove();
+    },
+    [clone, scale],
+  );
+  return (
+    <div
+      ref={ref}
+      data-editor-drag-preview-block=""
+      style={{ position: 'relative', overflow: 'hidden', width, height }}
+    />
+  );
+}
 
 function applyPreviewTransform(
   node: HTMLElement,
@@ -1118,6 +1167,7 @@ export function CanvasDragPreview({
   render,
   style,
   children,
+  preview = 'block',
   ...rest
 }: CanvasDragPreviewProps) {
   const { pointer, dnd } = useCanvasSession('Canvas.DragPreview');
@@ -1151,19 +1201,33 @@ export function CanvasDragPreview({
     node.style.willChange = 'transform';
     applyPreviewTransform(node, snap(), fixed);
     let raf = 0;
+    let hostPoint: { x: number; y: number } | null = null;
     const onPointer = () => {
+      hostPoint = null;
+      schedule();
+    };
+    const schedule = () => {
       if (raf !== 0) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
         const current = nodeRef.current;
         if (isHTMLElement(current)) {
-          applyPreviewTransform(current, snap(), fixed);
+          applyPreviewTransform(current, hostPoint ?? snap(), fixed);
         }
       });
     };
     const unsubscribe = pointer.subscribe(onPointer);
+    // Fixed in the host page, the preview also follows the pointer where no
+    // canvas reports it (over a sidebar or the outline).
+    const hostDoc = fixed ? node.ownerDocument : null;
+    const onHostMove = (event: PointerEvent) => {
+      hostPoint = { x: event.clientX, y: event.clientY };
+      schedule();
+    };
+    hostDoc?.addEventListener('pointermove', onHostMove, true);
     return () => {
       unsubscribe();
+      hostDoc?.removeEventListener('pointermove', onHostMove, true);
       if (raf !== 0) cancelAnimationFrame(raf);
       node.style.willChange = '';
     };
@@ -1178,14 +1242,31 @@ export function CanvasDragPreview({
   const summary = React.useMemo(() => {
     if (!session) return null;
     if (session.kind === 'new') {
+      const component = ctx.schema.components[session.type];
       return {
-        label: ctx.schema.components[session.type]?.label ?? session.type,
+        label: component?.label ?? session.type,
         excerpt: '',
+        image: preview === 'block' ? component?.previewImageUrl : undefined,
       };
     }
     const node = ctx.store.getDoc().nodes[session.id];
-    return node ? describeBlock(ctx.schema, node) : null;
-  }, [session, ctx.schema, ctx.store]);
+    return node
+      ? { ...describeBlock(ctx.schema, node), image: undefined }
+      : null;
+  }, [session, ctx.schema, ctx.store, preview]);
+
+  // The moved block, copied once when the drag starts.
+  const [clone, setClone] = React.useState<BlockPreviewClone | null>(null);
+  const cloneFor = session?.kind === 'move' ? session.id : null;
+  React.useLayoutEffect(() => {
+    if (preview !== 'block' || cloneFor === null || !host) {
+      setClone(null);
+      return;
+    }
+    const el = blockElements(host, cloneFor)[0];
+    setClone(el ? cloneBlockForPreview(el) : null);
+  }, [preview, cloneFor, host]);
+  const copyScale = clone ? Math.min(1, DRAG_PREVIEW_MAX_PX / clone.width) : 1;
 
   const element = useRender<'div', DragPreviewState>({
     defaultTagName: 'div',
@@ -1200,8 +1281,9 @@ export function CanvasDragPreview({
         top: 0,
         zIndex: fixed ? 'var(--editor-z-drag-preview, 60)' : undefined,
         // As wide as the dragged block up to the cap, as tall as its
-        // summary: a block-sized box would cover the drop targets.
-        width,
+        // summary or its scaled copy: a block-sized box would cover the
+        // drop targets.
+        width: clone ? 'max-content' : width,
         overflow: 'hidden',
         pointerEvents: 'none',
         ...style,
@@ -1210,8 +1292,32 @@ export function CanvasDragPreview({
       // multi-selection.
       children:
         children ??
-        (summary ? (
+        (clone ? (
           <>
+            <BlockCopy
+              clone={clone}
+              scale={copyScale}
+              width={clone.width * copyScale}
+              height={Math.min(
+                clone.height * copyScale,
+                DRAG_PREVIEW_MAX_HEIGHT_PX,
+              )}
+            />
+            {count > 1 ? (
+              <span data-editor-drag-preview-count="">{count}</span>
+            ) : null}
+          </>
+        ) : summary ? (
+          <>
+            {summary.image ? (
+              <img
+                data-editor-drag-preview-image=""
+                src={summary.image}
+                alt=""
+                draggable={false}
+                style={{ display: 'block', width: '100%' }}
+              />
+            ) : null}
             <span data-editor-drag-preview-label="">{summary.label}</span>
             {summary.excerpt ? (
               <span data-editor-drag-preview-excerpt="">{summary.excerpt}</span>
@@ -1226,6 +1332,7 @@ export function CanvasDragPreview({
       editorDragPreview: true,
       count,
       kind: session?.kind ?? 'new',
+      content: clone ? 'block' : summary?.image ? 'image' : 'label',
     },
   });
   // Pointer snapshots are host-relative absolute coordinates, so the

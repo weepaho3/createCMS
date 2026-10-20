@@ -301,9 +301,15 @@ describe('drop feedback', () => {
         host.querySelector('[data-editor-drag-preview-count]')?.textContent,
       ).toBe('2');
     });
+    // The first dragged block shows as a copy of itself, with the count.
     expect(
-      host.querySelector('[data-editor-drag-preview-label]')?.textContent,
-    ).toBe('Cell');
+      host
+        .querySelector('[data-editor-drag-preview]')
+        ?.getAttribute('data-content'),
+    ).toBe('block');
+    expect(
+      host.querySelector('[data-editor-drag-preview-block]'),
+    ).not.toBeNull();
     await new Promise((resolve) => setTimeout(resolve, 0));
     observer.disconnect();
     expect(inserted).toEqual([]);

@@ -34,9 +34,37 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
+import { cn } from '@/lib/utils';
 
 import { PaletteItem } from './editor-canvas';
 import { useEditorChrome, blockTypeIcon } from './editor-chrome';
+
+/**
+ * A block's preview image from its definition (`previewImageUrl`). The
+ * label sits next to it, so the image is decorative.
+ */
+function BlockPreviewImage({
+  src,
+  className,
+}: {
+  src: string;
+  className?: string;
+}) {
+  return (
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      draggable={false}
+      data-slot="editor-palette-preview"
+      className={cn(
+        'border-border pointer-events-none rounded-sm border bg-white object-contain',
+        className,
+      )}
+    />
+  );
+}
 
 /**
  * The searchable block list: inserts into the selected block when it
@@ -90,7 +118,14 @@ function AddBlockList({
                     onAdded();
                   }}
                 >
-                  <Icon />
+                  {item.previewImageUrl ? (
+                    <BlockPreviewImage
+                      src={item.previewImageUrl}
+                      className="h-10 w-16 shrink-0"
+                    />
+                  ) : (
+                    <Icon />
+                  )}
                   {item.label}
                 </CommandItem>
               );
@@ -142,12 +177,23 @@ function EditorPalette({ className, ...props }: React.ComponentProps<'div'>) {
             <SidebarMenu>
               {group.items.map((item) => {
                 const Icon = blockTypeIcon(item.type);
+                const image = item.previewImageUrl;
                 return (
                   <SidebarMenuItem key={item.type}>
                     <SidebarMenuButton
                       tooltip={item.label}
                       render={<PaletteItem type={item.type} />}
+                      className={cn(
+                        image &&
+                          'h-auto flex-wrap py-2 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:flex-nowrap group-data-[collapsible=icon]:py-0',
+                      )}
                     >
+                      {image ? (
+                        <BlockPreviewImage
+                          src={image}
+                          className="h-16 w-full group-data-[collapsible=icon]:hidden"
+                        />
+                      ) : null}
                       <GripVerticalIcon className="text-muted-foreground" />
                       <Icon />
                       <span>{item.label}</span>

@@ -245,11 +245,18 @@ Each part is its own item and file (`editor-toolbar`, `editor-palette`, `editor-
 | ----------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------- |
 | `EditorProvider`  | `TooltipProvider` + `SidebarProvider` + `Canvas.Provider` + keyboard (⌘S, ⌘K, undo/redo)     | shadcn `sidebar`, `tooltip`                        |
 | `EditorToolbar`   | Icon buttons with `Tooltip` + `Kbd`, device `ToggleGroup` (canvas mode), save dirty-dot + spinner | `button`, `tooltip`, `kbd`, `toggle-group`, `separator` |
-| `EditorPalette`   | `SidebarGroup` of `Canvas.PaletteItem` rows with grip affordance                              | `sidebar`, `editor-canvas`                         |
+| `EditorPalette`   | `SidebarGroup` of `Canvas.PaletteItem` rows with grip affordance; a block with `previewImageUrl` shows its preview image above the label (also in the Add block dialog and the phone sheet) | `sidebar`, `editor-canvas`                         |
 | `EditorOutline`   | Virtualized tree (`useOutlineRows` + `@tanstack/react-virtual`): `Editor.Outline` with `range` and `reveal`, rows on `Editor.OutlineItem`, `Editor.OutlineToggle` chevron, type icon, slot rows, drop line and blocked targets; keyboard reaches every row | `sidebar`                                          |
 | `EditorInspector` | `Tabs` (Block / Page), empty state, sticky header with Duplicate / Delete                     | `tabs`, `editor-form`                              |
 | `EditorSurface`   | Scrolling canvas column, or a scrolling form column in `mode="form"`                          | none                                                |
 | `EditorShell`     | Default assembly. `mode="form"` hides the inspector and the device toggles.                    | all of the above                                   |
+
+Preview images are files you keep yourself, for example in `public/`, and
+reference by URL in the block definition (`previewImageUrl` on
+`defineBlock`, or on an editor schema component). Nothing is generated: a
+block without one shows its icon and label. The image sits next to the
+label, so it carries no alt text of its own. A wide crop of the block
+(about 3:1, 600 to 800 px wide) reads best.
 
 `useEditorChrome()` (from `editor-chrome`) reads device preview, layout, sheet, add-block dialog, and save-dialog state from `EditorProvider`. `useDeviceFrame()` returns the `frame` options for the chosen device (375, 768 or full width): pass them to `Canvas.Root surface="frame"` so media queries, sticky and fixed elements behave as on the site, as `editor-app` does.
 

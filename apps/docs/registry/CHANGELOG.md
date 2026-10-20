@@ -73,3 +73,8 @@ between the two `@createcms/react` tags, for example
   keeps an inner padding, so the drop line above the first row, its start
   dot and the rings of rows at the edge stay inside a scrolling parent
   that clips; the tree's drop line starts where the rows do.
+- `editor-palette`: blocks with a `previewImageUrl` show their preview
+  image in the palette, the Add block dialog and the phone sheet; blocks
+  without one keep the icon and label.
+- `editor-canvas`: the drag preview shows the dragged block as a small
+  copy of itself, or the palette preview image of a new block.

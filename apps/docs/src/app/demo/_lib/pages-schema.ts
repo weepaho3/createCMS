@@ -3,6 +3,8 @@ import { defineBlock, defineCollection } from '@createcms/core';
 const hero = defineBlock({
   label: 'Hero',
   group: 'Layout',
+  // Preview images are kept by hand next to the block (public/editor-previews).
+  previewImageUrl: '/editor-previews/hero.png',
   properties: {
     headline: { type: 'string', label: 'Headline', required: true },
     image: { type: 'image', label: 'Image' },
@@ -12,6 +14,7 @@ const hero = defineBlock({
 const featuresGrid = defineBlock({
   label: 'Features',
   group: 'Layout',
+  previewImageUrl: '/editor-previews/features.png',
   allowChildren: true,
   properties: {},
 });
@@ -37,6 +40,7 @@ const image = defineBlock({
 const richText = defineBlock({
   label: 'Rich text',
   group: 'Content',
+  previewImageUrl: '/editor-previews/rich-text.png',
   properties: {
     text: { type: 'richText', label: 'Text', required: true },
   },
