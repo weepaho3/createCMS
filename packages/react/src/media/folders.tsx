@@ -184,7 +184,7 @@ export function MediaFolder(props: MediaFolderProps) {
 
 // --- Folder.Tree / Folder.Item --------------------------------------------------------
 
-type TreeContextValue = {
+type FolderTreeContextValue = {
   /** `pick` (the Move dialog) selects a target instead of opening it. */
   mode: 'navigate' | 'pick';
   picked: string | null | undefined;
@@ -193,7 +193,9 @@ type TreeContextValue = {
   setRenaming: (id: string | null) => void;
 };
 
-const TreeContext = React.createContext<TreeContextValue | null>(null);
+const FolderTreeContext = React.createContext<FolderTreeContextValue | null>(
+  null,
+);
 
 const selectTree = (state: MediaStoreState) => state.folders;
 
@@ -301,7 +303,7 @@ export function FolderTree(props: FolderTreeProps) {
     }
   };
 
-  const contextValue = React.useMemo<TreeContextValue>(
+  const contextValue = React.useMemo<FolderTreeContextValue>(
     () => ({
       mode,
       picked: value,
@@ -334,7 +336,7 @@ export function FolderTree(props: FolderTreeProps) {
   );
 
   return (
-    <TreeContext.Provider value={contextValue}>
+    <FolderTreeContext.Provider value={contextValue}>
       <TreeRoot
         aria-label={messages.folder.tree}
         {...rest}
@@ -358,7 +360,7 @@ export function FolderTree(props: FolderTreeProps) {
       >
         {children}
       </TreeRoot>
-    </TreeContext.Provider>
+    </FolderTreeContext.Provider>
   );
 }
 
@@ -376,7 +378,7 @@ export type FolderItemProps = UseRenderComponentProps<
   row: FolderTreeRow;
 };
 
-const RowContext = React.createContext<FolderTreeRow | null>(null);
+const FolderRowContext = React.createContext<FolderTreeRow | null>(null);
 
 /**
  * One `Tree.Item` for a folder, with `aria-busy` while its children load
@@ -389,7 +391,7 @@ const RowContext = React.createContext<FolderTreeRow | null>(null);
 export function FolderItem(props: FolderItemProps) {
   const { row, render, children, ...rest } = props;
   const { store } = useMediaContext('Folder.Item');
-  const tree = React.useContext(TreeContext);
+  const tree = React.useContext(FolderTreeContext);
   if (!tree)
     throw new Error('Folder.Item must be used within a Folder.Tree component.');
   const currentId = useSelector(store, selectCurrentFolder, Object.is);
@@ -434,7 +436,9 @@ export function FolderItem(props: FolderItemProps) {
   });
   return (
     <TreeRowContext.Provider value={row}>
-      <RowContext.Provider value={row}>{element}</RowContext.Provider>
+      <FolderRowContext.Provider value={row}>
+        {element}
+      </FolderRowContext.Provider>
     </TreeRowContext.Provider>
   );
 }
@@ -448,7 +452,7 @@ export type FolderToggleProps = UseRenderComponentProps<
 export function FolderToggle(props: FolderToggleProps) {
   const { render, ...rest } = props;
   const { store } = useMediaContext('Folder.Toggle');
-  const row = React.useContext(RowContext);
+  const row = React.useContext(FolderRowContext);
   if (!row)
     throw new Error(
       'Folder.Toggle must be used within a Folder.Item component.',
@@ -578,8 +582,8 @@ export type FolderRenameProps = Omit<
 export function FolderRename(props: FolderRenameProps) {
   const { store, announce } = useMediaContext('Folder.Rename');
   const { messages, format } = useMediaMessages();
-  const tree = React.useContext(TreeContext);
-  const row = React.useContext(RowContext);
+  const tree = React.useContext(FolderTreeContext);
+  const row = React.useContext(FolderRowContext);
   if (!tree || !row)
     throw new Error(
       'Folder.Rename must be used within a Folder.Item component.',
