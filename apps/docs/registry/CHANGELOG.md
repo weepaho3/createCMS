@@ -69,3 +69,7 @@ between the two `@createcms/react` tags, for example
   `Editor.OutlineItem row`): slot rows, a drop line at the target level,
   the receiving row marked, refused targets shown as blocked, and a toggle
   that does not select.
+- `tree` and `editor-outline`: the tree (or the outline's scroll area)
+  keeps an inner padding, so the drop line above the first row, its start
+  dot and the rings of rows at the edge stay inside a scrolling parent
+  that clips; the tree's drop line starts where the rows do.

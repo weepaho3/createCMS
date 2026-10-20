@@ -13,9 +13,13 @@ import * as React from 'react';
 
 import { cn } from '@/lib/utils';
 
-/** The tree container; the root level receiving a drag is tinted. */
+/**
+ * The tree container; the root level receiving a drag is tinted. The
+ * padding keeps focus rings and the drop line's dot inside a scrolling
+ * parent that clips at the tree's edge.
+ */
 const treeClassName =
-  'flex flex-col text-sm outline-none data-drop-target:bg-primary/5 rounded-md';
+  'flex flex-col p-1.5 text-sm outline-none data-drop-target:bg-primary/5 rounded-md';
 
 /**
  * One row, indented by `--tree-level`. An unordered drop tints the
@@ -30,9 +34,12 @@ const treeItemClassName = cn(
   'data-drop-blocked:bg-destructive/10 data-drop-flash:bg-primary/20 aria-busy:opacity-60',
 );
 
-/** The drop line of an ordered tree, with a ring marking where it starts. */
+/**
+ * The drop line of an ordered tree, with a ring marking where it starts;
+ * inset by the tree's padding so it starts where the rows do.
+ */
 const treeDropIndicatorClassName = cn(
-  'bg-primary z-10 h-0.5 -translate-y-1/2 rounded-full',
+  'bg-primary z-10 ms-1.5 me-1.5 h-0.5 -translate-y-1/2 rounded-full',
   'before:border-primary before:bg-background before:absolute before:-top-[3px] before:-left-1 before:size-2 before:rounded-full before:border-2',
   'data-blocked:bg-destructive data-blocked:before:border-destructive',
 );

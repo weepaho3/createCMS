@@ -181,9 +181,11 @@ function EditorOutline({
   return (
     <SidebarGroup data-slot="editor-outline" className={className} {...props}>
       <SidebarGroupLabel>Outline</SidebarGroupLabel>
+      {/* The padding keeps the drop line above the first row and the
+          rings of the rows inside the scroll area, which clips. */}
       <SidebarGroupContent
         ref={scrollRef}
-        className={cn('max-h-[50vh] overflow-y-auto', scrollClassName)}
+        className={cn('max-h-[50vh] overflow-y-auto p-1', scrollClassName)}
       >
         <Editor.Outline
           rows={rows}
