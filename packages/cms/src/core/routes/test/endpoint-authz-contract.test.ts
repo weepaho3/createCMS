@@ -218,6 +218,7 @@ const EXPECTED: Record<string, Record<string, Expected>> = {
   admin: {
     runPruning: { permissionResource: 'admin', operation: 'delete' },
     runScheduled: { permissionResource: 'admin', operation: 'create' },
+    migrateRichText: { permissionResource: 'admin', operation: 'update' },
     reindexSearch: { permissionResource: 'admin', operation: 'create' },
   },
 
