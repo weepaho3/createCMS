@@ -14,6 +14,7 @@ import {
   inEdgeBand,
   rectContains,
 } from './drag-geometry';
+import { anchorsAt } from './hit';
 import { flowIsHorizontal, resolveInsertAt, type InsertTarget } from './insert';
 
 export type InsertAdapters = {
@@ -99,8 +100,10 @@ export function createInsertAdapters(
       x: x - host.scrollLeft + box.left,
       y: y - host.scrollTop + box.top,
     };
-    const hits = host.ownerDocument.elementsFromPoint?.(client.x, client.y);
-    if (!hits) return null;
+    const page = host.ownerDocument.elementsFromPoint?.(client.x, client.y);
+    if (!page) return null;
+    // Locked content is inert and missing from `elementsFromPoint`.
+    const hits = [...anchorsAt(host, client.x, client.y), ...page];
     const point = { x, y };
     const doc = host.ownerDocument;
     // The page area of a frame surface below or beside the content is the

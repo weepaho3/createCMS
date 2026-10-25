@@ -13,6 +13,7 @@ import { computedStyleOf, isHTMLElement } from '../dom';
 import { frameClickAnchor } from '../preview/frame-anchor';
 import { fieldElements, blockElements, isInsideReadonly } from './anchors';
 import { useCanvasContext } from './context';
+import { contentTargetOf } from './hit';
 import { useInlineRichTextSession } from './inline-rich-text';
 import {
   applyTextEdit,
@@ -301,7 +302,7 @@ export function CanvasInlineText({
     if (!host) return;
     const onClick = (event: Event) => {
       if (canvas.interactive !== 'edit' || canvas.dragging) return;
-      const target = event.target;
+      const target = contentTargetOf(event, host);
       if (!isElement(target)) return;
       if (isInsideReadonly(target, host)) return;
 
@@ -331,7 +332,7 @@ export function CanvasInlineText({
         }
       }
 
-      const anchor = frameClickAnchor(event.target);
+      const anchor = frameClickAnchor(target);
       if (!anchor?.key) return;
 
       const field = fieldOf(

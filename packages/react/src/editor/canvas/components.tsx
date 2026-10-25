@@ -25,7 +25,9 @@ import { CanvasDndEffects } from './dnd-parts';
 import { createEditCache, type EditCache } from './edit';
 import { bindFileDrop, type CanvasFileDrop } from './file-drop';
 import { CanvasFrameShell } from './frame/frame-shell';
+import { CONTENT_ATTR } from './hit';
 import { createInlineRichTextStore } from './inline-rich-text';
+import { fieldOf, isInPlaceField } from './inline-text';
 import { handleCanvasClick, handleCanvasPointerOver } from './interact';
 import { createMeasurer } from './measurer';
 import { type PointerStore } from './pointer';
@@ -119,6 +121,20 @@ export function CanvasRoot({
   const ctx = useEditorContext('Canvas.Root');
   const rootId = useDocSelector((s) => s.rootId);
   const editing = useSessionSelector((s) => s.editing !== null);
+  // In-place editors (`useEditableField`, inline rich text) need real focus
+  // inside the content; the glass edits in the overlay and keeps the lock.
+  const editingInPlace = useSessionSelector((s) => {
+    if (s.editing === null) return false;
+    const field = fieldOf(
+      ctx.schema,
+      ctx.store.getDoc().nodes,
+      s.editing.blockId,
+      s.editing.key,
+    );
+    return (
+      field !== null && (field.type === 'richText' || isInPlaceField(field))
+    );
+  });
 
   const componentsRef = React.useRef(components);
   const resolveRef = React.useRef(resolve);
@@ -253,8 +269,27 @@ export function CanvasRoot({
       selectedAtDownRef.current =
         storeRef.current.getSession().selection[0] ?? null;
     };
+    // Locked content is inert, so moving between blocks fires no
+    // `pointerover`: hover follows the hit test once per frame instead.
+    let hoverFrame = 0;
+    let lastMove: PointerEvent | null = null;
+    const view = host.ownerDocument.defaultView;
+    const hoverFromMove = () => {
+      hoverFrame = 0;
+      const move = lastMove;
+      lastMove = null;
+      if (!move || move.target !== host) return;
+      const next = handleCanvasPointerOver(move, host, interactiveRef.current);
+      if (next !== undefined) hoverNow(next);
+    };
     const onPointerMove = (event: Event) => {
-      pointerStore.setFromEvent(event as PointerEvent, host);
+      const move = event as PointerEvent;
+      pointerStore.setFromEvent(move, host);
+      if (move.pointerType === 'touch' || move.target !== host) return;
+      lastMove = move;
+      if (hoverFrame === 0 && view) {
+        hoverFrame = view.requestAnimationFrame(hoverFromMove);
+      }
     };
     const onPointerLeave = () => {
       if (sessionRef.current.dnd.getSession()) return;
@@ -268,6 +303,7 @@ export function CanvasRoot({
     host.addEventListener('pointerleave', onPointerLeave);
     return () => {
       clearTimeout(leaveTimer);
+      if (hoverFrame !== 0) view?.cancelAnimationFrame(hoverFrame);
       host.removeEventListener('pointerdown', onPointerDown, true);
       host.removeEventListener('click', onClick, true);
       host.removeEventListener('pointerover', onPointerOver);
@@ -469,9 +505,15 @@ export function CanvasRoot({
       ref: framed ? setHost : composeRefs(outerRef, setHost),
       children: (
         <>
-          <CanvasRenderContext.Provider value={renderDeps}>
-            <BlockView id={rootId} />
-          </CanvasRenderContext.Provider>
+          <div
+            {...{ [CONTENT_ATTR]: '' }}
+            inert={!editingInPlace}
+            style={{ display: 'contents' }}
+          >
+            <CanvasRenderContext.Provider value={renderDeps}>
+              <BlockView id={rootId} />
+            </CanvasRenderContext.Provider>
+          </div>
           <CanvasDndEffects />
           {children}
         </>

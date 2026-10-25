@@ -9,7 +9,7 @@ import { defineEditorSchema } from '../core/schema';
 import { createEditorStore } from '../core/store';
 import { Editor } from '../index';
 import { Canvas, useEditableField } from './index';
-import { waitForLayout } from './test/harness';
+import { clickThrough, waitForLayout } from './test/harness';
 
 afterEach(cleanup);
 
@@ -218,14 +218,11 @@ describe('useEditableField', () => {
     await waitForLayout(title);
     expect(title.textContent).toBe('Glow');
     const before = title.getBoundingClientRect();
-    title.dispatchEvent(new PointerEvent('pointerenter'));
-    await act(async () => {
-      title.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
-    });
-    act(() => {
-      title.focus();
-    });
+    // The content is inert: a click lands on the canvas and the hit test
+    // finds the field, which then takes focus itself.
+    await clickThrough(title);
     expect(store.getSession().editing).toEqual({ blockId: 'x', key: 'title' });
+    expect(title.ownerDocument.activeElement).toBe(title);
     expect(host.querySelector('[data-editor-inline-text]')).toBeNull();
     const after = title.getBoundingClientRect();
     expect(after.width).toBe(before.width);

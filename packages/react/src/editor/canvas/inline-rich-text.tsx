@@ -11,6 +11,7 @@ import {
   isRichTextDoc,
   richTextSchemaOf,
 } from '../core/richtext/schema';
+import { fieldsOf } from '../core/schema';
 import { isHTMLElement } from '../dom';
 import {
   DefaultRichTextToolbar,
@@ -200,23 +201,22 @@ export function useInlineRichTextSession(
     if (canvas.dragging && blockId !== null) store.setEditing(null);
   }, [canvas.dragging, blockId, store]);
 
-  // Hovering a rich text field starts loading a lazy editor.
+  // Hovering a block with a rich text field starts loading a lazy editor.
   React.useEffect(() => {
-    const host = canvas.host;
     const preload = (richText as { preload?: () => Promise<unknown> } | null)
       ?.preload;
-    if (!host || !preload) return;
-    const onOver = (event: Event) => {
-      const target = event.target;
-      if (!isHTMLElement(target) || !target.closest('[data-editor-field]')) {
-        return;
-      }
+    if (!preload) return;
+    const unsubscribe = store.subscribeEphemeral(() => {
+      const hovered = store.getEphemeral().hoverId;
+      const type = hovered ? store.getDoc().nodes[hovered]?.type : undefined;
+      if (!type) return;
+      const fields = Object.values(fieldsOf(store.schema, type));
+      if (!fields.some((spec) => spec.type === 'richText')) return;
       void preload().catch(() => {});
-      host.removeEventListener('pointerover', onOver);
-    };
-    host.addEventListener('pointerover', onOver);
-    return () => host.removeEventListener('pointerover', onOver);
-  }, [canvas.host, richText]);
+      unsubscribe();
+    });
+    return unsubscribe;
+  }, [store, richText]);
 
   // A value changed elsewhere (undo, a remote edit) replaces the content.
   React.useEffect(() => {

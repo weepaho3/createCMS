@@ -32,8 +32,10 @@ const STRIP_ATTRS = [
   'inert',
 ] as const;
 
+/** The rendered blocks inside the canvas's content wrapper, without anchors. */
 function strippedHtml(host: Element): string {
-  const clone = host.cloneNode(true) as Element;
+  const content = host.querySelector('[data-editor-content]') ?? host;
+  const clone = content.cloneNode(true) as Element;
   for (const el of [clone, ...clone.querySelectorAll('*')]) {
     for (const attr of STRIP_ATTRS) el.removeAttribute(attr);
   }

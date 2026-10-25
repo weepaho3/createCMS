@@ -31,6 +31,23 @@ re-exports of the old form.
 
 ### Unreleased
 
+- **Canvas content is inert.** `Canvas.Root` renders its blocks inside a
+  `display: contents` wrapper with `data-editor-content` and `inert`, on
+  both surfaces. Links, forms, inputs, buttons and embeds inside blocks no
+  longer receive clicks, focus or keys, and pointer events on blocks land
+  on the canvas element (`event.target` is no longer the block element);
+  the canvas resolves blocks and fields from their measured boxes. The
+  lock lifts while `useEditableField` or inline rich text edits in place.
+  `useEditableField` no longer turns editable on hover: a click starts the
+  session and focuses the element. Rich text preloads on hovering a block
+  with a rich text field instead of the field itself.
+  → **Migration:** listeners on the canvas that read `event.target` to find
+  a block use the canvas hit test instead (or `Canvas` parts, which do);
+  CSS that reaches blocks with a child combinator from the canvas element
+  accounts for the wrapper (`.canvas > [data-editor-content] > section`);
+  tests click blocks through the canvas element at the block's position,
+  because browsers and Playwright treat inert elements as not clickable.
+
 - **`Editor.Outline` renders flat rows on `@createcms/react/tree`.**
   `Editor.OutlineItem` takes `row` (from `Editor.Outline`'s `children`
   callback) instead of `blockId` and no longer nests rows in the DOM;

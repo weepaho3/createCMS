@@ -150,3 +150,25 @@ export function pointerDrag(target: EventTarget, from: Point, to: Point): void {
   dispatchPointer(target, 'pointermove', to);
   dispatchPointer(target, 'pointerup', to);
 }
+
+/**
+ * Clicks the canvas where `el` is. Canvas content is inert, so Playwright
+ * cannot click it directly; a real click lands on the canvas element and
+ * the canvas hit test resolves the block or field under the pointer.
+ */
+export async function clickThrough(
+  el: Element,
+  options: { offsetX?: number; offsetY?: number } = {},
+): Promise<void> {
+  const { userEvent } = await import('vitest/browser');
+  const canvas = el.closest('[data-editor-content]')?.parentElement;
+  if (!canvas) throw new Error('clickThrough: element is not canvas content');
+  const box = canvas.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  await userEvent.click(canvas, {
+    position: {
+      x: r.left - box.left + (options.offsetX ?? r.width / 2),
+      y: r.top - box.top + (options.offsetY ?? r.height / 2),
+    },
+  });
+}

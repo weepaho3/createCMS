@@ -4,7 +4,7 @@ import { EditorContext } from '../context';
 import { fieldsOf } from '../core/schema';
 import { isHTMLElement } from '../dom';
 import { CanvasContext } from './context';
-import { stripPlaceholder } from './inline-text';
+import { caretRangeAtPoint, stripPlaceholder } from './inline-text';
 import {
   bindPlainText,
   normalizePlainText,
@@ -50,8 +50,9 @@ const isModKey = (event: KeyboardEvent) => event.metaKey || event.ctrlKey;
 /**
  * In-place plain-text editing of a component's own element, for text the
  * glass cannot copy (gradients with `background-clip: text`, balanced
- * wrapping, columns, transforms). The element turns editable on hover or
- * focus (never during a drag); React leaves its text alone while the hook
+ * wrapping, columns, transforms). A click on the element starts the
+ * session: it turns editable and takes focus with the caret at the click
+ * point (never during a drag); React leaves its text alone while the hook
  * owns it; edits commit as `string` props with the glass's rules (line
  * breaks, `maxLength`, paste, IME). Set the field's `inline: 'in-place'` so
  * the glass skips it.
@@ -153,6 +154,28 @@ export function useEditableField(blockId: string, key: string): EditableField {
   React.useEffect(() => {
     if (dragging && editing) el?.blur();
   }, [dragging, editing, el]);
+
+  // Locked canvas content takes no clicks: click-to-edit starts the session
+  // and the element takes focus here, with the caret at the click point.
+  const caretRef = canvas?.inlineCaret ?? null;
+  React.useLayoutEffect(() => {
+    if (!active || !editing || dragging || !el) return;
+    const doc = el.ownerDocument;
+    if (doc.activeElement === el) return;
+    el.focus({ preventScroll: true });
+    const point = caretRef?.current ?? null;
+    if (caretRef) caretRef.current = null;
+    const range = point ? caretRangeAtPoint(doc, point.x, point.y) : null;
+    const selection = doc.getSelection();
+    if (!selection) return;
+    if (range && el.contains(range.startContainer)) {
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } else {
+      selection.selectAllChildren(el);
+      selection.collapseToEnd();
+    }
+  }, [active, editing, dragging, el, caretRef]);
 
   const ref = React.useCallback((node: HTMLElement | null) => {
     setEl(isHTMLElement(node) ? node : null);

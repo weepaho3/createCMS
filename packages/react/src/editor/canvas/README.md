@@ -76,6 +76,23 @@ a preview of a reusable section) in `Canvas.ReadonlySubtree`: it is `inert`
 and `display: contents`, and anchors inside it are skipped by measurement,
 selection, rings and drop targets.
 
+Rendered blocks are locked: they sit in a `display: contents` wrapper
+marked `data-editor-content` that is `inert`, so links do not navigate,
+forms do not submit, inputs, buttons and embeds take no focus or clicks,
+and Tab skips them. Pointer input lands on the canvas element instead, and
+the canvas resolves the block, field or slot under the pointer from their
+measured boxes (a `display: contents` anchor spans its children); hover,
+selection, the context menu, drop targets and click-to-edit all use that
+hit test. The lock lifts only while an in-place editor runs
+(`useEditableField`, inline rich text), which needs real focus in the
+content; the click intercept for links, submit buttons and forms stays on
+as a second layer. There is no switch to use blocks interactively in the
+editor: try them in a regular preview of the rendered content. A selector
+that reaches blocks with a child combinator from the canvas element
+(`.canvas > section`) has to account for the wrapper. Blocks with side
+effects (autoplay, timers, fetching on mount) check `edit.active`, which is
+`true` in the editor.
+
 The canvas host needs a positioning context (`position: relative` or
 similar) so `Canvas.Overlay`'s `absolute; inset: 0` covers the surface.
 Overlay portals into the host. Overlay is `pointer-events: none` and is not
@@ -90,8 +107,8 @@ point and the formatting kept; the block keeps rendering the value it
 started from, so the editor owns that element until the session ends.
 Edits write the field live (one undo step per typing run), undo and redo
 inside the editor run the store's history, Escape or moving the focus
-elsewhere ends the session, a drag ends it, and hovering a field starts
-loading a `lazyRichTextAdapter`. Give rich text fields a block element as
+elsewhere ends the session, a drag ends it, and hovering a block with a
+rich text field starts loading a `lazyRichTextAdapter`. Give rich text fields a block element as
 their anchor (`div`, `section`): the editor renders paragraphs inside it.
 `Canvas.InlineRichTextToolbar` shows the formatting buttons of the running
 session (by default every format the field allows; `Editor.RichTextToolbar`

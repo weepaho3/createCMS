@@ -2,6 +2,7 @@ import type { SlotRef } from '../core/document';
 import type { EditorStore } from '../core/store';
 
 import { frameClickAnchor } from '../preview/frame-anchor';
+import { contentTargetOf } from './hit';
 
 type Interactive = 'edit' | 'select' | 'none';
 
@@ -23,7 +24,7 @@ export function handleCanvasClick(
   store: EditorStore,
   interactive: Interactive,
 ): void {
-  const target = event.target;
+  const target = contentTargetOf(event, host);
   if (!isElement(target)) return;
 
   const intercept = target.closest('a[href], button[type="submit"], form');
@@ -36,7 +37,7 @@ export function handleCanvasClick(
   const readonly = target.closest('[data-editor-readonly]');
   if (insideHost(host, readonly)) return;
 
-  const anchor = frameClickAnchor(event.target);
+  const anchor = frameClickAnchor(target);
   if (!anchor) return;
   const mouse = event as MouseEvent;
   if (mouse.shiftKey) {
@@ -134,7 +135,7 @@ export function handleCanvasPointerOver(
   interactive: Interactive,
 ): string | null | undefined {
   if (interactive === 'none') return undefined;
-  const target = event.target;
+  const target = contentTargetOf(event, host);
   if (!isElement(target)) return undefined;
 
   const readonly = target.closest('[data-editor-readonly]');

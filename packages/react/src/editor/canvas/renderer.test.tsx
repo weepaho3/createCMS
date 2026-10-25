@@ -62,8 +62,10 @@ const cardBlocks = { card: Card };
 describe('Canvas.Root renderer', () => {
   it('renders the root as a fragment of child blocks', () => {
     const { host } = renderCanvas();
+    const content = host.querySelector(':scope > [data-editor-content]')!;
+    expect([...host.children][0]).toBe(content);
     expect(
-      [...host.children].map((el) => el.getAttribute('data-editor-block')),
+      [...content.children].map((el) => el.getAttribute('data-editor-block')),
     ).toEqual(['h1', 'sec1']);
   });
 

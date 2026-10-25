@@ -8,6 +8,7 @@ import { useEditorContext } from '../context';
 import { isElement, isHTMLElement } from '../dom';
 import { useRovingFocus } from '../roving';
 import { useCanvasContext } from './context';
+import { anchorsAt, contentTargetOf } from './hit';
 
 /** The commands the default menu offers, in order. */
 export const CONTEXT_MENU_COMMANDS: readonly string[] = [
@@ -51,9 +52,9 @@ export type CanvasContextMenuProps = Omit<
 type Opened = { x: number; y: number; blockId: string; below: string | null };
 
 /** Block ids under a client point from front to back, outermost last. */
-function blocksAt(doc: Document, x: number, y: number): string[] {
+function blocksAt(host: Element, x: number, y: number): string[] {
   const out: string[] = [];
-  for (const el of doc.elementsFromPoint?.(x, y) ?? []) {
+  for (const el of anchorsAt(host, x, y)) {
     const id = el
       .closest('[data-editor-block]')
       ?.getAttribute('data-editor-block');
@@ -88,7 +89,7 @@ export function CanvasContextMenu({
     const host = canvas.host;
     if (!host || canvas.interactive === 'none') return;
     const onContextMenu = (event: MouseEvent) => {
-      const target = event.target;
+      const target = contentTargetOf(event, host);
       if (!isElement(target)) return;
       const blockId = target
         .closest('[data-editor-block]')
@@ -104,7 +105,7 @@ export function CanvasContextMenu({
         ancestors.add(up.id);
       }
       const below =
-        blocksAt(host.ownerDocument, event.clientX, event.clientY).find(
+        blocksAt(host, event.clientX, event.clientY).find(
           (id) => id !== blockId && !ancestors.has(id),
         ) ?? null;
       const active = host.ownerDocument.activeElement;
