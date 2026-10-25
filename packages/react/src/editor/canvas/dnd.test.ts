@@ -1,47 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { EditorNodes } from '../store';
+import type { EditorNodes } from '../core/store';
 
+import { flatNodes as nodesOf } from '../core/store/fixtures';
 import {
   adjustMoveIndex,
   blockIdAtPoint,
   createDndStore,
   DND_THRESHOLD_PX,
+  planMultiMove,
 } from './dnd';
 
 const rootId = 'root_1';
-
-function nodesOf(
-  entries: Record<
-    string,
-    {
-      type: string;
-      parentId: string | null;
-      childIds: string[];
-    }
-  >,
-): EditorNodes {
-  const out: Record<
-    string,
-    {
-      id: string;
-      type: string;
-      parentId: string | null;
-      childIds: string[];
-      properties: Record<string, unknown>;
-    }
-  > = {};
-  for (const [id, node] of Object.entries(entries)) {
-    out[id] = {
-      id,
-      type: node.type,
-      parentId: node.parentId,
-      childIds: [...node.childIds],
-      properties: {},
-    };
-  }
-  return out as EditorNodes;
-}
 
 function rect(x: number, y: number, width: number, height: number) {
   return { x, y, width, height };
@@ -55,8 +25,12 @@ describe('adjustMoveIndex same parent earlier to later', () => {
       b: { type: 'cell', parentId: rootId, childIds: [] },
       c: { type: 'cell', parentId: rootId, childIds: [] },
     });
-    expect(adjustMoveIndex(nodes, 'a', rootId, 2)).toBe(1);
-    expect(adjustMoveIndex(nodes, 'a', rootId, 3)).toBe(2);
+    expect(
+      adjustMoveIndex(nodes, 'a', { id: rootId, slot: 'children' }, 2),
+    ).toBe(1);
+    expect(
+      adjustMoveIndex(nodes, 'a', { id: rootId, slot: 'children' }, 3),
+    ).toBe(2);
   });
 });
 
@@ -68,8 +42,12 @@ describe('adjustMoveIndex same parent later to earlier', () => {
       b: { type: 'cell', parentId: rootId, childIds: [] },
       c: { type: 'cell', parentId: rootId, childIds: [] },
     });
-    expect(adjustMoveIndex(nodes, 'c', rootId, 0)).toBe(0);
-    expect(adjustMoveIndex(nodes, 'c', rootId, 1)).toBe(1);
+    expect(
+      adjustMoveIndex(nodes, 'c', { id: rootId, slot: 'children' }, 0),
+    ).toBe(0);
+    expect(
+      adjustMoveIndex(nodes, 'c', { id: rootId, slot: 'children' }, 1),
+    ).toBe(1);
   });
 });
 
@@ -82,7 +60,9 @@ describe('adjustMoveIndex cross parent', () => {
       x: { type: 'cell', parentId: 'sec', childIds: [] },
       y: { type: 'cell', parentId: 'sec', childIds: [] },
     });
-    expect(adjustMoveIndex(nodes, 'a', 'sec', 2)).toBe(2);
+    expect(
+      adjustMoveIndex(nodes, 'a', { id: 'sec', slot: 'children' }, 2),
+    ).toBe(2);
   });
 });
 
@@ -130,7 +110,7 @@ describe('dnd store threshold', () => {
   });
 
   it('uses the configured threshold constant', () => {
-    expect(DND_THRESHOLD_PX).toBe(4);
+    expect(DND_THRESHOLD_PX).toBe(5);
   });
 });
 
@@ -145,7 +125,7 @@ describe('subscribeSession does not fire on setDropTarget', () => {
     dnd.moveGesture({ x: 8, y: 0 }, { kind: 'move', id: 'a' });
     const afterStart = sessionListener.mock.calls.length;
     dnd.setDropTarget({
-      parentId: rootId,
+      parent: { id: rootId, slot: 'children' },
       index: 0,
       orientation: 'horizontal',
       variant: 'box',
@@ -157,5 +137,93 @@ describe('subscribeSession does not fire on setDropTarget', () => {
     expect(targetListener.mock.calls.length).toBeGreaterThan(afterStart);
     dnd.end();
     expect(sessionListener.mock.calls.length).toBe(afterStart + 1);
+  });
+});
+
+describe('planMultiMove', () => {
+  /** Applies store `move` semantics: leave the old place, insert at `index`. */
+  function apply(
+    slots: Record<string, string[]>,
+    target: string,
+    plan: Array<{ id: string; index: number }>,
+  ) {
+    const next = Object.fromEntries(
+      Object.entries(slots).map(([key, ids]) => [key, [...ids]]),
+    );
+    for (const step of plan) {
+      for (const ids of Object.values(next)) {
+        const at = ids.indexOf(step.id);
+        if (at >= 0) ids.splice(at, 1);
+      }
+      next[target]!.splice(step.index, 0, step.id);
+    }
+    return next;
+  }
+
+  function slotNodes(slots: Record<string, string[]>): EditorNodes {
+    const nodes: Record<string, unknown> = {
+      root: { id: 'root', type: 'root', props: {}, parent: null, slots },
+    };
+    for (const [slot, ids] of Object.entries(slots)) {
+      for (const id of ids) {
+        nodes[id] = {
+          id,
+          type: 'cell',
+          props: {},
+          parent: { id: 'root', slot },
+          slots: {},
+        };
+      }
+    }
+    return nodes as EditorNodes;
+  }
+
+  it('lands non-adjacent blocks next to each other in their order', () => {
+    const slots = { a: ['x1', 'x2', 'x3', 'x4', 'x5'] };
+    const plan = planMultiMove(
+      slotNodes(slots),
+      ['x1', 'x3', 'x5'],
+      { id: 'root', slot: 'a' },
+      4,
+    );
+    expect(apply(slots, 'a', plan).a).toEqual(['x2', 'x4', 'x1', 'x3', 'x5']);
+  });
+
+  it('property: any selection, any target keeps the others in order and the run contiguous', () => {
+    let seed = 7;
+    const rand = (n: number) => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed % n;
+    };
+    for (let round = 0; round < 300; round++) {
+      const all = Array.from({ length: 2 + rand(8) }, (_, i) => `n${i}`);
+      const split = rand(all.length + 1);
+      const slots = { a: all.slice(0, split), b: all.slice(split) };
+      const ids = all.filter(() => rand(3) === 0);
+      if (ids.length === 0) continue;
+      const target = rand(2) === 0 ? 'a' : 'b';
+      const index = rand(slots[target].length + 1);
+      const result = apply(
+        slots,
+        target,
+        planMultiMove(
+          slotNodes(slots),
+          ids,
+          { id: 'root', slot: target },
+          index,
+        ),
+      );
+      const run = result[target]!.filter((id) => ids.includes(id));
+      expect(run).toEqual(ids);
+      const start = result[target]!.indexOf(ids[0]!);
+      expect(result[target]!.slice(start, start + ids.length)).toEqual(ids);
+      const others = slots[target].filter((id) => !ids.includes(id));
+      expect(result[target]!.filter((id) => !ids.includes(id))).toEqual(others);
+      // The run sits where the pointer was among the others.
+      const before = slots[target]
+        .slice(0, index)
+        .filter((id) => !ids.includes(id)).length;
+      expect(start).toBe(before);
+    }
   });
 });

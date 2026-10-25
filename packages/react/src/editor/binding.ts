@@ -1,14 +1,13 @@
 import * as React from 'react';
 
-import type { EditorStore, EditorStoreState } from './store';
+import type {
+  DocState,
+  EditorStore,
+  EphemeralState,
+  SessionState,
+} from './core/store';
 
 import { useEditorContext } from './context';
-
-/** Selects a slice of the store; may also read memoised store facts (`store.isDirty()`). */
-export type EditorSelector<T> = (
-  state: EditorStoreState,
-  store: EditorStore,
-) => T;
 
 /**
  * Shallow structural equality: same reference, or plain objects/arrays whose
@@ -41,28 +40,30 @@ export function shallowEqual(a: unknown, b: unknown): boolean {
   return true;
 }
 
-type Memo<T> = {
-  state: EditorStoreState;
-  selector: EditorSelector<T>;
+type Memo<S, T> = {
+  state: S;
+  selector: (state: S, store: EditorStore) => T;
   selected: T;
 };
 
 /**
- * Subscribes a component to `selector(state, store)`. The snapshot is cached
- * per (state object, selector) and, when a recomputed value is `isEqual` to
- * the previous one, the previous reference is returned, so object/array
- * selectors never loop and the component re-renders only when its slice
- * changed. `store.getState()` returns a new object per change, so the cache
- * key is exact.
+ * Subscribes a component to `selector(getState(), store)` on one channel.
+ * The snapshot is cached per (state object, selector) and, when a
+ * recomputed value is `isEqual` to the previous one, the previous reference
+ * is returned, so object/array selectors never loop and the component
+ * re-renders only when its slice changed. Every channel hands out a new
+ * state object per change, so the cache key is exact.
  */
-export function useStoreSelector<T>(
+function useChannelSelector<S, T>(
   store: EditorStore,
-  selector: EditorSelector<T>,
-  isEqual: (a: T, b: T) => boolean = shallowEqual,
+  subscribe: (listener: () => void) => () => void,
+  getState: () => S,
+  selector: (state: S, store: EditorStore) => T,
+  isEqual: (a: T, b: T) => boolean,
 ): T {
-  const memo = React.useRef<Memo<T> | null>(null);
+  const memo = React.useRef<Memo<S, T> | null>(null);
   const getSnapshot = (): T => {
-    const state = store.getState();
+    const state = getState();
     const cached = memo.current;
     if (cached && cached.state === state && cached.selector === selector) {
       return cached.selected;
@@ -75,20 +76,86 @@ export function useStoreSelector<T>(
     memo.current = { state, selector, selected: next };
     return next;
   };
-  const subscribe = React.useCallback(
-    (listener: () => void) => store.subscribe(listener),
-    [store],
-  );
   return React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
-/** `useStoreSelector` against the store of the enclosing `Editor.Root`. */
-export function useEditorSelector<T>(
-  selector: EditorSelector<T>,
+/** Selects from the document scope; wakes only on document changes. */
+export type DocSelector<T> = (state: DocState, store: EditorStore) => T;
+/** Selects from the session scope (selection, focus, history, save). */
+export type SessionSelector<T> = (state: SessionState, store: EditorStore) => T;
+/** Selects from the ephemeral scope (hover). */
+export type EphemeralSelector<T> = (
+  state: EphemeralState,
+  store: EditorStore,
+) => T;
+
+export function useStoreDocSelector<T>(
+  store: EditorStore,
+  selector: DocSelector<T>,
+  isEqual: (a: T, b: T) => boolean = shallowEqual,
+): T {
+  return useChannelSelector(
+    store,
+    store.subscribeDoc,
+    store.getDoc,
+    selector,
+    isEqual,
+  );
+}
+
+export function useStoreSessionSelector<T>(
+  store: EditorStore,
+  selector: SessionSelector<T>,
+  isEqual: (a: T, b: T) => boolean = shallowEqual,
+): T {
+  return useChannelSelector(
+    store,
+    store.subscribeSession,
+    store.getSession,
+    selector,
+    isEqual,
+  );
+}
+
+export function useStoreEphemeralSelector<T>(
+  store: EditorStore,
+  selector: EphemeralSelector<T>,
+  isEqual: (a: T, b: T) => boolean = shallowEqual,
+): T {
+  return useChannelSelector(
+    store,
+    store.subscribeEphemeral,
+    store.getEphemeral,
+    selector,
+    isEqual,
+  );
+}
+
+/** A slice of the document scope of the enclosing `Editor.Root`. */
+export function useDocSelector<T>(
+  selector: DocSelector<T>,
   isEqual?: (a: T, b: T) => boolean,
 ): T {
-  const { store } = useEditorContext('useEditorSelector');
-  return useStoreSelector(store, selector, isEqual);
+  const { store } = useEditorContext('useDocSelector');
+  return useStoreDocSelector(store, selector, isEqual);
+}
+
+/** A slice of the session scope of the enclosing `Editor.Root`. */
+export function useSessionSelector<T>(
+  selector: SessionSelector<T>,
+  isEqual?: (a: T, b: T) => boolean,
+): T {
+  const { store } = useEditorContext('useSessionSelector');
+  return useStoreSessionSelector(store, selector, isEqual);
+}
+
+/** A slice of the ephemeral scope of the enclosing `Editor.Root`. */
+export function useEphemeralSelector<T>(
+  selector: EphemeralSelector<T>,
+  isEqual?: (a: T, b: T) => boolean,
+): T {
+  const { store } = useEditorContext('useEphemeralSelector');
+  return useStoreEphemeralSelector(store, selector, isEqual);
 }
 
 /** The store of the enclosing `Editor.Root` (imperative access, no subscription). */

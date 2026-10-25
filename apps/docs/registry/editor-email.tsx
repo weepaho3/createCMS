@@ -1,3 +1,4 @@
+// @registry editor-email@0.3.2
 'use client';
 
 import type { FramePreviewIssue } from '@createcms/react/editor';

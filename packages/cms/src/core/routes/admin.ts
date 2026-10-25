@@ -1,9 +1,11 @@
 import * as z from 'zod';
 
 import type { RevalidationRunner } from '../revalidation';
+import type { ParsedHtmlDocument } from '../rich-text/parse-html';
 import type { CMSProcedureContext, MediaConfig } from '../types';
 import type { CMSPlugin } from '../types/plugin';
 
+import { migrateRichText } from '../admin/migrate-rich-text';
 import { runPruningPass } from '../admin/pruning';
 import { runScheduledPass } from '../admin/scheduling';
 import { DEFAULT_BRANCH_NAME } from '../branch-policy';
@@ -130,6 +132,71 @@ export function createAdminEndpoints(
           },
           ctx.context.scope,
         );
+      },
+    ),
+
+    /**
+     * Converts stored HTML `richText` values of every block version (history included) to JSON, in batches; values already in JSON are skipped, so it is safe to run again.
+     * Needs `happy-dom` installed on the server to parse HTML. Run with `dryRun: true` first and read the report; rebuild the search index after the last batch (`reindexSearch`).
+     * @param dryRun Optional; if true, report what would change without writing (defaults to false).
+     * @param collection Optional; only roots of this collection.
+     * @param batchSize Optional; block versions per transaction (defaults to 500).
+     * @param maxBatches Optional; stop after this many batches and return `nextCursor` (defaults to 20).
+     * @param cursor Optional; the previous call's `nextCursor`, to continue.
+     * @returns The migration report: counts, lossy conversions with the dropped tags and attributes, failures, and `nextCursor` (`null` when done).
+     * @example
+     * const report = await cmsClient.admin.migrateRichText({ dryRun: true });
+     */
+    migrateRichText: createCMSEndpoint(
+      '/admin/migrateRichText',
+      {
+        method: 'POST',
+        body: z
+          .object({
+            dryRun: z.boolean().optional(),
+            collection: z.string().optional(),
+            batchSize: z.number().int().min(1).max(5000).optional(),
+            maxBatches: z.number().int().min(1).optional(),
+            cursor: z.string().nullable().optional(),
+          })
+          .optional(),
+        metadata: cmsMeta(
+          {
+            $Infer: {
+              body: {} as {
+                dryRun?: boolean;
+                collection?: string;
+                batchSize?: number;
+                maxBatches?: number;
+                cursor?: string | null;
+              },
+            },
+          },
+          { operation: 'update', ...ADMIN_META },
+        ),
+      },
+      async (ctx) => {
+        let happyDom: typeof import('happy-dom');
+        try {
+          // Server-only optional dependency: client bundles of this entry
+          // must not try to resolve it.
+          happyDom = await import(
+            /* webpackIgnore: true */ /* turbopackIgnore: true */ 'happy-dom'
+          );
+        } catch {
+          throw new CMSError('HTML_PARSER_UNAVAILABLE');
+        }
+        const window = new happyDom.Window();
+        const parser = new window.DOMParser();
+        return migrateRichText(db, cmsCtx.collections, {
+          dryRun: ctx.body?.dryRun,
+          collection: ctx.body?.collection,
+          batchSize: ctx.body?.batchSize,
+          maxBatches: ctx.body?.maxBatches ?? 20,
+          cursor: ctx.body?.cursor ?? null,
+          domParser: (html) =>
+            parser.parseFromString(html, 'text/html') as ParsedHtmlDocument,
+        });
       },
     ),
 

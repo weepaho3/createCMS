@@ -72,8 +72,10 @@ type EmailsClient = {
 };
 
 declare const unionClient: PagesClient | EmailsClient;
+declare const definition: import('@createcms/schema').CollectionDefinition;
 const unionOpts: UseCmsDocumentOptions = {
   client: unionClient,
+  definition,
   rootId: 'r',
   branchId: 'b',
 };
@@ -102,15 +104,13 @@ declare const missingBranch: MissingBranchClient;
 const badOpts: UseCmsDocumentOptions = {
   // @ts-expect-error - getBranch is required
   client: missingBranch,
+  definition,
   rootId: 'r',
   branchId: 'b',
 };
 void badOpts;
 
 declare const doc: import('./types').UseCmsDocumentResult;
-declare const onSave: (
-  tree: BlockTreeNode,
-  meta?: { message?: string },
-) => void | Promise<void>;
-const savePin: typeof onSave = doc.save;
-void savePin;
+// `doc.persistence` is what Editor.Root's `persistence` takes.
+const persistencePin: import('../core').PersistenceOptions = doc.persistence;
+void persistencePin;

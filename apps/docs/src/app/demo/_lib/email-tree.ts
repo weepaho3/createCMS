@@ -19,7 +19,20 @@ export const EMAIL_TREE: BlockTreeNode = {
       blockId: 'paragraph-1',
       type: 'paragraph',
       properties: {
-        text: '<p>This email is rendered with react-email and BlocksRenderer.</p>',
+        text: {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [
+                {
+                  type: 'text',
+                  text: 'This email is rendered with react-email and BlocksRenderer.',
+                },
+              ],
+            },
+          ],
+        },
       },
       children: [],
     },

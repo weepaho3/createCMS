@@ -1,77 +1,88 @@
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 
 import type { UseRenderComponentProps } from '../../use-render';
-import type { EditorStoreState } from '../store';
 import type { InsertTarget, InsertOrientation, InsertVariant } from './insert';
+import type { PreviewSurface } from './surface';
 
 import { composeRefs, useRender } from '../../use-render';
-import { useEditorSelector } from '../binding';
+import { describeBlock } from '../announcer';
+import { useDocSelector, useSessionSelector } from '../binding';
 import { useEditorContext } from '../context';
-import { placementOf } from '../hooks';
-import { canPlace } from '../schema';
+import { insertionPoints, type InsertionPoint } from '../core/insertion';
+import { isHTMLElement, isNode } from '../dom';
+import { useBlockActions } from '../hooks';
+import { useMessages } from '../messages';
+import { useRovingFocus } from '../roving';
+import { insertPointFor } from '../structure/insert-point';
+import { EditorMoveToDialog } from '../structure/move-to';
 import { blockElements, isInsideReadonly } from './anchors';
 import { CanvasContext, useCanvasContext } from './context';
+import { createAutoScroller, scrollChain, type DragSession } from './dnd';
+import { createDragEngine, draggedIds, type DragEngine } from './drag-engine';
+import { activationFor } from './drag-geometry';
 import {
-  adjustMoveIndex,
-  autoScrollAtClient,
-  findScrollParent,
-  type DragSession,
-} from './dnd';
+  cloneBlockForPreview,
+  type BlockPreviewClone,
+} from './drag-preview-clone';
 import {
   contentPointFromClient,
   createInsertAdapters,
   resolveDropTarget,
 } from './insert-dom';
+import { targetFor } from './keyboard-drag';
+import { OverlayLayerContext } from './overlay';
 import { useCanvasSession, type CanvasSurfaceHandle } from './provider';
 import { OVERLAY_CHROME_INSET_PX, visibleIntersection } from './rect';
-import { useHostViewBox } from './rects';
+import { useHostViewBox, useMeasuredRect } from './rects';
 import { BlockToolbarContext } from './toolbar';
 
-const subscribeNoop = () => () => {};
-
-function focusBlock(host: HTMLElement, id: string): void {
-  const el = blockElements(host, id)[0];
-  if (el instanceof HTMLElement) {
-    el.focus({ preventScroll: true });
-  }
-}
+/** Drag sources own touch input and never select text or show a callout. */
+const HANDLE_STYLE = {
+  touchAction: 'none',
+  userSelect: 'none',
+  WebkitUserSelect: 'none',
+  WebkitTouchCallout: 'none',
+} as React.CSSProperties;
 
 function focusBlockInSurfaces(
   surfaces: ReadonlyArray<CanvasSurfaceHandle>,
   id: string,
 ): void {
   for (const surface of surfaces) {
-    if (blockElements(surface.host, id).length > 0) {
-      focusBlock(surface.host, id);
+    const el = blockElements(surface.host, id)[0];
+    if (isHTMLElement(el)) {
+      el.focus({ preventScroll: true });
       return;
     }
   }
 }
 
-function containsClientPoint(
-  el: HTMLElement,
-  client: { x: number; y: number },
-): boolean {
-  const rect = el.getBoundingClientRect();
+type Point = { x: number; y: number };
+
+/** The document an event target lives in (the target itself for a document). */
+function documentOf(target: EventTarget | null): Document | null {
+  if (!isNode(target)) return null;
   return (
-    client.x >= rect.left &&
-    client.x <= rect.right &&
-    client.y >= rect.top &&
-    client.y <= rect.bottom
+    target.ownerDocument ??
+    (target.nodeType === 9 ? (target as Document) : null)
   );
 }
 
-/** Editable surface under the pointer; the last registered match wins. */
-function surfaceAtClient(
+/** A client point of `doc` in host-page client coordinates. */
+function toPage(
   surfaces: ReadonlyArray<CanvasSurfaceHandle>,
-  client: { x: number; y: number },
-): CanvasSurfaceHandle | null {
-  for (let i = surfaces.length - 1; i >= 0; i--) {
-    const surface = surfaces[i]!;
-    if (surface.interactive !== 'edit') continue;
-    if (containsClientPoint(surface.host, client)) return surface;
+  doc: Document,
+  client: Point,
+): Point {
+  for (const entry of surfaces) {
+    if (entry.surface.kind !== 'frame' || entry.surface.document !== doc) {
+      continue;
+    }
+    const rect = entry.surface.toHost({ ...client, width: 0, height: 0 });
+    return { x: rect.x, y: rect.y };
   }
-  return null;
+  return client;
 }
 
 function isPrimaryPointer(event: React.PointerEvent | PointerEvent): boolean {
@@ -79,36 +90,9 @@ function isPrimaryPointer(event: React.PointerEvent | PointerEvent): boolean {
   return event.button === 0;
 }
 
-function computePaletteInsertTarget(
-  state: EditorStoreState,
-  userId: string,
-  type: string,
-  placement: ReturnType<typeof placementOf>,
-): {
-  parentId: string;
-  parentType: string | null;
-  index: number | undefined;
-} {
-  const selectedId = state.selection[userId]?.selected ?? null;
-  const selected = selectedId === null ? null : state.nodes[selectedId];
-  if (selected && canPlace(placement, type, selected.type)) {
-    return {
-      parentId: selected.id,
-      parentType: selected.type,
-      index: undefined,
-    };
-  }
-  if (selected && selected.parentId !== null) {
-    const parent = state.nodes[selected.parentId];
-    const at = parent ? parent.childIds.indexOf(selected.id) + 1 : undefined;
-    return {
-      parentId: selected.parentId,
-      parentType: parent?.type ?? null,
-      index: at,
-    };
-  }
-  return { parentId: state.rootId, parentType: 'root', index: undefined };
-}
+/** Controls a drag never starts from: they keep their own pointer behaviour. */
+const NO_DRAG =
+  'input, textarea, select, a[href], [contenteditable]:not([contenteditable="false"])';
 
 function useDropTargetSnapshot(): InsertTarget | null {
   const { dnd } = useCanvasSession('useDropTargetSnapshot');
@@ -128,49 +112,92 @@ function useDragSessionSnapshot(): DragSession | null {
   );
 }
 
+/** The drag engine of the enclosing canvas session. */
+export function useDragEngine(): DragEngine {
+  const canvasSession = useCanvasSession('useDragEngine');
+  const ctx = useEditorContext('useDragEngine');
+  return React.useMemo(
+    () =>
+      createDragEngine({
+        store: ctx.store,
+        schema: ctx.schema,
+        dnd: canvasSession.dnd,
+        pointer: canvasSession.pointer,
+        getSurfaces: canvasSession.getSurfaces,
+      }),
+    [ctx.store, ctx.schema, canvasSession],
+  );
+}
+
 export function useDndDropResolution(): void {
   const canvas = useCanvasContext('useDndDropResolution');
   const ctx = useEditorContext('useDndDropResolution');
-  const rootId = useEditorSelector((s) => s.rootId);
-  const nodes = useEditorSelector((s) => s.nodes);
+  const rootId = useDocSelector((s) => s.rootId);
   const dragging = canvas.dragging;
-  const { dnd, host, measurer, interactive } = canvas;
-  const placement = placementOf(ctx.schema);
-  const nodesRef = React.useRef(nodes);
-  nodesRef.current = nodes;
+  const { dnd, host, measurer, interactive, surface } = canvas;
+  const store = ctx.store;
+
+  // A remote change can remove the block being dragged: end the drag.
+  const announcer = ctx.announcer;
+  const sourceRemoved = ctx.messages.announce.dragSourceRemoved;
+  React.useEffect(() => {
+    if (!dnd) return;
+    return store.subscribeDoc(() => {
+      const session = dnd.getSession();
+      if (session?.kind !== 'move') return;
+      const nodes = store.getDoc().nodes;
+      const gone = (session.ids ?? [session.id]).some((id) => !(id in nodes));
+      if (!gone) return;
+      dnd.end();
+      announcer.announce(sourceRemoved);
+    });
+  }, [dnd, store, announcer, sourceRemoved]);
 
   React.useEffect(() => {
     if (!dragging || !dnd || !host || !measurer || interactive !== 'edit') {
       return;
     }
+    const view = host.ownerDocument.defaultView;
+    if (!view) return;
+    const scroller = createAutoScroller();
     let raf = 0;
-    const tick = () => {
+    const tick = (now: number) => {
       const session = dnd.getSession();
-      const client = dnd.getClientPoint();
+      const page = dnd.getClientPoint();
+      const client = page && surface ? surface.fromHost(page) : page;
       // Several Roots can share one session; only the hovered canvas may
-      // auto-scroll.
-      if (session && client && containsClientPoint(host, client)) {
-        const scroller = findScrollParent(host) ?? host;
-        const scrolled = autoScrollAtClient(scroller, client);
+      // auto-scroll, innermost scroller first.
+      // In a frame the whole frame viewport is this canvas.
+      const inFrame = surface?.kind === 'frame';
+      const rect = inFrame
+        ? { left: 0, top: 0, right: view.innerWidth, bottom: view.innerHeight }
+        : host.getBoundingClientRect();
+      const over =
+        client !== null &&
+        client.x >= rect.left &&
+        client.x <= rect.right &&
+        client.y >= rect.top &&
+        client.y <= rect.bottom;
+      if (session && client && page && over) {
+        const scrolled = scroller.step(
+          scrollChain(host, client, inFrame ? page : null),
+          now,
+        );
         if (scrolled) {
-          const adapters = createInsertAdapters(
-            host,
-            measurer,
-            nodesRef.current,
-            rootId,
-          );
+          // The pointer did not move, the content did: resolve again.
+          const nodes = store.getDoc().nodes;
+          const adapters = createInsertAdapters(host, measurer, nodes, rootId, {
+            framePage: inFrame,
+          });
           const point = contentPointFromClient(host, client);
           canvas.pointer?.setFromEvent(
-            {
-              clientX: client.x,
-              clientY: client.y,
-            } as PointerEvent,
+            { clientX: client.x, clientY: client.y } as PointerEvent,
             host,
           );
           dnd.setDropTarget(
             resolveDropTarget(
-              nodesRef.current,
-              placement,
+              ctx.schema,
+              nodes,
               rootId,
               session,
               point.x,
@@ -179,12 +206,14 @@ export function useDndDropResolution(): void {
             ),
           );
         }
+      } else {
+        scroller.reset();
       }
-      raf = requestAnimationFrame(tick);
+      raf = view.requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
+    raf = view.requestAnimationFrame(tick);
     return () => {
-      cancelAnimationFrame(raf);
+      view.cancelAnimationFrame(raf);
     };
   }, [
     dragging,
@@ -193,107 +222,43 @@ export function useDndDropResolution(): void {
     measurer,
     interactive,
     rootId,
-    placement,
+    ctx.schema,
     canvas.pointer,
+    surface,
+    store,
   ]);
 }
 
 type GestureOptions = {
-  session: DragSession;
+  /** The session a drag of this source starts (read when the drag starts). */
+  session: () => DragSession;
   blockId?: string;
+  /** A drag handle (a mouse drags on the first movement there). */
+  handle?: boolean;
   onGestureEnd?: (dragged: boolean) => void;
 };
 
-function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
+function usePointerGesture({
+  session,
+  blockId,
+  handle: isHandle = false,
+  onGestureEnd,
+}: GestureOptions) {
   const canvasSession = useCanvasSession('usePointerGesture');
   const ctx = useEditorContext('usePointerGesture');
-  const rootId = useEditorSelector((s) => s.rootId);
-  const nodes = useEditorSelector((s) => s.nodes);
-  const { dnd, pointer } = canvasSession;
-  const placement = placementOf(ctx.schema);
+  const { dnd } = canvasSession;
+  const engine = useDragEngine();
   const capturedRef = React.useRef(false);
-  const nodesRef = React.useRef(nodes);
-  nodesRef.current = nodes;
-  // Surface that produced the current drop target; the drop commits and
-  // focuses against that surface's host.
-  const lastSurfaceRef = React.useRef<CanvasSurfaceHandle | null>(null);
-
-  const resolveTarget = React.useCallback(
-    (client: { x: number; y: number }) => {
-      const surface = surfaceAtClient(canvasSession.getSurfaces(), client);
-      if (surface === null) {
-        dnd.setDropTarget(null);
-        return;
-      }
-      const { host, measurer } = surface;
-      const adapters = createInsertAdapters(
-        host,
-        measurer,
-        nodesRef.current,
-        rootId,
-      );
-      const point = contentPointFromClient(host, client);
-      pointer.setFromEvent(
-        { clientX: client.x, clientY: client.y } as PointerEvent,
-        host,
-      );
-      dnd.setDropTarget(
-        resolveDropTarget(
-          nodesRef.current,
-          placement,
-          rootId,
-          session,
-          point.x,
-          point.y,
-          adapters,
-        ),
-      );
-      lastSurfaceRef.current = surface;
-    },
-    [canvasSession, dnd, rootId, placement, pointer, session],
-  );
-
-  const commitDrop = React.useCallback(() => {
-    const target = dnd.getDropTarget();
-    const active = dnd.getSession();
-    if (!active || !target) {
-      dnd.end();
-      return;
-    }
-    const dropHost = lastSurfaceRef.current?.host ?? null;
-    if (active.kind === 'new') {
-      const id = ctx.store.add(active.type, {
-        parentId: target.parentId,
-        index: target.index,
-        properties: active.properties,
-      });
-      if (id) {
-        ctx.store.select(id);
-        if (dropHost) focusBlock(dropHost, id);
-      }
-    } else {
-      const fromParent = nodesRef.current[active.id]?.parentId;
-      const fromIndex = fromParent
-        ? (nodesRef.current[fromParent]?.childIds.indexOf(active.id) ?? -1)
-        : -1;
-      const adjusted = adjustMoveIndex(
-        nodesRef.current,
-        active.id,
-        target.parentId,
-        target.index,
-      );
-      if (!(fromParent === target.parentId && fromIndex === adjusted)) {
-        ctx.store.move(active.id, target.parentId, adjusted);
-        ctx.store.select(active.id);
-        if (dropHost) focusBlock(dropHost, active.id);
-      }
-    }
-    dnd.end();
-  }, [ctx.store, dnd]);
 
   const canStart = React.useCallback(
     (event: React.PointerEvent, handle: HTMLElement) => {
       if (!isPrimaryPointer(event)) return false;
+      const target = event.target as Element | null;
+      // Inputs, links and editable text keep their own pointer behaviour,
+      // and so does every other button inside the source.
+      if (target?.closest?.(NO_DRAG)) return false;
+      const button = target?.closest?.('button');
+      if (button && button !== handle) return false;
       const surfaces = canvasSession.getSurfaces();
       const containing =
         surfaces.find((surface) => surface.host.contains(handle)) ?? null;
@@ -309,14 +274,13 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
         // drop into.
         return false;
       }
-      if (session.kind === 'move') {
-        if (!blockId || blockId === rootId || !nodesRef.current[blockId]) {
-          return false;
-        }
+      if (blockId !== undefined) {
+        const { nodes, rootId } = ctx.store.getDoc();
+        if (blockId === rootId || !nodes[blockId]) return false;
       }
       return true;
     },
-    [canvasSession, session.kind, blockId, rootId],
+    [canvasSession, ctx.store, blockId],
   );
 
   const onPointerDown = React.useCallback(
@@ -329,6 +293,7 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
       const doc = handle.ownerDocument;
       const view = doc.defaultView;
       const pointerId = event.pointerId;
+      const activation = activationFor(event.pointerType, isHandle);
       capturedRef.current = false;
       try {
         handle.setPointerCapture(pointerId);
@@ -337,37 +302,80 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
         // capture is optional; document listeners still end the gesture
       }
       ctx.store.setEditing(null);
-      dnd.beginGesture({ x: event.clientX, y: event.clientY });
-      lastSurfaceRef.current = null;
+      const startSurfaces = canvasSession.getSurfaces();
+      const origin = toPage(startSurfaces, doc, {
+        x: event.clientX,
+        y: event.clientY,
+      });
+      dnd.beginGesture(
+        origin,
+        activation.kind === 'press' ? Infinity : activation.px,
+      );
+      // Every same-origin document of the drag reports the pointer: the
+      // gesture's own, and the host page when the gesture began in a frame.
+      // Frames other than the gesture's stop taking pointer events.
+      const docs = new Set<Document>([doc]);
+      const shielded: CanvasSurfaceHandle[] = [];
+      for (const entry of startSurfaces) {
+        if (entry.surface.kind !== 'frame') continue;
+        if (entry.surface.document === doc) {
+          const hostDoc = entry.surface.window.frameElement?.ownerDocument;
+          if (hostDoc) docs.add(hostDoc);
+        } else if (entry.shield) {
+          entry.shield(true);
+          shielded.push(entry);
+        }
+      }
+      const begin = () => {
+        if (dnd.getSession()) return;
+        engine.start(session());
+        handle.setAttribute('data-dragging', '');
+      };
+      // A touch drag starts after a still press; moving first scrolls.
+      let pressTimer: ReturnType<typeof setTimeout> | undefined;
+      if (activation.kind === 'press') {
+        pressTimer = setTimeout(begin, activation.delayMs);
+      }
 
       const onMove = (moveEvent: PointerEvent) => {
         if (moveEvent.pointerId !== pointerId) return;
         if (!dnd.getClientPoint() && !dnd.getSession()) return;
-        const client = { x: moveEvent.clientX, y: moveEvent.clientY };
-        dnd.moveGesture(client, session);
         const surfaces = canvasSession.getSurfaces();
-        const surface =
-          surfaceAtClient(surfaces, client) ??
-          lastSurfaceRef.current ??
-          surfaces.find((entry) => entry.interactive === 'edit') ??
-          null;
-        // Keep the preview hot path alive off-canvas; resolveTarget only
-        // writes the pointer when a surface is under the cursor.
-        if (surface) {
-          pointer.setFromEvent(
-            { clientX: client.x, clientY: client.y } as PointerEvent,
-            surface.host,
-          );
+        const source = documentOf(moveEvent.target) ?? doc;
+        const client = toPage(surfaces, source, {
+          x: moveEvent.clientX,
+          y: moveEvent.clientY,
+        });
+        if (
+          activation.kind === 'press' &&
+          !dnd.getSession() &&
+          Math.hypot(client.x - origin.x, client.y - origin.y) >
+            activation.tolerancePx
+        ) {
+          dnd.end();
+          onGestureEnd?.(false);
+          release();
+          return;
         }
-        if (dnd.getSession()) {
-          resolveTarget(client);
+        if (
+          dnd.moveGesture(client, session()) &&
+          !handle.hasAttribute('data-dragging')
+        ) {
+          engine.start(dnd.getSession()!);
+          handle.setAttribute('data-dragging', '');
         }
+        if (dnd.getSession()) engine.move(client);
       };
 
       const release = () => {
-        doc.removeEventListener('pointermove', onMove, true);
-        doc.removeEventListener('pointerup', onUp, true);
-        doc.removeEventListener('pointercancel', onCancel, true);
+        clearTimeout(pressTimer);
+        handle.removeAttribute('data-dragging');
+        for (const target of docs) {
+          target.removeEventListener('pointermove', onMove, true);
+          target.removeEventListener('pointerup', onUp, true);
+          target.removeEventListener('pointercancel', onCancel, true);
+        }
+        for (const entry of shielded) entry.shield?.(false);
         view?.removeEventListener('blur', onBlur);
         if (capturedRef.current) {
           try {
@@ -382,11 +390,8 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
       const onUp = (upEvent: PointerEvent) => {
         if (upEvent.pointerId !== pointerId) return;
         const dragged = dnd.getSession() !== null;
-        if (dragged) {
-          commitDrop();
-        } else {
-          dnd.end();
-        }
+        if (dragged) engine.end();
+        else dnd.end();
         onGestureEnd?.(dragged);
         release();
       };
@@ -394,32 +399,33 @@ function usePointerGesture({ session, blockId, onGestureEnd }: GestureOptions) {
       const onCancel = (cancelEvent: PointerEvent) => {
         if (cancelEvent.pointerId !== pointerId) return;
         const dragged = dnd.getSession() !== null;
-        dnd.end();
+        engine.cancel('pointer-cancel');
         onGestureEnd?.(dragged);
         release();
       };
 
       const onBlur = () => {
         const dragged = dnd.getSession() !== null;
-        dnd.end();
+        engine.cancel('blur');
         onGestureEnd?.(dragged);
         release();
       };
 
-      doc.addEventListener('pointermove', onMove, true);
-      doc.addEventListener('pointerup', onUp, true);
-      doc.addEventListener('pointercancel', onCancel, true);
+      for (const target of docs) {
+        target.addEventListener('pointermove', onMove, true);
+        target.addEventListener('pointerup', onUp, true);
+        target.addEventListener('pointercancel', onCancel, true);
+      }
       view?.addEventListener('blur', onBlur);
     },
     [
       canStart,
       canvasSession,
-      commitDrop,
       ctx.store,
       dnd,
+      engine,
+      isHandle,
       onGestureEnd,
-      pointer,
-      resolveTarget,
       session,
     ],
   );
@@ -437,28 +443,318 @@ export type CanvasDragHandleProps = React.ComponentPropsWithRef<'button'> & {
   render?: UseRenderComponentProps<'button', DragHandleState>['render'];
 };
 
+/**
+ * Keyboard drag of `blockId` from its handle: Space picks the block up,
+ * arrows step through every valid place in document order, Space or
+ * Enter drops, Escape (or leaving the handle) puts it back. Each step is
+ * announced.
+ */
+function useKeyboardDrag(
+  blockId: string,
+  handleRef: React.RefObject<HTMLElement | null>,
+) {
+  const canvas = React.useContext(CanvasContext);
+  const canvasSession = useCanvasSession('Canvas.DragHandle');
+  const ctx = useEditorContext('Canvas.DragHandle');
+  const engine = useDragEngine();
+  const { store, schema, messages, announcer } = ctx;
+  const stateRef = React.useRef<{
+    points: InsertionPoint[];
+    at: number;
+    from: InsertionPoint;
+    ending: boolean;
+  } | null>(null);
+  const [active, setActive] = React.useState(false);
+
+  const parentLabel = React.useCallback(
+    (parentId: string) => {
+      const { nodes, rootId } = store.getDoc();
+      const node = nodes[parentId];
+      return parentId === rootId || !node
+        ? messages.announce.root
+        : describeBlock(schema, node).label;
+    },
+    [store, schema, messages],
+  );
+  const countIn = React.useCallback(
+    (point: InsertionPoint) =>
+      (
+        store.getDoc().nodes[point.parent.id]?.slots[point.parent.slot] ?? []
+      ).filter((id) => id !== blockId).length + 1,
+    [store, blockId],
+  );
+
+  const show = React.useCallback(
+    (point: InsertionPoint) => {
+      const measurer = canvas?.measurer;
+      const host = canvas?.host;
+      if (!measurer || !host) return;
+      const { nodes, rootId } = store.getDoc();
+      const target = targetFor(point, nodes, rootId, {
+        getRect: (id) => measurer.getBlockRect(id),
+        getSlotRect: (id, slot) => measurer.getSlotRect(id, slot),
+        movingId: blockId,
+      });
+      const surface =
+        canvasSession.getSurfaces().find((entry) => entry.host === host) ??
+        undefined;
+      engine.setTarget(target, surface);
+      const siblings = (
+        nodes[point.parent.id]?.slots[point.parent.slot] ?? []
+      ).filter((id) => id !== blockId);
+      const near = siblings[point.index] ?? siblings[point.index - 1];
+      const el = blockElements(host, near ?? point.parent.id)[0];
+      el?.scrollIntoView?.({ block: 'nearest' });
+    },
+    [canvas, canvasSession, engine, store, blockId],
+  );
+
+  const finish = React.useCallback(() => {
+    stateRef.current = null;
+    setActive(false);
+    handleRef.current?.focus();
+  }, [handleRef]);
+
+  // The drag can end elsewhere (the canvas's Escape, a remote removal).
+  React.useEffect(
+    () =>
+      canvasSession.dnd.subscribeSession(() => {
+        const state = stateRef.current;
+        if (!state || state.ending || canvasSession.dnd.getSession()) return;
+        const node = store.getDoc().nodes[blockId];
+        if (node) {
+          announcer.announce(
+            messages.announce.dragCancelled({
+              block: describeBlock(schema, node),
+              position: state.from.index + 1,
+              count: countIn(state.from),
+              parent: parentLabel(state.from.parent.id),
+            }),
+          );
+        }
+        finish();
+      }),
+    [
+      canvasSession,
+      store,
+      blockId,
+      announcer,
+      messages,
+      schema,
+      countIn,
+      parentLabel,
+      finish,
+    ],
+  );
+
+  const onKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    const state = stateRef.current;
+    const { nodes, rootId } = store.getDoc();
+    const node = nodes[blockId];
+    if (!node || node.parent === null) return;
+    const block = describeBlock(schema, node);
+    if (!state) {
+      if (event.key !== ' ') return;
+      event.preventDefault();
+      const points = insertionPoints(schema, nodes, rootId, node.type, blockId);
+      const index =
+        nodes[node.parent.id]?.slots[node.parent.slot]?.indexOf(blockId) ?? 0;
+      const at = points.findIndex(
+        (point) =>
+          point.parent.id === node.parent!.id &&
+          point.parent.slot === node.parent!.slot &&
+          point.index === index,
+      );
+      if (points.length < 2 || at < 0) {
+        announcer.announce(messages.announce.dragNoTargets);
+        return;
+      }
+      stateRef.current = { points, at, from: points[at]!, ending: false };
+      setActive(true);
+      engine.start({ kind: 'move', id: blockId });
+      show(points[at]!);
+      announcer.announce(
+        messages.announce.dragPickedUp({
+          block,
+          position: index + 1,
+          count: countIn(points[at]!),
+          parent: parentLabel(node.parent.id),
+        }),
+      );
+      return;
+    }
+    const step =
+      event.key === 'ArrowDown' || event.key === 'ArrowRight'
+        ? 1
+        : event.key === 'ArrowUp' || event.key === 'ArrowLeft'
+          ? -1
+          : 0;
+    if (step !== 0) {
+      event.preventDefault();
+      const at = Math.max(
+        0,
+        Math.min(state.points.length - 1, state.at + step),
+      );
+      if (at === state.at) return;
+      state.at = at;
+      const point = state.points[at]!;
+      show(point);
+      announcer.announce(
+        messages.announce.dragMoved({
+          position: point.index + 1,
+          count: countIn(point),
+          parent: parentLabel(point.parent.id),
+        }),
+      );
+      return;
+    }
+    if (event.key === ' ' || event.key === 'Enter') {
+      event.preventDefault();
+      const point = state.points[state.at]!;
+      state.ending = true;
+      engine.end();
+      announcer.announce(
+        messages.announce.dragDropped({
+          block,
+          position: point.index + 1,
+          parent: parentLabel(point.parent.id),
+        }),
+      );
+      finish();
+      return;
+    }
+    if (event.key === 'Escape' || event.key === 'Tab') {
+      if (event.key === 'Escape') event.preventDefault();
+      // The subscription above announces the cancel and resets.
+      engine.cancel('escape');
+    }
+  };
+
+  const onBlur = () => {
+    if (stateRef.current && !stateRef.current.ending) engine.cancel('blur');
+  };
+
+  return { active, onKeyDown, onBlur };
+}
+
+/** The handle's menu: the non-drag way to move, copy and delete a block. */
+function HandleMenu({
+  blockId,
+  onClose,
+  onMoveTo,
+}: {
+  blockId: string;
+  onClose: (restore: boolean) => void;
+  onMoveTo: () => void;
+}) {
+  const messages = useMessages();
+  const actions = useBlockActions(blockId);
+  const roving = useRovingFocus<HTMLDivElement>({ orientation: 'vertical' });
+  const rovingFocus = roving.focus;
+  React.useLayoutEffect(() => {
+    rovingFocus();
+  }, [rovingFocus]);
+  const item = (
+    label: string,
+    run: () => unknown,
+    disabled = false,
+    closes = true,
+  ) => (
+    <button
+      type="button"
+      role="menuitem"
+      aria-disabled={disabled || undefined}
+      onClick={() => {
+        if (disabled) return;
+        if (closes) onClose(true);
+        run();
+      }}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div
+      ref={roving.ref}
+      role="menu"
+      aria-label={messages.parts.handleMenu}
+      data-editor-handle-menu=""
+      style={{ position: 'absolute', pointerEvents: 'auto', zIndex: 3 }}
+      onFocus={roving.onFocus}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' || event.key === 'Tab') {
+          event.preventDefault();
+          onClose(true);
+          return;
+        }
+        roving.onKeyDown(event);
+      }}
+    >
+      {item(
+        messages.commands['block.moveUp'] ?? 'block.moveUp',
+        actions.moveUp,
+        !actions.canMoveUp,
+      )}
+      {item(
+        messages.commands['block.moveDown'] ?? 'block.moveDown',
+        actions.moveDown,
+        !actions.canMoveDown,
+      )}
+      {item(messages.parts.moveTo, onMoveTo, false, false)}
+      {item(
+        messages.commands['block.duplicate'] ?? 'block.duplicate',
+        actions.duplicate,
+      )}
+      {item(
+        messages.commands['block.remove'] ?? 'block.remove',
+        actions.remove,
+      )}
+    </div>
+  );
+}
+
 export function CanvasDragHandle({
   blockId,
   render,
   style,
   onPointerDown,
+  onClick,
+  onKeyDown,
+  onKeyUp,
+  onBlur,
+  ref,
   ...rest
 }: CanvasDragHandleProps) {
   useCanvasSession('Canvas.DragHandle');
+  const messages = useMessages();
   const inToolbar = React.useContext(BlockToolbarContext);
   const canvas = React.useContext(CanvasContext);
   const measurer = canvas?.measurer ?? null;
   const host = canvas?.host ?? null;
   const view = useHostViewBox(host);
-  const rect = React.useSyncExternalStore(
-    measurer ? measurer.subscribe : subscribeNoop,
-    () => (measurer ? measurer.getBlockRect(blockId) : null),
-    () => null,
-  );
+  const rect = useMeasuredRect(measurer, 'block', blockId);
   const session = useDragSessionSnapshot();
+  const ctx = useEditorContext('Canvas.DragHandle');
+  const handleRef = React.useRef<HTMLButtonElement | null>(null);
+  const [menu, setMenu] = React.useState<'closed' | 'menu' | 'move-to'>(
+    'closed',
+  );
+  const skipClickRef = React.useRef(false);
+  const keyboard = useKeyboardDrag(blockId, handleRef);
+  const dragSession = React.useCallback((): DragSession => {
+    const ids = draggedIds(ctx.store, blockId);
+    return ids.length > 1
+      ? { kind: 'move', id: blockId, ids }
+      : { kind: 'move', id: blockId };
+  }, [ctx.store, blockId]);
+  const onGestureEnd = React.useCallback((dragged: boolean) => {
+    skipClickRef.current = dragged;
+  }, []);
   const gestureDown = usePointerGesture({
-    session: { kind: 'move', id: blockId },
+    session: dragSession,
     blockId,
+    handle: true,
+    onGestureEnd,
   });
   const isDragging = session?.kind === 'move' && session.id === blockId;
   const vis = rect ? (visibleIntersection(rect, view) ?? rect) : null;
@@ -472,30 +768,83 @@ export function CanvasDragHandle({
           pointerEvents: 'auto',
           zIndex: 2,
         };
+  const closeMenu = React.useCallback((restore: boolean) => {
+    setMenu('closed');
+    if (restore) handleRef.current?.focus();
+  }, []);
 
-  return useRender<'button', DragHandleState>({
+  const button = useRender<'button', DragHandleState>({
     defaultTagName: 'button',
     render,
     props: {
       type: 'button',
-      'aria-label': rest['aria-label'] ?? 'Drag to move',
+      'aria-label': rest['aria-label'] ?? messages.parts.dragHandle,
+      'aria-haspopup': 'menu',
+      'aria-expanded': menu === 'menu',
+      'aria-pressed': keyboard.active || undefined,
       ...rest,
+      ref: composeRefs(handleRef, ref),
       style: {
-        touchAction: 'none',
-        userSelect: 'none',
+        ...HANDLE_STYLE,
         ...anchorStyle,
         ...style,
       },
       onPointerDown: (event) => {
         onPointerDown?.(event);
+        skipClickRef.current = false;
         gestureDown(event);
+      },
+      onClick: (event) => {
+        onClick?.(event);
+        // A pointer drag ends with a compatibility click: no menu then.
+        if (event.defaultPrevented || skipClickRef.current) {
+          skipClickRef.current = false;
+          return;
+        }
+        if (keyboard.active) return;
+        setMenu((open) => (open === 'closed' ? 'menu' : 'closed'));
+      },
+      onKeyDown: (event) => {
+        onKeyDown?.(event);
+        if (event.defaultPrevented) return;
+        keyboard.onKeyDown(event);
+      },
+      onKeyUp: (event) => {
+        onKeyUp?.(event);
+        // Space picked the block up or dropped it; it does not click.
+        if (event.key === ' ') event.preventDefault();
+      },
+      onBlur: (event) => {
+        onBlur?.(event);
+        keyboard.onBlur();
       },
     },
     state: {
       editorDragHandle: true,
-      dragging: isDragging,
+      dragging: isDragging || keyboard.active,
     },
   });
+
+  return (
+    <>
+      {button}
+      {menu === 'menu' ? (
+        <HandleMenu
+          blockId={blockId}
+          onClose={closeMenu}
+          onMoveTo={() => setMenu('move-to')}
+        />
+      ) : null}
+      {menu === 'move-to' ? (
+        <EditorMoveToDialog
+          blockId={blockId}
+          onClose={() => closeMenu(true)}
+          data-editor-move-to=""
+          style={{ position: 'absolute', pointerEvents: 'auto', zIndex: 3 }}
+        />
+      ) : null}
+    </>
+  );
 }
 
 type PaletteItemState = {
@@ -524,19 +873,28 @@ export function CanvasPaletteItem({
 }: CanvasPaletteItemProps) {
   const canvasSession = useCanvasSession('Canvas.PaletteItem');
   const ctx = useEditorContext('Canvas.PaletteItem');
-  const placement = placementOf(ctx.schema);
-  const target = useEditorSelector((state) =>
-    computePaletteInsertTarget(state, ctx.userId, type, placement),
+  const selected = useSessionSelector((s) => s.selection[0] ?? null);
+  const target = useDocSelector(
+    (state) =>
+      insertPointFor(ctx.schema, state.nodes, state.rootId, selected, type),
+    (a, b) =>
+      a.parent.id === b.parent.id &&
+      a.parent.slot === b.parent.slot &&
+      a.index === b.index &&
+      a.allowed === b.allowed,
   );
-  const clickInsertBlocked =
-    target.parentType === null || !canPlace(placement, type, target.parentType);
+  const clickInsertBlocked = !target.allowed;
   const skipClickRef = React.useRef(false);
   const onGestureEnd = React.useCallback((dragged: boolean) => {
     skipClickRef.current = dragged;
   }, []);
   const session = useDragSessionSnapshot();
+  const newSession = React.useCallback(
+    (): DragSession => ({ kind: 'new', type, properties }),
+    [type, properties],
+  );
   const gestureDown = usePointerGesture({
-    session: { kind: 'new', type, properties },
+    session: newSession,
     onGestureEnd,
   });
   const isDragging = session?.kind === 'new' && session.type === type;
@@ -552,9 +910,9 @@ export function CanvasPaletteItem({
     }
     if (canvasSession.dnd.getSession()) return;
     const id = ctx.store.add(type, {
-      parentId: target.parentId,
+      parent: target.parent,
       index: target.index,
-      properties,
+      props: properties,
     });
     if (id) {
       focusBlockInSurfaces(canvasSession.getSurfaces(), id);
@@ -568,7 +926,7 @@ export function CanvasPaletteItem({
       type: 'button',
       onClick: handleClick,
       ...rest,
-      style: { touchAction: 'none', ...style },
+      style: { ...HANDLE_STYLE, ...style },
       onPointerDown: (event) => {
         onPointerDown?.(event);
         skipClickRef.current = false;
@@ -631,36 +989,173 @@ export function CanvasDropIndicator({
   return element;
 }
 
+type DropTargetRingState = {
+  editorDropTargetRing: boolean;
+  nested: boolean;
+};
+
+export type CanvasDropTargetRingProps = React.ComponentPropsWithRef<'div'> & {
+  render?: UseRenderComponentProps<'div', DropTargetRingState>['render'];
+};
+
+/**
+ * Outlines the container a drag would drop into (the target slot's
+ * element, else its block), in the overlay; style it with
+ * `data-editor-drop-target-ring` (`data-nested` is absent at the root).
+ */
+export function CanvasDropTargetRing({
+  render,
+  style,
+  ...rest
+}: CanvasDropTargetRingProps) {
+  const canvas = useCanvasContext('Canvas.DropTargetRing');
+  const session = useDragSessionSnapshot();
+  const target = useDropTargetSnapshot();
+  const measurer = canvas.measurer;
+  const slotRect = useMeasuredRect(
+    measurer,
+    'slot',
+    target?.parent.id ?? '',
+    target?.parent.slot,
+  );
+  const blockRect = useMeasuredRect(measurer, 'block', target?.parent.id ?? '');
+  const rect = slotRect ?? blockRect;
+  const element = useRender<'div', DropTargetRingState>({
+    defaultTagName: 'div',
+    render,
+    props: {
+      ...rest,
+      'aria-hidden': true,
+      style: {
+        position: 'absolute',
+        left: rect?.x,
+        top: rect?.y,
+        width: rect?.width,
+        height: rect?.height,
+        boxSizing: 'border-box',
+        pointerEvents: 'none',
+        ...style,
+      },
+    },
+    state: {
+      editorDropTargetRing: true,
+      nested: target?.nested ?? false,
+    },
+  });
+  if (session === null || target === null || rect === null) return null;
+  return element;
+}
+
 type DragPreviewState = {
   editorDragPreview: boolean;
+  /** Blocks the drag moves (a multi-selection shows as a stack). */
+  count: number;
   kind: 'new' | 'move';
+  /** What the preview shows: a copy of the block, its preview image, or its label. */
+  content: 'block' | 'image' | 'label';
 };
 
 export type CanvasDragPreviewProps = React.ComponentPropsWithRef<'div'> & {
   render?: UseRenderComponentProps<'div', DragPreviewState>['render'];
+  /**
+   * `block` (default): a moved block shows as a scaled-down copy of itself
+   * (its label for very large blocks), a new block as its palette preview
+   * image when it has one. `label`: the label chip only.
+   */
+  preview?: 'block' | 'label';
 };
+
+const PREVIEW_OFFSET = { x: 16, y: 8 } as const;
+/** The preview never grows wider than this. */
+export const DRAG_PREVIEW_MAX_PX = 280;
+/** A block copy in the preview is cut off below this height. */
+export const DRAG_PREVIEW_MAX_HEIGHT_PX = 200;
+
+/** Shows a block copy at `scale` inside its fixed-size box. */
+function BlockCopy({
+  clone,
+  width,
+  height,
+  scale,
+}: {
+  clone: BlockPreviewClone;
+  width: number;
+  height: number;
+  scale: number;
+}) {
+  const ref = React.useCallback(
+    (box: HTMLDivElement | null) => {
+      if (!box) return;
+      const node = clone.node;
+      node.style.setProperty('position', 'absolute');
+      node.style.setProperty('top', '0');
+      node.style.setProperty('left', '0');
+      node.style.setProperty('transform', `scale(${scale})`);
+      node.style.setProperty('transform-origin', '0 0');
+      box.replaceChildren(node);
+      return () => node.remove();
+    },
+    [clone, scale],
+  );
+  return (
+    <div
+      ref={ref}
+      data-editor-drag-preview-block=""
+      style={{ position: 'relative', overflow: 'hidden', width, height }}
+    />
+  );
+}
 
 function applyPreviewTransform(
   node: HTMLElement,
   snap: { x: number; y: number } | null,
+  fixed: boolean,
 ): void {
   if (snap === null) {
     node.style.visibility = 'hidden';
     return;
   }
   node.style.visibility = '';
-  node.style.transform = `translate3d(${snap.x}px, ${snap.y}px, 0) translate(-50%, -50%)`;
+  // Beside the pointer, never under it: 16 px right, 8 px down, or above
+  // the pointer where a scroll container or the window would cut it off.
+  const below = snap.y + PREVIEW_OFFSET.y;
+  node.style.transform = `translate3d(${snap.x + PREVIEW_OFFSET.x}px, ${below}px, 0)`;
+  const box = node.getBoundingClientRect();
+  const limit = fixed
+    ? (node.ownerDocument.defaultView?.innerHeight ?? Infinity)
+    : visibleBottom(node);
+  if (box.height > 0 && box.bottom > limit) {
+    const scale = node.offsetHeight > 0 ? box.height / node.offsetHeight : 1;
+    const above = snap.y - PREVIEW_OFFSET.y - box.height / scale;
+    node.style.transform = `translate3d(${snap.x + PREVIEW_OFFSET.x}px, ${above}px, 0)`;
+  }
+}
+
+/** The lowest client y at which `el` is still visible in its document. */
+function visibleBottom(el: Element): number {
+  const view = el.ownerDocument.defaultView;
+  if (!view) return Infinity;
+  let bottom = view.innerHeight;
+  for (let cur = el.parentElement; cur; cur = cur.parentElement) {
+    const style = view.getComputedStyle(cur);
+    if (style.overflowY !== 'visible') {
+      bottom = Math.min(bottom, cur.getBoundingClientRect().bottom);
+    }
+  }
+  return bottom;
 }
 
 function previewSnap(
   pointer: { getSnapshot: () => { x: number; y: number } | null },
   dnd: { getClientPoint: () => { x: number; y: number } | null },
   host: HTMLElement | null,
+  surface: PreviewSurface | null,
 ): { x: number; y: number } | null {
   const snap = pointer.getSnapshot();
   if (snap) return snap;
-  const client = dnd.getClientPoint();
-  if (!client || !host) return null;
+  const page = dnd.getClientPoint();
+  if (!page || !host) return null;
+  const client = surface ? surface.fromHost(page) : page;
   const box = host.getBoundingClientRect();
   return {
     x: Math.round(client.x - box.left + host.scrollLeft),
@@ -672,6 +1167,7 @@ export function CanvasDragPreview({
   render,
   style,
   children,
+  preview = 'block',
   ...rest
 }: CanvasDragPreviewProps) {
   const { pointer, dnd } = useCanvasSession('Canvas.DragPreview');
@@ -680,42 +1176,97 @@ export function CanvasDragPreview({
   const measurer = canvas?.measurer ?? null;
   const host = canvas?.host ?? null;
   const moveId = session?.kind === 'move' ? session.id : '';
-  const moveRect = React.useSyncExternalStore(
-    measurer ? measurer.subscribe : subscribeNoop,
-    () => (measurer ? measurer.getBlockRect(moveId) : null),
-    () => null,
-  );
+  const moveRect = useMeasuredRect(measurer, 'block', moveId);
   const nodeRef = React.useRef<HTMLDivElement | null>(null);
+  // On the host layer over a frame the preview is fixed in the host page
+  // at the pointer: no scroll container clips it or grows because of it,
+  // and it never lags behind a scrolling page.
+  const hostBody =
+    React.useContext(OverlayLayerContext) === 'host' &&
+    canvas?.surface?.kind === 'frame'
+      ? (canvas.hostLayer?.ownerDocument.body ?? null)
+      : null;
+  const fixed = hostBody !== null;
 
   // Position is written on the DOM node (rAF + translate3d). Subscribing
   // through React would re-render the tree on every pointermove.
   React.useLayoutEffect(() => {
     if (canvas === null || session === null) return;
     const node = nodeRef.current;
-    if (!(node instanceof HTMLElement)) return;
+    if (!isHTMLElement(node)) return;
+    const snap = () =>
+      fixed
+        ? dnd.getClientPoint()
+        : previewSnap(pointer, dnd, host, canvas?.surface ?? null);
     node.style.willChange = 'transform';
-    applyPreviewTransform(node, previewSnap(pointer, dnd, host));
+    applyPreviewTransform(node, snap(), fixed);
     let raf = 0;
+    let hostPoint: { x: number; y: number } | null = null;
     const onPointer = () => {
+      hostPoint = null;
+      schedule();
+    };
+    const schedule = () => {
       if (raf !== 0) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
         const current = nodeRef.current;
-        if (current instanceof HTMLElement) {
-          applyPreviewTransform(current, previewSnap(pointer, dnd, host));
+        if (isHTMLElement(current)) {
+          applyPreviewTransform(current, hostPoint ?? snap(), fixed);
         }
       });
     };
     const unsubscribe = pointer.subscribe(onPointer);
+    // Fixed in the host page, the preview also follows the pointer where no
+    // canvas reports it (over a sidebar or the outline).
+    const hostDoc = fixed ? node.ownerDocument : null;
+    const onHostMove = (event: PointerEvent) => {
+      hostPoint = { x: event.clientX, y: event.clientY };
+      schedule();
+    };
+    hostDoc?.addEventListener('pointermove', onHostMove, true);
     return () => {
       unsubscribe();
+      hostDoc?.removeEventListener('pointermove', onHostMove, true);
       if (raf !== 0) cancelAnimationFrame(raf);
       node.style.willChange = '';
     };
-  }, [canvas, dnd, host, pointer, session]);
+  }, [canvas, dnd, host, pointer, session, fixed]);
 
-  const width = session?.kind === 'move' && moveRect ? moveRect.width : 80;
-  const height = session?.kind === 'move' && moveRect ? moveRect.height : 40;
+  const width = Math.min(
+    DRAG_PREVIEW_MAX_PX,
+    session?.kind === 'move' && moveRect ? moveRect.width : 160,
+  );
+  const ctx = useEditorContext('Canvas.DragPreview');
+  const count = session?.kind === 'move' ? (session.ids?.length ?? 1) : 1;
+  const summary = React.useMemo(() => {
+    if (!session) return null;
+    if (session.kind === 'new') {
+      const component = ctx.schema.components[session.type];
+      return {
+        label: component?.label ?? session.type,
+        excerpt: '',
+        image: preview === 'block' ? component?.previewImageUrl : undefined,
+      };
+    }
+    const node = ctx.store.getDoc().nodes[session.id];
+    return node
+      ? { ...describeBlock(ctx.schema, node), image: undefined }
+      : null;
+  }, [session, ctx.schema, ctx.store, preview]);
+
+  // The moved block, copied once when the drag starts.
+  const [clone, setClone] = React.useState<BlockPreviewClone | null>(null);
+  const cloneFor = session?.kind === 'move' ? session.id : null;
+  React.useLayoutEffect(() => {
+    if (preview !== 'block' || cloneFor === null || !host) {
+      setClone(null);
+      return;
+    }
+    const el = blockElements(host, cloneFor)[0];
+    setClone(el ? cloneBlockForPreview(el) : null);
+  }, [preview, cloneFor, host]);
+  const copyScale = clone ? Math.min(1, DRAG_PREVIEW_MAX_PX / clone.width) : 1;
 
   const element = useRender<'div', DragPreviewState>({
     defaultTagName: 'div',
@@ -725,28 +1276,101 @@ export function CanvasDragPreview({
       ref: composeRefs(nodeRef, rest.ref),
       'aria-hidden': true,
       style: {
-        position: 'absolute',
+        position: fixed ? 'fixed' : 'absolute',
         left: 0,
         top: 0,
-        width,
-        height,
+        zIndex: fixed ? 'var(--editor-z-drag-preview, 60)' : undefined,
+        // As wide as the dragged block up to the cap, as tall as its
+        // summary or its scaled copy: a block-sized box would cover the
+        // drop targets.
+        width: clone ? 'max-content' : width,
+        overflow: 'hidden',
         pointerEvents: 'none',
         ...style,
       },
-      children,
+      // At most three things: the label, an excerpt, and the count of a
+      // multi-selection.
+      children:
+        children ??
+        (clone ? (
+          <>
+            <BlockCopy
+              clone={clone}
+              scale={copyScale}
+              width={clone.width * copyScale}
+              height={Math.min(
+                clone.height * copyScale,
+                DRAG_PREVIEW_MAX_HEIGHT_PX,
+              )}
+            />
+            {count > 1 ? (
+              <span data-editor-drag-preview-count="">{count}</span>
+            ) : null}
+          </>
+        ) : summary ? (
+          <>
+            {summary.image ? (
+              <img
+                data-editor-drag-preview-image=""
+                src={summary.image}
+                alt=""
+                draggable={false}
+                style={{ display: 'block', width: '100%' }}
+              />
+            ) : null}
+            <span data-editor-drag-preview-label="">{summary.label}</span>
+            {summary.excerpt ? (
+              <span data-editor-drag-preview-excerpt="">{summary.excerpt}</span>
+            ) : null}
+            {count > 1 ? (
+              <span data-editor-drag-preview-count="">{count}</span>
+            ) : null}
+          </>
+        ) : null),
     },
     state: {
       editorDragPreview: true,
+      count,
       kind: session?.kind ?? 'new',
+      content: clone ? 'block' : summary?.image ? 'image' : 'label',
     },
   });
   // Pointer snapshots are host-relative absolute coordinates, so the
   // preview positions itself only inside a Canvas.Root surface.
   if (canvas === null || session === null) return null;
-  return element;
+  return hostBody ? createPortal(element, hostBody) : element;
+}
+
+/** Marks the dragged blocks with `data-dragging` while a move runs. */
+function useDraggingMarks(): void {
+  const canvas = useCanvasContext('CanvasDndEffects');
+  const { dnd, host } = canvas;
+  React.useEffect(() => {
+    if (!dnd || !host) return;
+    let marked: Element[] = [];
+    const sync = () => {
+      for (const el of marked) el.removeAttribute('data-dragging');
+      marked = [];
+      const session = dnd.getSession();
+      if (session?.kind !== 'move') return;
+      for (const id of session.ids ?? [session.id]) {
+        for (const el of blockElements(host, id)) {
+          el.setAttribute('data-dragging', '');
+          marked.push(el);
+        }
+      }
+    };
+    sync();
+    const off = dnd.subscribeSession(sync);
+    return () => {
+      off();
+      for (const el of marked) el.removeAttribute('data-dragging');
+    };
+  }, [dnd, host]);
 }
 
 export function CanvasDndEffects() {
   useDndDropResolution();
+  useDraggingMarks();
   return null;
 }

@@ -1,21 +1,22 @@
+// @registry editor-app@0.3.2
 'use client';
 
-import type { AnyEditorSchema } from '@createcms/react/editor';
-import type { CanvasComponents } from '@createcms/react/editor/canvas';
+import type { EditorRootProps, FieldControls } from '@createcms/react/editor';
 import type {
-  CmsDocumentClient,
-  CmsDocumentError,
-  CmsTemplatesClient,
-  UseCmsFieldSourcesClient,
-} from '@createcms/react/editor/cms';
-import type { MediaClient } from '@createcms/react/media';
+  AnyEditorSchema,
+  EditorDocument,
+  PersistenceAdapter,
+  PersistenceOptions,
+} from '@createcms/react/editor/core';
 
-import { Editor } from '@createcms/react/editor';
-import { Canvas } from '@createcms/react/editor/canvas';
 import {
-  useCmsDocument,
-  useCmsFieldSources,
-} from '@createcms/react/editor/cms';
+  Editor,
+  useAdapterDocument,
+  useSave,
+  useSaveConflict,
+} from '@createcms/react/editor';
+import { Canvas } from '@createcms/react/editor/canvas';
+import { lazyRichTextAdapter } from '@createcms/react/editor/core';
 import * as React from 'react';
 
 import {
@@ -49,72 +50,50 @@ import {
   Overlay,
   SelectionRing,
 } from './editor-canvas';
-import { CmsSourcesProvider, cmsFields, FormSurface } from './editor-form';
-import { EditorShell, useEditorChrome } from './editor-shell';
+import { useEditorChrome } from './editor-chrome';
+import { fieldControls } from './editor-field';
+import { FormSurface } from './editor-form';
+import { EditorShell, useDeviceFrame } from './editor-shell';
 
-const RESERVED_COLLECTIONS = new Set(['media', 'variables', 'templates']);
+export type EditorAppMode = 'canvas' | 'form';
 
-export type CmsEditorMode = 'canvas' | 'form';
-
-type CmsMediaClient = UseCmsFieldSourcesClient['media'];
-
-export type CmsEditorClient = UseCmsFieldSourcesClient & {
-  /** The full `MediaClient` surface enables the media picker's folders and uploads. */
-  media: CmsMediaClient & Partial<MediaClient>;
-  readonly [collection: string]: unknown;
+/** A load or save failure as the alerts show it. */
+export type EditorAppError = {
+  message: string;
+  fields?: readonly { blockId: string; key: string; message: string }[];
 };
 
-export type CmsEditorProps = {
-  client: CmsEditorClient;
-  templates?: CmsTemplatesClient;
-  collection: string;
-  rootId: string;
-  branchId: string;
+/** Where the edited document comes from: `useAdapterDocument` or a backend hook. */
+export type EditorAppDocument = {
+  doc: EditorDocument | null;
+  /** Changes with every load: the editor starts over. */
+  key: string;
+  status: 'loading' | 'idle' | 'error';
+  error: EditorAppError | null;
+  persistence?: PersistenceOptions;
+  reload: () => unknown;
+  onChange?: EditorRootProps['onChange'];
+};
+
+type CanvasRootProps = React.ComponentProps<typeof Canvas.Root>;
+
+export type EditorAppViewProps = {
+  document: EditorAppDocument;
   schema: AnyEditorSchema;
-  components: CanvasComponents;
-  mode?: CmsEditorMode;
+  components: CanvasRootProps['components'];
+  /** Display resolvers for the canvas (references, links, variables). */
+  resolve?: CanvasRootProps['resolve'];
+  /** Field controls per kind (`Editor.Root fields`). Default: `fieldControls`. */
+  fields?: FieldControls;
+  /** Default: Tiptap, loaded the first time a rich text field is edited. */
+  richText?: EditorRootProps['richText'];
+  /** Wraps the shell, for providers the field controls read (data sources). */
+  renderProviders?: (children: React.ReactNode) => React.ReactNode;
+  mode?: EditorAppMode;
   className?: string;
   requireCommitMessage?: boolean;
   children?: React.ReactNode;
 };
-
-function isMediaClient(
-  media: CmsMediaClient & Partial<MediaClient>,
-): media is CmsMediaClient & MediaClient {
-  return (
-    typeof media.listFolders === 'function' &&
-    typeof media.createFolder === 'function' &&
-    typeof media.moveAssets === 'function' &&
-    typeof media.archiveAssets === 'function' &&
-    typeof media.updateAssetsStatus === 'function' &&
-    typeof media.useUploadAssets === 'function'
-  );
-}
-
-function readDocumentClient(
-  client: CmsEditorClient,
-  collection: string,
-): CmsDocumentClient {
-  if (RESERVED_COLLECTIONS.has(collection)) {
-    throw new Error(`CmsEditor: "${collection}" is not a collection namespace`);
-  }
-  const namespace = (client as Record<string, unknown>)[collection];
-  if (!namespace || typeof namespace !== 'object') {
-    throw new Error(
-      `CmsEditor: collection "${collection}" is not available on client`,
-    );
-  }
-  if (
-    typeof (namespace as CmsDocumentClient).getBlockTree !== 'function' ||
-    typeof (namespace as CmsDocumentClient).getBranch !== 'function' ||
-    typeof (namespace as CmsDocumentClient).updateBlocks !== 'function'
-  ) {
-    throw new Error(
-      `CmsEditor: collection "${collection}" is not a document client`,
-    );
-  }
-  return namespace as CmsDocumentClient;
-}
 
 function EditorLoadingSkeleton({ className }: { className?: string }) {
   return (
@@ -143,7 +122,7 @@ function EditorErrorAlert({
   onRetry,
   className,
 }: {
-  error: CmsDocumentError | null;
+  error: EditorAppError | null;
   onRetry: () => void;
   className?: string;
 }) {
@@ -179,7 +158,7 @@ function EditorErrorState({
   onRetry,
   className,
 }: {
-  error: CmsDocumentError | null;
+  error: EditorAppError | null;
   onRetry: () => void;
   className?: string;
 }) {
@@ -200,29 +179,54 @@ function EditorErrorState({
   );
 }
 
+/** A save failure as the alert shows it: the server code, message and field findings. */
+function saveErrorOf(error: Error | null): EditorAppError | null {
+  if (!error) return null;
+  const details =
+    (error as { details?: Record<string, unknown> }).details ?? {};
+  const fields = Array.isArray(details.fields)
+    ? (details.fields as EditorAppError['fields'])
+    : undefined;
+  return { message: error.message, fields };
+}
+
+function SaveErrorBanner() {
+  const { status, error, save } = useSave();
+  if (status !== 'error' || !error) return null;
+  return (
+    <div data-slot="editor-app-error-banner">
+      <EditorErrorAlert
+        error={saveErrorOf(error)}
+        onRetry={() => void save()}
+        className="rounded-none border-x-0 border-t-0"
+      />
+    </div>
+  );
+}
+
 function ConflictDialog({
-  open,
-  error,
-  onReload,
-  onForce,
+  onReloadDocument,
 }: {
-  open: boolean;
-  error: CmsDocumentError | null;
-  onReload: () => void;
-  onForce: () => void;
+  onReloadDocument: () => void;
 }) {
-  const forcingRef = React.useRef(false);
+  const conflict = useSaveConflict();
+  const { error } = useSave();
+  const [copied, setCopied] = React.useState(false);
 
   React.useEffect(() => {
-    if (!open) forcingRef.current = false;
-  }, [open]);
+    if (!conflict) setCopied(false);
+  }, [conflict]);
+
+  const reload = () => {
+    // Without the server's document, reload the whole editor from the server.
+    if (!conflict?.reload()) onReloadDocument();
+  };
 
   return (
     <AlertDialog
-      open={open}
+      open={conflict !== null}
       onOpenChange={(nextOpen) => {
-        if (nextOpen || forcingRef.current) return;
-        onReload();
+        if (!nextOpen) reload();
       }}
     >
       <AlertDialogContent data-slot="editor-app-conflict">
@@ -230,17 +234,27 @@ function ConflictDialog({
           <AlertDialogTitle>Document conflict</AlertDialogTitle>
           <AlertDialogDescription>
             {error?.message ??
-              'This document changed on the server since you loaded it. Reload the latest version or overwrite it.'}
+              'This document changed on the server since you loaded it. Load the server version, overwrite it with yours, or copy yours first.'}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel type="button">Reload</AlertDialogCancel>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              void conflict?.copyMine().then(() => setCopied(true));
+            }}
+          >
+            {copied ? 'Copied' : 'Copy mine'}
+          </Button>
+          <AlertDialogCancel type="button">
+            Load server version
+          </AlertDialogCancel>
           <AlertDialogAction
             type="button"
             variant="destructive"
             onClick={() => {
-              forcingRef.current = true;
-              onForce();
+              void conflict?.overwrite();
             }}
           >
             Overwrite
@@ -255,60 +269,104 @@ function CanvasOverlays() {
   const { setAddOpen } = useEditorChrome();
 
   return (
-    <Overlay>
-      <SelectionRing />
-      <HoverRing />
-      <FieldRing />
-      <BlockToolbar side="top" align="start" />
-      <InsertButton placement="between" onInsert={() => setAddOpen(true)} />
-      <InsertButton placement="container" onInsert={() => setAddOpen(true)} />
-      <DropIndicator />
-      <DragPreview />
-      <InlineText />
-    </Overlay>
+    <>
+      <Overlay>
+        <SelectionRing />
+        <HoverRing />
+        <FieldRing />
+        <InsertButton placement="between" onInsert={() => setAddOpen(true)} />
+        <InsertButton placement="container" onInsert={() => setAddOpen(true)} />
+        <InlineText />
+      </Overlay>
+      {/* Chrome that may leave the frame: the toolbar above the first
+          block, the indicator and preview at its edges. */}
+      <Overlay layer="host">
+        <BlockToolbar side="top" align="start" />
+        <DropIndicator />
+        <DragPreview />
+      </Overlay>
+    </>
   );
 }
 
-function CmsEditor({
-  client,
-  templates,
-  collection,
-  rootId,
-  branchId,
+/** `Canvas.Root` in a frame as wide as the shell's device toggle. */
+function DeviceCanvas(
+  props: Omit<React.ComponentProps<typeof Canvas.Root>, 'surface' | 'frame'>,
+) {
+  const device = useDeviceFrame();
+  const [minHeight, setMinHeight] = React.useState(0);
+  // The frame fills the visible surface, so a short page leaves no dead
+  // band under it and the space below the last block takes drops.
+  const fillSurface = React.useCallback((el: HTMLDivElement | null) => {
+    const surface = el?.closest<HTMLElement>('[data-slot="editor-surface"]');
+    const view = surface?.ownerDocument.defaultView;
+    if (!surface || !view) return;
+    const measure = () => {
+      const style = view.getComputedStyle(surface);
+      setMinHeight(
+        surface.clientHeight -
+          parseFloat(style.paddingTop) -
+          parseFloat(style.paddingBottom),
+      );
+    };
+    measure();
+    const observer = new view.ResizeObserver(measure);
+    observer.observe(surface);
+    return () => observer.disconnect();
+  }, []);
+  const frame = React.useMemo(
+    () => ({ ...device, minHeight }),
+    [device, minHeight],
+  );
+  // A device frame narrower than the column sits centered in it.
+  return (
+    <Canvas.Root
+      ref={fillSurface}
+      surface="frame"
+      frame={frame}
+      {...props}
+      style={{
+        marginInline: 'auto',
+        maxWidth: device.width === 'full' ? undefined : device.width,
+        ...props.style,
+      }}
+    />
+  );
+}
+
+/**
+ * Tiptap for `richText` fields, loaded the first time one is edited so it
+ * stays out of the page's initial bundle.
+ */
+const defaultRichText = lazyRichTextAdapter(() =>
+  import('@createcms/react/editor/richtext').then((m) =>
+    m.createTiptapAdapter(),
+  ),
+);
+
+/**
+ * The full editor (shell, canvas, form, save and conflict handling) over a
+ * document from any source: loading skeleton, load error with retry, save
+ * error banner and the conflict dialog included.
+ */
+function EditorAppView({
+  document: doc,
   schema,
   components,
+  resolve,
+  fields = fieldControls,
+  richText = defaultRichText,
+  renderProviders = (children) => children,
   mode = 'canvas',
   className,
   requireCommitMessage = false,
   children,
-}: CmsEditorProps) {
-  const documentClient = readDocumentClient(client, collection);
-  const doc = useCmsDocument({
-    client: documentClient,
-    rootId,
-    branchId,
-    templates: templates ?? client.templates,
-    collection,
-  });
-  const sources = useCmsFieldSources(client);
-  // On the proxy client every method is a function, so the guard only
-  // distinguishes hand-written clients.
-  const media = React.useMemo(() => {
-    const m = client.media;
-    return isMediaClient(m) ? m : undefined;
-  }, [client]);
-
+}: EditorAppViewProps) {
   const retry = () => {
     void doc.reload();
   };
 
-  const forceSave = () => {
-    void doc.save({ force: true }).catch(() => {
-      // useCmsDocument already set status/error; EditorErrorAlert renders it.
-    });
-  };
-
-  if (!doc.tree) {
+  if (!doc.doc) {
     if (doc.status === 'error') {
       return (
         <EditorErrorState
@@ -342,36 +400,71 @@ function CmsEditor({
       <Editor.Root
         key={doc.key}
         schema={schema}
-        defaultValue={doc.tree}
-        onSave={doc.save}
+        defaultValue={doc.doc}
+        persistence={doc.persistence}
         onChange={doc.onChange}
-        fields={cmsFields}
+        fields={fields}
+        richText={richText}
       >
-        <CmsSourcesProvider sources={sources} media={media}>
-          <EditorShell mode={mode} requireCommitMessage={requireCommitMessage}>
-            {mode === 'form' ? (
-              <FormSurface>{children}</FormSurface>
-            ) : (
-              <Canvas.Root
-                components={components}
-                resolve={doc.resolve}
-                className="relative"
-              >
-                <CanvasOverlays />
-              </Canvas.Root>
-            )}
-          </EditorShell>
-          {mode === 'form' ? null : children}
-        </CmsSourcesProvider>
+        {renderProviders(
+          <>
+            <SaveErrorBanner />
+            <EditorShell
+              mode={mode}
+              requireCommitMessage={requireCommitMessage}
+            >
+              {/* Both surfaces stay mounted: switching modes keeps scroll and
+                  state, and the hidden one renders at low priority. */}
+              <React.Activity mode={mode === 'form' ? 'visible' : 'hidden'}>
+                <FormSurface>{mode === 'form' ? children : null}</FormSurface>
+              </React.Activity>
+              <React.Activity mode={mode === 'form' ? 'hidden' : 'visible'}>
+                <DeviceCanvas
+                  components={components}
+                  resolve={resolve}
+                  className="relative"
+                >
+                  <CanvasOverlays />
+                </DeviceCanvas>
+              </React.Activity>
+            </EditorShell>
+            {mode === 'form' ? null : children}
+          </>,
+        )}
+        <ConflictDialog onReloadDocument={retry} />
       </Editor.Root>
-      <ConflictDialog
-        open={doc.status === 'conflict'}
-        error={doc.error}
-        onReload={retry}
-        onForce={forceSave}
-      />
     </div>
   );
 }
 
-export { CmsEditor };
+export type EditorAppProps = Omit<EditorAppViewProps, 'document'> & {
+  /** Loads and saves the document: an `EditorAdapter`, `createMemoryAdapter`, ... */
+  adapter: PersistenceAdapter;
+  documentId: string;
+  /** The loaded document's version, when the adapter knows it (enables conflict checks). */
+  baseVersion?: string;
+};
+
+/** The editor over an adapter: `useAdapterDocument` plus `EditorAppView`. */
+function EditorApp({
+  adapter,
+  documentId,
+  baseVersion,
+  ...props
+}: EditorAppProps) {
+  const loaded = useAdapterDocument({ adapter, id: documentId, baseVersion });
+  const document = React.useMemo<EditorAppDocument>(
+    () => ({
+      doc: loaded.doc,
+      key: loaded.key,
+      status: loaded.status,
+      error: loaded.error,
+      persistence: loaded.persistence,
+      reload: loaded.reload,
+    }),
+    [loaded],
+  );
+  return <EditorAppView document={document} {...props} />;
+}
+
+export { DeviceCanvas, EditorApp, EditorAppView };

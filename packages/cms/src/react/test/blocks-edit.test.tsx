@@ -15,12 +15,18 @@ import {
   NO_EDIT,
   createBlocksMap,
   createContentRenderer,
+  RichText,
 } from '../blocks';
 
 // A collection covering a leaf block with two string properties (hero), a
 // richText leaf (paragraph), a block with a reference property (card), and a
 // children-carrying container (section) — so anchors are exercised on every
 // shape the renderer builds elements for.
+const rt = (text: string) => ({
+  type: 'doc' as const,
+  content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+});
+
 const blocks = {
   hero: {
     label: 'Hero',
@@ -66,7 +72,10 @@ const map = createBlocksMap(collection, {
   },
   paragraph: ({ properties, edit }) => (
     <p {...edit.block} {...edit.field.text}>
-      {properties.text as string}
+      <RichText
+        value={properties.text}
+        components={{ paragraph: ({ children }) => children }}
+      />
     </p>
   ),
   card: ({ edit, children }) => (
@@ -74,7 +83,13 @@ const map = createBlocksMap(collection, {
       {children}
     </div>
   ),
-  section: ({ edit, children }) => <div {...edit.block}>{children}</div>,
+  section: ({ edit, children }) => (
+    <div {...edit.block}>
+      <div {...edit.slot?.children} data-testid="section-children">
+        {children}
+      </div>
+    </div>
+  ),
 });
 
 // root → hero (hero_1), section (sec_1) → paragraph (p_1), card (card_1)
@@ -99,7 +114,7 @@ const tree: BlockTreeNode = {
         {
           blockId: 'p_1',
           type: 'paragraph',
-          properties: { text: 'A paragraph' },
+          properties: { text: rt('A paragraph') },
           children: [],
         },
         {
@@ -118,7 +133,7 @@ const tree: BlockTreeNode = {
                   {
                     blockId: 'ref_p',
                     type: 'paragraph',
-                    properties: { text: 'From ref' },
+                    properties: { text: rt('From ref') },
                     children: [],
                   },
                 ],
@@ -144,7 +159,10 @@ const RenderPage = createContentRenderer(collection, {
   },
   paragraph: ({ properties, edit }) => (
     <p {...edit.block} {...edit.field.text}>
-      {properties.text as string}
+      <RichText
+        value={properties.text}
+        components={{ paragraph: ({ children }) => children }}
+      />
     </p>
   ),
   card: ({ edit, children }) => (
@@ -152,7 +170,13 @@ const RenderPage = createContentRenderer(collection, {
       {children}
     </div>
   ),
-  section: ({ edit, children }) => <div {...edit.block}>{children}</div>,
+  section: ({ edit, children }) => (
+    <div {...edit.block}>
+      <div {...edit.slot?.children} data-testid="section-children">
+        {children}
+      </div>
+    </div>
+  ),
 });
 
 // A recursive walk that finds any function value reachable from an object —
@@ -175,6 +199,7 @@ describe('edit prop', () => {
     );
     expect(container.querySelectorAll('[data-editor-block]').length).toBe(0);
     expect(container.querySelectorAll('[data-editor-field]').length).toBe(0);
+    expect(container.querySelectorAll('[data-editor-slot]').length).toBe(0);
   });
 
   it('emits no anchors without the edit prop, on createContentRenderer', () => {
@@ -206,8 +231,18 @@ describe('edit prop', () => {
       container.querySelector('[data-editor-block="sec_1"]'),
     ).not.toBeNull();
     expect(
+      container
+        .querySelector('[data-testid="section-children"]')
+        ?.getAttribute('data-editor-slot'),
+    ).toBe('children');
+    expect(
       container.querySelector('[data-editor-block="card_1"]'),
     ).not.toBeNull();
+    expect(
+      container
+        .querySelector('[data-editor-block="hero_1"]')
+        ?.querySelector('[data-editor-slot]'),
+    ).toBeNull();
 
     const referencedParagraph = Array.from(
       container.querySelectorAll('p'),

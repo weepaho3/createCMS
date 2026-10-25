@@ -1,14 +1,16 @@
 'use client';
 
 import { Editor, useEditor } from '@createcms/react/editor';
-import { Canvas } from '@createcms/react/editor/canvas';
-import * as React from 'react';
 
-import { pageBlocks } from '@/app/demo/_lib/pages-blocks';
-import { pages } from '@/app/demo/_lib/pages-schema';
-import { PAGES_TREE } from '@/app/demo/_lib/pages-tree';
+import {
+  PAGES_DOC,
+  pagesComponents,
+  pagesSchema,
+} from '@/app/demo/_lib/editor';
+import { demoRichText } from '@/app/demo/_lib/rich-text';
 import { useDemoFieldSources } from '@/app/demo/_lib/sources';
 import { useLocalDocument } from '@/app/demo/_lib/use-local-document';
+import { DeviceCanvas } from '@/components/editor-app';
 import {
   BlockToolbar,
   DragPreview,
@@ -20,7 +22,10 @@ import {
   Overlay,
   SelectionRing,
 } from '@/components/editor-canvas';
-import { CmsSourcesProvider, cmsFields } from '@/components/editor-form';
+import {
+  CmsSourcesProvider,
+  cmsFields,
+} from '@/components/editor-form-createcms';
 import { EditorShell } from '@/components/editor-shell';
 import {
   Collapsible,
@@ -30,8 +35,8 @@ import {
 
 function DocumentJson() {
   const version = useEditor((state) => state.version);
-  const { getTree } = useEditor();
-  const tree = getTree();
+  const { getDocument } = useEditor();
+  const doc = getDocument();
   void version;
 
   return (
@@ -44,7 +49,7 @@ function DocumentJson() {
       </CollapsibleTrigger>
       <CollapsibleContent>
         <pre className="max-h-48 overflow-auto p-4 text-xs leading-relaxed">
-          {JSON.stringify(tree, null, 2)}
+          {JSON.stringify(doc, null, 2)}
         </pre>
       </CollapsibleContent>
     </Collapsible>
@@ -53,34 +58,37 @@ function DocumentJson() {
 
 export function PagesLiveCanvas() {
   const sources = useDemoFieldSources();
-  const { onChange, onSave } = useLocalDocument(PAGES_TREE);
+  const { onChange, persistence } = useLocalDocument(PAGES_DOC);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <Editor.Root
-        schema={pages}
-        defaultValue={PAGES_TREE}
+        richText={demoRichText}
+        schema={pagesSchema}
+        defaultValue={PAGES_DOC}
         onChange={onChange}
-        onSave={onSave}
+        persistence={persistence}
         fields={cmsFields}
       >
         <CmsSourcesProvider sources={sources}>
           <EditorShell>
-            <Canvas.Root
-              components={pageBlocks}
+            <DeviceCanvas
+              components={pagesComponents}
               style={{ position: 'relative' }}
             >
               <Overlay>
                 <SelectionRing />
                 <HoverRing />
                 <FieldRing />
-                <BlockToolbar side="top" align="start" />
                 <InsertButton placement="between" type="richText" />
-                <DropIndicator />
-                <DragPreview />
                 <InlineText />
               </Overlay>
-            </Canvas.Root>
+              <Overlay layer="host">
+                <BlockToolbar side="top" align="start" />
+                <DropIndicator />
+                <DragPreview />
+              </Overlay>
+            </DeviceCanvas>
           </EditorShell>
           <DocumentJson />
         </CmsSourcesProvider>

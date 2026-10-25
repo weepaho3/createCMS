@@ -49,7 +49,15 @@ export const PAGES_TREE: BlockTreeNode = {
       blockId: 'rt-1',
       type: 'richText',
       properties: {
-        text: '<p>Hello from the demo.</p>',
+        text: {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: 'Hello from the demo.' }],
+            },
+          ],
+        },
       },
       children: [],
     },

@@ -112,12 +112,12 @@ import type { FieldControlProps } from '@createcms/react/editor';
 import { Button } from '@/components/ui/button';
 import { MediaPicker } from '@/components/media-library';
 
-function HeroImageField(props: FieldControlProps<'image'>) {
+function HeroImageField(props: FieldControlProps<'media'>) {
   return (
     <MediaPicker
       client={cmsClient.media}
-      value={props.value}
-      onChange={props.onChange}
+      value={props.value?.assetId}
+      onChange={(id) => props.onChange(id ? { assetId: id } : undefined)}
       accept="image/*"
       trigger={<Button variant="outline">Choose image</Button>}
     />
@@ -125,9 +125,12 @@ function HeroImageField(props: FieldControlProps<'image'>) {
 }
 ```
 
+A `media` field holds `{ assetId }`; the createcms adapter maps it to and
+from the asset id createcms stores.
+
 `accept` works like the file input attribute (`.ext`, `type/*`, exact types). The server lists every asset of a folder, so the picker hides non-matching cards and fetches up to five further pages automatically while a page shows nothing; only after that does it show the empty state.
 
-`editor-form`'s image control uses the picker. `CmsSourcesProvider` takes an optional `media` client for it:
+`editor-form-createcms`'s media control uses the picker. `CmsSourcesProvider` takes an optional `media` client for it:
 
 ```tsx
 <CmsSourcesProvider sources={sources} media={cmsClient.media}>

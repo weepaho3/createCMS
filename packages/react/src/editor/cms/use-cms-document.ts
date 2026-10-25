@@ -1,5 +1,5 @@
 import type {
-  BlockProperty,
+  AnyCollectionDefinition,
   BlockTreeNode,
   LinkValue,
   ResolvedLink,
@@ -9,13 +9,27 @@ import type {
 import * as React from 'react';
 
 import type {
+  EditorDocument,
+  Field,
+  PersistenceOptions,
+  RichTextDoc,
+} from '../core';
+import type {
   CmsDocumentResolve,
   CmsDocumentStatus,
   UseCmsDocumentOptions,
   UseCmsDocumentResult,
 } from './types';
 
-import { HEAD_MISMATCH, readCmsError } from './errors';
+import { isRichTextDoc, walkText } from '../core';
+import { createCmsAdapter } from './adapter';
+import { readCmsError } from './errors';
+import { cmsValueToEditor, fromEditor } from './mapping';
+
+/** The createcms error behind an adapter error (its `cause`), for `readCmsError`. */
+function causeOf(err: unknown): unknown {
+  return err instanceof Error && err.cause !== undefined ? err.cause : err;
+}
 
 export const CMS_RESOLVE_DEBOUNCE_MS = 100;
 
@@ -23,41 +37,37 @@ type PendingResolve =
   | {
       kind: 'reference';
       raw: string;
-      spec: BlockProperty;
+      spec: Field;
       resolve: (value: ResolvedReference | undefined) => void;
     }
   | {
       kind: 'link';
       raw: LinkValue;
-      spec: BlockProperty;
+      spec: Field;
       resolve: (value: ResolvedLink | undefined) => void;
     }
   | {
       kind: 'string';
       raw: string;
-      spec: BlockProperty;
+      spec: Field;
       resolve: (value: string | undefined) => void;
     };
 
-function isForceArg(value: unknown): value is { force: true } {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'force' in value &&
-    (value as { force: unknown }).force === true &&
-    !('blockId' in value)
-  );
+function readReferenceCollection(spec: Field): string {
+  return spec.type === 'reference' ? spec.collection : '';
 }
 
-function readReferenceCollection(spec: BlockProperty): string {
-  const collection = (spec as { collection?: string }).collection;
-  return typeof collection === 'string' ? collection : '';
+/** The id inside a reference value (`{ id }`), or `undefined`. */
+function referenceId(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const id = (value as { id?: unknown }).id;
+  return typeof id === 'string' && id !== '' ? id : undefined;
 }
 
 function sidecarReference(
   rootId: string,
   tree: BlockTreeNode,
-  spec: BlockProperty,
+  spec: Field,
 ): ResolvedReference {
   const properties =
     tree.properties && typeof tree.properties === 'object'
@@ -70,6 +80,10 @@ function sidecarReference(
     tree,
   };
 }
+
+/** Rich text values share the string cache under their JSON. */
+const richTextKey = (doc: RichTextDoc): string =>
+  `richText:${JSON.stringify(doc)}`;
 
 function walkTreesInLockstep(
   raw: BlockTreeNode,
@@ -96,6 +110,9 @@ function walkTreesInLockstep(
     }
     if (typeof rawVal === 'string' && typeof resolvedVal === 'string') {
       stringCache.set(rawVal, resolvedVal);
+    }
+    if (isRichTextDoc(rawVal) && isRichTextDoc(resolvedVal)) {
+      stringCache.set(richTextKey(rawVal), JSON.stringify(resolvedVal));
     }
   }
   const resolvedChildrenById = new Map(
@@ -127,8 +144,20 @@ function createResolveObject(
     }, CMS_RESOLVE_DEBOUNCE_MS);
   };
 
+  const resolveString = (value: unknown, spec: Field) => {
+    if (typeof value !== 'string') return undefined;
+    const cached = stringCacheRef.current.get(value);
+    if (cached !== undefined) return cached;
+    return new Promise<string | undefined>((resolve) => {
+      pendingRef.current.push({ kind: 'string', raw: value, spec, resolve });
+      scheduleFlush();
+    }) as Promise<string>;
+  };
+
   return {
-    reference(rootId, spec) {
+    reference(value, spec) {
+      const rootId = referenceId(value);
+      if (rootId === undefined) return undefined;
       const sidecar = sidecarRef.current.get(rootId);
       if (sidecar) {
         return sidecarReference(rootId, sidecar, spec);
@@ -141,23 +170,45 @@ function createResolveObject(
           resolve,
         });
         scheduleFlush();
-      }) as Promise<ResolvedReference>;
+      });
     },
     link(value, spec) {
-      const cached = linkCacheRef.current.get(JSON.stringify(value));
+      if (typeof value !== 'object' || value === null) return undefined;
+      const link = value as LinkValue;
+      const cached = linkCacheRef.current.get(JSON.stringify(link));
       if (cached) return cached;
       return new Promise<ResolvedLink | undefined>((resolve) => {
-        pendingRef.current.push({ kind: 'link', raw: value, spec, resolve });
+        pendingRef.current.push({ kind: 'link', raw: link, spec, resolve });
         scheduleFlush();
-      }) as Promise<ResolvedLink>;
+      });
     },
-    string(value, spec) {
-      const cached = stringCacheRef.current.get(value);
-      if (cached !== undefined) return cached;
-      return new Promise<string | undefined>((resolve) => {
-        pendingRef.current.push({ kind: 'string', raw: value, spec, resolve });
+    text: resolveString,
+    textarea: resolveString,
+    // `{{variables}}` inside the text nodes resolve with the tree.
+    richText(value, spec) {
+      if (!isRichTextDoc(value)) return undefined;
+      let variables = false;
+      walkText(value, (text) => {
+        if (text.includes('{{')) variables = true;
+      });
+      if (!variables) return undefined;
+      const key = richTextKey(value);
+      const cached = stringCacheRef.current.get(key);
+      if (cached !== undefined) return JSON.parse(cached) as RichTextDoc;
+      return new Promise<RichTextDoc>((resolve) => {
+        pendingRef.current.push({
+          kind: 'string',
+          raw: key,
+          spec,
+          resolve: (json) =>
+            resolve(
+              json === undefined || json === key
+                ? value
+                : (JSON.parse(json) as RichTextDoc),
+            ),
+        });
         scheduleFlush();
-      }) as Promise<string>;
+      });
     },
   } satisfies CmsDocumentResolve;
 }
@@ -193,6 +244,9 @@ export function useCmsDocument(
   options: UseCmsDocumentOptions,
 ): UseCmsDocumentResult {
   const clientRef = React.useRef(options.client);
+  const definitionRef = React.useRef<AnyCollectionDefinition>(
+    options.definition,
+  );
   const {
     rootId,
     branchId,
@@ -202,7 +256,7 @@ export function useCmsDocument(
     collection,
   } = options;
 
-  const [tree, setTree] = React.useState<BlockTreeNode | null>(null);
+  const [doc, setDoc] = React.useState<EditorDocument | null>(null);
   const [headCommitId, setHeadCommitId] = React.useState<string | null>(null);
   const [key, setKey] = React.useState('');
   const [status, setStatus] = React.useState<CmsDocumentStatus>('loading');
@@ -211,7 +265,6 @@ export function useCmsDocument(
   >(null);
 
   const lastTreeRef = React.useRef<BlockTreeNode | null>(null);
-  const pendingForceTreeRef = React.useRef<BlockTreeNode | null>(null);
   const generationRef = React.useRef(0);
 
   const sidecarRef = React.useRef(new Map<string, BlockTreeNode>());
@@ -326,35 +379,27 @@ export function useCmsDocument(
     );
 
     try {
-      const [blockResult, branchResult] = await Promise.all([
-        clientRef.current.getBlockTree({
-          query: {
-            rootId,
-            branchId,
-            raw: true,
-            includeReferencePreviews,
-          },
-        }),
-        clientRef.current.getBranch({ query: { branchId } }),
-      ]);
+      const snapshot = await createCmsAdapter({
+        client: clientRef.current,
+        definition: definitionRef.current,
+        branchId,
+        includeReferencePreviews,
+      }).loadSnapshot(rootId);
       if (gen !== generationRef.current) return;
 
-      const head = branchResult.headCommitId;
-      setTree(blockResult.tree);
+      const head = snapshot.headCommitId;
+      setDoc(snapshot.doc);
       setHeadCommitId(head);
       setKey(`${rootId}:${branchId}:${head}`);
-      lastTreeRef.current = blockResult.tree;
-      pendingForceTreeRef.current = null;
+      lastTreeRef.current = snapshot.tree;
 
-      sidecarRef.current = new Map(
-        Object.entries(blockResult.references ?? {}),
-      );
+      sidecarRef.current = new Map(Object.entries(snapshot.references));
       setStatus('idle');
       setError(null);
     } catch (err) {
       if (gen !== generationRef.current) return;
       setStatus('error');
-      setError(readCmsError(err));
+      setError(readCmsError(causeOf(err)));
     }
   }, [rootId, branchId, includeReferencePreviews]);
 
@@ -374,67 +419,45 @@ export function useCmsDocument(
     };
   }, []);
 
-  const saveImpl = React.useCallback(
-    async (
-      treeOrForce: BlockTreeNode | { force: true },
-      meta?: { message?: string; force?: boolean },
-    ): Promise<void> => {
-      let tree: BlockTreeNode;
-      let force: boolean;
-      if (isForceArg(treeOrForce)) {
-        const pending = pendingForceTreeRef.current;
-        if (!pending) {
-          throw new Error('useCmsDocument: no tree to force-save');
-        }
-        tree = pending;
-        force = true;
-      } else {
-        tree = treeOrForce;
-        force = meta?.force === true;
-      }
-
-      const fromMessage = message?.();
-      const msg = meta?.message ?? fromMessage;
-      const bodyMessage = msg !== undefined && msg !== '' ? msg : undefined;
-
-      setStatus('saving');
-      try {
-        const result = await clientRef.current.updateBlocks({
-          body: {
-            rootId,
-            branchId,
-            tree,
-            message: bodyMessage,
-            expectedHeadCommitId:
-              force || headCommitId === null ? undefined : headCommitId,
-          },
+  const autosave = options.autosave ?? false;
+  const persistence = React.useMemo<PersistenceOptions>(
+    () => ({
+      async save(saveDoc, ctx) {
+        const fromMessage = message?.();
+        const msg = ctx.message ?? fromMessage;
+        const result = await createCmsAdapter({
+          client: clientRef.current,
+          definition: definitionRef.current,
+          branchId,
+          includeReferencePreviews,
+        }).save(rootId, saveDoc, {
+          ops: ctx.ops,
+          baseVersion: ctx.baseVersion,
+          message: msg === '' ? undefined : msg,
         });
-        setHeadCommitId(result.commit.id);
-        lastTreeRef.current = tree;
-        pendingForceTreeRef.current = null;
-        setStatus('idle');
-        setError(null);
-      } catch (err) {
-        const cmsError = readCmsError(err);
-        if (cmsError.code === HEAD_MISMATCH) {
-          setStatus('conflict');
-          setError(cmsError);
-          pendingForceTreeRef.current = tree;
-          throw err;
-        }
-        setStatus('error');
-        setError(cmsError);
-        throw err;
-      }
-    },
-    [rootId, branchId, message, headCommitId],
+        lastTreeRef.current = fromEditor(saveDoc, definitionRef.current);
+        return result;
+      },
+      baseVersion: headCommitId ?? undefined,
+      autosave,
+    }),
+    // A new head means a new document key: the editor remounts with it.
+    [
+      rootId,
+      branchId,
+      message,
+      includeReferencePreviews,
+      headCommitId,
+      autosave,
+    ],
   );
 
-  const save = saveImpl as UseCmsDocumentResult['save'];
-
   const onChange = React.useCallback(
-    (change: { getTree: () => BlockTreeNode }) => {
-      lastTreeRef.current = change.getTree();
+    (change: { getDocument: () => EditorDocument }) => {
+      lastTreeRef.current = fromEditor(
+        change.getDocument(),
+        definitionRef.current,
+      );
     },
     [],
   );
@@ -445,19 +468,25 @@ export function useCmsDocument(
       const { defaults } = await templates.getTemplateDefaults({
         query: { collection, blockType },
       });
-      return { ...defaults };
+      const specs = definitionRef.current.blocks?.[blockType]?.properties ?? {};
+      const out: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(defaults)) {
+        const spec = specs[key];
+        out[key] = spec ? cmsValueToEditor(spec, value) : value;
+      }
+      return out;
     },
     [templates, collection],
   );
 
   return {
-    tree,
+    doc,
     key,
     headCommitId,
     resolve: resolveObjRef.current,
     status,
     error,
-    save,
+    persistence,
     reload,
     onChange,
     onAdd,

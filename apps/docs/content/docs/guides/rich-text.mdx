@@ -1,0 +1,97 @@
+---
+title: Rich text
+description: Store formatted text as ProseMirror JSON, render it without HTML strings, edit it with Tiptap, and convert content that was stored as HTML.
+---
+
+A `richText` property stores formatted text as ProseMirror (Tiptap) JSON:
+
+```ts
+const body = {
+  type: 'doc',
+  content: [
+    {
+      type: 'paragraph',
+      content: [
+        { type: 'text', text: 'Hello ' },
+        { type: 'text', text: '{{company}}', marks: [{ type: 'bold' }] },
+      ],
+    },
+  ],
+};
+```
+
+Nodes are `paragraph`, `heading` (`level` 1 to 6), `bulletList`, `orderedList`, `listItem`, `blockquote`, `codeBlock`, `hardBreak`, `horizontalRule` and `image` (`assetId`, `alt`); marks are `bold`, `italic`, `underline`, `strike`, `code` and `link`. A link mark carries a `{ link }` target (the same `LinkValue` as a `link` property: internal, external, email or phone) or an external `{ href }`.
+
+### Declare what a property allows
+
+`marks` and `nodes` restrict the formatting, `inline` limits the value to one paragraph, and `minLength` / `maxLength` count its plain text:
+
+```ts
+const article = defineBlock({
+  label: 'Article',
+  properties: {
+    summary: { type: 'richText', label: 'Summary', inline: true, marks: ['bold', 'italic'] },
+    body: { type: 'richText', label: 'Body', marks: ['bold', 'italic', 'link'], maxLength: 20000 },
+  },
+});
+```
+
+Every write path checks values against these rules. An HTML string fails with `VALIDATION_ERROR` (or `TYPE_MISMATCH` from `updateBlocks`); formatting the property does not allow, a malformed value or a link to a `javascript:` or `data:` URL fails with `RICH_TEXT_INVALID`, whose issues point at the offending node or mark. The editor offers only what the property allows, also for pasted content.
+
+### Render
+
+`RichText` from `@createcms/core/react/blocks` renders a value as plain React elements in Server and Client Components; see [Render content](/docs/guides/rendering-content#render-rich-text). Variables in text nodes are substituted on the published read path, and internal links resolve to the target's current path (a deleted target renders as text). A `{{variable}}` must sit inside one text node: one split by a formatting change stays literal.
+
+For other targets, `@createcms/core` exports pure functions that run anywhere:
+
+| Function | Result |
+| --- | --- |
+| `richTextToHtml(value, { resolveLink?, resolveAsset?, styles? })` | Escaped HTML, for e-mail (with inline `styles` per node or mark), feeds and string contexts. |
+| `richTextToPlainText(value, { blockSeparator? })` | The text, for `text/plain` parts, excerpts and meta descriptions. |
+| `validateRichText(value, richTextSchemaOf(spec))` | The same findings the server reports. |
+| `walkText(value, fn)` | A copy with rewritten text nodes. |
+
+Search indexes the plain text of `richText` properties, and images inside rich text count as asset usages.
+
+### Edit
+
+The editor (`@createcms/react`) edits `richText` through an adapter on `Editor.Root richText`. The Tiptap adapter lives in its own subpath with Tiptap as optional peer dependencies; load it lazily so it stays out of the initial bundle:
+
+```tsx
+import { lazyRichTextAdapter } from '@createcms/react/editor/core';
+
+const richText = lazyRichTextAdapter(() =>
+  import('@createcms/react/editor/richtext').then((m) => m.createTiptapAdapter()),
+);
+
+<Editor.Root schema={schema} defaultValue={doc} richText={richText}>
+  {/* Editor.RichTextField, Editor.FieldControl, ... */}
+</Editor.Root>;
+```
+
+Install the peers with your package manager: `@tiptap/core`, `@tiptap/pm`, `@tiptap/starter-kit`, `@tiptap/extensions`, `@tiptap/extension-link` and `@tiptap/suggestion`, all `3.32.x`. Undo and redo inside the editor run the editor's history. See [Editor reference](/docs/reference/react-editor#rich-text) for `Editor.RichTextField`, its toolbar and `{{variable}}` completion.
+
+### Import HTML
+
+`htmlToRichText(html, schema, { domParser })` parses pasted or imported HTML into a value the property allows. Word and Google Docs clipboard markup is cleaned, inline bold, italic, underline and strike styles become marks, elements without a counterpart keep their text, and `lossy` counts what was dropped:
+
+```ts
+import { htmlToRichText, richTextSchemaOf } from '@createcms/core';
+
+const { doc, lossy } = htmlToRichText(html, richTextSchemaOf(spec), {
+  domParser: (source) => new DOMParser().parseFromString(source, 'text/html'),
+});
+```
+
+On a server, pass a parser from `happy-dom` or `linkedom`.
+
+### Convert content stored as HTML
+
+Releases before rich text became JSON stored HTML strings. Convert every stored version once, history included, so diffs and merges of old versions keep working:
+
+1. Install `happy-dom` on the server.
+2. Run `cmsClient.admin.migrateRichText({ dryRun: true })` and read the report: counts, conversions that dropped markup (with the dropped tags and attributes) and failures.
+3. Run it without `dryRun`, calling again with `cursor: report.nextCursor` until `nextCursor` is `null`. Each batch is one transaction; values already in JSON are skipped, so a run can be repeated.
+4. Rebuild the search index with `cmsClient.admin.reindexSearch()`.
+
+Scripts and queue workers can call `migrateRichText(db, collections, { domParser })` from `@createcms/core` instead; `formatRichTextMigrationReport(report)` renders the report as Markdown. Until the migration ran, the editor converts HTML values when it loads a document (warning `E015`) and the next save writes them back as JSON.

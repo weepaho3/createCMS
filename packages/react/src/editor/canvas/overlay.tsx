@@ -2,21 +2,38 @@ import * as React from 'react';
 import { createPortal } from 'react-dom';
 
 import type { UseRenderComponentProps } from '../../use-render';
-import type { EditorNode } from '../store';
+import type { FlatNode } from '../core/document';
+import type { ClampedEdges } from './anchors';
 import type { CanvasRect } from './rect';
 
 import { useRender } from '../../use-render';
-import { useEditorSelector } from '../binding';
-import { useEditorContext } from '../context';
+import {
+  useDocSelector,
+  useSessionSelector,
+  useEphemeralSelector,
+} from '../binding';
+import { computedStyleOf } from '../dom';
 import { blockElements } from './anchors';
 import { useCanvasContext } from './context';
-import { useBlockRect, useFieldRect } from './rects';
+import { useFieldRect, useMeasuredRect } from './rects';
 
 type OverlayState = {
   editorOverlay: boolean;
 };
 
+/** The layer the nearest `Canvas.Overlay` draws on. */
+export const OverlayLayerContext = React.createContext<'surface' | 'host'>(
+  'surface',
+);
+
 export type CanvasOverlayProps = React.ComponentPropsWithRef<'div'> & {
+  /**
+   * `surface` (default) draws inside the canvas document, scrolling with
+   * the content; `host` draws over a frame surface in the host page, for
+   * chrome that may leave the frame (toolbars, menus). Inline canvases
+   * have one layer, so `host` behaves like `surface` there.
+   */
+  layer?: 'surface' | 'host';
   render?: UseRenderComponentProps<'div', OverlayState>['render'];
 };
 
@@ -25,13 +42,22 @@ export type CanvasRingState = {
   canMove: boolean;
   canDelete: boolean;
   unresolved: boolean;
+  /** `block`, or `ref` for a reusable section. */
+  kind: 'block' | 'ref';
+  /** Edges an overflow ancestor cuts off (draw no line there). */
+  clampedLeft: boolean;
+  clampedTop: boolean;
+  clampedRight: boolean;
+  clampedBottom: boolean;
 };
 
 type SelectionRingState = CanvasRingState & {
+  state: 'selected';
   editorSelectionRing: boolean;
 };
 
 type HoverRingState = CanvasRingState & {
+  state: 'hover';
   editorHoverRing: boolean;
 };
 
@@ -51,7 +77,12 @@ export type CanvasFieldRingProps = React.ComponentPropsWithRef<'div'> & {
   render?: UseRenderComponentProps<'div', FieldRingState>['render'];
 };
 
-function ringStyle(rect: CanvasRect): React.CSSProperties {
+/**
+ * Position and size, also as `--x --y --w --h` and the block's own
+ * corner radius as `--el-radius` for box-shadow rings; no transition on
+ * any of them, so a ring never lags behind its block.
+ */
+function ringStyle(rect: CanvasRect, radius: string): React.CSSProperties {
   return {
     position: 'absolute',
     left: rect.x,
@@ -60,19 +91,38 @@ function ringStyle(rect: CanvasRect): React.CSSProperties {
     height: rect.height,
     boxSizing: 'border-box',
     pointerEvents: 'none',
+    ['--x' as string]: `${rect.x}px`,
+    ['--y' as string]: `${rect.y}px`,
+    ['--w' as string]: `${rect.width}px`,
+    ['--h' as string]: `${rect.height}px`,
+    ['--el-radius' as string]: radius,
   };
 }
 
+function radiusOf(host: HTMLElement | null, id: string | null): string {
+  const el = id && host ? blockElements(host, id)[0] : undefined;
+  return (el ? computedStyleOf(el)?.borderRadius : undefined) ?? '0px';
+}
+
+type Clamped = { clamped?: ClampedEdges };
+
 function ringFlags(
   host: HTMLElement | null,
-  node: EditorNode | null,
+  node: FlatNode | null,
   id: string | null,
+  rect?: CanvasRect | null,
 ): CanvasRingState {
-  const notRoot = node !== null && node.parentId !== null;
+  const notRoot = node !== null && node.parent !== null;
+  const clamped = (rect as (CanvasRect & Clamped) | null | undefined)?.clamped;
   return {
     blockType: node?.type ?? null,
     canMove: notRoot,
     canDelete: notRoot,
+    kind: node?.type === '$ref' ? 'ref' : 'block',
+    clampedLeft: clamped?.left ?? false,
+    clampedTop: clamped?.top ?? false,
+    clampedRight: clamped?.right ?? false,
+    clampedBottom: clamped?.bottom ?? false,
     unresolved:
       id !== null && host !== null
         ? blockElements(host, id).some((el) =>
@@ -89,6 +139,7 @@ function ringFlags(
  * there so `absolute; inset: 0` covers the surface.
  */
 export function CanvasOverlay({
+  layer = 'surface',
   children,
   render,
   style,
@@ -100,7 +151,15 @@ export function CanvasOverlay({
   React.useLayoutEffect(() => {
     const host = ctx.host;
     const inner = innerRef.current;
-    if (!host || !inner) return;
+    const layer = inner?.parentElement;
+    if (!host || !inner || !layer) return;
+    // A positioned host is the layer's containing block: the layer
+    // scrolls with the content already, and the host's overflow clips.
+    if (layer.offsetParent === host) {
+      inner.style.transform = '';
+      layer.style.overflow = 'visible';
+      return;
+    }
     const apply = () => {
       inner.style.transform =
         'translate(' + -host.scrollLeft + 'px,' + -host.scrollTop + 'px)';
@@ -112,7 +171,27 @@ export function CanvasOverlay({
     };
   }, [ctx.host]);
 
-  const layer = useRender<'div', OverlayState>({
+  // Over a frame, host-layer chrome may leave the frame (a toolbar above
+  // the first block); the layer's own transform maps content coordinates.
+  const hostLayer = useRender<'div', OverlayState>({
+    defaultTagName: 'div',
+    render,
+    props: {
+      ...rest,
+      style: {
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        pointerEvents: 'none',
+        zIndex: 'var(--editor-z-overlay, 1)',
+        ...style,
+      },
+      children,
+    },
+    state: { editorOverlay: true },
+  });
+
+  const surfaceLayer = useRender<'div', OverlayState>({
     defaultTagName: 'div',
     render,
     props: {
@@ -146,8 +225,16 @@ export function CanvasOverlay({
     },
   });
 
+  if (layer === 'host' && ctx.hostLayer) {
+    return createPortal(
+      <OverlayLayerContext.Provider value="host">
+        {hostLayer}
+      </OverlayLayerContext.Provider>,
+      ctx.hostLayer,
+    );
+  }
   if (!ctx.host) return null;
-  return createPortal(layer, ctx.host);
+  return createPortal(surfaceLayer, ctx.host);
 }
 
 export function CanvasSelectionRing({
@@ -156,24 +243,23 @@ export function CanvasSelectionRing({
   ...rest
 }: CanvasSelectionRingProps) {
   const canvas = useCanvasContext('Canvas.SelectionRing');
-  const { userId } = useEditorContext('Canvas.SelectionRing');
-  const selected = useEditorSelector(
-    (s) => s.selection[userId]?.selected ?? null,
-  );
-  const node = useEditorSelector((s) =>
+  const selected = useSessionSelector((s) => s.selection[0] ?? null);
+  const node = useDocSelector((s) =>
     selected ? (s.nodes[selected] ?? null) : null,
   );
-  const rect = useBlockRect(selected ?? '');
-  const flags = ringFlags(canvas.host, node, selected);
+  const rect = useMeasuredRect(canvas.measurer, 'visible', selected ?? '');
+  const flags = ringFlags(canvas.host, node, selected, rect);
   const element = useRender<'div', SelectionRingState>({
     defaultTagName: 'div',
     render,
     props: {
       ...rest,
       'aria-hidden': true,
-      style: rect ? { ...ringStyle(rect), ...style } : style,
+      style: rect
+        ? { ...ringStyle(rect, radiusOf(canvas.host, selected)), ...style }
+        : style,
     },
-    state: { ...flags, editorSelectionRing: true },
+    state: { ...flags, state: 'selected', editorSelectionRing: true },
   });
   if (selected === null || rect === null) return null;
   return element;
@@ -185,27 +271,24 @@ export function CanvasHoverRing({
   ...rest
 }: CanvasHoverRingProps) {
   const canvas = useCanvasContext('Canvas.HoverRing');
-  const { userId } = useEditorContext('Canvas.HoverRing');
-  const hovered = useEditorSelector(
-    (s) => s.selection[userId]?.hovered ?? null,
-  );
-  const selected = useEditorSelector(
-    (s) => s.selection[userId]?.selected ?? null,
-  );
-  const node = useEditorSelector((s) =>
+  const hovered = useEphemeralSelector((s) => s.hoverId);
+  const selected = useSessionSelector((s) => s.selection[0] ?? null);
+  const node = useDocSelector((s) =>
     hovered ? (s.nodes[hovered] ?? null) : null,
   );
-  const rect = useBlockRect(hovered ?? '');
-  const flags = ringFlags(canvas.host, node, hovered);
+  const rect = useMeasuredRect(canvas.measurer, 'visible', hovered ?? '');
+  const flags = ringFlags(canvas.host, node, hovered, rect);
   const element = useRender<'div', HoverRingState>({
     defaultTagName: 'div',
     render,
     props: {
       ...rest,
       'aria-hidden': true,
-      style: rect ? { ...ringStyle(rect), ...style } : style,
+      style: rect
+        ? { ...ringStyle(rect, radiusOf(canvas.host, hovered)), ...style }
+        : style,
     },
-    state: { ...flags, editorHoverRing: true },
+    state: { ...flags, state: 'hover', editorHoverRing: true },
   });
   if (canvas.dragging || canvas.editing) return null;
   if (hovered !== null && hovered === selected) return null;
@@ -219,9 +302,14 @@ export function CanvasFieldRing({
   ...rest
 }: CanvasFieldRingProps) {
   const canvas = useCanvasContext('Canvas.FieldRing');
-  const { userId } = useEditorContext('Canvas.FieldRing');
-  const focus = useEditorSelector((s) => s.selection[userId]?.focus ?? null);
-  const node = useEditorSelector((s) =>
+  // A field outside the selected block is no longer what the user works
+  // on, even when it kept the store's field focus.
+  const focus = useSessionSelector((s) =>
+    s.focusedField && s.selection.includes(s.focusedField.blockId)
+      ? s.focusedField
+      : null,
+  );
+  const node = useDocSelector((s) =>
     focus ? (s.nodes[focus.blockId] ?? null) : null,
   );
   const rect = useFieldRect(focus?.blockId ?? '', focus?.key ?? '');
@@ -232,10 +320,10 @@ export function CanvasFieldRing({
     props: {
       ...rest,
       'aria-hidden': true,
-      style: rect ? { ...ringStyle(rect), ...style } : style,
+      style: rect ? { ...ringStyle(rect, '0px'), ...style } : style,
     },
     state: { ...flags, editorFieldRing: true },
   });
-  if (focus === null || rect === null) return null;
+  if (focus === null || rect === null || canvas.dragging) return null;
   return element;
 }

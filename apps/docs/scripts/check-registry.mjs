@@ -6,15 +6,37 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const publicR = path.join(root, 'public/r');
 
 const UI_ITEM_NAMES = [
+  'editor-field',
   'editor-form',
   'editor-canvas',
+  'editor-chrome',
+  'editor-toolbar',
+  'editor-palette',
+  'editor-outline',
+  'editor-inspector',
   'editor-shell',
   'editor-email',
+  'editor-form-createcms',
   'media-library',
   'media-picker',
 ];
 
-const BLOCK_ITEM_NAMES = ['editor-app'];
+const BLOCK_ITEM_NAMES = ['editor-app', 'editor-app-createcms'];
+
+/** Generic items: usable without a createCMS backend. */
+const GENERIC_ITEM_NAMES = [
+  'editor-field',
+  'editor-form',
+  'editor-canvas',
+  'editor-chrome',
+  'editor-toolbar',
+  'editor-palette',
+  'editor-outline',
+  'editor-inspector',
+  'editor-shell',
+  'editor-email',
+  'editor-app',
+];
 
 function readJson(name) {
   const filePath = path.join(publicR, name);
@@ -49,9 +71,9 @@ function assertNamedItem(item, name, expectedType) {
     console.error(`check-registry: ${name}.json missing dependencies array`);
     process.exit(1);
   }
-  if (!item.dependencies.includes('@createcms/react')) {
+  if (!item.dependencies.some((dep) => dep.startsWith('@createcms/react@^'))) {
     console.error(
-      `check-registry: ${name}.json dependencies must include @createcms/react`,
+      `check-registry: ${name}.json dependencies must pin @createcms/react@^<version>`,
     );
     process.exit(1);
   }
@@ -61,13 +83,13 @@ function assertNamedItem(item, name, expectedType) {
 const catalog = readJson('registry.json');
 const catalogNames = new Set((catalog.items ?? []).map((item) => item.name));
 const editorFormItem = catalog.items.find(
-  (item) => item.name === 'editor-form',
+  (item) => item.name === 'editor-field',
 );
 const editorFormDeps = editorFormItem?.registryDependencies ?? [];
 for (const dep of ['input', 'textarea', 'select', 'checkbox']) {
   if (!editorFormDeps.includes(dep)) {
     console.error(
-      `check-registry: editor-form registryDependencies must include "${dep}"`,
+      `check-registry: editor-field registryDependencies must include "${dep}"`,
     );
     process.exit(1);
   }
@@ -79,6 +101,29 @@ for (const name of [...UI_ITEM_NAMES, ...BLOCK_ITEM_NAMES]) {
   }
 }
 
+// A bare name resolves against the shadcn registry in a consumer's
+// `shadcn add`: dependencies on items of this registry must be URLs.
+const REGISTRY_URL = 'https://createcms.dev/r/';
+for (const item of catalog.items) {
+  for (const dep of item.registryDependencies ?? []) {
+    if (catalogNames.has(dep)) {
+      console.error(
+        `check-registry: ${item.name} depends on "${dep}" by name; use ${REGISTRY_URL}${dep}.json`,
+      );
+      process.exit(1);
+    }
+    if (
+      dep.startsWith(REGISTRY_URL) &&
+      !catalogNames.has(dep.slice(REGISTRY_URL.length, -'.json'.length))
+    ) {
+      console.error(
+        `check-registry: ${item.name} depends on unknown item ${dep}`,
+      );
+      process.exit(1);
+    }
+  }
+}
+
 const uiItems = UI_ITEM_NAMES.map((name) =>
   assertNamedItem(readJson(`${name}.json`), name, 'registry:ui'),
 );
@@ -87,6 +132,24 @@ const blockItems = BLOCK_ITEM_NAMES.map((name) =>
 );
 
 const uiContents = uiItems.map(itemContents).join('\n');
+
+for (const name of GENERIC_ITEM_NAMES) {
+  const item = [...uiItems, ...blockItems].find((it) => it.name === name);
+  const contents = itemContents(item);
+  if (/@createcms\/react\/editor\/cms|-createcms'/.test(contents)) {
+    console.error(
+      `check-registry: generic item ${name} must not import the createCMS layer`,
+    );
+    process.exit(1);
+  }
+  const deps = item.registryDependencies ?? [];
+  if (deps.some((dep) => dep.includes('-createcms'))) {
+    console.error(
+      `check-registry: generic item ${name} must not depend on a createcms item`,
+    );
+    process.exit(1);
+  }
+}
 const blockContents = blockItems.map(itemContents).join('\n');
 
 if (/<(Editor|Canvas)\.Root/.test(uiContents)) {
@@ -140,7 +203,7 @@ const uiChecks = [
   ['data-slot="editor-outline"', 'editor-outline slot'],
   ['data-slot="editor-inspector"', 'editor-inspector slot'],
   ['data-slot="editor-surface"', 'editor-surface slot'],
-  ['data-slot="editor-selection-chip"', 'editor-selection-chip slot'],
+  ['data-slot="editor-block-toolbar-label"', 'block toolbar label slot'],
   ['<DragHandle blockId={selected} />', 'toolbar drag handle'],
   ['SidebarProvider', 'SidebarProvider usage'],
   ['CommandDialog', 'CommandDialog usage'],
@@ -154,8 +217,11 @@ const blockChecks = [
   ['CmsSourcesProvider', 'CmsSourcesProvider'],
   ['fields={cmsFields}', 'cmsFields on Editor.Root'],
   ['key={doc.key}', 'doc.key remount'],
-  ['defaultValue={doc.tree}', 'doc.tree defaultValue'],
-  ['onSave={doc.save}', 'doc.save'],
+  ['defaultValue={doc.doc}', 'doc.doc defaultValue'],
+  ['fromCollection(blocks._collection)', 'schema derived from the blocks map'],
+  ['cmsCanvasComponents(blocks)', 'canvas components from the blocks map'],
+  ['definition: blocks._collection', 'collection definition for the adapter'],
+  ['persistence={doc.persistence}', 'doc.persistence on Editor.Root'],
   ['onChange={doc.onChange}', 'doc.onChange'],
   ['resolve={doc.resolve}', 'doc.resolve on Canvas.Root'],
   ['EditorShell', 'EditorShell composition'],
@@ -164,7 +230,8 @@ const blockChecks = [
   ['data-slot="editor-app-loading"', 'loading skeleton slot'],
   ['data-slot="editor-app-error"', 'error state slot'],
   ['data-slot="editor-app-conflict"', 'conflict dialog slot'],
-  ['save({ force: true })', 'force save on conflict'],
+  ['useSaveConflict()', 'conflict options from useSaveConflict'],
+  ['conflict?.overwrite()', 'overwrite on conflict'],
   ['doc.reload', 'reload retry'],
   ["mode === 'form'", 'form mode'],
   ['SelectionRing', 'SelectionRing overlay'],

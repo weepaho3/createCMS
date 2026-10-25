@@ -1,15 +1,16 @@
-// @vitest-environment happy-dom
-import type { BlockTreeNode, CollectionDefinition } from '@createcms/schema';
 import type * as React from 'react';
 
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { EditorStore } from '../store';
+// @vitest-environment happy-dom
+import type { EditorDocument } from '../core/document';
+import type { EditorStore } from '../core/store';
 
 import { useEditorContext } from '../context';
+import { defineEditorSchema } from '../core/schema';
+import { makeDoc, storeSchema } from '../core/store/fixtures';
 import { Editor, PREVIEW_DEBOUNCE_MS } from '../index';
-import { makeTree, storeSchema } from '../store/fixtures';
 
 afterEach(cleanup);
 
@@ -28,12 +29,12 @@ function flushPreview(ms = PREVIEW_DEBOUNCE_MS) {
 }
 
 function renderPreview(
-  renderTree: (tree: BlockTreeNode) => React.ReactNode,
+  renderTree: (tree: EditorDocument) => React.ReactNode,
   options: { debounceMs?: number } = {},
 ) {
   const probe: Probe = { store: null };
   const utils = render(
-    <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+    <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
       <StoreProbe probe={probe} />
       <Editor.Preview
         data-testid="preview"
@@ -57,7 +58,7 @@ describe('Editor.Preview', () => {
 
   it('updates after an op, debounced', () => {
     const { getByTestId, store } = renderPreview((tree) => (
-      <span>{String(tree.properties.title)}</span>
+      <span>{tree.root.props.title as string}</span>
     ));
     const preview = getByTestId('preview');
     expect(preview.textContent).toBe('Home');
@@ -75,8 +76,8 @@ describe('Editor.Preview', () => {
   it('two ops inside the window become one tree', () => {
     const titles: string[] = [];
     const { store } = renderPreview((tree) => {
-      titles.push(String(tree.properties.title));
-      return <span>{String(tree.properties.title)}</span>;
+      titles.push(tree.root.props.title as string);
+      return <span>{tree.root.props.title as string}</span>;
     });
     act(() => {
       store.update('root_1', { title: 'A' });
@@ -92,7 +93,7 @@ describe('Editor.Preview', () => {
   });
 
   it('does not update without a tree change', () => {
-    const trees: BlockTreeNode[] = [];
+    const trees: EditorDocument[] = [];
     const { getByTestId, store } = renderPreview((tree) => {
       trees.push(tree);
       return null;
@@ -104,7 +105,7 @@ describe('Editor.Preview', () => {
     });
     expect(getByTestId('preview').hasAttribute('data-stale')).toBe(false);
     expect(trees[trees.length - 1]).toBe(first);
-    expect(store.getTree()).toBe(first);
+    expect(store.getDocument()).toBe(first);
   });
 
   it('throws a precise error outside Editor.Root', () => {
@@ -119,7 +120,7 @@ describe('focus roundtrip Field and store', () => {
   it('syncs Field focus into the store and store focus onto data-focused', () => {
     const probe: Probe = { store: null };
     const { getByTestId } = render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <StoreProbe probe={probe} />
         <Editor.Field blockId="h1" name="text" data-testid="text-field">
           <Editor.FieldControl />
@@ -134,7 +135,7 @@ describe('focus roundtrip Field and store', () => {
       'input',
     ) as HTMLInputElement;
     fireEvent.focus(textInput);
-    expect(probe.store.getState().selection.local?.focus).toEqual({
+    expect(probe.store.getSession().focusedField).toEqual({
       blockId: 'h1',
       key: 'text',
     });
@@ -147,51 +148,56 @@ describe('focus roundtrip Field and store', () => {
   });
 });
 
-const invoiceSchema = {
-  label: 'Invoices',
+const invoiceSchema = defineEditorSchema({
   root: {
-    properties: {
-      number: { type: 'string', label: 'Number' },
-      customer: { type: 'string', label: 'Customer' },
+    label: 'Invoices',
+    fields: {
+      number: { type: 'text', label: 'Number' },
+      customer: { type: 'text', label: 'Customer' },
     },
+    slots: { children: {} },
   },
-  blocks: {
+  components: {
     line: {
       label: 'Line',
-      properties: {
-        description: { type: 'string', label: 'Description' },
+      fields: {
+        description: { type: 'text', label: 'Description' },
         amount: { type: 'number', label: 'Amount' },
       },
     },
   },
-} satisfies CollectionDefinition;
+});
 
-function makeInvoice(): BlockTreeNode {
+function makeInvoice(): EditorDocument {
   return {
-    blockId: 'root_1',
-    type: 'root',
-    properties: { number: 'INV-1', customer: 'Acme' },
-    children: [
-      {
-        blockId: 'l1',
-        type: 'line',
-        properties: { description: 'Widget', amount: 10 },
-        children: [],
+    schemaVersion: 1,
+    root: {
+      id: 'root_1',
+      type: 'root',
+      props: { number: 'INV-1', customer: 'Acme' },
+      slots: {
+        children: [
+          {
+            id: 'l1',
+            type: 'line',
+            props: { description: 'Widget', amount: 10 },
+          },
+        ],
       },
-    ],
+    },
   };
 }
 
-function PDFViewer({ tree }: { tree: BlockTreeNode }) {
-  const lines = (tree.children ?? [])
+function PDFViewer({ tree }: { tree: EditorDocument }) {
+  const lines = (tree.root.slots?.children ?? [])
     .map(
       (child) =>
-        `${String(child.properties.description)}:${String(child.properties.amount)}`,
+        `${child.props.description as string}:${child.props.amount as number}`,
     )
     .join(' ');
   return (
     <div data-testid="pdf">
-      {String(tree.properties.number)} {String(tree.properties.customer)}{' '}
+      {tree.root.props.number as string} {tree.root.props.customer as string}{' '}
       {lines}
     </div>
   );

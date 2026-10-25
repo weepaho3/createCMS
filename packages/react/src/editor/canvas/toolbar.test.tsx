@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { makeDoc, storeSchema } from '../core/store/fixtures';
 import { Editor } from '../index';
-import { makeTree, storeSchema } from '../store/fixtures';
 import { Canvas } from './index';
 import { dispatchPointer, renderCanvas } from './test/harness';
 import { useInsertTarget } from './toolbar';
@@ -19,7 +19,7 @@ describe('Canvas.BlockToolbar', () => {
   it('throws outside Canvas.Root', () => {
     expect(() =>
       render(
-        <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+        <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
           <Canvas.BlockToolbar />
         </Editor.Root>,
       ),
@@ -72,11 +72,74 @@ describe('Canvas.BlockToolbar', () => {
   });
 });
 
+describe('Canvas.BlockToolbar keyboard', () => {
+  function mountToolbar() {
+    const utils = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.BlockToolbar>
+          <button type="button">One</button>
+          <button type="button" disabled>
+            Off
+          </button>
+          <button type="button">Two</button>
+          <button type="button">Three</button>
+        </Canvas.BlockToolbar>
+      </Canvas.Overlay>,
+    );
+    act(() => utils.store.select('h1'));
+    const toolbar =
+      utils.host.ownerDocument.querySelector<HTMLElement>('[role="toolbar"]')!;
+    const buttons = [...toolbar.querySelectorAll('button')];
+    return { ...utils, toolbar, buttons };
+  }
+
+  it('is named from the catalog and has one tab stop', () => {
+    const { toolbar, buttons } = mountToolbar();
+    expect(toolbar.getAttribute('aria-label')).toBe('Heading actions');
+    const enabled = buttons.filter((b) => !b.disabled);
+    expect(enabled.map((b) => b.tabIndex)).toEqual([0, -1, -1]);
+  });
+
+  it('arrows move with wrap and skip disabled items; Home and End jump', () => {
+    const { buttons } = mountToolbar();
+    const [one, , two, three] = buttons;
+    one!.focus();
+    fireEvent.keyDown(one!, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(two);
+    expect(two!.tabIndex).toBe(0);
+    expect(one!.tabIndex).toBe(-1);
+    fireEvent.keyDown(two!, { key: 'End' });
+    expect(document.activeElement).toBe(three);
+    fireEvent.keyDown(three!, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(one);
+    fireEvent.keyDown(one!, { key: 'ArrowLeft' });
+    expect(document.activeElement).toBe(three);
+    fireEvent.keyDown(three!, { key: 'Home' });
+    expect(document.activeElement).toBe(one);
+  });
+
+  it('Alt+F10 enters the toolbar without changing the selection; Escape returns', () => {
+    const { buttons, store } = mountToolbar();
+    const outside = document.createElement('input');
+    document.body.append(outside);
+    outside.focus();
+    act(() => {
+      store.commands.execute('ui.toolbar');
+    });
+    expect(document.activeElement).toBe(buttons[0]);
+    expect(store.getSession().selection).toEqual(['h1']);
+    fireEvent.keyDown(buttons[0]!, { key: 'Escape' });
+    expect(document.activeElement).toBe(outside);
+    expect(store.getSession().selection).toEqual(['h1']);
+    outside.remove();
+  });
+});
+
 describe('Canvas.InsertButton', () => {
   it('throws outside Canvas.Root', () => {
     expect(() =>
       render(
-        <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+        <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
           <Canvas.InsertButton placement="between" />
         </Editor.Root>,
       ),
@@ -139,6 +202,6 @@ describe('overlay chrome hover guard', () => {
     insert!.dispatchEvent(
       new Event('pointerover', { bubbles: true, cancelable: true }),
     );
-    expect(store.getState().selection.local?.hovered).toBe('h1');
+    expect(store.getEphemeral().hoverId).toBe('h1');
   });
 });

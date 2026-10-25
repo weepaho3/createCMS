@@ -1,175 +1,143 @@
 import { describe, expect, it } from 'vitest';
 
-import type { TextDiffSegment } from '../types';
+import type { RichTextDoc, RichTextNode } from '../../rich-text/types';
+import type { RichTextDiffSegment } from '../types';
 
+import { richTextToPlainText } from '../../rich-text/convert';
 import { diffRichText } from '../text-diff';
 
-/** Rebuilds `from` out of the non-`ins` segments. */
-function concatFrom(segments: TextDiffSegment[]): string {
-  return segments
-    .filter((s) => s.type !== 'ins')
-    .map((s) => s.html)
-    .join('');
-}
+const text = (value: string, marks?: RichTextNode['marks']): RichTextNode =>
+  marks ? { type: 'text', text: value, marks } : { type: 'text', text: value };
+const p = (...content: RichTextNode[]): RichTextNode => ({
+  type: 'paragraph',
+  content,
+});
+const doc = (...content: RichTextNode[]): RichTextDoc => ({
+  type: 'doc',
+  content,
+});
+const plain = (value: string) =>
+  doc(...value.split('\n').map((line) => p(text(line))));
 
-/** Rebuilds `to` out of the non-`del` segments. */
-function concatTo(segments: TextDiffSegment[]): string {
-  return segments
-    .filter((s) => s.type !== 'del')
-    .map((s) => s.html)
-    .join('');
-}
+const short = (segments: RichTextDiffSegment[]) =>
+  segments.map((s) => `${s.type}:${s.text}`);
+
+const sideText = (
+  segments: RichTextDiffSegment[],
+  side: 'from' | 'to',
+): string[] => {
+  const blocks = new Map<number, string>();
+  for (const s of segments) {
+    if (s.type === (side === 'from' ? 'ins' : 'del')) continue;
+    blocks.set(s.block, (blocks.get(s.block) ?? '') + s.text);
+  }
+  return [...blocks.values()];
+};
 
 describe('diffRichText', () => {
-  it('returns a single same segment for identical input', () => {
-    const html = '<p>Hello <strong>world</strong></p>';
-    expect(diffRichText(html, html)).toEqual([{ type: 'same', html }]);
+  it('returns nothing for two empty values and one same run for equal ones', () => {
+    expect(diffRichText(doc(), doc())).toEqual([]);
+    expect(
+      short(diffRichText(plain('Hello world'), plain('Hello world'))),
+    ).toEqual(['same:Hello world']);
   });
 
-  it('returns [] when both strings are empty', () => {
-    expect(diffRichText('', '')).toEqual([]);
+  it('diffs a word change mid-sentence', () => {
+    expect(
+      short(
+        diffRichText(plain('The quick brown fox'), plain('The quick red fox')),
+      ),
+    ).toEqual(['same:The quick ', 'del:brown ', 'ins:red ', 'same:fox']);
   });
 
-  it('emits a pure insertion from empty to content', () => {
-    expect(diffRichText('', '<p>New</p>')).toEqual([
-      { type: 'ins', html: '<p>New</p>' },
-    ]);
+  it('diffs insertions and deletions at the ends', () => {
+    expect(
+      short(diffRichText(plain('Hello world'), plain('Hello world again'))),
+    ).toEqual(['same:Hello ', 'del:world', 'ins:world again']);
+    expect(
+      short(diffRichText(plain('Alpha beta gamma'), plain('beta gamma'))),
+    ).toEqual(['del:Alpha ', 'same:beta gamma']);
+    expect(short(diffRichText(doc(), plain('New')))).toEqual(['ins:New']);
+    expect(short(diffRichText(plain('Old'), doc()))).toEqual(['del:Old']);
   });
 
-  it('emits a pure deletion from content to empty', () => {
-    expect(diffRichText('<p>Old</p>', '')).toEqual([
-      { type: 'del', html: '<p>Old</p>' },
-    ]);
-  });
-
-  it('diffs a single word change mid-sentence', () => {
-    expect(diffRichText('The quick brown fox', 'The quick red fox')).toEqual([
-      { type: 'same', html: 'The quick ' },
-      { type: 'del', html: 'brown ' },
-      { type: 'ins', html: 'red ' },
-      { type: 'same', html: 'fox' },
-    ]);
-  });
-
-  it('diffs an insertion at the end', () => {
-    // The last word of `from` carries no trailing whitespace, so appending
-    // text rewrites that final token: del of the old tail, ins of the new.
-    expect(diffRichText('Hello world', 'Hello world again')).toEqual([
-      { type: 'same', html: 'Hello ' },
-      { type: 'del', html: 'world' },
-      { type: 'ins', html: 'world again' },
-    ]);
-  });
-
-  it('diffs a tag-delimited insertion at the end without touching the old tail', () => {
-    expect(diffRichText('<p>Hi</p>', '<p>Hi</p><p>Bye</p>')).toEqual([
-      { type: 'same', html: '<p>Hi</p>' },
-      { type: 'ins', html: '<p>Bye</p>' },
-    ]);
-  });
-
-  it('diffs a deletion at the start', () => {
-    expect(diffRichText('Alpha beta gamma', 'beta gamma')).toEqual([
-      { type: 'del', html: 'Alpha ' },
-      { type: 'same', html: 'beta gamma' },
-    ]);
-  });
-
-  it('keeps surrounding tags same when a word changes inside them', () => {
+  it('reports a formatting-only change as format with the old marks', () => {
     const segments = diffRichText(
-      '<p>Hello <em>big</em> world</p>',
-      '<p>Hello <em>small</em> world</p>',
+      doc(p(text('Hello '), text('big'), text(' world'))),
+      doc(p(text('Hello '), text('big', [{ type: 'bold' }]), text(' world'))),
     );
     expect(segments).toEqual([
-      { type: 'same', html: '<p>Hello <em>' },
-      { type: 'del', html: 'big' },
-      { type: 'ins', html: 'small' },
-      { type: 'same', html: '</em> world</p>' },
+      expect.objectContaining({ type: 'same', text: 'Hello ', marks: [] }),
+      expect.objectContaining({
+        type: 'format',
+        text: 'big',
+        marks: [{ type: 'bold' }],
+        fromMarks: [],
+      }),
+      expect.objectContaining({ type: 'same', text: ' world' }),
     ]);
   });
 
-  it('treats a tag with changed attributes as del + ins, not same', () => {
-    expect(diffRichText('<p class="a">x</p>', '<p class="b">x</p>')).toEqual([
-      { type: 'del', html: '<p class="a">' },
-      { type: 'ins', html: '<p class="b">' },
-      { type: 'same', html: 'x</p>' },
+  it('carries blocks: index, type and heading level', () => {
+    const segments = diffRichText(
+      doc(p(text('Hi'))),
+      doc(
+        { type: 'heading', attrs: { level: 2 }, content: [text('Title')] },
+        p(text('Hi')),
+      ),
+    );
+    expect(segments).toEqual([
+      expect.objectContaining({
+        type: 'ins',
+        text: 'Title',
+        block: 0,
+        blockType: 'heading',
+        level: 2,
+      }),
+      expect.objectContaining({
+        type: 'same',
+        text: 'Hi',
+        block: 1,
+        blockType: 'paragraph',
+      }),
     ]);
   });
 
-  it('collapses a full replacement into one del + one ins', () => {
-    expect(diffRichText('old text here', 'brand new stuff')).toEqual([
-      { type: 'del', html: 'old text here' },
-      { type: 'ins', html: 'brand new stuff' },
+  it('reads list items and quotes as text blocks', () => {
+    const list = (...items: string[]): RichTextDoc =>
+      doc({
+        type: 'bulletList',
+        content: items.map((item) => ({
+          type: 'listItem',
+          content: [p(text(item))],
+        })),
+      });
+    expect(short(diffRichText(list('a', 'b'), list('a', 'c', 'b')))).toEqual([
+      'same:a',
+      'ins:c',
+      'same:b',
     ]);
   });
 
-  it('diffs plain text without any tags', () => {
-    expect(diffRichText('one two three four', 'one 2 three four')).toEqual([
-      { type: 'same', html: 'one ' },
-      { type: 'del', html: 'two ' },
-      { type: 'ins', html: '2 ' },
-      { type: 'same', html: 'three four' },
-    ]);
+  it.each([
+    ['one two three four', 'one 2 three four'],
+    ['old text here', 'brand new stuff'],
+    ['Hello', 'Hello\nBye'],
+    ['  leading and   inner', 'leading and inner'],
+  ])('same+del rebuild the old text and same+ins the new (%j)', (a, b) => {
+    const from = plain(a);
+    const to = plain(b);
+    const segments = diffRichText(from, to);
+    expect(sideText(segments, 'from').join('\n')).toBe(
+      richTextToPlainText(from),
+    );
+    expect(sideText(segments, 'to').join('\n')).toBe(richTextToPlainText(to));
   });
 
   it('bails out to a coarse del/ins pair on oversized inputs', () => {
-    const words = (letter: string, count: number) =>
-      Array.from({ length: count }, (_, i) => `${letter}${i}`).join(' ');
-    const from = `same ${words('a', 4000)}`;
-    const to = `same ${words('b', 4000)}`;
-
-    const segments = diffRichText(from, to);
-    expect(segments).toEqual([
-      { type: 'same', html: 'same ' },
-      { type: 'del', html: words('a', 4000) },
-      { type: 'ins', html: words('b', 4000) },
-    ]);
-    expect(concatFrom(segments)).toBe(from);
-    expect(concatTo(segments)).toBe(to);
-  });
-
-  describe('invariants', () => {
-    const cases: [string, string][] = [
-      ['', ''],
-      ['', '<p>New</p>'],
-      ['<p>Old</p>', ''],
-      ['<p>Hello world</p>', '<p>Hello world</p>'],
-      ['The quick brown fox', 'The quick red fox'],
-      ['Hello world', 'Hello world again'],
-      ['<p>Hi</p>', '<p>Hi</p><p>Bye</p>'],
-      ['Alpha beta gamma', 'beta gamma'],
-      ['<p>Hello <em>big</em> world</p>', '<p>Hello <em>small</em> world</p>'],
-      ['<p class="a">x</p>', '<p class="b">x</p>'],
-      ['old text here', 'brand new stuff'],
-      ['one two three four', 'one 2 three four'],
-      ['  leading and   inner\nwhitespace ', 'leading and inner whitespace'],
-      [
-        '<ul><li>a</li><li>b</li></ul>',
-        '<ul><li>a</li><li>c</li><li>b</li></ul>',
-      ],
-      ['text with <br/> void tag', 'text without void tag'],
-    ];
-
-    it.each(cases)(
-      'same+del === from and same+ins === to (%j -> %j)',
-      (from, to) => {
-        const segments = diffRichText(from, to);
-        expect(concatFrom(segments)).toBe(from);
-        expect(concatTo(segments)).toBe(to);
-      },
-    );
-
-    it.each(cases)(
-      'never emits adjacent segments of the same type (%j -> %j)',
-      (from, to) => {
-        const segments = diffRichText(from, to);
-        for (let i = 1; i < segments.length; i++) {
-          expect(segments[i].type).not.toBe(segments[i - 1].type);
-        }
-        for (const segment of segments) {
-          expect(segment.html).not.toBe('');
-        }
-      },
-    );
+    const many = (word: string) =>
+      plain(Array.from({ length: 3500 }, (_, i) => `${word}${i}`).join(' '));
+    const segments = diffRichText(many('a'), many('b'));
+    expect(segments.map((s) => s.type)).toEqual(['del', 'ins']);
   });
 });

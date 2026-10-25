@@ -71,9 +71,10 @@ jobs:
 
   # Decides whether the browser job has to run: it is the one job that
   # downloads a browser, so it runs for changes that can affect the react
-  # package (its sources, the schema types it depends on, the lockfile, this
-  # workflow) — and always on main. Computed with git against the merge base
-  # so no third-party path-filter action is needed.
+  # package or the registry demos (their sources, the schema types they
+  # depend on, the lockfile, this workflow), and always on main. Computed
+  # with git against the merge base so no third-party path-filter action is
+  # needed.
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -96,12 +97,12 @@ jobs:
           fi
           merge_base="$(git merge-base "origin/$BASE" HEAD)"
           files="$(git diff --name-only "$merge_base" HEAD)"
-          if echo "$files" | grep -qE '^(packages/react/|packages/schema/|bun\.lock$|\.github/workflows/ci\.yml$)'; then
+          if echo "$files" | grep -qE '^(packages/react/|packages/schema/|apps/docs/registry/|apps/docs/src/app/demo/|apps/docs/vitest\.browser\.config\.ts$|bun\.lock$|\.github/workflows/ci\.yml$)'; then
             echo "react=true" >> "$GITHUB_OUTPUT"
           else
             echo "react=false" >> "$GITHUB_OUTPUT"
           fi
-          if echo "$files" | grep -qE '^(apps/docs/registry/|apps/docs/registry.json|apps/docs/public/r/|apps/docs/package.json|apps/docs/scripts/check-registry.mjs|apps/docs/components.json|bun\.lock$|turbo.json|\.github/workflows/ci\.yml$)'; then
+          if echo "$files" | grep -qE '^(apps/docs/registry/|apps/docs/registry.json|apps/docs/public/r/|apps/docs/package.json|apps/docs/scripts/check-registry.mjs|apps/docs/scripts/stamp-registry.mjs|apps/docs/scripts/registry-fixture.mjs|apps/docs/registry-fixture/|packages/react/package.json|packages/react/src/|apps/docs/components.json|bun\.lock$|turbo.json|\.github/workflows/ci\.yml$)'; then
             echo "registry=true" >> "$GITHUB_OUTPUT"
           else
             echo "registry=false" >> "$GITHUB_OUTPUT"
@@ -309,7 +310,8 @@ jobs:
       - name: Type-check @createcms/schema and @createcms/react
         run: bunx turbo run check-types --filter=@createcms/schema --filter=@createcms/react
 
-  # Real Chromium via Playwright (vitest browser mode). Skipped when nothing
+  # Real Chromium, Firefox and WebKit via Playwright (vitest browser mode),
+  # about a minute for the whole matrix. Skipped when nothing
   # under packages/react, packages/schema, bun.lock or this workflow changed
   # (see `changes`); `ci` allows that skip.
   browser-tests:
@@ -326,8 +328,9 @@ jobs:
           bun-version-file: package.json
 
       # The Playwright browser download is keyed by the lockfile: the
-      # playwright version pinned there decides which Chromium build is
-      # needed, and a lockfile change is the only thing that changes it.
+      # playwright version pinned there decides which browser builds are
+      # needed. The key names the engine set, so adding an engine does not
+      # restore a cache that lacks it.
       - name: Cache bun, turbo & Playwright browsers
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -335,25 +338,36 @@ jobs:
             ~/.bun/install/cache
             ~/.cache/ms-playwright
             .turbo
-          key: ${{ runner.os }}-browser-${{ hashFiles('bun.lock') }}
+          key: ${{ runner.os }}-browser-cfw-${{ hashFiles('bun.lock') }}
           restore-keys: |
-            ${{ runner.os }}-browser-
+            ${{ runner.os }}-browser-cfw-
 
       - name: Install
         run: bun install --frozen-lockfile
 
-      - name: Install Chromium
+      - name: Install Chromium, Firefox and WebKit
         working-directory: packages/react
-        run: bunx playwright install --with-deps chromium
+        run: bunx playwright install --with-deps chromium firefox webkit
 
+      # The react package's parts, then the registry items as the docs demos
+      # render them (axe and keyboard flows on editor-app).
       - name: Browser tests
-        run: bunx turbo run test:browser --filter=@createcms/react
+        run: bunx turbo run test:browser --filter=@createcms/react --filter=docs
+
+      # Render counts, typing and drag timings of the 1000-block smoke test.
+      - name: Upload performance results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: editor-perf
+          path: packages/react/.vitest/perf.json
+          if-no-files-found: ignore
 
   registry:
     needs: changes
     if: needs.changes.outputs.registry == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -373,6 +387,12 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
+      # Every registry file carries `@registry <item>@<@createcms/react
+      # version>` and every item pins `@createcms/react@^<version>`; the
+      # release PR restamps them in `version-packages`.
+      - name: Check registry stamps
+        run: node apps/docs/scripts/stamp-registry.mjs --check
+
       - name: Build registry
         run: bunx turbo run registry:build --filter=docs
 
@@ -381,6 +401,14 @@ jobs:
 
       - name: Check registry assertions
         run: bun run --filter=docs registry:check
+
+      # Every item installed into a fresh Next.js app by `shadcn add`, then
+      # tsc, next build and a check of the rendered editor-app page.
+      - name: Build @createcms/react
+        run: bunx turbo run build --filter=@createcms/react
+
+      - name: Install the registry into a fixture app
+        run: node apps/docs/scripts/registry-fixture.mjs
 
   build:
     runs-on: ubuntu-latest
@@ -409,6 +437,9 @@ jobs:
 
       - name: Build
         run: bun run build
+
+      - name: Test docs app
+        run: bunx turbo run test --filter=docs
 
       # env-10: `next build` never connects to the database, so a stale generated
       # schema (env-01) compiles green yet 500s at runtime. Boot the built example
@@ -455,6 +486,29 @@ jobs:
             bunx --yes publint "$pkg"
             bunx --yes @arethetypeswrong/cli --pack "$pkg" --profile esm-only
           done
+
+      # The built `@createcms/react/editor/core` entry has no runtime
+      # dependency and no directive, and loads in Node with every bare import
+      # refused (servers, workers and RSC import it without React). The
+      # `/editor/render` entry imports only `react` and has no directive.
+      - name: Check React-free editor core
+        run: node packages/react/scripts/check-core-dist.mjs
+      # Client entries carry 'use client', every React context exists once in
+      # dist (shared between /editor and /editor/canvas), /editor and
+      # /editor/canvas never reach Tiptap, Yjs or happy-dom, and no editor
+      # entry reaches Base UI, Radix or Floating UI.
+      - name: Check editor subpaths
+        run: node packages/react/scripts/check-subpaths.mjs
+      # The render entry evaluated under the react-server condition (the
+      # React build Server Components get).
+      - name: Check RSC rendering
+        run: node --conditions=react-server packages/react/scripts/check-rsc.mjs
+      # min+gzip per entry against packages/react/bundle-budgets.json.
+      - name: Check bundle budgets
+        run: bun packages/react/scripts/check-bundle-size.mjs
+      # Production bundles of the editor entries keep no dev warning text.
+      - name: Check editor dev warnings are stripped
+        run: bun packages/react/scripts/check-dev-warnings.mjs
 
   # The one status check branch protection should require. Green only when
   # every needed job succeeded; red on any failure, skip, or cancellation —

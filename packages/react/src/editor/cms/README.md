@@ -1,13 +1,33 @@
 # CMS adapter (`@createcms/react/editor/cms`)
 
-Optional adapter between the editor primitive and a createcms collection
-client. Consumers with their own data layer can skip this entry.
+The adapter between the editor primitive and a createcms collection. It
+translates a collection definition into an editor schema, maps
+`getBlockTree` trees to editor documents and back, loads and saves through
+the collection client, and wraps `createBlocksMap` components for the
+canvas. Consumers with their own data layer use
+[`@createcms/react/editor/core`](../core/README.md) directly.
+
+```ts
+import {
+  cmsCanvasComponents,
+  fromCollection,
+  useCmsDocument,
+  useCmsFieldSources,
+  useVariableSuggest,
+  assetUrl,
+} from '@createcms/react/editor/cms';
+```
 
 ## Usage
 
 ```tsx
+const schema = fromCollection(collections.pages);
+const pageEditor = createEditor({ schema });
+const components = cmsCanvasComponents(pageBlocks);
+
 const doc = useCmsDocument({
   client: cmsClient.pages,
+  definition: collections.pages,
   rootId,
   branchId,
   message: () => commitMessageRef.current,
@@ -17,15 +37,24 @@ const doc = useCmsDocument({
 
 <pageEditor.Root
   key={doc.key}
-  defaultValue={doc.tree}
-  onSave={doc.save}
+  defaultValue={doc.doc}
+  persistence={doc.persistence}
   onChange={doc.onChange}
 >
-  <Canvas.Root resolve={doc.resolve} />
+  <Canvas.Root components={components} resolve={doc.resolve} />
 </pageEditor.Root>;
 ```
 
-Wire `onChange={doc.onChange}` so `resolveTree` sees unsaved edits.
+Create the schema and the canvas components once (module scope or
+`useMemo`): the editor compares the schema by identity.
+
+Wire `onChange={doc.onChange}` so `resolveTree` sees unsaved edits. Pass
+`key={doc.key}` on `Editor.Root` so a reload resets the uncontrolled store.
+`doc.persistence` saves through `updateBlocks` with the loaded head as
+`baseVersion`, so the editor store owns the save state (`useSave`,
+`useSaveConflict`). Each save is a commit: autosave is off unless
+`useCmsDocument({ autosave })` turns it on; `message` supplies the commit
+message when a save brings none.
 
 ## Client shape
 
@@ -37,36 +66,116 @@ required because `getBlockTree` does not return `headCommitId`.
 The createcms client proxy mints a new object on every property access.
 Pass `client` once; the hook captures it in a ref on the first render.
 
+## Schema and tree mapping
+
+`fromCollection(definition)` returns an editor schema with the field types
+kept for the typed factory (`FromCollection<C>`):
+
+| createcms                     | Editor                                                                        |
+| ----------------------------- | ----------------------------------------------------------------------------- |
+| `string`                      | `text`                                                                        |
+| `image` (asset id)            | `media` (`{ assetId }`)                                                       |
+| `reference` (root id)         | `reference` (`{ id }`)                                                        |
+| `list` of scalars             | `list` of the mapped field                                                    |
+| block `group`                 | component `category`                                                          |
+| `allowChildren` + `structure` | `children` slot with `allow` (from `accepts`) or `disallow` (from `excludes`) |
+
+`number`, `boolean`, `date`, `richText` (ProseMirror JSON, passed through with its `marks`, `nodes` and `inline`), `select` and
+`link` keep their kind. The root always has a `children` slot. A property
+type the editor does not know throws an `EditorAdapterError` of kind
+`validation`.
+
+`toEditor(tree, definition)` turns a raw `getBlockTree` tree into an
+`EditorDocument` (`blockId` to `id`, `properties` to `props` with values in
+editor shape, `children` to the `children` slot, `schemaVersion`
+`CMS_SCHEMA_VERSION`); undeclared root keys such as `__slug` stay as they
+are. `fromEditor(doc, definition)` is the inverse and throws for a slot
+other than `children`. `cmsValueToEditor(spec, value)` and
+`editorValueToCms(spec, value)` map one value.
+
+## Adapter
+
+`createCmsAdapter({ client, definition, branchId, includeReferencePreviews? })`
+returns an `EditorAdapter`: `load(rootId)` reads the raw tree and the branch
+head, `save(rootId, doc, { baseVersion, message })` writes with
+`expectedHeadCommitId` set to `baseVersion` and returns the new commit id as
+`version`. `loadSnapshot(rootId)` also returns the raw tree, the head commit
+and the reference sidecar. Failures throw `EditorAdapterError`
+(`toAdapterError` wraps a client error): `HEAD_MISMATCH` is `conflict`,
+`TYPE_MISMATCH` and the placement and message codes are `validation`,
+`PROTECTED_BRANCH` is `permission`; `details.code` keeps the server code and
+`details.fields` the field findings. A conflict also carries the server's
+document and head as `details.serverDoc` and `details.serverVersion` (loaded
+right after the refusal), which the editor offers as "load the server
+version".
+
+The adapter writes whole trees through `updateBlocks`. The per-block
+endpoints (`createBlock`, `moveBlock`, `updateBlock`) each write their own
+commit in their own transaction, so a list of ops cannot go through them
+atomically; op-level saving needs a batch endpoint on the server first.
+`useCmsDocument` loads and saves through this adapter.
+
+## Canvas components
+
+`cmsCanvasComponents(blocksMap)` turns a `createBlocksMap` result into
+canvas components. Each hands its createcms component `properties`,
+`blockId` and `node` in createcms shape (media as asset ids; references as
+the resolved document, left out while unresolved) and renders the blocks of
+resolved references after its children inside `Canvas.ReadonlySubtree`.
+`isResolvedReference(value)` checks the published reference shape.
+
 ## Status
 
-| Status     | Meaning                              |
-| ---------- | ------------------------------------ |
-| `loading`  | Initial load or `reload()` in flight |
-| `idle`     | Tree ready                           |
-| `saving`   | `updateBlocks` in flight             |
-| `conflict` | `HEAD_MISMATCH` (branch advanced)    |
-| `error`    | Other save or load failure           |
+`status` is the load state; the save state lives in the editor store.
 
-On conflict, call `reload()` to fetch the latest head or
-`save({ force: true })` to overwrite without a head check.
+| Status    | Meaning                              |
+| --------- | ------------------------------------ |
+| `loading` | Initial load or `reload()` in flight |
+| `idle`    | Document ready                       |
+| `error`   | The load failed (`error`)            |
+
+`reload()` fetches the latest head and a new `key`, which remounts the
+editor. Save failures surface through `useSave()` (`status`, `error`) and
+conflicts through `useSaveConflict()`.
 
 ## Errors
 
-`error.fields` is `{ blockId, key, message }[]` for server-side
-`TYPE_MISMATCH` issues. Render it in editor chrome. `Editor.FieldError`
+A failed save's `details.fields` is `{ blockId, key, message }[]` for
+server-side `TYPE_MISMATCH` issues. Render it in editor chrome. `Editor.FieldError`
 still shows client-side `validateField` findings only.
+
+Known error codes on `CmsDocumentError.code`:
+
+| Code                          | Meaning                                          |
+| ----------------------------- | ------------------------------------------------ |
+| `HEAD_MISMATCH`               | Branch head advanced since the last load         |
+| `TYPE_MISMATCH`               | Server rejected property values (`error.fields`) |
+| `BLOCK_NOT_ALLOWED_IN_PARENT` | Block type not allowed under its parent          |
+| `PROTECTED_BRANCH`            | Branch is protected from direct edits            |
+| `COMMIT_MESSAGE_REQUIRED`     | Save requires a commit message                   |
+| `UNKNOWN`                     | Unrecognised or malformed wire error             |
 
 ## Templates
 
 When `templates` and `collection` are set, `onAdd(blockType)` calls
-`getTemplateDefaults` and returns the defaults object for merging into
-`store.add` / `AddBlock`.
+`getTemplateDefaults` and returns the defaults in editor shape for merging
+into `store.add` / `AddBlock`.
 
-No `@createcms/core` import: types come from `@createcms/schema` only.
+## Resolvers
+
+`doc.resolve` is a `CanvasResolve` for `Canvas.Root`: `reference` returns the
+referenced document from the load sidecar or from a batched `resolveTree`
+call, `link` the link's current href, `text` / `textarea` / `richText` the
+value with `{{variables}}` filled in. Misses settle as `undefined`.
+
+No `@createcms/core` import: types come from `@createcms/schema` only, and
+this folder is the only place in the editor that imports it. Other editor
+layers are imported through their entries (`../core`, `../canvas`,
+`../index`), never through internal modules (`core/boundary.test.ts`).
 
 ## Field sources
 
-Registry controls for `image`, `reference`, `link`, and `{{variable}}`
+Registry controls for `media`, `reference`, `link`, and `{{variable}}`
 suggest call `useCmsFieldSources(cmsClient)` with the **top-level**
 createcms client (not a collection namespace).
 

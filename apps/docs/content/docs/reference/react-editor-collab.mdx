@@ -1,0 +1,125 @@
+---
+title: Editor collaboration
+description: A DocStore over Yjs for several people editing one document, with atomic moves and fractional order keys.
+---
+
+`@createcms/react/editor/collab` lets several people edit one document at
+once. `createYjsDocStore` is a `DocStore` over a `Y.Doc`: pass it to the
+editor store and connect the `Y.Doc` to your sync provider. `yjs` (exactly
+`13.6.33`) and `y-protocols` are optional peer dependencies; this is the
+only entry that imports them. The entry has no React import and no
+directive.
+
+```tsx
+import { createYjsDocStore } from '@createcms/react/editor/collab';
+import { createEditorStore } from '@createcms/react/editor/core';
+import * as Y from 'yjs';
+
+const ydoc = new Y.Doc();
+// Connect ydoc to your provider (Hocuspocus, y-websocket, ...) here.
+
+const docStore = createYjsDocStore({ ydoc, initialValue: pageDocument });
+const store = createEditorStore({ schema, docStore });
+
+<Editor.Root store={store}>{/* chrome */}</Editor.Root>;
+```
+
+## How a document is stored
+
+Every block is one `Y.Map` in the `Y.Doc`'s `nodes` map:
+
+| Key         | Value                                                                                                   |
+| ----------- | ------------------------------------------------------------------------------------------------------- |
+| `type`      | The block type.                                                                                         |
+| `placement` | `YjsPlacement`: `{ parentId, slot, order }`, written as one value. `null` for the root.                 |
+| `props`     | A `Y.Map` of the props; concurrent writes to the same prop resolve by last writer wins, per key.        |
+| `text`      | A `Y.Map` of `Y.XmlFragment`s, one per rich text prop (see below).                                      |
+| `slots`     | The slot names the block holds (empty slots included).                                                  |
+| `v`, `meta` | As in the document.                                                                                     |
+
+A move rewrites `placement` as a whole, so two people moving the same block
+never duplicate it: one move wins. `order` is a fractional index between
+the neighbours' keys (with a little randomness, so two runs typed at the
+same place do not interleave); siblings sort by `order`, then by id. Order
+keys never leave the store: exported documents keep plain arrays, and
+writes are validated like in the JSON store, so the tree stays valid.
+
+## Conflicts every peer resolves the same way
+
+- **Moved into a removed parent.** A block another person moved into a
+  parent that was removed at the same time shows at the end of the root's
+  `children`.
+- **Cycles.** Two concurrent moves can put two blocks inside each other
+  (A under B on one peer, B under A on another). After a remote update the
+  store looks for cycles among the blocks whose placement changed. In each
+  cycle, the block whose placement was written first (lowest Yjs clock,
+  then client id) goes back to where its last move took it from
+  (`placement.prev`), or to the end of the root's `children` when that
+  place is gone or inside the cycle. The repair is written to the `Y.Doc`
+  with origin `system`, never becomes an undo step, and travels to the
+  other peers like any edit; two peers writing the same repair resolve like
+  any concurrent move.
+
+Until a repair has synced, the derived tree breaks a cycle by showing its
+greatest id at the end of the root, so a snapshot never contains a cycle.
+Every peer derives the same tree from the same `Y.Doc`. Changes from other
+peers reach subscribers with origin `remote`, and the local undo steps they
+conflict with are dropped.
+
+The repair rule is a reasoned conclusion, not a proven algorithm: it is
+tested against every interleaving of two and three blocks and against
+random concurrent moves on three peers, but not yet in production.
+
+## Rich text
+
+A rich text prop (a `RichTextDoc` value) lives in a `Y.XmlFragment` under
+the block's `text` map instead of in `props`, in the encoding of Tiptap's
+Collaboration extension (`@tiptap/y-tiptap`). An editor bound to the
+fragment edits it character by character, so two people typing in the same
+paragraph both keep their text. Bind the Tiptap adapter by passing the
+extension and its sync origin:
+
+```tsx
+import { Collaboration } from '@tiptap/extension-collaboration';
+import { ySyncPluginKey } from '@tiptap/y-tiptap';
+import { createTiptapAdapter } from '@createcms/react/editor/richtext';
+
+const richText = createTiptapAdapter({
+  collaboration: { extension: Collaboration, syncOrigin: ySyncPluginKey },
+});
+
+<Editor.Root store={store} richText={richText}>{/* chrome */}</Editor.Root>;
+```
+
+`Editor.RichTextField`, the default rich text control and inline canvas
+editing then bind to `store.getTextBinding(blockId, key)` on their own.
+Edits a bound editor writes reach subscribers with origin `local`, so
+autosave sees them, and are undoable through the editor store like any
+other edit. A field whose prop has no fragment yet (still empty) edits
+the value as before; it binds once the editor loses focus. A write of the
+whole value (a form, a paste into the inspector) replaces the fragment's
+content only when it differs; mark order does not count.
+
+## Undo
+
+Undo runs on `Y.UndoManager`, tracking only this store's own writes. An
+undo reverts just what the step changed: undoing your move restores the
+placement and keeps the text another person changed meanwhile, and an
+undo never brings back what someone else removed. Steps follow the same
+rules as in the JSON store: one step per editor command, steps with the
+same `mergeKey` merge (typing), `breakMerge` ends a merge, and selection
+and label are kept on the step (`stackItem.meta`) and restored by undo and
+redo. Writes with origin `remote` or `system` and `history: 'ignore'`
+writes outside a command are never undoable. `undo` and `redo` report
+the ops they caused, computed from the change; `getHistory()` lists the
+steps with their selection and label but without ops.
+
+## API
+
+| Name                       | Description                                                                                                                                                       |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createYjsDocStore`        | `(options) => YjsDocStore`: the store; passes the DocStore conformance suite.                                                                                     |
+| `CreateYjsDocStoreOptions` | `ydoc`, `initialValue?` (written when `ydoc` holds no document; peers seeding the same document agree), `now?`, `mergeMs?`, `maxEntries?`, `random?` (key jitter). |
+| `YjsDocStore`              | `DocStoreCore` plus `ydoc` and `destroy()` (stops listening to the `Y.Doc`).                                                                                      |
+| `YjsPlacement`             | `{ parentId, slot, order, prev? }` of one block; `prev` is where its last move took it from.                                                                                                                         |
+| `yjsToDocument`            | `(ydoc) => EditorDocument \| null`: the document a `Y.Doc` holds, without order keys, for saving or rendering on the server.                                       |

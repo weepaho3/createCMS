@@ -8,6 +8,8 @@ export type {
 
 export type { BlockTreeNode, InferBlockTreeNode } from './tree';
 
+export type { RichTextDoc, RichTextMark, RichTextNode } from './rich-text';
+
 export type { EditAttrs, EditProps } from './edit';
 
 export type {
@@ -20,6 +22,7 @@ export type {
   ListElementType,
   NumberConstraints,
   RefMode,
+  RichTextConstraints,
   SelectOption,
   StringConstraints,
 } from './properties';

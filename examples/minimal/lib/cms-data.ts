@@ -46,8 +46,20 @@ async function seed(): Promise<void> {
       parentBlockId: page.rootId,
       type: 'richText',
       properties: {
-        content:
-          '<p>This page was created and published through the CMS API.</p>',
+        content: {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [
+                {
+                  type: 'text',
+                  text: 'This page was created and published through the CMS API.',
+                },
+              ],
+            },
+          ],
+        },
       },
     },
   });

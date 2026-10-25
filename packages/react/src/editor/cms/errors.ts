@@ -12,6 +12,7 @@ export type CmsDocumentError = {
 
 export const HEAD_MISMATCH = 'HEAD_MISMATCH';
 export const TYPE_MISMATCH = 'TYPE_MISMATCH';
+export const RICH_TEXT_INVALID = 'RICH_TEXT_INVALID';
 export const BLOCK_NOT_ALLOWED_IN_PARENT = 'BLOCK_NOT_ALLOWED_IN_PARENT';
 export const PROTECTED_BRANCH = 'PROTECTED_BRANCH';
 export const COMMIT_MESSAGE_REQUIRED = 'COMMIT_MESSAGE_REQUIRED';
@@ -81,7 +82,7 @@ export function readCmsError(err: unknown): CmsDocumentError {
   }
   const { code, message, data } = readWire(err as WireError);
   let fields: CmsFieldError[] | undefined;
-  if (code === TYPE_MISMATCH && data) {
+  if ((code === TYPE_MISMATCH || code === RICH_TEXT_INVALID) && data) {
     fields = mapTypeMismatchFields(data);
   }
   const error: CmsDocumentError = { code: code ?? 'UNKNOWN', message };

@@ -1,11 +1,8 @@
 export {
-  CmsSourcesProvider,
   Field,
   FieldControl,
   FieldDescription,
   FieldError,
   FieldLabel,
-  Form,
-  FormSurface,
-  cmsFields,
-} from '../../registry/editor-form';
+} from '../../registry/editor-field';
+export { Form, FormSurface } from '../../registry/editor-form';

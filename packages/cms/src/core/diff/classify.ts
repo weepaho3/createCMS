@@ -210,7 +210,7 @@ function detectReorders(opts: {
  * - `modified`: type changed or properties deep-unequal — with the reserved
  *   `__slug` key stripped from BOTH sides for the root block, so a slug-only
  *   change never counts as modified. Modified entries carry `propertyChanges`
- *   (rich-text properties get word-level `textDiff` segments per the property
+ *   (rich-text properties get word-level `richTextDiff` segments per the property
  *   specs) and `typeChange` when the type differs.
  * - `moved` / `childrenReordered`: identity-based, see {@link detectReorders}.
  *   A reparented block additionally carries its old/new parent and index
@@ -289,7 +289,7 @@ export function classifyChanges(opts: {
         isRichText: makeIsRichText(
           isRoot ? rootProperties : blockDefs[source.type]?.properties,
         ),
-        diffText: diffRichText,
+        diffRichText,
       });
 
       if (source.type !== base.type || detail.length > 0) {

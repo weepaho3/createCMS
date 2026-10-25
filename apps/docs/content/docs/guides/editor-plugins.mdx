@@ -1,0 +1,69 @@
+---
+title: Editor plugins
+description: Add field controls, blocks, commands, shortcuts and UI to the editor without forking it.
+---
+
+A plugin bundles what one feature adds to the editor. Declare it with
+`defineEditorPlugin` and pass it to `Editor.Root plugins` (or
+`createEditorStore`). Plugins apply in descending `priority`; names must be
+unique.
+
+```tsx
+import { defineEditorPlugin } from '@createcms/react/editor/core';
+import { useCommand } from '@createcms/react/editor';
+
+export const badges = defineEditorPlugin({
+  name: 'badges',
+  // A block the schema does not declare yet.
+  blocks: {
+    badge: {
+      label: 'Badge',
+      fields: { icon: { type: 'custom', kind: 'icon', label: 'Icon' } },
+    },
+  },
+  // The form control for `custom` fields of kind `icon`.
+  fields: { icon: { control: IconPicker } },
+  commands: {
+    'badge.add': {
+      label: 'Add badge',
+      run: (store) => store.add('badge', { parent: { id: store.getDoc().rootId } }),
+    },
+  },
+  shortcuts: { 'Mod+Shift+b': 'badge.add' },
+  // UI in a named outlet of the shell (see Editor UI > Outlets).
+  slots: {
+    'toolbar-end': function AddBadgeButton() {
+      const command = useCommand('badge.add');
+      return (
+        <button type="button" onClick={() => command?.run()}>
+          {command?.label} <kbd>{command?.shortcutLabel}</kbd>
+        </button>
+      );
+    },
+  },
+});
+```
+
+```tsx
+<Editor.Root schema={schema} defaultValue={doc} plugins={[badges]}>
+  <EditorShell>{/* canvas */}</EditorShell>
+</Editor.Root>
+```
+
+## What a plugin can add
+
+| Key                   | Adds                                                                                         |
+| --------------------- | -------------------------------------------------------------------------------------------- |
+| `blocks`              | Block types; a schema component of the same type wins.                                       |
+| `fields`              | Per `custom` kind: `control` for the form, `validate` (Standard Schema) for values.          |
+| `commands`            | UI commands (`label`, `run`, `canExecute`); they appear in the command palette (Mod+K).      |
+| `shortcuts`           | Key combos to command ids; replaces a default binding, `''` unbinds one.                     |
+| `slots`               | Components for named outlets (`toolbar-start`, `block-toolbar`, `inspector-footer`, ...).   |
+| `on`                  | Store event handlers, and `beforeCommand` to veto or rewrite commands.                       |
+| `messages`            | Catalog entries (command labels, texts); `Editor.Root messages` win.                         |
+| `beforeSave`          | A save gate, for example `requireValidDocument({ phases: ['publish'] })`.                    |
+| `convertForeignPaste` | Turns pasted HTML or text from outside the editor into blocks.                               |
+
+The full reference is under [Plugins](/docs/reference/react-editor-core#plugins).
+The outlet names and their props are listed in
+[Editor UI](/docs/guides/editor-ui#outlets-for-plugin-ui).

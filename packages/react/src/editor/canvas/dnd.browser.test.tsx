@@ -1,6 +1,7 @@
 import { cleanup } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { defineEditorSchema } from '../core/schema';
 import { Canvas } from './index';
 import {
   columnStackBlocks,
@@ -32,6 +33,16 @@ function stackOptions(
     components,
   };
 }
+
+const center = (rect: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}) => ({
+  x: rect.x + rect.width / 2,
+  y: rect.y + rect.height / 2,
+});
 
 function dragPastThreshold(
   target: EventTarget,
@@ -82,7 +93,7 @@ describe('Canvas pointer drag in a real browser', () => {
     expect(indicator?.getAttribute('data-variant')).toBe('box');
     dispatchPointer(palette, 'pointermove', to);
     dispatchPointer(palette, 'pointerup', to);
-    expect(store.getState().nodes.stack1!.childIds.length).toBe(1);
+    expect(store.getDoc().nodes.stack1!.slots.children.length).toBe(1);
   });
 
   it('drops a nested-only type onto a stack that is not selected', async () => {
@@ -118,7 +129,7 @@ describe('Canvas pointer drag in a real browser', () => {
       },
     );
     palette.click();
-    expect(store.getState().nodes.stack1!.childIds.length).toBe(1);
+    expect(store.getDoc().nodes.stack1!.slots.children.length).toBe(1);
   });
 
   it('moves a column sibling below the last sibling with same-parent correction', async () => {
@@ -148,7 +159,7 @@ describe('Canvas pointer drag in a real browser', () => {
       y: c3Rect.y + c3Rect.height - 2,
     };
     dragPastThreshold(handle, from, to);
-    const ids = store.getState().nodes.stack1!.childIds;
+    const ids = store.getDoc().nodes.stack1!.slots.children;
     expect(ids.indexOf('c3')).toBeLessThan(ids.indexOf('c1'));
   });
 
@@ -187,7 +198,7 @@ describe('Canvas pointer drag in a real browser', () => {
         y: c3Rect.y + c3Rect.height - 2,
       },
     );
-    const ids = store.getState().nodes.stack1!.childIds;
+    const ids = store.getDoc().nodes.stack1!.slots.children;
     expect(ids.indexOf('c3')).toBeLessThan(ids.indexOf('c1'));
   });
 
@@ -224,7 +235,7 @@ describe('Canvas pointer drag in a real browser', () => {
     const indicator = host.querySelector('[data-editor-drop-indicator]');
     expect(indicator?.getAttribute('data-orientation')).toBe('vertical');
     dispatchPointer(handle, 'pointerup', mid);
-    const ids = store.getState().nodes.stack1!.childIds;
+    const ids = store.getDoc().nodes.stack1!.slots.children;
     expect(ids[ids.length - 1]).toBe('c1');
   });
 
@@ -241,7 +252,7 @@ describe('Canvas pointer drag in a real browser', () => {
     await waitForLayout(host);
     store.select('c1');
     await waitForLayout(host);
-    const before = [...store.getState().nodes.stack1!.childIds];
+    const before = [...store.getDoc().nodes.stack1!.slots.children];
     const handle = host.querySelector('[data-editor-drag-handle]')!;
     const handleRect = handle.getBoundingClientRect();
     const from = {
@@ -263,17 +274,16 @@ describe('Canvas pointer drag in a real browser', () => {
     await waitForLayout(host);
     expect(host.hasAttribute('data-dragging')).toBe(false);
     expect(host.querySelector('[data-editor-drop-indicator]')).toBeNull();
-    expect(store.getState().nodes.stack1!.childIds).toEqual(before);
+    expect(store.getDoc().nodes.stack1!.slots.children).toEqual(before);
   });
 
   it('auto-scrolls the host near the bottom edge during a drag', async () => {
     const tallTree = columnStackTree();
     for (let i = 4; i <= 20; i++) {
-      tallTree.children[0]!.children.push({
-        blockId: `c${i}`,
+      tallTree.root.slots!.children![0]!.slots!.children!.push({
+        id: `c${i}`,
         type: 'cell',
-        properties: { text: String(i) },
-        children: [],
+        props: { text: String(i) },
       });
     }
     const { host, store } = renderCanvas(
@@ -306,12 +316,9 @@ describe('Canvas pointer drag in a real browser', () => {
     dispatchPointer(handle, 'pointermove', { x: from.x + 6, y: from.y });
     dispatchPointer(handle, 'pointermove', edge);
     const first = host.scrollTop;
+    // Speed ramps up over 400 ms after entering the edge zone.
     await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          resolve();
-        });
-      });
+      setTimeout(resolve, 300);
     });
     const second = host.scrollTop;
     expect(second).toBeGreaterThan(first);
@@ -343,22 +350,83 @@ describe('Canvas pointer drag in a real browser', () => {
       x: c3Rect.x + c3Rect.width / 2,
       y: c3Rect.y + c3Rect.height - 2,
     };
-    dragPastThreshold(handle, from, to, {
-      pointerType: 'touch',
-      pointerId: 7,
+    const touch = { pointerType: 'touch', pointerId: 7 };
+    // A touch drag starts after a still 250 ms press.
+    dispatchPointer(handle, 'pointerdown', from, touch);
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 300);
     });
-    const ids = store.getState().nodes.stack1!.childIds;
+    dispatchPointer(handle, 'pointermove', to, touch);
+    dispatchPointer(handle, 'pointerup', to, touch);
+    const ids = store.getDoc().nodes.stack1!.slots.children;
+    expect(ids.indexOf('c3')).toBeLessThan(ids.indexOf('c1'));
+  });
+
+  it('a touch that moves before the press completes does not drag', async () => {
+    const { host, store } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.BlockToolbar side="top">
+          <Canvas.DragHandle blockId="c1" />
+        </Canvas.BlockToolbar>
+      </Canvas.Overlay>,
+      stackOptions(columnStackBlocks, columnStackTree()),
+    );
+    const c3 = host.querySelector('[data-editor-block="c3"]')!;
+    await waitForLayout(c3);
+    store.select('c1');
+    await waitForLayout(host);
+    const handle = host.querySelector('[data-editor-drag-handle]')!;
+    const from = center(handle.getBoundingClientRect());
+    const to = center(rectOf(c3));
+    const touch = { pointerType: 'touch', pointerId: 8 };
+    dispatchPointer(handle, 'pointerdown', from, touch);
+    dispatchPointer(
+      handle,
+      'pointermove',
+      { x: from.x, y: from.y + 20 },
+      touch,
+    );
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 300);
+    });
+    dispatchPointer(handle, 'pointermove', to, touch);
+    dispatchPointer(handle, 'pointerup', to, touch);
+    expect(store.getDoc().nodes.stack1!.slots.children[0]).toBe('c1');
+  });
+
+  it('a pen drags after 5 px like a mouse away from a handle', async () => {
+    const { host, store } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.BlockToolbar side="top">
+          <Canvas.DragHandle blockId="c1" />
+        </Canvas.BlockToolbar>
+      </Canvas.Overlay>,
+      stackOptions(columnStackBlocks, columnStackTree()),
+    );
+    const c3 = host.querySelector('[data-editor-block="c3"]')!;
+    await waitForLayout(c3);
+    store.select('c1');
+    await waitForLayout(host);
+    const handle = host.querySelector('[data-editor-drag-handle]')!;
+    const from = center(handle.getBoundingClientRect());
+    const c3Rect = rectOf(c3);
+    const to = {
+      x: c3Rect.x + c3Rect.width / 2,
+      y: c3Rect.y + c3Rect.height - 2,
+    };
+    dragPastThreshold(handle, from, to, { pointerType: 'pen', pointerId: 9 });
+    const ids = store.getDoc().nodes.stack1!.slots.children;
     expect(ids.indexOf('c3')).toBeLessThan(ids.indexOf('c1'));
   });
 
   it('shows no drop indicator when placement is forbidden', async () => {
-    const closedRootSchema = {
+    const closedRootSchema = defineEditorSchema({
       ...insertStackSchema,
-      structure: {
-        stack: { accepts: ['cell'] as const },
-        root: { accepts: ['stack'] as const },
+      root: {
+        ...insertStackSchema.root,
+        slots: { children: { allow: ['stack'] } },
       },
-    };
+    });
     const { host, store } = renderCanvas(
       <Canvas.Overlay>
         <Canvas.PaletteItem type="heading">Heading</Canvas.PaletteItem>
@@ -383,14 +451,14 @@ describe('Canvas pointer drag in a real browser', () => {
       x: stackRect.x + stackRect.width / 2,
       y: stackRect.y + stackRect.height / 2,
     };
-    const before = [...store.getState().nodes.stack1!.childIds];
+    const before = [...store.getDoc().nodes.stack1!.slots.children];
     dispatchPointer(palette, 'pointerdown', from);
     dispatchPointer(palette, 'pointermove', { x: from.x + 6, y: from.y });
     dispatchPointer(palette, 'pointermove', to);
     await waitForLayout(host);
     expect(host.querySelector('[data-editor-drop-indicator]')).toBeNull();
     dispatchPointer(palette, 'pointerup', to);
-    expect(store.getState().nodes.stack1!.childIds).toEqual(before);
+    expect(store.getDoc().nodes.stack1!.slots.children).toEqual(before);
   });
 
   it('selects the moved block and a newly dropped palette block', async () => {
@@ -422,7 +490,7 @@ describe('Canvas pointer drag in a real browser', () => {
         y: c3Rect.y + c3Rect.height - 2,
       },
     );
-    expect(store.getState().selection.local?.selected).toBe('c1');
+    expect(store.getSession().selection[0] ?? null).toBe('c1');
 
     const empty = host.querySelector('[data-editor-block="stack1"]');
     const emptyRect = rectOf(empty!);
@@ -440,9 +508,11 @@ describe('Canvas pointer drag in a real browser', () => {
       },
     );
     const newId = store
-      .getState()
-      .nodes.stack1!.childIds.find((id) => !['c1', 'c2', 'c3'].includes(id));
-    expect(store.getState().selection.local?.selected).toBe(newId);
+      .getDoc()
+      .nodes.stack1!.slots.children.find(
+        (id) => !['c1', 'c2', 'c3'].includes(id),
+      );
+    expect(store.getSession().selection[0] ?? null).toBe(newId);
   });
 
   it('does not drag in select mode', async () => {
@@ -461,7 +531,7 @@ describe('Canvas pointer drag in a real browser', () => {
     await waitForLayout(host);
     store.select('c1');
     await waitForLayout(host);
-    const before = [...store.getState().nodes.stack1!.childIds];
+    const before = [...store.getDoc().nodes.stack1!.slots.children];
     const handle = host.querySelector('[data-editor-drag-handle]')!;
     const handleRect = handle.getBoundingClientRect();
     const from = {
@@ -473,6 +543,39 @@ describe('Canvas pointer drag in a real browser', () => {
     expect(host.hasAttribute('data-dragging')).toBe(false);
     expect(host.querySelector('[data-editor-drop-indicator]')).toBeNull();
     dispatchPointer(handle, 'pointerup', { x: from.x + 8, y: from.y + 8 });
-    expect(store.getState().nodes.stack1!.childIds).toEqual(before);
+    expect(store.getDoc().nodes.stack1!.slots.children).toEqual(before);
+  });
+
+  it('moves a block across content-visibility chunks', async () => {
+    const { host, store } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.DropIndicator />
+        <Canvas.BlockToolbar>
+          <Canvas.DragHandle blockId="h1" />
+        </Canvas.BlockToolbar>
+      </Canvas.Overlay>,
+      { chunkSize: 1 },
+    );
+    expect(host.querySelectorAll('[data-editor-chunk]')).toHaveLength(2);
+    const sec1 = host.querySelector('[data-editor-block="sec1"]');
+    expect(sec1).not.toBeNull();
+    await waitForLayout(sec1!);
+    store.select('h1');
+    await waitForLayout(host);
+    const handle = host.querySelector('[data-editor-drag-handle]')!;
+    const handleRect = handle.getBoundingClientRect();
+    const secRect = rectOf(sec1!);
+    dragPastThreshold(
+      handle,
+      {
+        x: handleRect.x + handleRect.width / 2,
+        y: handleRect.y + handleRect.height / 2,
+      },
+      { x: secRect.x + secRect.width / 2, y: secRect.y + secRect.height - 2 },
+    );
+    // The section in the second chunk accepts headings: the drop lands
+    // inside it, past the chunk boundary.
+    expect(store.getDoc().nodes.root_1!.slots.children).toEqual(['sec1']);
+    expect(store.getDoc().nodes.sec1!.slots.children).toContain('h1');
   });
 });

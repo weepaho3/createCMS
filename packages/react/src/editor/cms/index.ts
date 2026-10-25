@@ -5,6 +5,23 @@ export { assetUrl, linkLabel, referenceLabel } from './field-sources';
 export type { AssetUrlOptions } from './field-sources';
 export { useCmsFieldSources } from './use-cms-field-sources';
 export { useVariableSuggest } from './use-variable-suggest';
+export type { FromCollection } from './mapping';
+export {
+  CMS_SCHEMA_VERSION,
+  cmsValueToEditor,
+  editorValueToCms,
+  fromCollection,
+  fromEditor,
+  toEditor,
+} from './mapping';
+export type {
+  CmsAdapter,
+  CmsLoadSnapshot,
+  CreateCmsAdapterOptions,
+} from './adapter';
+export { createCmsAdapter, toAdapterError } from './adapter';
+export type { CmsBlocksMap } from './canvas';
+export { cmsCanvasComponents, isResolvedReference } from './canvas';
 export type {
   CmsAssetListItem,
   CmsAssetListQuery,

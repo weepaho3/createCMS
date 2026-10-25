@@ -1,0 +1,55 @@
+'use client';
+
+import type { CanvasComponents } from '@createcms/react/editor/canvas';
+
+import {
+  createMemoryAdapter,
+  defineEditorSchema,
+} from '@createcms/react/editor/core';
+
+import { EditorApp } from '@/components/editor-app';
+
+const schema = defineEditorSchema({
+  root: { label: 'Page', fields: {}, slots: { children: {} } },
+  components: {
+    heading: {
+      label: 'Heading',
+      fields: { text: { type: 'text', label: 'Text' } },
+    },
+  },
+});
+
+const components: CanvasComponents = {
+  heading: ({ props, edit }) => (
+    <h2 {...edit.block}>
+      <span {...edit.field.text}>
+        {typeof props.text === 'string' ? props.text : ''}
+      </span>
+    </h2>
+  ),
+};
+
+const adapter = createMemoryAdapter({
+  home: {
+    schemaVersion: 1,
+    root: {
+      id: 'root',
+      type: 'root',
+      props: {},
+      slots: {
+        children: [{ id: 'h1', type: 'heading', props: { text: 'Fixture' } }],
+      },
+    },
+  },
+});
+
+export default function Page() {
+  return (
+    <EditorApp
+      adapter={adapter}
+      documentId="home"
+      schema={schema}
+      components={components}
+    />
+  );
+}

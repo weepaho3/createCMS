@@ -1,13 +1,18 @@
-// @vitest-environment happy-dom
-import type { BlockTreeNode, CollectionDefinition } from '@createcms/schema';
-
 import { act, cleanup, render } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
+// @vitest-environment happy-dom
+import type { EditorDocument } from '../core/document';
+
+import { resetWarnings } from '../core/codes';
+import { defineEditorSchema } from '../core/schema';
+import { makeDoc, storeSchema } from '../core/store/fixtures';
 import { Editor } from '../index';
-import { makeTree, storeSchema } from '../store/fixtures';
 import { Canvas } from './index';
-import { EMPTY_FIELD_PLACEHOLDER } from './inline-text';
+import {
+  EMPTY_FIELD_PLACEHOLDER,
+  RICH_TEXT_INLINE_WARNING,
+} from './inline-text';
 import {
   canvasBlocks,
   nestedTextBlocks,
@@ -18,34 +23,37 @@ import { renderCanvas } from './test/harness';
 
 afterEach(cleanup);
 
-const badgeSchema = {
-  label: 'Pages',
-  root: { properties: {} },
-  blocks: {
+const badgeSchema = defineEditorSchema({
+  root: { label: 'Pages', fields: {}, slots: { children: {} } },
+  components: {
     heading: {
       label: 'Heading',
-      properties: {
-        text: { type: 'string', label: 'Text' },
+      fields: {
+        text: { type: 'text', label: 'Text' },
         level: { type: 'number', label: 'Level', defaultValue: 2 },
-        badge: { type: 'string', label: 'Badge' },
+        badge: { type: 'text', label: 'Badge' },
       },
     },
   },
-} satisfies CollectionDefinition;
+});
 
-function badgeTree(): BlockTreeNode {
+function badgeTree(): EditorDocument {
   return {
-    blockId: 'root_1',
-    type: 'root',
-    properties: {},
-    children: [
-      {
-        blockId: 'h1',
-        type: 'heading',
-        properties: { text: 'Hello', level: 1, badge: '' },
-        children: [],
+    schemaVersion: 1,
+    root: {
+      id: 'root_1',
+      type: 'root',
+      props: {},
+      slots: {
+        children: [
+          {
+            id: 'h1',
+            type: 'heading',
+            props: { text: 'Hello', level: 1, badge: '' },
+          },
+        ],
       },
-    ],
+    },
   };
 }
 
@@ -61,7 +69,7 @@ describe('Canvas.InlineText', () => {
   it('throws outside Canvas.Root', () => {
     expect(() =>
       render(
-        <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+        <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
           <Canvas.InlineText />
         </Editor.Root>,
       ),
@@ -77,7 +85,7 @@ describe('Canvas.InlineText', () => {
         new MouseEvent('click', { bubbles: true, cancelable: true }),
       );
     });
-    expect(store.getState().selection.local?.editing).toEqual({
+    expect(store.getSession().editing).toEqual({
       blockId: 'h1',
       key: 'text',
     });
@@ -93,11 +101,11 @@ describe('Canvas.InlineText', () => {
         new MouseEvent('click', { bubbles: true, cancelable: true }),
       );
     });
-    expect(store.getState().selection.local?.focus).toEqual({
+    expect(store.getSession().focusedField).toEqual({
       blockId: 'h1',
       key: 'level',
     });
-    expect(store.getState().selection.local?.editing).toBeNull();
+    expect(store.getSession().editing).toBeNull();
     expect(host.querySelector('[data-editor-inline-text]')).toBeNull();
   });
 
@@ -111,7 +119,7 @@ describe('Canvas.InlineText', () => {
         new MouseEvent('click', { bubbles: true, cancelable: true }),
       );
     });
-    expect(store.getState().selection.local?.editing).toBeNull();
+    expect(store.getSession().editing).toBeNull();
   });
 
   it('nested same-key click targets the inner block', () => {
@@ -129,11 +137,25 @@ describe('Canvas.InlineText', () => {
         new MouseEvent('click', { bubbles: true, cancelable: true }),
       );
     });
-    expect(store.getState().selection.local?.editing?.blockId).toBe('inner1');
+    expect(store.getSession().editing?.blockId).toBe('inner1');
   });
 
-  it('paragraph with block and field on the same element starts a session', () => {
-    const { host, store } = renderCanvas(inlineOverlay());
+  it('richText click selects the block and focuses the field without a session', () => {
+    resetWarnings();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const richSchema = defineEditorSchema({
+      ...storeSchema,
+      components: {
+        ...storeSchema.components,
+        paragraph: {
+          label: 'Paragraph',
+          fields: { text: { type: 'richText', label: 'Body' } },
+        },
+      },
+    });
+    const { host, store } = renderCanvas(inlineOverlay(), {
+      schema: richSchema,
+    });
     const para = host.querySelector('[data-editor-block="p1"]');
     expect(para).not.toBeNull();
     act(() => {
@@ -141,14 +163,23 @@ describe('Canvas.InlineText', () => {
         new MouseEvent('click', { bubbles: true, cancelable: true }),
       );
     });
-    expect(store.getState().selection.local?.editing).toEqual({
-      blockId: 'p1',
-      key: 'text',
-    });
+    const selection = {
+      selected: store.getSession().selection[0] ?? null,
+      focus: store.getSession().focusedField,
+      editing: store.getSession().editing,
+    };
+    expect(selection?.editing).toBeNull();
+    expect(selection?.selected).toBe('p1');
+    expect(selection?.focus).toEqual({ blockId: 'p1', key: 'text' });
+    expect(host.querySelector('[data-editor-inline-text]')).toBeNull();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(`[editor:E001] ${RICH_TEXT_INLINE_WARNING}`),
+    );
+    warn.mockRestore();
   });
 
   it('two editors on one page keep lookup scoped', () => {
-    const tree = makeTree();
+    const tree = makeDoc();
     const utils = render(
       <div style={{ display: 'flex' }}>
         <Editor.Root schema={storeSchema} defaultValue={tree}>
@@ -213,7 +244,7 @@ describe('Canvas.InlineText', () => {
       glass.dispatchEvent(new Event('input', { bubbles: true }));
       glass.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
     });
-    expect(store.getState().nodes.h1!.properties.badge).toBe('');
-    expect(store.getState().nodes.h1!.properties.badge).not.toContain('\u200B');
+    expect(store.getDoc().nodes.h1!.props.badge).toBe('');
+    expect(store.getDoc().nodes.h1!.props.badge).not.toContain('\u200B');
   });
 });

@@ -6,7 +6,6 @@ import type { BlockTreeNode } from '../core/blocks/reconstruct-snapshot';
 import type {
   AnnotatedBlockTreeNode,
   BlockDiffAnnotation,
-  TextDiffSegment,
 } from '../core/diff/types';
 import type {
   AnyBlockDefinition,
@@ -33,8 +32,23 @@ export { isResolvedReference } from '../core/references-guard';
 export type {
   AnnotatedBlockTreeNode,
   BlockDiffAnnotation,
-  TextDiffSegment,
+  RichTextDiffSegment,
 } from '../core/diff/types';
+
+// Rich text renders from its stored JSON, server-safe.
+export {
+  RichText,
+  RichTextDiff,
+  renderRichText,
+  richTextLinkHref,
+} from './rich-text';
+export type {
+  RenderRichTextOptions,
+  RichTextDiffProps,
+  RichTextComponents,
+  RichTextElementProps,
+  RichTextProps,
+} from './rich-text';
 
 // The editor-anchor vocabulary lives in @createcms/schema (inlined into this
 // package's d.ts like every schema type); re-exported so block components
@@ -239,67 +253,6 @@ export function getBlockDiff(node: BlockTreeNode): BlockDiffAnnotation | null {
   return (node as AnnotatedBlockTreeNode).diff ?? null;
 }
 
-/** A full HTML tag captured as one atomic token — the same tag grammar the
- *  `diffRichText` tokenizer splits on, so segment boundaries and emission
- *  boundaries agree. */
-const HTML_TAG_SPLIT = /(<[^>]*>)/;
-const HTML_TAG_TOKEN = /^<[^>]*>$/;
-
-/**
- * Serializes word-level `richText` diff segments back into one HTML fragment
- * whose tag structure is exactly the NEW document's. Segments may contain HTML
- * tags (a formatting or block-tag change diffs as inserted/deleted tag tokens),
- * and tags must never be wrapped in — or interleaved with — `<ins>`/`<del>`,
- * so emission is tag-aware:
- *
- * - `same` runs pass through raw.
- * - `ins` runs emit their tag tokens bare (they ARE the new structure) and wrap
- *   each run of consecutive text tokens in `<ins data-diff-text="ins">`.
- * - `del` runs DROP their tag tokens entirely (the old structure must not leak
- *   into the new document) and wrap each run of consecutive text tokens in
- *   `<del data-diff-text="del">` — deleted text survives tag-stripped, deleted
- *   tags do not.
- *
- * Consequently a formatting-only change (bolding a word, `<p>` → `<div>`)
- * yields valid output with NO inline highlight: the diff is pure tags, and
- * tags are never marked. The result feeds the same `dangerouslySetInnerHTML`
- * path the docs already describe for `richText` properties; consumers style
- * `ins`/`del` via CSS.
- */
-export function diffSegmentsToHtml(segments: TextDiffSegment[]): string {
-  let out = '';
-
-  for (const segment of segments) {
-    if (segment.type === 'same') {
-      out += segment.html;
-      continue;
-    }
-
-    const marker = segment.type; // 'ins' | 'del'
-    let textRun = '';
-    const flushTextRun = () => {
-      if (textRun === '') return;
-      out += `<${marker} data-diff-text="${marker}">${textRun}</${marker}>`;
-      textRun = '';
-    };
-
-    for (const token of segment.html.split(HTML_TAG_SPLIT)) {
-      if (token === '') continue;
-      if (HTML_TAG_TOKEN.test(token)) {
-        flushTextRun();
-        // Inserted tags are the new document's structure — emit bare. Deleted
-        // tags are the OLD structure — drop them.
-        if (marker === 'ins') out += token;
-      } else {
-        textRun += token;
-      }
-    }
-    flushTextRun();
-  }
-
-  return out;
-}
-
 // Change types that trigger a wrapper, in `data-diff` priority order. A PURE
 // `childrenReordered` annotation is deliberately excluded — highlighting a
 // parent because its children swapped places is visual noise; the moved
@@ -381,21 +334,26 @@ type RenderContext = {
   edit: RendererEditMode | undefined;
 };
 
-/** Anchors for one block in preview mode: the block id and one entry per
- *  DECLARED property key (from the definition, not from the stored values). */
+/** Anchors for one block in preview mode: the block id, one entry per
+ *  DECLARED property key (from the definition, not from the stored values)
+ *  and the `children` slot for a block with `allowChildren`. */
 function previewEdit(
   node: BlockTreeNode,
   blocks: Record<string, AnyBlockDefinition> | undefined,
 ): EditProps {
+  const def = blocks?.[node.type];
   const field: Record<string, EditAttrs> = {};
-  for (const key of Object.keys(blocks?.[node.type]?.properties ?? {})) {
+  for (const key of Object.keys(def?.properties ?? {})) {
     field[key] = { 'data-editor-field': key };
   }
-  return {
+  const edit: EditProps = {
     active: false,
     block: { 'data-editor-block': node.blockId },
     field,
   };
+  return def?.allowChildren === true
+    ? { ...edit, slot: { children: { 'data-editor-slot': 'children' } } }
+    : edit;
 }
 
 /**

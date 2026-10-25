@@ -1,237 +1,211 @@
-import type { BlockProperty, CollectionDefinition } from '@createcms/schema';
-
 import { describe, expect, it, vi } from 'vitest';
 
-import type { CanvasComponent } from './map';
-
-import { storeSchema } from '../store/fixtures';
+import { defineEditorSchema } from '../core/schema';
+import { storeSchema } from '../core/store/fixtures';
 import { canvasEdit, NO_EDIT } from './edit';
-import { resolveComponentMap } from './map';
 import {
+  cacheKey,
   createResolveCache,
+  readResolved,
   resolveNodeProperties,
-  routeProperty,
 } from './resolve';
 
-const stub: CanvasComponent = () => null;
-
-const referenceSpec = {
-  type: 'reference',
-  collection: 'items',
-  label: 'Source',
-} as BlockProperty;
-
-const resolvedRef = {
-  rootId: 'abc',
-  collection: 'items',
-  tree: {
-    blockId: 'r',
-    type: 'root',
-    properties: {},
-    children: [],
+const schema = defineEditorSchema({
+  root: { label: 'Root', fields: {}, slots: { children: {} } },
+  components: {
+    card: {
+      label: 'Card',
+      fields: {
+        title: { type: 'text' },
+        source: { type: 'reference', collection: 'items' },
+        image: { type: 'media' },
+      },
+    },
   },
-  properties: {},
-};
-
-describe('resolveComponentMap', () => {
-  it('returns a plain record as the map', () => {
-    const components = { heading: stub };
-    expect(resolveComponentMap(components)).toBe(components);
-  });
-
-  it('unwraps a { _components } record', () => {
-    const inner = { heading: stub };
-    expect(resolveComponentMap({ _components: inner })).toBe(inner);
-  });
 });
 
+function cache(onTick = vi.fn()) {
+  return createResolveCache({ onTick, isMounted: () => true });
+}
+
 describe('canvasEdit', () => {
-  it('uses schema field keys including unused level', () => {
-    const edit = canvasEdit('h1', 'heading', storeSchema, false);
-    expect(edit.active).toBe(true);
-    expect(edit.block).toEqual({ 'data-editor-block': 'h1' });
-    expect(edit.field).toEqual({
-      text: { 'data-editor-field': 'text' },
-      level: { 'data-editor-field': 'level' },
+  it('uses the schema field keys, including unused ones', () => {
+    expect(canvasEdit('h1', 'heading', storeSchema, false)).toEqual({
+      active: true,
+      block: { 'data-editor-block': 'h1' },
+      field: {
+        text: { 'data-editor-field': 'text' },
+        level: { 'data-editor-field': 'level' },
+      },
     });
   });
 
-  it('adds data-unresolved on the block object', () => {
-    const edit = canvasEdit('h1', 'heading', storeSchema, true);
-    expect(edit.block).toEqual({
+  it('adds data-unresolved on the block', () => {
+    expect(canvasEdit('h1', 'heading', storeSchema, true).block).toEqual({
       'data-editor-block': 'h1',
       'data-unresolved': '',
+    });
+  });
+
+  it('adds one slot anchor per declared slot', () => {
+    expect(canvasEdit('s1', 'section', storeSchema, false).slot).toEqual({
+      children: { 'data-editor-slot': 'children' },
     });
   });
 });
 
 describe('NO_EDIT', () => {
-  it('is frozen with active false', () => {
-    expect(NO_EDIT.active).toBe(false);
+  it('is frozen, inactive and empty', () => {
     expect(Object.isFrozen(NO_EDIT)).toBe(true);
+    expect(NO_EDIT).toEqual({ active: false, block: {}, field: {} });
   });
 });
 
 describe('resolve cache', () => {
-  it('second lookup does not call the resolver', () => {
-    const cache = createResolveCache({
-      onTick: () => {},
-      isMounted: () => true,
+  const field = schema.components.card.fields.source;
+
+  it('keys by kind and value', () => {
+    expect(cacheKey('reference', { id: 'a' })).toBe('reference\0{"id":"a"}');
+    expect(cacheKey('text', 'x')).toBe('text\0x');
+  });
+
+  it('a second lookup does not call the resolver', () => {
+    const resolver = vi.fn(() => 'ready');
+    const c = cache();
+    expect(c.lookup('reference', { id: 'a' }, field, resolver)).toEqual({
+      status: 'ready',
+      value: 'ready',
     });
-    const resolver = vi.fn(() => resolvedRef);
-    cache.lookup('reference', 'abc', referenceSpec, resolver);
-    cache.lookup('reference', 'abc', referenceSpec, resolver);
+    c.lookup('reference', { id: 'a' }, field, resolver);
     expect(resolver).toHaveBeenCalledTimes(1);
   });
-});
 
-describe('routeProperty', () => {
-  it('does not route image values', () => {
-    const spec = {
-      type: 'image',
-      label: 'Image',
-    } as BlockProperty;
-    expect(routeProperty(spec, 'asset_1', {})).toEqual({ keep: true });
+  it('settles a promise and ticks', async () => {
+    const onTick = vi.fn();
+    const c = cache(onTick);
+    const entry = c.lookup('reference', { id: 'a' }, field, () =>
+      Promise.resolve('later'),
+    );
+    expect(entry.status).toBe('pending');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onTick).toHaveBeenCalledTimes(1);
+    expect(c.lookup('reference', { id: 'a' }, field, vi.fn())).toEqual({
+      status: 'ready',
+      value: 'later',
+    });
   });
 
-  it('keeps a string when no string resolver is present', () => {
-    const spec = { type: 'string', label: 'Text' } as BlockProperty;
-    expect(routeProperty(spec, 'Hello', {})).toEqual({ keep: true });
+  it('treats undefined, a throw and a rejection as a miss', async () => {
+    const c = cache();
+    expect(c.lookup('reference', { id: 'u' }, field, () => undefined)).toEqual({
+      status: 'miss',
+    });
+    expect(
+      c.lookup('reference', { id: 't' }, field, () => {
+        throw new Error('x');
+      }),
+    ).toEqual({ status: 'miss' });
+    c.lookup('reference', { id: 'r' }, field, () =>
+      Promise.reject(new Error()),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(c.lookup('reference', { id: 'r' }, field, vi.fn())).toEqual({
+      status: 'miss',
+    });
+  });
+
+  it('is a miss without a resolver', () => {
+    expect(cache().lookup('reference', { id: 'a' }, field, undefined)).toEqual({
+      status: 'miss',
+    });
   });
 });
-
-const cardSchema = {
-  label: 'Cards',
-  root: { properties: {} },
-  blocks: {
-    card: {
-      label: 'Card',
-      properties: {
-        source: {
-          type: 'reference',
-          collection: 'items',
-          label: 'Source',
-        },
-      },
-    },
-  },
-} satisfies CollectionDefinition;
 
 describe('resolveNodeProperties', () => {
-  it('omits an unresolved reference', () => {
-    const cache = createResolveCache({
-      onTick: () => {},
-      isMounted: () => true,
-    });
-    const result = resolveNodeProperties(
-      'card',
-      { source: 'abc' },
-      cardSchema,
-      {},
-      cache,
-    );
-    expect(result.properties).toEqual({});
-    expect(result.unresolved).toBe(true);
+  const raw = {
+    title: 'Hi {{name}}',
+    source: { id: 'abc' },
+    image: { assetId: 'img' },
+    extra: 1,
+  };
+
+  it('renders every prop as stored without resolvers', () => {
+    expect(
+      resolveNodeProperties('card', raw, schema, undefined, cache()),
+    ).toEqual({ properties: raw, unresolved: false });
   });
 
-  it('replaces a resolved reference', () => {
-    const cache = createResolveCache({
-      onTick: () => {},
-      isMounted: () => true,
-    });
-    const result = resolveNodeProperties(
+  it('replaces ready values per kind and keeps the rest', () => {
+    const out = resolveNodeProperties(
       'card',
-      { source: 'abc' },
-      cardSchema,
-      { reference: () => resolvedRef },
-      cache,
+      raw,
+      schema,
+      {
+        text: (value) => String(value).replace('{{name}}', 'Ada'),
+        reference: () => ({ title: 'Item' }),
+      },
+      cache(),
     );
-    expect(result.properties.source).toBe(resolvedRef);
-    expect(result.unresolved).toBe(false);
+    expect(out).toEqual({
+      properties: {
+        title: 'Hi Ada',
+        source: { title: 'Item' },
+        image: { assetId: 'img' },
+        extra: 1,
+      },
+      unresolved: false,
+    });
+  });
+
+  it('keeps the stored value and flags unresolved while pending or missing', () => {
+    const pending = resolveNodeProperties(
+      'card',
+      raw,
+      schema,
+      { reference: () => new Promise(() => {}) },
+      cache(),
+    );
+    expect(pending.properties.source).toEqual({ id: 'abc' });
+    expect(pending.unresolved).toBe(true);
+    const miss = resolveNodeProperties(
+      'card',
+      raw,
+      schema,
+      { reference: () => undefined },
+      cache(),
+    );
+    expect(miss.properties.source).toEqual({ id: 'abc' });
+    expect(miss.unresolved).toBe(true);
+  });
+
+  it('never resolves an empty value', () => {
+    const resolver = vi.fn();
+    const out = resolveNodeProperties(
+      'card',
+      { title: '', source: null },
+      schema,
+      { text: resolver, reference: resolver },
+      cache(),
+    );
+    expect(resolver).not.toHaveBeenCalled();
+    expect(out.unresolved).toBe(false);
   });
 });
 
-const heroCopySchema = {
-  label: 'Pages',
-  root: { properties: {} },
-  blocks: {
-    hero: {
-      label: 'Hero',
-      properties: {
-        headline: { type: 'string', label: 'Headline' },
-        cta: { type: 'link', label: 'CTA' },
-      },
-    },
-  },
-} satisfies CollectionDefinition;
+describe('readResolved', () => {
+  const field = schema.components.card.fields.title;
 
-const rawExternalLink = {
-  kind: 'external' as const,
-  url: 'https://example.com',
-};
-
-describe('resolveNodeProperties string and link misses', () => {
-  it('keeps a string when the resolver returns undefined', () => {
-    const cache = createResolveCache({
-      onTick: () => {},
-      isMounted: () => true,
-    });
-    const result = resolveNodeProperties(
-      'hero',
-      { headline: 'Get Started' },
-      heroCopySchema,
-      { string: () => undefined },
-      cache,
+  it('returns the ready value, else undefined', () => {
+    expect(readResolved('text', 'x', field, { text: () => 'X' }, cache())).toBe(
+      'X',
     );
-    expect(result.properties.headline).toBe('Get Started');
-    expect(result.unresolved).toBe(true);
-  });
-
-  it('keeps a string while the resolver is pending', () => {
-    const cache = createResolveCache({
-      onTick: () => {},
-      isMounted: () => true,
-    });
-    const result = resolveNodeProperties(
-      'hero',
-      { headline: 'Get Started' },
-      heroCopySchema,
-      { string: () => new Promise(() => {}) },
-      cache,
-    );
-    expect(result.properties.headline).toBe('Get Started');
-    expect(result.unresolved).toBe(true);
-  });
-
-  it('keeps a link when the resolver returns undefined', () => {
-    const cache = createResolveCache({
-      onTick: () => {},
-      isMounted: () => true,
-    });
-    const result = resolveNodeProperties(
-      'hero',
-      { cta: rawExternalLink },
-      heroCopySchema,
-      { link: () => undefined },
-      cache,
-    );
-    expect(result.properties.cta).toEqual(rawExternalLink);
-    expect(result.unresolved).toBe(true);
-  });
-
-  it('replaces a string when the resolver returns a value', () => {
-    const cache = createResolveCache({
-      onTick: () => {},
-      isMounted: () => true,
-    });
-    const result = resolveNodeProperties(
-      'hero',
-      { headline: 'Hello {{brand}}' },
-      heroCopySchema,
-      { string: () => 'Hello Toerbo' },
-      cache,
-    );
-    expect(result.properties.headline).toBe('Hello Toerbo');
-    expect(result.unresolved).toBe(false);
+    expect(
+      readResolved('text', 'x', field, undefined, cache()),
+    ).toBeUndefined();
+    expect(
+      readResolved('text', 'x', field, { text: () => undefined }, cache()),
+    ).toBeUndefined();
   });
 });

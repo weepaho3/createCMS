@@ -1,22 +1,23 @@
 import type {
-  BlockProperty,
+  AnyCollectionDefinition,
   BlockTreeNode,
-  LinkValue,
   ResolvedLink,
   ResolvedReference,
 } from '@createcms/schema';
 import type { ReactNode } from 'react';
 
+import type {
+  EditorDocument,
+  Field,
+  PersistenceOptions,
+  RichTextDoc,
+} from '../core';
 import type { CmsDocumentError } from './errors';
 
 export type { CmsDocumentError, CmsFieldError } from './errors';
 
-export type CmsDocumentStatus =
-  | 'loading'
-  | 'idle'
-  | 'saving'
-  | 'conflict'
-  | 'error';
+/** Load state of `useCmsDocument`; save state lives in the editor store (`useSave`). */
+export type CmsDocumentStatus = 'loading' | 'idle' | 'error';
 
 export type CmsDocumentClient = {
   getBlockTree(args: {
@@ -62,47 +63,61 @@ export type CmsTemplatesClient = {
   }): Promise<{ defaults: Record<string, string> }>;
 };
 
+/**
+ * Display resolvers per field kind for `Canvas.Root`'s `resolve`:
+ * references from the `getBlockTree` sidecar or `resolveTree`, links to
+ * their current href, `{{variables}}` in text filled in.
+ */
 export type CmsDocumentResolve = {
-  reference?: (
-    rootId: string,
-    spec: BlockProperty,
-  ) => ResolvedReference | Promise<ResolvedReference> | undefined;
-  link?: (
-    value: LinkValue,
-    spec: BlockProperty,
-  ) => ResolvedLink | Promise<ResolvedLink> | undefined;
-  string?: (
-    value: string,
-    spec: BlockProperty,
+  reference: (
+    value: unknown,
+    spec: Field,
+  ) => ResolvedReference | Promise<ResolvedReference | undefined> | undefined;
+  link: (
+    value: unknown,
+    spec: Field,
+  ) => ResolvedLink | Promise<ResolvedLink | undefined> | undefined;
+  text: (value: unknown, spec: Field) => string | Promise<string> | undefined;
+  textarea: (
+    value: unknown,
+    spec: Field,
   ) => string | Promise<string> | undefined;
+  richText: (
+    value: unknown,
+    spec: Field,
+  ) => RichTextDoc | Promise<RichTextDoc> | undefined;
 };
 
 export type UseCmsDocumentOptions = {
   client: CmsDocumentClient;
+  /** The collection definition of the document; maps trees to editor documents. */
+  definition: AnyCollectionDefinition;
   rootId: string;
   branchId: string;
+  /** The commit message of each save (a save's own `message` wins). */
   message?: () => string | undefined;
+  /** Saves on their own after edits (each save is a commit). Default `false`. */
+  autosave?: PersistenceOptions['autosave'];
   includeReferencePreviews?: boolean;
   templates?: CmsTemplatesClient;
+  /** Collection name for `templates.getTemplateDefaults`. */
   collection?: string;
 };
 
 export type UseCmsDocumentResult = {
-  tree: BlockTreeNode | null;
+  /** The loaded document in editor shape, `null` while loading. */
+  doc: EditorDocument | null;
   key: string;
   headCommitId: string | null;
   resolve: CmsDocumentResolve;
   status: CmsDocumentStatus;
+  /** The last load failure. */
   error: CmsDocumentError | null;
-  save: {
-    (
-      tree: BlockTreeNode,
-      meta?: { message?: string; force?: boolean },
-    ): Promise<void>;
-    (force: { force: true }): Promise<void>;
-  };
+  /** Pass to `Editor.Root`: saves through `updateBlocks` with the loaded head as base. */
+  persistence: PersistenceOptions;
   reload: () => Promise<void>;
-  onChange: (change: { getTree: () => BlockTreeNode }) => void;
+  onChange: (change: { getDocument: () => EditorDocument }) => void;
+  /** Template defaults for a new block of `blockType`, in editor shape. */
   onAdd: (blockType: string) => Promise<Record<string, unknown>>;
 };
 

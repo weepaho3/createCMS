@@ -4,24 +4,23 @@ import type * as React from 'react';
 import { act, cleanup, render, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import type { EditorFactory, TreeOf } from './factory';
+import type { EditorDocument } from './core/document';
+import type { DocumentOf, EditorFactory } from './factory';
 
+import { pages } from './core/schema/fixtures';
+import { counterGenId, makeDoc, storeSchema } from './core/store/fixtures';
 import { createEditor } from './factory';
 import { Editor } from './index';
-import { pages } from './schema/fixtures';
-import { counterGenId, makeTree, storeSchema } from './store/fixtures';
 
 afterEach(cleanup);
 
-/** `makeTree()` typed as `storeSchema` demands it: the union members are structurally comparable to `BlockTreeNode`. */
-const typedTree = (): TreeOf<typeof storeSchema> =>
-  makeTree() as TreeOf<typeof storeSchema>;
+/** `makeDoc()` typed as `storeSchema` demands it. */
+const typedTree = (): DocumentOf<typeof storeSchema> =>
+  makeDoc() as DocumentOf<typeof storeSchema>;
 
-const pagesTree = (): TreeOf<typeof pages> => ({
-  blockId: 'root_1',
-  type: 'root',
-  properties: { title: 'x' },
-  children: [],
+const pagesTree = (): EditorDocument => ({
+  schemaVersion: 1,
+  root: { id: 'root_1', type: 'root', props: { title: 'x' } },
 });
 
 function rootWrapper(factory: EditorFactory<typeof storeSchema>) {
@@ -59,7 +58,7 @@ describe('factory.Root', () => {
     const factory = createEditor({ schema: storeSchema });
     function Probe() {
       const api = factory.useEditor();
-      return <span data-testid="probe">{api.getState().rootId}</span>;
+      return <span data-testid="probe">{api.getDoc().rootId}</span>;
     }
     const { getByTestId } = render(
       <factory.Root defaultValue={typedTree()} genId={counterGenId()}>
@@ -76,10 +75,10 @@ describe('factory.Root', () => {
     });
     let id: string | null = null;
     act(() => {
-      id = result.current.add('heading', { parentId: 'root_1' });
+      id = result.current.add('heading', { parent: { id: 'root_1' } });
     });
     expect(id).toBe('n1');
-    expect(result.current.getState().nodes.n1?.properties.level).toBe(2);
+    expect(result.current.getDoc().nodes.n1?.props.level).toBe(2);
   });
 });
 
@@ -91,7 +90,7 @@ describe('factory.useBlock', () => {
     });
     expect(result.current?.type).toBe('heading');
     if (result.current?.type === 'heading') {
-      expect(result.current.properties.text).toBe('Hello');
+      expect(result.current.props.text).toBe('Hello');
     }
   });
 
@@ -107,7 +106,7 @@ describe('factory.useBlock', () => {
     });
     expect(
       result.current?.type === 'heading'
-        ? result.current.properties.text
+        ? result.current.props.text
         : undefined,
     ).toBe('Z');
   });
@@ -173,7 +172,7 @@ describe('the remaining factory hooks mirror the untyped ones', () => {
     );
     expect(result.current.history.canUndo).toBe(false);
     act(() => {
-      result.current.api.add('heading', { parentId: 'root_1' });
+      result.current.api.add('heading', { parent: { id: 'root_1' } });
     });
     expect(result.current.history.canUndo).toBe(true);
   });
@@ -240,10 +239,10 @@ describe('schema guard', () => {
     const factory = createEditor({ schema: storeSchema });
     function Probe() {
       const api = factory.useEditor();
-      return <span data-testid="probe">{api.getState().rootId}</span>;
+      return <span data-testid="probe">{api.getDoc().rootId}</span>;
     }
     const { getByTestId } = render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <Probe />
       </Editor.Root>,
     );
@@ -254,7 +253,7 @@ describe('schema guard', () => {
     const factory = createEditor({ schema: storeSchema });
     function Probe() {
       const api = factory.useEditor();
-      return <span data-testid="probe">{api.getState().rootId}</span>;
+      return <span data-testid="probe">{api.getDoc().rootId}</span>;
     }
     const { getByTestId } = render(
       <factory.Root defaultValue={typedTree()}>
@@ -272,7 +271,7 @@ describe('nesting two factories', () => {
     let innerBRootId: string | undefined;
     let innerAThrewMessage: string | undefined;
     function InnerProbe() {
-      innerBRootId = factoryB.useEditor().getState().rootId;
+      innerBRootId = factoryB.useEditor().getDoc().rootId;
       try {
         factoryA.useEditor();
       } catch (err) {
@@ -282,7 +281,7 @@ describe('nesting two factories', () => {
     }
     render(
       <factoryA.Root defaultValue={typedTree()}>
-        <factoryB.Root defaultValue={pagesTree()}>
+        <factoryB.Root defaultValue={pagesTree() as DocumentOf<typeof pages>}>
           <InnerProbe />
         </factoryB.Root>
       </factoryA.Root>,

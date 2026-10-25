@@ -1,122 +1,63 @@
 // @vitest-environment happy-dom
-import type {
-  BlockTreeNode,
-  CollectionDefinition,
-  EditProps,
-} from '@createcms/schema';
 import type * as React from 'react';
 
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { CanvasComponent } from './map';
+import type { EditorDocument } from '../core/document';
+import type { EditProps } from '../core/edit';
+import type { CanvasComponent, CanvasComponentProps } from './map';
 
+import { resetWarnings } from '../core/codes';
+import { defineEditorSchema } from '../core/schema';
+import { makeDoc, storeSchema } from '../core/store/fixtures';
 import { Editor } from '../index';
-import { makeTree, storeSchema } from '../store/fixtures';
 import { Canvas } from './index';
 import { EMPTY_FIELD_PLACEHOLDER } from './inline-text';
 import { canvasBlocks, Heading } from './test/fixtures';
 import { renderCanvas } from './test/harness';
-import {
-  featuredRef,
-  heroBlocks,
-  heroSchema,
-  heroTree,
-  PublishedHeroTree,
-} from './test/hero-fixtures';
 
 afterEach(cleanup);
 
-const STRIP_ATTRS = [
-  'data-editor-block',
-  'data-editor-field',
-  'data-editor-canvas',
-  'data-editor-readonly',
-  'data-interactive',
-  'data-dragging',
-  'data-editing',
-  'data-unresolved',
-  'data-testid',
-  'inert',
-] as const;
-
-function strippedHtml(host: HTMLElement): string {
-  const clone = host.cloneNode(true) as HTMLElement;
-  const all = [clone, ...clone.querySelectorAll('*')];
-  for (const el of all) {
-    for (const attr of STRIP_ATTRS) {
-      el.removeAttribute(attr);
-    }
-  }
-  return clone.innerHTML;
-}
-
-const cardSchema = {
-  label: 'Cards',
-  root: { properties: {} },
-  blocks: {
+const cardSchema = defineEditorSchema({
+  root: { label: 'Cards', fields: {}, slots: { children: {} } },
+  components: {
     card: {
       label: 'Card',
-      properties: {
-        source: {
-          type: 'reference',
-          collection: 'items',
-          label: 'Source',
-        },
+      fields: {
+        source: { type: 'reference', collection: 'items', label: 'Source' },
       },
     },
   },
-} satisfies CollectionDefinition;
+});
 
-function twoCards(source = 'abc'): BlockTreeNode {
+function twoCards(): EditorDocument {
   return {
-    blockId: 'root_1',
-    type: 'root',
-    properties: {},
-    children: [
-      {
-        blockId: 'c1',
-        type: 'card',
-        properties: { source },
-        children: [],
+    schemaVersion: 1,
+    root: {
+      id: 'root_1',
+      type: 'root',
+      props: {},
+      slots: {
+        children: [
+          { id: 'c1', type: 'card', props: { source: { id: 'abc' } } },
+          { id: 'c2', type: 'card', props: { source: { id: 'abc' } } },
+        ],
       },
-      {
-        blockId: 'c2',
-        type: 'card',
-        properties: { source },
-        children: [],
-      },
-    ],
+    },
   };
 }
 
-function Card({
-  properties,
-  edit,
-}: {
-  properties: Record<string, unknown>;
-  edit: EditProps;
-}) {
+function Card({ props, edit }: CanvasComponentProps) {
+  const source = props.source as { title?: string; id?: string } | undefined;
   return (
     <div {...edit.block} data-testid="card">
-      {properties.source ? 'has' : 'missing'}
+      {source?.title ?? `raw:${source?.id ?? ''}`}
     </div>
   );
 }
 
-const cardBlocks = { card: Card as CanvasComponent };
-
-const resolvedRef = {
-  rootId: 'abc',
-  collection: 'items',
-  tree: {
-    blockId: 'r',
-    type: 'root',
-    properties: {},
-    children: [],
-  },
-  properties: {},
-};
+const cardBlocks = { card: Card };
 
 describe('Canvas.Root renderer', () => {
   it('renders the root as a fragment of child blocks', () => {
@@ -126,55 +67,73 @@ describe('Canvas.Root renderer', () => {
     ).toEqual(['h1', 'sec1']);
   });
 
-  it('passes document edit with active true and schema field keys', () => {
-    let seen: EditProps | undefined;
-    function HeadingProbe(props: {
-      properties: { text: string; level: number };
-      edit: EditProps;
-    }) {
-      seen = props.edit;
-      return <Heading {...props} />;
-    }
+  it('passes id, type, props and edit anchors', () => {
+    let seen: CanvasComponentProps | undefined;
+    const HeadingProbe: CanvasComponent = (props) => {
+      seen = props;
+      return (
+        <Heading
+          props={props.props as { text: string; level: number }}
+          edit={props.edit}
+        />
+      );
+    };
     renderCanvas(undefined, {
-      components: {
-        ...canvasBlocks,
-        heading: HeadingProbe as unknown as CanvasComponent,
-      },
+      components: { ...canvasBlocks, heading: HeadingProbe },
     });
-    expect(seen?.active).toBe(true);
-    expect(seen?.block).toEqual({ 'data-editor-block': 'h1' });
-    expect(seen?.field).toEqual({
+    expect(seen?.id).toBe('h1');
+    expect(seen?.type).toBe('heading');
+    expect(seen?.props).toEqual({ text: 'Hello', level: 1 });
+    expect(seen?.edit.active).toBe(true);
+    expect(seen?.edit.block).toEqual({ 'data-editor-block': 'h1' });
+    expect(seen?.edit.field).toEqual({
       text: { 'data-editor-field': 'text' },
       level: { 'data-editor-field': 'level' },
     });
+    expect(seen?.edit.slot).toBeUndefined();
   });
 
-  it('warns and renders null for an unknown type', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const tree: BlockTreeNode = {
-      blockId: 'root_1',
-      type: 'root',
-      properties: {},
-      children: [
-        {
-          blockId: 'w1',
-          type: 'widget',
-          properties: {},
-          children: [],
-        },
-      ],
+  it('adds slot anchors for components with slots', () => {
+    let edit: EditProps | undefined;
+    const SectionProbe: CanvasComponent = (props) => {
+      edit = props.edit;
+      return <section {...props.edit.block}>{props.children}</section>;
     };
-    const { host } = renderCanvas(undefined, { tree });
-    expect(host.querySelector('[data-editor-block]')).toBeNull();
-    expect(warn).toHaveBeenCalledWith(
-      'Canvas.Root: no component mapped for block type "widget"',
-    );
+    renderCanvas(undefined, {
+      components: { ...canvasBlocks, section: SectionProbe },
+    });
+    expect(edit?.slot).toEqual({
+      children: { 'data-editor-slot': 'children' },
+    });
+  });
+
+  it('shows an unknown type as a selectable Canvas.UnknownBlock and keeps its data', () => {
+    resetWarnings();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const tree: EditorDocument = {
+      schemaVersion: 1,
+      root: {
+        id: 'root_1',
+        type: 'root',
+        props: {},
+        slots: { children: [{ id: 'w1', type: 'widget', props: {} }] },
+      },
+    };
+    const { host, store } = renderCanvas(undefined, { tree });
+    const unknown = host.querySelector('[data-unknown-block]');
+    expect(unknown?.getAttribute('data-editor-block')).toBe('w1');
+    expect(unknown?.textContent).toContain('widget');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('[editor:E006]'));
+    expect(store.getDocument()).toEqual(tree);
     warn.mockRestore();
   });
 
-  it('calls a reference resolver once for the same rootId', () => {
-    const reference = vi.fn(() => resolvedRef);
-    const { rerender } = render(
+  it('calls a field resolver once per stored value and renders its result', () => {
+    const reference = vi.fn((value: unknown) => ({
+      ...(value as object),
+      title: 'Resolved',
+    }));
+    const { rerender, container } = render(
       <Editor.Root schema={cardSchema} defaultValue={twoCards()}>
         <Canvas.Root components={cardBlocks} resolve={{ reference }} />
       </Editor.Root>,
@@ -186,211 +145,147 @@ describe('Canvas.Root renderer', () => {
       </Editor.Root>,
     );
     expect(reference).toHaveBeenCalledTimes(1);
+    const cards = container.querySelectorAll('[data-testid="card"]');
+    expect([...cards].map((c) => c.textContent)).toEqual([
+      'Resolved',
+      'Resolved',
+    ]);
   });
 
-  it('omits an unresolved reference and sets data-unresolved', () => {
+  it('keeps the stored value and sets data-unresolved while a resolver misses', () => {
+    const { host } = renderCanvas(undefined, {
+      schema: cardSchema,
+      tree: twoCards(),
+      components: cardBlocks,
+      resolve: { reference: () => undefined },
+    });
+    const card = host.querySelector('[data-testid="card"]');
+    expect(card?.textContent).toBe('raw:abc');
+    expect(card?.getAttribute('data-unresolved')).toBe('');
+  });
+
+  it('renders kinds without a resolver as stored, without data-unresolved', () => {
     const { host } = renderCanvas(undefined, {
       schema: cardSchema,
       tree: twoCards(),
       components: cardBlocks,
     });
-    const cards = host.querySelectorAll('[data-testid="card"]');
-    expect(cards).toHaveLength(2);
-    expect(cards[0]?.textContent).toBe('missing');
-    expect(cards[0]?.getAttribute('data-unresolved')).toBe('');
+    const card = host.querySelector('[data-testid="card"]');
+    expect(card?.textContent).toBe('raw:abc');
+    expect(card?.hasAttribute('data-unresolved')).toBe(false);
   });
 
-  it('throws when surface is frame', () => {
-    expect(() =>
-      render(
-        <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
-          <Canvas.Root components={canvasBlocks} surface="frame" />
-        </Editor.Root>,
-      ),
-    ).toThrow('Canvas.Root: surface "frame" is not implemented');
+  it('surface frame renders an iframe in a host-page wrapper with the consumer props', () => {
+    const { getByTestId } = render(
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
+        <Canvas.Root
+          components={canvasBlocks}
+          surface="frame"
+          data-testid="outer"
+        />
+      </Editor.Root>,
+    );
+    const outer = getByTestId('outer');
+    expect(outer.hasAttribute('data-editor-frame-surface')).toBe(true);
+    expect(outer.querySelector('iframe')).not.toBeNull();
+    expect(outer.querySelector('[data-editor-host-layer]')).not.toBeNull();
   });
 
-  it('marks referenced trees readonly and does not select them', () => {
-    const featured = {
-      rootId: 'item-root',
-      collection: 'items',
-      properties: {},
-      tree: {
-        blockId: 'item-root',
-        type: 'root',
-        properties: {},
-        children: [
-          {
-            blockId: 'ref-item',
-            type: 'item',
-            properties: { label: 'Featured' },
-            children: [],
-          },
-        ],
-      },
-    };
-    function Hero({
-      children,
-      edit,
-    }: {
-      children?: React.ReactNode;
-      edit: EditProps;
-    }) {
-      return <section {...edit.block}>{children}</section>;
-    }
-    function Item({
-      properties,
-      edit,
-    }: {
-      properties: Record<string, unknown>;
-      edit: EditProps;
-    }) {
-      return <article {...edit.block}>{String(properties.label)}</article>;
-    }
+  it('Canvas.ReadonlySubtree is inert and its blocks are not selectable', () => {
+    const SectionWithEmbed: CanvasComponent = (props) => (
+      <section {...props.edit.block}>
+        {props.children}
+        <Canvas.ReadonlySubtree>
+          <article data-editor-block="embedded">Embedded</article>
+        </Canvas.ReadonlySubtree>
+      </section>
+    );
     const { host, store } = renderCanvas(undefined, {
-      schema: {
-        label: 'Pages',
-        root: { properties: {} },
-        blocks: {
-          hero: {
-            label: 'Hero',
-            properties: {
-              title: { type: 'string', label: 'Title' },
-              featured: {
-                type: 'reference',
-                collection: 'items',
-                label: 'Featured',
-              },
-            },
-          },
-          item: {
-            label: 'Item',
-            properties: { label: { type: 'string', label: 'Label' } },
-          },
-        },
-      },
-      tree: {
-        blockId: 'root_1',
-        type: 'root',
-        properties: {},
-        children: [
-          {
-            blockId: 'hero1',
-            type: 'hero',
-            properties: { title: 'Welcome', featured: 'item-root' },
-            children: [],
-          },
-        ],
-      },
-      components: {
-        hero: Hero as unknown as CanvasComponent,
-        item: Item as unknown as CanvasComponent,
-      },
-      resolve: { reference: () => featured },
+      components: { ...canvasBlocks, section: SectionWithEmbed },
     });
     const readonly = host.querySelector('[data-editor-readonly][inert]');
     expect(readonly).not.toBeNull();
+    expect((readonly as HTMLElement).style.display).toBe('contents');
     const inner = host.querySelector('article');
-    expect(inner).not.toBeNull();
-    expect(inner?.hasAttribute('data-editor-block')).toBe(false);
     inner!.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }),
     );
-    expect(store.getState().selection.local?.selected).toBeNull();
+    expect(store.getSession().selection[0] ?? null).not.toBe('embedded');
   });
 
   it('intercepts a[href] clicks with preventDefault', () => {
     const { host } = renderCanvas(<a href="https://example.com">Go</a>);
     const link = host.querySelector('a');
-    expect(link).not.toBeNull();
     const event = new MouseEvent('click', { bubbles: true, cancelable: true });
     link!.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(true);
   });
 
-  it('warns when a mapped block renders no data-editor-block', () => {
+  it('warns when a mapped block renders no data-editor-block', async () => {
+    resetWarnings();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    function Broken() {
-      return (
-        <>
-          <span />
-        </>
-      );
-    }
+    const Broken = (): React.ReactNode => <span />;
     renderCanvas(undefined, {
       tree: {
-        blockId: 'root_1',
-        type: 'root',
-        properties: {},
-        children: [
-          {
-            blockId: 'h1',
-            type: 'heading',
-            properties: { text: 'Hello', level: 1 },
-            children: [],
+        schemaVersion: 1,
+        root: {
+          id: 'root_1',
+          type: 'root',
+          props: {},
+          slots: {
+            children: [
+              { id: 'h1', type: 'heading', props: { text: 'Hello', level: 1 } },
+            ],
           },
-        ],
+        },
       },
-      components: { heading: Broken as unknown as CanvasComponent },
+      components: { heading: Broken },
     });
+    await Promise.resolve();
     expect(warn).toHaveBeenCalledWith(
-      'Canvas.Root: block "h1" (type "heading") rendered no [data-editor-block] attribute. Spread edit.block on the block\'s root element. A display: contents wrapper is the documented escape when the component has no single root.',
+      expect.stringContaining(
+        '[editor:E005] Canvas.Root: block "h1" (type "heading") rendered no [data-editor-block] attribute.',
+      ),
     );
     warn.mockRestore();
   });
 
-  it('keeps an empty badge field mounted with a display placeholder', () => {
-    const badgeSchema = {
-      label: 'Pages',
-      root: { properties: {} },
-      blocks: {
+  it('keeps an empty text field mounted with a display placeholder', () => {
+    const badgeSchema = defineEditorSchema({
+      root: { label: 'Pages', fields: {}, slots: { children: {} } },
+      components: {
         heading: {
           label: 'Heading',
-          properties: {
-            text: { type: 'string', label: 'Text' },
+          fields: {
+            text: { type: 'text', label: 'Text' },
             level: { type: 'number', label: 'Level', defaultValue: 2 },
-            badge: { type: 'string', label: 'Badge' },
+            badge: { type: 'text', label: 'Badge' },
           },
         },
       },
-    } satisfies CollectionDefinition;
-    const tree: BlockTreeNode = {
-      blockId: 'root_1',
-      type: 'root',
-      properties: {},
-      children: [
-        {
-          blockId: 'h1',
-          type: 'heading',
-          properties: { text: 'Hello', level: 1, badge: '' },
-          children: [],
-        },
-      ],
-    };
+    });
     const { host, store } = renderCanvas(undefined, {
       schema: badgeSchema,
-      tree,
+      tree: {
+        schemaVersion: 1,
+        root: {
+          id: 'root_1',
+          type: 'root',
+          props: {},
+          slots: {
+            children: [
+              {
+                id: 'h1',
+                type: 'heading',
+                props: { text: 'Hello', level: 1, badge: '' },
+              },
+            ],
+          },
+        },
+      },
     });
     const badge = host.querySelector('[data-editor-field="badge"]');
-    expect(badge).not.toBeNull();
     expect(badge?.textContent).toBe(EMPTY_FIELD_PLACEHOLDER);
-    expect(store.getState().nodes.h1!.properties.badge).toBe('');
-  });
-
-  it('stripped HTML matches a local published walk of the same components', () => {
-    const { host } = renderCanvas(undefined, {
-      schema: heroSchema,
-      tree: heroTree,
-      components: heroBlocks,
-      resolve: { reference: () => featuredRef },
-    });
-    const published = render(
-      <div>
-        <PublishedHeroTree />
-      </div>,
-    );
-    expect(strippedHtml(host)).toBe(
-      strippedHtml(published.container.firstElementChild as HTMLElement),
-    );
+    expect(store.getDoc().nodes.h1!.props.badge).toBe('');
   });
 });

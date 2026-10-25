@@ -1,16 +1,13 @@
-import type {
-  BlockTreeNode,
-  CollectionDefinition,
-  EditAttrs,
-  EditProps,
-} from '@createcms/schema';
 import type { ReactNode } from 'react';
 
+import type { EditorDocument, NodeData } from '../../core/document';
+import type { EditAttrs, EditProps } from '../../core/edit';
 import type { CanvasComponents } from '../map';
 
-import { makeTree, storeSchema } from '../../store/fixtures';
+import { defineEditorSchema } from '../../core/schema';
+import { makeDoc, storeSchema } from '../../core/store/fixtures';
 
-export { makeTree, storeSchema };
+export { makeDoc, storeSchema };
 
 export function testEdit(blockId: string, keys: readonly string[]): EditProps {
   const field: Record<string, EditAttrs> = {};
@@ -25,10 +22,10 @@ export function testEdit(blockId: string, keys: readonly string[]): EditProps {
 }
 
 export function Heading({
-  properties,
+  props: properties,
   edit,
 }: {
-  properties: { text: string; level: number; badge?: string };
+  props: { text: string; level: number; badge?: string };
   edit: EditProps;
 }) {
   return (
@@ -69,10 +66,10 @@ export function Heading({
 }
 
 export function Paragraph({
-  properties,
+  props: properties,
   edit,
 }: {
-  properties: { text: string };
+  props: { text: string };
   edit: EditProps;
 }) {
   return (
@@ -95,7 +92,7 @@ export function Section({
   edit,
   children,
 }: {
-  properties: { title?: string };
+  props: { title?: string };
   edit: EditProps;
   children?: ReactNode;
 }) {
@@ -108,52 +105,56 @@ export const canvasBlocks = {
   section: Section,
 } as unknown as CanvasComponents;
 
-export const nestedTextSchema = {
-  label: 'Pages',
-  root: { properties: {} },
-  blocks: {
+export const nestedTextSchema = defineEditorSchema({
+  root: { label: 'Pages', fields: {}, slots: { children: {} } },
+  components: {
     outer: {
       label: 'Outer',
-      allowChildren: true,
-      properties: { text: { type: 'string', label: 'Text' } },
+      fields: { text: { type: 'text', label: 'Text' } },
+      slots: { children: { allow: ['inner'] } },
     },
     inner: {
       label: 'Inner',
-      properties: { text: { type: 'string', label: 'Text' } },
+      fields: { text: { type: 'text', label: 'Text' } },
     },
   },
-  structure: { outer: { accepts: ['inner'] } },
-} satisfies CollectionDefinition;
+});
 
-export function nestedTextTree(): BlockTreeNode {
+export function nestedTextTree(): EditorDocument {
   return {
-    blockId: 'root_1',
-    type: 'root',
-    properties: {},
-    children: [
-      {
-        blockId: 'outer1',
-        type: 'outer',
-        properties: { text: 'Outer' },
+    schemaVersion: 1,
+    root: {
+      id: 'root_1',
+      type: 'root',
+      props: {},
+      slots: {
         children: [
           {
-            blockId: 'inner1',
-            type: 'inner',
-            properties: { text: 'Inner' },
-            children: [],
+            id: 'outer1',
+            type: 'outer',
+            props: { text: 'Outer' },
+            slots: {
+              children: [
+                {
+                  id: 'inner1',
+                  type: 'inner',
+                  props: { text: 'Inner' },
+                },
+              ],
+            },
           },
         ],
       },
-    ],
+    },
   };
 }
 
 export function TextNest({
-  properties,
+  props: properties,
   edit,
   children,
 }: {
-  properties: { text: string };
+  props: { text: string };
   edit: EditProps;
   children?: ReactNode;
 }) {
@@ -180,30 +181,28 @@ export const nestedTextBlocks = {
   inner: TextNest,
 } as unknown as CanvasComponents;
 
-export const unionSchema = {
-  label: 'Pages',
-  root: { properties: {} },
-  blocks: {
-    pair: {
-      label: 'Pair',
-      properties: {},
-    },
-  },
-} satisfies CollectionDefinition;
+export const unionSchema = defineEditorSchema({
+  root: { label: 'Pages', fields: {}, slots: { children: {} } },
+  components: { pair: { label: 'Pair', fields: {} } },
+});
 
-export function unionTree(): BlockTreeNode {
+export function unionTree(): EditorDocument {
   return {
-    blockId: 'root_1',
-    type: 'root',
-    properties: {},
-    children: [
-      {
-        blockId: 'pair1',
-        type: 'pair',
-        properties: {},
-        children: [],
+    schemaVersion: 1,
+    root: {
+      id: 'root_1',
+      type: 'root',
+      props: {},
+      slots: {
+        children: [
+          {
+            id: 'pair1',
+            type: 'pair',
+            props: {},
+          },
+        ],
       },
-    ],
+    },
   };
 }
 
@@ -226,40 +225,35 @@ export const unionBlocks = {
   pair: Pair,
 } as unknown as CanvasComponents;
 
-export const insertStackSchema = {
-  label: 'Insert',
-  root: { properties: {} },
-  blocks: {
+export const insertStackSchema = defineEditorSchema({
+  root: { label: 'Insert', fields: {}, slots: { children: {} } },
+  components: {
     stack: {
       label: 'Stack',
-      allowChildren: true,
-      properties: {},
+      fields: {},
+      slots: { children: { allow: ['cell'] } },
     },
-    cell: {
-      label: 'Cell',
-      properties: { text: { type: 'string', label: 'Text' } },
-    },
+    cell: { label: 'Cell', fields: { text: { type: 'text', label: 'Text' } } },
     heading: {
       label: 'Heading',
-      properties: { text: { type: 'string', label: 'Text' } },
+      fields: { text: { type: 'text', label: 'Text' } },
     },
   },
-  structure: { stack: { accepts: ['cell'] } },
-} satisfies CollectionDefinition;
+});
 
-export const nestedOnlyStackSchema = {
+export const nestedOnlyStackSchema = defineEditorSchema({
   ...insertStackSchema,
-  structure: {
-    stack: { accepts: ['cell'] },
-    root: { excludes: ['cell'] },
+  root: {
+    ...insertStackSchema.root,
+    slots: { children: { disallow: ['cell'] } },
   },
-} satisfies CollectionDefinition;
+});
 
 function InsertCell({
-  properties,
+  props: properties,
   edit,
 }: {
-  properties: { text: string };
+  props: { text: string };
   edit: EditProps;
 }) {
   return (
@@ -348,76 +342,100 @@ function EmptyStack({ edit }: { edit: EditProps }) {
   );
 }
 
-function cell(id: string, text: string): BlockTreeNode {
+function cell(id: string, text: string): NodeData {
   return {
-    blockId: id,
+    id: id,
     type: 'cell',
-    properties: { text },
-    children: [],
+    props: { text },
   };
 }
 
-export function columnStackTree(): BlockTreeNode {
+export function columnStackTree(): EditorDocument {
   return {
-    blockId: 'root_1',
-    type: 'root',
-    properties: {},
-    children: [
-      {
-        blockId: 'stack1',
-        type: 'stack',
-        properties: {},
-        children: [cell('c1', '1'), cell('c2', '2'), cell('c3', '3')],
+    schemaVersion: 1,
+    root: {
+      id: 'root_1',
+      type: 'root',
+      props: {},
+      slots: {
+        children: [
+          {
+            id: 'stack1',
+            type: 'stack',
+            props: {},
+            slots: {
+              children: [cell('c1', '1'), cell('c2', '2'), cell('c3', '3')],
+            },
+          },
+        ],
       },
-    ],
+    },
   };
 }
 
-export function rowStackTree(): BlockTreeNode {
+export function rowStackTree(): EditorDocument {
   return {
-    blockId: 'root_1',
-    type: 'root',
-    properties: {},
-    children: [
-      {
-        blockId: 'stack1',
-        type: 'stack',
-        properties: {},
-        children: [cell('c1', '1'), cell('c2', '2'), cell('c3', '3')],
+    schemaVersion: 1,
+    root: {
+      id: 'root_1',
+      type: 'root',
+      props: {},
+      slots: {
+        children: [
+          {
+            id: 'stack1',
+            type: 'stack',
+            props: {},
+            slots: {
+              children: [cell('c1', '1'), cell('c2', '2'), cell('c3', '3')],
+            },
+          },
+        ],
       },
-    ],
+    },
   };
 }
 
-export function gridStackTree(): BlockTreeNode {
+export function gridStackTree(): EditorDocument {
   return {
-    blockId: 'root_1',
-    type: 'root',
-    properties: {},
-    children: [
-      {
-        blockId: 'stack1',
-        type: 'stack',
-        properties: {},
-        children: [cell('c1', '1'), cell('c2', '2'), cell('c3', '3')],
+    schemaVersion: 1,
+    root: {
+      id: 'root_1',
+      type: 'root',
+      props: {},
+      slots: {
+        children: [
+          {
+            id: 'stack1',
+            type: 'stack',
+            props: {},
+            slots: {
+              children: [cell('c1', '1'), cell('c2', '2'), cell('c3', '3')],
+            },
+          },
+        ],
       },
-    ],
+    },
   };
 }
 
-export function emptyStackTree(): BlockTreeNode {
+export function emptyStackTree(): EditorDocument {
   return {
-    blockId: 'root_1',
-    type: 'root',
-    properties: {},
-    children: [
-      {
-        blockId: 'stack1',
-        type: 'stack',
-        properties: {},
-        children: [],
+    schemaVersion: 1,
+    root: {
+      id: 'root_1',
+      type: 'root',
+      props: {},
+      slots: {
+        children: [
+          {
+            id: 'stack1',
+            type: 'stack',
+            props: {},
+          },
+        ],
       },
-    ],
+    },
   };
 }
 
@@ -443,4 +461,62 @@ export const emptyStackBlocks = {
   stack: EmptyStack,
   cell: InsertCell,
   heading: InsertCell,
+} as unknown as CanvasComponents;
+
+export const twoSlotSchema = defineEditorSchema({
+  root: { label: 'Slots', fields: {}, slots: { children: {} } },
+  components: {
+    columns: {
+      label: 'Columns',
+      fields: {},
+      slots: { left: { allow: ['cell'] }, right: { allow: ['cell'] } },
+    },
+    cell: { label: 'Cell', fields: { text: { type: 'text', label: 'Text' } } },
+  },
+});
+
+function TwoColumns({
+  edit,
+  slots,
+}: {
+  edit: EditProps;
+  slots: Readonly<Record<string, ReactNode>>;
+}) {
+  const column = { boxSizing: 'border-box', width: 160, height: 120 } as const;
+  return (
+    <div {...edit.block} style={{ display: 'flex', width: 320 }}>
+      <div {...edit.slot?.left} style={column}>
+        {slots.left}
+      </div>
+      <div {...edit.slot?.right} style={column}>
+        {slots.right}
+      </div>
+    </div>
+  );
+}
+
+export function twoSlotTree(): EditorDocument {
+  return {
+    schemaVersion: 1,
+    root: {
+      id: 'root_1',
+      type: 'root',
+      props: {},
+      slots: {
+        children: [
+          {
+            id: 'cols',
+            type: 'columns',
+            props: {},
+            slots: { left: [cell('c1', 'Left')], right: [] },
+          },
+        ],
+      },
+    },
+  };
+}
+
+export const twoSlotBlocks = {
+  columns: TwoColumns,
+  cell: InsertCell,
 } as unknown as CanvasComponents;

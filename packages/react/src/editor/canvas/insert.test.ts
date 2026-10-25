@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
 
-import type { EditorNodes } from '../store';
+import type { EditorNodes } from '../core/store';
 
-import { getPlacement } from '../schema/placement';
-import { storeSchema } from '../store/fixtures';
+import { defineEditorSchema } from '../core/schema';
+import { flatNodes as nodesOf, storeSchema } from '../core/store/fixtures';
 import {
   INSERT_BOX_PAD,
   resolveInsertAt,
@@ -12,38 +12,7 @@ import {
 } from './insert';
 
 const rootId = 'root_1';
-
-function nodesOf(
-  entries: Record<
-    string,
-    {
-      type: string;
-      parentId: string | null;
-      childIds: string[];
-    }
-  >,
-): EditorNodes {
-  const out: Record<
-    string,
-    {
-      id: string;
-      type: string;
-      parentId: string | null;
-      childIds: string[];
-      properties: Record<string, unknown>;
-    }
-  > = {};
-  for (const [id, node] of Object.entries(entries)) {
-    out[id] = {
-      id,
-      type: node.type,
-      parentId: node.parentId,
-      childIds: [...node.childIds],
-      properties: {},
-    };
-  }
-  return out;
-}
+const at = (id: string) => ({ id, slot: 'children' });
 
 function rect(
   x: number,
@@ -62,9 +31,8 @@ function resolve(
   rects: Record<string, ReturnType<typeof rect>>,
   extra?: Partial<ResolveInsertAtOptions>,
 ) {
-  const placement = getPlacement(storeSchema);
   const getRect = (id: string) => rects[id] ?? null;
-  return resolveInsertAt(nodes, placement, rootId, startBlockId, x, y, {
+  return resolveInsertAt(storeSchema, nodes, rootId, startBlockId, x, y, {
     getRect,
     isRowFlow: () => false,
     ...extra,
@@ -159,13 +127,13 @@ describe('resolveInsertAt', () => {
     const heading = resolve(nodes, 'h', 50, 80, rects, {
       draggedType: 'heading',
     });
-    expect(heading?.parentId).toBe('sec');
+    expect(heading?.parent).toEqual(at('sec'));
     expect(heading?.index).toBe(0);
 
     const image = resolve(nodes, 'h', 50, 80, rects, {
       draggedType: 'image',
     });
-    expect(image?.parentId).toBe(rootId);
+    expect(image?.parent).toEqual(at(rootId));
   });
 
   it('draggedId excluded from geometry, original index kept', () => {
@@ -200,7 +168,7 @@ describe('resolveInsertAt', () => {
     const target = resolve(nodes, 'drag', 50, 30, rects, {
       draggedId: 'drag',
     });
-    expect(target?.parentId).toBe(rootId);
+    expect(target?.parent).toEqual(at(rootId));
   });
 
   it('grid wrap', () => {
@@ -237,10 +205,15 @@ describe('resolveInsertAt', () => {
       sec: rect(0, 0, 200, 100),
       h: rect(0, 20, 100, 40),
     };
-    const placement = getPlacement(storeSchema);
-    placement.rules.set('root', { mode: 'only', set: new Set(['heading']) });
+    const closed = defineEditorSchema({
+      ...storeSchema,
+      root: {
+        ...storeSchema.root,
+        slots: { children: { allow: ['heading'] } },
+      },
+    });
 
-    const target = resolveInsertAt(nodes, placement, rootId, 'h', 50, 30, {
+    const target = resolveInsertAt(closed, nodes, rootId, 'h', 50, 30, {
       getRect: (id) => rects[id as keyof typeof rects] ?? null,
       isRowFlow: () => false,
       draggedType: 'nope',
@@ -280,7 +253,77 @@ describe('resolveInsertAt', () => {
     };
 
     const target = resolve(nodes, 'child', 50, 79, rects);
-    expect(target?.parentId).toBe('sec');
+    expect(target?.parent).toEqual(at('sec'));
     expect(target?.index).toBe(0);
+  });
+});
+
+describe('resolveInsertAt named slots', () => {
+  const slotSchema = defineEditorSchema({
+    root: { label: 'Root', fields: {}, slots: { children: {} } },
+    components: {
+      columns: {
+        label: 'Columns',
+        fields: {},
+        slots: { left: { allow: ['text'] }, right: {} },
+      },
+      text: { label: 'Text', fields: {} },
+    },
+  });
+  const nodes: EditorNodes = {
+    r: {
+      id: 'r',
+      type: 'root',
+      props: {},
+      parent: null,
+      slots: { children: ['cols'] },
+    },
+    cols: {
+      id: 'cols',
+      type: 'columns',
+      props: {},
+      parent: { id: 'r', slot: 'children' },
+      slots: { left: ['t'], right: [] },
+    },
+    t: {
+      id: 't',
+      type: 'text',
+      props: {},
+      parent: { id: 'cols', slot: 'left' },
+      slots: {},
+    },
+  };
+  const rects: Record<string, ReturnType<typeof rect>> = {
+    r: rect(0, 0, 400, 200),
+    cols: rect(0, 0, 400, 200),
+    t: rect(0, 0, 200, 40),
+  };
+  const slotRects: Record<string, ReturnType<typeof rect>> = {
+    'cols.left': rect(0, 0, 200, 200),
+    'cols.right': rect(200, 0, 200, 200),
+  };
+  const run = (x: number, y: number, draggedType: string) =>
+    resolveInsertAt(slotSchema, nodes, 'r', 'cols', x, y, {
+      draggedType,
+      getRect: (id) => rects[id] ?? null,
+      getSlotRect: (id, slot) => slotRects[`${id}.${slot}`] ?? null,
+      isRowFlow: () => false,
+    });
+
+  it('drops into the empty right slot inside its own rect', () => {
+    const target = run(300, 100, 'text');
+    expect(target?.parent).toEqual({ id: 'cols', slot: 'right' });
+    expect(target?.index).toBe(0);
+  });
+
+  it('drops into the left slot next to its child', () => {
+    const target = run(100, 30, 'text');
+    expect(target?.parent).toEqual({ id: 'cols', slot: 'left' });
+    expect(target?.index).toBe(1);
+  });
+
+  it('skips a slot that refuses the type', () => {
+    const target = run(100, 30, 'columns');
+    expect(target?.parent.slot).not.toBe('left');
   });
 });

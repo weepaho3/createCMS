@@ -1,8 +1,11 @@
-import type { PropertyChange, TextDiffSegment } from './types';
+import type { RichTextDoc } from '../rich-text/types';
+import type { PropertyChange, RichTextDiffSegment } from './types';
+
+import { isRichTextDoc } from '../rich-text/schema';
 
 type DiffOptions = {
   isRichText?: (path: (string | number)[]) => boolean;
-  diffText?: (from: string, to: string) => TextDiffSegment[];
+  diffRichText?: (from: RichTextDoc, to: RichTextDoc) => RichTextDiffSegment[];
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -128,6 +131,16 @@ function diffValue(
   opts: DiffOptions,
   out: PropertyChange[],
 ): void {
+  // A rich text value changes as a whole, with word-level segments.
+  if (opts.isRichText?.(path)) {
+    if (deepEqual(from, to)) return;
+    const change: PropertyChange = { path, kind: 'changed', from, to };
+    if (opts.diffRichText && isRichTextDoc(from) && isRichTextDoc(to)) {
+      change.richTextDiff = opts.diffRichText(from, to);
+    }
+    out.push(change);
+    return;
+  }
   if (isPlainObject(from) && isPlainObject(to)) {
     diffObject(from, to, path, opts, out);
     return;
@@ -138,16 +151,7 @@ function diffValue(
   }
   if (deepEqual(from, to)) return;
 
-  const change: PropertyChange = { path, kind: 'changed', from, to };
-  if (
-    typeof from === 'string' &&
-    typeof to === 'string' &&
-    opts.diffText &&
-    opts.isRichText?.(path)
-  ) {
-    change.textDiff = opts.diffText(from, to);
-  }
-  out.push(change);
+  out.push({ path, kind: 'changed', from, to });
 }
 
 function diffObject(
@@ -235,23 +239,26 @@ function diffArray(
  * Arrays are aligned by LCS on deep-equal items. Leftover items in each gap
  * pair up positionally and diff like any other value pair (the path uses the
  * NEW index): object pairs recurse, scalar pairs yield one `changed` entry
- * (eligible for `textDiff`). Unpaired leftovers are reported as `removed`
+ * (a `richText` pair gets `richTextDiff`). Unpaired leftovers are reported as `removed`
  * (path index into the OLD array) / `added` (path index into the NEW array).
  * Reordered equal items therefore surface as a removed+added pair, not as a
  * move. The LCS is size-capped: past a cell budget on the prefix/suffix-
  * trimmed middle, the middle is paired purely positionally instead — same
  * output shapes, coarser alignment.
  *
- * When `opts.isRichText` matches the path of a `changed` entry whose sides
- * are both strings and `opts.diffText` is provided, the word-level
- * `textDiff` segments are attached to the change.
+ * A path `opts.isRichText` matches is compared as a whole: one `changed`
+ * entry, with `richTextDiff` segments from `opts.diffRichText` when both
+ * sides are rich text values.
  */
 export function diffProperties(
   from: Record<string, unknown>,
   to: Record<string, unknown>,
   opts?: {
     isRichText?: (path: (string | number)[]) => boolean;
-    diffText?: (from: string, to: string) => TextDiffSegment[];
+    diffRichText?: (
+      from: RichTextDoc,
+      to: RichTextDoc,
+    ) => RichTextDiffSegment[];
   },
 ): PropertyChange[] {
   const out: PropertyChange[] = [];

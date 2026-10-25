@@ -198,8 +198,9 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureContext) {
         const userId = ctx.context.userId;
         const scope = ctx.context.scope?.templates;
 
-        // A template seeds a string into a property, so it must target an
-        // existing text property (`string` / `richText`) — never a number,
+        // A template seeds text into a property (a `richText` target gets
+        // one paragraph per line), so it must target an existing text
+        // property (`string` / `richText`), never a number,
         // boolean, select, image or reference (which expect typed/id values).
         const propType =
           cmsCtx.collections[collection]?.blocks?.[blockType]?.properties?.[
@@ -411,6 +412,7 @@ export function createTemplateEndpoints(cmsCtx: CMSProcedureContext) {
           collection,
           blockType,
           ctx.context.scope,
+          cmsCtx.collections[collection]?.blocks?.[blockType]?.properties,
         );
         return { defaults };
       },

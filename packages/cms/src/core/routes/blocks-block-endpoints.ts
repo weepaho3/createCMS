@@ -42,10 +42,11 @@ import {
 import {
   buildBlockInputSchema,
   buildPropertiesSchema,
+  isRichTextFailure,
   buildUpdateBlockInputSchema,
 } from '../schema-builders';
 import { crossScopeColumns } from '../scope';
-import { loadTemplateStrings } from '../templates';
+import { loadTemplateStrings, templateValues } from '../templates';
 import { wireBooleanIsTrue, wireBooleanSchema } from '../utils/wire-boolean';
 import { loadVariables, substituteVariables } from '../variables';
 import {
@@ -183,13 +184,17 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
           const childBlockId = newId('block');
           // Server-side template defaults: pre-fill any property the caller did
           // NOT provide with this block type's template, scoped to the active
-          // tenant/language. The raw template string is stored as-is so embedded
-          // {{variables}} stay live (resolved at read time). Caller values win.
-          const templateDefaults = await loadTemplateStrings(
-            tx,
-            collectionName,
-            type,
-            ctx.context.scope?.templates?.where,
+          // tenant/language. The raw template string is stored as-is (as a rich
+          // text value for a `richText` target) so embedded {{variables}} stay
+          // live (resolved at read time). Caller values win.
+          const templateDefaults = templateValues(
+            await loadTemplateStrings(
+              tx,
+              collectionName,
+              type,
+              ctx.context.scope?.templates?.where,
+            ),
+            def.blocks?.[type]?.properties,
           );
           // toe-ed-09: seed the new block's properties from its definition's
           // per-property `defaultValue`s as the LOWEST-priority base. Precedence
@@ -1249,6 +1254,9 @@ export function createBlockEndpoints<TDef extends CollectionWithName>(
                 issues: parsed.error.issues,
               };
               if (resolved.length > 0) data.resolvedLinkKeys = resolved;
+              if (isRichTextFailure(parsed.error.issues)) {
+                throw new CMSError('RICH_TEXT_INVALID', { message, data });
+              }
               throw new CMSError('TYPE_MISMATCH', {
                 message: `${message}${hint}`,
                 data,

@@ -12,15 +12,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EditorApi } from '../hooks';
 import type { CmsDocumentClient } from './types';
 
+import { counterGenId } from '../core/store/fixtures';
 import { Editor, useEditor, useSave } from '../index';
-import { counterGenId, makeTree, storeSchema } from '../store/fixtures';
+import { createCmsAdapter } from './adapter';
 import {
   BLOCK_NOT_ALLOWED_IN_PARENT,
   COMMIT_MESSAGE_REQUIRED,
   PROTECTED_BRANCH,
   TYPE_MISMATCH,
 } from './errors';
+import { fromCollection } from './mapping';
+import { cmsSchema, makeCmsTree } from './test/cms-fixtures';
 import { CMS_RESOLVE_DEBOUNCE_MS, useCmsDocument } from './use-cms-document';
+
+const editorSchema = fromCollection(cmsSchema);
 
 afterEach(cleanup);
 
@@ -32,7 +37,7 @@ function makeClient(
 ): CmsDocumentClient {
   return {
     getBlockTree: vi.fn(async () => ({
-      tree: makeTree(),
+      tree: makeCmsTree(),
       reconstructed: false,
       references: {
         ref_1: {
@@ -73,6 +78,7 @@ function renderDoc(
     () =>
       useCmsDocument({
         client,
+        definition: cmsSchema,
         rootId: options.rootId ?? defaultRootId,
         branchId: options.branchId ?? defaultBranchId,
         message: options.message,
@@ -100,7 +106,7 @@ describe('useCmsDocument load', () => {
       expect(result.current.status).toBe('idle');
     });
 
-    expect(result.current.tree?.blockId).toBe('root_1');
+    expect(result.current.doc?.root.id).toBe('root_1');
     expect(result.current.key).toBe('root_1:br_1:c1');
     expect(client.getBlockTree).toHaveBeenCalledWith({
       query: {
@@ -121,6 +127,7 @@ describe('useCmsDocument client ref', () => {
       ({ client }) =>
         useCmsDocument({
           client,
+          definition: cmsSchema,
           rootId: defaultRootId,
           branchId: defaultBranchId,
         }),
@@ -143,6 +150,7 @@ describe('useCmsDocument client ref', () => {
       ({ rootId }) =>
         useCmsDocument({
           client: first,
+          definition: cmsSchema,
           rootId,
           branchId: defaultBranchId,
         }),
@@ -161,20 +169,39 @@ describe('useCmsDocument client ref', () => {
   });
 });
 
-describe('useCmsDocument save', () => {
-  it('roundtrips save with expectedHeadCommitId and keeps key', async () => {
+describe('useCmsDocument persistence', () => {
+  async function saveOnce(
+    result: { current: ReturnType<typeof useCmsDocument> },
+    ctx: { baseVersion?: string; message?: string } = {},
+  ) {
+    let caught: unknown;
+    let version: string | undefined;
+    await act(async () => {
+      try {
+        const saved = await result.current.persistence.save(
+          result.current.doc!,
+          { ops: [], phase: 'save', ...ctx },
+        );
+        version = saved.version;
+      } catch (err) {
+        caught = err;
+      }
+    });
+    return { caught, version };
+  }
+
+  it('starts from the loaded head, saves with expectedHeadCommitId and keeps the key', async () => {
     const client = makeClient();
     const { result } = renderDoc({ client });
-
     await waitFor(() => {
       expect(result.current.status).toBe('idle');
     });
+    expect(result.current.persistence.baseVersion).toBe('c1');
+    expect(result.current.persistence.autosave).toBe(false);
 
-    const tree = result.current.tree!;
-    await act(async () => {
-      await result.current.save(tree);
-    });
+    const { version } = await saveOnce(result, { baseVersion: 'c1' });
 
+    expect(version).toBe('c2');
     expect(client.updateBlocks).toHaveBeenCalledWith({
       body: expect.objectContaining({
         expectedHeadCommitId: 'c1',
@@ -184,87 +211,59 @@ describe('useCmsDocument save', () => {
         }),
       }),
     });
-    expect(result.current.headCommitId).toBe('c2');
     expect(result.current.key).toBe('root_1:br_1:c1');
   });
 
-  it('sends message from the hook option or meta override', async () => {
+  it('sends the message from the hook option unless the save brings its own', async () => {
     const client = makeClient();
-    const { result: withHookMessage } = renderHook(() =>
+    const { result } = renderHook(() =>
       useCmsDocument({
         client,
+        definition: cmsSchema,
         rootId: defaultRootId,
         branchId: defaultBranchId,
         message: () => 'edited',
       }),
     );
-
     await waitFor(() => {
-      expect(withHookMessage.current.status).toBe('idle');
+      expect(result.current.status).toBe('idle');
     });
 
-    await act(async () => {
-      await withHookMessage.current.save(withHookMessage.current.tree!);
-    });
+    await saveOnce(result);
     expect(client.updateBlocks).toHaveBeenLastCalledWith({
       body: expect.objectContaining({ message: 'edited' }),
     });
-
-    await act(async () => {
-      await withHookMessage.current.save(withHookMessage.current.tree!, {
-        message: 'x',
-      });
-    });
+    await saveOnce(result, { message: 'x' });
     expect(client.updateBlocks).toHaveBeenLastCalledWith({
       body: expect.objectContaining({ message: 'x' }),
     });
   });
 
-  it('enters conflict on HEAD_MISMATCH then force-saves without head', async () => {
+  it('turns HEAD_MISMATCH into a conflict carrying the server document and head', async () => {
     const client = makeClient({
-      updateBlocks: vi
-        .fn()
-        .mockRejectedValueOnce({
-          code: 'HEAD_MISMATCH',
-          message: 'The branch has advanced',
-        })
-        .mockResolvedValueOnce({
-          commit: { id: 'c3' },
-          changed: true,
-        }),
+      updateBlocks: vi.fn().mockRejectedValueOnce({
+        code: 'HEAD_MISMATCH',
+        message: 'The branch has advanced',
+      }),
     });
     const { result } = renderDoc({ client });
-
     await waitFor(() => {
       expect(result.current.status).toBe('idle');
     });
 
-    const tree = result.current.tree!;
-    let caught: unknown;
-    await act(async () => {
-      try {
-        await result.current.save(tree);
-      } catch (err) {
-        caught = err;
-      }
-    });
-    expect(caught).toMatchObject({ code: 'HEAD_MISMATCH' });
+    const { caught } = await saveOnce(result, { baseVersion: 'c1' });
 
-    await waitFor(() => {
-      expect(result.current.status).toBe('conflict');
+    expect(caught).toMatchObject({
+      kind: 'conflict',
+      details: {
+        code: 'HEAD_MISMATCH',
+        serverVersion: 'c1',
+        serverDoc: expect.objectContaining({ schemaVersion: 1 }),
+      },
     });
-    expect(result.current.headCommitId).toBe('c1');
-
-    await act(async () => {
-      await result.current.save({ force: true });
-    });
-
-    const lastCall = vi.mocked(client.updateBlocks).mock.calls.at(-1);
-    expect(lastCall?.[0].body.expectedHeadCommitId).toBeUndefined();
-    expect(lastCall?.[0].body.tree).toEqual(tree);
   });
 
-  it('maps TYPE_MISMATCH issues to error.fields', async () => {
+  it('maps TYPE_MISMATCH issues to validation details with fields', async () => {
     const client = makeClient({
       updateBlocks: vi.fn().mockRejectedValue({
         code: TYPE_MISMATCH,
@@ -276,25 +275,18 @@ describe('useCmsDocument save', () => {
       }),
     });
     const { result } = renderDoc({ client });
-
     await waitFor(() => {
       expect(result.current.status).toBe('idle');
     });
 
-    await act(async () => {
-      try {
-        await result.current.save(result.current.tree!);
-      } catch {
-        // the mock rejects by design; the assertion below checks the surfaced error
-      }
-    });
+    const { caught } = await saveOnce(result);
 
-    await waitFor(() => {
-      expect(result.current.status).toBe('error');
+    expect(caught).toMatchObject({
+      kind: 'validation',
+      details: {
+        fields: [{ blockId: 'h1', key: 'text', message: 'Required' }],
+      },
     });
-    expect(result.current.error?.fields).toEqual([
-      { blockId: 'h1', key: 'text', message: 'Required' },
-    ]);
   });
 
   it.each([
@@ -309,22 +301,13 @@ describe('useCmsDocument save', () => {
       }),
     });
     const { result } = renderDoc({ client });
-
     await waitFor(() => {
       expect(result.current.status).toBe('idle');
     });
 
-    await act(async () => {
-      try {
-        await result.current.save(result.current.tree!);
-      } catch {
-        // the mock rejects by design; the assertion below checks the surfaced error
-      }
-    });
+    const { caught } = await saveOnce(result);
 
-    await waitFor(() => {
-      expect(result.current.error?.code).toBe(code);
-    });
+    expect(caught).toMatchObject({ details: { code } });
   });
 });
 
@@ -344,11 +327,14 @@ describe('useCmsDocument resolve', () => {
       expect(result.current.status).toBe('idle');
     });
 
-    const resolved = await result.current.resolve.reference!('ref_1', {
-      type: 'reference',
-      collection: 'reusableBlocks',
-      label: 'Block',
-    });
+    const resolved = await result.current.resolve.reference(
+      { id: 'ref_1' },
+      {
+        type: 'reference',
+        collection: 'reusableBlocks',
+        label: 'Block',
+      },
+    );
 
     expect(resolved).toEqual({
       rootId: 'ref_1',
@@ -373,8 +359,8 @@ describe('useCmsDocument resolve', () => {
 
     let resolved: string | undefined;
     act(() => {
-      const out = result.current.resolve.string!('Hello', {
-        type: 'string',
+      const out = result.current.resolve.text('Hello', {
+        type: 'text',
         label: 'Text',
       });
       void Promise.resolve(out).then((value) => {
@@ -398,16 +384,22 @@ describe('useCmsDocument resolve', () => {
     });
 
     act(() => {
-      void result.current.resolve.reference!('miss_a', {
-        type: 'reference',
-        collection: 'pages',
-        label: 'A',
-      });
-      void result.current.resolve.reference!('miss_b', {
-        type: 'reference',
-        collection: 'pages',
-        label: 'B',
-      });
+      void result.current.resolve.reference(
+        { id: 'miss_a' },
+        {
+          type: 'reference',
+          collection: 'pages',
+          label: 'A',
+        },
+      );
+      void result.current.resolve.reference(
+        { id: 'miss_b' },
+        {
+          type: 'reference',
+          collection: 'pages',
+          label: 'B',
+        },
+      );
     });
 
     flushResolve();
@@ -429,11 +421,14 @@ describe('useCmsDocument resolve', () => {
 
     let resolved: unknown = 'pending';
     act(() => {
-      const out = result.current.resolve.reference!('miss_a', {
-        type: 'reference',
-        collection: 'pages',
-        label: 'A',
-      });
+      const out = result.current.resolve.reference(
+        { id: 'miss_a' },
+        {
+          type: 'reference',
+          collection: 'pages',
+          label: 'A',
+        },
+      );
       void Promise.resolve(out).then((value: unknown) => {
         resolved = value;
       });
@@ -505,7 +500,7 @@ describe('useCmsDocument reload and onAdd', () => {
 });
 
 describe('useCmsDocument Editor.Root integration', () => {
-  it('clears dirty after store save through onSave', async () => {
+  it('saves through persistence and clears dirty', async () => {
     const client = makeClient();
     const probe: {
       api: EditorApi | null;
@@ -521,16 +516,17 @@ describe('useCmsDocument Editor.Root integration', () => {
     function Harness() {
       const doc = useCmsDocument({
         client,
+        definition: cmsSchema,
         rootId: defaultRootId,
         branchId: defaultBranchId,
       });
-      if (!doc.tree) return <span data-testid="loading" />;
+      if (!doc.doc) return <span data-testid="loading" />;
       return (
         <Editor.Root
-          schema={storeSchema}
-          defaultValue={doc.tree}
+          schema={editorSchema}
+          defaultValue={doc.doc}
           genId={counterGenId()}
-          onSave={doc.save}
+          persistence={doc.persistence}
           onChange={doc.onChange}
         >
           <Probe />
@@ -555,5 +551,24 @@ describe('useCmsDocument Editor.Root integration', () => {
 
     expect(client.updateBlocks).toHaveBeenCalled();
     expect(probe.save!.dirty).toBe(false);
+  });
+});
+
+describe('createCmsAdapter.resolveReference', () => {
+  it('loads a referenced root of the collection as a document', async () => {
+    const client = makeClient();
+    const adapter = createCmsAdapter({
+      client,
+      definition: cmsSchema,
+      branchId: defaultBranchId,
+    });
+    const doc = await adapter.resolveReference!({
+      collection: 'pages',
+      id: 'root_2',
+    });
+    expect(doc.root.type).toBe('root');
+    expect(client.getBlockTree).toHaveBeenCalledWith({
+      query: expect.objectContaining({ rootId: 'root_2' }),
+    });
   });
 });

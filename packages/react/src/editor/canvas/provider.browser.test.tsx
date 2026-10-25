@@ -1,7 +1,7 @@
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import type { EditorStore } from '../store';
+import type { EditorStore } from '../core/store';
 
 import { Editor, useEditorContext } from '../index';
 import { Canvas } from './index';
@@ -80,7 +80,7 @@ describe('Canvas.Provider pointer drag in a real browser', () => {
     expect(indicator).not.toBeNull();
     expect(indicator?.getAttribute('data-kind')).toBe('new');
     dispatchPointer(palette, 'pointerup', to);
-    expect(store.getState().nodes.stack1!.childIds.length).toBe(1);
+    expect(store.getDoc().nodes.stack1!.slots.children?.length).toBe(1);
   });
 
   it('two canvases under one provider resolve drops on the hovered editable surface', async () => {
@@ -133,7 +133,7 @@ describe('Canvas.Provider pointer drag in a real browser', () => {
     await waitForLayout(hostA);
     expect(hostB.querySelector('[data-editor-drop-indicator]')).toBeNull();
     dispatchPointer(palette, 'pointerup', overA);
-    expect(store.getState().nodes.stack1!.childIds.length).toBe(0);
+    expect(store.getDoc().nodes.stack1!.slots.children ?? []).toHaveLength(0);
 
     // Surface B is editable: the same drag over it commits the drop.
     const overB = centerOf(stackB!);
@@ -143,6 +143,6 @@ describe('Canvas.Provider pointer drag in a real browser', () => {
     await waitForLayout(hostB);
     expect(hostB.querySelector('[data-editor-drop-indicator]')).not.toBeNull();
     dispatchPointer(palette, 'pointerup', overB);
-    expect(store.getState().nodes.stack1!.childIds.length).toBe(1);
+    expect(store.getDoc().nodes.stack1!.slots.children?.length).toBe(1);
   });
 });

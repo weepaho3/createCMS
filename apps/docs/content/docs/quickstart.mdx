@@ -150,14 +150,19 @@ Server-side, read the published page and render its block `tree` with `BlocksRen
 
 ```tsx title="app/page.tsx"
 import { cms } from '@/lib/cms';
-import { BlocksRenderer, createBlocksMap } from '@createcms/core/react/blocks';
+import {
+  BlocksRenderer,
+  createBlocksMap,
+  RichText,
+} from '@createcms/core/react/blocks';
 import { collections } from '@/lib/collections';
 
 const pageBlocks = createBlocksMap(collections.pages, {
   hero: ({ properties }) => <h1>{properties.headline}</h1>,
   richText: ({ properties }) => (
-    // `richText` stores markup; render it as HTML (sanitize if untrusted).
-    <div dangerouslySetInnerHTML={{ __html: properties.content }} />
+    <div>
+      <RichText value={properties.content} />
+    </div>
   ),
 });
 
@@ -168,6 +173,8 @@ export default async function Page() {
   return <BlocksRenderer blocks={pageBlocks} tree={variants[0].tree} />;
 }
 ```
+
+`richText` values are stored as JSON, and `RichText` renders them as plain React elements: no HTML string, nothing to sanitize. See [Render content](/docs/guides/rendering-content#render-rich-text).
 
 ### 7. Use the type-safe client
 

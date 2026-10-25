@@ -1,14 +1,43 @@
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { act, type ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { server } from 'vitest/browser';
 
-import type { EditorStore } from '../store';
+import type { EditorStore } from '../core/store';
 
 import { useEditorContext } from '../context';
+import { makeDoc, storeSchema } from '../core/store/fixtures';
 import { Editor } from '../index';
-import { makeTree, storeSchema } from '../store/fixtures';
 
 afterEach(cleanup);
+
+// WebKit does not run listeners the host page adds inside a frame sandboxed
+// without `allow-scripts`: clicks arrive through the host shield there, and
+// the frame never takes focus, so keys stay in the host document.
+const noFrameListeners = server.browser === 'webkit';
+
+/** Clicks `el` in the frame the way a user would: through the shield when one covers the frame. */
+async function clickInFrame(host: HTMLElement, el: Element) {
+  const frame = frontFrame(host);
+  if (noFrameListeners) {
+    await waitFor(() => {
+      expect(host.querySelector('[data-editor-frame-shield]')).not.toBeNull();
+    });
+    const shield = host.querySelector('[data-editor-frame-shield]')!;
+    const frameRect = frame.getBoundingClientRect();
+    const rect = el.getBoundingClientRect();
+    shield.dispatchEvent(
+      new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        clientX: frameRect.left + rect.left + rect.width / 2,
+        clientY: frameRect.top + rect.top + rect.height / 2,
+      }),
+    );
+    return;
+  }
+  (el as HTMLElement).click();
+}
 
 type Probe = { store: EditorStore | null };
 
@@ -53,7 +82,7 @@ function renderFrame(options: {
   const compile =
     options.render ?? (async () => options.html ?? '<p>hello</p>');
   const utils = render(
-    <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+    <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
       <StoreProbe probe={probe} />
       {options.extra}
       <Editor.FramePreview
@@ -142,11 +171,45 @@ describe('Editor.FramePreview in a real browser', () => {
     }
     const heading = doc.querySelector('h1');
     if (!heading) throw new Error('missing heading');
-    heading.click();
+    await clickInFrame(host, heading);
     await waitFor(() => {
-      const local = store.getState().selection.local;
+      const local = {
+        selected: store.getSession().selection[0] ?? null,
+        focus: store.getSession().focusedField,
+        editing: store.getSession().editing,
+      };
       expect(local?.selected).toBe('h1');
       expect(local?.focus).toEqual({ blockId: 'h1', key: 'text' });
+    });
+  });
+
+  it('selectable click on a slot selects its block without a field focus', async () => {
+    const { host, store } = renderFrame({
+      html:
+        '<section data-editor-block="sec1">' +
+        '<div data-editor-slot="children"><p id="gap">gap</p></div>' +
+        '</section>',
+      selectable: true,
+    });
+    await waitFor(
+      () => {
+        expect(
+          frontFrame(host).contentDocument?.querySelector('#gap'),
+        ).not.toBeNull();
+      },
+      { timeout: 5000 },
+    );
+    const gap = frontFrame(host).contentDocument?.querySelector('#gap');
+    if (!gap) throw new Error('missing slot child');
+    await clickInFrame(host, gap);
+    await waitFor(() => {
+      const local = {
+        selected: store.getSession().selection[0] ?? null,
+        focus: store.getSession().focusedField,
+        editing: store.getSession().editing,
+      };
+      expect(local?.selected).toBe('sec1');
+      expect(local?.focus).toBeNull();
     });
   });
 
@@ -262,13 +325,49 @@ describe('Editor.FramePreview in a real browser', () => {
     }
     const heading = doc.querySelector('h1');
     if (!heading) throw new Error('missing heading');
-    heading.click();
+    await clickInFrame(host, heading);
     await waitFor(() => {
       expect(
         getByTestId('form').querySelector('[data-focused]'),
       ).not.toBeNull();
     });
+    // The click moves real focus into the field's control.
+    await waitFor(() => {
+      const active = document.activeElement;
+      expect(active?.tagName).toBe('INPUT');
+      expect(getByTestId('form').contains(active)).toBe(true);
+    });
   });
+
+  it.skipIf(noFrameListeners)(
+    'keys pressed inside the frame run editor shortcuts',
+    async () => {
+      const { host, store } = renderFrame({
+        html: HEADING_HTML,
+        selectable: true,
+      });
+      await waitFor(
+        () => {
+          expect(
+            frontFrame(host).contentDocument?.querySelector('h1'),
+          ).not.toBeNull();
+        },
+        { timeout: 5000 },
+      );
+      const doc = frontFrame(host).contentDocument!;
+      act(() => store.select('h1'));
+      act(() => {
+        doc.body.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: 'Delete',
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      });
+      expect(store.getDoc().nodes.h1).toBeUndefined();
+    },
+  );
 
   it('invoice Blob shows a blob URL on the visible iframe', async () => {
     const { host } = renderFrame({

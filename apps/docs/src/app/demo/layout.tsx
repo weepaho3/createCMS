@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 const links = [
   { href: '/docs/guides/visual-editor', label: 'Visual editor guide' },
   { href: '/demo/editor', label: 'Demos index' },
+  { href: '/demo/editor/app', label: 'Editor app' },
   { href: '/demo/editor/pages', label: 'Live canvas' },
   { href: '/demo/editor/form', label: 'Form only' },
   { href: '/demo/editor/preview', label: 'Form plus preview' },

@@ -1,19 +1,25 @@
 // @vitest-environment happy-dom
 import type * as React from 'react';
 
-import { act, cleanup, renderHook } from '@testing-library/react';
+import { act, cleanup, render, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { shallowEqual, useEditorSelector, useEditorStore } from './binding';
+import {
+  shallowEqual,
+  useDocSelector,
+  useEditorStore,
+  useEphemeralSelector,
+  useSessionSelector,
+} from './binding';
+import { counterGenId, makeDoc, storeSchema } from './core/store/fixtures';
 import { Editor } from './index';
-import { counterGenId, makeTree, storeSchema } from './store/fixtures';
 
 afterEach(cleanup);
 
 function makeWrapper() {
   const genId = counterGenId();
   return ({ children }: { children: React.ReactNode }) => (
-    <Editor.Root schema={storeSchema} defaultValue={makeTree()} genId={genId}>
+    <Editor.Root schema={storeSchema} defaultValue={makeDoc()} genId={genId}>
       {children}
     </Editor.Root>
   );
@@ -54,7 +60,7 @@ describe('shallowEqual', () => {
   });
 });
 
-describe('useEditorSelector', () => {
+describe('useDocSelector', () => {
   it('re-renders only when the selected slice changes', () => {
     let renders = 0;
     let store: ReturnType<typeof useEditorStore> | undefined;
@@ -62,7 +68,7 @@ describe('useEditorSelector', () => {
       () => {
         renders++;
         store = useEditorStore();
-        return useEditorSelector((s) => s.nodes.h1?.properties.text);
+        return useDocSelector((s) => s.nodes.h1?.props.text);
       },
       { wrapper: makeWrapper() },
     );
@@ -88,8 +94,8 @@ describe('useEditorSelector', () => {
       () => {
         renders++;
         store = useEditorStore();
-        return useEditorSelector((s) => ({
-          n: s.nodes.root_1?.childIds.length,
+        return useDocSelector((s) => ({
+          n: s.nodes.root_1?.slots.children.length,
         }));
       },
       { wrapper: makeWrapper() },
@@ -109,8 +115,8 @@ describe('useEditorSelector', () => {
       () => {
         renders++;
         const store = useEditorStore();
-        const slice = useEditorSelector((s) => ({
-          n: s.nodes.root_1?.childIds.length,
+        const slice = useDocSelector((s) => ({
+          n: s.nodes.root_1?.slots.children.length,
         }));
         return { store, slice };
       },
@@ -118,7 +124,7 @@ describe('useEditorSelector', () => {
     );
     expect(renders).toBe(1);
     act(() => {
-      result.current.store.add('heading', { parentId: 'root_1' });
+      result.current.store.add('heading', { parent: { id: 'root_1' } });
     });
     expect(renders).toBe(2);
     expect(result.current.slice).toEqual({ n: 3 });
@@ -126,7 +132,7 @@ describe('useEditorSelector', () => {
 
   it('a selector that closes over a prop recomputes when the prop changes without a store change', () => {
     const { result, rerender } = renderHook(
-      ({ id }: { id: string }) => useEditorSelector((s) => s.nodes[id]?.type),
+      ({ id }: { id: string }) => useDocSelector((s) => s.nodes[id]?.type),
       { wrapper: makeWrapper(), initialProps: { id: 'h1' } },
     );
     expect(result.current).toBe('heading');
@@ -145,9 +151,69 @@ describe('useEditorStore', () => {
     expect(result.current).toBe(first);
   });
 
-  it('useEditorSelector throws outside Editor.Root', () => {
-    expect(() => renderHook(() => useEditorSelector((s) => s.rootId))).toThrow(
-      'useEditorSelector must be used within an Editor.Root component.',
+  it('useDocSelector throws outside Editor.Root', () => {
+    expect(() => renderHook(() => useDocSelector((s) => s.rootId))).toThrow(
+      'useDocSelector must be used within an Editor.Root component.',
     );
+  });
+});
+
+describe('channels', () => {
+  function mountProbes() {
+    const counts = { doc: 0, session: 0, hover: 0 };
+    const holder: { store?: ReturnType<typeof useEditorStore> } = {};
+    function DocProbe() {
+      counts.doc++;
+      holder.store = useEditorStore();
+      return <>{useDocSelector((s) => s.nodes.h1?.props.text as string)}</>;
+    }
+    function SessionProbe() {
+      counts.session++;
+      return <>{useSessionSelector((s) => s.selection[0] ?? '')}</>;
+    }
+    function HoverProbe() {
+      counts.hover++;
+      return <>{useEphemeralSelector((s) => s.hoverId ?? '')}</>;
+    }
+    const Wrapper = makeWrapper();
+    render(
+      <Wrapper>
+        <DocProbe />
+        <SessionProbe />
+        <HoverProbe />
+      </Wrapper>,
+    );
+    const { store } = holder;
+    if (!store) throw new Error('no store');
+    return { counts, store };
+  }
+
+  it('hover renders only ephemeral readers', () => {
+    const { counts, store } = mountProbes();
+    act(() => {
+      store.hover('h1');
+      store.hover('sec1');
+    });
+    expect(counts).toEqual({ doc: 1, session: 1, hover: 2 });
+  });
+
+  it('a document change does not render session readers', () => {
+    const { counts, store } = mountProbes();
+    act(() => {
+      store.update('p1', { text: 'x' });
+    });
+    expect(counts).toEqual({ doc: 1, session: 1, hover: 1 });
+    act(() => {
+      store.update('h1', { text: 'y' });
+    });
+    expect(counts).toEqual({ doc: 2, session: 1, hover: 1 });
+  });
+
+  it('a selection change does not render document readers', () => {
+    const { counts, store } = mountProbes();
+    act(() => {
+      store.select('h1');
+    });
+    expect(counts).toEqual({ doc: 1, session: 2, hover: 1 });
   });
 });

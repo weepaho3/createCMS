@@ -4,9 +4,12 @@ import type * as React from 'react';
 import { act, cleanup, render, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { EditorRootProps } from './components';
+import type { EditorRootOwnStoreProps } from './components';
+import type { PersistenceOptions } from './core/store';
 import type { EditorApi } from './hooks';
 
+import { defineEditorSchema } from './core/schema';
+import { counterGenId, makeDoc, storeSchema } from './core/store/fixtures';
 import {
   useAnyBlock,
   useAnyField,
@@ -17,24 +20,28 @@ import {
   useHistory,
   usePalette,
   useSave,
+  useHovered,
   useSelection,
+  useSlot,
+  useSlots,
 } from './hooks';
 import { Editor } from './index';
-import { counterGenId, makeTree, storeSchema } from './store/fixtures';
 
 afterEach(cleanup);
 
 function makeWrapper(
-  overrides: Partial<Pick<EditorRootProps, 'onChange' | 'onSave'>> = {},
+  overrides: Partial<
+    Pick<EditorRootOwnStoreProps, 'onChange' | 'persistence'>
+  > = {},
 ) {
   const genId = counterGenId();
   return ({ children }: { children: React.ReactNode }) => (
     <Editor.Root
       schema={storeSchema}
-      defaultValue={makeTree()}
+      defaultValue={makeDoc()}
       genId={genId}
       onChange={overrides.onChange}
-      onSave={overrides.onSave}
+      persistence={overrides.persistence}
     >
       {children}
     </Editor.Root>
@@ -51,19 +58,18 @@ describe('useEditor', () => {
     expect(result.current).toBe(first);
   });
 
-  it("exposes schema, userId: 'local', store, and working actions", () => {
+  it('exposes schema, store, and working actions', () => {
     const { result } = renderHook(() => useEditor(), {
       wrapper: makeWrapper(),
     });
     expect(result.current.schema).toBe(storeSchema);
-    expect(result.current.userId).toBe('local');
-    expect(typeof result.current.store.getState).toBe('function');
+    expect(typeof result.current.store.getDoc).toBe('function');
     let id: string | null = null;
     act(() => {
-      id = result.current.add('heading', { parentId: 'root_1' });
+      id = result.current.add('heading', { parent: { id: 'root_1' } });
     });
     expect(id).toBe('n1');
-    expect(result.current.getState().nodes.n1).toBeDefined();
+    expect(result.current.getDoc().nodes.n1).toBeDefined();
   });
 });
 
@@ -89,7 +95,7 @@ describe('useEditor().scrollTo', () => {
       return null;
     }
     const { getByTestId } = render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <Editor.Form blockId="root_1" data-testid="form" />
         <Probe />
       </Editor.Root>,
@@ -109,7 +115,7 @@ describe('useEditor().scrollTo', () => {
       return null;
     }
     render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <Editor.Form blockId="root_1" data-testid="form" />
         <Probe />
       </Editor.Root>,
@@ -129,7 +135,7 @@ describe('useEditor().scrollTo', () => {
       return null;
     }
     const { getByTestId } = render(
-      <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
         <Editor.Form blockId="root_1" data-testid="form" />
         <div data-testid="container">
           <div data-block-id="h1" data-testid="h1-anchor" />
@@ -152,7 +158,7 @@ describe('useEditor(selector)', () => {
     const { result } = renderHook(
       () => ({
         api: useEditor(),
-        slice: useEditor((s) => s.nodes.h1?.properties.text),
+        slice: useEditor((s) => s.nodes.h1?.props.text),
       }),
       { wrapper: makeWrapper() },
     );
@@ -170,10 +176,13 @@ describe('useAnyBlock', () => {
       wrapper: makeWrapper(),
     });
     expect(result.current?.type).toBe('heading');
-    expect(result.current?.properties.text).toBe('Hello');
-    expect(result.current?.spec.text?.type).toBe('string');
-    expect(result.current?.childIds).toEqual([]);
-    expect(result.current?.parentId).toBe('root_1');
+    expect(result.current?.props.text).toBe('Hello');
+    expect(result.current?.spec.text?.type).toBe('text');
+    expect(result.current?.slots).toEqual({});
+    expect(result.current?.parent).toEqual({
+      id: 'root_1',
+      slot: 'children',
+    });
   });
 
   it("set('text', 'X') updates the block and the hook re-renders with a new handle", () => {
@@ -185,7 +194,7 @@ describe('useAnyBlock', () => {
     act(() => {
       before?.set('text', 'X');
     });
-    expect(result.current.block?.properties.text).toBe('X');
+    expect(result.current.block?.props.text).toBe('X');
     expect(result.current.block).not.toBe(before);
   });
 
@@ -233,12 +242,12 @@ describe('useAnyBlock', () => {
 });
 
 describe('useAnyField', () => {
-  it("value 'Hello', spec.type 'string', set('Y') updates it", () => {
+  it("value 'Hello', spec.type 'text', set('Y') updates it", () => {
     const { result } = renderHook(() => useAnyField('h1', 'text'), {
       wrapper: makeWrapper(),
     });
     expect(result.current.value).toBe('Hello');
-    expect(result.current.spec?.type).toBe('string');
+    expect(result.current.spec?.type).toBe('text');
     act(() => {
       result.current.set('Y');
     });
@@ -318,7 +327,7 @@ describe('useChildren', () => {
       { wrapper: makeWrapper() },
     );
     act(() => {
-      result.current.api.add('heading', { parentId: 'root_1' });
+      result.current.api.add('heading', { parent: { id: 'root_1' } });
     });
     expect(result.current.children).toEqual([
       { id: 'h1', type: 'heading', index: 0 },
@@ -399,7 +408,7 @@ describe('useBlockActions', () => {
       moved = result.current.actions.moveDown();
     });
     expect(moved).toBe(true);
-    expect(result.current.api.getState().nodes.root_1?.childIds).toEqual([
+    expect(result.current.api.getDoc().nodes.root_1?.slots.children).toEqual([
       'sec1',
       'h1',
     ]);
@@ -427,7 +436,7 @@ describe('useBlockActions', () => {
       removed = result.current.actions.remove();
     });
     expect(removed).toBe(true);
-    expect(result.current.api.getState().nodes.p1).toBeUndefined();
+    expect(result.current.api.getDoc().nodes.p1).toBeUndefined();
   });
 
   it('duplicate() on h1 returns a new id right after h1', () => {
@@ -440,7 +449,7 @@ describe('useBlockActions', () => {
       id = result.current.actions.duplicate();
     });
     expect(id).toBe('n1');
-    expect(result.current.api.getState().nodes.root_1?.childIds).toEqual([
+    expect(result.current.api.getDoc().nodes.root_1?.slots.children).toEqual([
       'h1',
       'n1',
       'sec1',
@@ -469,7 +478,7 @@ describe('useBlockActions', () => {
       wrapper: makeWrapper(),
     });
     expect(result.current.type).toBeNull();
-    expect(result.current.parentId).toBeNull();
+    expect(result.current.parent).toBeNull();
     expect(result.current.index).toBe(-1);
     expect(result.current.canMoveUp).toBe(false);
     expect(result.current.canMoveDown).toBe(false);
@@ -516,7 +525,7 @@ describe('useSelection', () => {
     });
     expect(result.current).toEqual({
       selected: null,
-      hovered: null,
+      selection: [],
       focus: null,
       editing: null,
     });
@@ -533,20 +542,26 @@ describe('useSelection', () => {
     expect(result.current.selection.selected).toBe('h1');
   });
 
-  it("setUserSelection('u2', …) updates useSelection('u2') and leaves the local selection unchanged", () => {
+  it('useHovered follows hover without re-rendering useSelection readers', () => {
+    let selectionRenders = 0;
     const { result } = renderHook(
       () => ({
         api: useEditor(),
-        local: useSelection(),
-        u2: useSelection('u2'),
+        hovered: useHovered(),
+        selection: (() => {
+          selectionRenders++;
+          return useSelection();
+        })(),
       }),
       { wrapper: makeWrapper() },
     );
+    const before = result.current.selection;
     act(() => {
-      result.current.api.setUserSelection('u2', { selected: 'p1' });
+      result.current.api.hover('h1');
     });
-    expect(result.current.u2.selected).toBe('p1');
-    expect(result.current.local.selected).toBeNull();
+    expect(result.current.hovered).toBe('h1');
+    expect(result.current.selection).toBe(before);
+    expect(selectionRenders).toBeGreaterThan(0);
   });
 });
 
@@ -564,7 +579,7 @@ describe('useHistory', () => {
       { wrapper: makeWrapper() },
     );
     act(() => {
-      result.current.api.add('heading', { parentId: 'root_1' });
+      result.current.api.add('heading', { parent: { id: 'root_1' } });
     });
     expect(result.current.history.canUndo).toBe(true);
   });
@@ -575,12 +590,12 @@ describe('useHistory', () => {
       { wrapper: makeWrapper() },
     );
     act(() => {
-      result.current.api.add('heading', { parentId: 'root_1' });
+      result.current.api.add('heading', { parent: { id: 'root_1' } });
     });
     act(() => {
       result.current.history.undo();
     });
-    expect(result.current.api.getState().nodes.n1).toBeUndefined();
+    expect(result.current.api.getDoc().nodes.n1).toBeUndefined();
     expect(result.current.history.canRedo).toBe(true);
   });
 });
@@ -604,29 +619,34 @@ describe('useSave / useDirty', () => {
     expect(result.current.save.dirty).toBe(true);
   });
 
-  it("save({ message: 'm' }) calls the Root's onSave with (tree, { message: 'm' }), is saving during the call, then clears dirty", async () => {
-    const onSave = vi.fn();
+  it('save() goes through persistence with the ops and base version, then clears dirty', async () => {
+    const save = vi.fn<PersistenceOptions['save']>(async () => ({
+      version: 'v2',
+    }));
     const { result } = renderHook(
       () => ({ api: useEditor(), save: useSave() }),
-      { wrapper: makeWrapper({ onSave }) },
+      {
+        wrapper: makeWrapper({
+          persistence: { save, baseVersion: 'v1', autosave: false },
+        }),
+      },
     );
-    let sawSavingDuringCall = false;
-    onSave.mockImplementation(async (tree, meta) => {
-      // The store's own state (not the last React render, which has not
-      // flushed yet at this synchronous point) reflects `saving` correctly.
-      sawSavingDuringCall = result.current.api.getState().saving;
-      expect(meta).toEqual({ message: 'm' });
-      expect(tree.blockId).toBe('root_1');
-    });
     act(() => {
       result.current.api.update('h1', { text: 'X' });
     });
     await act(async () => {
       await result.current.save.save({ message: 'm' });
     });
-    expect(onSave).toHaveBeenCalledTimes(1);
-    expect(sawSavingDuringCall).toBe(true);
-    expect(result.current.save.dirty).toBe(false);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save.mock.calls[0]?.[1]).toMatchObject({
+      baseVersion: 'v1',
+      message: 'm',
+    });
+    expect(result.current.save).toMatchObject({
+      dirty: false,
+      status: 'idle',
+      saving: false,
+    });
   });
 });
 
@@ -648,19 +668,19 @@ describe('usePalette', () => {
 });
 
 describe('Root callbacks', () => {
-  it('onChange receives { ops, version, getTree }', () => {
+  it('onChange receives { ops, version, getDocument }', () => {
     const onChange = vi.fn();
     const { result } = renderHook(() => useEditor(), {
       wrapper: makeWrapper({ onChange }),
     });
     act(() => {
-      result.current.add('heading', { parentId: 'root_1' });
+      result.current.add('heading', { parent: { id: 'root_1' } });
     });
     expect(onChange).toHaveBeenCalledTimes(1);
     const change = onChange.mock.calls[0]?.[0];
-    expect(change.ops[0].op).toBe('add');
-    expect(typeof change.getTree).toBe('function');
-    expect(change.getTree().children).toHaveLength(3);
+    expect(change.ops[0].op).toBe('insert');
+    expect(typeof change.getDocument).toBe('function');
+    expect(change.getDocument().root.slots?.children).toHaveLength(3);
   });
 
   it('a new onChange prop passed on re-render is the one called by the next change', () => {
@@ -671,11 +691,15 @@ describe('Root callbacks', () => {
       api = useEditor();
       return null;
     }
-    function Harness({ onChange }: { onChange: EditorRootProps['onChange'] }) {
+    function Harness({
+      onChange,
+    }: {
+      onChange: EditorRootOwnStoreProps['onChange'];
+    }) {
       return (
         <Editor.Root
           schema={storeSchema}
-          defaultValue={makeTree()}
+          defaultValue={makeDoc()}
           genId={counterGenId()}
           onChange={onChange}
         >
@@ -686,7 +710,7 @@ describe('Root callbacks', () => {
     const { rerender } = render(<Harness onChange={onChangeA} />);
     rerender(<Harness onChange={onChangeB} />);
     act(() => {
-      api?.add('heading', { parentId: 'root_1' });
+      api?.add('heading', { parent: { id: 'root_1' } });
     });
     expect(onChangeA).not.toHaveBeenCalled();
     expect(onChangeB).toHaveBeenCalledTimes(1);
@@ -695,8 +719,11 @@ describe('Root callbacks', () => {
 
 describe('key reset', () => {
   it('a new key creates a fresh store from the new defaultValue', () => {
-    const treeA = makeTree();
-    const treeB = { ...makeTree(), blockId: 'root_2' };
+    const treeA = makeDoc();
+    const treeB = {
+      ...makeDoc(),
+      root: { ...makeDoc().root, id: 'root_2' },
+    };
     let api: EditorApi | undefined;
     function Probe() {
       api = useEditor();
@@ -727,14 +754,17 @@ describe('key reset', () => {
         <Probe />
       </Editor.Root>,
     );
-    expect(api?.getState().rootId).toBe('root_2');
+    expect(api?.getDoc().rootId).toBe('root_2');
     expect(api?.isDirty()).toBe(false);
-    expect(api?.getState().history.past).toEqual([]);
+    expect(api?.docStore.getHistory().past).toEqual([]);
   });
 
   it('re-rendering with a different defaultValue but the same key keeps the old store', () => {
-    const treeA = makeTree();
-    const treeB = { ...makeTree(), blockId: 'root_2' };
+    const treeA = makeDoc();
+    const treeB = {
+      ...makeDoc(),
+      root: { ...makeDoc().root, id: 'root_2' },
+    };
     let api: EditorApi | undefined;
     function Probe() {
       api = useEditor();
@@ -763,6 +793,86 @@ describe('key reset', () => {
       </Editor.Root>,
     );
     expect(api?.store).toBe(store);
-    expect(api?.getState().rootId).toBe('root_1');
+    expect(api?.getDoc().rootId).toBe('root_1');
+  });
+});
+
+describe('useSlot / useSlots', () => {
+  const slotSchema = defineEditorSchema({
+    root: { label: 'Root', fields: {}, slots: { children: {} } },
+    components: {
+      columns: {
+        label: 'Columns',
+        fields: {},
+        slots: { left: {}, right: {} },
+      },
+      text: { label: 'Text', fields: { body: { type: 'text' } } },
+    },
+  });
+
+  function slotWrapper({ children }: { children: React.ReactNode }) {
+    return (
+      <Editor.Root
+        schema={slotSchema}
+        defaultValue={{
+          schemaVersion: 1,
+          root: {
+            id: 'r',
+            type: 'root',
+            props: {},
+            slots: {
+              children: [
+                {
+                  id: 'cols',
+                  type: 'columns',
+                  props: {},
+                  slots: {
+                    extra: [],
+                    left: [{ id: 'a', type: 'text', props: {} }],
+                    right: [],
+                  },
+                },
+              ],
+            },
+          },
+        }}
+        genId={counterGenId()}
+      >
+        {children}
+      </Editor.Root>
+    );
+  }
+
+  it('lists declared slots first, then the rest alphabetically', () => {
+    const { result } = renderHook(() => useSlots('cols'), {
+      wrapper: slotWrapper,
+    });
+    expect(result.current).toEqual(['left', 'right', 'extra']);
+  });
+
+  it('keeps its reference while other slots and props change', () => {
+    const { result } = renderHook(
+      () => {
+        return {
+          api: useEditor(),
+          left: useSlot('cols', 'left'),
+          right: useSlot('cols', 'right'),
+        };
+      },
+      { wrapper: slotWrapper },
+    );
+    const left = result.current.left;
+    expect(left).toEqual([{ id: 'a', type: 'text', index: 0 }]);
+    act(() => {
+      result.current.api.add('text', { parent: { id: 'cols', slot: 'right' } });
+    });
+    expect(result.current.right).toEqual([
+      { id: 'n1', type: 'text', index: 0 },
+    ]);
+    expect(result.current.left).toBe(left);
+    act(() => {
+      result.current.api.update('a', { body: 'x' });
+    });
+    expect(result.current.left).toBe(left);
   });
 });

@@ -3,9 +3,12 @@ title: Editor UI
 description: Install a CMS-wired editor page in one command, or copy styled chrome from the createCMS shadcn registry.
 ---
 
-The createCMS docs site hosts a [shadcn registry](https://ui.shadcn.com/docs/registry/getting-started) of copy-paste editor chrome. Start with `editor-app` for a complete CMS-wired page.
+The createCMS docs site hosts a [shadcn registry](https://ui.shadcn.com/docs/registry/getting-started) of copy-paste editor chrome in two layers:
 
-The chrome items (`editor-form`, `editor-canvas`, `editor-shell`, `editor-email`) do not wrap `Editor.Root` or `Canvas.Root` — compose them **inside** `Editor.Root`. For form-only, live canvas, and form-plus-preview layouts, see the [Visual editor](/docs/guides/visual-editor) guide. `editor-form`'s image control now opens the `media-picker` item; the [Media library](/docs/guides/media-library) guide covers it and the `media-library` wrappers.
+- **Generic items** work with any backend through an `EditorAdapter`: `editor-field`, `editor-form`, `editor-canvas`, `editor-toolbar`, `editor-palette`, `editor-outline`, `editor-inspector`, `editor-shell`, `editor-email` and the `editor-app` block. They never import `@createcms/react/editor/cms`.
+- **createCMS items** layer on top: `editor-form-createcms` (asset, reference, link and variable controls plus `CmsSourcesProvider`), the `editor-app-createcms` block (`CmsEditor`), `media-library` and `media-picker`.
+
+The chrome items do not wrap `Editor.Root` or `Canvas.Root`: compose them **inside** `Editor.Root`. For form-only, live canvas, and form-plus-preview layouts, see the [Visual editor](/docs/guides/visual-editor) guide. `editor-form-createcms`'s image control opens the `media-picker` item; the [Media library](/docs/guides/media-library) guide covers it and the `media-library` wrappers.
 
 ## Prerequisites
 
@@ -15,11 +18,54 @@ Your app should already be initialized with shadcn (`npx shadcn@latest init`) an
 npm install @createcms/react
 ```
 
-`editor-app` handles the CMS wiring (`useCmsDocument` and `useCmsFieldSources`). Pass `fields={cmsFields}` on `Editor.Root` and wrap with `CmsSourcesProvider` only when you compose chrome yourself — pass the result of `useCmsFieldSources(client)` into the provider.
+`editor-app-createcms` handles the CMS wiring (`useCmsDocument` and `useCmsFieldSources`). Pass `fields={cmsFields}` on `Editor.Root` and wrap with `CmsSourcesProvider` only when you compose chrome yourself: pass the result of `useCmsFieldSources(client)` into the provider. Without createCMS, pass `fields={fieldControls}` from `editor-field`.
 
-## Start with one install
+## Installing and updating items
 
-`editor-app` copies a complete CMS-wired editor page in one `shadcn add`.
+Install an item by URL, or register the `@createcms` namespace once in your
+`components.json` and install by name:
+
+```json
+{
+  "registries": {
+    "@createcms": "https://createcms.dev/r/{name}.json"
+  }
+}
+```
+
+```bash
+npx shadcn@latest add @createcms/editor-shell
+```
+
+Items land in your components directory next to each other
+(`components/editor-shell.tsx`, ...), because they import each other by
+relative path. `editor-canvas` also copies `components/editor-canvas.css`
+(target sizes and the `editor-canvas-static` opt-in): import it from your
+global stylesheet, for example `@import '../components/editor-canvas.css';`.
+
+Items version in lockstep with `@createcms/react`. Every copied file starts
+with a stamp naming the release it came from, and every item pins
+`@createcms/react@^<version>`:
+
+```tsx
+// @registry editor-shell@0.3.2
+```
+
+shadcn has no update command for copied code. To update an item, reinstall
+it over your copy and review the diff, keeping your own edits:
+
+```bash
+npx shadcn@latest add @createcms/editor-shell --overwrite
+git diff
+```
+
+The [registry changelog](https://github.com/weepaho3/createCMS/blob/main/apps/docs/registry/CHANGELOG.md)
+lists what changed per release, and [Breaking changes](/docs/breaking-changes#registry-items)
+lists the breaks with their migration.
+
+## Without a backend: `editor-app`
+
+`editor-app` is the complete editor page over any `PersistenceAdapter`. `createMemoryAdapter` from `@createcms/react/editor/core` keeps documents in memory, which is enough for prototypes, demos and tests:
 
 ```bash
 npx shadcn@latest add https://createcms.dev/r/editor-app.json
@@ -28,7 +74,39 @@ npx shadcn@latest add https://createcms.dev/r/editor-app.json
 ```tsx
 'use client';
 
-import { CmsEditor } from '@/components/editor-app';
+import { createMemoryAdapter } from '@createcms/react/editor/core';
+
+import { EditorApp } from '@/components/editor-app';
+
+const adapter = createMemoryAdapter({ home: homeDocument });
+
+export function PageEditor() {
+  return (
+    <EditorApp
+      adapter={adapter}
+      documentId="home"
+      baseVersion={adapter.version('home')}
+      schema={schema}
+      components={canvasComponents}
+    />
+  );
+}
+```
+
+`EditorApp` loads through `useAdapterDocument`, saves through the adapter (a stale `baseVersion` opens the conflict dialog), and renders the shell, canvas overlays, loading skeleton and error states. `EditorAppView` takes a document from any other source (`document`, `schema`, `components`, `resolve`, `fields`, `richText`, `renderProviders`): `CmsEditor` is built on it. The [in-memory demo](/demo/editor/app) runs this setup.
+
+## With createCMS: `editor-app-createcms`
+
+`editor-app-createcms` copies a complete CMS-wired editor page in one `shadcn add`.
+
+```bash
+npx shadcn@latest add https://createcms.dev/r/editor-app-createcms.json
+```
+
+```tsx
+'use client';
+
+import { CmsEditor } from '@/components/editor-app-createcms';
 
 export function PageEditor({
   rootId,
@@ -43,14 +121,17 @@ export function PageEditor({
       collection="pages"
       rootId={rootId}
       branchId={branchId}
-      schema={pages}
-      components={pageBlocks}
+      blocks={pageBlocks}
     />
   );
 }
 ```
 
 Copied files land in your shadcn components directory. Adjust the import if your aliases differ.
+
+`blocks` is your `createBlocksMap` result: `CmsEditor` derives the editor
+schema (`fromCollection`), the canvas components (`cmsCanvasComponents`) and
+the document mapping from it.
 
 What `CmsEditor` includes:
 
@@ -59,7 +140,7 @@ What `CmsEditor` includes:
 - `EditorShell` and canvas overlays
 - Loading skeleton, error + Retry (`doc.reload`), and a conflict dialog on `HEAD_MISMATCH` (reload vs `save({ force: true })`)
 
-`mode="form"` skips `Canvas.Root` and passes `mode` into `EditorShell`. Form mode hides device toggles, the palette/outline sidebar, Add block, and the inspector so **FormSurface is the only edit surface**. The [form-only demo](/demo/editor/form) is this path: `CmsEditor mode="form"` with a `Collapsible` JSON dump as children of the shell, not a bare `Editor.Root` + `Form` composition.
+`mode="form"` skips `Canvas.Root` and passes `mode` into `EditorShell`. Form mode hides the device toggles and the inspector: **FormSurface is the edit surface**. It shows the path to the selected block and its nested blocks per slot; the palette and the outline stay, so every block is reachable. The [form-only demo](/demo/editor/form) is this path: `CmsEditor mode="form"` with a `Collapsible` JSON dump as children of the shell, not a bare `Editor.Root` + `Form` composition.
 
 ### Props
 
@@ -69,10 +150,9 @@ What `CmsEditor` includes:
 | `collection` | yes | — | Collection name on `client`. |
 | `rootId` | yes | — | Document root. |
 | `branchId` | yes | — | Branch to load and save. |
-| `schema` | yes | — | Editor schema. |
-| `components` | yes | — | Canvas block map. |
+| `blocks` | yes | | `createBlocksMap` result: schema, canvas components and document mapping. |
 | `templates` | no | `client.templates` | Override for `useCmsDocument` template defaults. |
-| `mode` | no | `'canvas'` | `'canvas'` or `'form'`. Form skips `Canvas.Root` and `EditorShell` hides canvas chrome (palette, outline, inspector, device toggle). |
+| `mode` | no | `'canvas'` | `'canvas'` or `'form'`. Form skips `Canvas.Root` and `EditorShell` hides the canvas chrome (inspector, device toggle); palette and outline stay. |
 | `className` | no | — | Applied to the page root, loading skeleton, and error state. |
 | `requireCommitMessage` | no | `false` | Opens the shell commit-message dialog on save. |
 | `children` | no | — | Canvas: after the shell. Form: inside the shell surface under `FormSurface` (demo extras such as a JSON `Collapsible`). |
@@ -81,31 +161,26 @@ While developing the docs site locally, swap `https://createcms.dev` for `http:/
 
 ## When composing yourself
 
-If you installed `editor-app`, you can stop here. `CmsEditor` already depends on `editor-form`, `editor-canvas`, and `editor-shell`. Install the items below only when you want to compose chrome yourself.
+If you installed `editor-app` or `editor-app-createcms`, you can stop here: they depend on the items below. Install single items only when you want to compose chrome yourself.
 
-**Field wrappers and cms controls**
-
-```bash
-npx shadcn@latest add https://createcms.dev/r/editor-form.json
-```
-
-**Canvas overlay chrome**
-
-```bash
-npx shadcn@latest add https://createcms.dev/r/editor-canvas.json
-```
-
-**Sidebar-grade shell**
+| Item | What it adds |
+| --- | --- |
+| `editor-field` | `Field` parts and `fieldControls` (shadcn controls for the built-in field kinds). |
+| `editor-form` | `Form` and the form-only `FormSurface`. |
+| `editor-canvas` | Canvas overlay chrome and theme tokens. |
+| `editor-toolbar` | Top toolbar, command palette (Mod+K), commit message dialog. |
+| `editor-palette` | Block palette, add-block list and dialog. |
+| `editor-outline` | Virtualized outline. |
+| `editor-inspector` | Block and page fields in tabs. |
+| `editor-shell` | The assembled shell: provider, panels, phone and tablet layouts. |
+| `editor-email` | Split form and frame preview for email. |
+| `editor-form-createcms` | `cmsFields` (asset, reference, link, variable controls) and `CmsSourcesProvider`. |
 
 ```bash
 npx shadcn@latest add https://createcms.dev/r/editor-shell.json
 ```
 
-**Email split layout**
-
-```bash
-npx shadcn@latest add https://createcms.dev/r/editor-email.json
-```
+`editor-toolbar`, `editor-palette`, `editor-outline` and `editor-inspector` read the shell state from `editor-chrome`, which they install with them.
 
 ### Usage
 
@@ -116,11 +191,11 @@ Compose these parts **inside** `<Editor.Root schema={…}>`. Do not nest styled 
 ```tsx
 import { Editor } from '@createcms/react/editor';
 import { useCmsFieldSources } from '@createcms/react/editor/cms';
+import { Form } from '@/components/editor-form';
 import {
   CmsSourcesProvider,
   cmsFields,
-  Form,
-} from '@/components/editor-form';
+} from '@/components/editor-form-createcms';
 
 const sources = useCmsFieldSources(cmsClient);
 
@@ -131,7 +206,7 @@ const sources = useCmsFieldSources(cmsClient);
 </Editor.Root>
 ```
 
-**Styled container.** Wrap the block's fields with the styled `Form` shell. Inner fields remain the headless primitives from `@createcms/react` unless you pass `fields={cmsFields}` (shadcn `Input` / `Textarea` / `Select` / `Checkbox` and CMS pickers). `FormSurface` is a padded selected-block form for `CmsEditor mode="form"` and the form-only demo. Do not replace those primitives with custom input chrome.
+**Styled container.** Wrap the block's fields with the styled `Form` shell. Inner fields remain the headless primitives from `@createcms/react` unless you pass `fields={fieldControls}` from `editor-field` (shadcn `Input`, `Textarea`, `Select`, `Checkbox`, rich text, lists, objects) or `fields={cmsFields}` (those plus the CMS pickers). `FormSurface` is a padded selected-block form for `CmsEditor mode="form"` and the form-only demo. Do not replace those primitives with custom input chrome.
 
 ```tsx
 import { Editor } from '@createcms/react/editor';
@@ -146,7 +221,7 @@ import { Form } from '@/components/editor-form';
 
 ```tsx
 import { Editor } from '@createcms/react/editor';
-import { Field, FieldLabel, FieldControl } from '@/components/editor-form';
+import { Field, FieldLabel, FieldControl } from '@/components/editor-field';
 
 <Editor.Root schema={schema}>
   <Field blockId={blockId} name="title">
@@ -162,31 +237,39 @@ The items copy into your shadcn components directory. Adjust import paths to mat
 
 ## `editor-shell` parts
 
-The assembled `EditorShell` is a default composition of shadcn `Sidebar` (left palette + outline, right inspector), not a custom three-column grid. Cmd+B, icon-rail collapse, mobile sheet, and cookie persistence come from `SidebarProvider`.
+The assembled `EditorShell` is a default composition of shadcn `Sidebar` (left palette + outline, right inspector), not a custom three-column grid. Cmd+B, icon-rail collapse and cookie persistence come from `SidebarProvider`; phones and tablets get bottom sheets and a drawer instead (see [Phones and tablets](#phones-and-tablets)).
+
+Each part is its own item and file (`editor-toolbar`, `editor-palette`, `editor-outline`, `editor-inspector`); `editor-shell` holds the provider, the surface and the layouts.
 
 | Export            | Role                                                                                          | Composed from                                      |
 | ----------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------- |
 | `EditorProvider`  | `TooltipProvider` + `SidebarProvider` + `Canvas.Provider` + keyboard (⌘S, ⌘K, undo/redo)     | shadcn `sidebar`, `tooltip`                        |
 | `EditorToolbar`   | Icon buttons with `Tooltip` + `Kbd`, device `ToggleGroup` (canvas mode), save dirty-dot + spinner | `button`, `tooltip`, `kbd`, `toggle-group`, `separator` |
-| `EditorPalette`   | `SidebarGroup` of `Canvas.PaletteItem` rows with grip affordance                              | `sidebar`, `editor-canvas`                         |
-| `EditorOutline`   | Tree rows on `SidebarMenuButton` + `Editor.OutlineItem`, chevron collapse, type icon          | `sidebar`, `collapsible`                           |
+| `EditorPalette`   | `SidebarGroup` of `Canvas.PaletteItem` rows with grip affordance; a block with `previewImageUrl` shows its preview image above the label (also in the Add block dialog and the phone sheet) | `sidebar`, `editor-canvas`                         |
+| `EditorOutline`   | Virtualized tree (`useOutlineRows` + `@tanstack/react-virtual`): `Editor.Outline` with `range` and `reveal`, rows on `Editor.OutlineItem`, `Editor.OutlineToggle` chevron, type icon, slot rows, drop line and blocked targets; keyboard reaches every row | `sidebar`                                          |
 | `EditorInspector` | `Tabs` (Block / Page), empty state, sticky header with Duplicate / Delete                     | `tabs`, `editor-form`                              |
-| `EditorSurface`   | Device-width canvas column, or a scrolling form column in `mode="form"`                       | —                                                  |
-| `EditorShell`     | Default assembly. `mode="form"` hides palette, outline, inspector, and device toggles.        | all of the above                                   |
+| `EditorSurface`   | Scrolling canvas column, or a scrolling form column in `mode="form"`                          | none                                                |
+| `EditorShell`     | Default assembly. `mode="form"` hides the inspector and the device toggles.                    | all of the above                                   |
 
-`useEditorChrome()` reads device preview, add-block dialog, and save-dialog state from `EditorProvider`.
+Preview images are files you keep yourself, for example in `public/`, and
+reference by URL in the block definition (`previewImageUrl` on
+`defineBlock`, or on an editor schema component). Nothing is generated: a
+block without one shows its icon and label. The image sits next to the
+label, so it carries no alt text of its own. A wide crop of the block
+(about 3:1, 600 to 800 px wide) reads best.
+
+`useEditorChrome()` (from `editor-chrome`) reads device preview, layout, sheet, add-block dialog, and save-dialog state from `EditorProvider`. `useDeviceFrame()` returns the `frame` options for the chosen device (375, 768 or full width): pass them to `Canvas.Root surface="frame"` so media queries, sticky and fixed elements behave as on the site, as `editor-app` does.
+
+An inline `Canvas.Root` (no frame) has no viewport of its own: sticky and fixed elements pin to the editor window. Add the class `editor-canvas-static` to it to lay them out in flow (`editor-canvas.css`).
 
 Compose a custom layout from the same parts:
 
 ```tsx
-import {
-  EditorInspector,
-  EditorOutline,
-  EditorPalette,
-  EditorProvider,
-  EditorSurface,
-  EditorToolbar,
-} from '@/components/editor-shell';
+import { EditorInspector } from '@/components/editor-inspector';
+import { EditorOutline } from '@/components/editor-outline';
+import { EditorPalette } from '@/components/editor-palette';
+import { EditorProvider, EditorSurface } from '@/components/editor-shell';
+import { EditorToolbar } from '@/components/editor-toolbar';
 import {
   Sidebar,
   SidebarContent,
@@ -230,3 +313,101 @@ import {
 | `PaletteItem`   | Draggable palette row (used by `EditorPalette`)                      |
 | `DragPreview`   | Pointer-following preview during a drag                              |
 | `InlineText`    | Inline text editing glass                                            |
+
+## Theme tokens
+
+`editor-canvas` installs its colors and timings as CSS variables mapped onto
+your shadcn theme, so light and dark mode follow it. Change
+`--editor-accent` and every selection, hover fill and drop color follows.
+
+| Token | Default | Used for |
+| --- | --- | --- |
+| `--editor-accent` | `var(--primary)` | The base of selection, hover fill and drop colors. |
+| `--editor-accent-secondary` | `var(--muted-foreground)` | The base of hover rings. |
+| `--editor-selection` | `oklch(from var(--editor-accent) l c h / 0.7)` | Selection ring and chip. |
+| `--editor-hover` | `color-mix(in oklab, var(--editor-accent-secondary) 40%, transparent)` | Hover ring. |
+| `--editor-hover-fill` | `color-mix(in oklab, var(--editor-accent) 12%, transparent)` | Hovered rows and targets. |
+| `--editor-focus` | `var(--ring)` | Field ring. |
+| `--editor-drop` | `var(--editor-accent)` | Drop indicator, drop target ring, dropped flash. |
+| `--editor-slot-min-empty-height` | `128px` | Minimum height of an empty slot while editing. |
+| `--editor-duration-fast`, `--editor-duration`, `--editor-duration-slow` | `50ms`, `150ms`, `250ms` | Chrome transitions (off under reduced motion). |
+
+Overlay buttons are at least 24 by 24 px (WCAG 2.5.8); drag handles have a
+44 px hit area around their icon, and under a coarse pointer the handle,
+insert button and block toolbar buttons grow to 44 px.
+
+## Outlets for plugin UI
+
+The shell and the block toolbar render named `Editor.Slot` outlets, so a
+plugin adds a button, a panel or a status line without forking the shell:
+register a component under the outlet name in `defineEditorPlugin({ slots })`.
+
+| Outlet | Where | Props |
+| --- | --- | --- |
+| `toolbar-start` | Top toolbar, after the sidebar toggle | none |
+| `toolbar-end` | Top toolbar, before the command and save buttons | none |
+| `block-toolbar` | Block toolbar on the canvas, after the built-in actions | `blockId` |
+| `inspector-header` | Inspector header, next to the block name | `blockId` |
+| `inspector-footer` | Below the inspector tabs (hidden while empty) | `blockId` (the page root when nothing is selected) |
+| `palette-footer` | Below the palette groups | none |
+| `outline-row-actions` | End of each outline row | `blockId` |
+| `status-bar` | Bar below the canvas (hidden while empty) | none |
+
+```tsx
+const comments = defineEditorPlugin({
+  name: 'comments',
+  commands: {
+    'comments.open': { label: 'Open comments', run: (store) => openPanel() },
+  },
+  slots: {
+    'toolbar-end': function CommentsButton() {
+      const command = useCommand('comments.open');
+      return <Button onClick={() => command?.run()}>{command?.label}</Button>;
+    },
+  },
+});
+```
+
+## Command palette and quick insert
+
+Mod+K opens a command palette that lists every registered command, the
+built-ins and those of plugins, with its shortcut as shown on the user's
+platform (`⌘⇧Z` on Apple, `Ctrl+Shift+Z` elsewhere); commands that cannot
+run right now are disabled. `/` opens the add-block dialog. Both keys run
+the `ui.commandPalette` and `ui.quickInsert` commands, so rebinding those in
+the editor's shortcuts moves the dialogs with them.
+
+## Phones and tablets
+
+`editor-shell` picks its layout from the viewport width:
+
+| Width | Layout |
+| --- | --- |
+| below 640px | The canvas takes the full width. A bottom bar holds Add block, Outline, Properties, Undo and Redo. Each opens a bottom sheet, and only one sheet is open at a time. |
+| 640 to 1023px | The palette and outline stay docked on the left. The inspector opens as a non-modal drawer from the toolbar. |
+| 1024px and up | Both panels are docked. |
+
+On phones, selecting a block opens its properties in a non-modal sheet. The
+sheet snaps to 35%, 60% and full height, and the block scrolls above the
+sheet. The browser's back gesture closes a sheet. The add sheet inserts into
+the selected block when it accepts the type, else right after the selection.
+In the outline sheet, the selected row has move up and move down buttons.
+The block toolbar's More menu offers Move to, Wrap, Copy and Select parent,
+so every structure change works without a drag. Under a coarse pointer,
+outline rows, menu items and toolbar buttons are 44px tall, and form inputs
+keep a 16px font so iOS does not zoom on focus.
+
+Sheets stay above the on-screen keyboard (`Drawer.VirtualKeyboardProvider`),
+and the bottom bar follows `useKeyboardInset()`. Give the page this viewport
+meta so the safe-area insets and keyboard resizing apply. Keep zoom
+enabled:
+
+```tsx
+// app/layout.tsx
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  interactiveWidget: 'resizes-content',
+};
+```

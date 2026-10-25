@@ -1,5 +1,6 @@
 import * as React from 'react';
 
+import type { MeasuredKind, Measurer } from './measurer';
 import type { CanvasRect, CanvasViewBox } from './rect';
 
 import { useCanvasContext } from './context';
@@ -33,22 +34,33 @@ export function useHostViewBox(host: HTMLElement | null): CanvasViewBox {
   };
 }
 
-export function useBlockRect(id: string): CanvasRect | null {
-  const ctx = useCanvasContext('useBlockRect');
-  const m = ctx.measurer;
+/**
+ * A measured rect that stays current while the calling component is
+ * mounted (the measurer tracks it); `null` without a measurer or element.
+ */
+export function useMeasuredRect(
+  measurer: Measurer | null,
+  kind: MeasuredKind,
+  id: string,
+  key?: string,
+): CanvasRect | null {
+  React.useEffect(() => {
+    if (!measurer || !id) return;
+    return measurer.track(kind, id, key);
+  }, [measurer, kind, id, key]);
   return React.useSyncExternalStore(
-    m ? m.subscribe : subscribeNoop,
-    () => (m ? m.getBlockRect(id) : null),
+    measurer ? measurer.subscribe : subscribeNoop,
+    () => (measurer && id ? measurer.get(kind, id, key) : null),
     () => null,
   );
 }
 
+export function useBlockRect(id: string): CanvasRect | null {
+  const ctx = useCanvasContext('useBlockRect');
+  return useMeasuredRect(ctx.measurer, 'block', id);
+}
+
 export function useFieldRect(id: string, key: string): CanvasRect | null {
   const ctx = useCanvasContext('useFieldRect');
-  const m = ctx.measurer;
-  return React.useSyncExternalStore(
-    m ? m.subscribe : subscribeNoop,
-    () => (m ? m.getFieldRect(id, key) : null),
-    () => null,
-  );
+  return useMeasuredRect(ctx.measurer, 'field', id, key);
 }

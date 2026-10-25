@@ -4,28 +4,35 @@
   "homepage": "https://createcms.dev",
   "items": [
     {
+      "name": "editor-field",
+      "type": "registry:ui",
+      "title": "Editor Field",
+      "description": "Styled wrappers for the Editor.Field parts (label, control, description, error). Use inside Editor.Root.",
+      "dependencies": ["@createcms/react@^0.3.2"],
+      "files": [
+        {
+          "path": "registry/editor-field.tsx",
+          "type": "registry:component"
+        }
+      ],
+      "registryDependencies": [
+        "button",
+        "checkbox",
+        "input",
+        "select",
+        "textarea"
+      ]
+    },
+    {
       "name": "editor-form",
       "type": "registry:ui",
       "title": "Editor Form",
-      "description": "Styled wrappers for Editor.Field parts and cms field controls. Does not wrap Editor.Root.",
-      "dependencies": ["@createcms/react"],
-      "registryDependencies": [
-        "button",
-        "dialog",
-        "input",
-        "textarea",
-        "select",
-        "checkbox",
-        "media-picker"
-      ],
+      "description": "The styled form of one block and the form-only edit surface. Does not wrap Editor.Root.",
+      "dependencies": ["@createcms/react@^0.3.2"],
       "files": [
         {
           "path": "registry/editor-form.tsx",
-          "type": "registry:ui"
-        },
-        {
-          "path": "registry/editor-form-cms.tsx",
-          "type": "registry:ui"
+          "type": "registry:component"
         }
       ],
       "cssVars": {
@@ -34,19 +41,25 @@
           "editor-invalid": "var(--destructive)",
           "editor-muted": "var(--muted-foreground)"
         }
-      }
+      },
+      "registryDependencies": ["https://createcms.dev/r/editor-field.json"]
     },
     {
       "name": "editor-canvas",
       "type": "registry:ui",
       "title": "Editor Canvas",
       "description": "Styled wrappers for Canvas overlay and interaction parts. Does not wrap Canvas.Root.",
-      "dependencies": ["@createcms/react", "lucide-react"],
-      "registryDependencies": ["button", "separator", "tooltip"],
+      "dependencies": ["@createcms/react@^0.3.2", "lucide-react"],
+      "registryDependencies": [
+        "button",
+        "dropdown-menu",
+        "separator",
+        "tooltip"
+      ],
       "files": [
         {
           "path": "registry/editor-canvas.tsx",
-          "type": "registry:ui"
+          "type": "registry:component"
         },
         {
           "path": "registry/editor-canvas.css",
@@ -55,10 +68,17 @@
       ],
       "cssVars": {
         "theme": {
-          "editor-selection": "color-mix(in oklab, var(--primary) 55%, transparent)",
-          "editor-hover": "color-mix(in oklab, var(--muted-foreground) 40%, transparent)",
+          "editor-accent": "var(--primary)",
+          "editor-accent-secondary": "var(--muted-foreground)",
+          "editor-selection": "oklch(from var(--editor-accent) l c h / 0.7)",
+          "editor-hover": "color-mix(in oklab, var(--editor-accent-secondary) 40%, transparent)",
+          "editor-hover-fill": "color-mix(in oklab, var(--editor-accent) 12%, transparent)",
           "editor-focus": "var(--ring)",
-          "editor-drop": "var(--primary)"
+          "editor-drop": "var(--editor-accent)",
+          "editor-slot-min-empty-height": "128px",
+          "editor-duration-fast": "50ms",
+          "editor-duration": "150ms",
+          "editor-duration-slow": "250ms"
         }
       },
       "css": {
@@ -73,31 +93,126 @@
       }
     },
     {
+      "name": "editor-chrome",
+      "type": "registry:ui",
+      "title": "Editor Chrome",
+      "description": "Shared state and building blocks of the editor shell parts (device, layout, dialogs, icons, hint buttons).",
+      "dependencies": ["@createcms/react@^0.3.2", "lucide-react"],
+      "registryDependencies": ["button", "kbd", "tooltip"],
+      "files": [
+        {
+          "path": "registry/editor-chrome.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "editor-toolbar",
+      "type": "registry:ui",
+      "title": "Editor Toolbar",
+      "description": "Top toolbar with history, device frame, add block, command palette (Mod+K) and save. Use inside EditorProvider.",
+      "dependencies": ["@createcms/react@^0.3.2", "lucide-react"],
+      "registryDependencies": [
+        "https://createcms.dev/r/editor-chrome.json",
+        "button",
+        "command",
+        "dialog",
+        "input",
+        "kbd",
+        "separator",
+        "sidebar",
+        "toggle-group",
+        "tooltip"
+      ],
+      "files": [
+        {
+          "path": "registry/editor-toolbar.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "editor-palette",
+      "type": "registry:ui",
+      "title": "Editor Palette",
+      "description": "Draggable block palette and the searchable add-block list and dialog. Use inside EditorProvider.",
+      "dependencies": ["@createcms/react@^0.3.2", "lucide-react"],
+      "registryDependencies": [
+        "https://createcms.dev/r/editor-canvas.json",
+        "https://createcms.dev/r/editor-chrome.json",
+        "command",
+        "sidebar"
+      ],
+      "files": [
+        {
+          "path": "registry/editor-palette.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "editor-outline",
+      "type": "registry:ui",
+      "title": "Editor Outline",
+      "description": "The block tree as a virtualized, keyboard-navigable outline. Use inside EditorProvider.",
+      "dependencies": [
+        "@createcms/react@^0.3.2",
+        "@tanstack/react-virtual@3.14.21",
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "https://createcms.dev/r/editor-chrome.json",
+        "sidebar"
+      ],
+      "files": [
+        {
+          "path": "registry/editor-outline.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "editor-inspector",
+      "type": "registry:ui",
+      "title": "Editor Inspector",
+      "description": "Block and page fields in tabs with block actions. Use inside EditorProvider.",
+      "dependencies": ["@createcms/react@^0.3.2", "lucide-react"],
+      "registryDependencies": [
+        "https://createcms.dev/r/editor-chrome.json",
+        "https://createcms.dev/r/editor-form.json",
+        "tabs"
+      ],
+      "files": [
+        {
+          "path": "registry/editor-inspector.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
       "name": "editor-shell",
       "type": "registry:ui",
       "title": "Editor Shell",
-      "description": "Sidebar-grade editor chrome with palette, outline, inspector, and toolbar. Use inside Editor.Root.",
-      "dependencies": ["@createcms/react", "lucide-react"],
+      "description": "The assembled editor chrome: docked panels on desktop, a drawer on tablets, bottom bar and sheets on phones. Use inside Editor.Root.",
+      "dependencies": [
+        "@createcms/react@^0.3.2",
+        "@base-ui/react@^1.9.0",
+        "lucide-react"
+      ],
       "registryDependencies": [
-        "editor-form",
-        "editor-canvas",
+        "https://createcms.dev/r/editor-chrome.json",
+        "https://createcms.dev/r/editor-inspector.json",
+        "https://createcms.dev/r/editor-outline.json",
+        "https://createcms.dev/r/editor-palette.json",
+        "https://createcms.dev/r/editor-toolbar.json",
         "button",
-        "dialog",
-        "input",
         "sidebar",
-        "tooltip",
-        "command",
-        "toggle-group",
-        "tabs",
-        "separator",
-        "kbd",
-        "sheet",
-        "collapsible"
+        "tooltip"
       ],
       "files": [
         {
           "path": "registry/editor-shell.tsx",
-          "type": "registry:ui"
+          "type": "registry:component"
         }
       ]
     },
@@ -106,12 +221,12 @@
       "type": "registry:ui",
       "title": "Editor Email",
       "description": "Split form and FramePreview layout for email editing. Use inside Editor.Root.",
-      "dependencies": ["@createcms/react"],
-      "registryDependencies": ["editor-form"],
+      "dependencies": ["@createcms/react@^0.3.2"],
+      "registryDependencies": ["https://createcms.dev/r/editor-form.json"],
       "files": [
         {
           "path": "registry/editor-email.tsx",
-          "type": "registry:ui"
+          "type": "registry:component"
         }
       ]
     },
@@ -119,12 +234,22 @@
       "name": "editor-app",
       "type": "registry:block",
       "title": "Editor App",
-      "description": "CMS-wired editor page: document load/save, field sources, shell, and canvas overlays in one install.",
-      "dependencies": ["@createcms/react"],
+      "description": "A complete editor page over any EditorAdapter (or createMemoryAdapter): load, save, conflicts, shell and canvas in one install.",
+      "dependencies": [
+        "@createcms/react@^0.3.2",
+        "@tiptap/core@3.32.0",
+        "@tiptap/pm@3.32.0",
+        "@tiptap/starter-kit@3.32.0",
+        "@tiptap/extensions@3.32.0",
+        "@tiptap/extension-link@3.32.0",
+        "@tiptap/suggestion@3.32.0"
+      ],
       "registryDependencies": [
-        "editor-form",
-        "editor-canvas",
-        "editor-shell",
+        "https://createcms.dev/r/editor-canvas.json",
+        "https://createcms.dev/r/editor-chrome.json",
+        "https://createcms.dev/r/editor-field.json",
+        "https://createcms.dev/r/editor-form.json",
+        "https://createcms.dev/r/editor-shell.json",
         "alert",
         "alert-dialog",
         "button",
@@ -138,26 +263,64 @@
       ]
     },
     {
+      "name": "editor-form-createcms",
+      "type": "registry:ui",
+      "title": "Editor Form for createCMS",
+      "description": "Field controls for createCMS data (assets, references, links, variables) and CmsSourcesProvider.",
+      "dependencies": ["@createcms/react@^0.3.2"],
+      "registryDependencies": [
+        "https://createcms.dev/r/editor-field.json",
+        "https://createcms.dev/r/media-picker.json",
+        "button",
+        "dialog",
+        "input",
+        "select"
+      ],
+      "files": [
+        {
+          "path": "registry/editor-form-createcms.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "editor-app-createcms",
+      "type": "registry:block",
+      "title": "Editor App for createCMS",
+      "description": "editor-app wired to a createCMS collection: document load and save, field sources and asset URLs.",
+      "dependencies": ["@createcms/react@^0.3.2"],
+      "registryDependencies": [
+        "https://createcms.dev/r/editor-app.json",
+        "https://createcms.dev/r/editor-form-createcms.json"
+      ],
+      "files": [
+        {
+          "path": "registry/editor-app-createcms.tsx",
+          "type": "registry:block"
+        }
+      ]
+    },
+    {
       "name": "media-library",
       "type": "registry:ui",
       "title": "Media Library",
       "description": "Styled wrappers for every Media.* part plus MediaLibraryLayout. Does not wrap Media.Root.",
-      "dependencies": ["@createcms/react", "lucide-react"],
+      "dependencies": ["@createcms/react@^0.3.2", "lucide-react"],
       "registryDependencies": [
-        "button",
-        "input",
-        "select",
-        "dialog",
         "alert",
         "alert-dialog",
-        "progress",
         "badge",
-        "breadcrumb"
+        "breadcrumb",
+        "button",
+        "dialog",
+        "input",
+        "progress",
+        "select"
       ],
       "files": [
         {
           "path": "registry/media-library.tsx",
-          "type": "registry:ui"
+          "type": "registry:component"
         }
       ],
       "cssVars": {
@@ -172,11 +335,29 @@
       "type": "registry:ui",
       "title": "Media Picker",
       "description": "Dialog control that owns its own Media.Root and returns one selected asset id.",
-      "dependencies": ["@createcms/react"],
-      "registryDependencies": ["media-library", "dialog", "button"],
+      "dependencies": ["@createcms/react@^0.3.2"],
+      "registryDependencies": [
+        "https://createcms.dev/r/media-library.json",
+        "button",
+        "dialog"
+      ],
       "files": [
         {
           "path": "registry/media-picker.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "tree",
+      "type": "registry:ui",
+      "title": "Tree",
+      "description": "Styled wrappers for the Tree.* parts: rows indented by level, drop marking for unordered trees, a drop line for ordered ones, and the class names for trees built on Tree.Item.",
+      "dependencies": ["@createcms/react@^0.3.2", "lucide-react"],
+      "registryDependencies": [],
+      "files": [
+        {
+          "path": "registry/tree.tsx",
           "type": "registry:ui"
         }
       ]

@@ -34,7 +34,7 @@ Every property has a `type` and a `label`, plus optional `required`, `defaultVal
 | `number` | `number` | Numeric value. |
 | `boolean` | `boolean` | True or false. |
 | `date` | `string` | ISO date string. |
-| `richText` | `string` | HTML or rich-text markup. |
+| `richText` | `RichTextDoc` | Formatted text as ProseMirror JSON. See [Rich text](/docs/guides/rich-text). |
 | `image` | `string` | Asset id (served via `/media/asset/{id}`). |
 | `select` | `string` | One of a fixed set; requires `options`. |
 | `reference` | `string` | The target entry's `rootId`; requires `collection`. |

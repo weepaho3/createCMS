@@ -67,6 +67,16 @@ export const CMS_ERRORS = {
     status: 400 as const,
     message: 'Block type does not match the expected type',
   },
+  RICH_TEXT_INVALID: {
+    status: 400 as const,
+    message:
+      'A richText value uses formatting its property does not allow or is malformed',
+  },
+  HTML_PARSER_UNAVAILABLE: {
+    status: 501 as const,
+    message:
+      'Parsing HTML on the server needs the optional happy-dom package; install it',
+  },
   USER_ID_REQUIRED: {
     status: 400 as const,
     message:

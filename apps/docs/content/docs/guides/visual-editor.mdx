@@ -5,9 +5,10 @@ description: Compose a live canvas, a form plus preview, or a form-only editor f
 
 This guide shows how to compose a styled editor from `@createcms/react` and
 the docs registry. For a real createCMS backend, start with the one-install
-`editor-app` block in [Editor UI](/docs/guides/editor-ui): it wraps
+`editor-app-createcms` block in [Editor UI](/docs/guides/editor-ui); for any
+other backend, the generic `editor-app` over an `EditorAdapter`. Both wrap
 `Editor.Root` and `Canvas.Root` and wires `useCmsDocument` /
-`useCmsFieldSources`. The chrome items below (`editor-form`, `editor-canvas`,
+`useCmsFieldSources` (createCMS). The chrome items below (`editor-form`, `editor-canvas`,
 `editor-shell`, `editor-email`) do not wrap `Root` — compose those **inside**
 `Editor.Root`.
 
@@ -17,13 +18,13 @@ the docs registry. For a real createCMS backend, start with the one-install
 npm install @createcms/react
 ```
 
-### One install (`editor-app`)
+### One install (`editor-app-createcms`)
 
 When you have a collection client, start with the CMS-wired page in
 [Editor UI](/docs/guides/editor-ui):
 
 ```bash
-npx shadcn@latest add https://createcms.dev/r/editor-app.json
+npx shadcn@latest add https://createcms.dev/r/editor-app-createcms.json
 ```
 
 ### Building-block chrome
@@ -33,15 +34,47 @@ documented on [Editor UI](/docs/guides/editor-ui):
 
 ```bash
 npx shadcn@latest add https://createcms.dev/r/editor-form.json
+npx shadcn@latest add https://createcms.dev/r/editor-form-createcms.json
 npx shadcn@latest add https://createcms.dev/r/editor-canvas.json
 npx shadcn@latest add https://createcms.dev/r/editor-shell.json
 npx shadcn@latest add https://createcms.dev/r/editor-email.json
 ```
 
 The docs app hosts working demos composed from those registry items:
-[live canvas](/demo/editor/pages), [form only](/demo/editor/form),
+[editor app in memory](/demo/editor/app), [live canvas](/demo/editor/pages), [form only](/demo/editor/form),
 [form plus preview](/demo/editor/preview), and
 [email split](/demo/editor/email).
+
+## Editor schema and documents
+
+The demos keep their createcms collections (`defineCollection`) and block
+maps (`createBlocksMap`) and derive the editor side once, at module scope,
+through the [createcms adapter](/docs/reference/react-editor-cms): the editor
+compares schemas by identity.
+
+```ts
+'use client';
+
+import {
+  cmsCanvasComponents,
+  fromCollection,
+  toEditor,
+} from '@createcms/react/editor/cms';
+
+import { emails } from '@/app/demo/_lib/email-schema';
+import { EMAIL_TREE } from '@/app/demo/_lib/email-tree';
+import { pageBlocks } from '@/app/demo/_lib/pages-blocks';
+import { pages } from '@/app/demo/_lib/pages-schema';
+import { PAGES_TREE } from '@/app/demo/_lib/pages-tree';
+
+// Module scope on purpose: the editor compares schemas by identity.
+export const pagesSchema = fromCollection(pages);
+export const pagesComponents = cmsCanvasComponents(pageBlocks);
+export const PAGES_DOC = toEditor(PAGES_TREE, pages);
+
+export const emailsSchema = fromCollection(emails);
+export const EMAIL_DOC = toEditor(EMAIL_TREE, emails);
+```
 
 ## Form only
 
@@ -60,9 +93,8 @@ import * as React from 'react';
 
 import { createDemoCmsClient } from '@/app/demo/_lib/demo-cms-client';
 import { pageBlocks } from '@/app/demo/_lib/pages-blocks';
-import { pages } from '@/app/demo/_lib/pages-schema';
 import { PAGES_TREE } from '@/app/demo/_lib/pages-tree';
-import { CmsEditor } from '@/components/editor-app';
+import { CmsEditor } from '@/components/editor-app-createcms';
 import {
   Collapsible,
   CollapsibleContent,
@@ -71,8 +103,8 @@ import {
 
 function DocumentJson() {
   const version = useEditor((state) => state.version);
-  const { getTree } = useEditor();
-  const tree = getTree();
+  const { getDocument } = useEditor();
+  const doc = getDocument();
   void version;
 
   return (
@@ -80,12 +112,12 @@ function DocumentJson() {
       data-slot="editor-document-json"
       className="border-border shrink-0 border-t"
     >
-      <CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex w-full cursor-pointer items-center px-4 py-2 text-left text-xs font-medium">
+      <CollapsibleTrigger className="text-muted-foreground hover:text-foreground mt-8 flex w-full cursor-pointer items-center rounded-md border px-3 py-2 text-left text-xs font-medium">
         Document JSON
       </CollapsibleTrigger>
       <CollapsibleContent>
         <pre className="max-h-48 overflow-auto p-4 text-xs leading-relaxed">
-          {JSON.stringify(tree, null, 2)}
+          {JSON.stringify(doc, null, 2)}
         </pre>
       </CollapsibleContent>
     </Collapsible>
@@ -101,8 +133,7 @@ export function FormOnlyEditor() {
       collection="pages"
       rootId={PAGES_TREE.blockId}
       branchId="demo"
-      schema={pages}
-      components={pageBlocks}
+      blocks={pageBlocks}
       mode="form"
     >
       <DocumentJson />
@@ -113,12 +144,12 @@ export function FormOnlyEditor() {
 
 ## Live canvas
 
-Same `Editor.Root` wiring. `EditorShell` children are
-`Canvas.Root components={pageBlocks}` with overlay rings, toolbar, insert,
-drag handle, drop indicator, drag preview, and `InlineText`. Palette and
-outline live in the shell's left `Sidebar`; the inspector is the right
-`Sidebar`. Build `pageBlocks` from `createBlocksMap` with `edit` spread on
-each block root.
+`Editor.Root` takes the derived `pagesSchema` and `PAGES_DOC`. `EditorShell`
+children are `Canvas.Root components={pagesComponents}` with overlay rings,
+toolbar, insert, drag handle, drop indicator, drag preview, and
+`InlineText`. Palette and outline live in the shell's left `Sidebar`; the
+inspector is the right `Sidebar`. `pagesComponents` wraps the
+`createBlocksMap` components, which spread `edit` on each block root.
 
 ```tsx
 'use client';
@@ -127,9 +158,11 @@ import { Editor, useEditor } from '@createcms/react/editor';
 import { Canvas } from '@createcms/react/editor/canvas';
 import * as React from 'react';
 
-import { pageBlocks } from '@/app/demo/_lib/pages-blocks';
-import { pages } from '@/app/demo/_lib/pages-schema';
-import { PAGES_TREE } from '@/app/demo/_lib/pages-tree';
+import {
+  PAGES_DOC,
+  pagesComponents,
+  pagesSchema,
+} from '@/app/demo/_lib/editor';
 import { useDemoFieldSources } from '@/app/demo/_lib/sources';
 import { useLocalDocument } from '@/app/demo/_lib/use-local-document';
 import {
@@ -143,10 +176,7 @@ import {
   Overlay,
   SelectionRing,
 } from '@/components/editor-canvas';
-import {
-  CmsSourcesProvider,
-  cmsFields,
-} from '@/components/editor-form';
+import { CmsSourcesProvider, cmsFields } from '@/components/editor-form-createcms';
 import { EditorShell } from '@/components/editor-shell';
 import {
   Collapsible,
@@ -156,8 +186,8 @@ import {
 
 function DocumentJson() {
   const version = useEditor((state) => state.version);
-  const { getTree } = useEditor();
-  const tree = getTree();
+  const { getDocument } = useEditor();
+  const doc = getDocument();
   void version;
 
   return (
@@ -170,7 +200,7 @@ function DocumentJson() {
       </CollapsibleTrigger>
       <CollapsibleContent>
         <pre className="max-h-48 overflow-auto p-4 text-xs leading-relaxed">
-          {JSON.stringify(tree, null, 2)}
+          {JSON.stringify(doc, null, 2)}
         </pre>
       </CollapsibleContent>
     </Collapsible>
@@ -179,21 +209,21 @@ function DocumentJson() {
 
 export function PagesLiveCanvas() {
   const sources = useDemoFieldSources();
-  const { onChange, onSave } = useLocalDocument(PAGES_TREE);
+  const { onChange, persistence } = useLocalDocument(PAGES_DOC);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <Editor.Root
-        schema={pages}
-        defaultValue={PAGES_TREE}
+        schema={pagesSchema}
+        defaultValue={PAGES_DOC}
         onChange={onChange}
-        onSave={onSave}
+        persistence={persistence}
         fields={cmsFields}
       >
         <CmsSourcesProvider sources={sources}>
           <EditorShell>
             <Canvas.Root
-              components={pageBlocks}
+              components={pagesComponents}
               style={{ position: 'relative' }}
             >
               <Overlay>
@@ -218,18 +248,19 @@ export function PagesLiveCanvas() {
 
 <Callout type="info">
   A createCMS collection client can skip this local stand-in: install
-  `editor-app` from [Editor UI](/docs/guides/editor-ui) and pass the client
-  plus your components map. `CmsEditor` already wires `useCmsDocument` as on
+  `editor-app-createcms` from [Editor UI](/docs/guides/editor-ui) and pass the client
+  plus your `createBlocksMap` result as `blocks`. `CmsEditor` already wires `useCmsDocument` as on
   the [Editor cms adapter](/docs/reference/react-editor-cms) reference page
-  (`key={doc.key}`, `onChange={doc.onChange}`, `onSave={doc.save}`, and
+  (`key={doc.key}`, `onChange={doc.onChange}`, `persistence={doc.persistence}`, and
   `resolve={doc.resolve}` on `Canvas.Root`).
 </Callout>
 
 ## Form plus preview
 
 Root plus styled `Form` and `Editor.Preview`. Preview `render` receives the
-raw tree. For HTML or email, use `FramePreview` with `selectable` and
-`render={async (tree, { signal }) => html}`. For PDF, return a `Blob` from
+raw editor document; `fromEditor` turns it back into the createcms tree
+`BlocksRenderer` renders. For HTML or email, use `FramePreview` with
+`selectable` and `render={async (doc, { signal }) => html}`. For PDF, return a `Blob` from
 `FramePreview`, or render a viewer in `Preview`.
 
 ```tsx
@@ -237,37 +268,38 @@ raw tree. For HTML or email, use `FramePreview` with `selectable` and
 
 import { BlocksRenderer } from '@createcms/core/react/blocks';
 import { Editor } from '@createcms/react/editor';
+import { fromEditor } from '@createcms/react/editor/cms';
 
+import { PAGES_DOC, pagesSchema } from '@/app/demo/_lib/editor';
 import { pageBlocks } from '@/app/demo/_lib/pages-blocks';
 import { pages } from '@/app/demo/_lib/pages-schema';
-import { PAGES_TREE } from '@/app/demo/_lib/pages-tree';
 import { useDemoFieldSources } from '@/app/demo/_lib/sources';
 import { useLocalDocument } from '@/app/demo/_lib/use-local-document';
-import {
-  CmsSourcesProvider,
-  cmsFields,
-  Form,
-} from '@/components/editor-form';
+import { Form } from '@/components/editor-form';
+import { CmsSourcesProvider, cmsFields } from '@/components/editor-form-createcms';
 
 export function FormPreviewEditor() {
   const sources = useDemoFieldSources();
-  const { saved, onChange, onSave } = useLocalDocument(PAGES_TREE);
+  const { saved, onChange, persistence } = useLocalDocument(PAGES_DOC);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Editor.Root
-        schema={pages}
-        defaultValue={PAGES_TREE}
+        schema={pagesSchema}
+        defaultValue={PAGES_DOC}
         onChange={onChange}
-        onSave={onSave}
+        persistence={persistence}
         fields={cmsFields}
       >
         <CmsSourcesProvider sources={sources}>
           <div className="grid min-h-0 flex-1 grid-cols-2 gap-4 p-4">
-            <Form blockId={PAGES_TREE.blockId} />
+            <Form blockId={PAGES_DOC.root.id} />
             <Editor.Preview
-              render={(tree) => (
-                <BlocksRenderer blocks={pageBlocks} tree={tree} />
+              render={(doc) => (
+                <BlocksRenderer
+                  blocks={pageBlocks}
+                  tree={fromEditor(doc, pages)}
+                />
               )}
             />
           </div>
@@ -291,33 +323,33 @@ not set `surface="frame"`.
 'use client';
 
 import { Editor } from '@createcms/react/editor';
+import { fromEditor } from '@createcms/react/editor/cms';
 
+import { EMAIL_DOC, emailsSchema } from '@/app/demo/_lib/editor';
 import { emails } from '@/app/demo/_lib/email-schema';
-import { EMAIL_TREE } from '@/app/demo/_lib/email-tree';
 import { renderEmailHtml } from '@/app/demo/_lib/render-email';
 import { useDemoFieldSources } from '@/app/demo/_lib/sources';
 import { useLocalDocument } from '@/app/demo/_lib/use-local-document';
-import {
-  CmsSourcesProvider,
-  cmsFields,
-} from '@/components/editor-form';
 import { EditorEmail } from '@/components/editor-email';
+import { CmsSourcesProvider, cmsFields } from '@/components/editor-form-createcms';
 
 export function EmailSplitEditor() {
   const sources = useDemoFieldSources();
-  const { saved, onChange, onSave } = useLocalDocument(EMAIL_TREE);
+  const { saved, onChange, persistence } = useLocalDocument(EMAIL_DOC);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Editor.Root
-        schema={emails}
-        defaultValue={EMAIL_TREE}
+        schema={emailsSchema}
+        defaultValue={EMAIL_DOC}
         onChange={onChange}
-        onSave={onSave}
+        persistence={persistence}
         fields={cmsFields}
       >
         <CmsSourcesProvider sources={sources}>
-          <EditorEmail render={async (tree) => renderEmailHtml(tree)} />
+          <EditorEmail
+            render={async (doc) => renderEmailHtml(fromEditor(doc, emails))}
+          />
         </CmsSourcesProvider>
       </Editor.Root>
       <pre className="border-border max-h-48 overflow-auto border-t p-4 text-xs">

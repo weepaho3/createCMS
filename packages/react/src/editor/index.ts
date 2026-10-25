@@ -1,9 +1,12 @@
 'use client';
 
+import { Tree } from '../tree';
+import { EditorLiveAnnouncer } from './announcer';
 // @createcms/react/editor: schema, state, form and preview layer of the
 // editor primitive. Parts live on the `Editor` namespace (`Editor.Root`, …);
 // helpers and hooks are flat named exports next to it.
 import { EditorRoot } from './components';
+import { EditorErrorSummary } from './error-summary';
 import {
   EditorField,
   EditorFieldControl,
@@ -11,13 +14,50 @@ import {
   EditorFieldError,
   EditorFieldLabel,
   EditorForm,
+  EditorRichTextField,
+  EditorRichTextToolbar,
+  EditorRichTextToolbarButton,
 } from './field';
+import { EditorSlot } from './plugin-slot';
 import { EditorFramePreview, EditorPreview } from './preview';
-import { EditorAddBlock, EditorOutlineItem } from './structure';
+import { EditorShortcutHelp } from './shortcut-help';
+import {
+  EditorAddBlock,
+  EditorMoveToDialog,
+  EditorOutline,
+  EditorOutlineItem,
+} from './structure';
 
-export type { EditorRootProps } from './components';
+export type {
+  EditorRootOwnStoreProps,
+  EditorRootProps,
+  EditorRootStoreProps,
+} from './components';
 export type { EditorContextValue, EditorScrollToOptions } from './types';
+export type {
+  AdapterDocumentError,
+  AdapterDocumentStatus,
+  UseAdapterDocumentOptions,
+  UseAdapterDocumentResult,
+} from './adapter-document';
+export { useAdapterDocument } from './adapter-document';
 export { useEditorContext } from './context';
+export type { EditorSlotProps } from './plugin-slot';
+export type { EditorLiveAnnouncerProps } from './announcer';
+export { describeBlock, useAnnounce } from './announcer';
+export { useMessages, useShortcutLabel } from './messages';
+export type { EditorShortcutHelpProps, ShortcutEntry } from './shortcut-help';
+export { useShortcutList } from './shortcut-help';
+export type {
+  EditorErrorSummaryProps,
+  ErrorSummaryEntry,
+} from './error-summary';
+export { useSaveIssues } from './error-summary';
+export type { SectionOverrideEntry } from './sections';
+export { useSection, useSectionOverrides } from './sections';
+export type { RovingFocus, RovingFocusOptions } from './roving';
+export { useRovingFocus } from './roving';
+export { useKeyboardInset } from './keyboard-inset';
 
 export const Editor = {
   Root: EditorRoot,
@@ -29,8 +69,19 @@ export const Editor = {
   Form: EditorForm,
   Preview: EditorPreview,
   FramePreview: EditorFramePreview,
+  Outline: EditorOutline,
   OutlineItem: EditorOutlineItem,
+  OutlineToggle: Tree.Toggle,
+  OutlineDropIndicator: Tree.DropIndicator,
   AddBlock: EditorAddBlock,
+  Slot: EditorSlot,
+  LiveAnnouncer: EditorLiveAnnouncer,
+  ShortcutHelp: EditorShortcutHelp,
+  ErrorSummary: EditorErrorSummary,
+  MoveToDialog: EditorMoveToDialog,
+  RichTextField: EditorRichTextField,
+  RichTextToolbar: EditorRichTextToolbar,
+  RichTextToolbarButton: EditorRichTextToolbarButton,
 };
 
 // Field parts: context, built-in controls and their prop types.
@@ -47,6 +98,13 @@ export type {
   FieldControls,
   ListElementControlProps,
   ListElementRender,
+  NestedFieldControlProps,
+  NestedFieldRender,
+  UseRichTextEditorOptions,
+  UseRichTextEditorResult,
+  EditorRichTextFieldProps,
+  EditorRichTextToolbarButtonProps,
+  EditorRichTextToolbarProps,
 } from './field';
 export {
   defaultFieldControls,
@@ -54,9 +112,15 @@ export {
   fromDatetimeLocal,
   toDatetimeLocal,
   useFieldContext,
+  useRichTextEditor,
+  useTextBinding,
 } from './field';
 
-// Preview: delayed raw-tree render and compiled iframe output.
+// Rich text: the static renderer (no editor, no raw HTML).
+export type { RichTextStaticProps } from './render/rich-text';
+export { RichTextStatic } from './render/rich-text';
+
+// Preview: delayed raw-document render and compiled iframe output.
 export type {
   EditorFramePreviewProps,
   EditorPreviewProps,
@@ -71,121 +135,97 @@ export type {
   AddBlockState,
   EditorAddBlockProps,
   EditorOutlineItemProps,
+  EditorOutlineProps,
+  InsertPoint,
   OutlineItemState,
 } from './structure';
+export { insertPointFor, useMoveTargets } from './structure';
+export type {
+  OutlineNodeRow,
+  OutlineRow,
+  OutlineRowsOptions,
+  OutlineSlotRow,
+} from './structure';
+export { outlineRows, outlineSlotRowId, useOutlineRows } from './structure';
+export type { EditorMoveToDialogProps, MoveToTarget } from './structure';
 
 // React binding and untyped hooks.
-export type { EditorSelector } from './binding';
-export { shallowEqual, useEditorSelector, useEditorStore } from './binding';
+export type {
+  DocSelector,
+  EphemeralSelector,
+  SessionSelector,
+} from './binding';
+export {
+  shallowEqual,
+  useDocSelector,
+  useEditorStore,
+  useEphemeralSelector,
+  useSessionSelector,
+} from './binding';
 export type {
   AnyBlockHandle,
   AnyFieldHandle,
   BlockActions,
   ChildRef,
+  CommandApi,
   EditorApi,
   HistoryApi,
   SaveApi,
+  SaveConflictApi,
+  SelectionState,
 } from './hooks';
 export {
   useAnyBlock,
   useAnyField,
   useBlockActions,
   useChildren,
+  useCommand,
+  useCommands,
+  useComputed,
   useDirty,
   useEditor,
   useFields,
   useHistory,
+  useHovered,
   useMissingRequired,
+  useNodeStatus,
   usePalette,
   useSave,
+  useSaveConflict,
   useSelection,
+  useSlot,
+  useSlots,
 } from './hooks';
-export type { EditorKeyboardOptions } from './keyboard';
-export { useEditorKeyboard } from './keyboard';
+export {
+  bindEditorClipboard,
+  bindEditorKeyboard,
+  combosOf,
+  handleEditorKey,
+  useEditorKeyboard,
+} from './keyboard';
 
 // Typed factory.
 export type {
   BlockHandle,
   BlockHandleOf,
   BlockPropsOf,
-  BlocksOf,
   BlockTypeOf,
   ChildRefOf,
+  ComponentsOf,
   CreateEditorOptions,
+  DocumentOf,
   EditorFactory,
   EditorTypes,
   FieldHandle,
   FieldHandleOf,
+  NodeOf,
   PropsOf,
   PropsSpecOf,
   PropValueOf,
   RootPropsOf,
-  TreeOf,
   TypedAddOptions,
   TypedBlockActions,
   TypedEditorApi,
   TypedPaletteItems,
 } from './factory';
 export { createEditor } from './factory';
-
-// Layer 1: schema types and pure helpers (no React, no DOM).
-export type {
-  AnyEditorSchema,
-  DefaultValuesOptions,
-  EditorSchema,
-  FieldError,
-  FieldErrorCode,
-  FieldGroup,
-  FieldKind,
-  FieldSpecOf,
-  FieldValueMap,
-  FieldValueOf,
-  MissingRequiredField,
-  MissingRequiredNode,
-  PaletteGroup,
-  PaletteItem,
-  PlacementIndex,
-  PlacementRule,
-  SchemaField,
-} from './schema';
-export {
-  allowedChildTypes,
-  canPlace,
-  defaultValuesFor,
-  getPlacement,
-  groupFields,
-  groupPaletteItems,
-  isEmptyValue,
-  missingRequired,
-  paletteItems,
-  propertiesOf,
-  validateField,
-} from './schema';
-
-// Layer 2: framework-free store (ops, inverse ops, history, applyRemote).
-export type {
-  AddOptions,
-  ApplyRemoteResult,
-  ApplyResult,
-  CreateEditorStoreOptions,
-  EditorCallbacks,
-  EditorChange,
-  EditorNode,
-  EditorNodes,
-  EditorOp,
-  EditorStore,
-  EditorStoreState,
-  FieldRef,
-  HistoryEntry,
-  UpdateOptions,
-  UserSelection,
-} from './store';
-export {
-  COALESCE_MS,
-  applyOp,
-  createBlockId,
-  createEditorStore,
-  flattenTree,
-  serializeToTree,
-  stableHash,
-} from './store';

@@ -1,9 +1,10 @@
 import { playwright } from '@vitest/browser-playwright';
 import { defineConfig } from 'vitest/config';
 
-// Real-browser run (Chromium via Playwright) for tests that need layout,
-// measurement or events happy-dom cannot emulate. Only `*.browser.test.tsx`
-// files; the node/happy-dom suite lives in vitest.config.ts.
+// Real-browser run (Chromium, Firefox and WebKit via Playwright) for tests
+// that need layout, measurement or events happy-dom cannot emulate. Only
+// `*.browser.test.tsx` files; the node/happy-dom suite lives in
+// vitest.config.ts.
 export default defineConfig({
   test: {
     include: ['src/**/*.browser.test.tsx'],
@@ -12,7 +13,11 @@ export default defineConfig({
       enabled: true,
       headless: true,
       provider: playwright(),
-      instances: [{ browser: 'chromium' }],
+      instances: [
+        { browser: 'chromium' },
+        { browser: 'firefox' },
+        { browser: 'webkit' },
+      ],
     },
   },
 });

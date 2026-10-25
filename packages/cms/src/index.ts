@@ -9,15 +9,59 @@ export type {
   PruningPassResult,
   PruningResult,
 } from './core/admin/pruning';
+// One-time conversion of stored HTML rich text to JSON, for scripts or a
+// queue worker (the `admin.migrateRichText` endpoint runs the same pass).
+export {
+  formatRichTextMigrationReport,
+  migrateRichText,
+} from './core/admin/migrate-rich-text';
+export type {
+  MigrateRichTextOptions,
+  RichTextMigrationEntry,
+  RichTextMigrationReport,
+} from './core/admin/migrate-rich-text';
 export { createCMSClient } from './client/vanilla';
 export { createCMSQuery } from './client/query';
 export { CMSClientError } from './client/error';
 export { newId, registerIdPrefix } from './utils/nanoid';
 export type { IdPrefix } from './utils/nanoid';
 export type { BlockTreeNode } from './core/blocks/reconstruct-snapshot';
+// Rich text: the stored JSON model, its validation and conversions (pure).
+export {
+  EMPTY_RICH_TEXT,
+  escapeHtml,
+  htmlToRichText,
+  isLossless,
+  isRichTextDoc,
+  isSafeUrl,
+  LINK_PROTOCOLS,
+  linkMarkHref,
+  linkMarkValue,
+  plainTextToRichText,
+  RICH_TEXT_MARKS,
+  RICH_TEXT_NODES,
+  richTextSchemaOf,
+  richTextToHtml,
+  richTextToPlainText,
+  validateRichText,
+  walkText,
+} from './core/rich-text';
+export type {
+  HtmlToRichTextOptions,
+  ParsedHtmlDocument,
+  ParsedHtmlNode,
+  RichTextDoc,
+  RichTextIssue,
+  RichTextIssueCode,
+  RichTextLossReport,
+  RichTextMark,
+  RichTextNode,
+  RichTextSchema,
+  RichTextToHtmlOptions,
+} from './core/rich-text';
 export type {
   ChangeType,
-  TextDiffSegment,
+  RichTextDiffSegment,
   PropertyChange,
   PropertyChangeKind,
   MovedInfo,
@@ -149,7 +193,9 @@ export type {
 export { normalizeSlug, buildFullPath, splitPath } from './core/slug';
 export {
   VAR_PATTERN,
+  extractRichTextVariableKeys,
   extractVariableKeys,
+  resolveTemplateRichText,
   resolveTemplateString,
 } from './core/variables-template';
 export { rootRevalidateTag } from './core/revalidation';

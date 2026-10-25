@@ -4,11 +4,11 @@ import { hydrateRoot } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { makeDoc, storeSchema } from './core/store/fixtures';
 import { Editor } from './index';
-import { makeTree, storeSchema } from './store/fixtures';
 
 const ui = (
-  <Editor.Root schema={storeSchema} defaultValue={makeTree()}>
+  <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
     <Editor.Form blockId="root_1" />
   </Editor.Root>
 );

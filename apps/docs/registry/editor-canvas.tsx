@@ -1,18 +1,38 @@
+// @registry editor-canvas@0.3.2
 'use client';
 
-import { useBlockActions, useSelection } from '@createcms/react/editor';
+import {
+  Editor,
+  useBlockActions,
+  useCommand,
+  useDocSelector,
+  useMoveTargets,
+  usePalette,
+  useSelection,
+} from '@createcms/react/editor';
 import { Canvas } from '@createcms/react/editor/canvas';
 import {
   ArrowDownIcon,
   ArrowUpIcon,
   CopyIcon,
   GripVerticalIcon,
+  MoreHorizontalIcon,
   PlusIcon,
   Trash2Icon,
 } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
 import {
   Tooltip,
@@ -22,7 +42,7 @@ import {
 import { cn } from '@/lib/utils';
 
 const ringMotion =
-  'motion-safe:transition-[opacity] motion-safe:duration-150 motion-safe:ease-out motion-reduce:transition-none';
+  'motion-safe:transition-[opacity] motion-safe:duration-(--editor-duration) motion-safe:ease-out motion-reduce:transition-none';
 
 function Overlay({
   className,
@@ -39,27 +59,13 @@ function Overlay({
 
 function SelectionRing({
   className,
-  children,
   ...props
 }: React.ComponentProps<typeof Canvas.SelectionRing>) {
   return (
     <Canvas.SelectionRing
       data-slot="editor-selection-ring"
-      className={cn('border-editor-selection border', ringMotion, className)}
+      className={cn(ringMotion, className)}
       {...props}
-      render={(ringProps, state) => (
-        <div {...ringProps}>
-          {state.blockType ? (
-            <span
-              data-slot="editor-selection-chip"
-              className="bg-editor-selection text-primary-foreground pointer-events-none absolute top-1.5 left-1.5 rounded-md px-1.5 py-0.5 text-[10px] leading-none font-medium"
-            >
-              {state.blockType}
-            </span>
-          ) : null}
-          {children}
-        </div>
-      )}
     />
   );
 }
@@ -71,7 +77,7 @@ function HoverRing({
   return (
     <Canvas.HoverRing
       data-slot="editor-hover-ring"
-      className={cn('border-editor-hover border', ringMotion, className)}
+      className={cn(ringMotion, className)}
       {...props}
     />
   );
@@ -84,7 +90,10 @@ function FieldRing({
   return (
     <Canvas.FieldRing
       data-slot="editor-field-ring"
-      className={cn('border-editor-focus border', className)}
+      className={cn(
+        'border-editor-focus/60 rounded-sm border border-dashed',
+        className,
+      )}
       {...props}
     />
   );
@@ -126,11 +135,20 @@ function CanvasIconButton({
 function DefaultBlockToolbarActions() {
   const selected = useSelection().selected;
   const actions = useBlockActions(selected ?? '');
-  if (!selected || actions.parentId === null) return null;
+  const palette = usePalette();
+  const type = useDocSelector((doc) => doc.nodes[selected ?? '']?.type);
+  if (!selected || actions.parent === null) return null;
+  const label = palette.find((item) => item.type === type)?.label ?? type ?? '';
 
   return (
     <>
       <DragHandle blockId={selected} />
+      <span
+        data-slot="editor-block-toolbar-label"
+        className="text-muted-foreground max-w-32 truncate px-1.5 text-xs font-medium"
+      >
+        {label}
+      </span>
       <Separator orientation="vertical" className="h-4" />
       <CanvasIconButton
         label="Move up"
@@ -153,9 +171,107 @@ function DefaultBlockToolbarActions() {
       <CanvasIconButton label="Delete" onClick={() => actions.remove()}>
         <Trash2Icon />
       </CanvasIconButton>
+      <MoreActions blockId={selected} />
+      <Editor.Slot name="block-toolbar" props={{ blockId: selected }} />
+      <Canvas.InlineRichTextToolbar>
+        <Separator orientation="vertical" className="h-4" />
+        <Editor.RichTextToolbar className="flex items-center gap-0.5">
+          {RICH_TEXT_FORMATS.map((format) => (
+            <Editor.RichTextToolbarButton
+              key={format.mark}
+              mark={format.mark}
+              aria-label={format.label}
+              title={format.label}
+              className={cn(
+                'hover:bg-accent aria-pressed:bg-accent pointer-events-auto inline-flex size-7 items-center justify-center rounded-sm text-xs disabled:hidden',
+                format.className,
+              )}
+            >
+              {format.text}
+            </Editor.RichTextToolbarButton>
+          ))}
+        </Editor.RichTextToolbar>
+      </Canvas.InlineRichTextToolbar>
     </>
   );
 }
+
+function CommandMenuItem({ id }: { id: string }) {
+  const command = useCommand(id);
+  if (!command) return null;
+  return (
+    <DropdownMenuItem
+      className="pointer-coarse:min-h-11"
+      disabled={!command.canExecute}
+      onClick={() => command.run()}
+    >
+      {command.label ?? id}
+      {command.shortcutLabel ? (
+        <DropdownMenuShortcut>{command.shortcutLabel}</DropdownMenuShortcut>
+      ) : null}
+    </DropdownMenuItem>
+  );
+}
+
+/** The structure actions that do not fit the toolbar, reachable without a drag. */
+function MoreActions({ blockId }: { blockId: string }) {
+  const { targets, moveTo } = useMoveTargets(blockId);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            className="pointer-events-auto"
+          />
+        }
+      >
+        <MoreHorizontalIcon />
+        <span className="sr-only">More actions</span>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-48">
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger
+            className="pointer-coarse:min-h-11"
+            disabled={targets.length === 0}
+          >
+            Move to…
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
+            {targets.map((target) => (
+              <DropdownMenuItem
+                key={`${target.parent.id}:${target.parent.slot}`}
+                className="pointer-coarse:min-h-11"
+                style={{ paddingLeft: 8 + target.depth * 12 }}
+                onClick={() => moveTo(target.parent, target.count)}
+              >
+                {target.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+        <CommandMenuItem id="block.wrap" />
+        <CommandMenuItem id="clipboard.copy" />
+        <CommandMenuItem id="selection.parent" />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** Formats the block toolbar offers while a rich text field is edited in place. */
+const RICH_TEXT_FORMATS = [
+  { mark: 'bold', label: 'Bold', text: 'B', className: 'font-bold' },
+  { mark: 'italic', label: 'Italic', text: 'I', className: 'italic' },
+  { mark: 'underline', label: 'Underline', text: 'U', className: 'underline' },
+  {
+    mark: 'strike',
+    label: 'Strikethrough',
+    text: 'S',
+    className: 'line-through',
+  },
+] as const;
 
 function BlockToolbar({
   className,
@@ -241,7 +357,7 @@ function DragHandle({
     <Canvas.DragHandle
       data-slot="editor-drag-handle"
       className={cn(
-        'bg-background border-border pointer-events-auto cursor-grab rounded border p-1 select-none active:cursor-grabbing',
+        'bg-background border-border pointer-events-auto flex size-6 cursor-grab items-center justify-center rounded border select-none active:cursor-grabbing',
         className,
       )}
       {...props}
@@ -280,7 +396,12 @@ function DragPreview({
     <Canvas.DragPreview
       data-slot="editor-drag-preview"
       className={cn(
-        'bg-background border-border rounded-md border px-2 py-1 text-sm shadow-md',
+        'bg-background border-border flex flex-col gap-0.5 rounded-md border px-2 py-1 text-sm shadow-md',
+        'data-[content=block]:p-1 data-[content=image]:max-w-60 data-[content=image]:gap-1 data-[content=image]:p-1.5',
+        '[&_[data-editor-drag-preview-block]]:rounded-sm [&_[data-editor-drag-preview-image]]:rounded-sm [&_[data-editor-drag-preview-image]]:border',
+        '[&_[data-editor-drag-preview-label]]:font-medium',
+        '[&_[data-editor-drag-preview-excerpt]]:text-muted-foreground [&_[data-editor-drag-preview-excerpt]]:truncate [&_[data-editor-drag-preview-excerpt]]:text-xs',
+        '[&_[data-editor-drag-preview-count]]:bg-primary [&_[data-editor-drag-preview-count]]:text-primary-foreground [&_[data-editor-drag-preview-count]]:absolute [&_[data-editor-drag-preview-count]]:top-1 [&_[data-editor-drag-preview-count]]:right-1 [&_[data-editor-drag-preview-count]]:rounded-full [&_[data-editor-drag-preview-count]]:px-1.5 [&_[data-editor-drag-preview-count]]:text-[10px]',
         'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-150 motion-reduce:animate-none',
         className,
       )}

@@ -1,18 +1,18 @@
-import type { BlockTreeNode } from '@createcms/schema';
-
 import * as React from 'react';
 
+import type { EditorDocument } from '../core/document';
 import type { FramePreviewAnchor } from './frame-anchor';
 import type { FramePreviewIssue } from './frame-issues';
 
 import { useRender } from '../../use-render';
-import { useEditorSelector } from '../binding';
+import { useDocSelector, useSessionSelector } from '../binding';
 import { useEditorContext } from '../context';
+import { bindEditorClipboard, bindEditorKeyboard } from '../keyboard';
 import { scrollElementIntoView } from '../scroll';
 import { PREVIEW_DEBOUNCE_MS } from './components';
 import { frameClickAnchor } from './frame-anchor';
 import { collectFrameIssues } from './frame-issues';
-import { frameSandboxAttribute } from './frame-sandbox';
+import { frameListenersRun, frameSandboxAttribute } from './frame-sandbox';
 
 export type { FramePreviewAnchor } from './frame-anchor';
 export type { FramePreviewIssue } from './frame-issues';
@@ -24,7 +24,7 @@ export type EditorFramePreviewProps = Omit<
   'children' | 'title'
 > & {
   render: (
-    tree: BlockTreeNode,
+    doc: EditorDocument,
     ctx: { signal: AbortSignal },
   ) => Promise<string | Blob>;
   debounceMs?: number;
@@ -81,16 +81,16 @@ export function EditorFramePreview({
   onIssues,
   onError,
   sandbox,
-  title = 'Preview',
+  title,
   style,
   ...rest
 }: EditorFramePreviewProps) {
   const ctx = useEditorContext('Editor.FramePreview');
-  const version = useEditorSelector((s) => s.version);
-  const highlightId = useEditorSelector((s) => {
-    const local = s.selection[ctx.userId];
-    return local?.focus?.blockId ?? local?.selected ?? null;
-  });
+  const frameTitle = title ?? ctx.messages.parts.framePreview;
+  const version = useDocSelector((s) => s.version);
+  const highlightId = useSessionSelector(
+    (s) => s.focusedField?.blockId ?? s.selection[0] ?? null,
+  );
   const delay = Math.max(0, debounceMs ?? PREVIEW_DEBOUNCE_MS);
   const sandboxAttr = frameSandboxAttribute(selectable, sandbox);
 
@@ -124,6 +124,9 @@ export function EditorFramePreview({
     [HTMLIFrameElement | null, HTMLIFrameElement | null]
   >([null, null]);
   const unbindClicksRef = React.useRef<(() => void) | null>(null);
+  // Frames whose own listeners never run (WebKit with a script-free
+  // sandbox) take clicks through a transparent shield in the host instead.
+  const [shield, setShield] = React.useState(false);
 
   React.useLayoutEffect(() => {
     renderRef.current = renderTree;
@@ -135,26 +138,43 @@ export function EditorFramePreview({
     slotsRef.current = slots;
   });
 
-  const bindClicks = React.useCallback((iframe: HTMLIFrameElement | null) => {
-    unbindClicksRef.current?.();
-    unbindClicksRef.current = null;
-    if (!selectableRef.current) return;
-    const doc = iframe?.contentDocument;
-    if (!doc) return;
-    const onClick = (event: Event) => {
-      event.preventDefault();
-      const anchor = frameClickAnchor(event.target, resolveAnchorRef.current);
-      if (!anchor) return;
-      storeRef.current.select(anchor.blockId);
-      storeRef.current.focus(
-        anchor.key ? { blockId: anchor.blockId, key: anchor.key } : null,
-      );
-    };
-    doc.addEventListener('click', onClick, true);
-    unbindClicksRef.current = () => {
-      doc.removeEventListener('click', onClick, true);
-    };
+  const selectAt = React.useCallback((target: EventTarget | null) => {
+    const anchor = frameClickAnchor(target, resolveAnchorRef.current);
+    if (!anchor) return;
+    storeRef.current.select(anchor.blockId);
+    storeRef.current.focus(
+      anchor.key ? { blockId: anchor.blockId, key: anchor.key } : null,
+    );
   }, []);
+
+  const bindClicks = React.useCallback(
+    (iframe: HTMLIFrameElement | null) => {
+      unbindClicksRef.current?.();
+      unbindClicksRef.current = null;
+      if (!selectableRef.current) return;
+      const doc = iframe?.contentDocument;
+      if (!doc) return;
+      if (!frameListenersRun(doc)) {
+        setShield(true);
+        return;
+      }
+      setShield(false);
+      const onClick = (event: Event) => {
+        event.preventDefault();
+        selectAt(event.target);
+      };
+      doc.addEventListener('click', onClick, true);
+      // Key and clipboard events inside the frame never reach the host document.
+      const unbindKeys = bindEditorKeyboard(storeRef.current, doc);
+      const unbindClipboard = bindEditorClipboard(storeRef.current, doc);
+      unbindClicksRef.current = () => {
+        doc.removeEventListener('click', onClick, true);
+        unbindKeys();
+        unbindClipboard();
+      };
+    },
+    [selectAt],
+  );
 
   const finishLoad = React.useCallback(
     (index: 0 | 1) => {
@@ -204,7 +224,7 @@ export function EditorFramePreview({
 
           let result: string | Blob;
           try {
-            result = await renderRef.current(storeRef.current.getTree(), {
+            result = await renderRef.current(storeRef.current.getDocument(), {
               signal: ac.signal,
             });
           } catch (caught) {
@@ -310,7 +330,7 @@ export function EditorFramePreview({
         ref={(el) => {
           if (el) iframeRefs.current[index] = el;
         }}
-        title={title}
+        title={frameTitle}
         sandbox={sandboxAttr}
         srcDoc={slot.srcDoc}
         src={slot.src}
@@ -337,7 +357,36 @@ export function EditorFramePreview({
         ...style,
         position: 'relative',
       },
-      children: frames,
+      children:
+        shield && selectable && kind === 'html' ? (
+          <>
+            {frames}
+            <div
+              data-editor-frame-shield=""
+              style={{ position: 'absolute', inset: 0 }}
+              onClick={(event) => {
+                const iframe = iframeRefs.current[front];
+                const doc = iframe?.contentDocument;
+                if (!iframe || !doc) return;
+                const rect = iframe.getBoundingClientRect();
+                selectAt(
+                  doc.elementFromPoint(
+                    event.clientX - rect.left,
+                    event.clientY - rect.top,
+                  ),
+                );
+              }}
+              onWheel={(event) => {
+                iframeRefs.current[front]?.contentWindow?.scrollBy(
+                  event.deltaX,
+                  event.deltaY,
+                );
+              }}
+            />
+          </>
+        ) : (
+          frames
+        ),
     },
     state: { loading, stale, error, kind },
   });

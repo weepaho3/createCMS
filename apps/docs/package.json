@@ -10,15 +10,25 @@
     "postinstall": "fumadocs-mdx",
     "registry:build": "shadcn build --output public/r",
     "registry:check": "node scripts/check-registry.mjs",
-    "start": "next start"
+    "start": "next start",
+    "test": "vitest run",
+    "test:browser": "vitest run --config vitest.browser.config.ts --maxWorkers=2",
+    "test:visual": "vitest run --config vitest.visual.config.ts"
   },
   "dependencies": {
-    "@base-ui/react": "^1.6.0",
+    "@base-ui/react": "^1.9.0",
     "@createcms/core": "workspace:*",
     "@createcms/react": "workspace:*",
     "@radix-ui/react-collapsible": "^1.1.20",
     "@react-email/components": "^1.0.12",
     "@react-email/render": "^2.1.0",
+    "@tanstack/react-virtual": "3.14.21",
+    "@tiptap/core": "3.32.0",
+    "@tiptap/extension-link": "3.32.0",
+    "@tiptap/extensions": "3.32.0",
+    "@tiptap/pm": "3.32.0",
+    "@tiptap/starter-kit": "3.32.0",
+    "@tiptap/suggestion": "3.32.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -40,9 +50,16 @@
     "@types/node": "^22.20.1",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^6.1.2",
+    "@vitest/browser": "5.0.5",
+    "@vitest/browser-playwright": "5.0.5",
+    "axe-core": "^4.14.0",
+    "playwright": "^1.62.1",
     "postcss": "^8.5.25",
     "shadcn": "^4.18.0",
     "tailwindcss": "^4.3.3",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vite": "^8.0.16",
+    "vitest": "^5.0.5"
   }
 }

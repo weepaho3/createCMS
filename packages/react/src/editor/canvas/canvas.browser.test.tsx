@@ -1,12 +1,14 @@
 import { cleanup } from '@testing-library/react';
 import * as React from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import type { CanvasComponents } from './map';
 import type { Measurer } from './measurer';
 
 import { useCanvasContext } from './context';
 import { Canvas } from './index';
 import {
+  canvasBlocks,
   nestedTextBlocks,
   nestedTextSchema,
   nestedTextTree,
@@ -96,7 +98,11 @@ describe('Canvas in a real browser', () => {
     field!.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }),
     );
-    const local = store.getState().selection.local;
+    const local = {
+      selected: store.getSession().selection[0] ?? null,
+      focus: store.getSession().focusedField,
+      editing: store.getSession().editing,
+    };
     expect(local?.selected).toBe('h1');
     expect(local?.focus).toEqual({ blockId: 'h1', key: 'text' });
   });
@@ -108,7 +114,7 @@ describe('Canvas in a real browser', () => {
     field!.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }),
     );
-    expect(store.getState().selection.local?.selected).toBe('h1');
+    expect(store.getSession().selection[0] ?? null).toBe('h1');
     expect(host.hasAttribute('data-dragging')).toBe(false);
     const rect = rectOf(field!);
     dispatchPointer(field!, 'pointerdown', { x: rect.x + 5, y: rect.y + 5 });
@@ -125,7 +131,7 @@ describe('Canvas in a real browser', () => {
     field!.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }),
     );
-    expect(store.getState().selection.local?.selected).toBeNull();
+    expect(store.getSession().selection[0] ?? null).toBeNull();
     const link = host.querySelector('a');
     expect(link).not.toBeNull();
     const event = new MouseEvent('click', { bubbles: true, cancelable: true });
@@ -204,6 +210,7 @@ describe('Canvas overlay rings', () => {
         components: nestedTextBlocks,
       },
     );
+    store.select('outer1');
     store.focus({ blockId: 'outer1', key: 'text' });
     const outerField = host.querySelector(
       '[data-editor-block="outer1"] > [data-editor-field="text"]',
@@ -243,5 +250,21 @@ describe('Canvas overlay rings', () => {
     const ring = host.querySelector('[data-editor-selection-ring]');
     expect(ring).not.toBeNull();
     expect(rectClose(rectOf(ring!), union)).toBe(true);
+  });
+
+  it('a block that throws shows Canvas.BlockError and the canvas stays mounted', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const Boom = (): React.ReactNode => {
+      throw new Error('boom');
+    };
+    const { host } = renderCanvas(undefined, {
+      components: { ...canvasBlocks, paragraph: Boom } as CanvasComponents,
+    });
+    const fallback = host.querySelector('[data-block-error]');
+    expect(fallback?.getAttribute('data-editor-block')).toBe('p1');
+    expect(host.querySelector('[data-editor-block="h1"]')).not.toBeNull();
+    await waitForLayout(fallback!);
+    vi.restoreAllMocks();
   });
 });

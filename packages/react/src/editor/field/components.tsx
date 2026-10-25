@@ -1,39 +1,40 @@
 import * as React from 'react';
 
 import type { UseRenderComponentProps } from '../../use-render';
-import type { FieldKind } from '../schema';
+import type { Field } from '../core/schema';
 import type {
   AnyFieldControlProps,
   FieldContextValue,
   ListElementRender,
+  NestedFieldRender,
 } from './types';
 
 import { composeRefs, useRender } from '../../use-render';
-import { useEditorSelector } from '../binding';
+import { useDocSelector, useSessionSelector } from '../binding';
 import { useEditorContext } from '../context';
+import { warnOnce } from '../core/codes';
+import { formatIssue } from '../core/messages';
+import { groupFields, validateField } from '../core/schema';
+import { isHTMLElement } from '../dom';
 import { useAnyField, useFields } from '../hooks';
-import { groupFields, validateField } from '../schema';
+import { useMessages } from '../messages';
 import { scrollElementIntoView } from '../scroll';
 import { FieldContext, useFieldContext } from './context';
 import { defaultFieldControls } from './controls';
 
-const warned = new Set<string>();
-
-/** Dev-only console warning, emitted once per distinct message for the lifetime of the module. */
-function warnOnce(message: string): void {
-  if (process.env.NODE_ENV === 'production') return;
-  if (warned.has(message)) return;
-  warned.add(message);
-  console.warn(message);
-}
-
 // --- Editor.Field -----------------------------------------------------------
+
+const EDITABLE =
+  'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
+const FOCUSABLE =
+  'input, textarea, select, button, [contenteditable], [tabindex]:not([tabindex="-1"])';
 
 type FieldState = {
   kind: string;
   required: boolean;
   invalid: boolean;
   disabled: boolean;
+  readOnly: boolean;
   focused: boolean;
 };
 
@@ -48,23 +49,28 @@ export type EditorFieldProps = UseRenderComponentProps<'div', FieldState> & {
 
 /**
  * Owns one property of one block: reads its spec and value, validates the
- * value on every change, writes through `setValue` (coalesced into one undo
+ * value (deferred, never blocking input), writes through `setValue` eagerly (coalesced into one undo
  * step), mirrors the store's focused field and wires `aria-describedby` for
  * the parts below it. Renders `null` (with a dev warning) for a key the
  * block's type does not declare.
  */
 export function EditorField(props: EditorFieldProps) {
-  const { blockId, name, disabled = false, render, onFocus, ...rest } = props;
+  const {
+    blockId,
+    name,
+    disabled = false,
+    render,
+    onFocus,
+    onPointerEnter,
+    onPointerLeave,
+    ref,
+    ...rest
+  } = props;
   const ctx = useEditorContext('Editor.Field');
   const field = useAnyField(blockId, name);
-  const focused = useEditorSelector((state) => {
-    const target = state.selection[ctx.userId]?.focus;
-    return (
-      target !== null &&
-      target !== undefined &&
-      target.blockId === blockId &&
-      target.key === name
-    );
+  const focused = useSessionSelector((state) => {
+    const target = state.focusedField;
+    return target !== null && target.blockId === blockId && target.key === name;
   });
   const reactId = React.useId();
   const id = `${reactId}-control`;
@@ -80,9 +86,12 @@ export function EditorField(props: EditorFieldProps) {
   }, []);
   const spec = field.spec;
   const value = field.value;
+  // The write is eager; validation follows the deferred value, so typing
+  // never waits for it.
+  const validatedValue = React.useDeferredValue(value);
   const errors = React.useMemo(
-    () => (spec ? validateField(spec, value) : []),
-    [spec, value],
+    () => (spec ? validateField(spec, validatedValue) : []),
+    [spec, validatedValue],
   );
   const invalid = errors.length > 0;
   const describedBy =
@@ -108,6 +117,7 @@ export function EditorField(props: EditorFieldProps) {
             describedBy,
             required: spec.required === true,
             disabled,
+            readOnly: spec.readOnly === true,
             invalid,
             errors,
             focused,
@@ -136,22 +146,65 @@ export function EditorField(props: EditorFieldProps) {
     // focus actually moves to this field, never on every keystroke.
     if (!focused) ctx.store.focus({ blockId, key: name });
   };
+  const elRef = React.useRef<HTMLDivElement | null>(null);
+  const store = ctx.store;
+  // Focus set elsewhere (a click in the canvas or a preview) moves DOM focus
+  // into the control. It waits until every listener of the click ran (one
+  // of them may start inline editing), and never takes focus from inline
+  // editing or from another text input.
+  React.useEffect(() => {
+    if (!focused) return;
+    const timer = setTimeout(() => {
+      const el = elRef.current;
+      if (!el || store.getSession().editing !== null) return;
+      const doc = el.ownerDocument;
+      const active = doc.activeElement;
+      if (active && el.contains(active)) return;
+      if (active?.closest(EDITABLE)) return;
+      const control =
+        doc.getElementById(id) ?? el.querySelector<HTMLElement>(FOCUSABLE);
+      if (!isHTMLElement(control) || !el.contains(control)) return;
+      // Focus inside a preview frame stays there until the host window
+      // takes it back.
+      if (active?.tagName === 'IFRAME') doc.defaultView?.focus();
+      control.focus({ preventScroll: true });
+      scrollElementIntoView(control);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [focused, store, id]);
   const element = useRender<'div', FieldState>({
     defaultTagName: 'div',
-    props: { ...rest, onFocus: handleFocus },
+    props: {
+      ...rest,
+      ref: composeRefs(elRef, ref),
+      onFocus: handleFocus,
+      // Pointing at a field highlights its block in the canvas and previews.
+      onPointerEnter: (event: React.PointerEvent<HTMLDivElement>) => {
+        onPointerEnter?.(event);
+        store.hover(blockId);
+      },
+      onPointerLeave: (event: React.PointerEvent<HTMLDivElement>) => {
+        onPointerLeave?.(event);
+        if (store.getEphemeral().hoverId === blockId) store.hover(null);
+      },
+    },
     render,
     state: {
       kind: spec?.type ?? 'unknown',
       required: spec?.required === true,
       invalid,
       disabled,
+      readOnly: spec?.readOnly === true,
       focused,
     },
   });
   if (contextValue === null) {
-    warnOnce(
-      `Editor.Field: block "${blockId}" declares no property "${name}"; the field renders nothing.`,
-    );
+    if (process.env.NODE_ENV !== 'production') {
+      warnOnce(
+        'E007',
+        `Editor.Field: block "${blockId}" declares no property "${name}"; the field renders nothing.`,
+      );
+    }
     return null;
   }
   return (
@@ -174,7 +227,7 @@ export type EditorFieldLabelProps = UseRenderComponentProps<
   FieldLabelState
 >;
 
-/** A `<label htmlFor>` pointing at the field's control; the spec's `label` unless children are given. */
+/** A `<label htmlFor>` pointing at the field's control; the field's `label` (or its key) unless children are given. */
 export function EditorFieldLabel({
   children,
   render,
@@ -185,7 +238,7 @@ export function EditorFieldLabel({
     defaultTagName: 'label',
     props: {
       htmlFor: field.id,
-      children: children ?? field.spec.label,
+      children: children ?? field.spec.label ?? field.name,
       ...rest,
     },
     render,
@@ -248,6 +301,7 @@ export function EditorFieldError({
   ...rest
 }: EditorFieldErrorProps) {
   const field = useFieldContext('Editor.FieldError');
+  const messages = useMessages();
   const { registerDescribedBy, errorId } = field;
   React.useLayoutEffect(
     () => registerDescribedBy(errorId),
@@ -259,7 +313,8 @@ export function EditorFieldError({
       id: errorId,
       role: 'alert',
       children:
-        children ?? field.errors.map((error) => error.message).join(' '),
+        children ??
+        field.errors.map((error) => formatIssue(error, messages)).join(' '),
       ...rest,
     },
     render,
@@ -277,20 +332,24 @@ export type EditorFieldControlProps = {
 
 /**
  * Renders the field's control, resolved in this order: the `render` prop,
- * the `fields` map of `Editor.Root`, the built-in default for the kind.
- * `image`, `reference` and `link` have no default: without a map entry the
- * part renders nothing and warns once (dev only). List elements resolve
- * through the same map/defaults via `renderElement`.
+ * the `fields` map of `Editor.Root` (`fields.custom[kind]` for a `custom`
+ * field), the built-in default for the kind. `media`, `reference`, `link`
+ * and `custom` have no default: without a map entry the part renders nothing
+ * and warns once (dev only). List elements and the nested fields of an
+ * `object` resolve through the same map/defaults.
  */
 export function EditorFieldControl({ render }: EditorFieldControlProps) {
   const ctx = useEditorContext('Editor.FieldControl');
   const field = useFieldContext('Editor.FieldControl');
   const resolve = React.useCallback(
-    (kind: FieldKind): React.ComponentType<AnyFieldControlProps> | null => {
-      const component = ctx.fields[kind] ?? defaultFieldControls[kind];
+    (spec: Field): React.ComponentType<AnyFieldControlProps> | null => {
       // The map is typed per kind for consumers; this resolver dispatches on
       // the runtime `spec.type`, so the wide props are exactly what that
       // component was declared for.
+      const component =
+        spec.type === 'custom'
+          ? ctx.fields.custom?.[spec.kind]
+          : (ctx.fields[spec.type] ?? defaultFieldControls[spec.type]);
       return (
         (component as React.ComponentType<AnyFieldControlProps> | undefined) ??
         null
@@ -298,30 +357,44 @@ export function EditorFieldControl({ render }: EditorFieldControlProps) {
     },
     [ctx.fields],
   );
-  const renderElement = React.useCallback<ListElementRender>(
-    (props) => {
-      const Component = resolve(props.spec.type);
+  const renderWith = React.useCallback(
+    (
+      spec: Field,
+      props: Omit<AnyFieldControlProps, 'spec' | 'required'>,
+      what: string,
+    ): React.ReactElement | null => {
+      const Component = resolve(spec);
       if (!Component) {
-        warnOnce(
-          `Editor.FieldControl: no control for list elements of kind "${props.spec.type}"; pass one through Editor.Root's fields prop.`,
-        );
+        if (process.env.NODE_ENV !== 'production')
+          warnOnce(
+            'E008',
+            `Editor.FieldControl: no control for ${what} of kind "${spec.type === 'custom' ? `custom:${spec.kind}` : spec.type}"; pass one through Editor.Root's fields prop.`,
+          );
         return null;
       }
-      return (
-        <Component
-          spec={props.spec}
-          value={props.value}
-          onChange={props.onChange}
-          id={props.id}
-          name={props.name}
-          required={false}
-          disabled={props.disabled}
-          invalid={props.invalid}
-          describedBy={props.describedBy}
-        />
-      );
+      const nested: AnyFieldControlProps = {
+        ...props,
+        spec,
+        required: spec.required === true,
+        readOnly: props.readOnly || spec.readOnly === true,
+      };
+      if (spec.type === 'list') nested.renderElement = renderElement;
+      if (spec.type === 'object') nested.renderNested = renderNested;
+      return <Component {...nested} />;
     },
+    // renderElement/renderNested are declared below and stable per resolve.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [resolve],
+  );
+  const renderElement = React.useCallback<ListElementRender>(
+    ({ spec, index: _index, ...props }) =>
+      renderWith(spec, props, 'list elements'),
+    [renderWith],
+  );
+  const renderNested = React.useCallback<NestedFieldRender>(
+    ({ spec, fieldKey: _fieldKey, ...props }) =>
+      renderWith(spec, props, 'nested fields'),
+    [renderWith],
   );
   const controlProps: AnyFieldControlProps = {
     spec: field.spec,
@@ -331,16 +404,20 @@ export function EditorFieldControl({ render }: EditorFieldControlProps) {
     name: field.name,
     required: field.required,
     disabled: field.disabled,
+    readOnly: field.readOnly,
     invalid: field.invalid,
     describedBy: field.describedBy,
   };
   if (field.spec.type === 'list') controlProps.renderElement = renderElement;
+  if (field.spec.type === 'object') controlProps.renderNested = renderNested;
   if (render) return render(controlProps);
-  const Component = resolve(field.spec.type);
+  const Component = resolve(field.spec);
   if (!Component) {
-    warnOnce(
-      `Editor.FieldControl: no control for kind "${field.spec.type}" (field "${field.name}"); pass one through Editor.Root's fields prop.`,
-    );
+    if (process.env.NODE_ENV !== 'production')
+      warnOnce(
+        'E008',
+        `Editor.FieldControl: no control for kind "${field.spec.type === 'custom' ? `custom:${field.spec.kind}` : field.spec.type}" (field "${field.name}"); pass one through Editor.Root's fields prop.`,
+      );
     return null;
   }
   return <Component {...controlProps} />;
@@ -348,7 +425,14 @@ export function EditorFieldControl({ render }: EditorFieldControlProps) {
 
 // --- Editor.Form ------------------------------------------------------------
 
-type FormState = { blockType: string | null; blockId: string };
+type FormState = {
+  blockType: string | null;
+  blockId: string;
+  /** The block's `resolveData` is running. */
+  loading: boolean;
+  /** The block's `resolveData` failed. */
+  error: boolean;
+};
 
 export type EditorFormProps = Omit<
   UseRenderComponentProps<'div', FormState>,
@@ -366,8 +450,8 @@ export type EditorFormProps = Omit<
 };
 
 /**
- * Every declared property of the block as a complete field (label, control,
- * description, error), grouped by the specs' `group`: named groups in a
+ * Every visible field of the block as a complete field (label, control,
+ * description, error), grouped by the fields' `group`: named groups in a
  * `<fieldset data-group>` with a `<legend>`, ungrouped fields directly.
  * Renders `null` for an unknown block.
  */
@@ -380,7 +464,7 @@ export function EditorForm({
 }: EditorFormProps) {
   const ctx = useEditorContext('Editor.Form');
   const elRef = React.useRef<HTMLDivElement | null>(null);
-  const blockType = useEditorSelector(
+  const blockType = useDocSelector(
     (state) => state.nodes[blockId]?.type ?? null,
   );
   const fields = useFields(blockId);
@@ -424,8 +508,8 @@ export function EditorForm({
     if (!el) return;
     return ctx.registerScrollTarget(blockId, el);
   }, [ctx, blockId, blockType]);
-  const focusSig = useEditorSelector((state) => {
-    const focus = state.selection[ctx.userId]?.focus;
+  const focusSig = useSessionSelector((state) => {
+    const focus = state.focusedField;
     return focus && focus.blockId === blockId
       ? `${focus.blockId}:${focus.key}`
       : null;
@@ -434,6 +518,9 @@ export function EditorForm({
     if (!autoScroll || !focusSig || !elRef.current) return;
     scrollElementIntoView(elRef.current);
   }, [autoScroll, focusSig]);
+  const status = useSessionSelector(
+    (state) => state.nodeStatus[blockId] ?? null,
+  );
   const element = useRender<'div', FormState>({
     defaultTagName: 'div',
     props: {
@@ -442,7 +529,12 @@ export function EditorForm({
       children: content,
     },
     render,
-    state: { blockType, blockId },
+    state: {
+      blockType,
+      blockId,
+      loading: status !== null && status.loading,
+      error: status?.error != null,
+    },
   });
   return blockType === null ? null : element;
 }

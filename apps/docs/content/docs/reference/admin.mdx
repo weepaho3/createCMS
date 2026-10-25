@@ -78,6 +78,38 @@ Drain the scheduled-publishing queue: every due row (`scheduledAt <= now` and no
 
 `failed` is an array of `{ id, rootId, branchId, action, error }`, one entry per row whose publish or unpublish threw.
 
+### Convert Stored Rich Text [#migraterichtext]
+
+Convert `richText` values stored as HTML (before rich text became JSON) in every block version, history included, to ProseMirror JSON with each property's allowed formatting. Values already in JSON are skipped, so it is safe to run again. Run it with `dryRun: true` first and read the report; it works in batches and returns `nextCursor` until every version was read. Parsing HTML on the server needs the optional `happy-dom` package (`HTML_PARSER_UNAVAILABLE` without it). Rebuild the search index after the last batch.
+
+<APIMethod
+  method="POST"
+  path="/admin/migrateRichText"
+  fn="migrateRichText"
+  collection="admin"
+  resource="admin"
+  operation="update"
+  returns={{
+    dryRun: { type: 'boolean', description: 'Whether nothing was written.' },
+    scanned: { type: 'number', description: 'Block versions read.' },
+    values: { type: 'number', description: 'richText values found (list elements count one each).' },
+    converted: { type: 'number', description: 'HTML values that are now (or would be) JSON.' },
+    skipped: { type: 'number', description: 'Values already stored as JSON or empty.' },
+    lossy: { type: '{ blockVersionId, rootId, blockId, property, loss }[]', description: 'Converted values that dropped markup; `loss` counts dropped tags, attributes, nodes and marks.' },
+    failed: { type: '{ blockVersionId, rootId, blockId, property, error }[]', description: 'Values that are neither JSON nor a string; left unchanged.' },
+    nextCursor: { type: 'string | null', description: 'Pass as `cursor` to continue; `null` when done.' },
+  }}
+  params={{
+    dryRun: { type: 'boolean', default: 'false', description: 'Report without writing.' },
+    collection: { type: 'string', description: 'Only roots of this collection.' },
+    batchSize: { type: 'number', default: '500', description: 'Block versions per transaction, 1 to 5000.' },
+    maxBatches: { type: 'number', default: '20', description: 'Batches this call runs before it returns `nextCursor`.' },
+    cursor: { type: 'string | null', description: 'The previous call\'s `nextCursor`.' },
+  }}
+/>
+
+For scripts and queue workers, `migrateRichText(db, collections, { domParser, ... })` from `@createcms/core` runs the same pass with your own HTML parser, and `formatRichTextMigrationReport(report)` renders the report as Markdown.
+
 ### Rebuild the Search Index [#reindexsearch]
 
 Rebuild the entire full-text search index from scratch, re-indexing every root, comment, merge request, variable, template, asset, and notification. Reach for this after a bulk import or an index-shape change; it takes no input and hands back the per-type counts it wrote.

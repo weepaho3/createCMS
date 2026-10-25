@@ -2,7 +2,11 @@
 // re-exports the client (`createCMSClient`, `useStore`), which pulls React
 // hooks into a Server Component; importing the `/react/blocks` subpath keeps
 // this page server-only.
-import { BlocksRenderer, createBlocksMap } from '@createcms/core/react/blocks';
+import {
+  BlocksRenderer,
+  createBlocksMap,
+  RichText,
+} from '@createcms/core/react/blocks';
 import Link from 'next/link';
 
 import { cms } from '@/lib/cms';
@@ -16,9 +20,22 @@ export const dynamic = 'force-dynamic';
 // Map each block type in the `posts` collection to a React component. The
 // `properties` of each block are fully typed from the collection definition.
 const postBlocks = createBlocksMap(collections.posts, {
+  // `richText` is stored as JSON and renders as plain React elements;
+  // internal links come back resolved, `Link` keeps navigation client-side.
   richText: ({ properties }) => (
-    // `richText` stores markup; render it as HTML (sanitize if untrusted).
-    <div dangerouslySetInnerHTML={{ __html: properties.content }} />
+    <div>
+      <RichText
+        value={properties.content}
+        components={{
+          link: ({ href, children }) =>
+            href?.startsWith('/') ? (
+              <Link href={href}>{children}</Link>
+            ) : (
+              <a href={href}>{children}</a>
+            ),
+        }}
+      />
+    </div>
   ),
   quote: ({ properties }) => (
     <blockquote>

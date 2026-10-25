@@ -3,22 +3,20 @@
  * imports it) but is covered by `tsc --noEmit`; a failing `Expect` or an
  * unused `@ts-expect-error` fails the type-check gate.
  */
-import type {
-  BlockTreeNode,
-  CollectionDefinition,
-  InferBlockTreeNode,
-} from '@createcms/schema';
-
+import type { EditorDocument } from './core/document';
+import type { AnyEditorSchema } from './core/schema';
 import type {
   BlockHandleOf,
   BlockPropsOf,
   BlockTypeOf,
+  DocumentOf,
   EditorFactory,
   PropValueOf,
   RootPropsOf,
-  TreeOf,
   TypedEditorApi,
 } from './factory';
+
+import { defineEditorSchema } from './core/schema';
 
 type Equal<A, B> =
   (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
@@ -31,28 +29,27 @@ type MutuallyAssignable<A, B> = [A] extends [B]
     : false
   : false;
 
-// A schema as `defineCollection` would type it: `blocks?` optional in the type.
-const pages = {
-  label: 'Pages',
+const pages = defineEditorSchema({
   root: {
-    properties: {
-      title: { type: 'string', label: 'Title', required: true },
-      subtitle: { type: 'string', label: 'Subtitle' },
+    label: 'Pages',
+    fields: {
+      title: { type: 'text', label: 'Title', required: true },
+      subtitle: { type: 'text', label: 'Subtitle' },
     },
+    slots: { children: {} },
   },
-  blocks: {
+  components: {
     hero: {
       label: 'Hero',
-      properties: {
-        headline: { type: 'string', label: 'Headline', required: true },
-        badge: { type: 'string', label: 'Badge' },
+      fields: {
+        headline: { type: 'text', label: 'Headline', required: true },
+        badge: { type: 'text', label: 'Badge' },
         level: { type: 'number', label: 'Level' },
       },
     },
     section: {
       label: 'Section',
-      allowChildren: true,
-      properties: {
+      fields: {
         variant: {
           type: 'select',
           label: 'Variant',
@@ -62,30 +59,26 @@ const pages = {
           ],
         },
       },
+      slots: { children: {} },
     },
   },
-} satisfies CollectionDefinition;
+});
 type Pages = typeof pages;
 
-// The same schema through the optional-`blocks` `CollectionDefinition` shape.
-type PagesOptional = CollectionDefinition<
-  Pages['root']['properties'],
-  NonNullable<Pages['blocks']>
->;
-
-// A block-less schema (root only) and a dynamic one (index-signature blocks).
-const settings = {
-  label: 'Settings',
-  root: { properties: { siteName: { type: 'string', label: 'Site name' } } },
-} satisfies CollectionDefinition;
+// A component-less schema (root only) and a dynamic one (index-signature components).
+const settings = defineEditorSchema({
+  root: {
+    label: 'Settings',
+    fields: { siteName: { type: 'text', label: 'Site name' } },
+    slots: { children: {} },
+  },
+  components: {},
+});
 type Settings = typeof settings;
-type Dynamic = CollectionDefinition;
+type Dynamic = AnyEditorSchema;
 
 // --- BlockTypeOf ------------------------------------------------------------
 export type _blockTypes = Expect<Equal<BlockTypeOf<Pages>, 'hero' | 'section'>>;
-export type _blockTypesOptional = Expect<
-  Equal<BlockTypeOf<PagesOptional>, 'hero' | 'section'>
->;
 export type _blockTypesSettings = Expect<Equal<BlockTypeOf<Settings>, never>>;
 export type _blockTypesDynamic = Expect<Equal<BlockTypeOf<Dynamic>, never>>;
 
@@ -96,88 +89,95 @@ export type _heroProps = Expect<
     { headline: string; badge?: string; level?: number }
   >
 >;
-export type _sectionSelectIsWide = Expect<
-  MutuallyAssignable<BlockPropsOf<Pages, 'section'>, { variant?: string }>
+export type _sectionSelectIsNarrow = Expect<
+  MutuallyAssignable<BlockPropsOf<Pages, 'section'>, { variant?: 'a' | 'b' }>
 >;
 export type _rootProps = Expect<
   MutuallyAssignable<RootPropsOf<Pages>, { title: string; subtitle?: string }>
 >;
 
 // --- PropValueOf ------------------------------------------------------------
-type HeroSpec = NonNullable<Pages['blocks']>['hero']['properties'];
+type HeroSpec = Pages['components']['hero']['fields'];
 export type _requiredValue = Expect<
   Equal<PropValueOf<HeroSpec, 'headline'>, string>
 >;
 export type _optionalValue = Expect<
-  Equal<PropValueOf<HeroSpec, 'level'>, number | undefined>
+  Equal<PropValueOf<HeroSpec, 'level'>, number>
 >;
 
-// --- TreeOf -----------------------------------------------------------------
-type ExpectedTree = InferBlockTreeNode<
-  NonNullable<Pages['blocks']>,
-  Pages['root']['properties']
->;
-export type _treeIsInfer = Expect<MutuallyAssignable<TreeOf<Pages>, ExpectedTree>>;
-export type _treeIsBlockTreeNode = Expect<
-  TreeOf<Pages> extends BlockTreeNode ? true : false
->;
-const validTree: TreeOf<Pages> = {
-  blockId: 'root_1',
-  type: 'root',
-  properties: { title: 'Home' },
-  children: [
-    {
-      blockId: 'h1',
-      type: 'hero',
-      properties: { headline: 'Hi' },
-      children: [],
+// --- DocumentOf -------------------------------------------------------------
+const validDoc: DocumentOf<Pages> = {
+  schemaVersion: 1,
+  root: {
+    id: 'root_1',
+    type: 'root',
+    props: { title: 'Home' },
+    slots: {
+      children: [{ id: 'h1', type: 'hero', props: { headline: 'Hi' } }],
     },
-  ],
+  },
 };
-void validTree;
-const badTree: TreeOf<Pages> = {
-  blockId: 'root_1',
-  type: 'root',
-  properties: { title: 'Home' },
-  children: [
-    {
-      blockId: 'x',
-      // @ts-expect-error - 'paragraph' is not a block type of Pages
-      type: 'paragraph',
-      properties: {},
-      children: [],
+void validDoc;
+export type _documentRootIsRoot = Expect<
+  DocumentOf<Pages>['root']['type'] extends EditorDocument['root']['type']
+    ? true
+    : false
+>;
+const badDoc: DocumentOf<Pages> = {
+  schemaVersion: 1,
+  root: {
+    id: 'root_1',
+    type: 'root',
+    props: { title: 'Home' },
+    slots: {
+      children: [
+        {
+          id: 'x',
+          // @ts-expect-error - 'paragraph' is not a component type of Pages
+          type: 'paragraph',
+          props: {},
+        },
+      ],
     },
-  ],
+  },
 };
-void badTree;
-// A block-less schema still has a tree: the root member alone.
-const settingsTree: TreeOf<Settings> = {
-  blockId: 'root_1',
-  type: 'root',
-  properties: { siteName: 'x' },
-  children: [],
+void badDoc;
+const badProps: DocumentOf<Pages> = {
+  schemaVersion: 1,
+  root: {
+    id: 'root_1',
+    type: 'root',
+    // @ts-expect-error - the required root title is missing
+    props: {},
+  },
 };
-void settingsTree;
+void badProps;
+// A component-less schema still has a document: the root alone.
+const settingsDoc: DocumentOf<Settings> = {
+  schemaVersion: 1,
+  root: { id: 'root_1', type: 'root', props: { siteName: 'x' } },
+};
+void settingsDoc;
 
 // --- typed add --------------------------------------------------------------
 declare const api: TypedEditorApi<Pages>;
-api.add('hero', { parentId: 'root_1', properties: { headline: 'x' } });
-api.add('section', { parentId: 'root_1', index: 0 });
+api.add('hero', { parent: { id: 'root_1' }, props: { headline: 'x' } });
+api.add('section', { parent: { id: 'root_1' }, index: 0 });
 // @ts-expect-error - unknown block type
-api.add('paragraph', { parentId: 'root_1' });
+api.add('paragraph', { parent: { id: 'root_1' } });
 // @ts-expect-error - wrong property type
-api.add('hero', { parentId: 'root_1', properties: { headline: 1 } });
+api.add('hero', { parent: { id: 'root_1' }, props: { headline: 1 } });
 // @ts-expect-error - unknown property
-api.add('hero', { parentId: 'root_1', properties: { nope: 'x' } });
+api.add('hero', { parent: { id: 'root_1' }, props: { nope: 'x' } });
 
 declare const settingsApi: TypedEditorApi<Settings>;
 // @ts-expect-error - a block-less schema cannot add blocks (type is never)
-settingsApi.add('anything', { parentId: 'root_1' });
+settingsApi.add('anything', { parent: { id: 'root_1' } });
 
 // --- typed block handle -----------------------------------------------------
 declare const block: NonNullable<BlockHandleOf<Pages>>;
 if (block.type === 'hero') {
-  const headline: string = block.properties.headline;
+  const headline: string = block.props.headline;
   void headline;
   block.set('headline', 'Neu');
   block.set('badge', null);
@@ -192,7 +192,7 @@ if (block.type === 'hero') {
   block.field('nope');
 }
 if (block.type === 'root') {
-  const title: string = block.properties.title;
+  const title: string = block.props.title;
   void title;
   block.set('subtitle', 'x');
 }
@@ -210,7 +210,7 @@ export type _paletteType = Expect<
 >;
 type ChildType = ReturnType<typeof factory.useChildren>[number]['type'];
 export type _childType = Expect<Equal<ChildType, 'hero' | 'section'>>;
-factory.useBlockActions('x').add('hero', { properties: {} });
+factory.useBlockActions('x').add('hero', { props: {} });
 // @ts-expect-error - unknown block type
 factory.useBlockActions('x').add('nope');
 export type _allowedChildTypes = Expect<
@@ -226,22 +226,22 @@ export type _settingsPalette = Expect<
 export type _settingsChildType = Expect<
   Equal<ReturnType<typeof settingsFactory.useChildren>[number]['type'], never>
 >;
-export type _typesTree = Expect<
-  MutuallyAssignable<(typeof factory.types)['tree'], TreeOf<Pages>>
+export type _typesDocument = Expect<
+  MutuallyAssignable<(typeof factory.types)['document'], DocumentOf<Pages>>
 >;
 
 // --- factory Preview render argument + scrollTo -----------------------------
 type PreviewRenderArg = Parameters<
   Parameters<EditorFactory<Pages>['Preview']>[0]['render']
 >[0];
-export type _previewTreeArg = Expect<
-  MutuallyAssignable<PreviewRenderArg, TreeOf<Pages>>
+export type _previewDocumentArg = Expect<
+  MutuallyAssignable<PreviewRenderArg, DocumentOf<Pages>>
 >;
 type FramePreviewRenderArg = Parameters<
   Parameters<EditorFactory<Pages>['FramePreview']>[0]['render']
 >[0];
-export type _framePreviewTreeArg = Expect<
-  MutuallyAssignable<FramePreviewRenderArg, TreeOf<Pages>>
+export type _framePreviewDocumentArg = Expect<
+  MutuallyAssignable<FramePreviewRenderArg, DocumentOf<Pages>>
 >;
 const scrolled: boolean = api.scrollTo('root_1');
 void scrolled;

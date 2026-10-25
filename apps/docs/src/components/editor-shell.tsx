@@ -1,15 +1,16 @@
+export { useEditorChrome } from '../../registry/editor-chrome';
+export type { Device } from '../../registry/editor-chrome';
+export { EditorInspector } from '../../registry/editor-inspector';
+export { EditorOutline } from '../../registry/editor-outline';
+export { EditorPalette } from '../../registry/editor-palette';
 export {
-  EditorInspector,
-  EditorOutline,
-  EditorPalette,
   EditorProvider,
   EditorShell,
   EditorSurface,
-  EditorToolbar,
-  useEditorChrome,
+  useDeviceFrame,
 } from '../../registry/editor-shell';
 export type {
-  Device,
   EditorProviderProps,
   EditorShellProps,
 } from '../../registry/editor-shell';
+export { EditorToolbar } from '../../registry/editor-toolbar';

@@ -1,0 +1,45 @@
+---
+title: Editor rich text
+description: The Tiptap adapter for richText fields, the only editor entry that imports Tiptap.
+---
+
+`@createcms/react/editor/richtext` edits `richText` fields with Tiptap. It is
+the only entry that imports Tiptap, so apps without rich text editing never
+load it. Tiptap is an optional peer dependency: install `@tiptap/core`,
+`@tiptap/pm`, `@tiptap/starter-kit`, `@tiptap/extensions`,
+`@tiptap/extension-link` and `@tiptap/suggestion`, all `~3.32.0`. The entry
+has no React import and no directive.
+
+Load it lazily so Tiptap stays out of the page's initial bundle. It loads
+when a rich text field is first edited, or earlier when the pointer moves
+over one on the canvas:
+
+```tsx
+import { lazyRichTextAdapter } from '@createcms/react/editor/core';
+
+const richText = lazyRichTextAdapter(() =>
+  import('@createcms/react/editor/richtext').then((m) =>
+    m.createTiptapAdapter({ resolveAsset: (id) => `/assets/${id}` }),
+  ),
+);
+
+<Editor.Root schema={schema} defaultValue={doc} richText={richText}>
+  {/* Editor.RichTextField, Editor.FieldControl, Canvas.Root ... */}
+</Editor.Root>;
+```
+
+The editor mounts on the field element (`Editor.RichTextField` in the form,
+the field's own element when editing in place on the canvas). It keeps no
+history of its own: undo and redo run the editor store's history, so one
+undo reverts a whole typing burst across the form and the canvas.
+
+| Name                     | Description                                                                                                                                                                                                                         |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createTiptapAdapter`    | `(options?) => RichTextAdapter` for `Editor.Root richText`. Mounts Tiptap with exactly the nodes and marks the field's `RichTextSchema` allows; anything else is dropped on paste, on `setContent` and by shortcuts.                |
+| `TiptapExtensionOptions` | `resolveAsset?(assetId)`: the URL an image shows while editing (without it images show their alt text); `placeholder?`: the empty field's hint; `collaboration?`: `{ extension, syncOrigin }`, Tiptap's `Collaboration` extension and the origin its sync plugin writes with (`ySyncPluginKey`), so fields with a `RichTextBinding` edit the store's shared text (see the collaboration reference).                                                                                     |
+| `richTextExtensions`     | `(schema, options?) => AnyExtension[]`: the Tiptap extensions for one field schema (one paragraph for `inline` fields, no Tiptap history). For a custom Tiptap setup that stores the same JSON.                                     |
+| `fromTiptapJson`         | `(json) => RichTextDoc`: Tiptap's JSON without its rendering defaults (null attributes, `rel`, `class`), so an unchanged value round-trips unchanged.                                                                                |
+
+See [Rich text](/docs/guides/rich-text) for the stored format, rendering and
+converting HTML, and [Editor reference](/docs/reference/react-editor#rich-text)
+for `Editor.RichTextField`, its toolbar and `{{variable}}` completion.

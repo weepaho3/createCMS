@@ -524,7 +524,17 @@ describe('reference usage index (RB1)', () => {
         branchId: page.branchId,
         parentBlockId: page.rootId,
         type: 'paragraph',
-        properties: { text: 'just text' },
+        properties: {
+          text: {
+            type: 'doc',
+            content: [
+              {
+                type: 'paragraph',
+                content: [{ type: 'text', text: 'just text' }],
+              },
+            ],
+          },
+        },
       },
     });
 

@@ -24,3 +24,20 @@ export function frameSandboxAttribute(
   }
   return tokens.join(' ');
 }
+
+/**
+ * Whether listeners the host adds inside `doc` run. WebKit runs none in a
+ * frame sandboxed without `allow-scripts` (observers still fire), so the
+ * host has to read clicks from its own document there.
+ */
+export function frameListenersRun(doc: Document): boolean {
+  let ran = false;
+  const probe = () => {
+    ran = true;
+  };
+  const EventCtor = doc.defaultView?.Event ?? Event;
+  doc.addEventListener('editor-listener-probe', probe);
+  doc.dispatchEvent(new EventCtor('editor-listener-probe'));
+  doc.removeEventListener('editor-listener-probe', probe);
+  return ran;
+}

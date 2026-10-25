@@ -15,8 +15,11 @@ export {
   BlocksRenderer,
   createContentRenderer,
   getBlockDiff,
-  diffSegmentsToHtml,
   NO_EDIT,
+  RichText,
+  RichTextDiff,
+  renderRichText,
+  richTextLinkHref,
 } from './blocks';
 export type {
   BlocksMap,
@@ -26,10 +29,15 @@ export type {
   BlocksDiffOptions,
   AnnotatedBlockTreeNode,
   BlockDiffAnnotation,
-  TextDiffSegment,
+  RichTextDiffSegment,
   EditAttrs,
   EditProps,
   RendererEditMode,
+  RenderRichTextOptions,
+  RichTextComponents,
+  RichTextDiffProps,
+  RichTextElementProps,
+  RichTextProps,
 } from './blocks';
 export type { EventDeclaration } from '../core/types/definitions';
 export { pickVariant } from './variant';
@@ -37,7 +45,9 @@ export { pickVariant } from './variant';
 // browser from an already loaded map.
 export {
   VAR_PATTERN,
+  extractRichTextVariableKeys,
   extractVariableKeys,
+  resolveTemplateRichText,
   resolveTemplateString,
 } from '../core/variables-template';
 export type {

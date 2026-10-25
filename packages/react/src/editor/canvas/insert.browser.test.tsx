@@ -12,6 +12,9 @@ import {
   insertStackSchema,
   rowStackBlocks,
   rowStackTree,
+  twoSlotBlocks,
+  twoSlotSchema,
+  twoSlotTree,
 } from './test/fixtures';
 import {
   dispatchPointer,
@@ -38,7 +41,7 @@ describe('Canvas insert geometry in a real browser', () => {
   it('column stack inserts at the top gap with a horizontal line', async () => {
     const { host, store } = renderCanvas(
       <Canvas.Overlay>
-        <Canvas.InsertButton placement="between" type="cell">
+        <Canvas.InsertButton delay={0} placement="between" type="cell">
           +
         </Canvas.InsertButton>
       </Canvas.Overlay>,
@@ -59,11 +62,11 @@ describe('Canvas insert geometry in a real browser', () => {
     const button = host.querySelector('[data-editor-insert-button]');
     expect(button).not.toBeNull();
     expect(button?.getAttribute('data-orientation')).toBe('horizontal');
-    const before = [...store.getState().nodes.stack1!.childIds];
+    const before = [...(store.getDoc().nodes.stack1!.slots.children ?? [])];
     button!.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }),
     );
-    const after = store.getState().nodes.stack1!.childIds;
+    const after = store.getDoc().nodes.stack1!.slots.children;
     expect(after.length).toBe(before.length + 1);
     expect(after[0]).not.toBe('c1');
     expect(after[1]).toBe('c1');
@@ -72,7 +75,7 @@ describe('Canvas insert geometry in a real browser', () => {
   it('row stack inserts at the left gap with a vertical line', async () => {
     const { host, store } = renderCanvas(
       <Canvas.Overlay>
-        <Canvas.InsertButton placement="between" type="cell">
+        <Canvas.InsertButton delay={0} placement="between" type="cell">
           +
         </Canvas.InsertButton>
       </Canvas.Overlay>,
@@ -91,11 +94,11 @@ describe('Canvas insert geometry in a real browser', () => {
     const button = host.querySelector('[data-editor-insert-button]');
     expect(button).not.toBeNull();
     expect(button?.getAttribute('data-orientation')).toBe('vertical');
-    const before = [...store.getState().nodes.stack1!.childIds];
+    const before = [...(store.getDoc().nodes.stack1!.slots.children ?? [])];
     button!.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }),
     );
-    const after = store.getState().nodes.stack1!.childIds;
+    const after = store.getDoc().nodes.stack1!.slots.children;
     expect(after.length).toBe(before.length + 1);
     expect(after[0]).not.toBe('c1');
   });
@@ -103,7 +106,7 @@ describe('Canvas insert geometry in a real browser', () => {
   it('grid stack inserts between the top row cells', async () => {
     const { host, store } = renderCanvas(
       <Canvas.Overlay>
-        <Canvas.InsertButton placement="between" type="cell">
+        <Canvas.InsertButton delay={0} placement="between" type="cell">
           +
         </Canvas.InsertButton>
       </Canvas.Overlay>,
@@ -125,11 +128,11 @@ describe('Canvas insert geometry in a real browser', () => {
     const button = host.querySelector('[data-editor-insert-button]');
     expect(button).not.toBeNull();
     expect(button?.getAttribute('data-orientation')).toBe('vertical');
-    const before = [...store.getState().nodes.stack1!.childIds];
+    const before = [...(store.getDoc().nodes.stack1!.slots.children ?? [])];
     button!.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }),
     );
-    const after = store.getState().nodes.stack1!.childIds;
+    const after = store.getDoc().nodes.stack1!.slots.children;
     expect(after.length).toBe(before.length + 1);
     expect(after[1]).not.toBe('c2');
     expect(after[2]).toBe('c2');
@@ -138,10 +141,10 @@ describe('Canvas insert geometry in a real browser', () => {
   it('empty stack shows a container insert box', async () => {
     const { host, store } = renderCanvas(
       <Canvas.Overlay>
-        <Canvas.InsertButton placement="container" type="cell">
+        <Canvas.InsertButton delay={0} placement="container" type="cell">
           +
         </Canvas.InsertButton>
-        <Canvas.InsertButton placement="between" type="cell">
+        <Canvas.InsertButton delay={0} placement="between" type="cell">
           line
         </Canvas.InsertButton>
       </Canvas.Overlay>,
@@ -167,14 +170,14 @@ describe('Canvas insert geometry in a real browser', () => {
       '[data-editor-insert-button]:not([data-empty-container])',
     );
     expect(line).toBeNull();
-    const before = [...store.getState().nodes.stack1!.childIds];
+    const before = [...(store.getDoc().nodes.stack1!.slots.children ?? [])];
     container!.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }),
     );
-    expect(store.getState().nodes.stack1!.childIds.length).toBe(
+    expect(store.getDoc().nodes.stack1!.slots.children?.length).toBe(
       before.length + 1,
     );
-    expect(store.getState().nodes.stack1!.childIds[0]).not.toBeUndefined();
+    expect(store.getDoc().nodes.stack1!.slots.children[0]).not.toBeUndefined();
   });
 
   it('BlockToolbar follows selection with side bottom', async () => {
@@ -256,10 +259,10 @@ describe('Canvas insert geometry in a real browser', () => {
   it('InsertButton disables types the parent rejects', async () => {
     const { host, store } = renderCanvas(
       <Canvas.Overlay>
-        <Canvas.InsertButton placement="container" type="cell">
+        <Canvas.InsertButton delay={0} placement="container" type="cell">
           cell
         </Canvas.InsertButton>
-        <Canvas.InsertButton placement="container" type="heading">
+        <Canvas.InsertButton delay={0} placement="container" type="heading">
           heading
         </Canvas.InsertButton>
       </Canvas.Overlay>,
@@ -281,17 +284,17 @@ describe('Canvas insert geometry in a real browser', () => {
     const headingBtn = buttons[1] as HTMLButtonElement;
     expect(cellBtn.disabled).toBe(false);
     expect(headingBtn.disabled).toBe(true);
-    const before = [...store.getState().nodes.stack1!.childIds];
+    const before = [...(store.getDoc().nodes.stack1!.slots.children ?? [])];
     headingBtn.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }),
     );
-    expect(store.getState().nodes.stack1!.childIds).toEqual(before);
+    expect(store.getDoc().nodes.stack1!.slots.children ?? []).toEqual(before);
   });
 
   it('select mode hides InsertButton but keeps BlockToolbar', async () => {
     const { host, store } = renderCanvas(
       <Canvas.Overlay>
-        <Canvas.InsertButton placement="between" type="cell">
+        <Canvas.InsertButton delay={0} placement="between" type="cell">
           +
         </Canvas.InsertButton>
         <Canvas.BlockToolbar />
@@ -314,5 +317,41 @@ describe('Canvas insert geometry in a real browser', () => {
     await waitForLayout(host);
     expect(host.querySelector('[data-editor-insert-button]')).toBeNull();
     expect(host.querySelector('[data-editor-block-toolbar]')).not.toBeNull();
+  });
+});
+
+describe('Canvas insert into named slots in a real browser', () => {
+  it('targets the empty right slot by its own element', async () => {
+    const { host, store } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.InsertButton delay={0} placement="container" type="cell">
+          +
+        </Canvas.InsertButton>
+      </Canvas.Overlay>,
+      { schema: twoSlotSchema, tree: twoSlotTree(), components: twoSlotBlocks },
+    );
+    const right = host.querySelector('[data-editor-slot="right"]');
+    expect(right).not.toBeNull();
+    await waitForLayout(right!);
+    store.hover('cols');
+    const box = rectOf(right!);
+    dispatchPointer(host, 'pointermove', {
+      x: box.x + box.width / 2,
+      y: box.y + box.height / 2,
+    });
+    await waitForLayout(host);
+    const container = host.querySelector('[data-empty-container]');
+    expect(container).not.toBeNull();
+    container!.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true }),
+    );
+    const cols = store.getDoc().nodes.cols!;
+    expect(cols.slots.left).toEqual(['c1']);
+    expect(cols.slots.right).toHaveLength(1);
+    const added = cols.slots.right![0]!;
+    expect(store.getDoc().nodes[added]?.parent).toEqual({
+      id: 'cols',
+      slot: 'right',
+    });
   });
 });
