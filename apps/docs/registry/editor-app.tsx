@@ -47,6 +47,7 @@ import {
   HoverRing,
   InlineText,
   InsertButton,
+  IssueMarker,
   Overlay,
   ParentRing,
   SelectionRing,
@@ -276,6 +277,7 @@ function CanvasOverlays() {
         <SelectionRing />
         <HoverRing />
         <FieldRing />
+        <IssueMarker />
         <InsertButton placement="between" onInsert={() => setAddOpen(true)} />
         <InsertButton placement="container" onInsert={() => setAddOpen(true)} />
         <InlineText />

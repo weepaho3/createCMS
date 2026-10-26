@@ -118,6 +118,29 @@
   outline-offset: -1px;
 }
 
+/* A block with problems: a dashed ring and a count badge at its corner. */
+[data-slot='editor-issue-marker'] {
+  border: 1px dashed var(--editor-issue, oklch(0.577 0.245 27.325));
+  border-radius: var(--el-radius, 0);
+}
+
+[data-slot='editor-issue-marker'] [data-editor-issue-badge] {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--editor-issue, oklch(0.577 0.245 27.325));
+  color: white;
+  font:
+    600 10px/16px system-ui,
+    sans-serif;
+  text-align: center;
+  cursor: pointer;
+}
+
 /* A cut-off edge draws no line. */
 [data-slot='editor-selection-ring'][data-clamped-top],
 [data-slot='editor-hover-ring'][data-clamped-top] {

@@ -7,6 +7,7 @@ export {
   HoverRing,
   InlineText,
   InsertButton,
+  IssueMarker,
   Overlay,
   PaletteItem,
   ParentRing,

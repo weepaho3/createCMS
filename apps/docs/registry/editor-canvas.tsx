@@ -83,6 +83,19 @@ function ParentRing({
   );
 }
 
+function IssueMarker({
+  className,
+  ...props
+}: React.ComponentProps<typeof Canvas.IssueMarker>) {
+  return (
+    <Canvas.IssueMarker
+      data-slot="editor-issue-marker"
+      className={cn(className)}
+      {...props}
+    />
+  );
+}
+
 function HoverRing({
   className,
   ...props
@@ -432,6 +445,7 @@ export {
   HoverRing,
   InlineText,
   InsertButton,
+  IssueMarker,
   Overlay,
   PaletteItem,
   ParentRing,

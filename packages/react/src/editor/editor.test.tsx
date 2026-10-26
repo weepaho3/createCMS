@@ -97,6 +97,8 @@ describe('namespace shape', () => {
       'Root',
       'Overlay',
       'SelectionRing',
+      'ParentRing',
+      'IssueMarker',
       'HoverRing',
       'FieldRing',
       'BlockToolbar',

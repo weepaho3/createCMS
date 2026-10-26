@@ -65,6 +65,7 @@ export const messagesDe: Messages = {
     listMoveDownText: 'Nach unten',
     errorSummaryTitle: (p) =>
       p.count === 1 ? '1 Problem beheben' : `${p.count} Probleme beheben`,
+    issueMarker: (p) => `${p.block}: ${p.issues.join('; ')}`,
     shortcutsTitle: 'Tastenkürzel',
     shortcutsClose: 'Schließen',
     blockToolbar: (p) => `Aktionen für ${p.label}`,

@@ -43,6 +43,11 @@ export type Messages = {
     readonly listMoveDown: (p: { label: string; position: number }) => string;
     readonly listMoveDownText: string;
     readonly errorSummaryTitle: (p: { count: number }) => string;
+    /** `Canvas.IssueMarker`: the block and its problems. */
+    readonly issueMarker: (p: {
+      block: string;
+      issues: readonly string[];
+    }) => string;
     readonly shortcutsTitle: string;
     readonly shortcutsClose: string;
     readonly blockToolbar: (p: { label: string }) => string;
@@ -214,6 +219,7 @@ export const EN_MESSAGES: Messages = {
     listMoveDownText: 'Move down',
     errorSummaryTitle: (p) =>
       p.count === 1 ? '1 problem to fix' : `${p.count} problems to fix`,
+    issueMarker: (p) => `${p.block}: ${p.issues.join('; ')}`,
     shortcutsTitle: 'Keyboard shortcuts',
     shortcutsClose: 'Close',
     blockToolbar: (p) => `${p.label} actions`,

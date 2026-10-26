@@ -16,6 +16,7 @@ import {
 } from './dnd-parts';
 import { CanvasInlineText } from './inline-parts';
 import { CanvasInlineRichTextToolbar } from './inline-rich-text';
+import { CanvasIssueMarker } from './issue-marker';
 import {
   CanvasFieldRing,
   CanvasHoverRing,
@@ -114,6 +115,7 @@ export type {
   CanvasRingState,
   CanvasSelectionRingProps,
 } from './overlay';
+export type { CanvasBlockIssue, CanvasIssueMarkerProps } from './issue-marker';
 export type { CanvasRect } from './rect';
 export type { CanvasResolve, FieldResolver } from './resolve';
 export type { PointerSnapshot, PointerStore } from './pointer';
@@ -139,6 +141,7 @@ export const Canvas = {
   Overlay: CanvasOverlay,
   SelectionRing: CanvasSelectionRing,
   ParentRing: CanvasParentRing,
+  IssueMarker: CanvasIssueMarker,
   HoverRing: CanvasHoverRing,
   FieldRing: CanvasFieldRing,
   BlockToolbar: CanvasBlockToolbar,
