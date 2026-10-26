@@ -5,13 +5,18 @@ import type { FramePreviewAnchor } from './frame-anchor';
 import type { FramePreviewIssue } from './frame-issues';
 
 import { useRender } from '../../use-render';
-import { useDocSelector, useSessionSelector } from '../binding';
+import {
+  useDocSelector,
+  useEphemeralSelector,
+  useSessionSelector,
+} from '../binding';
 import { useEditorContext } from '../context';
 import { bindEditorClipboard, bindEditorKeyboard } from '../keyboard';
 import { scrollElementIntoView } from '../scroll';
 import { PREVIEW_DEBOUNCE_MS } from './components';
 import { frameClickAnchor } from './frame-anchor';
 import { collectFrameIssues } from './frame-issues';
+import { FrameRings } from './frame-rings';
 import { frameListenersRun, frameSandboxAttribute } from './frame-sandbox';
 
 export type { FramePreviewAnchor } from './frame-anchor';
@@ -34,6 +39,11 @@ export type EditorFramePreviewProps = Omit<
   onError?: (error: unknown) => void;
   sandbox?: string;
   title?: string;
+  /**
+   * Draws selection and hover rings over the frame (default `true`); they
+   * need a readable frame document, so `selectable` or `allow-same-origin`.
+   */
+  rings?: boolean;
 };
 
 type FramePreviewState = {
@@ -67,6 +77,15 @@ function frameStyle(hidden: boolean): React.CSSProperties {
   };
 }
 
+/** The frame's document when the host may read it. */
+function frontDoc(iframe: HTMLIFrameElement | null): Document | null {
+  try {
+    return iframe?.contentDocument ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function revokeSlot(slot: FrameSlot): void {
   if (slot.src && slot.src.startsWith('blob:')) {
     URL.revokeObjectURL(slot.src);
@@ -82,6 +101,7 @@ export function EditorFramePreview({
   onError,
   sandbox,
   title,
+  rings = true,
   style,
   ...rest
 }: EditorFramePreviewProps) {
@@ -91,6 +111,8 @@ export function EditorFramePreview({
   const highlightId = useSessionSelector(
     (s) => s.focusedField?.blockId ?? s.selection[0] ?? null,
   );
+  const selectedId = useSessionSelector((s) => s.selection[0] ?? null);
+  const hoveredId = useEphemeralSelector((s) => s.hoverId);
   const delay = Math.max(0, debounceMs ?? PREVIEW_DEBOUNCE_MS);
   const sandboxAttr = frameSandboxAttribute(selectable, sandbox);
 
@@ -147,6 +169,14 @@ export function EditorFramePreview({
     );
   }, []);
 
+  const hoverAt = React.useCallback((target: EventTarget | null) => {
+    const anchor = frameClickAnchor(target, resolveAnchorRef.current);
+    const next = anchor?.blockId ?? null;
+    if (storeRef.current.getEphemeral().hoverId !== next) {
+      storeRef.current.hover(next);
+    }
+  }, []);
+
   const bindClicks = React.useCallback(
     (iframe: HTMLIFrameElement | null) => {
       unbindClicksRef.current?.();
@@ -163,17 +193,27 @@ export function EditorFramePreview({
         event.preventDefault();
         selectAt(event.target);
       };
+      const onOver = (event: Event) => {
+        hoverAt(event.target);
+      };
+      const onLeave = () => {
+        storeRef.current.hover(null);
+      };
       doc.addEventListener('click', onClick, true);
+      doc.addEventListener('pointerover', onOver);
+      doc.documentElement.addEventListener('pointerleave', onLeave);
       // Key and clipboard events inside the frame never reach the host document.
       const unbindKeys = bindEditorKeyboard(storeRef.current, doc);
       const unbindClipboard = bindEditorClipboard(storeRef.current, doc);
       unbindClicksRef.current = () => {
         doc.removeEventListener('click', onClick, true);
+        doc.removeEventListener('pointerover', onOver);
+        doc.documentElement.removeEventListener('pointerleave', onLeave);
         unbindKeys();
         unbindClipboard();
       };
     },
-    [selectAt],
+    [selectAt, hoverAt],
   );
 
   const finishLoad = React.useCallback(
@@ -347,6 +387,17 @@ export function EditorFramePreview({
     );
   });
 
+  const ringLayer =
+    rings && kind === 'html' ? (
+      <FrameRings
+        doc={frontDoc(iframeRefs.current[front])}
+        selected={selectedId}
+        hovered={hoveredId}
+        version={displayedVersion}
+        blockType={(id) => ctx.store.getDoc().nodes[id]?.type ?? null}
+      />
+    ) : null;
+
   return useRender<'div', FramePreviewState>({
     defaultTagName: 'div',
     props: {
@@ -361,6 +412,7 @@ export function EditorFramePreview({
         shield && selectable && kind === 'html' ? (
           <>
             {frames}
+            {ringLayer}
             <div
               data-editor-frame-shield=""
               style={{ position: 'absolute', inset: 0 }}
@@ -376,6 +428,19 @@ export function EditorFramePreview({
                   ),
                 );
               }}
+              onPointerMove={(event) => {
+                const iframe = iframeRefs.current[front];
+                const doc = iframe?.contentDocument;
+                if (!iframe || !doc) return;
+                const rect = iframe.getBoundingClientRect();
+                hoverAt(
+                  doc.elementFromPoint(
+                    event.clientX - rect.left,
+                    event.clientY - rect.top,
+                  ),
+                );
+              }}
+              onPointerLeave={() => ctx.store.hover(null)}
               onWheel={(event) => {
                 iframeRefs.current[front]?.contentWindow?.scrollBy(
                   event.deltaX,
@@ -385,7 +450,10 @@ export function EditorFramePreview({
             />
           </>
         ) : (
-          frames
+          <>
+            {frames}
+            {ringLayer}
+          </>
         ),
     },
     state: { loading, stale, error, kind },

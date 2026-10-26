@@ -40,7 +40,7 @@ function EditorEmail({ className, blockId, render }: EditorEmailProps) {
           selectable
           render={render}
           onIssues={setIssues}
-          className="min-h-64 flex-1"
+          className="min-h-64 flex-1 [&_[data-editor-hover-ring]]:shadow-[inset_0_0_0_1px_var(--editor-hover,var(--editor-drop))] [&_[data-editor-selection-ring]]:shadow-[inset_0_0_0_2px_var(--editor-selection,var(--editor-drop))]"
         />
         {issues.length > 0 ? (
           <aside className="border-border max-h-48 overflow-y-auto rounded-md border p-2">

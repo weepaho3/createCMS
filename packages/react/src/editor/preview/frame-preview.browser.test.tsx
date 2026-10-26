@@ -381,3 +381,116 @@ describe('Editor.FramePreview in a real browser', () => {
     );
   });
 });
+
+describe('Editor.FramePreview rings', () => {
+  async function loaded(host: HTMLElement) {
+    await waitFor(
+      () => {
+        const block = frontFrame(host).contentDocument?.querySelector(
+          '[data-editor-block="h1"]',
+        );
+        expect(block).toBeTruthy();
+        expect(block!.getBoundingClientRect().height).toBeGreaterThan(0);
+      },
+      { timeout: 5000 },
+    );
+    return frontFrame(host).contentDocument!.querySelector(
+      '[data-editor-block="h1"]',
+    )!;
+  }
+
+  it('draws a selection ring over the selected block in the frame', async () => {
+    const { host, store } = renderFrame({
+      html: HEADING_HTML,
+      selectable: true,
+    });
+    const block = await loaded(host);
+    act(() => store.select('h1'));
+    await waitFor(() => {
+      const ring = host.querySelector(
+        '[data-editor-selection-ring][data-editor-frame-ring]',
+      );
+      expect(ring).not.toBeNull();
+      const frame = frontFrame(host).getBoundingClientRect();
+      const inner = block.getBoundingClientRect();
+      const r = ring!.getBoundingClientRect();
+      expect(Math.abs(r.left - (frame.left + inner.left))).toBeLessThan(1);
+      expect(Math.abs(r.top - (frame.top + inner.top))).toBeLessThan(1);
+      expect(Math.abs(r.width - inner.width)).toBeLessThan(1);
+      expect(ring!.getAttribute('data-block-type')).toBe('heading');
+    });
+  });
+
+  it('hovering a block in the frame hovers it in the store and rings it', async () => {
+    const { host, store } = renderFrame({
+      html: HEADING_HTML,
+      selectable: true,
+    });
+    const block = await loaded(host);
+    if (noFrameListeners) {
+      await waitFor(() => {
+        expect(host.querySelector('[data-editor-frame-shield]')).not.toBeNull();
+      });
+      const frame = frontFrame(host).getBoundingClientRect();
+      const r = block.getBoundingClientRect();
+      host.querySelector('[data-editor-frame-shield]')!.dispatchEvent(
+        new PointerEvent('pointermove', {
+          bubbles: true,
+          clientX: frame.left + r.left + 5,
+          clientY: frame.top + r.top + 5,
+        }),
+      );
+    } else {
+      act(() => {
+        block.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+      });
+    }
+    await waitFor(() => {
+      expect(store.getEphemeral().hoverId).toBe('h1');
+      expect(
+        host.querySelector('[data-editor-hover-ring][data-editor-frame-ring]'),
+      ).not.toBeNull();
+    });
+  });
+
+  it('draws no rings with rings={false}', async () => {
+    const probe: Probe = { store: null };
+    const utils = render(
+      <Editor.Root schema={storeSchema} defaultValue={makeDoc()}>
+        <StoreProbe probe={probe} />
+        <Editor.FramePreview
+          data-testid="fp"
+          debounceMs={0}
+          selectable
+          rings={false}
+          style={{ height: 240 }}
+          render={async () => HEADING_HTML}
+        />
+      </Editor.Root>,
+    );
+    const host = utils.getByTestId('fp');
+    await loaded(host);
+    act(() => probe.store!.select('h1'));
+    expect(host.querySelector('[data-editor-frame-ring]')).toBeNull();
+  });
+
+  it('the selection ring follows a scroll inside the frame', async () => {
+    const { host, store } = renderFrame({
+      html: '<div style="height:400px"></div>' + HEADING_HTML,
+      selectable: true,
+    });
+    await loaded(host);
+    act(() => store.select('h1'));
+    const ringTop = () =>
+      host
+        .querySelector('[data-editor-selection-ring][data-editor-frame-ring]')
+        ?.getBoundingClientRect().top ?? null;
+    await waitFor(() => expect(ringTop()).not.toBeNull());
+    const view = frontFrame(host).contentWindow!;
+    const before = ringTop()! + view.scrollY;
+    view.scrollTo(0, 100);
+    await waitFor(() => {
+      expect(Math.abs(ringTop()! + view.scrollY - before)).toBeLessThan(1);
+    });
+  });
+});
