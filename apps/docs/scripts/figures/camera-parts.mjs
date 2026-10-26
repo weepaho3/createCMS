@@ -397,8 +397,8 @@ export function makeMachine(P) {
     return out.join('');
   }
 
-  // Light table with a developed film strip laid out on it: the commit chain. `frames` is how many frames are exposed.
-  function filmTable(frames = 1) {
+  // Light table the developed film strip lies on: the commit chain.
+  function filmTable() {
     const out = [
       slab(TABLE, 0, TABLE_H, 'lo', 4, 0.6, {
         inner: seams(TABLE, [TABLE_H - 1.4], 'lo'),
