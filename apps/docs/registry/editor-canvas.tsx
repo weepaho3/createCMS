@@ -70,6 +70,19 @@ function SelectionRing({
   );
 }
 
+function ParentRing({
+  className,
+  ...props
+}: React.ComponentProps<typeof Canvas.ParentRing>) {
+  return (
+    <Canvas.ParentRing
+      data-slot="editor-parent-ring"
+      className={cn(ringMotion, className)}
+      {...props}
+    />
+  );
+}
+
 function HoverRing({
   className,
   ...props
@@ -421,5 +434,6 @@ export {
   InsertButton,
   Overlay,
   PaletteItem,
+  ParentRing,
   SelectionRing,
 };

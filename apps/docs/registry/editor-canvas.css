@@ -91,6 +91,7 @@
 /* Rings follow their block exactly: no transition on position or size,
    only on opacity when chrome appears. */
 [data-slot='editor-selection-ring'],
+[data-slot='editor-parent-ring'],
 [data-slot='editor-hover-ring'] {
   transition-property: opacity;
   transition-duration: var(--editor-duration, 150ms);
@@ -108,6 +109,12 @@
   box-shadow:
     inset 0 0 0 2px var(--editor-selection, var(--editor-drop)),
     0 0 0 1px rgb(255 255 255 / 0.7);
+}
+
+/* The container the selection sits in. */
+[data-slot='editor-parent-ring'] {
+  outline: 1px dashed var(--editor-selection, var(--editor-drop));
+  outline-offset: -1px;
 }
 
 /* A cut-off edge draws no line. */
@@ -144,6 +151,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   [data-slot='editor-selection-ring'],
+  [data-slot='editor-parent-ring'],
   [data-slot='editor-hover-ring'],
   [data-slot='editor-drop-indicator'],
   [data-slot='editor-block-toolbar'],

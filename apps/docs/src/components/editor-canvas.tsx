@@ -9,5 +9,6 @@ export {
   InsertButton,
   Overlay,
   PaletteItem,
+  ParentRing,
   SelectionRing,
 } from '../../registry/editor-canvas';

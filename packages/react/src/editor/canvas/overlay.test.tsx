@@ -2,9 +2,11 @@
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { createEditorStore } from '../core/store';
 import { makeDoc, storeSchema } from '../core/store/fixtures';
 import { Editor } from '../index';
 import { Canvas, useBlockRect } from './index';
+import { selectionAncestors } from './overlay';
 import { canvasBlocks } from './test/fixtures';
 import { renderCanvas } from './test/harness';
 
@@ -96,5 +98,43 @@ describe('Canvas rings', () => {
       store.setEditing({ blockId: 'h1', key: 'text' });
     });
     expect(host.querySelector('[data-editor-hover-ring]')).toBeNull();
+  });
+});
+
+describe('Canvas.ParentRing', () => {
+  it('lists ancestors nearest first and never the root', () => {
+    const { nodes } = createEditorStore({
+      schema: storeSchema,
+      initialValue: makeDoc(),
+    }).getDoc();
+    expect(selectionAncestors(nodes, 'p1', 1)).toEqual(['sec1']);
+    expect(selectionAncestors(nodes, 'p1', 5)).toEqual(['sec1']);
+    expect(selectionAncestors(nodes, 'h1', 1)).toEqual([]);
+    expect(selectionAncestors(nodes, 'sec1', 1)).toEqual([]);
+    expect(selectionAncestors(nodes, null, 1)).toEqual([]);
+  });
+
+  it('rings the parent of a nested selection', () => {
+    const { host, store } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.ParentRing />
+      </Canvas.Overlay>,
+    );
+    act(() => store.select('p1'));
+    const rings = host.querySelectorAll('[data-editor-parent-ring]');
+    expect(rings).toHaveLength(1);
+    expect(rings[0]!.getAttribute('data-depth')).toBe('1');
+    expect(rings[0]!.getAttribute('data-block-type')).toBe('section');
+    expect(rings[0]!.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('draws nothing for a block directly under the root', () => {
+    const { host, store } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.ParentRing depth={3} />
+      </Canvas.Overlay>,
+    );
+    act(() => store.select('h1'));
+    expect(host.querySelector('[data-editor-parent-ring]')).toBeNull();
   });
 });

@@ -48,6 +48,7 @@ import {
   InlineText,
   InsertButton,
   Overlay,
+  ParentRing,
   SelectionRing,
 } from './editor-canvas';
 import { useEditorChrome } from './editor-chrome';
@@ -271,6 +272,7 @@ function CanvasOverlays() {
   return (
     <>
       <Overlay>
+        <ParentRing />
         <SelectionRing />
         <HoverRing />
         <FieldRing />

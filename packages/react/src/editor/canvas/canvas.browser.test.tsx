@@ -156,6 +156,21 @@ describe('Canvas overlay rings', () => {
     expect(rectClose(rectOf(ring!), rectOf(block!))).toBe(true);
   });
 
+  it('ParentRing matches the section around a selected paragraph', async () => {
+    const { host, store } = renderCanvas(
+      <Canvas.Overlay>
+        <Canvas.ParentRing />
+      </Canvas.Overlay>,
+    );
+    store.select('p1');
+    const section = host.querySelector('[data-editor-block="sec1"]');
+    expect(section).not.toBeNull();
+    await waitForLayout(section!);
+    const ring = host.querySelector('[data-editor-parent-ring]');
+    expect(ring).not.toBeNull();
+    expect(rectClose(rectOf(ring!), rectOf(section!))).toBe(true);
+  });
+
   it('SelectionRing stays aligned after resize', async () => {
     const { host, store } = renderCanvas(
       <Canvas.Overlay>

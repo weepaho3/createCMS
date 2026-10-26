@@ -385,6 +385,7 @@ below 1 ms either way); a browser test keeps it under 1.5 times inline.
 | `data-editor-email-wrapper`  | `emailFrame` wrapper                 | The centered e-mail table.                                                                                                                                |
 | `Canvas.Overlay`       | `div`           | `layer` (`surface` default, `host`), `render`, div props. Portals into the canvas host, or over a frame into the host-page layer.                                                                             | `data-editor-overlay`                                                                                     |
 | `Canvas.SelectionRing` | `div`           | `render`, div props. Sized from the selected block rect.                                                                       | `data-editor-selection-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`    |
+| `Canvas.ParentRing` | `div` | `render`, `depth` (default 1), div props. One ring per ancestor of the primary selection, never the root; hidden while dragging or editing. | `data-editor-parent-ring`, `data-depth`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved` |
 | `Canvas.HoverRing`     | `div`           | `render`, div props. Hidden while dragging, editing, or when hovered equals selected.                                          | `data-editor-hover-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
 | `Canvas.FieldRing`     | `div`           | `render`, div props. Sized from the focused field rect (own-block only); shown while that block is selected, hidden during a drag. | `data-editor-field-ring`, `data-block-type`, `data-can-move`, `data-can-delete`, `data-unresolved`        |
 | `Canvas.BlockToolbar`  | `div`           | `align`, `side`, `offset`, `render`, div props. Consumer supplies buttons. Shown in `edit` and `select`. Pins inside the visible block when `side="top"` would clip; on the host layer the page's scroll containers around the frame count too. Named from the catalog (`parts.blockToolbar`), one tab stop, Alt+F10 entry. | `data-editor-block-toolbar`, `data-side`, `data-block-type`                                               |
@@ -423,6 +424,7 @@ below 1 ms either way); a browser test keeps it under 1.5 times inline.
 | `CanvasRootProps`            | Props of `Canvas.Root`.                                                                           |
 | `CanvasOverlayProps`         | Props of `Canvas.Overlay`.                                                                        |
 | `CanvasSelectionRingProps`   | Props of `Canvas.SelectionRing`.                                                                  |
+| `CanvasParentRingProps` | Props of `Canvas.ParentRing`. |
 | `CanvasHoverRingProps`       | Props of `Canvas.HoverRing`.                                                                      |
 | `CanvasFieldRingProps`       | Props of `Canvas.FieldRing`.                                                                      |
 | `CanvasRingState`            | `blockType`, `canMove`, `canDelete`, `unresolved` on every ring.                                  |
@@ -542,6 +544,7 @@ client component.
 | `data-kind`                  | drop indicator, drag preview         | `'new'` or `'move'`.                                                                                                                                    |
 | `data-variant`               | `Canvas.DropIndicator`               | `'line'` or `'box'`.                                                                                                                                    |
 | `data-editor-selection-ring` | `Canvas.SelectionRing`               | Presence marker.                                                                                                                                        |
+| `data-editor-parent-ring` | `Canvas.ParentRing` | Presence marker; `data-depth` is 1 for the direct parent. |
 | `data-editor-hover-ring`     | `Canvas.HoverRing`                   | Presence marker.                                                                                                                                        |
 | `data-editor-field-ring`     | `Canvas.FieldRing`                   | Presence marker.                                                                                                                                        |
 | `data-block-type`            | rings                                | Store node type. Omitted when the id is unknown.                                                                                                        |

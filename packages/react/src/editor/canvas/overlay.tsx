@@ -61,6 +61,13 @@ type HoverRingState = CanvasRingState & {
   editorHoverRing: boolean;
 };
 
+type ParentRingState = CanvasRingState & {
+  state: 'parent';
+  /** 1 for the direct parent of the selection, 2 for its parent, … */
+  depth: number;
+  editorParentRing: boolean;
+};
+
 type FieldRingState = CanvasRingState & {
   editorFieldRing: boolean;
 };
@@ -71,6 +78,15 @@ export type CanvasSelectionRingProps = React.ComponentPropsWithRef<'div'> & {
 
 export type CanvasHoverRingProps = React.ComponentPropsWithRef<'div'> & {
   render?: UseRenderComponentProps<'div', HoverRingState>['render'];
+};
+
+export type CanvasParentRingProps = Omit<
+  React.ComponentPropsWithRef<'div'>,
+  'children'
+> & {
+  /** How many ancestors of the primary selection get a ring (default 1). */
+  depth?: number;
+  render?: UseRenderComponentProps<'div', ParentRingState>['render'];
 };
 
 export type CanvasFieldRingProps = React.ComponentPropsWithRef<'div'> & {
@@ -293,6 +309,75 @@ export function CanvasHoverRing({
   if (canvas.dragging || canvas.editing) return null;
   if (hovered !== null && hovered === selected) return null;
   if (hovered === null || rect === null) return null;
+  return element;
+}
+
+/**
+ * The ancestors of the primary selection, nearest first, up to `depth`;
+ * never the root.
+ */
+export function selectionAncestors(
+  nodes: Readonly<Record<string, FlatNode>>,
+  selected: string | null,
+  depth: number,
+): string[] {
+  const out: string[] = [];
+  let up = selected ? (nodes[selected]?.parent?.id ?? null) : null;
+  while (up !== null && out.length < depth) {
+    const parent = nodes[up]?.parent ?? null;
+    if (parent === null) break;
+    out.push(up);
+    up = parent.id;
+  }
+  return out;
+}
+
+/**
+ * One ring per ancestor of the primary selection (the container it sits
+ * in), `data-depth` 1 for the direct parent. Hidden while dragging or
+ * editing. Draw it under `Canvas.SelectionRing`, typically dashed.
+ */
+export function CanvasParentRing({
+  depth = 1,
+  ...props
+}: CanvasParentRingProps) {
+  const canvas = useCanvasContext('Canvas.ParentRing');
+  const selected = useSessionSelector((s) => s.selection[0] ?? null);
+  const chain = useDocSelector((s) =>
+    selectionAncestors(s.nodes, selected, depth).join('\0'),
+  );
+  if (canvas.dragging || canvas.editing || chain === '') return null;
+  return chain
+    .split('\0')
+    .map((id, index) => (
+      <ParentRingItem key={id} id={id} depth={index + 1} {...props} />
+    ));
+}
+
+function ParentRingItem({
+  id,
+  depth,
+  render,
+  style,
+  ...rest
+}: Omit<CanvasParentRingProps, 'depth'> & { id: string; depth: number }) {
+  const canvas = useCanvasContext('Canvas.ParentRing');
+  const node = useDocSelector((s) => s.nodes[id] ?? null);
+  const rect = useMeasuredRect(canvas.measurer, 'visible', id);
+  const flags = ringFlags(canvas.host, node, id, rect);
+  const element = useRender<'div', ParentRingState>({
+    defaultTagName: 'div',
+    render,
+    props: {
+      ...rest,
+      'aria-hidden': true,
+      style: rect
+        ? { ...ringStyle(rect, radiusOf(canvas.host, id)), ...style }
+        : style,
+    },
+    state: { ...flags, state: 'parent', depth, editorParentRing: true },
+  });
+  if (rect === null) return null;
   return element;
 }
 

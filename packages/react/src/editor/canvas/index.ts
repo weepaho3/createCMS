@@ -20,6 +20,7 @@ import {
   CanvasFieldRing,
   CanvasHoverRing,
   CanvasOverlay,
+  CanvasParentRing,
   CanvasSelectionRing,
 } from './overlay';
 import { CanvasProvider } from './provider';
@@ -109,6 +110,7 @@ export type {
   CanvasFieldRingProps,
   CanvasHoverRingProps,
   CanvasOverlayProps,
+  CanvasParentRingProps,
   CanvasRingState,
   CanvasSelectionRingProps,
 } from './overlay';
@@ -136,6 +138,7 @@ export const Canvas = {
   Root: CanvasRoot,
   Overlay: CanvasOverlay,
   SelectionRing: CanvasSelectionRing,
+  ParentRing: CanvasParentRing,
   HoverRing: CanvasHoverRing,
   FieldRing: CanvasFieldRing,
   BlockToolbar: CanvasBlockToolbar,
