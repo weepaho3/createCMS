@@ -9,6 +9,7 @@ import { isHTMLElement } from '../dom';
 import { blockElements } from './anchors';
 import { adjustMoveIndex, planMultiMove } from './dnd';
 import { stickyTarget } from './drag-geometry';
+import { FLASH_MS, flashBlocks } from './flash';
 import {
   contentPointFromClient,
   createInsertAdapters,
@@ -50,15 +51,7 @@ function focusBlock(host: HTMLElement, id: string): void {
 }
 
 /** How long dropped blocks carry `data-dropped` (the drop flash). */
-export const DROP_FLASH_MS = 700;
-
-function flashDropped(host: HTMLElement, ids: readonly string[]): void {
-  const els = ids.flatMap((id) => blockElements(host, id));
-  for (const el of els) el.setAttribute('data-dropped', '');
-  setTimeout(() => {
-    for (const el of els) el.removeAttribute('data-dropped');
-  }, DROP_FLASH_MS);
-}
+export const DROP_FLASH_MS = FLASH_MS;
 
 function containsClientPoint(
   entry: CanvasSurfaceHandle,
@@ -264,7 +257,7 @@ export function createDragEngine(deps: {
         store.setSelection(landed);
         if (dropHost) {
           focusBlock(dropHost, landed[0]!);
-          flashDropped(dropHost, landed);
+          flashBlocks(dropHost, landed, 'data-dropped');
         }
       }
       dnd.end();

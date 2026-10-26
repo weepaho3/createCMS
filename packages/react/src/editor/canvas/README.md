@@ -470,43 +470,44 @@ client component.
 
 ## Data attributes
 
-| Attribute                      | Where                                | Meaning                                                                                                                    |
-| ------------------------------ | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| `data-editor-canvas`           | host                                 | Presence marker.                                                                                                           |
-| `data-interactive`             | host                                 | `'edit'`, `'select'`, or `'none'`.                                                                                         |
-| `data-dragging`                | host, drag handle, palette item      | Present on the host while any canvas drag session is active; on a handle or palette item while that part owns the session. |
-| `data-editing`                 | host, inline glass                   | Present while the local selection has an inline-editing target.                                                            |
-| `data-editor-block`            | block root via `edit.block`          | Document-tree block id.                                                                                                    |
-| `data-editor-field`            | field element via `edit.field.<key>` | Field key, counted only inside its own block.                                                                              |
-| `data-editor-slot`             | slot element via `edit.slot.<name>`  | Slot name; the slot's children render inside this element.                                                                 |
-| `data-unresolved`              | block root via `edit.block`; rings   | Present when a resolved value is pending or missing. On a ring: any measured block element for that id has the attribute.  |
-| `data-editor-readonly`         | `Canvas.ReadonlySubtree`             | Together with `inert`, excludes the subtree from click-select and measurement.                                             |
-| `data-editor-overlay`          | Overlay host                         | Presence marker. `pointer-events: none`; not `aria-hidden`.                                                                |
-| `data-editor-block-toolbar`    | `Canvas.BlockToolbar` inner chrome   | Presence marker. `role="toolbar"`.                                                                                         |
-| `data-editor-insert-button`    | `Canvas.InsertButton`                | Presence marker.                                                                                                           |
-| `data-side`                    | `Canvas.BlockToolbar`                | `'top'` or `'bottom'`.                                                                                                     |
-| `data-orientation`             | `Canvas.InsertButton`                | `'horizontal'` or `'vertical'`.                                                                                            |
-| `data-empty-container`         | `Canvas.InsertButton`                | Present when the target variant is `box`.                                                                                  |
-| `data-editor-drag-handle`      | `Canvas.DragHandle`                  | Presence marker.                                                                                                           |
-| `data-editor-palette-item`     | `Canvas.PaletteItem`                 | Presence marker.                                                                                                           |
-| `data-editor-drop-indicator`   | `Canvas.DropIndicator`               | Presence marker. `aria-hidden`.                                                                                            |
-| `data-editor-drag-preview`     | `Canvas.DragPreview`                 | Presence marker. `aria-hidden`.                                                                                            |
-| `data-kind`                    | drop indicator, drag preview         | `'new'` or `'move'`.                                                                                                       |
-| `data-variant`                 | `Canvas.DropIndicator`               | `'line'` or `'box'`.                                                                                                       |
-| `data-editor-selection-ring`   | `Canvas.SelectionRing`               | Presence marker.                                                                                                           |
-| `data-editor-parent-ring`      | `Canvas.ParentRing`                  | Presence marker; `data-depth` is 1 for the direct parent.                                                                  |
-| `data-editor-hover-ring`       | `Canvas.HoverRing`                   | Presence marker.                                                                                                           |
-| `data-editor-field-ring`       | `Canvas.FieldRing`                   | Presence marker.                                                                                                           |
-| `data-block-type`              | rings                                | Store node type. Omitted when the id is unknown.                                                                           |
-| `data-can-move`                | rings                                | Present when the block is not the root.                                                                                    |
-| `data-can-delete`              | rings                                | Present when the block is not the root.                                                                                    |
-| `data-editor-inline-text`      | `Canvas.InlineText` glass            | Presence marker. `role="textbox"`.                                                                                         |
-| `data-field`                   | `Canvas.InlineText` glass            | Property key being edited.                                                                                                 |
-| `data-editor-handle-menu`      | `Canvas.DragHandle` menu             | The handle's `role="menu"`.                                                                                                |
-| `data-editor-drop-target-ring` | `Canvas.DropTargetRing`              | Presence marker. `aria-hidden`.                                                                                            |
-| `data-dropped`                 | dropped blocks                       | Present for 700 ms after a drop (the registry flashes them).                                                               |
-| `data-count`                   | `Canvas.DragPreview`                 | Blocks the drag moves.                                                                                                     |
-| `data-editor-inline-richtext`  | in-place rich text editor            | Presence marker on the editable element of a running session.                                                              |
+| Attribute                      | Where                                | Meaning                                                                                                                                                     |
+| ------------------------------ | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `data-editor-canvas`           | host                                 | Presence marker.                                                                                                                                            |
+| `data-interactive`             | host                                 | `'edit'`, `'select'`, or `'none'`.                                                                                                                          |
+| `data-dragging`                | host, drag handle, palette item      | Present on the host while any canvas drag session is active; on a handle or palette item while that part owns the session.                                  |
+| `data-editing`                 | host, inline glass                   | Present while the local selection has an inline-editing target.                                                                                             |
+| `data-editor-block`            | block root via `edit.block`          | Document-tree block id.                                                                                                                                     |
+| `data-editor-field`            | field element via `edit.field.<key>` | Field key, counted only inside its own block.                                                                                                               |
+| `data-editor-slot`             | slot element via `edit.slot.<name>`  | Slot name; the slot's children render inside this element.                                                                                                  |
+| `data-unresolved`              | block root via `edit.block`; rings   | Present when a resolved value is pending or missing. On a ring: any measured block element for that id has the attribute.                                   |
+| `data-editor-readonly`         | `Canvas.ReadonlySubtree`             | Together with `inert`, excludes the subtree from click-select and measurement.                                                                              |
+| `data-editor-overlay`          | Overlay host                         | Presence marker. `pointer-events: none`; not `aria-hidden`.                                                                                                 |
+| `data-editor-block-toolbar`    | `Canvas.BlockToolbar` inner chrome   | Presence marker. `role="toolbar"`.                                                                                                                          |
+| `data-editor-insert-button`    | `Canvas.InsertButton`                | Presence marker.                                                                                                                                            |
+| `data-side`                    | `Canvas.BlockToolbar`                | `'top'` or `'bottom'`.                                                                                                                                      |
+| `data-orientation`             | `Canvas.InsertButton`                | `'horizontal'` or `'vertical'`.                                                                                                                             |
+| `data-empty-container`         | `Canvas.InsertButton`                | Present when the target variant is `box`.                                                                                                                   |
+| `data-editor-drag-handle`      | `Canvas.DragHandle`                  | Presence marker.                                                                                                                                            |
+| `data-editor-palette-item`     | `Canvas.PaletteItem`                 | Presence marker.                                                                                                                                            |
+| `data-editor-drop-indicator`   | `Canvas.DropIndicator`               | Presence marker. `aria-hidden`.                                                                                                                             |
+| `data-editor-drag-preview`     | `Canvas.DragPreview`                 | Presence marker. `aria-hidden`.                                                                                                                             |
+| `data-kind`                    | drop indicator, drag preview         | `'new'` or `'move'`.                                                                                                                                        |
+| `data-variant`                 | `Canvas.DropIndicator`               | `'line'` or `'box'`.                                                                                                                                        |
+| `data-editor-selection-ring`   | `Canvas.SelectionRing`               | Presence marker.                                                                                                                                            |
+| `data-editor-parent-ring`      | `Canvas.ParentRing`                  | Presence marker; `data-depth` is 1 for the direct parent.                                                                                                   |
+| `data-editor-hover-ring`       | `Canvas.HoverRing`                   | Presence marker.                                                                                                                                            |
+| `data-editor-field-ring`       | `Canvas.FieldRing`                   | Presence marker.                                                                                                                                            |
+| `data-block-type`              | rings                                | Store node type. Omitted when the id is unknown.                                                                                                            |
+| `data-can-move`                | rings                                | Present when the block is not the root.                                                                                                                     |
+| `data-can-delete`              | rings                                | Present when the block is not the root.                                                                                                                     |
+| `data-editor-inline-text`      | `Canvas.InlineText` glass            | Presence marker. `role="textbox"`.                                                                                                                          |
+| `data-field`                   | `Canvas.InlineText` glass            | Property key being edited.                                                                                                                                  |
+| `data-editor-handle-menu`      | `Canvas.DragHandle` menu             | The handle's `role="menu"`.                                                                                                                                 |
+| `data-editor-drop-target-ring` | `Canvas.DropTargetRing`              | Presence marker. `aria-hidden`.                                                                                                                             |
+| `data-dropped`                 | dropped blocks                       | Present for 700 ms after a drop (the registry flashes them).                                                                                                |
+| `data-flashed`                 | changed blocks                       | Present for 700 ms on blocks that undo, redo or another client inserted, moved or changed; local edits never flash (the registry flashes them like a drop). |
+| `data-count`                   | `Canvas.DragPreview`                 | Blocks the drag moves.                                                                                                                                      |
+| `data-editor-inline-richtext`  | in-place rich text editor            | Presence marker on the editable element of a running session.                                                                                               |
 
 ## Tests
 

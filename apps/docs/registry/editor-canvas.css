@@ -78,7 +78,8 @@
 }
 
 /* Dropped blocks flash once. */
-[data-editor-canvas] [data-editor-block][data-dropped] {
+[data-editor-canvas] [data-editor-block][data-dropped],
+[data-editor-canvas] [data-editor-block][data-flashed] {
   animation: editor-dropped 700ms cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
@@ -156,7 +157,8 @@
   [data-slot='editor-drop-indicator'],
   [data-slot='editor-block-toolbar'],
   [data-editor-drop-target-ring],
-  [data-editor-canvas] [data-editor-block][data-dropped] {
+  [data-editor-canvas] [data-editor-block][data-dropped],
+  [data-editor-canvas] [data-editor-block][data-flashed] {
     animation: none !important;
     transition: none !important;
   }

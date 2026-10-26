@@ -24,6 +24,7 @@ import { type DndStore } from './dnd';
 import { CanvasDndEffects } from './dnd-parts';
 import { createEditCache, type EditCache } from './edit';
 import { bindFileDrop, type CanvasFileDrop } from './file-drop';
+import { bindChangeFlash } from './flash';
 import { CanvasFrameShell } from './frame/frame-shell';
 import { CONTENT_ATTR } from './hit';
 import { createInlineRichTextStore } from './inline-rich-text';
@@ -334,6 +335,11 @@ export function CanvasRoot({
       doc.removeEventListener('keydown', onKeyDown, true);
     };
   }, [hostNode]);
+
+  React.useEffect(() => {
+    if (!hostEl) return;
+    return bindChangeFlash(hostEl, ctx.store);
+  }, [hostEl, ctx.store]);
 
   React.useEffect(() => {
     if (!hostEl || !measurer) return;

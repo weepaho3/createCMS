@@ -283,3 +283,32 @@ describe('Canvas overlay rings', () => {
     vi.restoreAllMocks();
   });
 });
+
+describe('change flash', () => {
+  it('flashes blocks changed by undo, redo and remote ops, not local edits', async () => {
+    const { host, store } = renderCanvas();
+    const heading = host.querySelector('[data-editor-block="h1"]')!;
+    await waitForLayout(heading);
+    store.update('h1', { text: 'Local' });
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(heading.hasAttribute('data-flashed')).toBe(false);
+
+    store.undo();
+    await vi.waitFor(() =>
+      expect(
+        host
+          .querySelector('[data-editor-block="h1"]')!
+          .hasAttribute('data-flashed'),
+      ).toBe(true),
+    );
+
+    store.applyRemote([{ op: 'update', id: 'p1', patch: { text: 'Remote' } }]);
+    await vi.waitFor(() =>
+      expect(
+        host
+          .querySelector('[data-editor-block="p1"]')!
+          .hasAttribute('data-flashed'),
+      ).toBe(true),
+    );
+  });
+});

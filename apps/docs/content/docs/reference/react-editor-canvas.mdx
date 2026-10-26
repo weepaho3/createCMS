@@ -539,6 +539,7 @@ client component.
 | `data-editor-drop-indicator` | `Canvas.DropIndicator`               | Presence marker. `aria-hidden`.                                                                                                                         |
 | `data-editor-drop-target-ring` | `Canvas.DropTargetRing`          | Presence marker. `aria-hidden`.                                                                                                                         |
 | `data-dropped`               | dropped blocks                       | Present for 700 ms after a drop (the registry flashes them).                                                                                            |
+| `data-flashed` | changed blocks | Present for 700 ms on blocks that undo, redo or another client inserted, moved or changed; local edits never flash (the registry flashes them like a drop). |
 | `data-count`                 | `Canvas.DragPreview`                 | Blocks the drag moves.                                                                                                                                  |
 | `data-editor-drag-preview`   | `Canvas.DragPreview`                 | Presence marker. `aria-hidden`.                                                                                                                         |
 | `data-kind`                  | drop indicator, drag preview         | `'new'` or `'move'`.                                                                                                                                    |
