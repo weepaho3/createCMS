@@ -49,4 +49,30 @@ describe('BlockTracker → dispatch wiring', () => {
     expect(event.params).toEqual({ placement: 'cta' });
     expect(event.anonymous).toBe(true);
   });
+
+  it('drops events without a runtime, as in the editor canvas', () => {
+    // The editor renders functional blocks without <TrackingRuntimeProvider>,
+    // so fire() must neither throw nor reach a sink there.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(BlockTracker, {
+        blockType: 'ctaSection',
+        blockId: 'blk_1',
+        events: { click: { name: 'cms_cta_click' } },
+        children,
+      });
+    const { result } = renderHook(() => useBlockTrackerRaw('ctaSection'), {
+      wrapper,
+    });
+
+    expect(() =>
+      act(() => {
+        result.current.fire('click');
+      }),
+    ).not.toThrow();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('no <TrackingRuntimeProvider> mounted'),
+    );
+    warn.mockRestore();
+  });
 });

@@ -159,6 +159,37 @@ and the block behind the pointer. `Canvas.BlockToolbar` is one tab stop
 from the canvas or inline text without changing the selection, and Escape
 returns to where focus was.
 
+## Interactive blocks
+
+Blocks render their real components in the canvas, and the canvas locks
+them (see Usage): a form, a link, a video or a map embed shows as it will
+publish but takes no input. Write such blocks for production and keep three
+rules for the editor:
+
+- Do not add click handling of your own for the editor. Selection,
+  click-to-edit and the context menu come from the canvas.
+- Check `edit.active` before side effects that should not run while
+  editing: autoplay, timers, polling, fetching on mount. It is `true` only
+  inside an interactive canvas.
+- Fire declared block events as usual. Without a `TrackingRuntimeProvider`,
+  which the editor never mounts, `fire()` drops the event (with a warning in
+  development) instead of throwing.
+
+```tsx
+function Video({ props, edit }: CanvasComponentProps<'video'>) {
+  return (
+    <video
+      {...edit.block}
+      src={props.src}
+      autoPlay={!edit.active && props.autoplay}
+      muted
+    />
+  );
+}
+```
+
+To try a block's behaviour, render the content in a regular preview.
+
 ## Dragging
 
 A drag starts by pointer type: a mouse on `Canvas.DragHandle` on the first
