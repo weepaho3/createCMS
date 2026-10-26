@@ -91,7 +91,12 @@ and Tab skips them. Pointer input lands on the canvas element instead, and
 the canvas resolves the block, field or slot under the pointer from their
 measured boxes (a `display: contents` anchor spans its children); hover,
 selection, the context menu, drop targets and click-to-edit all use that
-hit test. The lock lifts only while an in-place editor runs
+hit test. It descends the nesting of anchors and measures only the
+siblings along one path (boxes are cached per animation frame and the tree
+per DOM change), so its cost grows with the siblings on that path, not
+with the document; an anchor drawn outside the box of its anchor parent
+(absolute positioning, overflow) is found only where the parent's box
+holds the point. The lock lifts only while an in-place editor runs
 (`useEditableField`, inline rich text), which needs real focus in the
 content; the click intercept for links, submit buttons and forms stays on
 as a second layer. There is no switch to use blocks interactively in the

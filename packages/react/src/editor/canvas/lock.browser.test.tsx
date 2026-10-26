@@ -269,4 +269,61 @@ describe('locked canvas content', () => {
     expect(store.getSession().selection).toEqual(['l']);
     expect(events.linkClick).not.toHaveBeenCalled();
   });
+
+  it('measures one path, not every anchor, in a large document', async () => {
+    const sections = Array.from({ length: 20 }, (_, i) => ({
+      id: `sec${i}`,
+      type: 'box',
+      props: {},
+      slots: {
+        children: Array.from({ length: 50 }, (_, j) => ({
+          id: `b${i}_${j}`,
+          type: 'bare',
+          props: {},
+        })),
+      },
+    }));
+    const store = createEditorStore({
+      schema,
+      initialValue: {
+        schemaVersion: 1,
+        root: {
+          id: 'r',
+          type: 'root',
+          props: {},
+          slots: { children: sections },
+        },
+      },
+    });
+    const flat = {
+      ...components,
+      box: ({ edit, children }: { edit: EditProps; children?: ReactNode }) => (
+        <div {...edit.block}>{children}</div>
+      ),
+    } as unknown as CanvasComponents;
+    const utils = render(
+      <Editor.Root store={store}>
+        <Canvas.Root
+          components={flat}
+          data-testid="big"
+          style={{ width: 600 }}
+        />
+      </Editor.Root>,
+    );
+    const host = utils.getByTestId('big');
+    // The block is `display: contents`: its span carries the box.
+    const target = host.querySelector('[data-editor-block="b7_20"] span')!;
+    await waitForLayout(target);
+    const r = target.getBoundingClientRect();
+    // A fresh frame, so no box is cached.
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const spy = vi.spyOn(Element.prototype, 'getBoundingClientRect');
+    const hits = anchorsAt(host, r.left + 2, r.top + 2);
+    const measured = spy.mock.calls.length;
+    spy.mockRestore();
+    expect(hits[0]!.getAttribute('data-editor-block')).toBe('b7_20');
+    expect(hits[1]!.getAttribute('data-editor-block')).toBe('sec7');
+    // 20 sections plus 50 blocks of one section (and their spans).
+    expect(measured).toBeLessThan(150);
+  });
 });
