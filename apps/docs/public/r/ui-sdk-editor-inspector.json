@@ -1,0 +1,25 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "ui-sdk-editor-inspector",
+  "title": "UI SDK Editor Inspector",
+  "description": "The selected block's fields and the page fields in UI SDK Tabs.",
+  "dependencies": [
+    "@createcms/react@^0.3.2",
+    "@ui-sdk/react@0.1.0-beta.5",
+    "@ui-sdk/core@0.1.0-beta.5",
+    "lucide-react"
+  ],
+  "registryDependencies": [
+    "https://createcms.dev/r/ui-sdk-editor-chrome.json",
+    "https://createcms.dev/r/ui-sdk-editor-form.json"
+  ],
+  "files": [
+    {
+      "path": "registry/ui-sdk/editor-inspector.tsx",
+      "content": "// @registry ui-sdk-editor-inspector@0.3.2\n'use client';\n\n// The selected block's fields and the page fields, in UI SDK Tabs. Plugins\n// add UI through the `inspector-header` and `inspector-footer` outlets.\n\nimport {\n  Editor,\n  useAnyBlock,\n  useBlockActions,\n  useEditor,\n  usePalette,\n  useSelection,\n} from '@createcms/react/editor';\nimport { Tabs, TabsList, TabsPanel, TabsTab } from '@ui-sdk/react/tabs';\nimport { BoxIcon, CopyIcon, Trash2Icon } from 'lucide-react';\nimport * as React from 'react';\n\nimport { cn } from '@/lib/utils';\n\nimport { blockTypeIcon, ToolbarHintButton } from './editor-chrome';\nimport { Form } from './editor-form';\n\nconst TAB =\n  'text-muted-foreground hover:text-foreground data-selected:text-foreground data-selected:after:bg-foreground relative -mb-px py-2 text-sm font-medium outline-none after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 focus-visible:ring-2 focus-visible:ring-ring';\n\nfunction EditorInspector({ className, ...props }: React.ComponentProps<'div'>) {\n  const rootId = useEditor((state) => state.rootId);\n  const selected = useSelection().selected;\n  const block = useAnyBlock(selected);\n  const palette = usePalette();\n  const actions = useBlockActions(selected ?? '');\n  const label =\n    palette.find((item) => item.type === block?.type)?.label ??\n    block?.type ??\n    null;\n  const Icon = blockTypeIcon(block?.type ?? '');\n\n  return (\n    <div\n      data-slot=\"editor-inspector\"\n      className={cn('flex min-h-0 flex-1 flex-col', className)}\n      {...props}\n    >\n      <Tabs defaultValue=\"block\" className=\"flex min-h-0 flex-1 flex-col gap-0\">\n        <div className=\"bg-background sticky top-0 z-10 border-b\">\n          <div className=\"flex items-center gap-2 px-3 py-2\">\n            {selected && block ? (\n              <>\n                <Icon className=\"size-4 shrink-0\" />\n                <span className=\"min-w-0 flex-1 truncate text-sm font-medium\">\n                  {label}\n                </span>\n                <Editor.Slot\n                  name=\"inspector-header\"\n                  props={{ blockId: selected }}\n                />\n                {actions.parent !== null ? (\n                  <div className=\"flex items-center gap-1\">\n                    <ToolbarHintButton\n                      label=\"Duplicate\"\n                      onClick={() => actions.duplicate()}\n                    >\n                      <CopyIcon />\n                    </ToolbarHintButton>\n                    <ToolbarHintButton\n                      label=\"Delete\"\n                      onClick={() => actions.remove()}\n                    >\n                      <Trash2Icon />\n                    </ToolbarHintButton>\n                  </div>\n                ) : null}\n              </>\n            ) : (\n              <span className=\"text-muted-foreground text-sm\">Inspector</span>\n            )}\n          </div>\n          <TabsList\n            aria-label=\"Inspector\"\n            className=\"flex w-full justify-start gap-4 px-3\"\n          >\n            <TabsTab value=\"block\" className={TAB}>\n              Block\n            </TabsTab>\n            <TabsTab value=\"page\" className={TAB}>\n              Page\n            </TabsTab>\n          </TabsList>\n        </div>\n        <TabsPanel\n          value=\"block\"\n          className=\"min-h-0 flex-1 overflow-y-auto p-3 outline-none\"\n        >\n          {selected ? (\n            <Form blockId={selected} autoScroll />\n          ) : (\n            <div className=\"text-muted-foreground flex flex-col items-center gap-2 px-4 py-10 text-center text-sm\">\n              <BoxIcon className=\"size-8 opacity-40\" />\n              <p>Select a block to edit its fields.</p>\n            </div>\n          )}\n        </TabsPanel>\n        <TabsPanel\n          value=\"page\"\n          className=\"min-h-0 flex-1 overflow-y-auto p-3 outline-none\"\n        >\n          <Form blockId={rootId} />\n        </TabsPanel>\n      </Tabs>\n      <div\n        data-slot=\"editor-inspector-footer\"\n        className=\"border-t p-3 empty:hidden\"\n      >\n        <Editor.Slot\n          name=\"inspector-footer\"\n          props={{ blockId: selected ?? rootId }}\n        />\n      </div>\n    </div>\n  );\n}\n\nexport { EditorInspector };\n",
+      "type": "registry:component",
+      "target": "components/editor-ui-sdk/editor-inspector.tsx"
+    }
+  ],
+  "type": "registry:ui"
+}

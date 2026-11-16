@@ -8,6 +8,12 @@ const demos = [
       'The generic editor-app item on createMemoryAdapter, without createCMS.',
   },
   {
+    href: '/demo/editor/app-ui-sdk',
+    title: 'Editor app on UI SDK (in memory)',
+    description:
+      'The same editor-app rebuilt on Vercel UI SDK behaviors, for comparison with the shadcn one.',
+  },
+  {
     href: '/demo/editor/pages',
     title: 'Live canvas',
     description:

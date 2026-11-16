@@ -13,6 +13,7 @@
     "building-an-editor",
     "visual-editor",
     "editor-ui",
+    "editor-ui-sdk",
     "editor-adapter",
     "editor-plugins",
     "editor-accessibility",

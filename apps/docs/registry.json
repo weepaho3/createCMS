@@ -361,6 +361,319 @@
           "type": "registry:ui"
         }
       ]
+    },
+    {
+      "name": "ui-sdk-ui",
+      "type": "registry:ui",
+      "title": "UI SDK editor building blocks",
+      "description": "Button variants, field and popup surfaces, keyboard hints and the tooltip icon button the UI SDK editor shares.",
+      "dependencies": [
+        "@createcms/react@^0.3.2",
+        "@ui-sdk/react@0.1.0-beta.5",
+        "@ui-sdk/core@0.1.0-beta.5",
+        "class-variance-authority"
+      ],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "registry/ui-sdk/ui.tsx",
+          "type": "registry:component",
+          "target": "components/editor-ui-sdk/ui.tsx"
+        }
+      ]
+    },
+    {
+      "name": "ui-sdk-editor-chrome",
+      "type": "registry:ui",
+      "title": "UI SDK Editor Chrome",
+      "description": "The chrome state the UI SDK editor shell parts share: device, layout, sheets, dialogs and the docked sidebar.",
+      "dependencies": [
+        "@createcms/react@^0.3.2",
+        "@ui-sdk/react@0.1.0-beta.5",
+        "@ui-sdk/core@0.1.0-beta.5",
+        "lucide-react"
+      ],
+      "registryDependencies": ["https://createcms.dev/r/ui-sdk-ui.json"],
+      "files": [
+        {
+          "path": "registry/ui-sdk/editor-chrome.tsx",
+          "type": "registry:component",
+          "target": "components/editor-ui-sdk/editor-chrome.tsx"
+        }
+      ]
+    },
+    {
+      "name": "ui-sdk-editor-field",
+      "type": "registry:ui",
+      "title": "UI SDK Editor Field",
+      "description": "Editor.Field wrappers and UI SDK controls (Input, Textarea, NumberInput, Checkbox, Select) for the built-in field kinds.",
+      "dependencies": [
+        "@createcms/react@^0.3.2",
+        "@ui-sdk/react@0.1.0-beta.5",
+        "@ui-sdk/core@0.1.0-beta.5",
+        "lucide-react"
+      ],
+      "registryDependencies": ["https://createcms.dev/r/ui-sdk-ui.json"],
+      "files": [
+        {
+          "path": "registry/ui-sdk/editor-field.tsx",
+          "type": "registry:component",
+          "target": "components/editor-ui-sdk/editor-field.tsx"
+        }
+      ]
+    },
+    {
+      "name": "ui-sdk-editor-form",
+      "type": "registry:ui",
+      "title": "UI SDK Editor Form",
+      "description": "The styled form of one block and the form-only edit surface, with UI SDK buttons.",
+      "dependencies": [
+        "@createcms/react@^0.3.2",
+        "@ui-sdk/react@0.1.0-beta.5",
+        "@ui-sdk/core@0.1.0-beta.5",
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "https://createcms.dev/r/ui-sdk-editor-field.json"
+      ],
+      "files": [
+        {
+          "path": "registry/ui-sdk/editor-form.tsx",
+          "type": "registry:component",
+          "target": "components/editor-ui-sdk/editor-form.tsx"
+        }
+      ]
+    },
+    {
+      "name": "ui-sdk-editor-canvas",
+      "type": "registry:ui",
+      "title": "UI SDK Editor Canvas",
+      "description": "Canvas overlay parts with a block toolbar, tooltips and a UI SDK Menu for the actions that do not fit it.",
+      "dependencies": [
+        "@createcms/react@^0.3.2",
+        "@ui-sdk/react@0.1.0-beta.5",
+        "@ui-sdk/core@0.1.0-beta.5",
+        "lucide-react"
+      ],
+      "registryDependencies": ["https://createcms.dev/r/ui-sdk-ui.json"],
+      "files": [
+        {
+          "path": "registry/ui-sdk/editor-canvas.tsx",
+          "type": "registry:component",
+          "target": "components/editor-ui-sdk/editor-canvas.tsx"
+        }
+      ]
+    },
+    {
+      "name": "ui-sdk-editor-toolbar",
+      "type": "registry:ui",
+      "title": "UI SDK Editor Toolbar",
+      "description": "The top toolbar on UI SDK Toolbar and ToggleGroup, the command palette on Command and Dialog, and the commit message dialog.",
+      "dependencies": [
+        "@createcms/react@^0.3.2",
+        "@ui-sdk/react@0.1.0-beta.5",
+        "@ui-sdk/core@0.1.0-beta.5",
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "https://createcms.dev/r/ui-sdk-editor-chrome.json"
+      ],
+      "files": [
+        {
+          "path": "registry/ui-sdk/editor-toolbar.tsx",
+          "type": "registry:component",
+          "target": "components/editor-ui-sdk/editor-toolbar.tsx"
+        }
+      ]
+    },
+    {
+      "name": "ui-sdk-editor-palette",
+      "type": "registry:ui",
+      "title": "UI SDK Editor Palette",
+      "description": "The draggable block palette and the searchable add-block list and dialog on UI SDK Command.",
+      "dependencies": [
+        "@createcms/react@^0.3.2",
+        "@ui-sdk/react@0.1.0-beta.5",
+        "@ui-sdk/core@0.1.0-beta.5",
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "https://createcms.dev/r/ui-sdk-editor-canvas.json",
+        "https://createcms.dev/r/ui-sdk-editor-toolbar.json"
+      ],
+      "files": [
+        {
+          "path": "registry/ui-sdk/editor-palette.tsx",
+          "type": "registry:component",
+          "target": "components/editor-ui-sdk/editor-palette.tsx"
+        }
+      ]
+    },
+    {
+      "name": "ui-sdk-editor-outline",
+      "type": "registry:ui",
+      "title": "UI SDK Editor Outline",
+      "description": "The virtualized block tree (Editor.Outline) in a UI SDK ScrollArea.",
+      "dependencies": [
+        "@createcms/react@^0.3.2",
+        "@ui-sdk/react@0.1.0-beta.5",
+        "@ui-sdk/core@0.1.0-beta.5",
+        "lucide-react",
+        "@tanstack/react-virtual"
+      ],
+      "registryDependencies": [
+        "https://createcms.dev/r/ui-sdk-editor-chrome.json"
+      ],
+      "files": [
+        {
+          "path": "registry/ui-sdk/editor-outline.tsx",
+          "type": "registry:component",
+          "target": "components/editor-ui-sdk/editor-outline.tsx"
+        }
+      ]
+    },
+    {
+      "name": "ui-sdk-editor-inspector",
+      "type": "registry:ui",
+      "title": "UI SDK Editor Inspector",
+      "description": "The selected block's fields and the page fields in UI SDK Tabs.",
+      "dependencies": [
+        "@createcms/react@^0.3.2",
+        "@ui-sdk/react@0.1.0-beta.5",
+        "@ui-sdk/core@0.1.0-beta.5",
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "https://createcms.dev/r/ui-sdk-editor-chrome.json",
+        "https://createcms.dev/r/ui-sdk-editor-form.json"
+      ],
+      "files": [
+        {
+          "path": "registry/ui-sdk/editor-inspector.tsx",
+          "type": "registry:component",
+          "target": "components/editor-ui-sdk/editor-inspector.tsx"
+        }
+      ]
+    },
+    {
+      "name": "ui-sdk-editor-shell",
+      "type": "registry:ui",
+      "title": "UI SDK Editor Shell",
+      "description": "The assembled shell: UI SDK Resizable panels for the sidebars, Drawer bottom sheets on phones and a Drawer inspector on tablets.",
+      "dependencies": [
+        "@createcms/react@^0.3.2",
+        "@ui-sdk/react@0.1.0-beta.5",
+        "@ui-sdk/core@0.1.0-beta.5",
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "https://createcms.dev/r/ui-sdk-editor-inspector.json",
+        "https://createcms.dev/r/ui-sdk-editor-outline.json",
+        "https://createcms.dev/r/ui-sdk-editor-palette.json",
+        "https://createcms.dev/r/ui-sdk-editor-toolbar.json"
+      ],
+      "files": [
+        {
+          "path": "registry/ui-sdk/editor-shell.tsx",
+          "type": "registry:component",
+          "target": "components/editor-ui-sdk/editor-shell.tsx"
+        }
+      ]
+    },
+    {
+      "name": "ui-sdk-editor-email",
+      "type": "registry:ui",
+      "title": "UI SDK Editor Email",
+      "description": "Form beside a compiled e-mail preview in Editor.FramePreview.",
+      "dependencies": [
+        "@createcms/react@^0.3.2",
+        "@ui-sdk/react@0.1.0-beta.5",
+        "@ui-sdk/core@0.1.0-beta.5"
+      ],
+      "registryDependencies": [
+        "https://createcms.dev/r/ui-sdk-editor-form.json"
+      ],
+      "files": [
+        {
+          "path": "registry/ui-sdk/editor-email.tsx",
+          "type": "registry:component",
+          "target": "components/editor-ui-sdk/editor-email.tsx"
+        }
+      ]
+    },
+    {
+      "name": "ui-sdk-editor-app",
+      "type": "registry:block",
+      "title": "UI SDK Editor App",
+      "description": "The complete editor over any EditorAdapter, rebuilt on Vercel UI SDK: load, save, conflicts (AlertDialog), shell and canvas.",
+      "dependencies": [
+        "@createcms/react@^0.3.2",
+        "@ui-sdk/react@0.1.0-beta.5",
+        "@ui-sdk/core@0.1.0-beta.5",
+        "@tiptap/core@3.32.0",
+        "@tiptap/pm@3.32.0",
+        "@tiptap/starter-kit@3.32.0",
+        "@tiptap/extensions@3.32.0",
+        "@tiptap/extension-link@3.32.0",
+        "@tiptap/suggestion@3.32.0"
+      ],
+      "registryDependencies": [
+        "https://createcms.dev/r/ui-sdk-editor-canvas.json",
+        "https://createcms.dev/r/ui-sdk-editor-field.json",
+        "https://createcms.dev/r/ui-sdk-editor-form.json",
+        "https://createcms.dev/r/ui-sdk-editor-shell.json"
+      ],
+      "files": [
+        {
+          "path": "registry/ui-sdk/editor-app.tsx",
+          "type": "registry:block",
+          "target": "components/editor-ui-sdk/editor-app.tsx"
+        }
+      ]
+    },
+    {
+      "name": "ui-sdk-editor-form-createcms",
+      "type": "registry:ui",
+      "title": "UI SDK Editor Form for createCMS",
+      "description": "The UI SDK field controls plus the createCMS ones: media, references and links.",
+      "dependencies": [
+        "@createcms/react@^0.3.2",
+        "@ui-sdk/react@0.1.0-beta.5",
+        "@ui-sdk/core@0.1.0-beta.5"
+      ],
+      "registryDependencies": [
+        "https://createcms.dev/r/ui-sdk-editor-field.json",
+        "https://createcms.dev/r/media-picker.json"
+      ],
+      "files": [
+        {
+          "path": "registry/ui-sdk/editor-form-createcms.tsx",
+          "type": "registry:component",
+          "target": "components/editor-ui-sdk/editor-form-createcms.tsx"
+        }
+      ]
+    },
+    {
+      "name": "ui-sdk-editor-app-createcms",
+      "type": "registry:block",
+      "title": "UI SDK Editor App for createCMS",
+      "description": "ui-sdk-editor-app wired to a createCMS collection.",
+      "dependencies": [
+        "@createcms/react@^0.3.2",
+        "@ui-sdk/react@0.1.0-beta.5",
+        "@ui-sdk/core@0.1.0-beta.5"
+      ],
+      "registryDependencies": [
+        "https://createcms.dev/r/ui-sdk-editor-app.json",
+        "https://createcms.dev/r/ui-sdk-editor-form-createcms.json"
+      ],
+      "files": [
+        {
+          "path": "registry/ui-sdk/editor-app-createcms.tsx",
+          "type": "registry:block",
+          "target": "components/editor-ui-sdk/editor-app-createcms.tsx"
+        }
+      ]
     }
   ]
 }

@@ -1,3 +1,5 @@
+/* UI SDK adds its few behavior styles in this layer; declared first so app styles win. */
+@layer ui-sdk;
 @import 'tailwindcss';
 @import 'fumadocs-ui/css/shadcn.css';
 @import 'fumadocs-ui/css/preset.css';

@@ -1,0 +1,84 @@
+---
+title: Editor UI on UI SDK
+description: The same editor chrome rebuilt on Vercel's UI SDK behaviors, installed side by side with the shadcn items.
+---
+
+The registry ships the editor chrome twice. The [shadcn items](/docs/guides/editor-ui)
+compose shadcn components on Base UI. The `ui-sdk-*` items rebuild the same
+parts on [UI SDK](https://github.com/vercel-labs/ui) (`@ui-sdk/react`), a
+library of unstyled behaviors from Vercel Labs: keyboard navigation, focus,
+dismissal, popups and the ARIA they need. Both sets render the same layout,
+expose the same exports and `data-slot` names, and pass the same browser
+suite, so you can compare them on one page or swap one for the other.
+
+<Callout type="warn">
+  UI SDK is in beta (`0.1.0-beta.5`). The items pin that exact version.
+</Callout>
+
+## Install
+
+The items install into `components/editor-ui-sdk/`, next to the shadcn
+items, because their files have the same names:
+
+```bash
+npx shadcn@latest add https://createcms.dev/r/ui-sdk-editor-app.json
+```
+
+UI SDK adds the little CSS its behaviors need (a closed popup stays hidden,
+a sheet dims the page) in a cascade layer named `ui-sdk`. Declare it first in
+your global stylesheet, above Tailwind, so your styles win:
+
+```css title="app/globals.css"
+@layer ui-sdk;
+@import 'tailwindcss';
+```
+
+Then use it like `editor-app`:
+
+```tsx
+import { EditorApp } from '@/components/editor-ui-sdk/editor-app';
+```
+
+The [UI SDK demo](/demo/editor/app-ui-sdk) runs this setup on
+`createMemoryAdapter`, next to the [shadcn demo](/demo/editor/app).
+
+## Items
+
+| Item | Built on |
+| --- | --- |
+| `ui-sdk-ui` | `Button`, `Input`, `Textarea`, `Separator`, `Tooltip`: the shared button variants, field and popup surfaces, `Kbd` and the tooltip icon button. |
+| `ui-sdk-editor-chrome` | The chrome context, with the docked sidebar's collapsed state. |
+| `ui-sdk-editor-field` | `Input`, `Textarea`, `NumberInput` (with step buttons), `Checkbox`, `Select` for the built-in field kinds. |
+| `ui-sdk-editor-form` | `Button` for the path and the child rows of the form-only surface. |
+| `ui-sdk-editor-canvas` | Tooltip buttons in the block toolbar, `Menu` with a `Move to…` submenu for the actions that do not fit it. |
+| `ui-sdk-editor-toolbar` | `Toolbar` (one tab stop, arrow keys between buttons), `ToggleGroup` for the device frame, `Command` in a `Dialog` for the command palette. |
+| `ui-sdk-editor-palette` | `Command` for the add-block list and dialog. |
+| `ui-sdk-editor-outline` | `ScrollArea` around `Editor.Outline`. |
+| `ui-sdk-editor-inspector` | `Tabs` for the block and page fields. |
+| `ui-sdk-editor-shell` | `Resizable` panels for the sidebars (drag or arrow keys to resize, Enter or double-click on a handle, the toolbar button or Mod+B to collapse the left one to an icon rail), `Drawer` for the phone sheets (snap points, a handle button, the keyboard inset) and the tablet inspector. |
+| `ui-sdk-editor-app` | `AlertDialog` for the conflict: Overwrite stays pending until the save settles. |
+| `ui-sdk-editor-email` | The form beside `Editor.FramePreview`. |
+| `ui-sdk-editor-form-createcms`, `ui-sdk-editor-app-createcms` | `Dialog`, `Input` and `Select` for the reference and link controls. The image control opens the shared `media-picker` item. |
+
+## What stays the same
+
+The editor's own parts come from `@createcms/react` in both sets:
+`Editor.Outline` (the virtualized APG tree with drag and drop), the canvas
+overlay, `Canvas.PaletteItem` and the rich text toolbar. Only the chrome
+around them changes. Plugins fill the same outlets (`toolbar-start`,
+`block-toolbar`, `inspector-footer`, ...).
+
+## Differences to know
+
+- **Shortcuts.** UI SDK parts take a `shortcut` prop that binds keys. The
+  items never pass it: the editor's keymap owns every shortcut, and menus and
+  the palette only show the label in a `Kbd`.
+- **Slots.** A UI SDK part keeps its own `data-slot` (`button`,
+  `menu-content`, ...). The `editor-*` slots sit on wrapper elements, for
+  example `editor-form-child` on the list item around the row's button.
+- **Disabled toolbar buttons** stay focusable with `aria-disabled`, as the
+  APG toolbar pattern asks, so arrow keys reach them and their tooltip says
+  what they do.
+- **The sidebar** is a `Resizable` group instead of shadcn's `Sidebar`: its
+  width is draggable, and collapsing leaves a 48px rail with the palette's
+  block icons, which still drag.
