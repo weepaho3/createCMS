@@ -1,0 +1,403 @@
+// @registry ui-sdk-editor-createcms@0.3.2
+'use client';
+
+// The createCMS controls on top of `fields`: images through the media
+// picker, references and internal links as a searchable combobox that loads
+// pages as you scroll, links by kind, rich text with `{{variable}}`
+// completion. Wrap the editor in `CmsSourcesProvider`.
+
+import type { FieldControlProps, FieldControls } from '@createcms/react/editor';
+import type {
+  CmsFieldSources,
+  CmsRootListItem,
+} from '@createcms/react/editor/cms';
+import type { MediaClient } from '@createcms/react/media';
+
+import {
+  assetUrl,
+  referenceLabel,
+  useVariableSuggest,
+} from '@createcms/react/editor/cms';
+import { useAsyncOptions } from '@ui-sdk/react/async-options';
+import { Button } from '@ui-sdk/react/button';
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxItemIndicator,
+  ComboboxList,
+  ComboboxStatus,
+  ComboboxTrigger,
+} from '@ui-sdk/react/combobox';
+import { Input } from '@ui-sdk/react/input';
+import { CheckIcon, ChevronsUpDownIcon } from 'lucide-react';
+import * as React from 'react';
+
+import { MediaPicker } from '../media-picker';
+import { Choice, RichTextField, aria, fields } from './fields';
+
+type Sources = { sources: CmsFieldSources; media: MediaClient | undefined };
+
+const SourcesContext = React.createContext<Sources | null>(null);
+
+export function CmsSourcesProvider({
+  sources,
+  media,
+  children,
+}: {
+  sources: CmsFieldSources;
+  /** A full media client gives the picker folders and uploads. */
+  media?: MediaClient;
+  children: React.ReactNode;
+}) {
+  const value = React.useMemo(() => ({ sources, media }), [sources, media]);
+  return <SourcesContext value={value}>{children}</SourcesContext>;
+}
+
+function useSources(): Sources {
+  const value = React.useContext(SourcesContext);
+  if (!value) throw new Error('CmsSourcesProvider is required for cms fields');
+  return value;
+}
+
+const UNSUPPORTED = 'Not supported by this media source';
+
+/** A read-only `MediaClient` over the field sources: no folders, uploads through `sources.assets`. */
+export function sourcesMediaClient(sources: CmsFieldSources): MediaClient {
+  const reject = () => Promise.reject(new Error(UNSUPPORTED));
+  return {
+    async listAssets(args) {
+      const query = args?.query;
+      const offset = Number(query?.cursor ?? 0);
+      const page = await sources.assets.list({
+        search: query?.search,
+        limit: query?.limit,
+        offset,
+      });
+      return {
+        assets: page.assets,
+        total: page.total,
+        hasMore: page.hasMore,
+        nextCursor: page.hasMore ? String(offset + page.assets.length) : null,
+      };
+    },
+    listFolders: async () => ({ folders: [] }),
+    createFolder: reject,
+    moveAssets: reject,
+    archiveAssets: reject,
+    updateAssetsStatus: reject,
+    useUploadAssets: () => sources.assets.useUpload(),
+  };
+}
+
+const PAGE = 20;
+
+function rootLabel(root: CmsRootListItem): string {
+  const props = root.properties ?? {};
+  for (const key of ['title', 'label', 'name'] as const) {
+    const value = props[key];
+    if (typeof value === 'string' && value) return value;
+  }
+  return root.slug || root.path || root.id;
+}
+
+/** Search the roots of a collection; scrolling to the end loads the next page. */
+function RootCombobox({
+  collection,
+  value,
+  onChange,
+  disabled,
+  label,
+  ...ariaProps
+}: {
+  collection: string;
+  value: string | undefined;
+  onChange: (rootId: string) => void;
+  disabled: boolean;
+  label: string;
+  id?: string;
+  'aria-describedby'?: string;
+  'aria-invalid'?: true;
+  'aria-required'?: true;
+}) {
+  const { sources } = useSources();
+  const [current, setCurrent] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (!value) {
+      setCurrent(null);
+      return;
+    }
+    let live = true;
+    void referenceLabel(collection, value, sources).then((text) => {
+      if (live) setCurrent(text);
+    });
+    return () => {
+      live = false;
+    };
+  }, [collection, value, sources]);
+  const roots = useAsyncOptions(
+    async (query, { page }) => {
+      const result = await sources.roots.list(collection, {
+        search: query || undefined,
+        limit: PAGE,
+        offset: page * PAGE,
+      });
+      return {
+        items: result.roots.map((root) => ({
+          value: root.id,
+          label: rootLabel(root),
+        })),
+        hasMore: result.hasMore,
+      };
+    },
+    { immediate: true },
+  );
+  return (
+    <Combobox
+      value={value ?? null}
+      items={roots.items}
+      filter={false}
+      status={roots.status}
+      disabled={disabled}
+      itemToLabel={(id) => (id === value ? (current ?? id) : id)}
+      onQueryChange={(query) => roots.setQuery(query)}
+      onLoadMore={roots.loadMore}
+      onValueChange={(next) => {
+        if (typeof next === 'string') onChange(next);
+      }}
+    >
+      <div className="ed-input ed-combobox">
+        <ComboboxInput aria-label={label} placeholder={label} {...ariaProps} />
+        <ComboboxTrigger aria-label={`Show ${label.toLowerCase()} options`}>
+          <ChevronsUpDownIcon aria-hidden />
+        </ComboboxTrigger>
+      </div>
+      <ComboboxContent sideOffset={4} className="ed-popup ed-list">
+        <ComboboxStatus className="ed-status-line">
+          {(state) =>
+            state.status === 'error'
+              ? 'Could not load.'
+              : state.loading
+                ? 'Loading…'
+                : null
+          }
+        </ComboboxStatus>
+        <ComboboxEmpty className="ed-empty">
+          {(state) => (state.empty && !state.loading ? 'Nothing found.' : null)}
+        </ComboboxEmpty>
+        <ComboboxList>
+          {(state) =>
+            (state.items as { value: string; label: string }[]).map((item) => (
+              <ComboboxItem
+                key={item.value}
+                value={item.value}
+                label={item.label}
+                className="ed-item"
+              >
+                {item.label}
+                <ComboboxItemIndicator className="ed-item-end">
+                  <CheckIcon />
+                </ComboboxItemIndicator>
+              </ComboboxItem>
+            ))
+          }
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
+  );
+}
+
+function MediaField(props: FieldControlProps<'media'>) {
+  const { sources, media } = useSources();
+  const fallback = React.useMemo(() => sourcesMediaClient(sources), [sources]);
+  const assetId = props.value?.assetId;
+  const locked = props.disabled || props.readOnly;
+  return (
+    <div id={props.id} className="ed-stack" {...aria(props)}>
+      {assetId ? (
+        <img src={assetUrl(assetId)} alt="" className="ed-asset" />
+      ) : null}
+      <div className="ed-row">
+        <MediaPicker
+          client={media ?? fallback}
+          value={assetId}
+          accept={props.spec.accept?.join(',') ?? 'image/*'}
+          disabled={locked}
+          onChange={(next) => {
+            if (!next) return props.onChange(undefined);
+            // A revision pin belongs to the old asset; alt, caption and crop carry over.
+            const { revisionId: _pinned, ...kept } = props.value ?? {
+              assetId: next,
+            };
+            props.onChange({ ...kept, assetId: next });
+          }}
+          trigger={
+            <Button
+              className="ed-button"
+              data-variant="outline"
+              disabled={locked}
+            >
+              {assetId ? 'Change image' : 'Choose image'}
+            </Button>
+          }
+        />
+        {assetId ? (
+          <Button
+            className="ed-button"
+            data-variant="ghost"
+            disabled={locked}
+            onClick={() => props.onChange(undefined)}
+          >
+            Clear
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ReferenceField(props: FieldControlProps<'reference'>) {
+  return (
+    <RootCombobox
+      id={props.id}
+      label={props.spec.label ?? 'Reference'}
+      collection={props.spec.collection}
+      value={props.value?.id}
+      disabled={props.disabled || props.readOnly}
+      onChange={(id) => props.onChange({ id })}
+      {...aria(props)}
+    />
+  );
+}
+
+const KINDS = ['internal', 'external', 'email', 'phone'] as const;
+type Kind = (typeof KINDS)[number];
+const KIND_LABEL: Record<Kind, string> = {
+  internal: 'Page',
+  external: 'URL',
+  email: 'Email',
+  phone: 'Phone',
+};
+
+function LinkField(props: FieldControlProps<'link'>) {
+  const allowed = props.spec.allowedKinds ?? [...KINDS];
+  const link = props.value;
+  const kind: Kind = link?.kind ?? allowed[0] ?? 'external';
+  const collections = props.spec.allowedCollections ?? [];
+  const collection =
+    link?.kind === 'internal' ? link.collection : (collections[0] ?? '');
+  const rootId = link?.kind === 'internal' ? link.rootId : '';
+  const empty: Record<Kind, NonNullable<typeof link>> = {
+    internal: {
+      kind: 'internal',
+      rootId: '',
+      collection: collections[0] ?? '',
+    },
+    external: { kind: 'external', url: '' },
+    email: { kind: 'email', email: '' },
+    phone: { kind: 'phone', phone: '' },
+  };
+  const text = (
+    type: string,
+    label: string,
+    value: string,
+    set: (v: string) => void,
+  ) => (
+    <Input
+      type={type}
+      aria-label={label}
+      className="ed-input"
+      disabled={props.disabled}
+      value={value}
+      onValueChange={set}
+    />
+  );
+  return (
+    <div id={props.id} role="group" className="ed-stack" {...aria(props)}>
+      <Choice
+        aria-label="Link type"
+        value={kind}
+        disabled={props.disabled}
+        options={allowed.map((k) => ({ value: k, label: KIND_LABEL[k] }))}
+        onValueChange={(next) => props.onChange(empty[next as Kind])}
+      />
+      {kind === 'internal' ? (
+        <>
+          {collections.length > 1 ? (
+            <Choice
+              aria-label="Collection"
+              value={collection}
+              disabled={props.disabled}
+              options={collections.map((c) => ({ value: c, label: c }))}
+              onValueChange={(next) =>
+                props.onChange({ kind: 'internal', rootId, collection: next })
+              }
+            />
+          ) : collections.length === 0 ? (
+            text('text', 'Collection', collection, (next) =>
+              props.onChange({ kind: 'internal', rootId, collection: next }),
+            )
+          ) : null}
+          {collection ? (
+            <RootCombobox
+              label="Page"
+              collection={collection}
+              value={rootId || undefined}
+              disabled={props.disabled}
+              onChange={(id) =>
+                props.onChange({ kind: 'internal', rootId: id, collection })
+              }
+            />
+          ) : null}
+        </>
+      ) : null}
+      {link?.kind === 'external' || (!link && kind === 'external')
+        ? text('url', 'URL', link?.kind === 'external' ? link.url : '', (url) =>
+            props.onChange({ kind: 'external', url }),
+          )
+        : null}
+      {kind === 'email'
+        ? text(
+            'email',
+            'Email',
+            link?.kind === 'email' ? link.email : '',
+            (email) => props.onChange({ kind: 'email', email }),
+          )
+        : null}
+      {kind === 'phone'
+        ? text(
+            'tel',
+            'Phone',
+            link?.kind === 'phone' ? link.phone : '',
+            (phone) => props.onChange({ kind: 'phone', phone }),
+          )
+        : null}
+    </div>
+  );
+}
+
+function CmsRichTextField(props: FieldControlProps<'richText'>) {
+  const suggest = useVariableSuggest(useSources().sources);
+  const items = React.useCallback(
+    (query: string) =>
+      suggest.getItems(query).map((item) => ({
+        label: typeof item.key === 'string' ? item.key : item.insertText,
+        insertText: item.insertText,
+        description:
+          typeof item.description === 'string' ? item.description : undefined,
+      })),
+    [suggest],
+  );
+  return <RichTextField {...props} suggest={{ items }} />;
+}
+
+/** `fields` plus the createCMS kinds (media, reference, link, variables). */
+export const cmsFields = {
+  ...fields,
+  media: MediaField,
+  reference: ReferenceField,
+  link: LinkField,
+  richText: CmsRichTextField,
+} satisfies FieldControls;

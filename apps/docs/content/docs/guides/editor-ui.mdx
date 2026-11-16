@@ -8,7 +8,7 @@ The createCMS docs site hosts a [shadcn registry](https://ui.shadcn.com/docs/reg
 - **Generic items** work with any backend through an `EditorAdapter`: `editor-field`, `editor-form`, `editor-canvas`, `editor-toolbar`, `editor-palette`, `editor-outline`, `editor-inspector`, `editor-shell`, `editor-email` and the `editor-app` block. They never import `@createcms/react/editor/cms`.
 - **createCMS items** layer on top: `editor-form-createcms` (asset, reference, link and variable controls plus `CmsSourcesProvider`), the `editor-app-createcms` block (`CmsEditor`), `media-library` and `media-picker`.
 
-The same chrome also ships rebuilt on Vercel's UI SDK behaviors as the `ui-sdk-*` items; see [Editor UI on UI SDK](/docs/guides/editor-ui-sdk).
+A second editor UI, built from scratch on Vercel's UI SDK behaviors, ships as `ui-sdk-editor`; see [Editor UI on UI SDK](/docs/guides/editor-ui-sdk).
 
 The chrome items do not wrap `Editor.Root` or `Canvas.Root`: compose them **inside** `Editor.Root`. For form-only, live canvas, and form-plus-preview layouts, see the [Visual editor](/docs/guides/visual-editor) guide. `editor-form-createcms`'s image control opens the `media-picker` item; the [Media library](/docs/guides/media-library) guide covers it and the `media-library` wrappers.
 

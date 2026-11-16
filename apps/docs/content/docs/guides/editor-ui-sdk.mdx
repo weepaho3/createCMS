@@ -1,84 +1,79 @@
 ---
 title: Editor UI on UI SDK
-description: The same editor chrome rebuilt on Vercel's UI SDK behaviors, installed side by side with the shadcn items.
+description: A second editor UI, built from scratch on Vercel's UI SDK behaviors, next to the shadcn items.
 ---
 
-The registry ships the editor chrome twice. The [shadcn items](/docs/guides/editor-ui)
-compose shadcn components on Base UI. The `ui-sdk-*` items rebuild the same
-parts on [UI SDK](https://github.com/vercel-labs/ui) (`@ui-sdk/react`), a
-library of unstyled behaviors from Vercel Labs: keyboard navigation, focus,
-dismissal, popups and the ARIA they need. Both sets render the same layout,
-expose the same exports and `data-slot` names, and pass the same browser
-suite, so you can compare them on one page or swap one for the other.
+The registry ships two editor UIs over the same `@createcms/react` core. The
+[shadcn items](/docs/guides/editor-ui) compose shadcn components on Base UI.
+`ui-sdk-editor` is built from scratch on [UI SDK](https://github.com/vercel-labs/ui)
+(`@ui-sdk/react`), a library of unstyled behaviors from Vercel Labs:
+keyboard navigation, focus, dismissal, popups and the ARIA they need. It
+meets the same requirements and passes the same browser suite, so you can
+compare both on one page.
 
 <Callout type="warn">
-  UI SDK is in beta (`0.1.0-beta.5`). The items pin that exact version.
+  UI SDK is in beta. The items pin `@ui-sdk/react@0.1.0-beta.5`.
 </Callout>
 
 ## Install
 
-The items install into `components/editor-ui-sdk/`, next to the shadcn
-items, because their files have the same names:
-
 ```bash
-npx shadcn@latest add https://createcms.dev/r/ui-sdk-editor-app.json
+npx shadcn@latest add https://createcms.dev/r/ui-sdk-editor.json
 ```
 
-UI SDK adds the little CSS its behaviors need (a closed popup stays hidden,
-a sheet dims the page) in a cascade layer named `ui-sdk`. Declare it first in
-your global stylesheet, above Tailwind, so your styles win:
+The files land in `components/editor-ui-sdk/`. Declare UI SDK's cascade
+layer first in your global stylesheet and import the editor's stylesheet:
 
 ```css title="app/globals.css"
 @layer ui-sdk;
 @import 'tailwindcss';
+@import '../components/editor-ui-sdk/editor-ui-sdk.css';
 ```
-
-Then use it like `editor-app`:
 
 ```tsx
-import { EditorApp } from '@/components/editor-ui-sdk/editor-app';
+import { EditorApp } from '@/components/editor-ui-sdk/app';
+
+<EditorApp
+  adapter={adapter}
+  documentId="home"
+  baseVersion={adapter.version('home')}
+  schema={schema}
+  components={canvasComponents}
+/>;
 ```
 
-The [UI SDK demo](/demo/editor/app-ui-sdk) runs this setup on
-`createMemoryAdapter`, next to the [shadcn demo](/demo/editor/app).
+`EditorApp` and `EditorAppView` take the same props as the shadcn
+`editor-app`. With createCMS, add `ui-sdk-editor-createcms` and render
+`CmsEditor` from `components/editor-ui-sdk/app-createcms`. The
+[UI SDK demo](/demo/editor/app-ui-sdk) runs on `createMemoryAdapter`, next to
+the [shadcn demo](/demo/editor/app).
 
-## Items
+## How it is built
 
-| Item | Built on |
-| --- | --- |
-| `ui-sdk-ui` | `Button`, `Input`, `Textarea`, `Separator`, `Tooltip`: the shared button variants, field and popup surfaces, `Kbd` and the tooltip icon button. |
-| `ui-sdk-editor-chrome` | The chrome context, with the docked sidebar's collapsed state. |
-| `ui-sdk-editor-field` | `Input`, `Textarea`, `NumberInput` (with step buttons), `Checkbox`, `Select` for the built-in field kinds. |
-| `ui-sdk-editor-form` | `Button` for the path and the child rows of the form-only surface. |
-| `ui-sdk-editor-canvas` | Tooltip buttons in the block toolbar, `Menu` with a `Move to…` submenu for the actions that do not fit it. |
-| `ui-sdk-editor-toolbar` | `Toolbar` (one tab stop, arrow keys between buttons), `ToggleGroup` for the device frame, `Command` in a `Dialog` for the command palette. |
-| `ui-sdk-editor-palette` | `Command` for the add-block list and dialog. |
-| `ui-sdk-editor-outline` | `ScrollArea` around `Editor.Outline`. |
-| `ui-sdk-editor-inspector` | `Tabs` for the block and page fields. |
-| `ui-sdk-editor-shell` | `Resizable` panels for the sidebars (drag or arrow keys to resize, Enter or double-click on a handle, the toolbar button or Mod+B to collapse the left one to an icon rail), `Drawer` for the phone sheets (snap points, a handle button, the keyboard inset) and the tablet inspector. |
-| `ui-sdk-editor-app` | `AlertDialog` for the conflict: Overwrite stays pending until the save settles. |
-| `ui-sdk-editor-email` | The form beside `Editor.FramePreview`. |
-| `ui-sdk-editor-form-createcms`, `ui-sdk-editor-app-createcms` | `Dialog`, `Input` and `Select` for the reference and link controls. The image control opens the shared `media-picker` item. |
+| Part | File | UI SDK |
+| --- | --- | --- |
+| Shell | `shell.tsx` | `Resizable` panels for palette and outline (left) and the inspector (right). A panel shows or hides whole, by the toolbar buttons, Mod+B or a drag past its minimum. Phones get `Drawer` sheets; the properties sheet snaps to 35, 60 and 100% and only turns modal above 60%, so the canvas stays usable under it. Tablets show the inspector in a side `Drawer`. |
+| Toolbar | `toolbar.tsx` | `Toolbar` (one tab stop, arrow keys between items), `ToggleGroup` for the device, `Dialog` with a pending `DialogClose` for the commit message. |
+| Commands | `commands.tsx` | One `Command` with pages: every editor command on the first page, the block types on the `add` page. Mod+K opens the first page, `/` and every add button the block page; Backspace goes back. |
+| Outline | `outline.tsx` | `Tree` over the document: APG keyboard, multiple selection synced with the canvas, collapsing through the store, virtualized with `visibleTreeRows`. Rows drag to reorder and nest; the drop target is checked against the schema's placement rules and shows blocked targets. |
+| Inspector | `inspector.tsx` | `Tabs` for the block and the page. |
+| Fields | `fields.tsx` | `Input`, `Textarea`, `NumberInput` with step buttons, `Checkbox`, `CheckboxGroup` for multiple choice, `Select`, a `ColorPicker` in a `Popover`. |
+| createCMS fields | `fields-createcms.tsx` | References and internal links are a `Combobox` that searches as you type and loads the next page when the list scrolls to its end (`useAsyncOptions`). |
+| Canvas chrome | `canvas.tsx` | The block toolbar's More `Menu` with a `Move to…` submenu. |
+| App | `app.tsx` | `AlertDialog` for a save conflict; Overwrite stays pending until the save settles. |
 
-## What stays the same
-
-The editor's own parts come from `@createcms/react` in both sets:
-`Editor.Outline` (the virtualized APG tree with drag and drop), the canvas
-overlay, `Canvas.PaletteItem` and the rich text toolbar. Only the chrome
-around them changes. Plugins fill the same outlets (`toolbar-start`,
-`block-toolbar`, `inspector-footer`, ...).
+Every look lives in `editor-ui-sdk.css`. Components carry `ed-*` classes and
+UI SDK's state attributes (`data-open`, `data-highlighted`, `data-selected`,
+`data-pressed`, `data-pending`, ...); the stylesheet keys on both. Theme it
+through the `--ed-*` tokens at its top, which default to the shadcn tokens.
 
 ## Differences to know
 
 - **Shortcuts.** UI SDK parts take a `shortcut` prop that binds keys. The
-  items never pass it: the editor's keymap owns every shortcut, and menus and
-  the palette only show the label in a `Kbd`.
-- **Slots.** A UI SDK part keeps its own `data-slot` (`button`,
-  `menu-content`, ...). The `editor-*` slots sit on wrapper elements, for
-  example `editor-form-child` on the list item around the row's button.
-- **Disabled toolbar buttons** stay focusable with `aria-disabled`, as the
-  APG toolbar pattern asks, so arrow keys reach them and their tooltip says
-  what they do.
-- **The sidebar** is a `Resizable` group instead of shadcn's `Sidebar`: its
-  width is draggable, and collapsing leaves a 48px rail with the palette's
-  block icons, which still drag.
+  editor never passes it: its keymap owns every shortcut, and lists only
+  show the label.
+- **The outline** uses UI SDK's tree. Alt+Left and Alt+Right expand or
+  collapse a branch with everything in it; Alt+Up and Alt+Down move the
+  block, as everywhere in the editor.
+- **Escape in the palette** first clears the search, then goes back a page,
+  then closes.

@@ -21,12 +21,11 @@ between the two `@createcms/react` tags, for example
 
 ## Unreleased
 
-- **New:** the `ui-sdk-*` items rebuild the editor chrome on Vercel's UI
-  SDK (`@ui-sdk/react@0.1.0-beta.5`): `ui-sdk-ui`, `ui-sdk-editor-chrome`,
-  `-field`, `-form`, `-canvas`, `-toolbar`, `-palette`, `-outline`,
-  `-inspector`, `-shell`, `-email`, `-app`, `-form-createcms` and
-  `-app-createcms`. They install into `components/editor-ui-sdk/`, next to
-  the shadcn items, with the same exports and `data-slot` names. See
+- **New:** `ui-sdk-editor` and `ui-sdk-editor-createcms`: a second editor
+  UI built from scratch on Vercel's UI SDK (`@ui-sdk/react@0.1.0-beta.5`),
+  with the same `EditorApp`/`EditorAppView`/`CmsEditor` props as the shadcn
+  items and one stylesheet keyed on UI SDK state. Installs into
+  `components/editor-ui-sdk/`. See
   [Editor UI on UI SDK](https://createcms.dev/docs/guides/editor-ui-sdk).
 - **Breaking:** `editor-app` is generic over a `PersistenceAdapter`
   (`EditorApp`, `EditorAppView`); the createCMS page is

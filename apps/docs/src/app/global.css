@@ -5,6 +5,7 @@
 @import 'fumadocs-ui/css/preset.css';
 @import '../styles/tokens.css';
 @import '../../registry/editor-canvas.css';
+@import '../../registry/ui-sdk/editor-ui-sdk.css';
 
 @custom-variant dark (&:where(.dark, .dark *));
 

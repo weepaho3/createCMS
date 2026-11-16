@@ -13,6 +13,34 @@ export default defineConfig({
     // for the app and the package.
     dedupe: ['react', 'react-dom'],
   },
+  // Pre-bundled up front: discovering these mid-run reloads the page and
+  // leaves a second React copy behind.
+  optimizeDeps: {
+    include: [
+      '@ui-sdk/react/alert-dialog',
+      '@ui-sdk/react/async-options',
+      '@ui-sdk/react/button',
+      '@ui-sdk/react/checkbox',
+      '@ui-sdk/react/color-picker',
+      '@ui-sdk/react/combobox',
+      '@ui-sdk/react/command',
+      '@ui-sdk/react/dialog',
+      '@ui-sdk/react/drawer',
+      '@ui-sdk/react/input',
+      '@ui-sdk/react/menu',
+      '@ui-sdk/react/number-input',
+      '@ui-sdk/react/popover',
+      '@ui-sdk/react/resizable',
+      '@ui-sdk/react/select',
+      '@ui-sdk/react/separator',
+      '@ui-sdk/react/tabs',
+      '@ui-sdk/react/textarea',
+      '@ui-sdk/react/toggle',
+      '@ui-sdk/react/toolbar',
+      '@ui-sdk/react/tooltip',
+      '@ui-sdk/react/tree',
+    ],
+  },
   test: {
     include: ['src/**/*.browser.test.tsx'],
     testTimeout: 30_000,
