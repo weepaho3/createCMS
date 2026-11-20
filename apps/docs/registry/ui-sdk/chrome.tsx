@@ -30,17 +30,16 @@ import * as React from 'react';
 
 import {
   editorChrome,
+  type Device,
   type EditorChromeOptions,
   type Layout,
-} from './editor-chrome';
-
-export {
-  DEVICE_WIDTH,
-  type Device,
-  type Layout,
   type PalettePage,
+  type Panels,
   type Sheet,
 } from './editor-chrome';
+
+export { DEVICE_WIDTH } from './editor-chrome';
+export type { Device, Layout, PalettePage, Sheet };
 
 const parts = createParts(editorChrome, {
   main: 'div',
@@ -61,46 +60,84 @@ const parts = createParts(editorChrome, {
 
 type ChromeState = StateOf<typeof editorChrome, 'root'>;
 
-const HandleContext = React.createContext<PrimitiveHandle<
-  typeof editorChrome
-> | null>(null);
+type ChromeContextValue = ChromeState & {
+  api: PrimitiveHandle<typeof editorChrome>['api'];
+};
+
+const ChromeContext = React.createContext<ChromeContextValue | null>(null);
 
 function ChromeRoot({
-  mode,
-  layout,
+  mode = 'canvas',
+  layout = 'desktop',
   dirty,
   requireCommitMessage,
   onSave,
   onPanelsChange,
   ...props
-}: EditorChromeOptions & PartProps<'div', ChromeState>) {
+}: Pick<
+  EditorChromeOptions,
+  | 'mode'
+  | 'layout'
+  | 'dirty'
+  | 'requireCommitMessage'
+  | 'onSave'
+  | 'onPanelsChange'
+> &
+  PartProps<'div', ChromeState>) {
+  const [device, setDevice] = React.useState<Device>('desktop');
+  const [panels, setPanels] = React.useState<Panels>({
+    left: true,
+    right: true,
+  });
+  const [sheet, setSheet] = React.useState<Sheet | null>(null);
+  const [palette, setPalette] = React.useState<PalettePage | null>(null);
+  const [commitOpen, setCommitOpen] = React.useState(false);
   const handle = usePrimitive(editorChrome, {
     mode,
     layout,
     dirty,
     requireCommitMessage,
     onSave,
-    onPanelsChange,
+    device,
+    onDeviceChange: setDevice,
+    panels,
+    onPanelsChange: (next, details) => {
+      setPanels(next);
+      onPanelsChange?.(next, details);
+    },
+    sheet,
+    onSheetChange: setSheet,
+    palette,
+    onPaletteChange: setPalette,
+    commitOpen,
+    onCommitOpenChange: setCommitOpen,
   });
+  const value = React.useMemo(
+    () => ({
+      mode,
+      layout,
+      device,
+      panels,
+      sheet,
+      palette,
+      commitOpen,
+      api: handle.api,
+    }),
+    [mode, layout, device, panels, sheet, palette, commitOpen, handle.api],
+  );
   return (
-    <HandleContext.Provider value={handle}>
+    <ChromeContext.Provider value={value}>
       {usePart(handle, 'root', {}, props, 'div')}
-    </HandleContext.Provider>
+    </ChromeContext.Provider>
   );
 }
 
 export const Chrome = { ...parts, Root: ChromeRoot };
 
-export function useChrome() {
-  const handle = React.useContext(HandleContext);
-  if (!handle) throw new Error('useChrome needs the editor shell around it.');
-  const { instance } = handle;
-  const state = React.useSyncExternalStore(
-    instance.subscribe,
-    () => instance.get() as ChromeState,
-    () => instance.get() as ChromeState,
-  );
-  return { ...state, api: handle.api };
+export function useChrome(): ChromeContextValue {
+  const chrome = React.useContext(ChromeContext);
+  if (!chrome) throw new Error('useChrome needs the editor shell around it.');
+  return chrome;
 }
 
 export function useMediaQuery(query: string): boolean {

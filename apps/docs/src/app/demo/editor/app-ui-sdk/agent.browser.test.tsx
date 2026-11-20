@@ -156,3 +156,61 @@ const outlineIds = () =>
           | undefined
       )?.find((item) => item.label === el.textContent?.trim())?.value,
   );
+
+it("an agent's changes reach every component that shows them", async () => {
+  await mount();
+  const pressed = (label: string) =>
+    document
+      .querySelector(`[role="toolbar"] [aria-label="${label}"]`)
+      ?.hasAttribute('data-pressed');
+
+  const device = await agent.act({
+    steps: [{ ref: 'Page editor', action: 'setDevice', args: ['tablet'] }],
+  });
+  expect(device.ok, device.error?.message).toBe(true);
+  await waitFor(() => expect(pressed('Tablet')).toBe(true));
+  expect(pressed('Desktop')).toBe(false);
+  const canvas = document.querySelector<HTMLElement>('.ed-canvas')!;
+  await waitFor(() => expect(canvas.style.maxWidth).toBe('768px'));
+
+  const sidebar = () =>
+    document.querySelector('[role="toolbar"] [aria-label="Sidebar"]');
+  expect(sidebar()?.getAttribute('aria-pressed')).toBe('true');
+  const panel = await agent.act({
+    steps: [{ ref: 'Page editor', action: 'togglePanel', args: ['left'] }],
+  });
+  expect(panel.ok, panel.error?.message).toBe(true);
+  await waitFor(() =>
+    expect(sidebar()?.getAttribute('aria-pressed')).toBe('false'),
+  );
+  const left = () =>
+    document
+      .querySelector<HTMLElement>('.ed-panel[data-side="left"]')!
+      .getBoundingClientRect().width;
+  await waitFor(() => expect(left()).toBe(0));
+  await agent.act({
+    steps: [{ ref: 'Page editor', action: 'togglePanel', args: ['left'] }],
+  });
+  await waitFor(() => expect(left()).toBeGreaterThan(150));
+  expect(sidebar()?.getAttribute('aria-pressed')).toBe('true');
+
+  const resized = await agent.act({
+    steps: [{ ref: 'Editor panels', action: 'collapse', args: ['ed-left'] }],
+  });
+  expect(resized.ok, resized.error?.message).toBe(true);
+  await waitFor(() => expect(left()).toBe(0));
+  await waitFor(() =>
+    expect(sidebar()?.getAttribute('aria-pressed')).toBe('false'),
+  );
+  await agent.act({
+    steps: [{ ref: 'Page editor', action: 'togglePanel', args: ['left'] }],
+  });
+  await waitFor(() => expect(left()).toBeGreaterThan(150));
+
+  const section = outlineIds()[1]!;
+  const collapsed = await agent.act({
+    steps: [{ ref: 'Outline', action: 'toggle', args: [section] }],
+  });
+  expect(collapsed.ok, collapsed.error?.message).toBe(true);
+  await waitFor(() => expect(outlineLabels()).toHaveLength(2));
+});

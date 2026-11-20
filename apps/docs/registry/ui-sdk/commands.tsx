@@ -153,8 +153,11 @@ export function CommandPalette() {
           autoHighlight
           loop
           pages={pages}
-          onPagesChange={(next) =>
-            api.openPalette(next.includes(ADD) ? 'add' : 'commands')
+          onPagesChange={(next, details) =>
+            api.openPalette(next.includes(ADD) ? 'add' : 'commands', {
+              reason: details.reason,
+              event: details.event,
+            })
           }
           onAction={(value) => run(value)}
           className="ed-command"

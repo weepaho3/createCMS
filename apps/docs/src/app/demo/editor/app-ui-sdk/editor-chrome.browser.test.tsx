@@ -76,6 +76,26 @@ describe('editor chrome primitive', () => {
     expect(onSave).toHaveBeenCalledTimes(1);
   });
 
+  it('a controlled value changes only when the app passes it back', () => {
+    const onDeviceChange = vi.fn();
+    const v = open({ device: 'desktop', onDeviceChange });
+    expect(v.api.setDevice('tablet')).toBe(true);
+    expect(onDeviceChange).toHaveBeenCalledWith(
+      'tablet',
+      expect.objectContaining({ reason: 'imperative' }),
+    );
+    expect(v.state.device).toBe('desktop');
+  });
+
+  it('a change the app cancels stays out', () => {
+    const v = open({
+      onSheetChange: (_sheet, details) => details.cancel(),
+      layout: 'phone',
+    });
+    expect(v.api.openSheet('outline')).toBe(false);
+    expect(v.state.sheet).toBeNull();
+  });
+
   it('refuses a device it does not know', () => {
     const v = open();
     expect(v.api.setDevice('watch' as never)).toBe(false);

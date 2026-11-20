@@ -43,10 +43,20 @@ export type EditorChromeOptions = {
   dirty?: boolean;
   requireCommitMessage?: boolean;
   onSave?: () => Promise<unknown> | void;
-  onPanelsChange?: OnChange<Panels>;
+  device?: Device;
+  defaultDevice?: Device;
   onDeviceChange?: OnChange<Device>;
+  panels?: Panels;
+  defaultPanels?: Panels;
+  onPanelsChange?: OnChange<Panels>;
+  sheet?: Sheet | null;
+  defaultSheet?: Sheet | null;
   onSheetChange?: OnChange<Sheet | null>;
+  palette?: PalettePage | null;
+  defaultPalette?: PalettePage | null;
   onPaletteChange?: OnChange<PalettePage | null>;
+  commitOpen?: boolean;
+  defaultCommitOpen?: boolean;
   onCommitOpenChange?: OnChange<boolean>;
 };
 
@@ -80,25 +90,42 @@ export const editorChrome = definePrimitive({
     dirty: 'boolean',
     requireCommitMessage: 'boolean',
     onSave: 'action',
-    onPanelsChange: 'callback',
+    device: 'string',
+    defaultDevice: 'string',
     onDeviceChange: 'callback',
+    panels: 'value',
+    defaultPanels: 'value',
+    onPanelsChange: 'callback',
+    sheet: 'value',
+    defaultSheet: 'value',
     onSheetChange: 'callback',
+    palette: 'value',
+    defaultPalette: 'value',
     onPaletteChange: 'callback',
+    commitOpen: 'boolean',
+    defaultCommitOpen: 'boolean',
     onCommitOpenChange: 'callback',
   },
+  controlled: ['device', 'panels', 'sheet', 'palette', 'commitOpen'],
   state: (options: EditorChromeOptions): ChromeState => ({
     mode: options.mode ?? 'canvas',
     layout: options.layout ?? 'desktop',
-    device: 'desktop',
-    panels: { left: true, right: true },
-    sheet: null,
-    palette: null,
-    commitOpen: false,
+    device: options.device ?? options.defaultDevice ?? 'desktop',
+    panels: options.panels ??
+      options.defaultPanels ?? { left: true, right: true },
+    sheet: options.sheet ?? options.defaultSheet ?? null,
+    palette: options.palette ?? options.defaultPalette ?? null,
+    commitOpen: options.commitOpen ?? options.defaultCommitOpen ?? false,
   }),
   sync: (options) => {
     const next: Partial<ChromeState> = {};
     if (options.mode !== undefined) next.mode = options.mode;
     if (options.layout !== undefined) next.layout = options.layout;
+    if (options.device !== undefined) next.device = options.device;
+    if (options.panels !== undefined) next.panels = options.panels;
+    if (options.sheet !== undefined) next.sheet = options.sheet;
+    if (options.palette !== undefined) next.palette = options.palette;
+    if (options.commitOpen !== undefined) next.commitOpen = options.commitOpen;
     return next;
   },
   api: (context) => {
