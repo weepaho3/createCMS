@@ -175,6 +175,10 @@ export const cms = createCMS({
 | i18n           | `@createcms/core/plugins/i18n`           | Per-entry translations across a fixed language universe with per-language fallback chains; adds translation tables and language-scoped read/write endpoints. |
 | Consent        | `@createcms/core/plugins/consent`        | Google Consent Mode v2 gate (buffer-then-flush) with CMP/dataLayer auto-read and a `<ConsentGate>` wrapper for consent-gated tracking and embeds.            |
 
+## Docs for agents
+
+The package ships the docs of this release as Markdown in `docs/` (start with `docs/llms.txt`) and a skill for coding agents in `skills/createcms/SKILL.md`. Point your `AGENTS.md` at them; see [Set up with an agent](https://createcms.dev/docs/installation#set-up-with-an-agent).
+
 ## License
 
 [MIT](./LICENSE)

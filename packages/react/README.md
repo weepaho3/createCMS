@@ -9,6 +9,10 @@ state surfaced as `data-*` attributes, and zero runtime dependencies (only
 Styled wrappers built on top of these primitives live in the shadcn-style
 component registry, not in this package.
 
+## Docs for agents
+
+The package ships the docs of this release as Markdown in `docs/`: start with `docs/llms.txt`. The createCMS skill for coding agents ships with `@createcms/core` in `skills/createcms/SKILL.md`.
+
 ## Entry points
 
 | Entry                              | Holds                                                                                                                                       |

@@ -21,6 +21,18 @@ npm install @createcms/core drizzle-orm
 
 The same works with your package manager of choice (`pnpm add`, `yarn add`, or `bun add`).
 
+## Set up with an agent
+
+Each package ships its docs for the installed release as Markdown, so a coding agent reads them in `node_modules` without the site: `@createcms/core/docs/llms.txt` and `@createcms/react/docs/llms.txt` are the indexes, and `@createcms/core/skills/createcms/SKILL.md` is a skill with the steps and rules for building with createCMS. Copy this prompt into your agent:
+
+```text
+Set up createCMS in this project.
+
+1. Install @createcms/core and drizzle-orm with the project's package manager. For an editor, also install @createcms/react.
+2. Add a note to AGENTS.md, creating it if needed: before working with createCMS, follow node_modules/@createcms/core/skills/createcms/SKILL.md and read node_modules/@createcms/core/docs/llms.txt (and node_modules/@createcms/react/docs/llms.txt for editor work). Search the large reference pages by heading.
+3. If your tool loads skills from a folder, copy node_modules/@createcms/core/skills/createcms into it.
+```
+
 ## Create your CMS
 
 Pass your Drizzle database instance to `createCMS` along with your collections and a media configuration. This is the smallest working setup:

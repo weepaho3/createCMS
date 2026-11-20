@@ -69,6 +69,8 @@ jobs:
           bunx oxlint packages/cms packages/schema packages/react
           bunx turbo run check-types test build \
             --filter=@createcms/core --filter=@createcms/schema --filter=@createcms/react
+          bun run docs:packages
+          node scripts/check-package-docs.mjs
 
       # github-api creates tags via the Git refs API. `git push` of a new
       # tag is rejected when the tagged commit introduced workflow-file

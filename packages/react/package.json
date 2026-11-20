@@ -28,7 +28,8 @@
   "files": [
     "dist",
     "README.md",
-    "THIRD_PARTY_NOTICES"
+    "THIRD_PARTY_NOTICES",
+    "docs"
   ],
   "type": "module",
   "sideEffects": false,

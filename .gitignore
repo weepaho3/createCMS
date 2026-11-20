@@ -4,6 +4,8 @@ node_modules
 .pnp.js
 
 # Build outputs
+# The docs as Markdown each package ships, written by apps/docs/scripts/package-docs.mjs at release.
+packages/*/docs/
 dist
 build
 .next

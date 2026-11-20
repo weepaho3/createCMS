@@ -13,9 +13,10 @@
     "check-commit": "node scripts/check-commit-message.mjs",
     "check-types": "turbo check-types",
     "clean": "turbo clean",
+    "docs:packages": "node apps/docs/scripts/package-docs.mjs",
     "format": "oxfmt --write",
     "lint": "oxlint --type-aware",
-    "release": "changeset publish",
+    "release": "node apps/docs/scripts/package-docs.mjs && node scripts/check-package-docs.mjs && changeset publish",
     "test": "turbo test",
     "test:scripts": "node --test scripts/linear-release-attribution.test.mjs",
     "version-packages": "changeset version && node scripts/sync-changelog.mjs && node apps/docs/scripts/stamp-registry.mjs && oxfmt apps/docs/registry.json apps/docs/registry && bun run --filter=docs registry:build"
