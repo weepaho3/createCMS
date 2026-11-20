@@ -25,9 +25,10 @@ between the two `@createcms/react` tags, for example
   UI built from scratch on Vercel's UI SDK (`@ui-sdk/react@0.1.0-beta.5`),
   with the same `EditorApp`/`EditorAppView`/`CmsEditor` props as the shadcn
   items and one stylesheet keyed on UI SDK state. UI SDK components where it
-  ships one; the editor chrome (`editor-chrome.ts`) and the block outline
-  (`block-outline.ts`, on `createTreeReorder`) are UI SDK primitives with
-  agent actions. Installs into `components/editor-ui-sdk/`. See
+  ships one; the editor chrome (`editor-chrome.ts`), the block outline
+  (`block-outline.ts`, on `createTreeReorder`) and the rich text field
+  (`editor-rich-text.ts`) are UI SDK primitives with agent actions. Needs
+  the `@createcms/react` release with `useRichTextToolbarState`. Installs into `components/editor-ui-sdk/`. See
   [Editor UI on UI SDK](https://createcms.dev/docs/guides/editor-ui-sdk).
 - **Breaking:** `editor-app` is generic over a `PersistenceAdapter`
   (`EditorApp`, `EditorAppView`); the createCMS page is

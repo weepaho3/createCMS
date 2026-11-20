@@ -397,6 +397,16 @@
           "target": "components/editor-ui-sdk/block-outline.ts"
         },
         {
+          "path": "registry/ui-sdk/editor-rich-text.ts",
+          "type": "registry:component",
+          "target": "components/editor-ui-sdk/editor-rich-text.ts"
+        },
+        {
+          "path": "registry/ui-sdk/rich-text.tsx",
+          "type": "registry:component",
+          "target": "components/editor-ui-sdk/rich-text.tsx"
+        },
+        {
           "path": "registry/ui-sdk/chrome.tsx",
           "type": "registry:component",
           "target": "components/editor-ui-sdk/chrome.tsx"

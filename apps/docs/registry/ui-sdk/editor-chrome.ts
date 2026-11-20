@@ -2,6 +2,7 @@
 import {
   createChange,
   definePrimitive,
+  dispatch,
   type ChangeDetails,
 } from '@ui-sdk/core';
 
@@ -19,6 +20,23 @@ export const DEVICE_WIDTH: Record<Device, number | 'full'> = {
 };
 
 const DEVICES: readonly Device[] = ['desktop', 'tablet', 'mobile'];
+const SIDES: readonly Side[] = ['left', 'right'];
+const SHEETS: readonly Sheet[] = ['props', 'add', 'outline'];
+const PAGES: readonly PalettePage[] = ['commands', 'add'];
+
+function oneOf<T extends string>(
+  value: T,
+  allowed: readonly T[],
+  what: string,
+) {
+  if (!allowed.includes(value)) {
+    throw new Error(
+      `Unknown ${what} "${value}". Use one of: ${allowed.join(', ')}.`,
+    );
+  }
+}
+
+export type BlockType = { value: string; label: string };
 
 type ChromeReason =
   | 'press'
@@ -33,6 +51,9 @@ type ChromeReason =
   | 'action'
   | 'parent-close'
   | 'resize'
+  | 'drag'
+  | 'step-key'
+  | 'collapse'
   | 'imperative';
 
 type OnChange<T> = (value: T, details: ChangeDetails<ChromeReason>) => void;
@@ -42,7 +63,9 @@ export type EditorChromeOptions = {
   layout?: Layout;
   dirty?: boolean;
   requireCommitMessage?: boolean;
-  onSave?: () => Promise<unknown> | void;
+  onSave?: (details: Details) => Promise<unknown> | void;
+  blockTypes?: BlockType[];
+  onInsertBlock?: (type: string, details: ChangeDetails<ChromeReason>) => void;
   device?: Device;
   defaultDevice?: Device;
   onDeviceChange?: OnChange<Device>;
@@ -70,7 +93,7 @@ type ChromeState = {
   commitOpen: boolean;
 };
 
-type Details = { reason: ChromeReason; event?: Event };
+export type Details = { reason: ChromeReason; event?: Event };
 
 const section =
   (name: string) => (_state: ChromeState, part: { id: string }) => ({
@@ -90,17 +113,19 @@ export const editorChrome = definePrimitive({
     dirty: 'boolean',
     requireCommitMessage: 'boolean',
     onSave: 'action',
+    blockTypes: 'value',
+    onInsertBlock: 'callback',
     device: 'string',
     defaultDevice: 'string',
     onDeviceChange: 'callback',
     panels: 'value',
     defaultPanels: 'value',
     onPanelsChange: 'callback',
-    sheet: 'value',
-    defaultSheet: 'value',
+    sheet: 'string',
+    defaultSheet: 'string',
     onSheetChange: 'callback',
-    palette: 'value',
-    defaultPalette: 'value',
+    palette: 'string',
+    defaultPalette: 'string',
     onPaletteChange: 'callback',
     commitOpen: 'boolean',
     defaultCommitOpen: 'boolean',
@@ -135,7 +160,7 @@ export const editorChrome = definePrimitive({
     const api = {
       isDirty: () => context.options().dirty === true,
       setDevice(device: Device, details: Details = { reason: 'imperative' }) {
-        if (!DEVICES.includes(device)) return false;
+        oneOf(device, DEVICES, 'device');
         return (
           store.get().device !== device && change('device', device, details)
         );
@@ -145,43 +170,61 @@ export const editorChrome = definePrimitive({
         open: boolean,
         details: Details = { reason: 'imperative' },
       ) {
+        oneOf(side, SIDES, 'panel');
         const panels = store.get().panels;
         if (panels[side] === open) return false;
         return change('panels', { ...panels, [side]: open }, details);
       },
-      togglePanel(side: Side, event?: Event) {
+      togglePanel(side: Side, details: Details = { reason: 'imperative' }) {
+        oneOf(side, SIDES, 'panel');
         const { layout, panels } = store.get();
         if (layout === 'phone') return false;
         if (side === 'right' && layout === 'tablet') {
-          return api.toggleSheet('props', event);
+          return api.toggleSheet('props', details);
         }
-        return api.setPanel(side, !panels[side], { reason: 'press', event });
+        return api.setPanel(side, !panels[side], details);
       },
       openSheet(sheet: Sheet, details: Details = { reason: 'imperative' }) {
+        oneOf(sheet, SHEETS, 'sheet');
         return store.get().sheet !== sheet && change('sheet', sheet, details);
       },
       closeSheet(details: Details = { reason: 'imperative' }) {
         return store.get().sheet !== null && change('sheet', null, details);
       },
-      toggleSheet(sheet: Sheet, event?: Event) {
+      toggleSheet(sheet: Sheet, details: Details = { reason: 'imperative' }) {
+        oneOf(sheet, SHEETS, 'sheet');
         const open = store.get().sheet === sheet;
-        return change('sheet', open ? null : sheet, { reason: 'press', event });
+        return change('sheet', open ? null : sheet, details);
       },
       openPalette(
         page: PalettePage,
         details: Details = { reason: 'imperative' },
       ) {
+        oneOf(page, PAGES, 'palette page');
         return store.get().palette !== page && change('palette', page, details);
       },
       closePalette(details: Details = { reason: 'imperative' }) {
         return store.get().palette !== null && change('palette', null, details);
       },
-      addBlock(event?: Event) {
+      addBlock(details: Details = { reason: 'imperative' }) {
         const { layout, mode } = store.get();
         if (mode !== 'canvas') return false;
         return layout === 'phone'
-          ? api.openSheet('add', { reason: 'press', event })
-          : api.openPalette('add', { reason: 'press', event });
+          ? api.openSheet('add', details)
+          : api.openPalette('add', details);
+      },
+      blockTypes: () => context.options().blockTypes ?? [],
+      insertBlock(type: string, details: Details = { reason: 'imperative' }) {
+        const types = api.blockTypes();
+        const found =
+          types.find((t) => t.value === type) ??
+          types.find((t) => t.label.toLowerCase() === type.toLowerCase());
+        if (!found) {
+          throw new Error(
+            `Unknown block type "${type}". Use one of: ${types.map((t) => t.label).join(', ')}.`,
+          );
+        }
+        return !dispatch(context, 'onInsertBlock', found.value, details);
       },
       setCommitOpen(
         open: boolean,
@@ -191,13 +234,11 @@ export const editorChrome = definePrimitive({
           store.get().commitOpen !== open && change('commitOpen', open, details)
         );
       },
-      async save(event?: Event) {
+      async save(details: Details = { reason: 'imperative' }) {
         const { dirty, requireCommitMessage, onSave } = context.options();
         if (!dirty) return false;
-        if (requireCommitMessage) {
-          return api.setCommitOpen(true, { reason: 'press', event });
-        }
-        await onSave?.();
+        if (requireCommitMessage) return api.setCommitOpen(true, details);
+        await onSave?.(details);
         return true;
       },
       reveal(blockId: string) {
@@ -220,6 +261,7 @@ export const editorChrome = definePrimitive({
   },
   slots: (slot) => ({
     root: slot<{}, ChromeState>({
+      role: 'region',
       state: (state) => state,
       attrs: (state) => ({
         'data-mode': state.mode,
@@ -234,7 +276,12 @@ export const editorChrome = definePrimitive({
         // A phone sheet owns a history entry while it is open, so the back
         // gesture closes the sheet instead of leaving the editor.
         let entry: string | null = null;
+        let leaving = 0;
         const onPop = () => {
+          if (leaving > 0) {
+            leaving -= 1;
+            return;
+          }
           if (entry === null) return;
           entry = null;
           part.api.closeSheet({ reason: 'back' });
@@ -251,16 +298,23 @@ export const editorChrome = definePrimitive({
           } else if (!open && entry !== null) {
             const key = entry;
             entry = null;
-            if (view.history.state?.edSheet === key) view.history.back();
+            if (view.history.state?.edSheet === key) {
+              leaving += 1;
+              view.history.back();
+            }
           }
         };
         view.addEventListener('beforeunload', warn);
         view.addEventListener('popstate', onPop);
         const stop = part.store.subscribe(follow);
+        follow();
         return () => {
           stop();
           view.removeEventListener('beforeunload', warn);
           view.removeEventListener('popstate', onPop);
+          if (entry !== null && view.history.state?.edSheet === entry) {
+            view.history.back();
+          }
         };
       },
     }),
@@ -278,6 +332,7 @@ export const editorChrome = definePrimitive({
     'palette-title': slot({ attrs: title('palette') }),
     outline: slot({ attrs: section('outline') }),
     'outline-title': slot({ attrs: title('outline') }),
+    'outline-body': slot({}),
     inspector: slot({}),
     form: slot({}),
     'form-surface': slot({}),
@@ -287,15 +342,7 @@ export const editorChrome = definePrimitive({
     'form-child': slot({}),
   }),
   agent: {
-    actions: [
-      'setDevice',
-      'togglePanel',
-      'openSheet',
-      'closeSheet',
-      'openPalette',
-      'closePalette',
-      'addBlock',
-      'save',
-    ],
+    actions: ['setDevice', 'togglePanel', 'insertBlock', 'save'],
+    items: (api) => api.blockTypes(),
   },
 });

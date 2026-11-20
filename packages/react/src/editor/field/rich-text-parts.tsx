@@ -18,6 +18,8 @@ import { FieldContext, useFieldContext } from './context';
 import { useRichTextEditor, useTextBinding } from './rich-text';
 
 /** What the toolbar parts read: the mounted editor and the field's schema. */
+export type RichTextToolbarState = RichTextFieldContextValue;
+
 export type RichTextFieldContextValue = {
   handle: RichTextHandle | null;
   schema: RichTextSchema;
@@ -27,6 +29,17 @@ export type RichTextFieldContextValue = {
 
 export const RichTextFieldContext =
   React.createContext<RichTextFieldContextValue | null>(null);
+
+/**
+ * The rich text editor around this component, for a toolbar of your own:
+ * the mounted handle (`commands.isActive`, `toggleMark`, `setNode`), what
+ * the field allows, whether it is editable, and a version that changes
+ * with the selection. Works inside `Editor.RichTextField`, the default
+ * control and the canvas's `Canvas.InlineRichTextToolbar`; `null` outside.
+ */
+export function useRichTextToolbarState(): RichTextFieldContextValue | null {
+  return React.useContext(RichTextFieldContext);
+}
 
 function useRichTextFieldContext(part: string): RichTextFieldContextValue {
   const value = React.useContext(RichTextFieldContext);

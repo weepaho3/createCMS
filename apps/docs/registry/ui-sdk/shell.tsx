@@ -6,7 +6,6 @@ import {
   useAnyBlock,
   useEditorKeyboard,
   useEditorStore,
-  useHistory,
   useKeyboardInset,
   usePalette,
   useSave,
@@ -32,9 +31,7 @@ import { useShortcut } from '@ui-sdk/react/shortcuts';
 import {
   ListTreeIcon,
   PlusIcon,
-  Redo2Icon,
   SlidersHorizontalIcon,
-  Undo2Icon,
   XIcon,
 } from 'lucide-react';
 import * as React from 'react';
@@ -42,11 +39,16 @@ import * as React from 'react';
 import type { Sheet as SheetName } from './chrome';
 
 import { Chrome, DEVICE_WIDTH, useChrome, useLayout } from './chrome';
-import { BlockPicker, CommandPalette } from './commands';
+import { BlockPicker, CommandPalette, useInsert } from './commands';
 import { Inspector } from './inspector';
 import { BlockOutline } from './outline';
 import { BlockPalette } from './palette';
-import { CommitDialog, EditorToolbar } from './toolbar';
+import {
+  CommitDialog,
+  EditorToolbar,
+  SAVE_KEYS,
+  SIDEBAR_KEYS,
+} from './toolbar';
 
 const LEFT = 'ed-left';
 const RIGHT = 'ed-right';
@@ -81,10 +83,14 @@ function Sheet({
     >
       <DrawerBackdrop className="ed-backdrop" />
       <DrawerContent className="ed-sheet" data-full={props || undefined}>
-        <DrawerHandle
-          aria-label={`Resize ${name === 'props' ? 'properties' : name}`}
-          className="ed-sheet-handle"
-        />
+        {props ? (
+          <DrawerHandle
+            aria-label="Resize properties"
+            className="ed-sheet-handle"
+          />
+        ) : (
+          <div aria-hidden className="ed-sheet-handle" />
+        )}
         <header className="ed-sheet-head">
           <DrawerTitle>{title}</DrawerTitle>
           <DrawerClose
@@ -129,10 +135,10 @@ function PhoneSheets() {
       <Sheet name="props" title={title}>
         <Inspector />
       </Sheet>
-      <Sheet name="add" title="Add block">
+      <Sheet name="add" title="Insert a block">
         <BlockPicker onDone={() => api.closeSheet()} />
       </Sheet>
-      <Sheet name="outline" title="Outline">
+      <Sheet name="outline" title="Structure">
         <BlockOutline fill />
       </Sheet>
     </>
@@ -143,7 +149,7 @@ function TabletInspector() {
   const { sheet, api } = useChrome();
   return (
     <Drawer
-      side="right"
+      side="end"
       modal={false}
       closeOnOutsidePress={false}
       open={sheet === 'props'}
@@ -155,7 +161,7 @@ function TabletInspector() {
     >
       <DrawerContent className="ed-side-sheet">
         <header className="ed-sheet-head">
-          <DrawerTitle>Inspector</DrawerTitle>
+          <DrawerTitle>Properties</DrawerTitle>
           <DrawerClose
             aria-label="Close inspector"
             className="ed-button"
@@ -173,39 +179,31 @@ function TabletInspector() {
 
 function BottomBar() {
   const { mode, api } = useChrome();
-  const history = useHistory();
   const inset = useKeyboardInset();
-  const actions: [string, React.ElementType, () => unknown, boolean?][] = [
-    ['Add block', PlusIcon, () => api.openSheet('add', { reason: 'press' })],
-    [
-      'Outline',
-      ListTreeIcon,
-      () => api.openSheet('outline', { reason: 'press' }),
-    ],
+  const actions: [string, React.ElementType, 'add' | 'outline' | 'props'][] = [
+    ['Add block', PlusIcon, 'add'],
+    ['Outline', ListTreeIcon, 'outline'],
     ...(mode === 'canvas'
       ? [
-          [
-            'Properties',
-            SlidersHorizontalIcon,
-            () => api.openSheet('props', { reason: 'press' }),
-          ] as [string, React.ElementType, () => unknown],
+          ['Properties', SlidersHorizontalIcon, 'props'] as [
+            string,
+            React.ElementType,
+            'props',
+          ],
         ]
       : []),
-    ['Undo', Undo2Icon, () => history.undo(), !history.canUndo],
-    ['Redo', Redo2Icon, () => history.redo(), !history.canRedo],
   ];
   return (
     <Chrome.BottomBar
       className="ed-bottom-bar"
-      style={inset > 0 ? { translate: `0 -${inset}px` } : undefined}
+      style={{ '--ed-keyboard-inset': `${inset}px` } as React.CSSProperties}
     >
-      {actions.map(([label, Icon, run, disabled]) => (
+      {actions.map(([label, Icon, sheet]) => (
         <Button
           key={label}
-          disabled={disabled}
-          onClick={() => {
-            run();
-          }}
+          onClick={(event) =>
+            api.openSheet(sheet, { reason: 'press', event: event.nativeEvent })
+          }
           className="ed-bottom-action"
         >
           <Icon aria-hidden />
@@ -251,17 +249,12 @@ function Layout({
     <>
       <Resizable
         controller={controller}
-        aria-label="Editor panels"
+        aria-label="Panel layout"
         className="ed-panels"
-        onLayoutCommit={() => {
-          api.setPanel('left', !controller.isCollapsed(LEFT), {
-            reason: 'resize',
-          });
-          if (right) {
-            api.setPanel('right', !controller.isCollapsed(RIGHT), {
-              reason: 'resize',
-            });
-          }
+        onLayoutCommit={(_layout, details) => {
+          const why = { reason: details.reason, event: details.event };
+          api.setPanel('left', !controller.isCollapsed(LEFT), why);
+          if (right) api.setPanel('right', !controller.isCollapsed(RIGHT), why);
         }}
       >
         <ResizablePanel
@@ -270,9 +263,7 @@ function Layout({
           minSize="200px"
           maxSize="420px"
           collapsible
-          collapsedSize={0}
           className="ed-panel"
-          data-side="left"
         >
           <BlockPalette />
           <BlockOutline />
@@ -293,9 +284,7 @@ function Layout({
               minSize="240px"
               maxSize="480px"
               collapsible
-              collapsedSize={0}
               className="ed-panel"
-              data-side="right"
             >
               <Inspector />
             </ResizablePanel>
@@ -307,19 +296,36 @@ function Layout({
   );
 }
 
+const typing = () => {
+  const active = document.activeElement;
+  return (
+    active instanceof HTMLElement &&
+    (active.isContentEditable || active.matches('input, textarea, select'))
+  );
+};
+
 function Keymap({ mode }: { mode: 'canvas' | 'form' }) {
   const store = useEditorStore();
   const { layout, api } = useChrome();
-  useShortcut('mod+b', () => api.togglePanel('left'), {
-    description: 'Show or hide the sidebar',
-    when: () => layout !== 'phone',
-  });
-  useShortcut('mod+s', () => void api.save(), { description: 'Save' });
+  useShortcut(
+    layout === 'phone' ? null : SIDEBAR_KEYS,
+    (event) => api.togglePanel('left', { reason: 'shortcut', event }),
+    { description: 'Show or hide the sidebar', when: () => !typing() },
+  );
+  useShortcut(
+    SAVE_KEYS,
+    (event) => void api.save({ reason: 'shortcut', event }),
+    { description: 'Save', allowInInput: true },
+  );
   React.useEffect(
     () =>
       store.on('ui', ({ action }) => {
-        if (action === 'commandPalette') api.openPalette('commands');
-        if (action === 'quickInsert' && mode === 'canvas') api.addBlock();
+        if (action === 'commandPalette') {
+          api.openPalette('commands', { reason: 'shortcut' });
+        }
+        if (action === 'quickInsert' && mode === 'canvas') {
+          api.addBlock({ reason: 'shortcut' });
+        }
       }),
     [store, mode, api],
   );
@@ -339,6 +345,12 @@ export function EditorShell({
 }: EditorShellProps) {
   const layout = useLayout();
   const { dirty, save } = useSave();
+  const palette = usePalette();
+  const { insert } = useInsert();
+  const blockTypes = React.useMemo(
+    () => palette.map((item) => ({ value: item.type, label: item.label })),
+    [palette],
+  );
   const [controller] = React.useState(createResizableController);
   const scope = React.useRef<HTMLDivElement | null>(null);
   useEditorKeyboard(scope);
@@ -354,8 +366,9 @@ export function EditorShell({
         dirty={dirty}
         requireCommitMessage={requireCommitMessage}
         onSave={() => save()}
-        onPanelsChange={(panels, details) => {
-          if (details.reason === 'resize') return;
+        blockTypes={blockTypes}
+        onInsertBlock={(type) => insert(type)}
+        onPanelsChange={(panels) => {
           for (const [side, id] of [
             ['left', LEFT],
             ['right', RIGHT],

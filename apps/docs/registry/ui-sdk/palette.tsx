@@ -16,7 +16,7 @@ export function BlockPalette() {
       <header className="ed-panel-heading">
         <Chrome.PaletteTitle>Palette</Chrome.PaletteTitle>
         <IconButton
-          label="Search blocks"
+          label="Browse block types"
           size="xs"
           onClick={() => api.openPalette('add', { reason: 'press' })}
         >

@@ -102,6 +102,7 @@ function RootCombobox({
   value,
   onChange,
   disabled,
+  readOnly,
   label,
   id,
 }: {
@@ -109,6 +110,7 @@ function RootCombobox({
   value: string | undefined;
   onChange: (rootId: string) => void;
   disabled: boolean;
+  readOnly?: boolean;
   label: string;
   id?: string;
 }) {
@@ -152,6 +154,7 @@ function RootCombobox({
       filter={false}
       status={roots.status}
       disabled={disabled}
+      readOnly={readOnly}
       itemToLabel={(id) => (id === value ? (current ?? id) : id)}
       onQueryChange={(query) => roots.setQuery(query)}
       onLoadMore={roots.loadMore}
@@ -163,7 +166,7 @@ function RootCombobox({
         <ComboboxInput
           id={id}
           aria-label={inField ? undefined : label}
-          placeholder={label}
+          placeholder="Type to search"
         />
         <ComboboxTrigger aria-label={`Show ${label.toLowerCase()} options`}>
           <ChevronsUpDownIcon aria-hidden />
@@ -175,8 +178,8 @@ function RootCombobox({
             state.status === 'error'
               ? 'Could not load.'
               : state.loading
-                ? 'Loading…'
-                : null
+                ? 'Searching…'
+                : `${state.count} ${state.count === 1 ? 'result' : 'results'}`
           }
         </ComboboxStatus>
         <ComboboxEmpty className="ed-empty">
@@ -210,7 +213,7 @@ function MediaField(props: FieldControlProps<'media'>) {
   const assetId = props.value?.assetId;
   const locked = props.disabled || props.readOnly;
   return (
-    <div id={props.id} className="ed-stack">
+    <div className="ed-stack">
       {assetId ? (
         <img src={assetUrl(assetId)} alt="" className="ed-asset" />
       ) : null}
@@ -260,7 +263,8 @@ function ReferenceField(props: FieldControlProps<'reference'>) {
       label={props.spec.label ?? 'Reference'}
       collection={props.spec.collection}
       value={props.value?.id}
-      disabled={props.disabled || props.readOnly}
+      disabled={props.disabled}
+      readOnly={props.readOnly}
       onChange={(id) => props.onChange({ id })}
     />
   );
@@ -276,6 +280,7 @@ const KIND_LABEL: Record<Kind, string> = {
 };
 
 function LinkField(props: FieldControlProps<'link'>) {
+  const fieldLabel = props.spec.label ?? 'Link';
   const allowed = props.spec.allowedKinds ?? [...KINDS];
   const link = props.value;
   const kind: Kind = link?.kind ?? allowed[0] ?? 'external';
@@ -301,19 +306,21 @@ function LinkField(props: FieldControlProps<'link'>) {
   ) => (
     <Input
       type={type}
-      aria-label={label}
+      aria-label={`${fieldLabel} ${label.toLowerCase()}`}
       className="ed-input"
       disabled={props.disabled}
+      readOnly={props.readOnly}
       value={value}
       onValueChange={set}
     />
   );
   return (
-    <div id={props.id} className="ed-stack">
+    <div className="ed-stack">
       <Choice
-        aria-label="Link type"
+        aria-label={`${fieldLabel} link type`}
         value={kind}
         disabled={props.disabled}
+        readOnly={props.readOnly}
         options={allowed.map((k) => ({ value: k, label: KIND_LABEL[k] }))}
         onValueChange={(next) => props.onChange(empty[next as Kind])}
       />
@@ -321,9 +328,10 @@ function LinkField(props: FieldControlProps<'link'>) {
         <>
           {collections.length > 1 ? (
             <Choice
-              aria-label="Collection"
+              aria-label={`${fieldLabel} collection`}
               value={collection}
               disabled={props.disabled}
+              readOnly={props.readOnly}
               options={collections.map((c) => ({ value: c, label: c }))}
               onValueChange={(next) =>
                 props.onChange({ kind: 'internal', rootId, collection: next })
@@ -336,10 +344,11 @@ function LinkField(props: FieldControlProps<'link'>) {
           ) : null}
           {collection ? (
             <RootCombobox
-              label="Page"
+              label={`${fieldLabel} page`}
               collection={collection}
               value={rootId || undefined}
               disabled={props.disabled}
+              readOnly={props.readOnly}
               onChange={(id) =>
                 props.onChange({ kind: 'internal', rootId: id, collection })
               }

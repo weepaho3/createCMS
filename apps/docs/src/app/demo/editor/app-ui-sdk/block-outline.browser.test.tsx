@@ -1,4 +1,9 @@
-import { checkPattern, checkServer, mount } from '@ui-sdk/core/testing';
+import {
+  checkDirection,
+  checkPattern,
+  checkServer,
+  mount,
+} from '@ui-sdk/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { blockOutline } from '../../../../../registry/ui-sdk/block-outline';
@@ -129,7 +134,12 @@ describe('block outline primitive', () => {
     v.part('row', 'section')!.dispatchEvent(
       new MouseEvent('click', { bubbles: true, shiftKey: true }),
     );
-    expect(v.state.selected).toEqual(['heading', 'section']);
+    expect(v.state.selected).toEqual([
+      'section',
+      'section:children',
+      'paragraph',
+      'image',
+    ]);
   });
 
   it('the toggle opens and closes a branch', async () => {
@@ -148,6 +158,81 @@ describe('block outline primitive', () => {
     await v.type('im');
     expect(document.activeElement).toBe(v.part('row', 'image'));
     expect(v.state.selected).toEqual(['image']);
+  });
+
+  it('Shift extends from where the selection started, both ways', async () => {
+    const v = open();
+    v.part('row', 'image')!.focus();
+    await v.keys('ArrowUp', 'ArrowDown');
+    await v.keys('Shift+ArrowUp', 'Shift+ArrowUp');
+    expect(v.state.selected).toEqual([
+      'section:children',
+      'paragraph',
+      'image',
+    ]);
+    await v.keys('Shift+ArrowDown');
+    expect(v.state.selected).toEqual(['paragraph', 'image']);
+    const stops = [...v.root.querySelectorAll('[tabindex="0"]')];
+    expect(stops).toEqual([document.activeElement]);
+  });
+
+  it('Mod with an arrow moves focus only, Mod+Space adds, Mod+A selects all', async () => {
+    const v = open();
+    v.part('row', 'heading')!.focus();
+    await v.keys('ArrowDown', 'ArrowUp');
+    expect(v.state.selected).toEqual(['heading']);
+    await v.keys('Control+ArrowDown', 'Control+ArrowDown', 'Control+ArrowDown');
+    expect(document.activeElement).toBe(v.part('row', 'paragraph'));
+    expect(v.state.selected).toEqual(['heading']);
+    await v.keys('Control+Space');
+    expect(v.state.selected).toEqual(['heading', 'paragraph']);
+    await v.keys('Control+a');
+    expect(v.state.selected).toEqual(rows.map((row) => row.key));
+  });
+
+  it('star opens every sibling branch', async () => {
+    const v = open({ defaultExpanded: [] });
+    v.part('row', 'heading')!.focus();
+    await v.keys('*');
+    expect(v.state.expanded).toEqual(['section']);
+  });
+
+  it('keys on a control inside a row stay with the control', async () => {
+    view = mount(
+      blockOutline,
+      { defaultRows: rows },
+      `<root aria-label="Outline"><row value="heading">Heading<button>Act</button></row><row value="section">Section</row><instructions>i</instructions></root>`,
+    );
+    view.root.querySelector('button')!.focus();
+    await view.keys('Space', 'ArrowDown');
+    expect(view.state.moving).toBeNull();
+    expect(view.state.selected).toEqual([]);
+  });
+
+  it('refuses unknown blocks and lists every block for agents', () => {
+    const v = open({
+      defaultExpanded: [],
+      labels: { paragraph: 'Paragraph: Hi' },
+    });
+    expect(() => v.api.select('footer')).toThrow(/No block "footer"/);
+    expect(v.api.items()).toContainEqual({
+      value: 'paragraph',
+      label: 'Paragraph: Hi',
+    });
+  });
+
+  it('works right to left', async () => {
+    await expect(
+      checkDirection(
+        blockOutline,
+        {
+          defaultRows: rows.slice(1),
+          defaultExpanded: [],
+          fixed: ['section:children'],
+        },
+        `<root aria-label="Outline"><row value="section">Section</row><row value="section:children">Content</row><row value="paragraph">Paragraph</row><row value="image">Image</row><instructions>i</instructions></root>`,
+      ),
+    ).resolves.toBeUndefined();
   });
 
   it('renders on the server', () => {

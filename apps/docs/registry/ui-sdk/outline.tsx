@@ -5,6 +5,7 @@ import type { OutlineRow } from '@createcms/react/editor';
 import type { SlotRef } from '@createcms/react/editor/core';
 
 import {
+  describeBlock,
   Editor,
   outlineRows,
   useDocSelector,
@@ -30,6 +31,7 @@ import { Chrome, blockIcon } from './chrome';
 const Tree = createParts(blockOutline, {
   root: 'div',
   row: 'div',
+  text: 'span',
   toggle: 'span',
   handle: 'span',
   instructions: 'p',
@@ -111,7 +113,28 @@ function useOutline() {
     [schema, slotFor, store],
   );
 
-  return { outline, byId, labelOf, slotFor, canPlace };
+  const labels = useDocSelector(
+    (doc) => {
+      const out: Record<string, string> = {};
+      for (const row of outline) {
+        const node = doc.nodes[row.kind === 'slot' ? row.blockId : row.id];
+        if (!node) continue;
+        const { label, excerpt } = describeBlock(schema, node);
+        out[row.id] =
+          row.kind === 'slot'
+            ? `${labelOf(row)} of ${label}`
+            : excerpt
+              ? `${label}: ${excerpt}`
+              : label;
+      }
+      return out;
+    },
+    (a, b) =>
+      Object.keys(a).length === Object.keys(b).length &&
+      Object.keys(a).every((k) => a[k] === b[k]),
+  );
+
+  return { outline, byId, labelOf, labels, slotFor, canPlace };
 }
 
 export function BlockOutline({ fill = false }: { fill?: boolean }) {
@@ -119,7 +142,7 @@ export function BlockOutline({ fill = false }: { fill?: boolean }) {
   const { selection } = useSelection();
   const hovered = useHovered();
   const collapsed = useSessionSelector((s) => s.collapsed);
-  const { outline, byId, labelOf, slotFor, canPlace } = useOutline();
+  const { outline, byId, labelOf, labels, slotFor, canPlace } = useOutline();
 
   const rows = React.useMemo(
     () => outline.map((row) => ({ key: row.id, depth: row.level - 1 })),
@@ -151,7 +174,7 @@ export function BlockOutline({ fill = false }: { fill?: boolean }) {
       <header className={fill ? 'ed-sr' : 'ed-panel-heading'}>
         <Chrome.OutlineTitle>Outline</Chrome.OutlineTitle>
       </header>
-      <div className="ed-outline-scroll">
+      <Chrome.OutlineBody className="ed-outline-scroll">
         <Tree.Root
           aria-label="Outline"
           className="ed-tree"
@@ -185,8 +208,8 @@ export function BlockOutline({ fill = false }: { fill?: boolean }) {
           onHover={(key) =>
             store.hover(key && byId.get(key)?.kind === 'node' ? key : null)
           }
-          onPointerLeave={() => store.hover(null)}
           fixed={fixed}
+          labels={labels}
           canPlace={canPlace}
         >
           {({ rows: shown }) => (
@@ -202,15 +225,13 @@ export function BlockOutline({ fill = false }: { fill?: boolean }) {
                     data-kind={row.kind}
                     className="ed-tree-item"
                   >
-                    {row.kind === 'node' && row.hasChildren ? (
-                      <Tree.Toggle value={key} className="ed-tree-toggle">
-                        <ChevronRightIcon />
-                      </Tree.Toggle>
-                    ) : (
-                      <span aria-hidden className="ed-tree-toggle" />
-                    )}
-                    {Icon ? <Icon aria-hidden /> : null}
-                    <span className="ed-tree-text">{labelOf(row)}</span>
+                    <Tree.Toggle value={key} className="ed-tree-toggle">
+                      {({ parent }) => (parent ? <ChevronRightIcon /> : null)}
+                    </Tree.Toggle>
+                    {Icon ? <Icon /> : null}
+                    <Tree.Text value={key} className="ed-tree-text">
+                      {labelOf(row)}
+                    </Tree.Text>
                     {row.kind === 'node' ? (
                       <>
                         <Editor.Slot
@@ -226,15 +247,17 @@ export function BlockOutline({ fill = false }: { fill?: boolean }) {
                 );
               })}
               <Tree.Instructions>
-                Arrow keys move between blocks and select them, Right opens a
-                block and Left closes it. Space picks a block up with everything
-                in it; then Up and Down move it, Left and Right change its
-                level, Space drops it and Escape puts it back.
+                Arrow keys move between blocks and select them; Shift extends
+                the selection, Control or Command with an arrow moves without
+                selecting and with Space adds a block. Right opens a block, Left
+                closes it, star opens its siblings. Space or Enter picks a block
+                up with everything in it; then Up and Down move it, Left and
+                Right change its level, Space drops it and Escape puts it back.
               </Tree.Instructions>
             </>
           )}
         </Tree.Root>
-      </div>
+      </Chrome.OutlineBody>
     </Chrome.Outline>
   );
 }

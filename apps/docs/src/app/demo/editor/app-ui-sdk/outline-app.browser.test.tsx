@@ -75,3 +75,51 @@ it('closes and opens a section from the outline', async () => {
   await userEvent.keyboard('{ArrowRight}');
   await waitFor(() => expect(rows()).toHaveLength(3));
 });
+
+it('focus stays in the outline when its branch closes', async () => {
+  await mount();
+  row('Paragraph').focus();
+  await userEvent.click(row('Section').querySelector('.ed-tree-toggle')!);
+  await waitFor(() => expect(rows()).toHaveLength(2));
+  await waitFor(() => expect(document.activeElement).toBe(row('Section')));
+});
+
+it('Mod+Z in the command palette stays in the palette', async () => {
+  const adapter = await mount();
+  await userEvent.click(row('Heading'));
+  const input = document.querySelector<HTMLInputElement>(
+    '.ed-inspector input',
+  )!;
+  await userEvent.click(input);
+  await userEvent.keyboard('X');
+  await waitFor(() => expect(input.value).toBe('Edited in memoryX'));
+  row('Heading').focus();
+  await userEvent.keyboard('{ControlOrMeta>}k{/ControlOrMeta}');
+  await waitFor(() =>
+    expect(document.querySelector('[role="dialog"] input')).not.toBeNull(),
+  );
+  await userEvent.keyboard('ab{ControlOrMeta>}z{/ControlOrMeta}');
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  await userEvent.keyboard('{Escape}{Escape}');
+  await waitFor(() =>
+    expect(
+      document.querySelector<HTMLInputElement>('.ed-inspector input')?.value,
+    ).toBe('Edited in memoryX'),
+  );
+  void adapter;
+});
+
+it('Mod+B in a text field types, it does not toggle the sidebar', async () => {
+  await mount();
+  await userEvent.click(row('Heading'));
+  await userEvent.click(
+    document.querySelector<HTMLInputElement>('.ed-inspector input')!,
+  );
+  await userEvent.keyboard('{ControlOrMeta>}b{/ControlOrMeta}');
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(
+    document
+      .querySelector('[role="toolbar"] [aria-label="Sidebar"]')
+      ?.getAttribute('aria-pressed'),
+  ).toBe('true');
+});

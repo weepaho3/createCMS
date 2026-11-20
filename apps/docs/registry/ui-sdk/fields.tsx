@@ -4,7 +4,6 @@
 import type { FieldControlProps, FieldControls } from '@createcms/react/editor';
 
 import {
-  Editor,
   emptyListElement,
   fromDatetimeLocal,
   toDatetimeLocal,
@@ -22,8 +21,10 @@ import {
   ColorPickerInput,
   ColorPickerSlider,
   ColorPickerSliderThumb,
+  ColorPickerSwatch,
 } from '@ui-sdk/react/color-picker';
-import { Field, FieldLabel, useFieldControl } from '@ui-sdk/react/field';
+import { DateInput } from '@ui-sdk/react/date-input';
+import { Field, FieldLabel, FieldLegend, FieldSet } from '@ui-sdk/react/field';
 import { Input } from '@ui-sdk/react/input';
 import {
   NumberInput,
@@ -57,6 +58,10 @@ import {
   XIcon,
 } from 'lucide-react';
 import * as React from 'react';
+
+import { RichTextField } from './rich-text';
+
+export { RichTextField };
 
 const nameOf = (props: { spec: { label?: string }; name: string }) =>
   props.spec.label ?? props.name;
@@ -155,57 +160,55 @@ function BooleanField(props: FieldControlProps<'boolean'>) {
 
 function DateField(props: FieldControlProps<'date'>) {
   return (
-    <Input
-      type="datetime-local"
-      id={props.id}
+    <DateInput
+      granularity="minute"
       name={props.name}
-      className="ed-input"
-      value={toDatetimeLocal(props.value)}
+      className="ed-input ed-date"
+      value={toDatetimeLocal(props.value) || null}
       required={props.required}
       disabled={props.disabled}
       readOnly={props.readOnly}
-      onValueChange={(value) => props.onChange(fromDatetimeLocal(value))}
+      onValueChange={(value) =>
+        props.onChange(value ? fromDatetimeLocal(value) : undefined)
+      }
     />
   );
 }
 
 function ColorField(props: FieldControlProps<'color'>) {
   const value = props.value ?? '#000000';
-  const control = useFieldControl();
-  const own = {
-    id: props.id,
-    disabled: props.disabled || props.readOnly,
-    className: 'ed-input ed-color-trigger',
-  };
+  const name = nameOf(props);
   return (
-    <Popover>
-      <PopoverTrigger {...(control ? control.props(own) : own)}>
-        <span
-          aria-hidden
-          className="ed-color-swatch"
-          style={{ background: value }}
-        />
-        <span>{value}</span>
-      </PopoverTrigger>
-      <PopoverContent sideOffset={6} className="ed-popup ed-color-popup">
-        <PopoverTitle className="ed-sr">{nameOf(props)}</PopoverTitle>
-        <ColorPicker
-          aria-label={nameOf(props)}
-          format="hex"
-          value={value}
-          onValueCommit={(next) => props.onChange(next)}
-          className="ed-color"
+    <ColorPicker
+      name={props.name}
+      format="hex"
+      value={value}
+      disabled={props.disabled}
+      readOnly={props.readOnly}
+      onValueChange={(next) => props.onChange(next)}
+      className="ed-color-field"
+    >
+      <Popover>
+        <PopoverTrigger
+          id={props.id}
+          aria-label={`Pick ${name}`}
+          className="ed-input ed-color-trigger"
         >
+          <ColorPickerSwatch className="ed-color-swatch" />
+          <span>{value}</span>
+        </PopoverTrigger>
+        <PopoverContent sideOffset={6} className="ed-popup ed-color-popup">
+          <PopoverTitle className="ed-sr">{name}</PopoverTitle>
           <ColorPickerArea className="ed-color-area">
             <ColorPickerAreaThumb className="ed-color-thumb" />
           </ColorPickerArea>
           <ColorPickerSlider channel="hue" className="ed-color-slider">
             <ColorPickerSliderThumb className="ed-color-thumb" />
           </ColorPickerSlider>
-          <ColorPickerInput aria-label="Hex" className="ed-input" />
-        </ColorPicker>
-      </PopoverContent>
-    </Popover>
+          <ColorPickerInput aria-label={`${name} hex`} className="ed-input" />
+        </PopoverContent>
+      </Popover>
+    </ColorPicker>
   );
 }
 
@@ -215,16 +218,12 @@ function SelectField(props: FieldControlProps<'select'>) {
     const selected = Array.isArray(props.value) ? props.value : [];
     return (
       <CheckboxGroup
-        id={props.id}
+        name={props.name}
         className="ed-choices"
         value={selected}
         disabled={props.disabled}
         readOnly={props.readOnly}
-        onValueChange={(next) =>
-          props.onChange(
-            options.map((o) => o.value).filter((v) => next.includes(v)),
-          )
-        }
+        onValueChange={(next) => props.onChange(next)}
       >
         {options.map((option) => (
           <label key={option.value} className="ed-choice">
@@ -259,7 +258,8 @@ export function Choice({
   required,
   disabled,
   readOnly,
-  ...trigger
+  id,
+  'aria-label': label,
 }: {
   value: string | null;
   options: readonly { value: string; label: string }[];
@@ -271,16 +271,13 @@ export function Choice({
   readOnly?: boolean;
   id?: string;
   'aria-label'?: string;
-  'aria-describedby'?: string;
-  'aria-invalid'?: true;
-  'aria-required'?: true;
 }) {
   return (
     <Select
       name={name}
       value={value}
       items={options.map((option) => ({ ...option }))}
-      placeholder={placeholder ?? ''}
+      placeholder={placeholder ?? 'Select…'}
       required={required}
       disabled={disabled}
       readOnly={readOnly}
@@ -288,7 +285,7 @@ export function Choice({
         if (typeof next === 'string') onValueChange(next);
       }}
     >
-      <SelectTrigger className="ed-input ed-select" {...trigger}>
+      <SelectTrigger id={id} aria-label={label} className="ed-input ed-select">
         <SelectValue />
         <ChevronsUpDownIcon aria-hidden />
       </SelectTrigger>
@@ -307,75 +304,6 @@ export function Choice({
         ))}
       </SelectContent>
     </Select>
-  );
-}
-
-const MARKS = [
-  { mark: 'bold', label: 'Bold', text: 'B' },
-  { mark: 'italic', label: 'Italic', text: 'I' },
-  { mark: 'underline', label: 'Underline', text: 'U' },
-  { mark: 'strike', label: 'Strikethrough', text: 'S' },
-] as const;
-
-const BLOCKS = [
-  { node: 'heading', attrs: { level: 2 }, label: 'Heading', text: 'H2' },
-  { node: 'bulletList', label: 'Bulleted list', text: '•' },
-  { node: 'orderedList', label: 'Numbered list', text: '1.' },
-] as const;
-
-export function RichTextFormats({
-  marks,
-  blocks = true,
-}: {
-  marks?: readonly string[];
-  blocks?: boolean;
-}) {
-  return (
-    <>
-      {MARKS.filter((m) => marks === undefined || marks.includes(m.mark)).map(
-        (m) => (
-          <Editor.RichTextToolbarButton
-            key={m.mark}
-            mark={m.mark}
-            aria-label={m.label}
-            title={m.label}
-            className="ed-format"
-            data-mark={m.mark}
-          >
-            {m.text}
-          </Editor.RichTextToolbarButton>
-        ),
-      )}
-      {blocks
-        ? BLOCKS.map((b) => (
-            <Editor.RichTextToolbarButton
-              key={b.node}
-              node={b.node}
-              attrs={'attrs' in b ? b.attrs : undefined}
-              aria-label={b.label}
-              title={b.label}
-              className="ed-format"
-            >
-              {b.text}
-            </Editor.RichTextToolbarButton>
-          ))
-        : null}
-    </>
-  );
-}
-
-export function RichTextField({
-  suggest,
-  ...props
-}: FieldControlProps<'richText'> & {
-  suggest?: React.ComponentProps<typeof Editor.RichTextField>['suggest'];
-}) {
-  return (
-    <Editor.RichTextField suggest={suggest} className="ed-input ed-richtext">
-      <Editor.RichTextToolbar className="ed-richtext-toolbar">
-        <RichTextFormats marks={props.spec.marks} blocks={!props.spec.inline} />
-      </Editor.RichTextToolbar>
-    </Editor.RichTextField>
   );
 }
 
@@ -411,14 +339,13 @@ function ListField(props: FieldControlProps<'list'>) {
     set(next);
   };
   return (
-    <div id={props.id} className="ed-list-field">
+    <div className="ed-list-field">
       <ol>
         {items.map((item, index) => {
           const name = `${label} ${index + 1}`;
           return (
             <li key={stable.keys[index]} className="ed-card">
-              <Field className="ed-field">
-                <FieldLabel className="ed-sr">{name}</FieldLabel>
+              <NestedField spec={props.spec.of} label={name} hideLabel>
                 {props.renderElement?.({
                   spec: { ...props.spec.of, label: name },
                   value: item,
@@ -435,7 +362,7 @@ function ListField(props: FieldControlProps<'list'>) {
                   invalid: false,
                   describedBy: undefined,
                 })}
-              </Field>
+              </NestedField>
               <div className="ed-row">
                 <Button
                   className="ed-button"
@@ -488,13 +415,42 @@ function ListField(props: FieldControlProps<'list'>) {
   );
 }
 
+const groupedKinds = new Set(['list', 'object', 'link', 'media']);
+
+function NestedField({
+  spec,
+  label,
+  hideLabel = false,
+  children,
+}: {
+  spec: { type: string; multiple?: boolean };
+  label: string;
+  hideLabel?: boolean;
+  children: React.ReactNode;
+}) {
+  const labelClass = hideLabel ? 'ed-sr' : 'ed-label';
+  const grouped =
+    groupedKinds.has(spec.type) ||
+    (spec.type === 'select' && spec.multiple === true);
+  return grouped ? (
+    <FieldSet className="ed-field">
+      <FieldLegend className={labelClass}>{label}</FieldLegend>
+      {children}
+    </FieldSet>
+  ) : (
+    <Field className="ed-field">
+      <FieldLabel className={labelClass}>{label}</FieldLabel>
+      {children}
+    </Field>
+  );
+}
+
 function ObjectField(props: FieldControlProps<'object'>) {
   const value = props.value ?? {};
   return (
-    <div id={props.id} className="ed-card">
+    <div className="ed-card">
       {Object.entries(props.spec.fields).map(([key, spec]) => (
-        <Field key={key} className="ed-field">
-          <FieldLabel className="ed-label">{spec.label ?? key}</FieldLabel>
+        <NestedField key={key} spec={spec} label={spec.label ?? key}>
           {props.renderNested?.({
             spec: { ...spec, label: spec.label ?? key },
             fieldKey: key,
@@ -512,7 +468,7 @@ function ObjectField(props: FieldControlProps<'object'>) {
             invalid: false,
             describedBy: undefined,
           })}
-        </Field>
+        </NestedField>
       ))}
     </div>
   );

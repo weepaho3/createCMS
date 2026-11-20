@@ -19,8 +19,11 @@ import {
   CommandGroupLabel,
   CommandInput,
   CommandItem,
+  CommandItemIcon,
   CommandList,
   CommandPage,
+  CommandSeparator,
+  CommandShortcut,
 } from '@ui-sdk/react/command';
 import {
   Dialog,
@@ -31,11 +34,11 @@ import {
 import { ChevronRightIcon, PlusIcon } from 'lucide-react';
 import * as React from 'react';
 
-import { blockIcon, useChrome } from './chrome';
+import { blockIcon, keysOf, useChrome } from './chrome';
 
 const ADD = 'add';
 
-function useInsert() {
+export function useInsert() {
   const editor = useEditor();
   const { schema } = useEditorContext('useInsert');
   const nodes = useEditor((state) => state.nodes);
@@ -68,15 +71,19 @@ function BlockCommands() {
             key={item.type}
             value={`block:${item.type}`}
             label={item.label}
-            keywords={[item.type, group.category ?? '']}
+            keywords={[item.type, group.category].filter(
+              (word): word is string => Boolean(word),
+            )}
             disabled={!canInsert(item.type)}
             className="ed-item"
           >
-            {item.previewImageUrl ? (
-              <img src={item.previewImageUrl} alt="" className="ed-preview" />
-            ) : (
-              <Icon aria-hidden />
-            )}
+            <CommandItemIcon>
+              {item.previewImageUrl ? (
+                <img src={item.previewImageUrl} alt="" className="ed-preview" />
+              ) : (
+                <Icon />
+              )}
+            </CommandItemIcon>
             {item.label}
           </CommandItem>
         );
@@ -95,11 +102,19 @@ function EditorCommand({ id }: { id: string }) {
       label={label}
       keywords={[id]}
       disabled={!command.canExecute}
+      data-agent-confirm={
+        id === 'block.remove'
+          ? 'Deletes the selected blocks and every block inside them'
+          : undefined
+      }
       className="ed-item"
     >
       {label}
-      {command.shortcutLabel ? (
-        <kbd className="ed-kbd ed-item-end">{command.shortcutLabel}</kbd>
+      {command.shortcut ? (
+        <CommandShortcut
+          shortcut={keysOf(command.shortcut)}
+          className="ed-kbd ed-item-end"
+        />
       ) : null}
     </CommandItem>
   );
@@ -147,11 +162,10 @@ export function CommandPalette() {
       <DialogBackdrop className="ed-backdrop" />
       <DialogContent className="ed-dialog" data-kind="palette">
         <DialogTitle className="ed-sr">
-          {palette === 'add' ? 'Add block' : 'Commands'}
+          {palette === 'add' ? 'Insert a block' : 'Commands'}
         </DialogTitle>
         <Command
           autoHighlight
-          loop
           pages={pages}
           onPagesChange={(next, details) =>
             api.openPalette(next.includes(ADD) ? 'add' : 'commands', {
@@ -162,17 +176,25 @@ export function CommandPalette() {
           onAction={(value) => run(value)}
           className="ed-command"
         >
-          {input(palette === 'add' ? 'Search blocks' : 'Search commands')}
+          {input(palette === 'add' ? 'Filter block types' : 'Filter commands')}
           <CommandEmpty className="ed-empty">Nothing found.</CommandEmpty>
           <CommandList className="ed-command-list">
             <CommandPage>
               <CommandGroup className="ed-group">
+                <CommandGroupLabel className="ed-group-label">
+                  Insert
+                </CommandGroupLabel>
                 <CommandItem value="page:add" page={ADD} className="ed-item">
-                  <PlusIcon aria-hidden />
-                  Add block…
-                  <ChevronRightIcon aria-hidden className="ed-item-end" />
+                  <CommandItemIcon>
+                    <PlusIcon />
+                  </CommandItemIcon>
+                  Insert a block…
+                  <CommandItemIcon mirror className="ed-item-end">
+                    <ChevronRightIcon />
+                  </CommandItemIcon>
                 </CommandItem>
               </CommandGroup>
+              <CommandSeparator className="ed-separator" />
               <CommandGroup className="ed-group">
                 <CommandGroupLabel className="ed-group-label">
                   Commands
@@ -197,11 +219,10 @@ export function BlockPicker({ onDone }: { onDone: () => void }) {
   return (
     <Command
       autoHighlight
-      loop
       onAction={(value) => run(value)}
       className="ed-command"
     >
-      {input('Search blocks')}
+      {input('Filter block types')}
       <CommandEmpty className="ed-empty">Nothing found.</CommandEmpty>
       <CommandList className="ed-command-list" data-fill="">
         <BlockCommands />

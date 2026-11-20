@@ -168,7 +168,7 @@ describe.each(implementations)(
       const moveDown = await waitFor(() => {
         const el = inAllDocuments<HTMLButtonElement>(
           '[data-slot="editor-block-toolbar"] button',
-        ).find((button) => nameOf(button).includes('Move down'));
+        ).find((button) => /^Move( .+)? down$/.test(nameOf(button).trim()));
         expect(el).toBeDefined();
         return el!;
       });

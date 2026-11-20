@@ -24,6 +24,7 @@ export default defineConfig({
       '@ui-sdk/react/color-picker',
       '@ui-sdk/react/combobox',
       '@ui-sdk/react/command',
+      '@ui-sdk/react/date-input',
       '@ui-sdk/react/dialog',
       '@ui-sdk/react/drawer',
       '@ui-sdk/react/field',

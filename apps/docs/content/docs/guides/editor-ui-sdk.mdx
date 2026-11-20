@@ -59,28 +59,39 @@ editor uses it. Where it ships none, the part is a UI SDK primitive: one
 
 | Primitive | File | What it does |
 | --- | --- | --- |
-| `editorChrome` | `editor-chrome.ts` | The chrome's state: device, which docked panel shows, the open phone sheet, the command palette page and the commit dialog. Every element of the frame gets its `data-slot` from one of its slots (`editor-toolbar`, `editor-surface`, `editor-outline`, `editor-inspector`, `editor-form-surface`, ...). A phone sheet owns a history entry while it is open, so Back closes it. It warns before leaving with unsaved changes. |
-| `blockOutline` | `block-outline.ts` | The document as an APG tree on `createRovingFocus`, `createTreeReorder` and `createTypeahead`. Selection follows focus; Shift extends it, Mod+click adds a block. Space picks a block up with everything in it, the arrows move it and change its level, Space drops it and Escape puts it back; screen readers hear every step. Rows drag by the mouse or by the grip on touch. A drop the schema forbids is refused and marked `data-blocked`. |
+| `editorChrome` | `editor-chrome.ts` | The chrome's state: device, which docked panel shows, the open phone sheet, the command palette page and the commit dialog, each a controlled option the shell holds in React. Every element of the frame gets its `data-slot` from one of its slots (`editor-toolbar`, `editor-surface`, `editor-outline`, `editor-inspector`, `editor-form-surface`, ...). A phone sheet owns a history entry while it is open, so Back closes it. It warns before leaving with unsaved changes. |
+| `blockOutline` | `block-outline.ts` | The document as an APG tree on `createRovingFocus`, `createTreeReorder`, `createTypeahead` and `createFocusRecovery`. Selection follows focus; Shift extends it from where it started, Mod with an arrow moves without selecting, Mod+Space adds a block, Mod+A selects all, `*` opens every sibling. Space or Enter picks a block up with everything in it, the arrows move it and change its level, Space drops it and Escape puts it back; screen readers hear every step. Rows drag by the mouse or by the grip on touch. A drop the schema forbids is refused and marked `data-blocked`. Left and Right follow the reading direction. |
+| `editorRichText` | `editor-rich-text.ts` | The rich text field around the editor engine: a group named by the field's label, its text as the value agents read and set, and the `{{variable}}` suggestions as a listbox the editor drives. |
 
-`chrome.tsx` and `outline.tsx` render them. Both primitives are agent-ready:
-`editorChrome` offers `setDevice`, `togglePanel`, `openSheet`,
-`closeSheet`, `openPalette`, `closePalette`, `addBlock` and `save`,
-`blockOutline` offers `select`, `toggle` and `move`, and lists its blocks
-by name.
+`chrome.tsx`, `outline.tsx` and `rich-text.tsx` render them. All three are
+agent-ready: `editorChrome` offers `setDevice`, `togglePanel`,
+`insertBlock` and `save` and lists the block types it inserts,
+`blockOutline` offers `select`, `toggle` and `move` and lists every block
+with its text, `editorRichText` offers `setValue`.
+
+### Rich text
+
+UI SDK ships no rich text editor; its Trigger Menu connects to one like
+Tiptap through an adapter. So the editing engine stays the one behind
+`Editor.Root richText` (Tiptap by default), which also carries shared
+editing and the canvas's in-place text. Everything around it is UI SDK:
+the field is named through `Field` (`useFieldControl`), the formatting
+buttons are `Toggle`s in a `Toolbar` (in the canvas, through
+`useRichTextToolbarState`), and the field is a primitive agents can fill.
 
 ### UI SDK components
 
 | Part | File | UI SDK |
 | --- | --- | --- |
 | Shell | `shell.tsx` | `Resizable` panels for palette and outline (left) and the inspector (right). A panel shows or hides whole, by the toolbar buttons, Mod+B (`useShortcut`) or a drag past its minimum. Phones get `Drawer` sheets; the properties sheet snaps to 35, 60 and 100% and only turns modal above 60%, so the canvas stays usable under it. Tablets show the inspector in a side `Drawer`. |
-| Toolbar | `toolbar.tsx` | `Toolbar` (one tab stop, arrow keys between items), `ToggleGroup` for the device, `Tooltip` with `TooltipShortcut` for every icon button, `Dialog` with a pending `DialogClose` for the commit message. |
-| Commands | `commands.tsx` | One `Command` with pages: every editor command on the first page, the block types on the `add` page. Mod+K opens the first page, `/` and every add button the block page; Backspace goes back. |
+| Toolbar | `toolbar.tsx` | `Toolbar` (one tab stop, arrow keys between items), `Toggle`s for the sidebar and the inspector, a `ToggleGroup` for the device, one shared `Tooltip` with `TooltipShortcut` for every icon button, a pending `Button` for Save, `Dialog` with a pending `DialogClose` for the commit message. Icon buttons stay focusable while disabled (`focusableWhenDisabled`). |
+| Commands | `commands.tsx` | One `Command` with pages: every editor command on the first page, with `CommandShortcut`, the block types on the `add` page. Mod+K opens the first page, `/` and every add button the block page; Backspace goes back. |
 | Inspector | `inspector.tsx` | `Tabs` for the block and the page. |
 | Form | `form.tsx` | Every field is a UI SDK `Field` with `FieldLabel`, `FieldDescription` and `FieldError`; lists, objects, links, media and multiple choice are a `FieldSet` with a `FieldLegend`. |
-| Fields | `fields.tsx` | `Input`, `Textarea`, `NumberInput` with step buttons, `Checkbox`, `CheckboxGroup` for multiple choice, `Select`, a `ColorPicker` in a `Popover` whose trigger joins the field through `useFieldControl`. |
+| Fields | `fields.tsx` | `Input`, `Textarea`, `NumberInput` with step buttons, `Checkbox`, `CheckboxGroup` for multiple choice, `Select`, `DateInput` with the time, a `ColorPicker` that opens from its swatch in a `Popover`. |
 | createCMS fields | `fields-createcms.tsx` | References and internal links are a `Combobox` that searches as you type and loads the next page when the list scrolls to its end (`useAsyncOptions`). |
 | Canvas chrome | `canvas.tsx` | The block toolbar's More `Menu` with a `Move to…` submenu, named for its block. |
-| App | `app.tsx` | `AlertDialog` for a save conflict; Overwrite stays pending until the save settles. |
+| App | `app.tsx` | `AlertDialog` for a save conflict. Escape doesn't close it: loading the server version or overwriting is a choice, focus starts on Copy mine, and Overwrite stays pending until the save settles. |
 
 Every look lives in `editor-ui-sdk.css`. Components carry `ed-*` classes and
 UI SDK's state attributes (`data-open`, `data-highlighted`, `data-selected`,
@@ -104,19 +115,23 @@ await agent.act({
   steps: [
     { ref: 'Outline', action: 'select', args: ['h1'] },
     { ref: 'Text', action: 'setValue', args: ['Welcome'] },
-    { ref: 'Device', action: 'setValue', args: [['mobile']] },
+    { ref: 'Page editor', action: 'insertBlock', args: ['Heading'] },
+    { ref: 'Toolbar', action: 'press', args: ['Save'] },
   ],
 });
 ```
 
-Deleting a block and overwriting the server's version carry
-`data-agent-confirm`, so the bridge asks a person first. Tooltips repeat
-their button's name and are hidden from agents.
+Deleting a block, loading the server's version over your changes and
+overwriting the server's version carry `data-agent-confirm`, so the bridge
+asks a person first. Controls are named so no name holds another's words:
+the block toolbar says `Move Heading up`, a link field `Link URL`.
 
 ## Differences to know
 
 - **Shortcuts.** The editor's keymap owns its commands' shortcuts; the
-  tooltips only show them. Mod+B and Mod+S are bound with `useShortcut`.
+  tooltips only show them. Mod+B and Mod+S are bound with `useShortcut`,
+  Mod+B not while you type. All of them pause inside a modal dialog and a
+  menu.
 - **The outline** is the editor's own primitive, not UI SDK's `Tree`, since
   the tree doesn't reorder. Space picks a block up instead of toggling its
   selection; Alt+Up and Alt+Down still move the selected block, as

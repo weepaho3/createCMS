@@ -40,9 +40,11 @@ export type {
   EditorRichTextFieldProps,
   EditorRichTextToolbarButtonProps,
   EditorRichTextToolbarProps,
+  RichTextToolbarState,
 } from './rich-text-parts';
 export {
   EditorRichTextField,
   EditorRichTextToolbar,
   EditorRichTextToolbarButton,
+  useRichTextToolbarState,
 } from './rich-text-parts';

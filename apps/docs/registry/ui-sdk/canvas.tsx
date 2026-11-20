@@ -15,7 +15,9 @@ import {
   Menu,
   MenuContent,
   MenuItem,
+  MenuItemIcon,
   MenuSeparator,
+  MenuShortcut,
   MenuSub,
   MenuSubContent,
   MenuSubTrigger,
@@ -34,17 +36,22 @@ import {
 } from 'lucide-react';
 import * as React from 'react';
 
-import { IconButton } from './chrome';
-import { RichTextFormats } from './fields';
+import { IconButton, keysOf } from './chrome';
+import { InlineFormats } from './rich-text';
 
 function CommandItem({ id }: { id: string }) {
   const command = useCommand(id);
   if (!command) return null;
   return (
-    <MenuItem value={id} disabled={!command.canExecute} className="ed-item">
+    <MenuItem
+      value={id}
+      disabled={!command.canExecute}
+      shortcut={keysOf(command.shortcut)}
+      className="ed-item"
+    >
       {command.label ?? id}
-      {command.shortcutLabel ? (
-        <kbd className="ed-kbd ed-item-end">{command.shortcutLabel}</kbd>
+      {command.shortcut ? (
+        <MenuShortcut className="ed-kbd ed-item-end" />
       ) : null}
     </MenuItem>
   );
@@ -64,7 +71,9 @@ function MoreActions({ blockId, label }: { blockId: string; label: string }) {
     <Menu
       onAction={(value) => {
         if (value.startsWith('move:')) {
-          const target = targets[Number(value.slice(5))];
+          const target = targets.find(
+            (t) => `move:${t.parent.id}:${t.parent.slot}` === value,
+          );
           if (target) moveTo(target.parent, target.count);
           return;
         }
@@ -77,19 +86,21 @@ function MoreActions({ blockId, label }: { blockId: string; label: string }) {
         data-variant="ghost"
         data-size="icon-xs"
       >
-        <MoreHorizontalIcon />
+        <MoreHorizontalIcon aria-hidden />
       </MenuTrigger>
       <MenuContent align="end" sideOffset={4} className="ed-popup ed-list">
         <MenuSub>
           <MenuSubTrigger disabled={targets.length === 0} className="ed-item">
             Move to…
-            <ChevronRightIcon className="ed-item-end" aria-hidden />
+            <MenuItemIcon mirror className="ed-item-end">
+              <ChevronRightIcon />
+            </MenuItemIcon>
           </MenuSubTrigger>
           <MenuSubContent className="ed-popup ed-list" data-scroll="">
-            {targets.map((target, index) => (
+            {targets.map((target) => (
               <MenuItem
                 key={`${target.parent.id}:${target.parent.slot}`}
-                value={`move:${index}`}
+                value={`move:${target.parent.id}:${target.parent.slot}`}
                 className="ed-item"
                 style={{ '--depth': target.depth } as React.CSSProperties}
                 data-indent=""
@@ -124,7 +135,7 @@ function BlockActions() {
       <span className="ed-toolbar-label">{label}</span>
       <Separator orientation="vertical" className="ed-separator" />
       <IconButton
-        label="Move up"
+        label={`Move ${label} up`}
         size="xs"
         disabled={!actions.canMoveUp}
         onClick={() => actions.moveUp()}
@@ -132,7 +143,7 @@ function BlockActions() {
         <ArrowUpIcon />
       </IconButton>
       <IconButton
-        label="Move down"
+        label={`Move ${label} down`}
         size="xs"
         disabled={!actions.canMoveDown}
         onClick={() => actions.moveDown()}
@@ -141,14 +152,14 @@ function BlockActions() {
       </IconButton>
       <Separator orientation="vertical" className="ed-separator" />
       <IconButton
-        label="Duplicate"
+        label={`Duplicate ${label}`}
         size="xs"
         onClick={() => actions.duplicate()}
       >
         <CopyIcon />
       </IconButton>
       <IconButton
-        label="Delete"
+        label={`Delete ${label}`}
         size="xs"
         data-agent-confirm={`Deletes ${label} and every block inside it`}
         onClick={() => actions.remove()}
@@ -159,9 +170,7 @@ function BlockActions() {
       <Editor.Slot name="block-toolbar" props={{ blockId: selected }} />
       <Canvas.InlineRichTextToolbar>
         <Separator orientation="vertical" className="ed-separator" />
-        <Editor.RichTextToolbar className="ed-row">
-          <RichTextFormats blocks={false} />
-        </Editor.RichTextToolbar>
+        <InlineFormats />
       </Canvas.InlineRichTextToolbar>
     </>
   );

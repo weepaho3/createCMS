@@ -59,17 +59,17 @@ function FieldBody() {
         ) : null}
         <Editor.FieldControl />
         {field.invalid ? (
-          <p className="ed-error" role="alert">
-            {error}
-          </p>
+          <FieldDescription className="ed-error">{error}</FieldDescription>
         ) : null}
       </>
     );
   }
+  const boolean = field.spec.type === 'boolean';
   return (
     <>
-      <FieldLabel className="ed-label">{label}</FieldLabel>
+      {boolean ? null : <FieldLabel className="ed-label">{label}</FieldLabel>}
       <Editor.FieldControl />
+      {boolean ? <FieldLabel className="ed-label">{label}</FieldLabel> : null}
       {field.spec.description ? (
         <FieldDescription className="ed-description">
           {field.spec.description}
@@ -201,8 +201,23 @@ function useLabel(blockId: string): string {
   });
 }
 
-function Label({ blockId }: { blockId: string }) {
-  return <>{useLabel(blockId)}</>;
+function PathButton({
+  blockId,
+  onPress,
+}: {
+  blockId: string;
+  onPress: () => void;
+}) {
+  const label = useLabel(blockId);
+  return (
+    <Button
+      className="ed-link"
+      aria-label={`Back to ${label}`}
+      onClick={onPress}
+    >
+      {label}
+    </Button>
+  );
 }
 
 function Path({ blockId }: { blockId: string }) {
@@ -224,12 +239,10 @@ function Path({ blockId }: { blockId: string }) {
       <ol className="ed-path">
         {ancestors.map((id, index) => (
           <li key={id}>
-            <Button
-              className="ed-link"
-              onClick={() => store.select(index === 0 ? null : id)}
-            >
-              <Label blockId={id} />
-            </Button>
+            <PathButton
+              blockId={id}
+              onPress={() => store.select(index === 0 ? null : id)}
+            />
             <ChevronRightIcon aria-hidden />
           </li>
         ))}

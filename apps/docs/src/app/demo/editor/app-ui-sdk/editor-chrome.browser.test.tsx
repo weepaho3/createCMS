@@ -22,7 +22,7 @@ describe('editor chrome primitive', () => {
   it('shows and hides a docked panel whole', () => {
     const onPanelsChange = vi.fn();
     const v = open({ onPanelsChange });
-    expect(v.api.togglePanel('left')).toBe(true);
+    expect(v.api.togglePanel('left', { reason: 'press' })).toBe(true);
     expect(v.state.panels).toEqual({ left: false, right: true });
     expect(onPanelsChange).toHaveBeenLastCalledWith(
       { left: false, right: true },
@@ -98,7 +98,9 @@ describe('editor chrome primitive', () => {
 
   it('refuses a device it does not know', () => {
     const v = open();
-    expect(v.api.setDevice('watch' as never)).toBe(false);
+    expect(() => v.api.setDevice('watch' as never)).toThrow(/Unknown device/);
+    expect(() => v.api.openSheet('drawer' as never)).toThrow(/Unknown sheet/);
+    expect(() => v.api.togglePanel('top' as never)).toThrow(/Unknown panel/);
     expect(v.api.setDevice('tablet')).toBe(true);
     expect(v.state.device).toBe('tablet');
   });
@@ -111,6 +113,22 @@ describe('editor chrome primitive', () => {
     window.dispatchEvent(new PopStateEvent('popstate'));
     expect(v.state.sheet).toBeNull();
     expect(v.changes.at(-1)).toMatchObject({ key: 'sheet', reason: 'back' });
+  });
+
+  it('a sheet opened right after another closed stays open', async () => {
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const v = open({ layout: 'phone' });
+    v.api.openSheet('add');
+    v.api.closeSheet();
+    v.api.openSheet('outline');
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(v.state.sheet).toBe('outline');
+  });
+
+  it('a change the app cancels for panels leaves them as they were', () => {
+    const v = open({ onPanelsChange: (_panels, details) => details.cancel() });
+    expect(v.api.setPanel('left', false)).toBe(false);
+    expect(v.state.panels.left).toBe(true);
   });
 
   it('marks the mode and layout on the root and renders on the server', () => {

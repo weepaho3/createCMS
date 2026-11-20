@@ -221,6 +221,30 @@ describe('useEditorKeyboard', () => {
     expect(count()).toHaveLength(3);
   });
 
+  it('pauses inside a modal dialog and a menu, even for undo', () => {
+    const { getByTestId, probe } = mount(
+      <>
+        <div role="dialog" aria-modal="true">
+          <input data-testid="modal-in" />
+        </div>
+        <div role="menu">
+          <div role="menuitem" tabIndex={-1} data-testid="item" />
+        </div>
+        <div role="dialog">
+          <input data-testid="sheet-in" />
+        </div>
+      </>,
+    );
+    act(() => {
+      probe.store?.add('heading', { parent: { id: 'root_1' } });
+    });
+    fireEvent.keyDown(getByTestId('modal-in'), { key: 'z', ctrlKey: true });
+    fireEvent.keyDown(getByTestId('item'), { key: 'z', ctrlKey: true });
+    expect(probe.store?.getDoc().nodes.n1).toBeDefined();
+    fireEvent.keyDown(getByTestId('sheet-in'), { key: 'z', ctrlKey: true });
+    expect(probe.store?.getDoc().nodes.n1).toBeUndefined();
+  });
+
   it('keys during an IME composition never fire', () => {
     const { getByTestId, probe } = mount();
     act(() => probe.store?.select('h1'));

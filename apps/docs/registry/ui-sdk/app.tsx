@@ -70,10 +70,12 @@ export type EditorAppViewProps = {
 function Problem({
   error,
   fallback,
+  retryLabel,
   onRetry,
 }: {
   error: EditorAppError | null;
   fallback: string;
+  retryLabel: string;
   onRetry: () => void;
 }) {
   return (
@@ -91,7 +93,7 @@ function Problem({
         <p>Retry to load the latest version.</p>
       )}
       <Button className="ed-button" data-variant="outline" onClick={onRetry}>
-        Retry
+        {retryLabel}
       </Button>
     </div>
   );
@@ -117,6 +119,7 @@ function SaveProblem() {
       <Problem
         error={saveError(error)}
         fallback="Saving failed."
+        retryLabel="Retry saving"
         onRetry={() => void save()}
       />
     </div>
@@ -127,19 +130,30 @@ function Conflict({ onReload }: { onReload: () => void }) {
   const conflict = useSaveConflict();
   const { error } = useSave();
   const [copied, setCopied] = React.useState(false);
+  const copy = React.useRef<HTMLButtonElement | null>(null);
   React.useEffect(() => {
     if (!conflict) setCopied(false);
   }, [conflict]);
   return (
     <AlertDialog
       open={conflict !== null}
+      dismissible={false}
       onOpenChange={(open, details) => {
-        if (open || details.returnValue === 'overwrite') return;
+        if (open) return;
+        if (details.returnValue === 'overwrite') return;
+        if (details.returnValue !== 'reload') {
+          details.cancel();
+          return;
+        }
         if (!conflict?.reload()) onReload();
       }}
     >
       <AlertDialogBackdrop className="ed-backdrop" />
-      <AlertDialogContent className="ed-dialog" data-kind="form">
+      <AlertDialogContent
+        className="ed-dialog"
+        data-kind="form"
+        initialFocus={() => copy.current}
+      >
         <div>
           <AlertDialogTitle className="ed-dialog-title">
             Document conflict
@@ -151,13 +165,20 @@ function Conflict({ onReload }: { onReload: () => void }) {
         </div>
         <div className="ed-actions">
           <Button
+            ref={copy}
+            aria-label="Copy my version"
             className="ed-button"
             data-variant="outline"
             onClick={() => conflict?.copyMine().then(() => setCopied(true))}
           >
             {copied ? 'Copied' : 'Copy mine'}
           </Button>
-          <AlertDialogClose className="ed-button" data-variant="outline">
+          <AlertDialogClose
+            value="reload"
+            className="ed-button"
+            data-variant="outline"
+            data-agent-confirm="Discards your unsaved changes and loads the version on the server"
+          >
             Load server version
           </AlertDialogClose>
           <AlertDialogClose
@@ -221,7 +242,7 @@ function CanvasSurface(props: Pick<CanvasRootProps, 'components' | 'resolve'>) {
   const { api } = useChrome();
   return (
     <DeviceCanvas {...props} className="ed-canvas">
-      <CanvasChrome onInsert={() => api.addBlock()} />
+      <CanvasChrome onInsert={() => api.addBlock({ reason: 'press' })} />
     </DeviceCanvas>
   );
 }
@@ -256,6 +277,7 @@ export function EditorAppView({
         <Problem
           error={doc.error}
           fallback="Failed to load the document."
+          retryLabel="Retry loading"
           onRetry={retry}
         />
       </div>
@@ -281,6 +303,7 @@ export function EditorAppView({
           <Problem
             error={doc.error}
             fallback="Failed to load the document."
+            retryLabel="Retry loading"
             onRetry={retry}
           />
         </div>

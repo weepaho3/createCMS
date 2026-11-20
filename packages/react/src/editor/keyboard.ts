@@ -40,6 +40,12 @@ const WIDGET = [
   '[role="grid"]',
 ].join(', ');
 
+/**
+ * Layers the page's shortcuts pause in, as WAI-ARIA asks of modal dialogs:
+ * an open modal and a menu own every key, modified or not.
+ */
+const LAYER = '[aria-modal="true"], [role="menu"], [role="menubar"]';
+
 function closestOf(target: EventTarget | null, selector: string): boolean {
   if (!isNode(target)) return false;
   const el = isElement(target) ? target : target.parentElement;
@@ -83,6 +89,7 @@ export function handleEditorKey(
   event: KeyboardEvent,
 ): boolean {
   if (event.defaultPrevented || event.isComposing) return false;
+  if (closestOf(event.target, LAYER)) return false;
   const editable = closestOf(event.target, EDITABLE);
   const modified = event.metaKey || event.ctrlKey || event.altKey;
   if (!editable && !modified && closestOf(event.target, WIDGET)) return false;

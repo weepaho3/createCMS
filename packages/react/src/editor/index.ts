@@ -105,6 +105,7 @@ export type {
   EditorRichTextFieldProps,
   EditorRichTextToolbarButtonProps,
   EditorRichTextToolbarProps,
+  RichTextToolbarState,
 } from './field';
 export {
   defaultFieldControls,
@@ -113,6 +114,7 @@ export {
   toDatetimeLocal,
   useFieldContext,
   useRichTextEditor,
+  useRichTextToolbarState,
   useTextBinding,
 } from './field';
 
