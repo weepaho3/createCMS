@@ -127,7 +127,10 @@ their anchor (`div`, `section`): the editor renders paragraphs inside it.
 session (by default every format the field allows; `Editor.RichTextToolbar`
 and `Editor.RichTextToolbarButton` as children) and renders nothing
 otherwise; inside `Canvas.BlockToolbar` its buttons keep the editor's
-focus, also over a frame. Without `Editor.Root richText`, a click on a
+focus, also over a frame. The session keeps running while focus is in the
+editing chrome: `Canvas.BlockToolbar` and any element marked
+`data-editor-inline-chrome`, like a link popover opened from it (render a
+portaled popup with the attribute); it ends when focus moves anywhere else. Without `Editor.Root richText`, a click on a
 `richText` field selects the block and focuses its form control, and a
 development build logs `[editor:E001]` once.
 

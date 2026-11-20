@@ -27,6 +27,7 @@ import { Toolbar } from '@ui-sdk/react/toolbar';
 import * as React from 'react';
 
 import { editorRichText } from './editor-rich-text';
+import { LinkControl } from './rich-text-link';
 
 const Parts = createParts(editorRichText, {
   root: 'div',
@@ -130,6 +131,7 @@ function Formats({
             />
           ))
         : null}
+      <LinkControl state={state} name={name} />
     </>
   );
 }

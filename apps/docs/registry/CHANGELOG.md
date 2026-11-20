@@ -27,7 +27,9 @@ between the two `@createcms/react` tags, for example
   items and one stylesheet keyed on UI SDK state. UI SDK components where it
   ships one; the editor chrome (`editor-chrome.ts`), the block outline
   (`block-outline.ts`, on `createTreeReorder`) and the rich text field
-  (`editor-rich-text.ts`) are UI SDK primitives with agent actions. Needs
+  (`editor-rich-text.ts`) are UI SDK primitives with agent actions. Rich
+  text links (URL, email, phone, and createCMS pages) in the field and in
+  the canvas (`rich-text-link.tsx`). Needs
   the `@createcms/react` release with `useRichTextToolbarState`. Installs into `components/editor-ui-sdk/`. See
   [Editor UI on UI SDK](https://createcms.dev/docs/guides/editor-ui-sdk).
 - **Breaking:** `editor-app` is generic over a `PersistenceAdapter`

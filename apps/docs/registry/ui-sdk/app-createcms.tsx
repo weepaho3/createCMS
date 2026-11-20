@@ -92,6 +92,7 @@ export function CmsEditor({
   ...props
 }: CmsEditorProps) {
   const docs = documentClient(client, collection);
+  const linkCollections = React.useMemo(() => [collection], [collection]);
   // The editor compares the schema by identity: derive it once per map.
   const schema = React.useMemo(
     () => fromCollection(blocks._collection),
@@ -135,7 +136,11 @@ export function CmsEditor({
       fields={cmsFields}
       richText={richText}
       renderProviders={(children) => (
-        <CmsSourcesProvider sources={sources} media={media}>
+        <CmsSourcesProvider
+          sources={sources}
+          media={media}
+          linkCollections={linkCollections}
+        >
           {children}
         </CmsSourcesProvider>
       )}

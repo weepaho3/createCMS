@@ -37,6 +37,12 @@ export type InlineRichTextStore = {
   subscribe(listener: () => void): () => void;
 };
 
+/**
+ * Marks editing chrome: focus inside it keeps an in-place rich text
+ * session running, like the block toolbar or a popover opened from it.
+ */
+export const INLINE_CHROME = '[data-editor-inline-chrome]';
+
 export function createInlineRichTextStore(): InlineRichTextStore {
   let state: InlineRichTextState | null = null;
   const listeners = new Set<() => void>();
@@ -116,6 +122,43 @@ export function useInlineRichTextSession(
     emitted.current = start;
     let version = 0;
     let handle: RichTextHandle | null = null;
+    const hostDoc = document;
+    const inChrome = (node: Element | null | undefined) =>
+      node?.closest?.(INLINE_CHROME) != null;
+    let watching = false;
+    const stopWatching = () => {
+      if (!watching) return;
+      watching = false;
+      hostDoc.removeEventListener('focusin', onHostFocus, true);
+      hostDoc.removeEventListener('focusout', onHostFocus, true);
+    };
+    // Focus moved on: the session ends unless focus stays in the field or
+    // in the editing chrome (the block toolbar, a link popover).
+    const fieldEl = el;
+    function followFocus() {
+      if (fieldEl.contains(doc.activeElement)) {
+        stopWatching();
+        return;
+      }
+      if (inChrome(hostDoc.activeElement)) {
+        if (!watching) {
+          watching = true;
+          hostDoc.addEventListener('focusin', onHostFocus, true);
+          hostDoc.addEventListener('focusout', onHostFocus, true);
+        }
+        return;
+      }
+      stopWatching();
+      const current = store.getSession().editing;
+      if (current?.blockId === blockId && current.key === key) {
+        store.setEditing(null);
+      }
+    }
+    // Between a focusout and the next focusin the page holds focus, so the
+    // check waits until the move has finished.
+    function onHostFocus() {
+      setTimeout(followFocus, 0);
+    }
     const publish = () => {
       if (!handle) return;
       sessionStore.set({
@@ -145,18 +188,7 @@ export function useInlineRichTextSession(
         version += 1;
         publish();
       },
-      onBlur: () => {
-        // Focus moved on: end the session unless it stays in the field
-        // (a toolbar press keeps the editor's focus).
-        queueMicrotask(() => {
-          if (!el.contains(doc.activeElement)) {
-            const current = store.getSession().editing;
-            if (current?.blockId === blockId && current.key === key) {
-              store.setEditing(null);
-            }
-          }
-        });
-      },
+      onBlur: () => setTimeout(followFocus, 0),
     });
     if (!caret) handle.focus();
     publish();
@@ -178,6 +210,7 @@ export function useInlineRichTextSession(
     };
     el.addEventListener('keydown', onKeyDown, true);
     return () => {
+      stopWatching();
       el.removeEventListener('keydown', onKeyDown, true);
       handle?.destroy();
       handle = null;

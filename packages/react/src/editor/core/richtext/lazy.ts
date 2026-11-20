@@ -49,6 +49,7 @@ export function lazyRichTextAdapter(
         setNode: (type, attrs) => real?.commands.setNode(type, attrs),
         isActive: (name, attrs) =>
           real?.commands.isActive(name, attrs) ?? false,
+        getLink: () => real?.commands.getLink?.() ?? null,
       };
       return {
         setValue(next) {

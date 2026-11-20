@@ -174,6 +174,36 @@ describe.each(['inline', 'frame'] as const)(
       expect(el.querySelector('strong')?.textContent).toBe('world!');
     });
 
+    it('focus in the editing chrome keeps the session; focus elsewhere ends it', async () => {
+      const { container, store } = setup(surface);
+      const doc = await canvasDoc(container);
+      const el = field(doc);
+      const box = el.querySelector('strong')!.getBoundingClientRect();
+      clickAt(doc, box.right - 1, box.top + box.height / 2);
+      await waitFor(() =>
+        expect(doc.activeElement?.getAttribute('contenteditable')).toBe('true'),
+      );
+      const chrome = document.createElement('div');
+      chrome.setAttribute('data-editor-inline-chrome', '');
+      const input = document.createElement('input');
+      chrome.append(input);
+      const outside = document.createElement('button');
+      document.body.append(chrome, outside);
+      try {
+        act(() => input.focus());
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(store.getSession().editing).toEqual({
+          blockId: 'n1',
+          key: 'body',
+        });
+        act(() => outside.focus());
+        await waitFor(() => expect(store.getSession().editing).toBeNull());
+      } finally {
+        chrome.remove();
+        outside.remove();
+      }
+    });
+
     it('undo after an inline edit restores the JSON exactly', async () => {
       const { container, store, body } = setup(surface);
       const doc = await canvasDoc(container);

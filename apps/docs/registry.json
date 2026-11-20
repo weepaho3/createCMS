@@ -407,6 +407,11 @@
           "target": "components/editor-ui-sdk/rich-text.tsx"
         },
         {
+          "path": "registry/ui-sdk/rich-text-link.tsx",
+          "type": "registry:component",
+          "target": "components/editor-ui-sdk/rich-text-link.tsx"
+        },
+        {
           "path": "registry/ui-sdk/chrome.tsx",
           "type": "registry:component",
           "target": "components/editor-ui-sdk/chrome.tsx"

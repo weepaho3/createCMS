@@ -12,6 +12,8 @@ export type RichTextCommands = {
   setNode(type: string, attrs?: Record<string, JsonValue>): void;
   /** True when the selection carries the mark or sits in the node. */
   isActive(name: string, attrs?: Record<string, JsonValue>): boolean;
+  /** The link at the selection: its target, `{ kind: 'href' }` for a bare URL, or `null`. */
+  getLink?(): LinkValue | { kind: 'href'; href: string } | null;
 };
 
 /** One entry of a suggestion list (`{{variable}}` completion). */

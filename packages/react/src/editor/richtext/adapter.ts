@@ -14,7 +14,7 @@ import type { TiptapExtensionOptions } from './extensions';
 
 import { normalizeRichTextJson } from '../core/rich-text-json';
 import { htmlToRichText } from '../core/richtext/parse-html';
-import { linkMarkHref } from '../core/richtext/schema';
+import { linkMarkHref, linkMarkValue } from '../core/richtext/schema';
 import { richTextExtensions } from './extensions';
 import { suggestionExtension } from './suggestion';
 
@@ -71,6 +71,12 @@ function commandsOf(editor: Editor): RichTextCommands {
       }
     },
     isActive: (name, attrs) => editor.isActive(name, attrs),
+    getLink: () =>
+      editor.isActive('link')
+        ? linkMarkValue(
+            editor.getAttributes('link') as Record<string, RichTextJsonValue>,
+          )
+        : null,
   };
 }
 

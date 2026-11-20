@@ -33,6 +33,7 @@ import * as React from 'react';
 
 import { MediaPicker } from '../media-picker';
 import { Choice, RichTextField, fields } from './fields';
+import { RichTextLinksProvider, type RichTextLinks } from './rich-text-link';
 
 type Sources = { sources: CmsFieldSources; media: MediaClient | undefined };
 
@@ -41,14 +42,39 @@ const SourcesContext = React.createContext<Sources | null>(null);
 export function CmsSourcesProvider({
   sources,
   media,
+  linkCollections = [],
   children,
 }: {
   sources: CmsFieldSources;
   media?: MediaClient;
+  linkCollections?: readonly string[];
   children: React.ReactNode;
 }) {
   const value = React.useMemo(() => ({ sources, media }), [sources, media]);
-  return <SourcesContext value={value}>{children}</SourcesContext>;
+  const links = React.useMemo<RichTextLinks>(
+    () => ({
+      collections: linkCollections,
+      renderPagePicker: ({ collection, value: rootId, onChange, label }) => (
+        <RootCombobox
+          collection={collection}
+          value={rootId}
+          onChange={onChange}
+          disabled={false}
+          label={label}
+        />
+      ),
+    }),
+    [linkCollections],
+  );
+  return (
+    <SourcesContext value={value}>
+      {linkCollections.length > 0 ? (
+        <RichTextLinksProvider value={links}>{children}</RichTextLinksProvider>
+      ) : (
+        children
+      )}
+    </SourcesContext>
+  );
 }
 
 function useSources(): Sources {

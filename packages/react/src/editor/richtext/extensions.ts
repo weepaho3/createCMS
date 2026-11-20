@@ -88,7 +88,8 @@ const RichTextLink = Link.extend({
   autolink: true,
   linkOnPaste: true,
   HTMLAttributes: { target: null, rel: null, class: null },
-  isAllowedUri: (url) => isSafeUrl(url),
+  // An internal link has no browser URL in the editor, only its `link` target.
+  isAllowedUri: (url) => typeof url !== 'string' || isSafeUrl(url),
 });
 
 /**

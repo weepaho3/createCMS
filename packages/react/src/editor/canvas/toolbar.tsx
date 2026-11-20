@@ -112,6 +112,10 @@ const TOOLBAR_SCROLL_IDLE_MS = 150;
 /** True when a DragHandle is rendered inside BlockToolbar (in-flow). */
 export const BlockToolbarContext = React.createContext(false);
 
+const INLINE_CHROME_PROPS: Record<string, string> = {
+  'data-editor-inline-chrome': '',
+};
+
 type BlockToolbarState = {
   editorBlockToolbar: boolean;
   side: 'top' | 'bottom';
@@ -303,6 +307,7 @@ export function CanvasBlockToolbar({
     render,
     props: {
       'aria-label': messages.parts.blockToolbar({ label: blockLabel }),
+      ...INLINE_CHROME_PROPS,
       ...rest,
       ref: composeRefs(roving.ref, ref),
       onKeyDown: handleKeyDown,

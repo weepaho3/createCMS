@@ -79,6 +79,19 @@ the field is named through `Field` (`useFieldControl`), the formatting
 buttons are `Toggle`s in a `Toolbar` (in the canvas, through
 `useRichTextToolbarState`), and the field is a primitive agents can fill.
 
+Text edits in place on the canvas too: a click into a rich text field
+starts the editor there, and the block toolbar shows its formats. Fields
+that allow the `link` mark get a Link button in both toolbars
+(`rich-text-link.tsx`). It opens a `Popover` to link the selection to a
+URL, an email address or a phone number, or with createCMS to a page:
+`CmsSourcesProvider` gets `linkCollections`, which `CmsEditor` sets to its
+own collection, and pages are picked with the same searching `Combobox` as
+references. Links are stored as the core's `LinkValue`, so internal links
+keep their `collection` and `rootId` and resolve when the page renders.
+Unsafe URLs are refused. In the canvas the popover is marked
+`data-editor-inline-chrome`, so editing keeps running while you type the
+URL.
+
 ### UI SDK components
 
 | Part | File | UI SDK |

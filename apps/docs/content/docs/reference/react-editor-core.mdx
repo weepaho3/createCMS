@@ -545,7 +545,10 @@ it. `validateRichText` returns `RichTextIssue[]` (`{ code, path, params? }`,
 `attributes` for the editable element, and returns a `RichTextHandle`
 (`setValue`, `setEditable`, `focus`, `destroy`, `commands`).
 `RichTextCommands` are `toggleMark(name)`, `setLink(value | null)`,
-`setNode(type, attrs?)` and `isActive(name, attrs?)`. The editor keeps no
+`setNode(type, attrs?)`, `isActive(name, attrs?)` and the optional
+`getLink()`, the link at the selection (its `LinkValue`,
+`{ kind: 'href', href }` for a bare URL, or `null`). `setLink` takes every
+`LinkValue` kind; an internal link has no browser URL in the editor. The editor keeps no
 history of its own; undo runs through the store.
 
 `RichTextMountOptions.binding` (a `RichTextBinding`: `fragment`, the
