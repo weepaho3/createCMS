@@ -1,9 +1,7 @@
 // @registry ui-sdk-editor@0.3.2
 'use client';
 
-// The form of one block, and the form-only surface: the path to the block,
-// its fields and its nested blocks per slot, so every block is reachable
-// without a canvas.
+import type { Field as FieldSpec } from '@createcms/react/editor/core';
 
 import {
   describeBlock,
@@ -12,19 +10,158 @@ import {
   useEditor,
   useEditorContext,
   useEditorStore,
+  useFieldContext,
   useFields,
+  useMessages,
   useNodeStatus,
   useSelection,
+  useSessionSelector,
   useSlot,
   useSlots,
 } from '@createcms/react/editor';
+import { formatIssue, groupFields } from '@createcms/react/editor/core';
 import { Button } from '@ui-sdk/react/button';
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from '@ui-sdk/react/field';
 import { ChevronRightIcon } from 'lucide-react';
 import * as React from 'react';
 
-/** The fields of a block, after its `resolveData` state. */
-export function Form(props: React.ComponentProps<typeof Editor.Form>) {
-  const { loading, error } = useNodeStatus(props.blockId);
+import { Chrome } from './chrome';
+
+const grouped = (spec: FieldSpec) =>
+  spec.type === 'list' ||
+  spec.type === 'object' ||
+  spec.type === 'link' ||
+  spec.type === 'media' ||
+  (spec.type === 'select' && spec.multiple === true);
+
+function FieldBody() {
+  const field = useFieldContext('Form');
+  const messages = useMessages();
+  const label = field.spec.label ?? field.name;
+  const error = field.errors
+    .map((issue) => formatIssue(issue, messages))
+    .join(' ');
+  if (grouped(field.spec)) {
+    return (
+      <>
+        <FieldLegend className="ed-label">{label}</FieldLegend>
+        {field.spec.description ? (
+          <FieldDescription className="ed-description">
+            {field.spec.description}
+          </FieldDescription>
+        ) : null}
+        <Editor.FieldControl />
+        {field.invalid ? (
+          <p className="ed-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </>
+    );
+  }
+  return (
+    <>
+      <FieldLabel className="ed-label">{label}</FieldLabel>
+      <Editor.FieldControl />
+      {field.spec.description ? (
+        <FieldDescription className="ed-description">
+          {field.spec.description}
+        </FieldDescription>
+      ) : null}
+      {field.invalid ? (
+        <FieldError match className="ed-error">
+          {error}
+        </FieldError>
+      ) : null}
+    </>
+  );
+}
+
+function FormField({
+  blockId,
+  name,
+  spec,
+  disabled,
+}: {
+  blockId: string;
+  name: string;
+  spec: FieldSpec;
+  disabled: boolean;
+}) {
+  if (grouped(spec)) {
+    return (
+      <Editor.Field blockId={blockId} name={name} disabled={disabled}>
+        <FieldSet disabled={disabled} className="ed-field">
+          <FieldBody />
+        </FieldSet>
+      </Editor.Field>
+    );
+  }
+  return (
+    <Editor.Field
+      blockId={blockId}
+      name={name}
+      disabled={disabled}
+      render={(props, state) => (
+        <Field
+          {...props}
+          invalid={state.invalid}
+          disabled={state.disabled}
+          className="ed-field"
+        />
+      )}
+    >
+      <FieldBody />
+    </Editor.Field>
+  );
+}
+
+export function Form({
+  blockId,
+  disabled = false,
+  autoScroll = false,
+}: {
+  blockId: string;
+  disabled?: boolean;
+  autoScroll?: boolean;
+}) {
+  const ctx = useEditorContext('Form');
+  const { loading, error } = useNodeStatus(blockId);
+  const fields = useFields(blockId);
+  const groups = React.useMemo(
+    () => groupFields(Object.fromEntries(fields.map((f) => [f.key, f.spec]))),
+    [fields],
+  );
+  const el = React.useRef<HTMLDivElement | null>(null);
+  React.useLayoutEffect(() => {
+    if (!el.current) return;
+    return ctx.registerScrollTarget(blockId, el.current);
+  }, [ctx, blockId]);
+  const focused = useSessionSelector((state) => {
+    const focus = state.focusedField;
+    return focus && focus.blockId === blockId ? focus.key : null;
+  });
+  React.useLayoutEffect(() => {
+    if (autoScroll && focused) el.current?.scrollIntoView({ block: 'nearest' });
+  }, [autoScroll, focused]);
+
+  const field = (key: string, spec: FieldSpec) => (
+    <FormField
+      key={key}
+      blockId={blockId}
+      name={key}
+      spec={spec}
+      disabled={disabled}
+    />
+  );
+
   return (
     <>
       {error ? (
@@ -36,7 +173,20 @@ export function Form(props: React.ComponentProps<typeof Editor.Form>) {
           Loading…
         </p>
       ) : null}
-      <Editor.Form data-slot="editor-form" {...props} />
+      <Chrome.Form ref={el} className="ed-form">
+        {groups.map((group) =>
+          group.group === null ? (
+            group.fields.map((f) => field(f.key, f.spec))
+          ) : (
+            <FieldSet key={`group:${group.group}`} className="ed-group-set">
+              <FieldLegend className="ed-group-legend">
+                {group.group}
+              </FieldLegend>
+              {group.fields.map((f) => field(f.key, f.spec))}
+            </FieldSet>
+          ),
+        )}
+      </Chrome.Form>
     </>
   );
 }
@@ -70,7 +220,7 @@ function Path({ blockId }: { blockId: string }) {
   );
   if (ancestors.length === 0) return null;
   return (
-    <nav aria-label="Block path" data-slot="editor-form-breadcrumb">
+    <Chrome.FormBreadcrumb>
       <ol className="ed-path">
         {ancestors.map((id, index) => (
           <li key={id}>
@@ -84,7 +234,7 @@ function Path({ blockId }: { blockId: string }) {
           </li>
         ))}
       </ol>
-    </nav>
+    </Chrome.FormBreadcrumb>
   );
 }
 
@@ -104,7 +254,7 @@ function Child({ blockId }: { blockId: string }) {
   if (!summary) return null;
   const [label, excerpt, count] = summary.split('\u0000');
   return (
-    <li data-slot="editor-form-child">
+    <Chrome.FormChild>
       <Button className="ed-child" onClick={() => store.select(blockId)}>
         <span className="ed-child-text">
           <span className="ed-child-label">{label}</span>
@@ -115,7 +265,7 @@ function Child({ blockId }: { blockId: string }) {
         ) : null}
         <ChevronRightIcon aria-hidden />
       </Button>
-    </li>
+    </Chrome.FormChild>
   );
 }
 
@@ -148,7 +298,6 @@ function Slot({ blockId, slot }: { blockId: string; slot: string }) {
   );
 }
 
-/** The form-only edit surface: the selection's form, or the page's. */
 export function FormSurface({ children }: { children?: React.ReactNode }) {
   const rootId = useEditor((state) => state.rootId);
   const blockId = useSelection().selected ?? rootId;
@@ -156,7 +305,7 @@ export function FormSurface({ children }: { children?: React.ReactNode }) {
   const slots = useSlots(blockId);
   const hasFields = useFields(blockId).length > 0;
   return (
-    <div data-slot="editor-form-surface" className="ed-form-surface">
+    <Chrome.FormSurface className="ed-form-surface">
       <Path blockId={blockId} />
       <h1>{label}</h1>
       {hasFields ? <Form blockId={blockId} /> : null}
@@ -164,6 +313,6 @@ export function FormSurface({ children }: { children?: React.ReactNode }) {
         <Slot key={slot} blockId={blockId} slot={slot} />
       ))}
       {children}
-    </div>
+    </Chrome.FormSurface>
   );
 }

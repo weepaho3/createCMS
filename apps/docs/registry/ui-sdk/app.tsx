@@ -1,9 +1,6 @@
 // @registry ui-sdk-editor@0.3.2
 'use client';
 
-// The complete editor over a document from any source: loading, load and
-// save errors, the conflict dialog, the shell and both edit surfaces.
-
 import type { EditorRootProps, FieldControls } from '@createcms/react/editor';
 import type {
   AnyEditorSchema,
@@ -39,16 +36,13 @@ import { EditorShell, useDeviceFrame } from './shell';
 
 export type EditorAppMode = 'canvas' | 'form';
 
-/** A load or save failure as the alerts show it. */
 export type EditorAppError = {
   message: string;
   fields?: readonly { blockId: string; key: string; message: string }[];
 };
 
-/** Where the edited document comes from: `useAdapterDocument` or a backend hook. */
 export type EditorAppDocument = {
   doc: EditorDocument | null;
-  /** Changes with every load: the editor starts over. */
   key: string;
   status: 'loading' | 'idle' | 'error';
   error: EditorAppError | null;
@@ -66,7 +60,6 @@ export type EditorAppViewProps = {
   resolve?: CanvasRootProps['resolve'];
   fields?: FieldControls;
   richText?: EditorRootProps['richText'];
-  /** Wraps the shell, for providers the field controls read. */
   renderProviders?: (children: React.ReactNode) => React.ReactNode;
   mode?: EditorAppMode;
   className?: string;
@@ -120,7 +113,7 @@ function SaveProblem() {
   const { status, error, save } = useSave();
   if (status !== 'error' || !error) return null;
   return (
-    <div data-slot="editor-app-error-banner" className="ed-banner">
+    <div className="ed-banner">
       <Problem
         error={saveError(error)}
         fallback="Saving failed."
@@ -142,13 +135,12 @@ function Conflict({ onReload }: { onReload: () => void }) {
       open={conflict !== null}
       onOpenChange={(open, details) => {
         if (open || details.returnValue === 'overwrite') return;
-        // Without the server's document, reload the editor from the server.
         if (!conflict?.reload()) onReload();
       }}
     >
       <AlertDialogBackdrop className="ed-backdrop" />
       <AlertDialogContent className="ed-dialog" data-kind="form">
-        <div data-slot="editor-app-conflict">
+        <div>
           <AlertDialogTitle className="ed-dialog-title">
             Document conflict
           </AlertDialogTitle>
@@ -172,6 +164,7 @@ function Conflict({ onReload }: { onReload: () => void }) {
             value="overwrite"
             className="ed-button"
             data-variant="destructive"
+            data-agent-confirm="Replaces the version on the server with yours"
             action={() => conflict?.overwrite()}
           >
             Overwrite
@@ -182,7 +175,6 @@ function Conflict({ onReload }: { onReload: () => void }) {
   );
 }
 
-/** `Canvas.Root` in a frame as wide as the toolbar's device. */
 export function DeviceCanvas(
   props: Omit<CanvasRootProps, 'surface' | 'frame'>,
 ) {
@@ -226,15 +218,14 @@ export function DeviceCanvas(
 }
 
 function CanvasSurface(props: Pick<CanvasRootProps, 'components' | 'resolve'>) {
-  const { openPalette } = useChrome();
+  const { api } = useChrome();
   return (
     <DeviceCanvas {...props} className="ed-canvas">
-      <CanvasChrome onInsert={() => openPalette('add')} />
+      <CanvasChrome onInsert={() => api.addBlock()} />
     </DeviceCanvas>
   );
 }
 
-/** Tiptap, loaded the first time a rich text field is edited. */
 const defaultRichText = lazyRichTextAdapter(() =>
   import('@createcms/react/editor/richtext').then((m) =>
     m.createTiptapAdapter(),
@@ -258,7 +249,6 @@ export function EditorAppView({
   if (!doc.doc) {
     return doc.status === 'error' ? (
       <div
-        data-slot="editor-app-error"
         className={['ed-app', 'ed-center-state', className]
           .filter(Boolean)
           .join(' ')}
@@ -271,7 +261,6 @@ export function EditorAppView({
       </div>
     ) : (
       <div
-        data-slot="editor-app-loading"
         role="status"
         aria-busy="true"
         className={['ed-app', 'ed-loading', className]
@@ -284,12 +273,11 @@ export function EditorAppView({
   }
   return (
     <div
-      data-slot="editor-app"
       data-mode={mode}
       className={['ed-app', className].filter(Boolean).join(' ')}
     >
       {doc.status === 'error' && doc.error ? (
-        <div data-slot="editor-app-error-banner" className="ed-banner">
+        <div className="ed-banner">
           <Problem
             error={doc.error}
             fallback="Failed to load the document."
@@ -331,14 +319,11 @@ export function EditorAppView({
 }
 
 export type EditorAppProps = Omit<EditorAppViewProps, 'document'> & {
-  /** Loads and saves the document: an `EditorAdapter`, `createMemoryAdapter`, ... */
   adapter: PersistenceAdapter;
   documentId: string;
-  /** The loaded document's version, for conflict checks. */
   baseVersion?: string;
 };
 
-/** The editor over an adapter. */
 export function EditorApp({
   adapter,
   documentId,

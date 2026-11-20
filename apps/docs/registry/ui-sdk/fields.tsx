@@ -1,10 +1,6 @@
 // @registry ui-sdk-editor@0.3.2
 'use client';
 
-// Controls for the built-in field kinds, on UI SDK: pass `fields={fields}`
-// to Editor.Root. Each control takes the ids and ARIA the field hands it,
-// so Editor.Form's label, description and error stay connected.
-
 import type { FieldControlProps, FieldControls } from '@createcms/react/editor';
 
 import {
@@ -27,6 +23,7 @@ import {
   ColorPickerSlider,
   ColorPickerSliderThumb,
 } from '@ui-sdk/react/color-picker';
+import { Field, FieldLabel, useFieldControl } from '@ui-sdk/react/field';
 import { Input } from '@ui-sdk/react/input';
 import {
   NumberInput,
@@ -61,21 +58,6 @@ import {
 } from 'lucide-react';
 import * as React from 'react';
 
-type Aria = {
-  describedBy: string | undefined;
-  invalid: boolean;
-  required: boolean;
-  readOnly?: boolean;
-};
-
-export function aria(props: Aria) {
-  return {
-    'aria-describedby': props.describedBy,
-    'aria-invalid': props.invalid || undefined,
-    'aria-required': props.required || undefined,
-  } as const;
-}
-
 const nameOf = (props: { spec: { label?: string }; name: string }) =>
   props.spec.label ?? props.name;
 
@@ -92,7 +74,6 @@ function TextField(props: FieldControlProps<'text'>) {
       readOnly={props.readOnly}
       minLength={props.spec.minLength}
       maxLength={props.spec.maxLength}
-      {...aria(props)}
       onValueChange={(value) => props.onChange(value)}
     />
   );
@@ -113,7 +94,6 @@ function TextareaField(props: FieldControlProps<'textarea'>) {
       readOnly={props.readOnly}
       minLength={props.spec.minLength}
       maxLength={props.spec.maxLength}
-      {...aria(props)}
       onValueChange={(value) => props.onChange(value)}
     />
   );
@@ -140,7 +120,6 @@ function NumberField(props: FieldControlProps<'number'>) {
         <NumberInputControl
           id={props.id}
           placeholder={props.spec.placeholder}
-          {...aria(props)}
         />
         <NumberInputIncrement aria-label={`Increase ${name}`}>
           <PlusIcon />
@@ -169,7 +148,6 @@ function BooleanField(props: FieldControlProps<'boolean'>) {
       required={props.required}
       disabled={props.disabled}
       readOnly={props.readOnly}
-      {...aria(props)}
       onCheckedChange={(checked) => props.onChange(checked === true)}
     />
   );
@@ -186,23 +164,22 @@ function DateField(props: FieldControlProps<'date'>) {
       required={props.required}
       disabled={props.disabled}
       readOnly={props.readOnly}
-      {...aria(props)}
       onValueChange={(value) => props.onChange(fromDatetimeLocal(value))}
     />
   );
 }
 
-/** A swatch that opens a picker: saturation and brightness, hue, hex. */
 function ColorField(props: FieldControlProps<'color'>) {
   const value = props.value ?? '#000000';
+  const control = useFieldControl();
+  const own = {
+    id: props.id,
+    disabled: props.disabled || props.readOnly,
+    className: 'ed-input ed-color-trigger',
+  };
   return (
     <Popover>
-      <PopoverTrigger
-        id={props.id}
-        disabled={props.disabled || props.readOnly}
-        className="ed-input ed-color-trigger"
-        {...aria(props)}
-      >
+      <PopoverTrigger {...(control ? control.props(own) : own)}>
         <span
           aria-hidden
           className="ed-color-swatch"
@@ -243,7 +220,6 @@ function SelectField(props: FieldControlProps<'select'>) {
         value={selected}
         disabled={props.disabled}
         readOnly={props.readOnly}
-        {...aria(props)}
         onValueChange={(next) =>
           props.onChange(
             options.map((o) => o.value).filter((v) => next.includes(v)),
@@ -269,13 +245,11 @@ function SelectField(props: FieldControlProps<'select'>) {
       required={props.required}
       disabled={props.disabled}
       readOnly={props.readOnly}
-      {...aria(props)}
       onValueChange={(value) => props.onChange(value || undefined)}
     />
   );
 }
 
-/** One value from a list of labelled options. */
 export function Choice({
   value,
   options,
@@ -349,7 +323,6 @@ const BLOCKS = [
   { node: 'orderedList', label: 'Numbered list', text: '1.' },
 ] as const;
 
-/** The formats a rich text field allows, as toolbar buttons. */
 export function RichTextFormats({
   marks,
   blocks = true,
@@ -391,10 +364,6 @@ export function RichTextFormats({
   );
 }
 
-/**
- * Rich text with its formats; `suggest` completes text such as
- * `{{variables}}`. The editor comes from `Editor.Root richText`.
- */
 export function RichTextField({
   suggest,
   ...props
@@ -410,79 +379,101 @@ export function RichTextField({
   );
 }
 
+function useStableKeys(length: number) {
+  const next = React.useRef(0);
+  const keys = React.useRef<number[]>([]);
+  while (keys.current.length < length) keys.current.push(next.current++);
+  if (keys.current.length > length) keys.current.length = length;
+  return {
+    keys: keys.current,
+    move(from: number, to: number) {
+      const [key] = keys.current.splice(from, 1);
+      keys.current.splice(to, 0, key!);
+    },
+    remove(index: number) {
+      keys.current.splice(index, 1);
+    },
+  };
+}
+
 function ListField(props: FieldControlProps<'list'>) {
   const items = props.value ?? [];
   const { min = 0, max = Number.POSITIVE_INFINITY } = props.spec;
   const label = nameOf(props);
   const locked = props.disabled || props.readOnly;
+  const stable = useStableKeys(items.length);
   const set = (next: unknown[]) => props.onChange(next);
   const move = (from: number, to: number) => {
     const next = [...items];
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
+    stable.move(from, to);
     set(next);
   };
   return (
-    <div
-      id={props.id}
-      role="group"
-      aria-label={label}
-      className="ed-list-field"
-      {...aria(props)}
-    >
+    <div id={props.id} className="ed-list-field">
       <ol>
-        {items.map((item, index) => (
-          <li key={index} className="ed-card">
-            {props.renderElement?.({
-              spec: { ...props.spec.of, label: `${label} ${index + 1}` },
-              value: item,
-              onChange: (next) => {
-                const copy = [...items];
-                copy[index] = next;
-                set(copy);
-              },
-              id: `${props.id}-${index}`,
-              name: `${props.name}[${index}]`,
-              index,
-              disabled: props.disabled,
-              readOnly: props.readOnly,
-              invalid: false,
-              describedBy: undefined,
-            })}
-            <div className="ed-row">
-              <Button
-                className="ed-button"
-                data-variant="ghost"
-                data-size="icon-xs"
-                aria-label={`Move ${label} ${index + 1} up`}
-                disabled={locked || index === 0}
-                onClick={() => move(index, index - 1)}
-              >
-                <ArrowUpIcon />
-              </Button>
-              <Button
-                className="ed-button"
-                data-variant="ghost"
-                data-size="icon-xs"
-                aria-label={`Move ${label} ${index + 1} down`}
-                disabled={locked || index === items.length - 1}
-                onClick={() => move(index, index + 1)}
-              >
-                <ArrowDownIcon />
-              </Button>
-              <Button
-                className="ed-button"
-                data-variant="ghost"
-                data-size="icon-xs"
-                aria-label={`Remove ${label} ${index + 1}`}
-                disabled={locked || items.length <= min}
-                onClick={() => set(items.filter((_, i) => i !== index))}
-              >
-                <XIcon />
-              </Button>
-            </div>
-          </li>
-        ))}
+        {items.map((item, index) => {
+          const name = `${label} ${index + 1}`;
+          return (
+            <li key={stable.keys[index]} className="ed-card">
+              <Field className="ed-field">
+                <FieldLabel className="ed-sr">{name}</FieldLabel>
+                {props.renderElement?.({
+                  spec: { ...props.spec.of, label: name },
+                  value: item,
+                  onChange: (next) => {
+                    const copy = [...items];
+                    copy[index] = next;
+                    set(copy);
+                  },
+                  id: `${props.id}-${stable.keys[index]}`,
+                  name: `${props.name}[${index}]`,
+                  index,
+                  disabled: props.disabled,
+                  readOnly: props.readOnly,
+                  invalid: false,
+                  describedBy: undefined,
+                })}
+              </Field>
+              <div className="ed-row">
+                <Button
+                  className="ed-button"
+                  data-variant="ghost"
+                  data-size="icon-xs"
+                  aria-label={`Move ${name} up`}
+                  disabled={locked || index === 0}
+                  onClick={() => move(index, index - 1)}
+                >
+                  <ArrowUpIcon />
+                </Button>
+                <Button
+                  className="ed-button"
+                  data-variant="ghost"
+                  data-size="icon-xs"
+                  aria-label={`Move ${name} down`}
+                  disabled={locked || index === items.length - 1}
+                  onClick={() => move(index, index + 1)}
+                >
+                  <ArrowDownIcon />
+                </Button>
+                <Button
+                  className="ed-button"
+                  data-variant="ghost"
+                  data-size="icon-xs"
+                  aria-label={`Remove ${name}`}
+                  disabled={locked || items.length <= min}
+                  onClick={() => {
+                    stable.remove(index);
+                    set(items.filter((_, i) => i !== index));
+                  }}
+                >
+                  <XIcon />
+                </Button>
+              </div>
+            </li>
+          );
+        })}
       </ol>
       <Button
         className="ed-button"
@@ -500,11 +491,10 @@ function ListField(props: FieldControlProps<'list'>) {
 function ObjectField(props: FieldControlProps<'object'>) {
   const value = props.value ?? {};
   return (
-    <fieldset id={props.id} className="ed-card" {...aria(props)}>
-      <legend className="ed-sr">{nameOf(props)}</legend>
+    <div id={props.id} className="ed-card">
       {Object.entries(props.spec.fields).map(([key, spec]) => (
-        <div key={key} className="ed-field">
-          <span className="ed-label">{spec.label ?? key}</span>
+        <Field key={key} className="ed-field">
+          <FieldLabel className="ed-label">{spec.label ?? key}</FieldLabel>
           {props.renderNested?.({
             spec: { ...spec, label: spec.label ?? key },
             fieldKey: key,
@@ -522,13 +512,12 @@ function ObjectField(props: FieldControlProps<'object'>) {
             invalid: false,
             describedBy: undefined,
           })}
-        </div>
+        </Field>
       ))}
-    </fieldset>
+    </div>
   );
 }
 
-/** UI SDK controls for the built-in field kinds, for `Editor.Root fields`. */
 export const fields = {
   text: TextField,
   textarea: TextareaField,

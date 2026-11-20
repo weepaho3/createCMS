@@ -1,11 +1,6 @@
 // @registry ui-sdk-editor@0.3.2
 'use client';
 
-// One searchable command list for the whole editor: every registered command
-// on the first page, and a page of block types to insert. Mod+K opens it on
-// the first page, `/` and the add buttons on the block page. The phone's add
-// sheet shows the block page on its own.
-
 import {
   insertPointFor,
   useCommand,
@@ -40,7 +35,6 @@ import { blockIcon, useChrome } from './chrome';
 
 const ADD = 'add';
 
-/** Inserts a block where the selection says, and selects it. */
 function useInsert() {
   const editor = useEditor();
   const { schema } = useEditorContext('useInsert');
@@ -59,7 +53,6 @@ function useInsert() {
   };
 }
 
-/** The block types, grouped by category, as commands `block:<type>`. */
 function BlockCommands() {
   const groups = groupPaletteItems(usePalette());
   const { canInsert } = useInsert();
@@ -117,7 +110,7 @@ function useRun(after: () => void) {
   const { insert } = useInsert();
   return (value: string) => {
     after();
-    // After the list closed: a command may open a dialog of its own.
+    // A command may open a dialog of its own, so it runs once the list closed.
     queueMicrotask(() => {
       if (value.startsWith('block:')) insert(value.slice(6));
       if (value.startsWith('command:')) {
@@ -135,9 +128,9 @@ const input = (label: string) => (
   />
 );
 
-/** The palette dialog. Mount it once inside the shell. */
 export function CommandPalette() {
-  const { palette, openPalette, closePalette } = useChrome();
+  const { palette, api } = useChrome();
+  const closePalette = () => api.closePalette();
   const ids = useCommands()
     .map((command) => command.id)
     .filter((id) => id !== 'ui.commandPalette' && id !== 'ui.quickInsert');
@@ -146,8 +139,9 @@ export function CommandPalette() {
   return (
     <Dialog
       open={palette !== null}
-      onOpenChange={(open) => {
-        if (!open) closePalette();
+      onOpenChange={(open, details) => {
+        if (!open)
+          api.closePalette({ reason: details.reason, event: details.event });
       }}
     >
       <DialogBackdrop className="ed-backdrop" />
@@ -160,7 +154,7 @@ export function CommandPalette() {
           loop
           pages={pages}
           onPagesChange={(next) =>
-            openPalette(next.includes(ADD) ? 'add' : 'commands')
+            api.openPalette(next.includes(ADD) ? 'add' : 'commands')
           }
           onAction={(value) => run(value)}
           className="ed-command"
@@ -195,7 +189,6 @@ export function CommandPalette() {
   );
 }
 
-/** The block types alone, searchable: the phone's add sheet. */
 export function BlockPicker({ onDone }: { onDone: () => void }) {
   const run = useRun(onDone);
   return (

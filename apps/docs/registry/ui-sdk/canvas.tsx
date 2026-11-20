@@ -1,10 +1,6 @@
 // @registry ui-sdk-editor@0.3.2
 'use client';
 
-// The chrome over the canvas: rings, issue markers, insert buttons and the
-// text glass on the canvas surface; the block toolbar, drop indicator and
-// drag preview on the host layer, where they may leave a device frame.
-
 import {
   Editor,
   useBlockActions,
@@ -54,8 +50,7 @@ function CommandItem({ id }: { id: string }) {
   );
 }
 
-/** Structure actions beyond the toolbar, all reachable without a drag. */
-function MoreActions({ blockId }: { blockId: string }) {
+function MoreActions({ blockId, label }: { blockId: string; label: string }) {
   const { targets, moveTo } = useMoveTargets(blockId);
   const wrap = useCommand('block.wrap');
   const copy = useCommand('clipboard.copy');
@@ -77,12 +72,12 @@ function MoreActions({ blockId }: { blockId: string }) {
       }}
     >
       <MenuTrigger
+        aria-label={`More actions for ${label}`}
         className="ed-button"
         data-variant="ghost"
         data-size="icon-xs"
       >
         <MoreHorizontalIcon />
-        <span className="ed-sr">More actions</span>
       </MenuTrigger>
       <MenuContent align="end" sideOffset={4} className="ed-popup ed-list">
         <MenuSub>
@@ -152,10 +147,15 @@ function BlockActions() {
       >
         <CopyIcon />
       </IconButton>
-      <IconButton label="Delete" size="xs" onClick={() => actions.remove()}>
+      <IconButton
+        label="Delete"
+        size="xs"
+        data-agent-confirm={`Deletes ${label} and every block inside it`}
+        onClick={() => actions.remove()}
+      >
         <Trash2Icon />
       </IconButton>
-      <MoreActions blockId={selected} />
+      <MoreActions blockId={selected} label={label ?? 'block'} />
       <Editor.Slot name="block-toolbar" props={{ blockId: selected }} />
       <Canvas.InlineRichTextToolbar>
         <Separator orientation="vertical" className="ed-separator" />
@@ -167,7 +167,6 @@ function BlockActions() {
   );
 }
 
-/** Every overlay part of the canvas. Put it inside `Canvas.Root`. */
 export function CanvasChrome({ onInsert }: { onInsert: () => void }) {
   return (
     <>
@@ -205,7 +204,6 @@ export function CanvasChrome({ onInsert }: { onInsert: () => void }) {
   );
 }
 
-/** A palette row that drags a new block onto the canvas, or inserts it on press. */
 export function PaletteItem(
   props: React.ComponentProps<typeof Canvas.PaletteItem>,
 ) {

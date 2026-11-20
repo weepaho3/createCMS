@@ -83,6 +83,10 @@ function inAllDocuments<T extends Element>(selector: string): T[] {
   ]);
 }
 
+/** A button's name: its `aria-label`, else its text. */
+const nameOf = (el: Element) =>
+  el.getAttribute('aria-label') ?? el.textContent ?? '';
+
 const focusedLabel = () =>
   (document.activeElement as HTMLElement | null)?.textContent;
 
@@ -164,7 +168,7 @@ describe.each(implementations)(
       const moveDown = await waitFor(() => {
         const el = inAllDocuments<HTMLButtonElement>(
           '[data-slot="editor-block-toolbar"] button',
-        ).find((button) => button.textContent?.includes('Move down'));
+        ).find((button) => nameOf(button).includes('Move down'));
         expect(el).toBeDefined();
         return el!;
       });

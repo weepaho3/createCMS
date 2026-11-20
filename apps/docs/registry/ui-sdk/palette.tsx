@@ -1,31 +1,24 @@
 // @registry ui-sdk-editor@0.3.2
 'use client';
 
-// The block types to drag onto the canvas, by category. A press inserts
-// the type like the add dialog does.
-
 import { Editor, usePalette } from '@createcms/react/editor';
 import { groupPaletteItems } from '@createcms/react/editor/core';
 import { GripVerticalIcon, PlusIcon } from 'lucide-react';
 
 import { PaletteItem } from './canvas';
-import { IconButton, blockIcon, useChrome } from './chrome';
+import { Chrome, IconButton, blockIcon, useChrome } from './chrome';
 
 export function BlockPalette() {
   const groups = groupPaletteItems(usePalette());
-  const { openPalette } = useChrome();
+  const { api } = useChrome();
   return (
-    <section
-      data-slot="editor-palette"
-      aria-labelledby="ed-palette-title"
-      className="ed-panel-section"
-    >
+    <Chrome.Palette className="ed-panel-section">
       <header className="ed-panel-heading">
-        <h2 id="ed-palette-title">Palette</h2>
+        <Chrome.PaletteTitle>Palette</Chrome.PaletteTitle>
         <IconButton
-          label="Add block"
+          label="Search blocks"
           size="xs"
-          onClick={() => openPalette('add')}
+          onClick={() => api.openPalette('add', { reason: 'press' })}
         >
           <PlusIcon />
         </IconButton>
@@ -60,6 +53,6 @@ export function BlockPalette() {
         </div>
       ))}
       <Editor.Slot name="palette-footer" />
-    </section>
+    </Chrome.Palette>
   );
 }

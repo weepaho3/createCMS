@@ -1,11 +1,6 @@
 // @registry ui-sdk-editor-createcms@0.3.2
 'use client';
 
-// The createCMS controls on top of `fields`: images through the media
-// picker, references and internal links as a searchable combobox that loads
-// pages as you scroll, links by kind, rich text with `{{variable}}`
-// completion. Wrap the editor in `CmsSourcesProvider`.
-
 import type { FieldControlProps, FieldControls } from '@createcms/react/editor';
 import type {
   CmsFieldSources,
@@ -31,12 +26,13 @@ import {
   ComboboxStatus,
   ComboboxTrigger,
 } from '@ui-sdk/react/combobox';
+import { useFieldControl } from '@ui-sdk/react/field';
 import { Input } from '@ui-sdk/react/input';
 import { CheckIcon, ChevronsUpDownIcon } from 'lucide-react';
 import * as React from 'react';
 
 import { MediaPicker } from '../media-picker';
-import { Choice, RichTextField, aria, fields } from './fields';
+import { Choice, RichTextField, fields } from './fields';
 
 type Sources = { sources: CmsFieldSources; media: MediaClient | undefined };
 
@@ -48,7 +44,6 @@ export function CmsSourcesProvider({
   children,
 }: {
   sources: CmsFieldSources;
-  /** A full media client gives the picker folders and uploads. */
   media?: MediaClient;
   children: React.ReactNode;
 }) {
@@ -64,7 +59,6 @@ function useSources(): Sources {
 
 const UNSUPPORTED = 'Not supported by this media source';
 
-/** A read-only `MediaClient` over the field sources: no folders, uploads through `sources.assets`. */
 export function sourcesMediaClient(sources: CmsFieldSources): MediaClient {
   const reject = () => Promise.reject(new Error(UNSUPPORTED));
   return {
@@ -103,14 +97,13 @@ function rootLabel(root: CmsRootListItem): string {
   return root.slug || root.path || root.id;
 }
 
-/** Search the roots of a collection; scrolling to the end loads the next page. */
 function RootCombobox({
   collection,
   value,
   onChange,
   disabled,
   label,
-  ...ariaProps
+  id,
 }: {
   collection: string;
   value: string | undefined;
@@ -118,10 +111,8 @@ function RootCombobox({
   disabled: boolean;
   label: string;
   id?: string;
-  'aria-describedby'?: string;
-  'aria-invalid'?: true;
-  'aria-required'?: true;
 }) {
+  const inField = useFieldControl() !== null;
   const { sources } = useSources();
   const [current, setCurrent] = React.useState<string | null>(null);
   React.useEffect(() => {
@@ -169,7 +160,11 @@ function RootCombobox({
       }}
     >
       <div className="ed-input ed-combobox">
-        <ComboboxInput aria-label={label} placeholder={label} {...ariaProps} />
+        <ComboboxInput
+          id={id}
+          aria-label={inField ? undefined : label}
+          placeholder={label}
+        />
         <ComboboxTrigger aria-label={`Show ${label.toLowerCase()} options`}>
           <ChevronsUpDownIcon aria-hidden />
         </ComboboxTrigger>
@@ -215,7 +210,7 @@ function MediaField(props: FieldControlProps<'media'>) {
   const assetId = props.value?.assetId;
   const locked = props.disabled || props.readOnly;
   return (
-    <div id={props.id} className="ed-stack" {...aria(props)}>
+    <div id={props.id} className="ed-stack">
       {assetId ? (
         <img src={assetUrl(assetId)} alt="" className="ed-asset" />
       ) : null}
@@ -239,7 +234,7 @@ function MediaField(props: FieldControlProps<'media'>) {
               data-variant="outline"
               disabled={locked}
             >
-              {assetId ? 'Change image' : 'Choose image'}
+              {assetId ? 'Change' : 'Choose'} {props.spec.label ?? 'image'}
             </Button>
           }
         />
@@ -250,7 +245,7 @@ function MediaField(props: FieldControlProps<'media'>) {
             disabled={locked}
             onClick={() => props.onChange(undefined)}
           >
-            Clear
+            Clear {props.spec.label ?? 'image'}
           </Button>
         ) : null}
       </div>
@@ -267,7 +262,6 @@ function ReferenceField(props: FieldControlProps<'reference'>) {
       value={props.value?.id}
       disabled={props.disabled || props.readOnly}
       onChange={(id) => props.onChange({ id })}
-      {...aria(props)}
     />
   );
 }
@@ -315,7 +309,7 @@ function LinkField(props: FieldControlProps<'link'>) {
     />
   );
   return (
-    <div id={props.id} role="group" className="ed-stack" {...aria(props)}>
+    <div id={props.id} className="ed-stack">
       <Choice
         aria-label="Link type"
         value={kind}
@@ -393,7 +387,6 @@ function CmsRichTextField(props: FieldControlProps<'richText'>) {
   return <RichTextField {...props} suggest={{ items }} />;
 }
 
-/** `fields` plus the createCMS kinds (media, reference, link, variables). */
 export const cmsFields = {
   ...fields,
   media: MediaField,

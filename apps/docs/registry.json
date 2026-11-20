@@ -366,7 +366,7 @@
       "name": "ui-sdk-editor",
       "type": "registry:block",
       "title": "Editor on UI SDK",
-      "description": "The complete editor (EditorApp, EditorAppView, EditorShell, fields, outline, command palette) built from scratch on Vercel's UI SDK behaviors, styled from one stylesheet keyed on UI SDK state.",
+      "description": "The complete editor (EditorApp, EditorAppView, EditorShell, fields, outline, command palette) on Vercel's UI SDK: its components where it ships one, and the editor chrome and the block outline as UI SDK primitives (definePrimitive, createTreeReorder), styled from one stylesheet keyed on UI SDK state.",
       "dependencies": [
         "@createcms/react@^0.3.2",
         "@ui-sdk/react@0.1.0-beta.5",
@@ -385,6 +385,16 @@
           "path": "registry/ui-sdk/editor-ui-sdk.css",
           "type": "registry:file",
           "target": "components/editor-ui-sdk/editor-ui-sdk.css"
+        },
+        {
+          "path": "registry/ui-sdk/editor-chrome.ts",
+          "type": "registry:component",
+          "target": "components/editor-ui-sdk/editor-chrome.ts"
+        },
+        {
+          "path": "registry/ui-sdk/block-outline.ts",
+          "type": "registry:component",
+          "target": "components/editor-ui-sdk/block-outline.ts"
         },
         {
           "path": "registry/ui-sdk/chrome.tsx",

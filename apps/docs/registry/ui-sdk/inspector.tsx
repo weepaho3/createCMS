@@ -1,35 +1,30 @@
 // @registry ui-sdk-editor@0.3.2
 'use client';
 
-// The fields of the selected block and of the page, in two tabs. Plugins add
-// UI through the `inspector-header` and `inspector-footer` outlets.
-
 import {
   Editor,
   useAnyBlock,
-  useBlockActions,
   useEditor,
   usePalette,
   useSelection,
 } from '@createcms/react/editor';
 import { Tabs, TabsList, TabsPanel, TabsTab } from '@ui-sdk/react/tabs';
-import { BoxIcon, CopyIcon, Trash2Icon } from 'lucide-react';
+import { BoxIcon } from 'lucide-react';
 
-import { IconButton, blockIcon } from './chrome';
+import { Chrome, blockIcon } from './chrome';
 import { Form } from './form';
 
 export function Inspector() {
   const rootId = useEditor((state) => state.rootId);
   const selected = useSelection().selected;
   const block = useAnyBlock(selected);
-  const actions = useBlockActions(selected ?? '');
   const palette = usePalette();
   const label =
     palette.find((item) => item.type === block?.type)?.label ?? block?.type;
   const Icon = blockIcon(block?.type ?? '');
 
   return (
-    <div data-slot="editor-inspector" className="ed-inspector">
+    <Chrome.Inspector className="ed-inspector">
       <Tabs defaultValue="block" className="ed-tabs">
         <header className="ed-inspector-head">
           {selected && block ? (
@@ -40,24 +35,11 @@ export function Inspector() {
                 name="inspector-header"
                 props={{ blockId: selected }}
               />
-              {actions.parent !== null ? (
-                <>
-                  <IconButton
-                    label="Duplicate"
-                    onClick={() => actions.duplicate()}
-                  >
-                    <CopyIcon />
-                  </IconButton>
-                  <IconButton label="Delete" onClick={() => actions.remove()}>
-                    <Trash2Icon />
-                  </IconButton>
-                </>
-              ) : null}
             </div>
           ) : (
             <div className="ed-row ed-muted">Inspector</div>
           )}
-          <TabsList aria-label="Inspector" className="ed-tab-list">
+          <TabsList aria-label="Block or page" className="ed-tab-list">
             <TabsTab value="block" className="ed-tab">
               Block
             </TabsTab>
@@ -86,6 +68,6 @@ export function Inspector() {
           props={{ blockId: selected ?? rootId }}
         />
       </footer>
-    </div>
+    </Chrome.Inspector>
   );
 }

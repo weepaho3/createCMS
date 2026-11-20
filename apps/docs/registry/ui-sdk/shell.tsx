@@ -1,12 +1,6 @@
 // @registry ui-sdk-editor@0.3.2
 'use client';
 
-// The editor's frame: toolbar, the docked panels (palette and outline on
-// the left, the inspector on the right) as resizable panels that show or
-// hide whole, the edit surface and the status bar. Phones get a bottom bar
-// and sheets, tablets the inspector in a drawer. Plugins add UI through the
-// named outlets (`Editor.Slot`).
-
 import {
   Editor,
   useAnyBlock,
@@ -34,6 +28,7 @@ import {
   ResizablePanel,
   createResizableController,
 } from '@ui-sdk/react/resizable';
+import { useShortcut } from '@ui-sdk/react/shortcuts';
 import {
   ListTreeIcon,
   PlusIcon,
@@ -44,9 +39,9 @@ import {
 } from 'lucide-react';
 import * as React from 'react';
 
-import type { Chrome, Device, PalettePage, Sheet } from './chrome';
+import type { Sheet as SheetName } from './chrome';
 
-import { ChromeContext, DEVICE_WIDTH, useChrome, useLayout } from './chrome';
+import { Chrome, DEVICE_WIDTH, useChrome, useLayout } from './chrome';
 import { BlockPicker, CommandPalette } from './commands';
 import { Inspector } from './inspector';
 import { BlockOutline } from './outline';
@@ -56,91 +51,49 @@ import { CommitDialog, EditorToolbar } from './toolbar';
 const LEFT = 'ed-left';
 const RIGHT = 'ed-right';
 
-/** Frame options for `Canvas.Root surface="frame"`, as wide as the chosen device. */
 export function useDeviceFrame(): { width: number | 'full' } {
   const { device } = useChrome();
   const width = DEVICE_WIDTH[device];
   return React.useMemo(() => ({ width }), [width]);
 }
 
-/** While a sheet is open it owns a history entry, so the back gesture closes it. */
-function useBackToClose(open: boolean, close: () => void) {
-  const closeRef = React.useRef(close);
-  closeRef.current = close;
-  React.useEffect(() => {
-    if (!open) return;
-    const key = Math.random().toString(36).slice(2);
-    window.history.pushState({ ...window.history.state, edSheet: key }, '');
-    let popped = false;
-    const onPop = () => {
-      popped = true;
-      closeRef.current();
-    };
-    window.addEventListener('popstate', onPop);
-    return () => {
-      window.removeEventListener('popstate', onPop);
-      if (!popped && window.history.state?.edSheet === key)
-        window.history.back();
-    };
-  }, [open]);
-}
-
-/** Scrolls the block to the top of the canvas, above a bottom sheet. */
-function revealBlock(id: string) {
-  const surface = document.querySelector('[data-slot="editor-surface"]');
-  if (!surface) return;
-  const selector = `[data-editor-block="${CSS.escape(id)}"]`;
-  for (const doc of [
-    surface,
-    ...[...surface.querySelectorAll('iframe')].flatMap((f) =>
-      f.contentDocument ? [f.contentDocument] : [],
-    ),
-  ]) {
-    const el = doc.querySelector(selector);
-    if (el) {
-      el.scrollIntoView({ block: 'start', behavior: 'smooth' });
-      return;
-    }
-  }
-}
-
 function Sheet({
-  open,
-  onClose,
+  name,
   title,
-  props: propsSheet = false,
   children,
 }: {
-  open: boolean;
-  onClose: () => void;
+  name: SheetName;
   title: React.ReactNode;
-  /** The properties sheet: snaps to 35, 60 and 100%, modal only when full. */
-  props?: boolean;
   children: React.ReactNode;
 }) {
-  useBackToClose(open, onClose);
+  const { sheet, api } = useChrome();
+  const props = name === 'props';
   return (
     <Drawer
       side="bottom"
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) onClose();
+      open={sheet === name}
+      onOpenChange={(open, details) => {
+        if (!open)
+          api.closeSheet({ reason: details.reason, event: details.event });
       }}
-      snapPoints={propsSheet ? [0.35, 0.6, 1] : undefined}
-      modalAbove={propsSheet ? 0.6 : undefined}
+      snapPoints={props ? [0.35, 0.6, 1] : undefined}
+      modalAbove={props ? 0.6 : undefined}
     >
       <DrawerBackdrop className="ed-backdrop" />
-      <DrawerContent className="ed-sheet" data-full={propsSheet || undefined}>
-        <DrawerHandle aria-label="Resize" className="ed-sheet-handle" />
+      <DrawerContent className="ed-sheet" data-full={props || undefined}>
+        <DrawerHandle
+          aria-label={`Resize ${name === 'props' ? 'properties' : name}`}
+          className="ed-sheet-handle"
+        />
         <header className="ed-sheet-head">
           <DrawerTitle>{title}</DrawerTitle>
           <DrawerClose
+            aria-label="Close"
             className="ed-button"
             data-variant="ghost"
             data-size="icon-touch"
           >
             <XIcon />
-            <span className="ed-sr">Close</span>
           </DrawerClose>
         </header>
         <div className="ed-sheet-body">{children}</div>
@@ -150,38 +103,36 @@ function Sheet({
 }
 
 function PhoneSheets() {
-  const { sheet, setSheet, mode } = useChrome();
+  const { sheet, mode, api } = useChrome();
   const selected = useSelection().selected;
   const block = useAnyBlock(selected);
   const palette = usePalette();
-  const close = React.useCallback(() => setSheet(null), [setSheet]);
   const title = selected
     ? (palette.find((item) => item.type === block?.type)?.label ?? 'Block')
     : 'Page';
 
-  // A new selection opens its properties and scrolls the block above the sheet.
   const previous = React.useRef(selected);
   React.useEffect(() => {
     if (selected === previous.current) return;
     previous.current = selected;
     if (!selected) return;
     if (mode === 'form') {
-      if (sheet === 'outline') setSheet(null);
+      if (sheet === 'outline') api.closeSheet();
       return;
     }
-    if (sheet === null) setSheet('props');
-    if (sheet === null || sheet === 'props') revealBlock(selected);
-  }, [selected, sheet, setSheet, mode]);
+    if (sheet === null) api.openSheet('props');
+    if (sheet === null || sheet === 'props') api.reveal(selected);
+  }, [selected, sheet, mode, api]);
 
   return (
     <>
-      <Sheet open={sheet === 'props'} onClose={close} title={title} props>
+      <Sheet name="props" title={title}>
         <Inspector />
       </Sheet>
-      <Sheet open={sheet === 'add'} onClose={close} title="Add block">
-        <BlockPicker onDone={close} />
+      <Sheet name="add" title="Add block">
+        <BlockPicker onDone={() => api.closeSheet()} />
       </Sheet>
-      <Sheet open={sheet === 'outline'} onClose={close} title="Outline">
+      <Sheet name="outline" title="Outline">
         <BlockOutline fill />
       </Sheet>
     </>
@@ -189,25 +140,29 @@ function PhoneSheets() {
 }
 
 function TabletInspector() {
-  const { sheet, setSheet } = useChrome();
+  const { sheet, api } = useChrome();
   return (
     <Drawer
       side="right"
       modal={false}
       closeOnOutsidePress={false}
       open={sheet === 'props'}
-      onOpenChange={(open) => setSheet(open ? 'props' : null)}
+      onOpenChange={(open, details) => {
+        const why = { reason: details.reason, event: details.event };
+        if (open) api.openSheet('props', why);
+        else api.closeSheet(why);
+      }}
     >
       <DrawerContent className="ed-side-sheet">
         <header className="ed-sheet-head">
           <DrawerTitle>Inspector</DrawerTitle>
           <DrawerClose
+            aria-label="Close inspector"
             className="ed-button"
             data-variant="ghost"
             data-size="icon-sm"
           >
             <XIcon />
-            <span className="ed-sr">Close</span>
           </DrawerClose>
         </header>
         <Inspector />
@@ -217,28 +172,30 @@ function TabletInspector() {
 }
 
 function BottomBar() {
-  const { setSheet, mode } = useChrome();
+  const { mode, api } = useChrome();
   const history = useHistory();
   const inset = useKeyboardInset();
-  const actions: [string, React.ElementType, () => void, boolean?][] = [
-    ['Add block', PlusIcon, () => setSheet('add')],
-    ['Outline', ListTreeIcon, () => setSheet('outline')],
+  const actions: [string, React.ElementType, () => unknown, boolean?][] = [
+    ['Add block', PlusIcon, () => api.openSheet('add', { reason: 'press' })],
+    [
+      'Outline',
+      ListTreeIcon,
+      () => api.openSheet('outline', { reason: 'press' }),
+    ],
     ...(mode === 'canvas'
       ? [
-          ['Properties', SlidersHorizontalIcon, () => setSheet('props')] as [
-            string,
-            React.ElementType,
-            () => void,
-          ],
+          [
+            'Properties',
+            SlidersHorizontalIcon,
+            () => api.openSheet('props', { reason: 'press' }),
+          ] as [string, React.ElementType, () => unknown],
         ]
       : []),
     ['Undo', Undo2Icon, () => history.undo(), !history.canUndo],
     ['Redo', Redo2Icon, () => history.redo(), !history.canRedo],
   ];
   return (
-    <nav
-      aria-label="Editor actions"
-      data-slot="editor-bottom-bar"
+    <Chrome.BottomBar
       className="ed-bottom-bar"
       style={inset > 0 ? { translate: `0 -${inset}px` } : undefined}
     >
@@ -246,50 +203,41 @@ function BottomBar() {
         <Button
           key={label}
           disabled={disabled}
-          onClick={run}
+          onClick={() => {
+            run();
+          }}
           className="ed-bottom-action"
         >
           <Icon aria-hidden />
           {label}
         </Button>
       ))}
-    </nav>
-  );
-}
-
-function Surface({ children }: { children?: React.ReactNode }) {
-  const { mode } = useChrome();
-  return (
-    <div data-slot="editor-surface" data-mode={mode} className="ed-surface">
-      {children}
-    </div>
+    </Chrome.BottomBar>
   );
 }
 
 function Main({ children }: { children?: React.ReactNode }) {
   const { layout } = useChrome();
   return (
-    <div className="ed-main">
+    <Chrome.Main className="ed-main">
       <EditorToolbar />
-      <Surface>{children}</Surface>
-      <footer data-slot="editor-status-bar" className="ed-status">
+      <Chrome.Surface className="ed-surface">{children}</Chrome.Surface>
+      <Chrome.StatusBar className="ed-status">
         <Editor.Slot name="status-bar" />
-      </footer>
+      </Chrome.StatusBar>
       {layout === 'phone' ? <BottomBar /> : null}
-    </div>
+    </Chrome.Main>
   );
 }
 
 function Layout({
   controller,
-  onPanels,
   children,
 }: {
   controller: ReturnType<typeof createResizableController>;
-  onPanels: (panels: Chrome['panels']) => void;
   children?: React.ReactNode;
 }) {
-  const { layout, mode } = useChrome();
+  const { layout, mode, api } = useChrome();
   const right = mode === 'canvas' && layout === 'desktop';
   if (layout === 'phone') {
     return (
@@ -303,13 +251,18 @@ function Layout({
     <>
       <Resizable
         controller={controller}
+        aria-label="Editor panels"
         className="ed-panels"
-        onLayoutCommit={() =>
-          onPanels({
-            left: !controller.isCollapsed(LEFT),
-            right: right && !controller.isCollapsed(RIGHT),
-          })
-        }
+        onLayoutCommit={() => {
+          api.setPanel('left', !controller.isCollapsed(LEFT), {
+            reason: 'resize',
+          });
+          if (right) {
+            api.setPanel('right', !controller.isCollapsed(RIGHT), {
+              reason: 'resize',
+            });
+          }
+        }}
       >
         <ResizablePanel
           id={LEFT}
@@ -354,112 +307,71 @@ function Layout({
   );
 }
 
+function Keymap({ mode }: { mode: 'canvas' | 'form' }) {
+  const store = useEditorStore();
+  const { layout, api } = useChrome();
+  useShortcut('mod+b', () => api.togglePanel('left'), {
+    description: 'Show or hide the sidebar',
+    when: () => layout !== 'phone',
+  });
+  useShortcut('mod+s', () => void api.save(), { description: 'Save' });
+  React.useEffect(
+    () =>
+      store.on('ui', ({ action }) => {
+        if (action === 'commandPalette') api.openPalette('commands');
+        if (action === 'quickInsert' && mode === 'canvas') api.addBlock();
+      }),
+    [store, mode, api],
+  );
+  return null;
+}
+
 export type EditorShellProps = {
   mode?: 'canvas' | 'form';
   requireCommitMessage?: boolean;
   children?: React.ReactNode;
 };
 
-/** The whole editor chrome around the edit surface (`children`). */
 export function EditorShell({
   mode = 'canvas',
   requireCommitMessage = false,
   children,
 }: EditorShellProps) {
   const layout = useLayout();
-  const store = useEditorStore();
-  const { dirty, saving, save } = useSave();
-  const [device, setDevice] = React.useState<Device>('desktop');
-  const [panels, setPanels] = React.useState({ left: true, right: true });
-  const [sheet, setSheet] = React.useState<Sheet | null>(null);
-  const [palette, setPalette] = React.useState<PalettePage | null>(null);
-  const [commitOpen, setCommitOpen] = React.useState(false);
+  const { dirty, save } = useSave();
   const [controller] = React.useState(createResizableController);
   const scope = React.useRef<HTMLDivElement | null>(null);
   useEditorKeyboard(scope);
 
-  const togglePanel = React.useCallback(
-    (side: 'left' | 'right') => {
-      const id = side === 'left' ? LEFT : RIGHT;
-      if (controller.isCollapsed(id)) controller.expand(id);
-      else controller.collapse(id);
-      setPanels((prev) => ({ ...prev, [side]: !controller.isCollapsed(id) }));
-    },
-    [controller],
-  );
-
-  // Mod+K and `/` run `ui.commandPalette` and `ui.quickInsert`, so rebinding
-  // those commands moves these dialogs too.
-  React.useEffect(
-    () =>
-      store.on('ui', ({ action }) => {
-        if (action === 'commandPalette') setPalette('commands');
-        if (action !== 'quickInsert' || mode !== 'canvas') return;
-        if (layout === 'phone') setSheet('add');
-        else setPalette('add');
-      }),
-    [store, mode, layout],
-  );
-
-  React.useEffect(() => {
-    if (!dirty) return;
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty]);
-
-  React.useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey)) return;
-      const key = event.key.toLowerCase();
-      if (key === 'b' && layout !== 'phone') {
-        event.preventDefault();
-        togglePanel('left');
-      }
-      if (key !== 's') return;
-      event.preventDefault();
-      if (!dirty || saving) return;
-      if (requireCommitMessage) setCommitOpen(true);
-      else void save();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [dirty, saving, save, requireCommitMessage, layout, togglePanel]);
-
-  const chrome: Chrome = {
-    mode,
-    layout,
-    device,
-    setDevice,
-    panels,
-    togglePanel,
-    sheet,
-    setSheet,
-    palette,
-    openPalette: setPalette,
-    closePalette: () => setPalette(null),
-    requireCommitMessage,
-    commitOpen,
-    setCommitOpen,
-  };
-
   return (
     <Canvas.Provider>
-      <ChromeContext.Provider value={chrome}>
-        <div
-          ref={scope}
-          data-slot="editor-shell"
-          data-mode={mode}
-          data-layout={layout}
-          className="ed-shell"
-        >
-          <Layout controller={controller} onPanels={setPanels}>
-            {children}
-          </Layout>
-        </div>
+      <Chrome.Root
+        ref={scope}
+        aria-label="Page editor"
+        className="ed-shell"
+        mode={mode}
+        layout={layout}
+        dirty={dirty}
+        requireCommitMessage={requireCommitMessage}
+        onSave={() => save()}
+        onPanelsChange={(panels, details) => {
+          if (details.reason === 'resize') return;
+          for (const [side, id] of [
+            ['left', LEFT],
+            ['right', RIGHT],
+          ] as const) {
+            const open = panels[side];
+            if (open === !controller.isCollapsed(id)) continue;
+            if (open) controller.expand(id);
+            else controller.collapse(id);
+          }
+        }}
+      >
+        <Keymap mode={mode} />
+        <Layout controller={controller}>{children}</Layout>
         <CommandPalette />
-        <CommitDialog />
-      </ChromeContext.Provider>
+        <CommitDialog enabled={requireCommitMessage} />
+      </Chrome.Root>
     </Canvas.Provider>
   );
 }

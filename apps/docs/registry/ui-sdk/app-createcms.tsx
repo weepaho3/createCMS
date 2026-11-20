@@ -1,9 +1,6 @@
 // @registry ui-sdk-editor-createcms@0.3.2
 'use client';
 
-// The editor over a createCMS collection: the collection's document client
-// loads and saves, and the CMS field sources feed the form.
-
 import type {
   CmsBlocksMap,
   CmsDocumentClient,
@@ -30,7 +27,6 @@ import { CmsSourcesProvider, cmsFields } from './fields-createcms';
 type CmsMedia = UseCmsFieldSourcesClient['media'];
 
 export type CmsEditorClient = UseCmsFieldSourcesClient & {
-  /** A full `MediaClient` gives the picker folders and uploads. */
   media: CmsMedia & Partial<MediaClient>;
   readonly [collection: string]: unknown;
 };
@@ -41,7 +37,6 @@ export type CmsEditorProps = {
   collection: string;
   rootId: string;
   branchId: string;
-  /** The `createBlocksMap` result: components plus the collection definition. */
   blocks: CmsBlocksMap;
   mode?: EditorAppMode;
   className?: string;
@@ -81,7 +76,6 @@ function documentClient(
   return namespace as CmsDocumentClient;
 }
 
-/** Tiptap with CMS asset URLs, loaded the first time a rich text field is edited. */
 const richText = lazyRichTextAdapter(() =>
   import('@createcms/react/editor/richtext').then((m) =>
     m.createTiptapAdapter({ resolveAsset: (id) => assetUrl(id) }),
